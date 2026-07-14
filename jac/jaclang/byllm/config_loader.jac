@@ -1,0 +1,34 @@
+"""Configuration loader for jac-byllm.
+
+This module provides configuration access for the byllm plugin.
+Configuration is loaded from jac.toml under [byllm] section.
+
+Inherits from PluginConfigBase to eliminate boilerplate code.
+"""
+import from pathlib { Path }
+import from jaclang.project.plugin_config { PluginConfigBase }
+
+"""Byllm-specific configuration loader.
+
+Provides access to model, call_params, and litellm configuration
+from the [byllm] section of jac.toml.
+"""
+class JacByllmConfig(PluginConfigBase) {
+    override def get_plugin_name(self: JacByllmConfig) -> str;
+    override def get_default_config(self: JacByllmConfig) -> dict[str, any];
+    def get_model_config(self: JacByllmConfig) -> dict[str, any];
+    def get_call_params_config(self: JacByllmConfig) -> dict[str, any];
+    def get_litellm_config(self: JacByllmConfig) -> dict[str, any];
+    def get_fallback_config(self: JacByllmConfig) -> dict[str, any];
+    def get_prompt_caching_config(self: JacByllmConfig) -> dict[str, any];
+    def get_parallel_config(self: JacByllmConfig) -> dict[str, any];
+    def get_streaming_config(self: JacByllmConfig) -> dict[str, any];
+    def get_system_prompt(self: JacByllmConfig) -> str;
+    def get_compaction_config(self: JacByllmConfig) -> dict[str, any];
+    def get_local_config(self: JacByllmConfig) -> dict[str, any];
+}
+
+glob _byllm_config_instance: JacByllmConfig | None = None;
+
+def get_byllm_config(project_dir: Path | None = None) -> JacByllmConfig;
+def reset_byllm_config -> None;

@@ -1,21 +1,15 @@
-"""Implementation for codeinfo constructs."""
-
-"""True if the bridge is a single hop (e.g. sv→na)."""
 impl InteropBinding.is_direct.getter -> bool {
     return (len(self.route) == 2);
 }
 
-"""True if the bridge requires multiple hops (e.g. cl→sv→na)."""
 impl InteropBinding.is_composed.getter -> bool {
     return (len(self.route) > 2);
 }
 
-"""True if the function is imported from another module."""
 impl InteropBinding.is_cross_module.getter -> bool {
     return (self.source_module is not None);
 }
 
-"""Server (Python) functions that native code calls."""
 impl InteropManifest.native_imports.getter -> list[InteropBinding] {
     return [
         b
@@ -27,7 +21,6 @@ impl InteropManifest.native_imports.getter -> list[InteropBinding] {
     ];
 }
 
-"""Native functions that server (Python) code calls."""
 impl InteropManifest.native_exports.getter -> list[InteropBinding] {
     return [
         b
@@ -39,7 +32,6 @@ impl InteropManifest.native_exports.getter -> list[InteropBinding] {
     ];
 }
 
-"""Native functions imported from other .na.jac modules."""
 impl InteropManifest.native_cross_module_imports.getter -> list[InteropBinding] {
     return [
         b
@@ -52,7 +44,6 @@ impl InteropManifest.native_cross_module_imports.getter -> list[InteropBinding] 
     ];
 }
 
-"""Server functions that client (JS) code calls."""
 impl InteropManifest.server_exports_to_client.getter -> list[InteropBinding] {
     return [
         b
@@ -64,7 +55,6 @@ impl InteropManifest.server_exports_to_client.getter -> list[InteropBinding] {
     ];
 }
 
-"""Server functions imported from another server module via sv import."""
 impl InteropManifest.server_exports_to_server.getter -> list[InteropBinding] {
     return [
         b
@@ -121,14 +111,56 @@ impl CodeLocInfo.pos_end.getter -> int {
     return self.last_tok.pos_end;
 }
 
-impl CodeLocInfo.tok_range.getter -> tuple[(Token, Token)] {
-    return (self.first_tok, self.last_tok);
+impl CodeLocInfo.snapshot -> CodeLocInfo {
+    import from jaclang.jac0core.unitree { Token }
+
+    ft = self.first_tok;
+    lt = self.last_tok;
+    new_ft = Token(
+        ft.orig_src,
+        ft.name,
+        ft.value,
+        ft.line_no,
+        ft.end_line,
+        ft.c_start,
+        ft.c_end,
+        ft.pos_start,
+        ft.pos_end
+    );
+    new_lt = Token(
+        lt.orig_src,
+        lt.name,
+        lt.value,
+        lt.line_no,
+        lt.end_line,
+        lt.c_start,
+        lt.c_end,
+        lt.pos_start,
+        lt.pos_end
+    );
+    new_ft._is_synthetic = True;
+    new_lt._is_synthetic = True;
+    return CodeLocInfo(new_ft, new_lt);
 }
 
-impl CodeLocInfo.first_token.getter -> Token {
-    return self.first_tok;
+impl CodeGenTarget.client_manifest.getter -> ClientManifest {
+    if (self._client_manifest is None) {
+        self._client_manifest = ClientManifest();
+    }
+    return self._client_manifest;
 }
 
-impl CodeLocInfo.last_token.getter -> Token {
-    return self.last_tok;
+impl CodeGenTarget.client_manifest.setter(value: ClientManifest) -> None {
+    self._client_manifest = value;
+}
+
+impl CodeGenTarget.interop_manifest.getter -> InteropManifest {
+    if (self._interop_manifest is None) {
+        self._interop_manifest = InteropManifest();
+    }
+    return self._interop_manifest;
+}
+
+impl CodeGenTarget.interop_manifest.setter(value: InteropManifest) -> None {
+    self._interop_manifest = value;
 }

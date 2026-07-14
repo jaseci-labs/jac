@@ -1,9 +1,3 @@
-"""Implementation of project template registry."""
-
-# ===============================================================================
-# ProjectTemplate Implementation
-# ===============================================================================
-"""Convert to dict for serialization (e.g., JSON bundling)."""
 impl ProjectTemplate.to_dict -> dict[str, any] {
     return {
         "name": self.name,
@@ -17,10 +11,6 @@ impl ProjectTemplate.to_dict -> dict[str, any] {
     };
 }
 
-# ===============================================================================
-# TemplateRegistry Implementation
-# ===============================================================================
-"""Register a new template from plugin hook data."""
 impl TemplateRegistry.register(template_info: dict[str, any]) -> None {
     import from jaclang.project.template_registry { ProjectTemplate }
     name = template_info.get("name");
@@ -35,13 +25,11 @@ impl TemplateRegistry.register(template_info: dict[str, any]) -> None {
     if not config {
         raise ValueError(f"Template '{name}' must have a 'config' field");
     }
-    # The kind is taken from the template_info, else from the template's own
-    # [project] kind, else defaults to "cli" -- so a directory template only
-    # has to declare `kind` once (in its jac.toml).
+
     kind = template_info.get("kind")
     or config.get("project", {}).get("kind", "")
     or "cli";
-    # Create ProjectTemplate from the dict
+
     template = ProjectTemplate(
         name=name,
         description=description,
@@ -53,23 +41,15 @@ impl TemplateRegistry.register(template_info: dict[str, any]) -> None {
         root_gitignore_entries=template_info.get("root_gitignore_entries", []),
         post_create=template_info.get("post_create")
     );
-    # Register the template
+
     self._templates[name] = template;
 }
 
-"""Get template by name (e.g., 'default', 'client')."""
 impl TemplateRegistry.get(name: str) -> ProjectTemplate | None {
     import from jaclang.project.template_registry { ProjectTemplate }
     return self._templates.get(name);
 }
 
-"""Get the canonical (default) template registered for a project kind.
-
-Returns the template flagged `is_default_for_kind` for `kind`; if none is so
-flagged (e.g. only variants exist) falls back to any template of that kind.
-Returns None when no template is registered for the kind (e.g. the kind's
-plugin is not installed).
-"""
 impl TemplateRegistry.get_by_kind(kind: str) -> ProjectTemplate | None {
     fallback: ProjectTemplate | None = None;
     for template in self._templates.values() {
@@ -85,7 +65,6 @@ impl TemplateRegistry.get_by_kind(kind: str) -> ProjectTemplate | None {
     return fallback;
 }
 
-"""Get the default template (the canonical `cli`-kind template)."""
 impl TemplateRegistry.get_default -> ProjectTemplate {
     import from jaclang.project.template_registry { ProjectTemplate }
     default_tmpl = self.get_by_kind("cli");
@@ -95,11 +74,6 @@ impl TemplateRegistry.get_default -> ProjectTemplate {
     return default_tmpl;
 }
 
-"""List all registered templates as (name, description) tuples.
-
-The canonical `cli` template is listed first (it is the default `jac create`),
-then the remaining templates sorted by name.
-"""
 impl TemplateRegistry.list_templates -> list[tuple[str, str]] {
     result: list[tuple[str, str]] = [];
     if "cli" in self._templates {
@@ -113,47 +87,31 @@ impl TemplateRegistry.list_templates -> list[tuple[str, str]] {
     return result;
 }
 
-"""List the registered project kinds as (kind, description) tuples.
-
-Ordered by the canonical KIND_SPECS order. Only kinds with a registered
-template appear (so plugin kinds show up only when the plugin is installed).
-"""
 impl TemplateRegistry.list_kinds -> list[tuple[str, str]] {
-    import from jaclang.project.kinds { VALID_KINDS }
-    by_kind: dict[str, str] = {};
+    import from jaclang.project.kinds { KIND_SPECS }
+    available: set[str] = set();
     for template in self._templates.values() {
-        if template.is_default_for_kind and template.kind not in by_kind {
-            by_kind[template.kind] = template.description;
+        if template.is_default_for_kind {
+            available.add(template.kind);
         }
     }
     result: list[tuple[str, str]] = [];
-    for kind in VALID_KINDS {
-        if kind in by_kind {
-            result.append((kind, by_kind[kind]));
+    for (kind, spec) in KIND_SPECS.items() {
+        if kind in available {
+            result.append((kind, spec.description));
         }
     }
     return result;
 }
 
-"""Check if a template is registered."""
-impl TemplateRegistry.has_template(name: str) -> bool {
-    return name in self._templates;
-}
-
-"""True when no templates have been registered yet (registry not initialized)."""
 impl TemplateRegistry.is_empty -> bool {
     return not self._templates;
 }
 
-"""Clear all registered templates (for testing)."""
 impl TemplateRegistry.clear -> None {
     self._templates.clear();
 }
 
-# ===============================================================================
-# Module-level Functions Implementation
-# ===============================================================================
-"""Get or create the global template registry."""
 impl get_template_registry -> TemplateRegistry {
     import from jaclang.project.template_registry { TemplateRegistry }
     global _registry;
@@ -163,24 +121,23 @@ impl get_template_registry -> TemplateRegistry {
     return _registry;
 }
 
-"""Initialize the registry by registering default template and calling plugin hooks."""
 impl initialize_template_registry -> None {
-    import from jaclang.jac0core.runtime { JacRuntime }
     registry = get_template_registry();
-    # Register the core (plugin-free) kind templates first.
+
     _register_core_templates(registry);
-    # Register the built-in client/desktop directory templates directly (they ship
-    # in core now). Done here -- not via the `register_project_template` hook -- so
-    # they are present whenever the registry is initialized, independent of plugin-
-    # manager state (the pytest harness resets it between runs, which would otherwise
-    # drop these from the aggregating hook).
+
     _register_builtin_client_templates(registry);
-    # `register_project_template` is an aggregating hook: every plugin that
-    # implements it contributes. The call returns a list with one entry per
-    # implementing plugin, where each entry is itself a template dict OR a list
-    # of template dicts (a plugin may provide several kinds). Flatten and
-    # register all of them.
-    results = JacRuntime.register_project_template();
+
+    _register_builtin_shadcn_template(registry);
+}
+
+def _register_builtin_shadcn_template(registry: TemplateRegistry) -> None {
+    try {
+        import from jaclang.cli.shadcn.cli { register_project_template }
+    } except Exception {
+        return;
+    }
+    results = register_project_template();
     for entry in _iter_template_dicts(results) {
         try {
             registry.register(entry);
@@ -191,8 +148,6 @@ impl initialize_template_registry -> None {
     }
 }
 
-"""Flatten the aggregated `register_project_template` hook result into template
-dicts, accepting a dict, a list of dicts, or a list of those (firstresult-off)."""
 def _iter_template_dicts(results: any) -> list[dict[str, any]] {
     out: list[dict[str, any]] = [];
     if results is None {
@@ -208,9 +163,6 @@ def _iter_template_dicts(results: any) -> list[dict[str, any]] {
     return out;
 }
 
-"""Register the built-in client/desktop directory templates (fullstack/client/mobile/
-desktop), which ship in core. Called directly so they do not depend on plugin-hook
-dispatch surviving a JacRuntime reset (e.g. the pytest harness between tests)."""
 def _register_builtin_client_templates(registry: TemplateRegistry) -> None {
     try {
         import from jaclang.runtimelib.client.plugin_config { JacClientPluginConfig }
@@ -218,7 +170,7 @@ def _register_builtin_client_templates(registry: TemplateRegistry) -> None {
             JacDesktopPluginConfig
         }
     } except Exception {
-        return;  # client framework unavailable -- core remains usable
+        return;
     }
     entries: list[any] = list(JacClientPluginConfig.client_project_templates());
     desktop = JacDesktopPluginConfig.desktop_project_template();
@@ -235,25 +187,19 @@ def _register_builtin_client_templates(registry: TemplateRegistry) -> None {
     }
 }
 
-"""Build a core (plugin-free) project-template dict for a kind.
-
-Centralizes the shared scaffolding shape (project metadata, dev watchdog dep,
-gitignore, .jac dir) so each kind only declares what differs: its description,
-entry-point, and starter files. The kind is stamped into `[project] kind` so
-the scaffolded project's bare `jac run` dispatches deterministically.
-"""
 def _core_template(
-    kind: str,
-    description: str,
-    entry_file: str,
-    files: dict[str, str],
-    extra_config: dict[str, any] = {}
+    kind: str, body: str, extra_config: dict[str, any] = {}
 ) -> dict[str, any] {
+    import from jaclang.project.kinds { kind_spec }
+    spec = kind_spec(kind);
+    if spec is None {
+        raise ValueError(f"No KindSpec for core template kind '{kind}'");
+    }
     project_section: dict[str, any] = {
         "name": "{{name}}",
         "version": "0.1.0",
-        "description": description,
-        "entry-point": entry_file,
+        "description": spec.description,
+        "entry-point": spec.entry,
         "kind": kind
     };
     config: dict[str, any] = {
@@ -266,24 +212,16 @@ def _core_template(
     }
     return {
         "name": kind,
-        "description": description,
+        "description": spec.description,
         "kind": kind,
         "is_default_for_kind": True,
         "config": config,
-        "files": files,
+        "files": {spec.entry: body},
         "root_gitignore_entries": [".jac/", "jac.local.toml"],
         "directories": [".jac"]
     };
 }
 
-"""Register the core, plugin-free project-kind templates.
-
-One canonical template per core kind (cli, native-app, native-binary,
-shared-library, api-service, microservices, pypi-package, npm-package). The
-client-framework kinds (fullstack/client/mobile and desktop) are contributed
-through the `register_project_template` hook by the built-in client provider
-in `jaclang.runtimelib.client`.
-"""
 def _register_core_templates(registry: TemplateRegistry) {
     _hello = '"""Entry point for {{name}}."""\n\nwith entry {\n    print("Hello from {{name}}!");\n}\n';
     _lib = '"""Library module for {{name}}."""\n\ndef greet(name: str) -> str {\n    return f"Hello, {name}!";\n}\n';
@@ -308,55 +246,15 @@ def _register_core_templates(registry: TemplateRegistry) {
     );
 
     for info in [
-        _core_template(
-            "cli", "Command-line Jac project", "main.jac", {"main.jac": _hello}
-        ),
-        _core_template(
-            "native-app",
-            "Natively-compiled Jac app (runs via the LLVM JIT)",
-            "main.na.jac",
-            {"main.na.jac": _hello}
-        ),
-        _core_template(
-            "native-binary",
-            "Natively-compiled standalone binary (built into dist/)",
-            "main.na.jac",
-            {"main.na.jac": _hello}
-        ),
-        _core_template(
-            "shared-library",
-            "Natively-compiled shared library (.so / .dylib / .dll)",
-            "main.na.jac",
-            {"main.na.jac": _shared}
-        ),
-        _core_template(
-            "api-service",
-            "Headless Jac API service (server walkers, no client)",
-            "main.sv.jac",
-            {"main.sv.jac": _service}
-        ),
-        _core_template(
-            "microservices",
-            "Jac microservice (server walkers; auto-starts providers)",
-            "main.sv.jac",
-            {"main.sv.jac": _service}
-        ),
-        _core_template(
-            "pypi-package",
-            "Distributable Python package (built into a wheel)",
-            "lib.jac",
-            {"lib.jac": _lib}
-        ),
-        _core_template(
-            "npm-package",
-            "Distributable npm package (built into a tarball)",
-            "lib.jac",
-            {"lib.jac": _lib}
-        )
+        _core_template("cli", _hello),
+        _core_template("cli-native", _hello),
+        _core_template("native-binary", _hello),
+        _core_template("native-lib", _shared),
+        _core_template("service", _service),
+        _core_template("service-mesh", _service),
+        _core_template("py-package", _lib),
+        _core_template("js-package", _lib)
     ] {
         registry.register(info);
     }
 }
-# ===============================================================================
-# Default Template
-# ===============================================================================

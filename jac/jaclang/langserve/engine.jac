@@ -1,5 +1,3 @@
-"""Living Workspace of Jac project."""
-
 import asyncio;
 import logging;
 import os;
@@ -16,7 +14,7 @@ import from jaclang.jac0core.constant { SymbolType }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.cli.console { console }
 import from jaclang.jac0core.bccache { discover_base_file, discover_annex_files }
-import from jaclang.compiler.type_system.type_utils { get_completion_items }
+import from jaclang.compiler.type_system.type_utils { doc_of_sym, get_completion_items }
 import from jaclang.compiler.type_system.types {
     ClassType,
     FunctionType,
@@ -44,11 +42,9 @@ obj Task {
     def postinit -> None;
 }
 
-"""Jac Language Server, manages JacProgram and LSP."""
 obj JacLangServer(JacProgram, LanguageServer) {
     has sem_managers: dict = {},
         module_manager: ModuleManager | None by postinit,
-        # Task management
         pipe: deque = deque(maxlen=1),
         dirty_files: dict[str, bool] = {},
         last_task: Task | None = None,
@@ -65,7 +61,6 @@ obj JacLangServer(JacProgram, LanguageServer) {
     has diagnostics: dict[str, list] { getter; }
 
     def _clear_alerts_for_file(file_path: str) -> None;
-    def get_ir(file_path: str) -> Optional[uni.Module];
     def update_modules(
         file_path: str,
         build: uni.Module,
@@ -79,13 +74,7 @@ obj JacLangServer(JacProgram, LanguageServer) {
 
     def type_check(file_uri: str) -> None;
     def _do_type_check(file_uri: str) -> None;
-    """React to an external change at `file_uri`: drop the file's IR from
-    `JacProgram` caches and queue a re-check for every open document that
-    transitively imports it. Idempotent and safe to call from any LSP
-    event handler. The owning file's own re-check is not queued here —
-    callers normally pair this with `type_check(file_uri)` for that."""
     def _fanout_dependents(file_uri: str) -> None;
-
     def get_token_at_position(
         file_path: str, position: lspt.Position
     ) -> Optional[uni.UniNode];

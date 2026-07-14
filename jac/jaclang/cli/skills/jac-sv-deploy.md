@@ -3,24 +3,24 @@ name: jac-sv-deploy
 description: Running a Jac server in production - jac start flags, database backends (SQLite/Mongo/Redis), secrets, Kubernetes deploys (--scale, TLS, autoscaling, jac status/destroy), webhooks, WebSockets, S3 storage, metrics, distributed locks. Load when moving a server beyond local dev or wiring external services in. Pair with `jac-sv-endpoints`, `jac-sv-microservices` (multi-service k8s), `jac-config`.
 ---
 
-Production serving is jac-scale's job: `jac install jac-scale` (or `jac install 'jac-scale[all]'`), then `jac plugins enable scale` if it isn't already active (`jac plugins` to check).
+Production serving is the built-in `scale` subsystem's job. Scale ships inside `jaclang` -- there is no `jac-scale` package to install and no plugin to enable. Its optional heavier deps (pymongo, redis, kubernetes, docker, prometheus-client, ...) are pulled per-project: declare the matching `[scale.*]` config in `jac.toml`, then run `jac install` to resolve them into `.jac/venv` (a `--scale` deploy also resolves its deps on first run).
 
 ## jac start
 
 `jac start [app.jac]` (default entry `main.jac`; needs a `jac.toml` in the cwd). Flags use **underscores**: `--no_client` (API only, skip client bundling), `--port/-p` (auto-falls back if taken), `--faux` (print the generated API surface without starting - cheap endpoint preview), `--profile prod` (config profile), `--dev` (HMR). `jac start` exits when stdin closes - any backgrounded/daemonized server must be launched with `< /dev/null` (systemd/containers do this for you; shell scripts and CI must do it explicitly). For prod, kill Swagger:
 
 ```toml
-[plugins.scale.server]
+[scale.server]
 docs_enabled = false          # disables /docs, /redoc, /openapi.json
 suppress_health_check_logs = true
 ```
 
-**Backends:** SQLite at `.jac/data/` by default (graph + users; zero setup). Set `MONGODB_URI` (or `[plugins.scale.database] mongodb_uri`) for MongoDB and `REDIS_URL` for the Redis cache tier - required for multi-replica deployments. Config precedence everywhere: **env var > jac.toml > default**.
+**Backends:** SQLite at `.jac/data/` by default (graph + users; zero setup). Set `MONGODB_URI` (or `[scale.database] mongodb_uri`) for MongoDB and `REDIS_URL` for the Redis cache tier - required for multi-replica deployments. Config precedence everywhere: **env var > jac.toml > default**.
 
-**Secrets** ship to pods via `[plugins.scale.secrets]` with `${ENV_VAR}` interpolation, resolved from your local env at deploy time and injected as a k8s Secret:
+**Secrets** ship to pods via `[scale.secrets]` with `${ENV_VAR}` interpolation, resolved from your local env at deploy time and injected as a k8s Secret:
 
 ```toml
-[plugins.scale.secrets]
+[scale.secrets]
 OPENAI_API_KEY = "${OPENAI_API_KEY}"
 JWT_SECRET = "${JWT_SECRET}"        # see jac-sv-auth: the default JWT secret MUST be changed
 ```
@@ -29,14 +29,13 @@ JWT_SECRET = "${JWT_SECRET}"        # see jac-sv-auth: the default JWT secret MU
 
 ```bash
 jac start app.jac --scale --dry-run   # lint config + print the plan; nothing applied. Use before every deploy.
-jac start app.jac --scale             # dev deploy (no image build)
-jac start app.jac --scale --build     # build+push Docker image (DOCKER_USERNAME/PASSWORD in .env), then deploy
-jac status app.jac                    # component health table (app, Mongo, Redis, Grafana)
-jac destroy app.jac                   # DELETES THE NAMESPACE INCLUDING PERSISTENT VOLUMES - all data is lost
+jac start app.jac --scale             # deploy (no image build: source ships into the cluster on a PVC)
+jac scale status app.jac              # component health table (app, Mongo, Redis, Grafana)
+jac scale destroy app.jac             # DELETES THE NAMESPACE INCLUDING PERSISTENT VOLUMES - all data is lost
 ```
 
 ```toml
-[plugins.scale.kubernetes]
+[scale.kubernetes]
 app_name = "myapp"
 namespace = "production"
 min_replicas = 2                   # HPA bounds; scaling needs cpu_request set
@@ -73,7 +72,7 @@ Keys are durable only with MongoDB configured - in-memory otherwise (a restart i
 `store()` (ambient) is local-disk by default; flip to S3 in config - same code:
 
 ```toml
-[plugins.scale.storage]
+[scale.storage]
 type = "s3"
 bucket = "my-app-uploads"      # region, prefix, endpoint_url (non-AWS), public_read
 ```
@@ -83,13 +82,13 @@ bucket = "my-app-uploads"      # region, prefix, endpoint_url (non-AWS), public_
 ## Observability and coordination
 
 - `/health`, `/ready` - built-in probe endpoints; `/healthz` variants also exist.
-- **Prometheus**: `[plugins.scale.monitoring] enabled = true` registers `/metrics` - **admin-token-gated** (403 otherwise); `walker_metrics = true` adds per-walker timing. Visual dashboard in the admin portal.
-- **CORS**: single-process `jac start` hardwires `allow_origins=['*']` - no knob. Only the microservice gateway has configurable CORS (`[plugins.scale.microservices.cors]`). Don't ship a `:pub`-heavy API assuming you can lock origins down in single-process mode.
+- **Prometheus**: `[scale.monitoring] enabled = true` registers `/metrics` - **admin-token-gated** (403 otherwise); `walker_metrics = true` adds per-walker timing. Visual dashboard in the admin portal.
+- **CORS**: single-process `jac start` hardwires `allow_origins=['*']` - no knob. Only the microservice gateway has configurable CORS (`[scale.microservices.cors]`). Don't ship a `:pub`-heavy API assuming you can lock origins down in single-process mode.
 - **Distributed locks** (Redis only - raises `NotImplementedError` on Mongo): `kvstore(db_name=..., db_type='redis')` exposes `set_nx_with_ttl(key, value, ttl)` (atomic acquire, TTL mandatory) + `delete_if_equals(key, fence)` (compare-and-delete release). `threading.Lock` only serializes one process - it silently fails to protect anything once you have 2+ replicas.
 
 ## Pitfalls
 
-- **`jac destroy` deletes data.** PVCs included. There is a y/N prompt; there is no undo.
+- **`jac scale destroy` deletes data.** PVCs included. There is a y/N prompt; there is no undo.
 - `--dry-run` catches config errors (HPA min>max, bad resource units like `500MB` vs `500Mi`) in ~1s vs finding out after a 5-10 minute build-push-deploy.
 - HPA does nothing without `cpu_request` - Kubernetes can't compute a utilization %.
 - Multi-replica + SQLite = corruption/confusion. Going past one replica requires `MONGODB_URI` (+ Redis for cache/locks).

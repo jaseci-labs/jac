@@ -1,9 +1,3 @@
-"""Shared builder for the Preact mount-and-wrap entry script.
-
-Mirrors `react_entry.jac` but uses Preact's `render`/`h` instead of
-`react-dom/client`'s `createRoot`.
-"""
-
 def build_simple_preact_entry_script(
     entry_module: str, install_global_handlers: bool = True
 ) -> str {

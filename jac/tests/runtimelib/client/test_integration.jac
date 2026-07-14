@@ -58,12 +58,12 @@ def _plugin_config_path -> Path {
     return _pkg_root().parent.parent / "desktop_plugin_config.jac";
 }
 
-"""The BOOTSTRAP_JS bridge shim, as emitted by _generate_host_source.
+"""The rich window.__jac SDK shim (invoke/on/__emit__).
 
-Single in-test copy of the shim so the JS tests below don't each carry their
-own. `_generate_host_source` remains the source of truth; the
-"js sdk snippet matches generated host source" test asserts this copy has not
-drifted from it whenever the native target module is importable in the runner."""
+Single in-test copy of the SDK so the JS tests below don't each carry their own.
+`cef_dispatch.na.jac`'s BOOTSTRAP_JS glob is the source of truth (this is the
+slice `_jac_sdk_js()` extracts for the web target); the "js sdk snippet matches
+generated host source" test asserts this copy has not drifted from it."""
 def _bootstrap_js_snippet -> str {
     return (
         "(function(){"
@@ -1005,7 +1005,6 @@ test "generated host source contains required elements" {
     _generate_host_source = sys.modules[mod_name]._generate_host_source;
 
     src = _generate_host_source(
-        libpy="libpython3.12.so.1.0",
         title="TestApp",
         width=800,
         height=600,
@@ -1014,27 +1013,26 @@ test "generated host source contains required elements" {
     );
     # Must contain key elements
     assert "import from webview" in src;
-    assert "Py_Initialize" in src;
+    assert "import from jacpyembed" in src;
+    assert "jac_engine_boot" in src;
     assert "Py_Finalize" in src;
     assert "_jac_invoke_handler" in src;
     assert "_PH_DISPATCH" in src;
     assert "wv.bind" in src;
     assert "BOOTSTRAP_JS" in src;
-    assert "SERVE_PY" in src;
+    assert "BOOT_PY" in src;
     assert "__jac_invoke" in src;
     assert "TestApp" in src;
     assert "800" in src;
     assert "600" in src;
-    # Plugin configs must be baked in
+    # Boot behavior is delegated to the runtime host_boot module; the host
+    # bakes only configuration (as JSON) into the boot statement.
+    assert "host_boot.boot(" in src;
     assert "path" in src;
-    assert "True" in src;
+    assert "true" in src;
     # Bridge must be inlined (not imported from separate file)
     assert "PyGILState_Ensure" in src;
     assert "respond" in src;
-    # Plugin bootstrap must use os.path.join(_root, ...) — Jac f-strings with
-    # nested quotes produced spec_from_file_location('mod, mod.py') (null loader).
-    assert "os.path.join(_root," in src;
-    assert "desktop_plugin, desktop_plugin.py" not in src;
     assert "_stash_wv_in_python" in src;
     assert "run_main_loop()" in src;
     assert "webview_create(0, 0)" in src;
@@ -1052,7 +1050,6 @@ test "generated host source with no plugins" {
     _generate_host_source = sys.modules[mod_name]._generate_host_source;
 
     src = _generate_host_source(
-        libpy="libpython3.12.so.1.0",
         title="NoPlugins",
         width=640,
         height=480,
@@ -1064,8 +1061,8 @@ test "generated host source with no plugins" {
     assert "NoPlugins" in src;
     # Bridge must be inlined
     assert "_jac_invoke_handler" in src;
-    # Plugin registration should use registry bootstrap
-    assert "bootstrap_plugins" in src;
+    # Plugin registration happens inside host_boot.boot(), not in generated code
+    assert "host_boot.boot(" in src;
     assert "_pc.get" not in src;  # old hand-written registration removed
 }
 
@@ -1134,29 +1131,18 @@ test "js sdk invoke produces correct request format" {
     assert result_data["x"] == 1;
 }
 
-"""The in-test JS shim must match the BOOTSTRAP_JS the host generator emits.
+"""The in-test JS shim must match the canonical SDK source of truth.
 
 Guards the single _bootstrap_js_snippet() copy against drifting from the real
-shim built by _generate_host_source. Only checkable when the native target
-module is importable in this runner; otherwise there's nothing to compare to."""
+window.__jac SDK, which is single-sourced from cef_dispatch.na.jac's BOOTSTRAP_JS
+glob (the slice _jac_sdk_js() extracts for the web target). The native desktop
+target no longer carries this rich SDK -- its _generate_host_source emits a
+flag-only document-start shim (__JAC_DESKTOP__/__JAC_BROKER__/__JAC_NATIVE__) and
+binds window.__jac_invoke directly via wv.bind -- so the CEF glob, not the native
+host source, is what this snippet must track."""
 test "js sdk snippet matches generated host source" {
-    import sys;
-    mod_name = "jaclang.runtimelib.client.targets.desktop.native_desktop_target";
-    if mod_name not in sys.modules {
-        return;  # native target not loaded here; covered when it is
-    }
-    _generate_host_source = sys.modules[mod_name]._generate_host_source;
-    src = _generate_host_source(
-        libpy="libpython3.12.so.1.0",
-        title="T",
-        width=1,
-        height=1,
-        app_name="t",
-        plugin_configs={}
-    );
-    # _generate_host_source emits: glob BOOTSTRAP_JS: str = <json>;
-    encoded = json.dumps(_bootstrap_js_snippet(), ensure_ascii=False);
-    assert encoded in src , "in-test JS shim drifted from _generate_host_source BOOTSTRAP_JS";
+    cef_src = (_native_dir() / "cef" / "cef_dispatch.na.jac").read_text();
+    assert _bootstrap_js_snippet() in cef_src , "in-test JS shim drifted from cef_dispatch.na.jac BOOTSTRAP_JS";
 }
 
 """Every command the client SDK invokes maps to a real host plugin command.
@@ -1164,7 +1150,7 @@ test "js sdk snippet matches generated host source" {
 A text-level contract between desktop_api.cl.jac (the hand-written typed SDK)
 and the built-in plugins' dispatch. Catches the drift a hand-written SDK is
 prone to: a method calling a renamed/removed plugin or command. (The host may
-expose more commands than the SDK surfaces — that direction is allowed.)"""
+expose more commands than the SDK surfaces -- that direction is allowed.)"""
 test "client SDK commands map to host plugin commands" {
     import re;
     plugin_dir = _plugin_src_dir();
@@ -1192,7 +1178,7 @@ test "client SDK commands map to host plugin commands" {
 in desktop_api.cl.jac.
 
 `desktop_sdk_exports` (in plugin_config.jac) is the authoritative export list
-the `@jac/desktop` module entry point hands to jaclang's client compiler —
+the `@jac/desktop` module entry point hands to jaclang's client compiler --
 `obj` types that the generic export extractor misses. It is hand-maintained, so
 adding an `obj foo {}` to the SDK without listing `'foo'` here silently breaks
 the import. This test pins the two together so that drift fails in CI rather
@@ -1236,8 +1222,8 @@ test "plugin configs from toml control registration" {
         toml_path = Path(d) / "jac.toml";
         toml_path.write_text(
             '[project]\nname = "test"\nversion = "1.0.0"\nentry-point = "main.jac"\n'
-            '[plugins.desktop]\nname = "Test"\n'
-            '[plugins.desktop.plugins]\n'
+            '[desktop]\nname = "Test"\n'
+            '[desktop.plugins]\n'
             'path = true\n'
             'notification = true\n'
             'fs = { allow_read = ["$HOME"], allow_write = ["$APP_DATA"] }\n'
@@ -1272,7 +1258,7 @@ test "plugin configs empty when no plugins section" {
         toml_path = Path(d) / "jac.toml";
         toml_path.write_text(
             '[project]\nname = "test"\nversion = "1.0.0"\nentry-point = "main.jac"\n'
-            '[plugins.desktop]\nname = "Test"\n'
+            '[desktop]\nname = "Test"\n'
         );
         cfg = get_desktop_config(project_dir=Path(d));
         plugins = cfg.get_plugin_configs();
@@ -1395,8 +1381,10 @@ test "plugin bridge links with full native stack" {
 # ---------------------------------------------------------------------------
 # 9. Full build pipeline smoke test (transpile + stage + generate)
 # ---------------------------------------------------------------------------
-"""Build pipeline: transpile all plugins, generate host, verify artifacts."""
-test "build pipeline produces all expected artifacts" {
+"""Build pipeline (fused runtime): the generated host boots through the
+runtime host_boot module from the bundled jaclang tree -- no transpiled .py
+staged beside the binary, no behavior baked into generated strings."""
+test "build pipeline wires the runtime-imported bootstrap" {
     import sys;
     mod_name = "jaclang.runtimelib.client.targets.desktop.native_desktop_target";
     if mod_name not in sys.modules {
@@ -1404,74 +1392,26 @@ test "build pipeline produces all expected artifacts" {
     }
     _generate_host_source = sys.modules[mod_name]._generate_host_source;
 
-    (tmp, results) = _transpile_all_plugins();
-    try {
-        # All transpiled
-        failures = [
-            r
-            for r in results.items()
-            if not r[1]["ok"]
-        ];
-        assert len(failures) == 0;
-
-        # Check expected files exist
-        expected = [
-            "manifest.py",
-            "desktop_plugin.py",
-            "plugin_host.py",
-            "webview_lib.py",
-            "registry.py",
-            "built_in/path_plugin.py",
-            "built_in/window_plugin.py",
-            "built_in/fs_plugin.py",
-            "built_in/notification_plugin.py",
-            "built_in/clipboard_plugin.py",
-            "built_in/dialog_plugin.py",
-            "built_in/shell_plugin.py"
-        ];
-        for f in expected {
-            assert os.path.exists(os.path.join(tmp, f)) , f"Missing transpiled file: {f}";
-        }
-
-        # Generate host source and verify it references the transpiled modules
-        libpy = str(sysconfig.get_config_var("INSTSONAME") or "libpython3.12.so.1.0");
-        host_src = _generate_host_source(
-            libpy=libpy,
-            title="SmokeTest",
-            width=800,
-            height=600,
-            app_name="smoke-test",
-            plugin_configs={"path": True, "notification": True}
-        );
-        # All plugin modules must be loaded in the generated bootstrap
-        for mod in [
-            "manifest",
-            "desktop_plugin",
-            "plugin_host",
-            "registry",
-            "webview_lib",
-            "built_in.path_plugin",
-            "built_in.window_plugin",
-            "built_in.fs_plugin",
-            "built_in.notification_plugin",
-            "built_in.clipboard_plugin",
-            "built_in.dialog_plugin",
-            "built_in.shell_plugin"
-        ] {
-            assert mod in host_src , f"Generated host missing module: {mod}";
-        }
-        # Bridge is extracted from plugin_bridge.na.jac, verify it's present
-        assert "_jac_invoke_handler" in host_src;
-        assert "_PH_DISPATCH" in host_src;
-        assert "PyGILState_Ensure" in host_src;
-        # Registry-based bootstrap must be present
-        assert "bootstrap_plugins" in host_src;
-        # JS SDK must be injected
-        assert "__jac" in host_src;
-        assert "__JAC_DESKTOP__" in host_src;
-    } finally {
-        shutil.rmtree(tmp, ignore_errors=True);
-    }
+    host_src = _generate_host_source(
+        title="SmokeTest",
+        width=800,
+        height=600,
+        app_name="smoke-test",
+        plugin_configs={"path": True, "notification": True}
+    );
+    # No transpiled-plugin staging: everything imports from the runtime.
+    assert "spec_from_file_location" not in host_src , "must not load staged .py via spec_from_file_location";
+    # The one generated Python statement: host_boot.boot(<config json>).
+    assert "from jaclang.runtimelib.client.targets.desktop.native import host_boot" in host_src;
+    assert "host_boot.boot(" in host_src;
+    # Plugin bootstrap / broker / dispatch wiring live in host_boot, not here.
+    assert "bootstrap_plugins" not in host_src;
+    assert "make_handler" not in host_src;
+    # Bridge + JS SDK still present.
+    assert "_jac_invoke_handler" in host_src;
+    assert "_PH_DISPATCH" in host_src;
+    assert "PyGILState_Ensure" in host_src;
+    assert "__JAC_DESKTOP__" in host_src;
 }
 
 

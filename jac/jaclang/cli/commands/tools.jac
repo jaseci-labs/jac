@@ -1,14 +1,8 @@
-"""Tool commands: tool, dot, lsp.
-
-Commands for development tools and utilities.
-"""
-
 import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.registry { get_registry }
 
 glob registry = get_registry();
 
-"""Run the specified AST tool with optional arguments."""
 @registry.command(
     name="tool",
     help="Run AST tools",
@@ -28,9 +22,9 @@ glob registry = get_registry();
 )
 def tool(tool: str, args: list = []) -> int;
 
-"""Generate graph visualization."""
 @registry.command(
     name="dot",
+    hidden=True,
     help="Generate graph visualization (DOT format)",
     args=[
         Arg.create("filename", kind=ArgKind.POSITIONAL, help="Path to .jac file"),
@@ -82,7 +76,6 @@ def dot(
     format: str = "dot"
 ) -> int;
 
-"""Run Jac Language Server Protocol."""
 @registry.command(
     name="lsp",
     help="Start Jac language server",
@@ -93,7 +86,17 @@ def dot(
 def lsp -> int;
 
 @registry.command(
+    name="ninja",
+    help="Open the built-in jac editor (fused Neovim + LSP + tree-sitter)",
+    args=[],
+    examples=[("jac ninja file.jac", "Edit a jac file in the built-in editor"), ],
+    group="tools"
+)
+def ninja -> int;
+
+@registry.command(
     name="completions",
+    hidden=True,
     help="Generate shell completion script",
     args=[
         Arg.create(
@@ -125,9 +128,9 @@ def lsp -> int;
 )
 def completions(shell: str = "bash", install: bool = False) -> int;
 
-"""Regenerate jir_registry.jac from the current unitree node classes."""
 @registry.command(
     name="gen-jir-registry",
+    hidden=True,
     help="Regenerate jir_registry.jac from unitree node classes",
     args=[
         Arg.create(
@@ -147,3 +150,26 @@ def completions(shell: str = "bash", install: bool = False) -> int;
     group="tools"
 )
 def gen_jir_registry(verify: bool = False) -> int;
+
+@registry.command(
+    name="gen-uni-dispatch",
+    hidden=True,
+    help="Regenerate static enter_node/exit_node dispatch for UniPass subclasses",
+    args=[
+        Arg.create(
+            "verify",
+            typ=bool,
+            default=False,
+            help="Check that dispatch annexes are up to date; exit 1 if not",
+            short="v"
+        ),
+
+    ],
+    examples=[
+        ("jac gen-uni-dispatch", "Regenerate all dispatch annexes"),
+        ("jac gen-uni-dispatch --verify", "Check annexes are up to date (for CI)"),
+
+    ],
+    group="tools"
+)
+def gen_uni_dispatch(verify: bool = False) -> int;

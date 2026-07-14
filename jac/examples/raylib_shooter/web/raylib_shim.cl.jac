@@ -1,10 +1,17 @@
 """WebGL shim for the rlgl/input externs of a wasm-compiled na game.
 
 A reusable client library (the moral equivalent of raylib for the browser):
-it emulates the scalar rlgl immediate-mode API + input on WebGL/DOM, supplies
-the libc/__multi3 the Jac native runtime needs, instantiates /static/<name>.wasm,
-and drives init()/frame() per requestAnimationFrame. Lives in a .cl.jac so it is
-compiled (not strictly type-checked) like other client deps."""
+it emulates the scalar rlgl immediate-mode API + input on WebGL/DOM,
+instantiates /static/<name>.wasm, and drives init()/frame() per
+requestAnimationFrame. Lives in a .cl.jac so it is compiled (not strictly
+type-checked) like other client deps.
+
+libc is no longer stubbed here: the native floor links it into the wasm
+module itself, and the remaining host surface (console write, os, time) is
+the versioned jac_host1 contract supplied by @jac/wasm_host. The env object
+this shim builds is ONLY the game's raylib FFI."""
+
+import from "@jac/wasm_host" { instantiate_na_wasm }
 
 obj Shim {
     has gl: any = None,
@@ -200,6 +207,7 @@ def _read_cstr(sh: any, p: int) -> str {
     return s;
 }
 
+
 def _flush(sh: any) -> None {
     if len(sh.verts) == 0 {
         return;
@@ -221,32 +229,32 @@ def _flush(sh: any) -> None {
 
 def _build_env(sh: any) -> dict {
     return {
-        "InitWindow": lambda w: int , h: int , t: int { document.title = _read_cstr(
+        "InitWindow": lambda (w: int, h: int, t: int) { document.title = _read_cstr(
             sh, t
         ); },
         "WindowShouldClose": lambda { return 0; },
         "CloseWindow": lambda { },
-        "SetTargetFPS": lambda f: int { },
+        "SetTargetFPS": lambda (f: int) { },
         "BeginDrawing": lambda { sh.gl.viewport(0, 0, 960, 600); },
         "EndDrawing": lambda { },
         "EndMode3D": lambda { _flush(sh); },
         "GetFrameTime": lambda { return sh.dt; },
         "GetTime": lambda { return sh.time; },
-        "DrawFPS": lambda x: int , y: int { },
-        "IsKeyDown": lambda k: int { return sh.keys.get(k, 0); },
-        "IsKeyPressed": lambda k: int { return sh.pressed.get(k, 0); },
+        "DrawFPS": lambda (x: int, y: int) { },
+        "IsKeyDown": lambda (k: int) { return sh.keys.get(k, 0); },
+        "IsKeyPressed": lambda (k: int) { return sh.pressed.get(k, 0); },
         "GetMouseX": lambda { return sh.mouseX; },
         "GetMouseY": lambda { return sh.mouseY; },
-        "IsMouseButtonPressed": lambda b: int { return sh.mpressed.get(b, 0); },
+        "IsMouseButtonPressed": lambda (b: int) { return sh.mpressed.get(b, 0); },
         "DisableCursor": lambda { sh.canvas.requestPointerLock(); },
         "EnableCursor": lambda { document.exitPointerLock(); },
-        "rlClearColor": lambda r: int , g: int , b: int , a: int { sh.gl.clearColor(
+        "rlClearColor": lambda (r: int, g: int, b: int, a: int) { sh.gl.clearColor(
             float(r) / 255.0, float(g) / 255.0, float(b) / 255.0, 1.0
         ); },
         "rlClearScreenBuffers": lambda { sh.gl.clear(16384 | 256); },
         "rlEnableDepthTest": lambda { sh.gl.enable(sh.gl.DEPTH_TEST); },
         "rlDisableDepthTest": lambda { sh.gl.disable(sh.gl.DEPTH_TEST); },
-        "rlMatrixMode": lambda m: int { sh.mode = m; },
+        "rlMatrixMode": lambda (m: int) { sh.mode = m; },
         "rlLoadIdentity": lambda { _setcur(sh, _m_ident()); },
         "rlPushMatrix": lambda { if sh.mode == 0x1701 {
             sh.pstack.append(sh.proj);
@@ -258,22 +266,24 @@ def _build_env(sh: any) -> dict {
         } else {
             sh.mv = sh.mvstack.pop();
         } },
-        "rlTranslatef": lambda x: float , y: float , z: float { _setcur(
+        "rlTranslatef": lambda (x: float, y: float, z: float) { _setcur(
             sh, _m_mul(_cur(sh), _m_translate(x, y, z))
         ); },
-        "rlRotatef": lambda a: float , x: float , y: float , z: float { _setcur(
+        "rlRotatef": lambda (a: float, x: float, y: float, z: float) { _setcur(
             sh, _m_mul(_cur(sh), _m_rotate(a, x, y, z))
         ); },
-        "rlFrustum": lambda l: float , r: float , b: float , t: float , n: float , f:
-            float { _setcur(sh, _m_mul(_cur(sh), _m_frustum(l, r, b, t, n, f))); },
-        "rlOrtho": lambda l: float , r: float , b: float , t: float , n: float , f:
-            float { _setcur(sh, _m_mul(_cur(sh), _m_ortho(l, r, b, t, n, f))); },
-        "rlBegin": lambda m: int {
+        "rlFrustum": lambda (
+            l: float, r: float, b: float, t: float, n: float, f: float
+        ) { _setcur(sh, _m_mul(_cur(sh), _m_frustum(l, r, b, t, n, f))); },
+        "rlOrtho": lambda (
+            l: float, r: float, b: float, t: float, n: float, f: float
+        ) { _setcur(sh, _m_mul(_cur(sh), _m_ortho(l, r, b, t, n, f))); },
+        "rlBegin": lambda (m: int) {
             sh.bmode = m;
             sh.verts = [];
         },
         "rlEnd": lambda { _flush(sh); },
-        "rlVertex3f": lambda x: float , y: float , z: float {
+        "rlVertex3f": lambda (x: float, y: float, z: float) {
             sh.verts.append(x);
             sh.verts.append(y);
             sh.verts.append(z);
@@ -282,67 +292,18 @@ def _build_env(sh: any) -> dict {
             sh.verts.append(sh.color[2]);
             sh.verts.append(sh.color[3]);
         },
-        "rlColor4ub": lambda r: int , g: int , b: int , a: int { sh.color = [
+        "rlColor4ub": lambda (r: int, g: int, b: int, a: int) { sh.color = [
             float(r) / 255.0,
             float(g) / 255.0,
             float(b) / 255.0,
             1.0
         ]; },
-        "rlSetLineWidth": lambda w: float { sh.gl.lineWidth(w); },
-        "FileExists": lambda p: int { return 0; },
-        "LoadFileText": lambda p: int { return 0; },
-        "TextToInteger": lambda p: int { return 0; },
-        "SaveFileText": lambda p: int , t: int { return 0; },
-        "malloc": lambda n: int {
-            # n arrives as an i64 (BigInt at the JS boundary); coerce so the
-            # bump-allocator arithmetic stays Number-only (see web shim).
-            sz = Number(n);
-            p = sh.heap;
-            sh.heap = (sh.heap + sz + 7) & ~7;
-            return p;
-        },
-        "calloc": lambda c: int , s: int {
-            n = Number(c) * Number(s);
-            p = sh.heap;
-            sh.heap = (sh.heap + n + 7) & ~7;
-            new(Uint8Array, sh.mem.buffer).fill(0, p, p + n);
-            return p;
-        },
-        "free": lambda p: int { },
-        "malloc_usable_size": lambda p: int { return 0; },
-        "memcpy": lambda d: int , s: int , n: int {
-            sz = Number(n);
-            new(Uint8Array, sh.mem.buffer).copyWithin(d, s, s + sz);
-            return d;
-        },
-        "memcmp": lambda a: int , b: int , n: int {
-            u8 = new(Uint8Array, sh.mem.buffer);
-            sz = Number(n);
-            i = 0;
-            while i < sz {
-                df = u8[a + i] - u8[b + i];
-                if df != 0 {
-                    return df;
-                }
-                i = i + 1;
-            }
-            return 0;
-        },
-        "puts": lambda p: int { return 0; },
-        "printf": lambda a: int { return 0; },
-        "snprintf": lambda a: int , b: int , c: int , d: int { return 0; },
-        "getenv": lambda p: int { return 0; },
-        "fflush": lambda p: int { return 0; },
-        "abort": lambda { },
-        "__multi3": lambda res: int , al: int , ah: int , bl: int , bh: int {
-            k = (BigInt(1) << BigInt(64)) - BigInt(1);
-            a = (BigInt.asUintN(64, ah) << BigInt(64)) | BigInt.asUintN(64, al);
-            b = (BigInt.asUintN(64, bh) << BigInt(64)) | BigInt.asUintN(64, bl);
-            p = BigInt.asUintN(128, a * b);
-            dv = new(DataView, sh.mem.buffer);
-            dv.setBigUint64(res, p & k, True);
-            dv.setBigUint64(res + 8, (p >> BigInt(64)) & k, True);
-        }
+        "rlSetLineWidth": lambda (w: float) { sh.gl.lineWidth(w); },
+        "FileExists": lambda (p: int) { return 0; },
+        "LoadFileText": lambda (p: int) { return 0; },
+        "TextToInteger": lambda (p: int) { return 0; },
+        "SaveFileText": lambda (p: int, t: int) { return 0; },
+
     };
 }
 
@@ -388,7 +349,7 @@ def _keymap(code: str) -> int {
 def _install_input(sh: any) {
     window.addEventListener(
         "keydown",
-        lambda e: any {
+        lambda (e: any) {
             kc = _keymap(e.code);
             if kc != 0 {
                 e.preventDefault();
@@ -399,17 +360,17 @@ def _install_input(sh: any) {
     );
     window.addEventListener(
         "keyup",
-        lambda e: any {
+        lambda (e: any) {
             kc = _keymap(e.code);
             if kc != 0 {
                 sh.keys[kc] = 0;
             }
         }
     );
-    sh.canvas.addEventListener("mousedown", lambda e: any { sh.mpressed[0] = 1; });
+    sh.canvas.addEventListener("mousedown", lambda (e: any) { sh.mpressed[0] = 1; });
     document.addEventListener(
         "mousemove",
-        lambda e: any { if sh.locked {
+        lambda (e: any) { if sh.locked {
             sh.mouseX = sh.mouseX + e.movementX;
             sh.mouseY = sh.mouseY + e.movementY;
         } else {
@@ -419,7 +380,7 @@ def _install_input(sh: any) {
     );
     document.addEventListener(
         "pointerlockchange",
-        lambda e: any { sh.locked = document.pointerLockElement == sh.canvas; }
+        lambda (e: any) { sh.locked = document.pointerLockElement == sh.canvas; }
     );
 }
 
@@ -443,7 +404,7 @@ def _frame_tick(sh: any, ts: float) {
     sh.pressed = {};
     sh.mpressed = {};
     if not closed {
-        requestAnimationFrame(lambda t2: float { _frame_tick(sh, t2); });
+        requestAnimationFrame(lambda (t2: float) { _frame_tick(sh, t2); });
     }
 }
 
@@ -456,13 +417,11 @@ async def:pub run_game(canvas: any, on_tick: any = None) {
     sh.mv = _m_ident();
     _init_gl(sh);
     _install_input(sh);
-    env = {"env": _build_env(sh)};
-    res: any = await WebAssembly.instantiateStreaming(fetch("/static/main.wasm"), env);
-    inst: any = res.instance;
-    sh.exports = inst.exports;
-    sh.mem = inst.exports.memory;
-    sh.heap = inst.exports.__heap_base.value;
-    inst.exports.__jac_glob_init();
+    # jac_host1 (console/os/time + everything libc needs from the host) comes
+    # from the runtime; this shim supplies only the game's own raylib externs.
+    inst: any = await instantiate_na_wasm(
+        "/static/main.wasm", sh, {"env": _build_env(sh)}
+    );
     inst.exports.init();
-    requestAnimationFrame(lambda ts: float { _frame_tick(sh, ts); });
+    requestAnimationFrame(lambda (ts: float) { _frame_tick(sh, ts); });
 }

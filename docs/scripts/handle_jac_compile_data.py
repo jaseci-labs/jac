@@ -4,7 +4,6 @@ This script is used  to handle the jac compile data for jac playground.
 """
 
 import os
-import subprocess
 import time
 import zipfile
 
@@ -14,7 +13,6 @@ EXTRACTED_FOLDER = "docs/playground"
 PLAYGROUND_ZIP_PATH = os.path.join(EXTRACTED_FOLDER, "jaclang.zip")
 ZIP_FOLDER_NAME = "jaclang"
 UNIIR_NODE_DOC = "docs/internals/uniir_node.md"
-TOP_CONTRIBUTORS_DOC = "docs/community/top_contributors.md"
 AST_TOOL = AstTool()
 # Directory basenames to exclude
 EXCLUDE_DIRS = {"__pycache__", ".pytest_cache", ".git", "tests"}
@@ -59,17 +57,21 @@ def pre_build_hook(**kwargs: dict) -> None:
         jaclang_dir = resolve_jaclang_dir()
         create_playground_zip(jaclang_dir)
         print("Jaclang zip file created successfully.")
-    except Exception as e:
-        print(f"Warning: Failed to build playground zip: {e}. Skipping playground zip.")
+    except Exception:
+        # Non-fatal (docs build without a playground beats no docs), but loud:
+        # the full traceback is the only diagnostic a CI log will have.
+        import traceback
+
+        traceback.print_exc()
+        print(
+            "Warning: failed to build playground zip; docs will ship WITHOUT a playground."
+        )
 
     if is_file_older_than_minutes(UNIIR_NODE_DOC, 5):
         with open(UNIIR_NODE_DOC, "w") as f:
             f.write(AST_TOOL.autodoc_uninode())
     else:
         print(f"File is recent: {UNIIR_NODE_DOC}. Skipping creation.")
-
-    with open(TOP_CONTRIBUTORS_DOC, "w") as f:
-        f.write(get_top_contributors())
 
 
 def is_file_older_than_minutes(file_path: str, minutes: int) -> bool:
@@ -87,6 +89,13 @@ def is_file_older_than_minutes(file_path: str, minutes: int) -> bool:
 def should_exclude(path: str, jaclang_dir: str) -> bool:
     """Check if file/directory should be excluded."""
     if os.path.basename(path) in EXCLUDE_DIRS:
+        return True
+    # Drop the sealed-image manifest: it ships alongside the .jir, but the
+    # in-browser playground runs jaclang UNSEALED (source-primary, .jir as a
+    # validated cache). A manifest would flip it into sealed source-free loading,
+    # which the Pyodide runtime does not support -- so the .jac source stays the
+    # source of truth in the browser (#7135).
+    if os.path.basename(path) == "MANIFEST.json":
         return True
     if os.path.splitext(path)[1] in EXCLUDE_EXTS:
         return True
@@ -142,23 +151,6 @@ def create_playground_zip(jaclang_dir: str) -> None:
         zip_size = os.path.getsize(PLAYGROUND_ZIP_PATH) / 1024 / 1024
         print(f"  Precompiled .jir files: {len(jir_files)}")
         print(f"  Total files: {len(names)}, Size: {zip_size:.1f} MB")
-
-
-def get_top_contributors() -> str:
-    """Get the top contributors for the current repository."""
-    # Get the current directory (docs/scripts)
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    # Go to the root directory (two levels up from docs/scripts)
-    root_dir = os.path.dirname(os.path.dirname(current_dir))
-    cmd = ["jac", "run", "scripts/top_contributors.jac"]
-    try:
-        return subprocess.check_output(cmd, cwd=root_dir).decode("utf-8")
-    except subprocess.CalledProcessError as e:
-        print(f"Warning: Failed to get top contributors: {e}")
-        return "# Top Contributors\n\nUnable to fetch contributor data at this time.\n"
-    except Exception as e:
-        print(f"Warning: Unexpected error getting top contributors: {e}")
-        return "# Top Contributors\n\nUnable to fetch contributor data at this time.\n"
 
 
 pre_build_hook()

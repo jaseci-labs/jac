@@ -1,18 +1,11 @@
-"""Browser automation command: `jac browse <action> [args...]`.
-
-Thin registration layer over jaclang.cli.browser_engine, a zero-dependency
-driver that controls headless Chrome/Chromium via the Chrome DevTools Protocol.
-The engine module holds the WebSocket/CDP implementation and the command logic.
-"""
-
 import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.registry { get_registry }
 
 glob registry = get_registry();
 
-"""Drive a headless browser over CDP: navigate, interact, snapshot, screenshot."""
 @registry.command(
     name="browse",
+    hidden=True,
     help="Headless browser automation over CDP (open, click, snapshot, ...)",
     args=[
         Arg.create(

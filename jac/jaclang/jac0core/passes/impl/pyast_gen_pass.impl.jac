@@ -1,6 +1,3 @@
-"""Implementation for pyast_gen_pass constructs."""
-
-"""Get the set of builtin names, cached after first successful access."""
 @classmethod
 impl PyastGenPass._get_builtin_names(cls: any) -> set[str] {
     if (cls._builtin_names is None) {
@@ -14,7 +11,6 @@ impl PyastGenPass._get_builtin_names(cls: any) -> set[str] {
     return cls._builtin_names;
 }
 
-"""Read __all__ from typing_ambient.pyi, cached after first access."""
 @classmethod
 impl PyastGenPass._get_ambient_typing_names(cls: any) -> set[str] {
     if (cls._ambient_typing_names is not None) {
@@ -60,7 +56,6 @@ impl PyastGenPass._get_ambient_typing_names(cls: any) -> set[str] {
 }
 
 impl PyastGenPass.postinit -> None {
-    # Initialize by-postinit fields
     self.debuginfo = {'jac_mods': []};
     self.jaclib_imports = `set();
     self.builtin_imports = `set();
@@ -81,11 +76,10 @@ impl PyastGenPass.postinit -> None {
         )
     ];
     self.jsx_processor = PyJsxProcessor(self);
-    # Call parent postinit to run the transformation
+
     super.postinit();
 }
 
-"""Enter node."""
 impl PyastGenPass.enter_node(nd: uni.UniNode) -> None {
     if isinstance(nd, uni.NativeBlock) {
         self._gen_native_interop_stubs(nd);
@@ -103,7 +97,7 @@ impl PyastGenPass.enter_node(nd: uni.UniNode) -> None {
         self.prune();
         return;
     }
-    # Skip native C library imports — they have no Python equivalent
+
     if (
         isinstance(nd, uni.Import)
         and nd.code_context == CodeContext.NATIVE
@@ -119,7 +113,6 @@ impl PyastGenPass.enter_node(nd: uni.UniNode) -> None {
     super.enter_node(nd);
 }
 
-"""Exit node."""
 impl PyastGenPass.exit_node(nd: uni.UniNode) -> None {
     if isinstance(nd, (uni.ClientBlock, uni.NativeBlock)) {
         return;
@@ -131,7 +124,7 @@ impl PyastGenPass.exit_node(nd: uni.UniNode) -> None {
     ) {
         return;
     }
-    # Skip native C library imports — they have no Python equivalent
+
     if (
         isinstance(nd, uni.Import)
         and nd.code_context == CodeContext.NATIVE
@@ -142,15 +135,6 @@ impl PyastGenPass.exit_node(nd: uni.UniNode) -> None {
     super.exit_node(nd);
 }
 
-"""Generate Python stubs for native interop at the NativeBlock position.
-
-        For native_exports (native functions called from Python):
-          Generates a Python stub function that calls the native function via
-ctypes.
-        For native_imports (Python functions called from native):
-          Generates a registration statement that stores the Python function
-          in the interop callback table.
-        """
 impl PyastGenPass._gen_native_interop_stubs(nd: uni.NativeBlock) -> None {
     manifest = self.ir_in.gen.interop_manifest;
     parts: list[str] = [];
@@ -179,8 +163,7 @@ impl PyastGenPass._gen_native_interop_stubs(nd: uni.NativeBlock) -> None {
         parsed = ast3.parse(src);
         out.extend(parsed.body);
     }
-    # Test blocks inside this na block: the block's children are pruned from
-    # normal traversal, so their host-side shims are emitted here instead.
+
     for stmt in nd.body {
         if isinstance(stmt, uni.Test) {
             self.exit_test(stmt);
@@ -192,7 +175,6 @@ impl PyastGenPass._gen_native_interop_stubs(nd: uni.NativeBlock) -> None {
     }
 }
 
-"""Generate Python HTTP client stubs for sv-to-sv microservice imports."""
 impl PyastGenPass._generate_sv_to_sv_stubs(nd: uni.Import) -> bool {
     manifest = self.ir_in.gen.interop_manifest;
     if (not manifest) {
@@ -201,9 +183,7 @@ impl PyastGenPass._generate_sv_to_sv_stubs(nd: uni.Import) -> bool {
     if (not nd.from_loc or not nd.from_loc.path) {
         return False;
     }
-    # The bare module name (no leading relative dots) is the shared key that
-    # BoundaryAnalysisPass recorded `source_module` under; reading it from the
-    # same getter keeps the two passes from drifting (#6507).
+
     module_name = nd.from_loc.base_module_name;
     if not module_name {
         return False;
@@ -218,10 +198,7 @@ impl PyastGenPass._generate_sv_to_sv_stubs(nd: uni.Import) -> bool {
         return False;
     }
     boundary_types = manifest.boundary_types;
-    # Also record this consumer -> provider edge at import time so the
-    # consumer's server startup can discover every provider it needs
-    # before serving traffic (see sv_client._consumer_providers and
-    # JacAPIServer._ensure_sv_siblings).
+
     parts: list[str] = [
         "from jaclang.runtimelib import sv_client as __jac_sv_client",
         "__jac_sv_client._declare_consumer_provider(__name__, '" + module_name + "')"
@@ -273,7 +250,6 @@ impl PyastGenPass._generate_sv_to_sv_stubs(nd: uni.Import) -> bool {
     return True;
 }
 
-"""Build a Python source string for an sv-to-sv function stub."""
 impl PyastGenPass._gen_py_sv_func_stub(
     local_name: str,
     func_name: str,
@@ -307,7 +283,6 @@ impl PyastGenPass._gen_py_sv_func_stub(
     return 'def ' + local_name + '(' + params + '):\n    return ' + ret_expr;
 }
 
-"""Build a Python source string for an sv-to-sv walker stub class."""
 impl PyastGenPass._gen_py_sv_walker_stub(
     local_name: str,
     walker_name: str,
@@ -359,15 +334,11 @@ impl PyastGenPass._gen_py_sv_walker_stub(
             '        kwargs = {k: v for k, v in kwargs.items() if v is not None}'
         );
     }
-    # Inside a class body, identifiers with 2+ leading underscores get
-    # name-mangled to _<ClassName>__name. Look the runtime up via
-    # `globals()[...]` so the mangled spelling never bites us.
+
     lines.append(
         '        return globals()["__jac_sv_client"].spawn_walker(' + "'" + module_name + "', '" + walker_name + "', kwargs, cls)"
     );
-    # __new__ already populated the instance via spawn_walker -> _from_wire.
-    # Python still invokes __init__ on a returned cls-instance, so we need a
-    # no-op that swallows whatever kwargs the call site passed.
+
     lines.append('    def __init__(self, *args, **kwargs):');
     lines.append('        pass');
     lines.append('    def _to_wire(self):');
@@ -393,7 +364,6 @@ impl PyastGenPass._gen_py_sv_walker_stub(
     return '\n'.join(lines);
 }
 
-"""Build a Python source string for a boundary type stub class."""
 impl PyastGenPass._gen_py_boundary_stub_class(
     class_name: str, info: BoundaryTypeInfo
 ) -> str {
@@ -431,18 +401,11 @@ impl PyastGenPass._gen_py_boundary_stub_class(
     return '\n'.join(lines);
 }
 
-"""Return the object from jaclib as ast node based on the import config."""
 impl PyastGenPass.jaclib_obj(obj_name: str) -> ast3.Name {
     self.jaclib_imports.add(obj_name);
     return self.sync(ast3.Name(id=obj_name, ctx=ast3.Load()));
 }
 
-"""Return a builtin name and track it for importing.
-
-        Note: Some names like 'Enum' are provided by other imports (e.g.,
-needs_enum)
-        and should not be added to builtin_imports.
-        """
 impl PyastGenPass.builtin_name(name: str) -> ast3.Name {
     if (name not in ['Enum', 'IntEnum', 'StrEnum']) {
         self.builtin_imports.add(name);
@@ -450,12 +413,6 @@ impl PyastGenPass.builtin_name(name: str) -> ast3.Name {
     return self.sync(ast3.Name(id=name, ctx=ast3.Load()));
 }
 
-"""True if `target` is (or transitively wraps) an edge-ref trailer whose
-codegen produces a `Jac.refs(...)` call we can fuse a `slc=` kwarg into.
-
-Recurses through inner AtomTrailers when the right-hand side is a FilterCompr
-(those fuse with the EdgeRefTrailer on this same pass), so chains like
-`[-->][?:Lead]` still expose the underlying refs() call to the outer slice."""
 impl PyastGenPass._is_edge_ref_target(target: uni.UniNode) -> bool {
     if isinstance(target, uni.EdgeRefTrailer) {
         return not target.edges_only and not target.is_async;
@@ -469,7 +426,6 @@ impl PyastGenPass._is_edge_ref_target(target: uni.UniNode) -> bool {
     return False;
 }
 
-"""Append an import statement to the preamble once."""
 impl PyastGenPass._add_preamble_once(key: str, nd: ast3.AST) -> None {
     if (key in self.already_added) {
         return;
@@ -478,29 +434,6 @@ impl PyastGenPass._add_preamble_once(key: str, nd: ast3.AST) -> None {
     self.already_added.append(key);
 }
 
-"""Ensure typing is imported only once."""
-impl PyastGenPass.needs_typing -> None {
-    self._add_preamble_once(
-        self.needs_typing.__name__,
-        ast3.Import(names=[self.sync(ast3.alias(name='typing'), jac_node=self.ir_out)])
-    );
-}
-
-"""Ensure plain `Enum` and `auto` are imported (compat shim for callers
-predating typed-base enums; new callers should use needs_enum_kind)."""
-impl PyastGenPass.needs_enum -> None {
-    self.needs_enum_kind("Enum");
-}
-
-"""Ensure a specific enum kind (Enum, IntEnum, StrEnum, ...) is imported once.
-
-Each kind is imported under its own dedup key so a module that uses both
-`enum X { ... }` and `enum Y: int { ... }` ends up with two import lines
-(`from enum import Enum, auto` and `from enum import IntEnum`) rather than
-a fragile combined one. `auto` is always imported alongside the requested
-kind because enum bodies may reference `auto()` regardless of which Enum
-flavor wraps them.
-"""
 impl PyastGenPass.needs_enum_kind(kind: str) -> None {
     self._add_preamble_once(
         f"needs_enum_kind:{kind}",
@@ -515,25 +448,11 @@ impl PyastGenPass.needs_enum_kind(kind: str) -> None {
     );
 }
 
-"""Ensure concurrent Future is imported only once."""
-impl PyastGenPass.needs_future -> None {
-    self._add_preamble_once(
-        self.needs_future.__name__,
-        ast3.ImportFrom(
-            module='concurrent.futures',
-            names=[self.sync(ast3.alias(name='Future', asname=None))],
-            level=0
-        )
-    );
-}
-
-"""Generate a deterministic temporary name for synthesized definitions."""
 impl PyastGenPass._next_temp_name(prefix: str) -> str {
     self._temp_name_counter += 1;
     return f"__jac_{prefix}_{self._temp_name_counter}";
 }
 
-"""Convert Jac identifiers to Python runtime identifiers."""
 impl PyastGenPass._py_name(nd: uni.AstSymbolNode) -> str {
     if (isinstance(nd, uni.SpecialVarRef) and (nd.name == Tok.KW_INIT)) {
         return '__init__';
@@ -544,12 +463,6 @@ impl PyastGenPass._py_name(nd: uni.AstSymbolNode) -> str {
     return nd.sym_name;
 }
 
-"""Convert a synthesized function definition into an executable expression.
-
-        Instead of using make_block_lambda at runtime, we hoist the function
-        definition to be emitted before the current statement, then return
-        a reference to the function name.
-        """
 impl PyastGenPass._function_expr_from_def(
     func_def: (ast3.FunctionDef | ast3.AsyncFunctionDef),
     jac_node: uni.UniNode,
@@ -560,20 +473,6 @@ impl PyastGenPass._function_expr_from_def(
     return self.sync(ast3.Name(id=func_def.name, ctx=ast3.Load()), jac_node=jac_node);
 }
 
-"""Create a semstring decorator for the given semantic strings.
-
-        Example:
-            @_.sem(
-                "Returns the weather for a given city.", {
-                    "city" : "Name of the city to get the weather for.",
-                }
-            )
-            def get_weather(city: str) {}
-
-        This the second parameter (dict) will also used in the class `has`
-variables
-        enum values etc.
-        """
 impl PyastGenPass._get_sem_decorator(nd: uni.UniNode) -> (ast3.Call | None) {
     semstr: str = '';
     inner_semstr: dict[(str, str)] = {};
@@ -647,11 +546,6 @@ impl PyastGenPass._get_sem_decorator(nd: uni.UniNode) -> (ast3.Call | None) {
     );
 }
 
-"""Safe accessor for a node's generated py_ast.
-
-Raises an ICE with source location instead of a bare IndexError
-when py_ast is unexpectedly empty.
-"""
 impl PyastGenPass.py_ast_val(nd: uni.UniNode) -> ast3.AST {
     if not nd.gen.py_ast {
         loc = nd.loc;
@@ -663,7 +557,6 @@ impl PyastGenPass.py_ast_val(nd: uni.UniNode) -> ast3.AST {
     return nd.gen.py_ast[0];
 }
 
-"""Sync ast locations."""
 impl PyastGenPass.sync(
     py_node: T, jac_node: (uni.UniNode | None) = None, deep: bool = False
 ) -> T {
@@ -692,7 +585,6 @@ impl PyastGenPass.sync(
     return py_node;
 }
 
-"""Sync ast locations."""
 impl PyastGenPass.pyinline_sync(py_nodes: list[ast3.AST]) -> list[ast3.AST] {
     for nd in py_nodes {
         for i in ast3.walk(nd) {
@@ -710,7 +602,6 @@ impl PyastGenPass.pyinline_sync(py_nodes: list[ast3.AST]) -> list[ast3.AST] {
     return py_nodes;
 }
 
-"""Resolve switch case pattern."""
 impl PyastGenPass.resolve_switch_pattern(
     pattern: uni.MatchPattern, target: uni.Expr
 ) -> ast3.expr {
@@ -744,7 +635,6 @@ impl PyastGenPass.resolve_switch_pattern(
     }
 }
 
-"""Resolve switch statement."""
 impl PyastGenPass.resolve_switch_stmt(nd: uni.SwitchStmt) -> list[ast3.AST] {
     var_executed = self.sync(ast3.Name(id='__executed', ctx=ast3.Store()));
     assign_var = self.sync(
@@ -797,7 +687,6 @@ impl PyastGenPass.resolve_switch_stmt(nd: uni.SwitchStmt) -> list[ast3.AST] {
     ];
 }
 
-"""Unwind codeblock."""
 impl PyastGenPass.resolve_stmt_block(
     nd: Sequence[uni.CodeBlockStmt] | Sequence[uni.EnumBlockStmt] | None,
     doc: (uni.String | None) = None
@@ -830,31 +719,6 @@ impl PyastGenPass.resolve_stmt_block(
         ];
     }
     return ret;
-}
-
-"""Sync ast locations."""
-impl PyastGenPass.sync_many(py_nodes: list[T], jac_node: uni.UniNode) -> list[T] {
-    for py_node in py_nodes {
-        self.sync(py_node, jac_node);
-    }
-    return py_nodes;
-}
-
-"""Convert list to attribute."""
-impl PyastGenPass.list_to_attrib(
-    attribute_list: list[str], sync_node_list: Sequence[uni.UniNode]
-) -> ast3.AST {
-    attr_node: (ast3.Name | ast3.Attribute) = self.sync(
-        ast3.Name(id=attribute_list[0], ctx=ast3.Load()), sync_node_list[0]
-    );
-    for (attr, sync_node) in zip(
-        attribute_list[1:], sync_node_list[1:], strict=False
-    ) {
-        attr_node = self.sync(
-            ast3.Attribute(value=attr_node, attr=attr, ctx=ast3.Load()), sync_node
-        );
-    }
-    return attr_node;
 }
 
 impl PyastGenPass.exit_sub_tag(nd: uni.SubTag[uni.T]) -> None {
@@ -982,8 +846,7 @@ impl PyastGenPass.exit_global_vars(nd: uni.GlobalVars) -> None {
 impl PyastGenPass.exit_test(nd: uni.Test) -> None {
     import from jaclang.jac0core.ext_registry { is_test }
     test_name = nd.name.sym_name;
-    # A natively-lowered test keeps native semantics: its body lives in the
-    # LLVM module and the Python side is only a shim that invokes it.
+
     if nd.code_context == CodeContext.NATIVE {
         body_stmts = self._native_test_shim_stmts(nd);
     } else {
@@ -1015,7 +878,7 @@ impl PyastGenPass.exit_test(nd: uni.Test) -> None {
             type_params=[]
         )
     );
-    # Build jac_test decorator, passing description if available
+
     jac_test_keywords: list = [];
     if nd.description {
         jac_test_keywords.append(
@@ -1099,17 +962,18 @@ impl PyastGenPass.exit_module_code(nd: uni.ModuleCode) -> None {
     }
 }
 
-"""Handle ClientBlock - already set to empty in enter_node."""
 impl PyastGenPass.exit_client_block(nd: uni.ClientBlock) -> None {
     ;
 }
 
-"""Handle ServerBlock - unwrap its children to module level."""
 impl PyastGenPass.exit_server_block(nd: uni.ServerBlock) -> None {
     nd.gen.py_ast = self._flatten_ast_list([item.gen.py_ast for item in nd.body]);
 }
 
-"""Handle NativeBlock - already pruned in enter_node."""
+impl PyastGenPass.exit_region_stmt(nd: uni.RegionStmt) -> None {
+    nd.gen.py_ast = self._flatten_ast_list([item.gen.py_ast for item in nd.body]);
+}
+
 impl PyastGenPass.exit_native_block(nd: uni.NativeBlock) -> None {
     ;
 }
@@ -1131,7 +995,6 @@ impl PyastGenPass.exit_py_inline_code(nd: uni.PyInlineCode) -> None {
     }
 }
 
-"""Exit import node."""
 impl PyastGenPass.exit_import(nd: uni.Import) -> None {
     if (nd.from_loc and nd.from_loc.path) {
         module_parts = [
@@ -1144,10 +1007,7 @@ impl PyastGenPass.exit_import(nd: uni.Import) -> None {
             return;
         }
     }
-    # sv-to-sv microservice import: replace import with HTTP client stubs.
-    # Only triggered when the user explicitly wrote `sv import from ...`
-    # (we detect this via the sv token, not code_context which defaults
-    # to SERVER for all nodes).
+
     src_token = nd._source_context_token();
     if (
         nd.from_loc
@@ -1185,8 +1045,6 @@ impl PyastGenPass.exit_import(nd: uni.Import) -> None {
             )
         );
     } elif not nd.from_loc {
-        # For plain imports (import X as Y), ModuleItem may not be in the
-        # traversed kid list, so collect from ModulePath nodes directly.
         mod_paths = [
             k
             for k in nd.kid
@@ -1361,10 +1219,7 @@ impl PyastGenPass.exit_enum(nd: uni.Enum) -> None {
     if (sem_decorator := self._get_sem_decorator(nd)) {
         decorators.append(sem_decorator);
     }
-    # Resolve typed-base shorthand `enum X: T`. `int` and `str` map to the
-    # idiomatic `IntEnum` / `StrEnum` shortcut classes; anything else uses
-    # the Python mixin pattern `class X(T, Enum)` so members are instances
-    # of T (no `.value` needed at call sites).
+
     trailing_kind: str = "Enum";
     extra_bases: list = [];
     if nd.value_type {
@@ -1400,7 +1255,6 @@ impl PyastGenPass.enter_ability(nd: uni.Ability) -> None {
     }
 }
 
-"""Reusable method to codegen call_llm / acall_llm; returns Await when is_async."""
 impl PyastGenPass._invoke_llm_call(
     model: ast3.expr, caller: ast3.expr, args: ast3.Dict, is_async: bool = False
 ) -> ast3.expr {
@@ -1441,7 +1295,6 @@ impl PyastGenPass._invoke_llm_call(
     return call;
 }
 
-"""Generate the by LLM body."""
 impl PyastGenPass.gen_llm_body(nd: uni.Ability) -> list[ast3.stmt] {
     assert isinstance(nd.signature, uni.FuncSignature);
     model_expr: ast3.expr;
@@ -1508,7 +1361,7 @@ impl PyastGenPass.gen_llm_body(nd: uni.Ability) -> list[ast3.stmt] {
 
 impl PyastGenPass.exit_ability(nd: uni.Ability) -> None {
     func_type = ast3.AsyncFunctionDef if nd.is_async else ast3.FunctionDef;
-    # Property accessor context (resolved from parent HasVar if applicable).
+
     is_prop_acc = nd.accessor_kind != "";
     prop_owner_name: str | None = None;
     if is_prop_acc {
@@ -1565,16 +1418,9 @@ impl PyastGenPass.exit_ability(nd: uni.Ability) -> None {
                 'on_entry' if (event_sig.event.name == Tok.KW_ENTRY) else 'on_exit'
             )
         );
-        # Stamp the compiler-known trigger type (matching the param annotation
-        # built in exit_event_signature) so the runtime carries it as data
-        # instead of recovering it via `inspect`. Untyped events stamp None.
+
         trigger_arg: ast3.expr = self.sync(ast3.Constant(value=None));
         if event_sig.arch_tag_info {
-            # Reuse the generated py_ast node directly — the same established
-            # pattern exit_event_signature uses to place it as the param
-            # annotation. Do NOT deepcopy: synced py_ast nodes back-reference
-            # the whole unitree, so deepcopy clones the entire AST and blows the
-            # recursion limit (see jac_auto_lint_pass detach-parent note).
             tinfo = cast(ast3.expr, self.py_ast_val(event_sig.arch_tag_info));
             if (
                 isinstance(tinfo, ast3.Tuple)
@@ -1596,10 +1442,7 @@ impl PyastGenPass.exit_ability(nd: uni.Ability) -> None {
                 trigger_arg = tinfo;
             }
         }
-        # Wrap in a no-arg lambda so the trigger type resolves lazily (at first
-        # dispatch), not at class-decoration time. Abilities routinely name
-        # types defined later in the module (node<->walker mutual refs), so
-        # eager evaluation would NameError on the forward reference.
+
         trigger_thunk = self.sync(
             ast3.Lambda(
                 args=self.sync(
@@ -1647,7 +1490,6 @@ impl PyastGenPass.exit_ability(nd: uni.Ability) -> None {
         );
     }
     if nd.is_classmethod {
-        # Only add @classmethod for `class def` syntax, not for existing @classmethod decorator
         decorator_list.insert(
             0, self.sync(ast3.Name(id='classmethod', ctx=ast3.Load()))
         );
@@ -1699,7 +1541,7 @@ impl PyastGenPass.exit_ability(nd: uni.Ability) -> None {
             ast_returns = cast(ast3.expr, self.py_ast_val(nd.signature.return_type));
         }
     }
-    # Property getter without an explicit return type takes the property's declared type.
+
     if is_prop_acc
     and (nd.accessor_kind == "property")
     and (nd.signature is None)
@@ -1709,13 +1551,13 @@ impl PyastGenPass.exit_ability(nd: uni.Ability) -> None {
             ast_returns = cast(ast3.expr, self.py_ast_val(hv2.type_tag));
         }
     }
-    # Accessor name override: property accessors use the property's name, not get/set/del.
+
     func_name_out = (
         prop_owner_name
             if (is_prop_acc and (prop_owner_name is not None))
             else self._py_name(nd.name_ref)
     );
-    # Accessor arg synthesis: shorthand accessors get (self) or (self, value) automatically.
+
     func_args_out: ast3.arguments;
     if is_prop_acc and (nd.signature is None) {
         acc_args = [self.sync(ast3.arg(arg='self', annotation=None))];
@@ -1916,9 +1758,7 @@ impl PyastGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
 
 impl PyastGenPass.exit_has_var(nd: uni.HasVar) -> None {
     annotation = self.py_ast_val(nd.type_tag) if nd.type_tag else None;
-    # Property with accessor block: emit only the accessor methods. Properties
-    # have no implicit backing storage — users declare their own backing field
-    # with `has _x: T = value;` and reference `self._x` from accessor bodies.
+
     if (nd.accessors is not None) and (len(nd.accessors) > 0) {
         result_stmts: list = [];
         for acc in nd.accessors {
@@ -2233,6 +2073,20 @@ impl PyastGenPass.exit_while_stmt(nd: uni.WhileStmt) -> None {
     ];
 }
 
+impl PyastGenPass.exit_forever_stmt(nd: uni.ForeverStmt) -> None {
+    nd.gen.py_ast = [
+        self.sync(
+            ast3.While(
+                `test=self.sync(ast3.Constant(value=True)),
+                body=[
+                    cast(ast3.stmt, stmt) for stmt in self.resolve_stmt_block(nd.body)
+                ],
+                orelse=[]
+            )
+        )
+    ];
+}
+
 impl PyastGenPass.exit_with_stmt(nd: uni.WithStmt) -> None {
     with_node = ast3.AsyncWith if nd.is_async else ast3.With;
     nd.gen.py_ast = [
@@ -2463,7 +2317,6 @@ impl PyastGenPass.exit_await_expr(nd: uni.AwaitExpr) -> None {
     ];
 }
 
-"""CastExpr: `value as Type` is type-erased — emit only the operand's code."""
 impl PyastGenPass.exit_cast_expr(nd: uni.CastExpr) -> None {
     nd.gen.py_ast = nd.value.gen.py_ast;
 }
@@ -2738,7 +2591,6 @@ impl PyastGenPass.exit_compare_expr(nd: uni.CompareExpr) -> None {
     ];
 }
 
-"""CfgExpr: propagate inner expression's generated Python AST."""
 impl PyastGenPass.exit_cfg_expr(nd: uni.CfgExpr) -> None {
     nd.gen.py_ast = nd.expr.gen.py_ast;
 }
@@ -2756,6 +2608,12 @@ impl PyastGenPass.exit_bool_expr(nd: uni.BoolExpr) -> None {
 
 impl PyastGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
     if isinstance(nd.body, `list) {
+        tail = nd.tail_return_expr();
+
+        if tail is not None {
+            self._emit_lambda_expr_body(nd, tail);
+            return;
+        }
         if (nd.signature and nd.signature.gen.py_ast) {
             arguments = cast(ast3.arguments, self.py_ast_val(nd.signature));
         } else {
@@ -2800,6 +2658,12 @@ impl PyastGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
         ];
         return;
     }
+    self._emit_lambda_expr_body(nd, cast(uni.Expr, nd.body));
+}
+
+impl PyastGenPass._emit_lambda_expr_body(
+    nd: uni.LambdaExpr, body_node: uni.Expr
+) -> None {
     if nd.signature {
         self._remove_lambda_param_annotations(nd.signature);
     }
@@ -2813,7 +2677,6 @@ impl PyastGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
             jac_node=nd
         );
     }
-    body_node = cast(uni.Expr, nd.body);
     body_expr = cast(ast3.expr, self.py_ast_val(body_node));
     nd.gen.py_ast = [
         self.sync(ast3.Lambda(args=arguments, body=body_expr), jac_node=nd)
@@ -2830,7 +2693,41 @@ impl PyastGenPass._remove_lambda_param_annotations(
     }
 }
 
+impl PyastGenPass._emit_jobj_ref(nd: uni.UnaryExpr) -> None {
+    nd.gen.py_ast = [
+        self.sync(
+            ast3.Call(
+                func=self.builtin_name('jobj'),
+                args=[],
+                keywords=[
+                    self.sync(
+                        ast3.keyword(
+                            arg='id', value=cast(ast3.expr, self.py_ast_val(nd.operand))
+                        )
+                    )
+                ]
+            )
+        )
+    ];
+}
+
 impl PyastGenPass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
+    if nd.op.name == Tok.BW_AND {
+        if is_borrow_kind(nd.ownership) {
+            nd.gen.py_ast = [
+                self.sync(
+                    ast3.Call(
+                        func=self.builtin_name('jref'),
+                        args=[cast(ast3.expr, self.py_ast_val(nd.operand))],
+                        keywords=[]
+                    )
+                )
+            ];
+        } else {
+            self._emit_jobj_ref(nd);
+        }
+        return;
+    }
     op_tok = Tok(nd.op.name) if (nd.op.name in Tok.__members__) else None;
     op_cls = UNARY_OP_MAP.get(op_tok) if op_tok else None;
     if op_cls {
@@ -2867,23 +2764,6 @@ impl PyastGenPass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
         ];
     } elif (nd.op.name in [Tok.STAR_POW]) {
         nd.gen.py_ast = nd.operand.gen.py_ast;
-    } elif (nd.op.name in [Tok.BW_AND]) {
-        nd.gen.py_ast = [
-            self.sync(
-                ast3.Call(
-                    func=self.builtin_name('jobj'),
-                    args=[],
-                    keywords=[
-                        self.sync(
-                            ast3.keyword(
-                                arg='id',
-                                value=cast(ast3.expr, self.py_ast_val(nd.operand))
-                            )
-                        )
-                    ]
-                )
-            )
-        ];
     } else {
         self.ice("Unknown Unary operator " + str(nd.op.value));
     }
@@ -3158,10 +3038,6 @@ impl PyastGenPass.exit_atom_trailer(nd: uni.AtomTrailer) -> None {
             self.emit(E5008);
         }
     } elif isinstance(nd.right, uni.FilterCompr) {
-        # Fusion: if target is an EdgeRefTrailer (non-edge-only, non-async),
-        # inject the filter as a post_filter kwarg on the refs() call instead
-        # of wrapping with filter_on(). This enables the topology index to
-        # optimize the type filter.
         if (
             isinstance(nd.target, uni.EdgeRefTrailer)
             and not nd.target.edges_only
@@ -3220,9 +3096,6 @@ impl PyastGenPass.exit_atom_trailer(nd: uni.AtomTrailer) -> None {
         and len(nd.right.slices) == 1
         and self._is_edge_ref_target(nd.target)
     ) {
-        # Pushdown fusion: a slice chained on an edge-ref result becomes a
-        # `slc=slice(...)` kwarg on the Jac.refs() call so the runtime can
-        # bound the storage-layer load to the sliced subset, not all neighbors.
         target_py = cast(ast3.Call, self.py_ast_val(nd.target));
         slc = nd.right.slices[0];
         start_ast = (
@@ -3240,8 +3113,6 @@ impl PyastGenPass.exit_atom_trailer(nd: uni.AtomTrailer) -> None {
                 if slc.step
                 else self.sync(ast3.Constant(value=None))
         );
-        # `slice` is a Python builtin — emit a bare Name (not via builtin_name,
-        # which would also try to add it to the builtin imports table).
         slice_call = self.sync(
             ast3.Call(
                 func=self.sync(ast3.Name(id='slice', ctx=ast3.Load())),
@@ -3371,7 +3242,6 @@ impl PyastGenPass.exit_atom_unit(nd: uni.AtomUnit) -> None {
     nd.gen.py_ast = nd.value.gen.py_ast;
 }
 
-"""Generate the arguments for a function call."""
 impl PyastGenPass.gen_call_args(
     nd: uni.FuncCall
 ) -> tuple[(list[ast3.expr], list[ast3.keyword])] {
@@ -3405,26 +3275,12 @@ impl PyastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
     if nd.genai_call {
         self.ice('Type(by llm()) call feature is temporarily disabled.');
     } else {
-        # Deprecated `root()` form: bare `root` already lowers to Jac.root() in
-        # exit_special_var_ref, so wrapping it in another call would produce
-        # `Jac.root()()` (a Root instance called as a function). The W0062
-        # diagnostic for this is emitted by the type evaluator; here we just
-        # reuse the inner lowering so codegen stays correct.
         if isinstance(nd.target, uni.SpecialVarRef)
         and nd.target.name == Tok.KW_ROOT
         and (nd.params is None or len(nd.params) == 0) {
             nd.gen.py_ast = nd.target.gen.py_ast;
             return;
         }
-        # TODO: Primitive emitter dispatch hook.
-        # When type information is available, primitive method calls
-        # (e.g., mylist.append(x), s.upper()) and builtin function calls
-        # (e.g., len(x), print(x)) can be routed through the emitter
-        # infrastructure at jaclang.jac0core.passes.primitives_py.
-        # For the Python backend this is a pass-through (no behavior change),
-        # but wiring it in validates the dispatch mechanism.
-        # Integration point: check if nd.target is an AtomTrailer on a
-        # primitive type, then call PyListEmitter/PyStrEmitter/etc.
         func = self.py_ast_val(nd.target);
         (args, keywords) = self.gen_call_args(nd);
         nd.gen.py_ast = [
@@ -3908,7 +3764,6 @@ impl PyastGenPass.exit_name(nd: uni.Name) -> None {
 
 
 impl PyastGenPass._resolve_self_type(nd: uni.Name) -> ast3.expr | None {
-    # Find enclosing archetype or enum
     arch = nd.find_parent_of_type(uni.Archetype);
     enum_parent = nd.find_parent_of_type(uni.Enum) if not arch else None;
     enclosing = arch or enum_parent;
@@ -3916,7 +3771,7 @@ impl PyastGenPass._resolve_self_type(nd: uni.Name) -> ast3.expr | None {
     if enclosing {
         enclosing_name = enclosing.name.sym_name if enclosing.name else None;
     }
-    # For detached impl blocks (not nested inside archetype), get name from target
+
     if not enclosing_name {
         impl_def = nd.find_parent_of_type(uni.ImplDef);
         if impl_def and impl_def.target and len(impl_def.target) > 0 {
@@ -3928,13 +3783,13 @@ impl PyastGenPass._resolve_self_type(nd: uni.Name) -> ast3.expr | None {
     if not enclosing_name {
         return None;
     }
-    # Check if we're in a type annotation context (return type, param type, has type)
+
     if self._is_in_type_annotation(nd) {
         return self.sync(ast3.Name(id=enclosing_name, ctx=ast3.Load()));
     }
-    # Runtime usage: check if we're in a classmethod or instance method
+
     ability = nd.find_parent_of_type(uni.Ability);
-    # Also check ImplDef — Self inside impl blocks should resolve via decl_link
+
     impl_def = nd.find_parent_of_type(uni.ImplDef);
     is_in_classmethod = False;
     is_in_method = False;
@@ -3954,11 +3809,9 @@ impl PyastGenPass._resolve_self_type(nd: uni.Name) -> ast3.expr | None {
         );
     }
     if is_in_classmethod {
-        # In classmethod: Self -> cls
         return self.sync(ast3.Name(id='cls', ctx=nd.py_ctx_func()));
     }
     if is_in_method {
-        # In instance method: Self -> type(self) for polymorphic behavior
         return self.sync(
             ast3.Call(
                 func=self.sync(ast3.Name(id='type', ctx=ast3.Load())),
@@ -3967,34 +3820,31 @@ impl PyastGenPass._resolve_self_type(nd: uni.Name) -> ast3.expr | None {
             )
         );
     }
-    # Fallback: use class name directly (e.g., in static methods or other contexts)
+
     return self.sync(ast3.Name(id=enclosing_name, ctx=nd.py_ctx_func()));
 }
 
-"""Check if a node is in a type annotation context."""
 impl PyastGenPass._is_in_type_annotation(nd: uni.UniNode) -> bool {
     parent = nd.parent;
     while parent {
-        # Return type annotation
         if isinstance(parent, uni.FuncSignature) {
-            # Check if nd is within the return_type subtree
             if parent.return_type {
                 return self._is_descendant_of(nd, parent.return_type);
             }
         }
-        # Parameter type annotation
+
         if isinstance(parent, uni.ParamVar) {
             if parent.type_tag {
                 return True;
             }
         }
-        # Has field type annotation
+
         if isinstance(parent, uni.HasVar) {
             if parent.type_tag {
                 return True;
             }
         }
-        # SubTag (type tag wrapper)
+
         if isinstance(parent, uni.SubTag) {
             return True;
         }
@@ -4003,7 +3853,6 @@ impl PyastGenPass._is_in_type_annotation(nd: uni.UniNode) -> bool {
     return False;
 }
 
-"""Check if a node is or is a descendant of another node."""
 impl PyastGenPass._is_descendant_of(nd: uni.UniNode, ancestor: uni.UniNode) -> bool {
     if nd is ancestor {
         return True;
@@ -4035,16 +3884,6 @@ impl PyastGenPass.exit_bool(nd: uni.Bool) -> None {
 }
 
 impl PyastGenPass.exit_builtin_type(nd: uni.BuiltinType) -> None {
-    # The lowercase `any` keyword overloads two distinct Python identifiers:
-    # as a TYPE (annotations, generics, Annotated args, Optional args, runtime
-    # type values) it is Jac's top type and must resolve to `typing.Any` so
-    # eager annotation consumers (Pydantic BaseModel field setup, FastAPI
-    # parameter inference, dataclasses.get_type_hints) get the gradual-type
-    # semantics they expect; as a CALL like `any(iter)` it is the builtin
-    # iterable predicate `builtins.any`. The Jac parser collapses both forms
-    # to a `BuiltinType` node, so distinguish by call-position: if this node
-    # is the immediate `func` of an enclosing `FuncCall`, keep `any`;
-    # otherwise emit `Any` (auto-importing it from typing).
     if nd.sym_name == "any" {
         parent = nd.parent;
         is_call_func = (
@@ -4069,57 +3908,42 @@ impl PyastGenPass.exit_ellipsis(nd: uni.Ellipsis) -> None {
     nd.gen.py_ast = [self.sync(ast3.Constant(value=...))];
 }
 
-"""Generate Python AST for JSX elements."""
 impl PyastGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
     self.jsx_processor.element(nd);
 }
 
-"""Generate Python AST for JSX element names."""
 impl PyastGenPass.exit_jsx_element_name(nd: uni.JsxElementName) -> None {
     self.jsx_processor.element_name(nd);
 }
 
-"""Bases class for JSX attributes - handled by subclasses."""
 impl PyastGenPass.exit_jsx_attribute(nd: uni.JsxAttribute) -> None {
     ;
 }
 
-"""Generate Python AST for JSX spread attributes."""
 impl PyastGenPass.exit_jsx_spread_attribute(nd: uni.JsxSpreadAttribute) -> None {
     self.jsx_processor.spread_attribute(nd);
 }
 
-"""Generate Python AST for JSX normal attributes."""
 impl PyastGenPass.exit_jsx_normal_attribute(nd: uni.JsxNormalAttribute) -> None {
     self.jsx_processor.normal_attribute(nd);
 }
 
-"""Bases class for JSX children - handled by subclasses."""
 impl PyastGenPass.exit_jsx_child(nd: uni.JsxChild) -> None {
     ;
 }
 
-"""Generate Python AST for JSX text nodes."""
 impl PyastGenPass.exit_jsx_text(nd: uni.JsxText) -> None {
     self.jsx_processor.text(nd);
 }
 
-"""Generate Python AST for JSX expression children."""
 impl PyastGenPass.exit_jsx_expression(nd: uni.JsxExpression) -> None {
     self.jsx_processor.expression(nd);
 }
 
-"""Generate Python AST for JSX statement-form slots.
-
-Slots are a client-side concept (JSX in browser DOM); the server-side
-Python emit treats them as `None` so a slot used in mixed-target code
-type-checks and compiles. The slot's actual rendering happens in the
-client runtime via the IIFE emitted by the es-codegen path."""
 impl PyastGenPass.exit_jsx_slot(nd: uni.JsxSlot) -> None {
     nd.gen.py_ast = [self.sync(ast3.Constant(value=None), nd)];
 }
 
-"""Generate Python AST for JSX block comments — no-op; element processor skips it."""
 impl PyastGenPass.exit_jsx_comment(nd: uni.JsxComment) -> None {
     nd.gen.py_ast = [];
 }

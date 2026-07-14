@@ -4,7 +4,7 @@ In this tutorial, you'll build a full-stack AI day planner from scratch -- a sin
 
 **Prerequisites:** [Installation](../../quick-guide/install.md) complete.
 
-**Required Packages:** This tutorial uses **jaclang**, **jac-client**, **jac-scale**, and **byllm**. If you installed Jac using the [one-line installer](../../quick-guide/install.md#one-line-install-recommended), all packages are already included -- skip to the version check below. Otherwise install the toolchain:
+**Required Packages:** This tutorial uses **jaclang** (which bundles the full-stack client framework, the built-in `scale` deployment subsystem, and byLLM for AI). If you installed Jac using the [one-line installer](../../quick-guide/install.md#one-line-install-recommended), the core is already included -- skip to the version check below. Otherwise install the toolchain:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
@@ -18,14 +18,11 @@ Verify your installation meets the minimum requirements:
 jac --version
 ```
 
-The `jac --version` output lists all installed plugins and their versions. Check that the following minimums are met:
+The `jac --version` output shows the binary version. Check that the minimum is met (byLLM, the full-stack client framework, and the `scale` subsystem all ship inside the binary, so there are no separate versions for them):
 
 | Package | Minimum Version |
 |---------|----------------|
 | jaclang | 0.11.0 |
-| jac-client | 0.3.0 |
-| jac-scale | 0.2.0 |
-| byllm | 0.5.0 |
 
 **Local AI Model:** Parts 5+ use AI features. The tutorial defaults to a local model -- Google Gemma 4 E4B running in-process via `llama.cpp` -- so **no API key is required**. Install the local-model dependency once:
 
@@ -497,12 +494,12 @@ With the fundamentals of Jac syntax and graph data in place, you're now ready to
 **Create the Project**
 
 ```bash
-jac create day-planner --use client
+jac create day-planner --use web-static
 cd day-planner
 ```
 
 !!! note "Bun required"
-    The `--use client` template requires [Bun](https://bun.sh) for frontend bundling. If Bun isn't installed, `jac create` will offer to install it automatically.
+    The `--use web-static` template requires [Bun](https://bun.sh) for frontend bundling. If Bun isn't installed, `jac create` will offer to install it automatically.
 
 You can delete the scaffolded `main.jac` and the `components/` directory -- you'll replace them with the code below. Also create an empty `styles.css` file next to `main.jac` (we'll fill it in Part 4).
 
@@ -740,17 +737,17 @@ Before building the UI, you need to understand **lambdas** -- Jac's anonymous fu
 <!-- jac-skip -->
 ```jac
 # Lambda with typed parameters
-double = lambda x: int -> int { return x * 2; };
+double = lambda (x: int) -> int { return x * 2; };
 
 # Lambda with no parameters
 say_hi = lambda -> str { return "hi"; };
 ```
 
-The syntax is `lambda params -> return_type { body }`. In JSX, you'll use them inline to handle user events:
+The syntax is `lambda (params) -> return_type { body }`. In JSX, you'll use them inline to handle user events:
 
 <!-- jac-skip -->
 ```jac
-onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
+onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
 ```
 
 **Transparent Server Calls**
@@ -817,8 +814,8 @@ cl def:pub app -> JsxElement {
                 <input
                     class="input"
                     value={task_text}
-                    onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
-                    onKeyPress={lambda e: KeyboardEvent {
+                    onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
+                    onKeyPress={lambda (e: KeyboardEvent) {
                         if e.key == "Enter" { add_new_task(); }
                     }}
                     placeholder="What needs to be done today?"
@@ -876,8 +873,8 @@ cl def:pub app -> JsxElement {
                 <input
                     class="input"
                     value={task_text}
-                    onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
-                    onKeyPress={lambda e: KeyboardEvent {
+                    onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
+                    onKeyPress={lambda (e: KeyboardEvent) {
                         if e.key == "Enter" { add_new_task(); }
                     }}
                     placeholder="What needs to be done today?"
@@ -1012,8 +1009,8 @@ h1 { text-align: center; margin-bottom: 24px; color: #333; }
                     <input
                         class="input"
                         value={task_text}
-                        onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
-                        onKeyPress={lambda e: KeyboardEvent {
+                        onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
+                        onKeyPress={lambda (e: KeyboardEvent) {
                             if e.key == "Enter" { add_new_task(); }
                         }}
                         placeholder="What needs to be done today?"
@@ -1065,7 +1062,7 @@ That last point deserves emphasis. You didn't write any code to save data or loa
 - **`cl import`** -- load CSS (or npm packages) in the browser
 - **`cl def:pub app -> JsxElement`** -- the main UI component
 - **`has`** (in components) -- reactive state that triggers re-renders on change
-- **`lambda`** -- anonymous functions: `lambda params -> type { body }`
+- **`lambda`** -- anonymous functions: `lambda (params) -> type { body }`
 - **`can with entry`** -- lifecycle hook that runs on component mount
 - **`await func()`** -- transparent server calls from the client (no HTTP code)
 - **`async`** -- marks functions that perform asynchronous operations
@@ -1102,21 +1099,21 @@ jac model pull gemma-4-e4b
 
 **Configure the LLM**
 
-The model is chosen in `jac.toml` -- the project file that `jac create` generated for you. Add a `[plugins.byllm.model]` section:
+The model is chosen in `jac.toml` -- the project file that `jac create` generated for you. Add a `[byllm.model]` section:
 
 ```toml
-[plugins.byllm.model]
+[byllm.model]
 default_model = "local:gemma-4-e4b"
 ```
 
 That's the whole configuration. Anywhere you write `by llm()` in your Jac code, this is the model that runs. No import, no module-level variable -- swapping models means editing one line in `jac.toml`, with no code change.
 
 !!! info "Use a cloud model instead"
-    If you prefer a hosted model -- typically because you want a stronger model than runs locally, or you're on a machine without GPU/RAM headroom -- swap the `default_model` line in `jac.toml`. Jac's AI plugin wraps [LiteLLM](https://docs.litellm.ai/docs/providers), so anything LiteLLM supports works here:
+    If you prefer a hosted model -- typically because you want a stronger model than runs locally, or you're on a machine without GPU/RAM headroom -- swap the `default_model` line in `jac.toml`. Jac's AI subsystem (byLLM) wraps [LiteLLM](https://docs.litellm.ai/docs/providers), so anything LiteLLM supports works here:
 
     | Provider | `default_model` value | Notes |
     |----------|-----------------------|-------|
-    | Anthropic Claude | `"claude-sonnet-4-20250514"` | Set `ANTHROPIC_API_KEY`; get credits at [console.anthropic.com](https://console.anthropic.com) |
+    | Anthropic Claude | `"anthropic/claude-sonnet-4-6"` | Set `ANTHROPIC_API_KEY`; get credits at [console.anthropic.com](https://console.anthropic.com) |
     | Google Gemini | `"gemini/gemini-2.5-flash"` | Set `GEMINI_API_KEY`; free tier at [ai.google.dev](https://ai.google.dev/) |
     | Ollama (local daemon) | `"ollama/llama3.2:1b"` | Requires [Ollama](https://ollama.ai/) running locally |
 
@@ -1126,12 +1123,12 @@ That's the whole configuration. Anywhere you write `by llm()` in your Jac code, 
     You can also initialize the model from Jac source, which is useful when you want the choice of model to be visible in the code itself or vary by file:
 
     ```jac
-    import from byllm.lib { Model }
+    import from jaclang.byllm.lib { Model }
 
     glob llm = Model(model_name="local:gemma-4-e4b");
     ```
 
-    `import from byllm.lib { Model }` loads the AI plugin. `glob` declares a module-level variable accessible throughout the file. We'll stick with the `jac.toml` form in this tutorial because it keeps source files focused on logic.
+    `import from jaclang.byllm.lib { Model }` loads the AI subsystem. `glob` declares a module-level variable accessible throughout the file. We'll stick with the `jac.toml` form in this tutorial because it keeps source files focused on logic.
 
 **Enums as Output Constraints**
 
@@ -1353,8 +1350,8 @@ cl def:pub app -> JsxElement {
                         <input
                             class="input"
                             value={task_text}
-                            onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
-                            onKeyPress={lambda e: KeyboardEvent {
+                            onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
+                            onKeyPress={lambda (e: KeyboardEvent) {
                                 if e.key == "Enter" { add_new_task(); }
                             }}
                             placeholder="What needs to be done today?"
@@ -1390,8 +1387,8 @@ cl def:pub app -> JsxElement {
                         <input
                             class="input"
                             value={meal_text}
-                            onChange={lambda e: ChangeEvent { meal_text = e.target.value; }}
-                            onKeyPress={lambda e: KeyboardEvent {
+                            onChange={lambda (e: ChangeEvent) { meal_text = e.target.value; }}
+                            onKeyPress={lambda (e: KeyboardEvent) {
                                 if e.key == "Enter" { generate_meal_list(); }
                             }}
                             placeholder="Describe a meal, e.g. 'chicken stir fry for 4'"
@@ -1518,8 +1515,8 @@ cl def:pub TasksColumn -> JsxElement {
                 <input
                     class="input"
                     value={task_text}
-                    onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
-                    onKeyPress={lambda e: KeyboardEvent {
+                    onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
+                    onKeyPress={lambda (e: KeyboardEvent) {
                         if e.key == "Enter" { add_new_task(); }
                     }}
                     placeholder="What needs to be done today?"
@@ -1599,8 +1596,8 @@ cl def:pub ShoppingColumn -> JsxElement {
                 <input
                     class="input"
                     value={meal_text}
-                    onChange={lambda e: ChangeEvent { meal_text = e.target.value; }}
-                    onKeyPress={lambda e: KeyboardEvent {
+                    onChange={lambda (e: ChangeEvent) { meal_text = e.target.value; }}
+                    onKeyPress={lambda (e: KeyboardEvent) {
                         if e.key == "Enter" { generate_meal_list(); }
                     }}
                     placeholder="Describe a meal, e.g. 'chicken stir fry for 4'"
@@ -1855,8 +1852,8 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
                     <input
                         class="input"
                         value={task_text}
-                        onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
-                        onKeyPress={lambda e: KeyboardEvent {
+                        onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
+                        onKeyPress={lambda (e: KeyboardEvent) {
                             if e.key == "Enter" { add_new_task(); }
                         }}
                         placeholder="What needs to be done today?"
@@ -1926,8 +1923,8 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
                     <input
                         class="input"
                         value={meal_text}
-                        onChange={lambda e: ChangeEvent { meal_text = e.target.value; }}
-                        onKeyPress={lambda e: KeyboardEvent {
+                        onChange={lambda (e: ChangeEvent) { meal_text = e.target.value; }}
+                        onKeyPress={lambda (e: KeyboardEvent) {
                             if e.key == "Enter" { generate_meal_list(); }
                         }}
                         placeholder="Describe a meal, e.g. 'chicken stir fry for 4'"
@@ -1965,8 +1962,8 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
     }
     ```
 
-!!! info "Style note: the reference example uses `to cl:` / `to sv:`"
-    The matching example at [`jac/examples/day_planner/basic/`](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/examples/day_planner/basic) groups all client-side declarations under a `to cl:` section header instead of prefixing each with `cl`. The two styles are equivalent -- `to cl:` is just a way to flip the *default* context for everything that follows. You'll learn that mechanism formally in Part 6.
+!!! info "Style note: the reference example groups client code in a `cl { }` block"
+    The matching example at [`jac/examples/day_planner/basic/`](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/examples/day_planner/basic) groups all client-side declarations inside a single `cl { ... }` block instead of prefixing each with `cl`. The two styles are equivalent -- a `cl { ... }` block tags every declaration inside its braces for the client codespace. You'll learn more about blocks in Part 6.
 
 ```bash
 jac start main.jac  # or: jac start
@@ -1994,7 +1991,7 @@ The AI can only pick from the enum values you defined -- `Category` for tasks, `
 
 **What You Learned**
 
-- **`[plugins.byllm.model]` in `jac.toml`** -- configure which LLM `by llm()` calls use
+- **`[byllm.model]` in `jac.toml`** -- configure which LLM `by llm()` calls use
 - **`glob`** -- module-level variables, accessible throughout the file (used here for `glob llm = Model(...)` as an alternative to `jac.toml` configuration)
 - **`enum`** -- fixed set of named values, used here to constrain AI output
 - **`def func(...) -> Type by llm()`** -- let the LLM implement a function from its signature
@@ -2087,26 +2084,26 @@ sv import from ..main { Task, get_tasks, add_task, toggle_task, delete_task }
 
 The `sv` prefix means "server import." You also use it to bring server `node` types into client code, so `TaskItem(task: Task)` can be typed end-to-end. The `..main` is a relative import: `..` means "parent directory," because components live one folder below `main.jac` -- the same convention Python uses.
 
-**`to cl:` section headers**
+**`cl { }` and `sv { }` blocks**
 
-Sometimes you want both server and client code in the same file -- typically the entry point, where one server-side `def:pub app` just renders the client app. Section headers do that:
+Sometimes you want both server and client code in the same file -- typically the entry point, where one client-side `app` component just renders the imported client app while the server code lives alongside it. Braced blocks do that:
 
 ```jac
-to cl:
+cl {
+    import from frontend { app as ClientApp }
 
-import from frontend { app as ClientApp }
-
-def:pub app -> JsxElement {
-    return
-        <ClientApp/>;
+    def:pub app -> JsxElement {
+        return
+            <ClientApp/>;
+    }
 }
 
-to sv:
-
-# Back to server-side: nodes, AI delegations, endpoints live here.
+sv {
+    # Server-side: nodes, AI delegations, endpoints live here.
+}
 ```
 
-Everything between `to cl:` and the next `to sv:` runs in the browser; everything else runs on the server. Section headers and the `cl`/`sv` prefixes you saw in Part 4 are two ways to do the same thing -- prefixes are good for the occasional client thing in a server file, section headers are good when most of the file goes one way.
+Everything inside the `cl { ... }` block runs in the browser; everything inside `sv { ... }` runs on the server. Braced blocks and the `cl`/`sv` prefixes you saw in Part 4 are two ways to do the same thing -- prefixes are good for the occasional client thing in a server file, blocks are good when a whole region of the file goes one way.
 
 **Optional: splitting one big component into declaration + implementation**
 
@@ -2158,7 +2155,7 @@ When `isLoggedIn` flips from `False` to `True`, this ability fires automatically
 Create a new project for the authenticated version:
 
 ```bash
-jac create day-planner-auth --use client
+jac create day-planner-auth --use web-static
 cd day-planner-auth
 ```
 
@@ -2171,123 +2168,123 @@ All the complete files are in the collapsible sections below. Create each file, 
     ```jac
     """AI Day Planner -- authenticated, multi-file version."""
 
-    to cl:
+    cl {
+        import from frontend { app as ClientApp }
 
-    import from frontend { app as ClientApp }
-
-    def:pub app -> JsxElement {
-        return
-            <ClientApp />;
+        def:pub app -> JsxElement {
+            return
+                <ClientApp />;
+        }
     }
 
-    to sv:
+    sv {
+        # --- Enums ---
 
-    # --- Enums ---
+        enum Category { WORK, PERSONAL, SHOPPING, HEALTH, FITNESS, OTHER }
 
-    enum Category { WORK, PERSONAL, SHOPPING, HEALTH, FITNESS, OTHER }
+        enum Unit { PIECE, LB, OZ, CUP, TBSP, TSP, BUNCH }
 
-    enum Unit { PIECE, LB, OZ, CUP, TBSP, TSP, BUNCH }
+        # --- AI Types ---
 
-    # --- AI Types ---
+        obj Ingredient {
+            has name: str,
+                quantity: float,
+                unit: Unit,
+                cost: float,
+                carby: bool;
+        }
 
-    obj Ingredient {
-        has name: str,
-            quantity: float,
-            unit: Unit,
-            cost: float,
-            carby: bool;
-    }
+        sem Ingredient.cost = "Estimated cost in USD";
+        sem Ingredient.carby = "True if this ingredient is high in carbohydrates";
 
-    sem Ingredient.cost = "Estimated cost in USD";
-    sem Ingredient.carby = "True if this ingredient is high in carbohydrates";
+        def categorize(title: str) -> Category by llm();
+        sem categorize = "Categorize a task based on its title";
 
-    def categorize(title: str) -> Category by llm();
-    sem categorize = "Categorize a task based on its title";
+        def generate_shopping_list(meal_description: str) -> list[Ingredient] by llm();
+        sem generate_shopping_list = "Generate a shopping list of ingredients needed for a described meal";
 
-    def generate_shopping_list(meal_description: str) -> list[Ingredient] by llm();
-    sem generate_shopping_list = "Generate a shopping list of ingredients needed for a described meal";
+        # --- Data Nodes ---
 
-    # --- Data Nodes ---
+        node Task {
+            has title: str,
+                done: bool = False,
+                category: str = "other";
+        }
 
-    node Task {
-        has title: str,
-            done: bool = False,
-            category: str = "other";
-    }
+        node ShoppingItem {
+            has name: str,
+                quantity: float,
+                unit: str,
+                cost: float,
+                carby: bool;
+        }
 
-    node ShoppingItem {
-        has name: str,
-            quantity: float,
-            unit: str,
-            cost: float,
-            carby: bool;
-    }
+        # --- Task Endpoints ---
 
-    # --- Task Endpoints ---
+        """Add a task with AI categorization."""
+        def:priv add_task(title: str) -> Task {
+            category = str(categorize(title)).split(".")[-1].lower();
+            task = root ++> Task(title=title, category=category);
+            return task;
+        }
 
-    """Add a task with AI categorization."""
-    def:priv add_task(title: str) -> Task {
-        category = str(categorize(title)).split(".")[-1].lower();
-        task = root ++> Task(title=title, category=category);
-        return task;
-    }
+        """Get all tasks."""
+        def:priv get_tasks -> list[Task] {
+            return [root-->][?:Task];
+        }
 
-    """Get all tasks."""
-    def:priv get_tasks -> list[Task] {
-        return [root-->][?:Task];
-    }
-
-    """Toggle a task's done status."""
-    def:priv toggle_task(id: str) -> Task | None {
-        for task in [root-->][?:Task] {
-            if jid(task) == id {
-                task.done = not task.done;
-                return task;
+        """Toggle a task's done status."""
+        def:priv toggle_task(id: str) -> Task | None {
+            for task in [root-->][?:Task] {
+                if jid(task) == id {
+                    task.done = not task.done;
+                    return task;
+                }
             }
+            return None;
         }
-        return None;
-    }
 
-    """Delete a task."""
-    def:priv delete_task(id: str) -> dict[str, str] {
-        for task in [root-->][?:Task] {
-            if jid(task) == id {
-                del task;
-                return {"deleted": id};
+        """Delete a task."""
+        def:priv delete_task(id: str) -> dict[str, str] {
+            for task in [root-->][?:Task] {
+                if jid(task) == id {
+                    del task;
+                    return {"deleted": id};
+                }
             }
+            return {};
         }
-        return {};
-    }
 
-    # --- Shopping List Endpoints ---
+        # --- Shopping List Endpoints ---
 
-    """Generate a shopping list from a meal description."""
-    def:priv generate_list(meal: str) -> list[ShoppingItem] {
-        for item in [root-->][?:ShoppingItem] {
-            del item;
+        """Generate a shopping list from a meal description."""
+        def:priv generate_list(meal: str) -> list[ShoppingItem] {
+            for item in [root-->][?:ShoppingItem] {
+                del item;
+            }
+            ingredients = generate_shopping_list(meal);
+            for ing in ingredients {
+                root ++> ShoppingItem(
+                    name=ing.name, quantity=ing.quantity,
+                    unit=str(ing.unit).split(".")[-1].lower(),
+                    cost=ing.cost, carby=ing.carby
+                );
+            }
+            return [root-->][?:ShoppingItem];
         }
-        ingredients = generate_shopping_list(meal);
-        for ing in ingredients {
-            root ++> ShoppingItem(
-                name=ing.name, quantity=ing.quantity,
-                unit=str(ing.unit).split(".")[-1].lower(),
-                cost=ing.cost, carby=ing.carby
-            );
-        }
-        return [root-->][?:ShoppingItem];
-    }
 
-    """Get the current shopping list."""
-    def:priv get_shopping_list -> list[ShoppingItem] {
-        return [root-->][?:ShoppingItem];
-    }
-
-    """Clear the shopping list."""
-    def:priv clear_shopping_list -> dict[str, bool] {
-        for item in [root-->][?:ShoppingItem] {
-            del item;
+        """Get the current shopping list."""
+        def:priv get_shopping_list -> list[ShoppingItem] {
+            return [root-->][?:ShoppingItem];
         }
-        return {"cleared": True};
+
+        """Clear the shopping list."""
+        def:priv clear_shopping_list -> dict[str, bool] {
+            for item in [root-->][?:ShoppingItem] {
+                del item;
+            }
+            return {"cleared": True};
+        }
     }
     ```
 
@@ -2429,7 +2426,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                             <input
                                 type="text"
                                 value={username}
-                                onChange={lambda e: ChangeEvent { username = e.target.value; }}
+                                onChange={lambda (e: ChangeEvent) { username = e.target.value; }}
                                 placeholder="Enter username"
                                 class="auth-input"
                             />
@@ -2439,7 +2436,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                             <input
                                 type="password"
                                 value={password}
-                                onChange={lambda e: ChangeEvent { password = e.target.value; }}
+                                onChange={lambda (e: ChangeEvent) { password = e.target.value; }}
                                 placeholder="Enter password"
                                 class="auth-input"
                             />
@@ -2548,7 +2545,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                     <input
                         class="input"
                         value={taskText}
-                        onChange={lambda e: ChangeEvent { taskText = e.target.value; }}
+                        onChange={lambda (e: ChangeEvent) { taskText = e.target.value; }}
                         onKeyPress={handleKeyPress}
                         placeholder="What needs to be done today?"
                     />
@@ -2661,7 +2658,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                     <input
                         class="input"
                         value={mealText}
-                        onChange={lambda e: ChangeEvent { mealText = e.target.value; }}
+                        onChange={lambda (e: ChangeEvent) { mealText = e.target.value; }}
                         onKeyPress={handleKeyPress}
                         placeholder="e.g. 'chicken stir fry for 4'"
                     />
@@ -2821,7 +2818,7 @@ Step back and consider what you've built: a **complete, fully functional applica
 - **`import from "@jac/runtime"`** -- import Jac's built-in client-side utilities
 - **Component files** -- each component in its own `.cl.jac` file; the whole file is client-side, no `cl` prefixes needed
 - **`sv import from ..main { ... }`** -- bring server functions and node types into client files; the `..` is a relative import to the parent directory
-- **`to cl:`** / **`to sv:`** -- section headers that switch the default context for everything that follows, until the next `to X:` header or end of file
+- **`cl { }`** / **`sv { }`** -- braced blocks that tag a whole region of a file for the client or server codespace
 - **`can with [deps] entry`** -- dependency-triggered abilities (re-run when state changes); useful when the component owning the dependency stays mounted
 - **Optional: declaration/implementation split** -- `.cl.jac` for state + render tree, `.impl.jac` for `impl Component.method { ... }` bodies; reach for it only when a single component is too long to read top-to-bottom
 
@@ -3181,7 +3178,7 @@ When you use `walker:priv`, the walker runs on the authenticated user's **own pr
 To try the walker-based version, create a new project:
 
 ```bash
-jac create day-planner-v2 --use client
+jac create day-planner-v2 --use web-static
 cd day-planner-v2
 ```
 
@@ -3210,162 +3207,162 @@ The three files that change are in the collapsible sections below. Copy the unch
     ```jac
     """AI Day Planner -- walker-based version with OSP."""
 
-    to cl:
+    cl {
+        import from frontend { app as ClientApp }
 
-    import from frontend { app as ClientApp }
-
-    def:pub app -> JsxElement {
-        return
-            <ClientApp />;
-    }
-
-    to sv:
-
-    # --- Enums ---
-
-    enum Category { WORK, PERSONAL, SHOPPING, HEALTH, FITNESS, OTHER }
-
-    enum Unit { PIECE, LB, OZ, CUP, TBSP, TSP, BUNCH }
-
-    # --- AI Types ---
-
-    obj Ingredient {
-        has name: str,
-            quantity: float,
-            unit: Unit,
-            cost: float,
-            carby: bool;
-    }
-
-    sem Ingredient.cost = "Estimated cost in USD";
-    sem Ingredient.carby = "True if this ingredient is high in carbohydrates";
-
-    def categorize(title: str) -> Category by llm();
-    sem categorize = "Categorize a task based on its title";
-
-    def generate_shopping_list(meal_description: str) -> list[Ingredient] by llm();
-    sem generate_shopping_list = "Generate a shopping list of ingredients needed for a described meal";
-
-    # --- Data Nodes ---
-
-    node Task {
-        has title: str,
-            done: bool = False,
-            category: str = "other";
-    }
-
-    node ShoppingItem {
-        has name: str,
-            quantity: float,
-            unit: str,
-            cost: float,
-            carby: bool;
-    }
-
-    # --- Task Walkers ---
-
-    walker:priv AddTask {
-        has title: str,
-            reports: list[Task] = [];
-
-        can create with Root entry {
-            category = str(categorize(self.title)).split(".")[-1].lower();
-            new_task = here ++> Task(title=self.title, category=category);
-            report new_task;
+        def:pub app -> JsxElement {
+            return
+                <ClientApp />;
         }
     }
 
-    walker:priv ListTasks {
-        has results: list[Task] = [],
-            reports: list[list[Task]] = [];
+    sv {
+        # --- Enums ---
 
-        can start with Root entry {
-            visit [-->];
+        enum Category { WORK, PERSONAL, SHOPPING, HEALTH, FITNESS, OTHER }
+
+        enum Unit { PIECE, LB, OZ, CUP, TBSP, TSP, BUNCH }
+
+        # --- AI Types ---
+
+        obj Ingredient {
+            has name: str,
+                quantity: float,
+                unit: Unit,
+                cost: float,
+                carby: bool;
         }
 
-        can collect with Task entry {
-            self.results.append(here);
+        sem Ingredient.cost = "Estimated cost in USD";
+        sem Ingredient.carby = "True if this ingredient is high in carbohydrates";
+
+        def categorize(title: str) -> Category by llm();
+        sem categorize = "Categorize a task based on its title";
+
+        def generate_shopping_list(meal_description: str) -> list[Ingredient] by llm();
+        sem generate_shopping_list = "Generate a shopping list of ingredients needed for a described meal";
+
+        # --- Data Nodes ---
+
+        node Task {
+            has title: str,
+                done: bool = False,
+                category: str = "other";
         }
 
-        can done with Root exit {
-            report self.results;
+        node ShoppingItem {
+            has name: str,
+                quantity: float,
+                unit: str,
+                cost: float,
+                carby: bool;
         }
-    }
 
-    walker:priv ToggleTask {
-        has task_id: str,
-            reports: list[Task] = [];
+        # --- Task Walkers ---
 
-        can search with Root entry { visit [-->]; }
+        walker:priv AddTask {
+            has title: str,
+                reports: list[Task] = [];
 
-        can toggle with Task entry {
-            if jid(here) == self.task_id {
-                here.done = not here.done;
-                report here;
-                disengage;
+            can create with Root entry {
+                category = str(categorize(self.title)).split(".")[-1].lower();
+                new_task = here ++> Task(title=self.title, category=category);
+                report new_task;
             }
         }
-    }
 
-    walker:priv DeleteTask {
-        has task_id: str;
+        walker:priv ListTasks {
+            has results: list[Task] = [],
+                reports: list[list[Task]] = [];
 
-        can search with Root entry { visit [-->]; }
+            can start with Root entry {
+                visit [-->];
+            }
 
-        can remove with Task entry {
-            if jid(here) == self.task_id {
+            can collect with Task entry {
+                self.results.append(here);
+            }
+
+            can done with Root exit {
+                report self.results;
+            }
+        }
+
+        walker:priv ToggleTask {
+            has task_id: str,
+                reports: list[Task] = [];
+
+            can search with Root entry { visit [-->]; }
+
+            can toggle with Task entry {
+                if jid(here) == self.task_id {
+                    here.done = not here.done;
+                    report here;
+                    disengage;
+                }
+            }
+        }
+
+        walker:priv DeleteTask {
+            has task_id: str;
+
+            can search with Root entry { visit [-->]; }
+
+            can remove with Task entry {
+                if jid(here) == self.task_id {
+                    del here;
+                    report {"deleted": self.task_id};
+                    disengage;
+                }
+            }
+        }
+
+        # --- Shopping List Walkers ---
+
+        walker:priv GenerateShoppingList {
+            has meal_description: str,
+                reports: list[list[ShoppingItem]] = [];
+
+            can generate with Root entry {
+                visit [-->];
+                ingredients = generate_shopping_list(self.meal_description);
+                for ing in ingredients {
+                    here ++> ShoppingItem(
+                        name=ing.name,
+                        quantity=ing.quantity,
+                        unit=str(ing.unit).split(".")[-1].lower(),
+                        cost=ing.cost,
+                        carby=ing.carby
+                    );
+                }
+                report [here-->][?:ShoppingItem];
+            }
+
+            can clear_old with ShoppingItem entry {
                 del here;
-                report {"deleted": self.task_id};
-                disengage;
             }
         }
-    }
 
-    # --- Shopping List Walkers ---
+        walker:priv GetShoppingList {
+            has items: list[ShoppingItem] = [],
+                reports: list[list[ShoppingItem]] = [];
 
-    walker:priv GenerateShoppingList {
-        has meal_description: str,
-            reports: list[list[ShoppingItem]] = [];
+            can collect with Root entry { visit [-->]; }
 
-        can generate with Root entry {
-            visit [-->];
-            ingredients = generate_shopping_list(self.meal_description);
-            for ing in ingredients {
-                here ++> ShoppingItem(
-                    name=ing.name,
-                    quantity=ing.quantity,
-                    unit=str(ing.unit).split(".")[-1].lower(),
-                    cost=ing.cost,
-                    carby=ing.carby
-                );
+            can gather with ShoppingItem entry {
+                self.items.append(here);
             }
-            report [here-->][?:ShoppingItem];
+
+            can done with Root exit { report self.items; }
         }
 
-        can clear_old with ShoppingItem entry {
-            del here;
-        }
-    }
+        walker:priv ClearShoppingList {
+            can collect with Root entry { visit [-->]; }
 
-    walker:priv GetShoppingList {
-        has items: list[ShoppingItem] = [],
-            reports: list[list[ShoppingItem]] = [];
-
-        can collect with Root entry { visit [-->]; }
-
-        can gather with ShoppingItem entry {
-            self.items.append(here);
-        }
-
-        can done with Root exit { report self.items; }
-    }
-
-    walker:priv ClearShoppingList {
-        can collect with Root entry { visit [-->]; }
-
-        can clear with ShoppingItem entry {
-            del here;
-            report {"cleared": True};
+            can clear with ShoppingItem entry {
+                del here;
+                report {"cleared": True};
+            }
         }
     }
     ```
@@ -3425,7 +3422,7 @@ The three files that change are in the collapsible sections below. Copy the unch
                     <input
                         class="input"
                         value={taskText}
-                        onChange={lambda e: ChangeEvent { taskText = e.target.value; }}
+                        onChange={lambda (e: ChangeEvent) { taskText = e.target.value; }}
                         onKeyPress={handleKeyPress}
                         placeholder="What needs to be done today?"
                     />
@@ -3516,7 +3513,7 @@ The three files that change are in the collapsible sections below. Copy the unch
                     <input
                         class="input"
                         value={mealText}
-                        onChange={lambda e: ChangeEvent { mealText = e.target.value; }}
+                        onChange={lambda (e: ChangeEvent) { mealText = e.target.value; }}
                         onKeyPress={handleKeyPress}
                         placeholder="e.g. 'chicken stir fry for 4'"
                     />
@@ -3649,7 +3646,7 @@ The concepts you've learned are interconnected. Types constrain AI output. Graph
 
 Now that you have a solid foundation, here are some directions to deepen your understanding:
 
-- **Deploy** -- [Deploy to Kubernetes](../production/kubernetes.md) with `jac-scale` to take your app to production
+- **Deploy** -- [Deploy to Kubernetes](../production/kubernetes.md) with `jac start --scale` (the built-in scale subsystem) to take your app to production
 - **Go deeper on walkers** -- [Object-Spatial Programming](../language/osp.md) covers advanced graph patterns like recursive traversals and multi-hop queries
 - **More AI** -- [byLLM Quickstart](../ai/quickstart.md) for standalone examples and [Agentic AI](../ai/agentic.md) for building tool-using agents
 - **Examples** -- Explore [community examples](https://github.com/Jaseci-Labs/jaseci/tree/main/examples) for inspiration on what to build next

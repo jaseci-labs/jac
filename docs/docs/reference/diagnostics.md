@@ -73,7 +73,6 @@ Emitted by the parser and lexer during source code parsing.
 | Code | Message |
 |------|---------|
 | `E0010` | '{keyword}' is not supported in Jac |
-| `E0011` | Jac does not allow this keyword in any syntactic position |
 | `E0012` | Use the `new(target, ...args)` ambient builtin to create new instances |
 | `E0013` | '{keyword}' is a keyword and cannot be used as a {context} name |
 
@@ -93,7 +92,6 @@ Emitted by the parser and lexer during source code parsing.
 | `E0030` | Unexpected semicolon at module level |
 | `E0031` | Module-level 'with' blocks only support 'entry', not 'exit' |
 | `E0032` | Unexpected '{token}' -- must follow its parent statement (if/try/match/switch) |
-| `E0033` | '{modifier}' is not a valid prefix modifier |
 | `E0034` | Expected 'with' after 'can' ability name (use 'def' for function-style declarations) |
 
 ### Block / Body Requirements
@@ -257,6 +255,33 @@ Emitted by the type checker and type evaluator.
 | `E1098` | Connection type must be an edge instance |
 | `E1099` | Cannot access attribute "{attr}" for type "{type}"; attribute is missing from {missing} |
 
+### mobUI-Project JSX Host Tags
+
+Emitted by `JsxIntrinsicGuardPass` when a `mobui` project (see [React Native target](plugins/jac-client.md#react-native-target-beta)) uses a raw HTML host tag in JSX. The guard resolves every tag name in the enclosing scope; only **unresolved lowercase names** are treated as HTML host elements and rejected. Uppercase components and lowercase components that resolve to an in-scope symbol are allowed. `.cl.jac` web-boundary files (but not `.native.cl.jac` files, which target React Native) and modules outside the project root are exempt; the client kind is discovered from each module's own project `jac.toml`, never the process cwd.
+
+| Code | Message |
+|------|---------|
+| `E1105` | JSX tag '<{tag}>' is not in scope in a mobUI project; use {suggestion} instead |
+
+!!! tip "Fixing `E1105`"
+    `E1105` fires only in `mobui` projects (`[project] client_kind = "mobui"` in `jac.toml`). Replace the HTML tag with the suggested `@jac/mobui` primitive: `div`/`section`/`main` -> `View`, `span`/`p`/`h1`-`h6` -> `Text`, `button` -> `Pressable`, `input`/`textarea` -> `TextInput`, `img` -> `Image`, `ul`/`ol` -> `ScrollView`. If the lowercase name is meant to be a component, import it so it resolves in scope. Web projects (`client_kind` unset) are unaffected -- HTML tags remain valid there.
+
+### Ownership / Borrow Errors
+
+Emitted by `OwnershipCheckPass` for `own`/`val`/`linear`/`borrow`/`&`/`&mut` bindings and `region` blocks. See [Ownership & Borrowing](language/ownership-borrowing.md). These are diagnostics only -- no backend reads the checker's results, and generated code is identical whether or not the checker ran.
+
+| Code | Message |
+|------|---------|
+| `E1301` | Use of '{name}' after it was moved |
+| `E1302` | Conflicting mutable borrow of '{name}' while another borrow is live |
+| `E1303` | Cannot mutate '{name}' while a shared borrow of it is live |
+| `E1304` | '{name}' is destroyed while still borrowed |
+| `E1305` | Linear resource '{name}' is never consumed (a `linear` binding must be moved exactly once; plain `own` is affine and may be silently dropped) |
+| `E1306` | Borrow of '{name}' escapes its scope |
+| `E1307` | Reference to '{name}' escapes its `region` block |
+| `E1308` | '{name}' is not sendable across a concurrency boundary |
+| `E1309` | Cannot mutate '{name}' through a deep-immutable `val` binding |
+
 ### Type Warnings
 
 | Code | Message |
@@ -275,6 +300,7 @@ Emitted by the type checker and type evaluator.
 | `W1100` | Module not found |
 | `W1101` | Cannot import name '{name}' from module '{module}' |
 | `W1102` | Imported name '{name}' from foreign-source module '{module}' typed as Any |
+| `E1120` | Import of '{name}' from untyped external module '{module}' (no type declarations found) |
 | `W1103` | '{name}' is ambient and does not need to be imported from '{module}' |
 | `W1104` | Use the lowercase `any` keyword instead of importing `Any` from typing |
 
@@ -301,6 +327,26 @@ Emitted by static analysis and declaration-implementation matching passes.
 | `W2006` | '@classmethod' decorator is not recommended in '{kind}' definitions |
 | `W2007` | '@staticmethod' is not supported in '{kind}' definitions |
 | `E2008` | Invalid target for context update: {target} |
+| `W2029` | '@{decorator}' is not recommended in '{kind}' definitions -- use native property syntax |
+
+`W2029` covers the Python property decorators -- `@property`, and the same-object
+`@x.getter` / `@x.setter` / `@x.deleter` -- in favour of [native property
+syntax](language/functions-objects.md#6-properties-and-encapsulation):
+
+```jac
+obj Account {
+    has _balance: float = 0.0,
+        balance: float {
+            getter -> float { return self._balance; }
+            setter(value: float) { self._balance = value; }
+        }
+}
+```
+
+`jac check --lint --fix` rewrites the decorator form automatically
+([`property-to-native`](#lint-rules-w3xxx-e3xxx)). As with `W2006`/`W2007`, a
+Python-compat `class` is exempt. A cross-object `@Base.x.setter` extends a parent's
+property and has no direct native form, so it is not reported.
 
 ### Declaration-Implementation Matching
 
@@ -331,9 +377,9 @@ Emitted by `ViewLowerPass` when a `{...}` JSX slot's statement-template body vio
 
 ---
 
-## Lint Rules (W3xxx / E3xxx)
+## Lint Rules (W3xxx, E3xxx)
 
-Emitted by `jac lint`. Rules can be configured in [`jac.toml`](config/index.md#checklint). The kebab-case name in brackets is used for `jac.toml` configuration.
+Emitted by `jac check --lint`. Rules can be configured in [`jac.toml`](config/index.md#checklint). The kebab-case name in brackets is used for `jac.toml` configuration.
 
 | Code | Rule Name | Message | Group |
 |------|-----------|---------|-------|
@@ -364,6 +410,10 @@ Emitted by `jac lint`. Rules can be configured in [`jac.toml`](config/index.md#c
 | `W3040` | `filter-compare-tautology` | Filter comparison '{name} == {name}' is always true | default |
 | `W3041` | `stale-has-read` | Reactive `has` field '{name}' is read after being assigned in the same `can with entry` block | default |
 | `W3042` | `map-lambda-to-comprehension` | `.map(lambda x -> any { return <jsx>; })` can be replaced with comprehension syntax | default |
+| `W3050` | `strip-comments` | Comment can be removed | opt-in |
+| `W3051` | `strip-docstrings` | Docstring can be removed | opt-in |
+
+> **opt-in group**: `strip-comments` and `strip-docstrings` are destructive "deslop" rules. They are **never** activated by `select = ["all"]` or `["default"]`; they fire only when named explicitly in [`[check.lint]`](config/index.md#checklint). See the config reference for details.
 
 ---
 
@@ -428,14 +478,6 @@ Emitted during code generation, formatting, and native compilation.
 | Code | Message |
 |------|---------|
 | `E5060` | C library import declaration '{name}' must not have a body |
-
-### Language Server
-
-| Code | Message |
-|------|---------|
-| `E5070` | Error during type check: {error} |
-| `E5071` | Error during formatting: {error} |
-| `W5072` | Attribute error when accessing node attributes: {error} |
 
 ---
 

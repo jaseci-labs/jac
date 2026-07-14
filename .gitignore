@@ -12,7 +12,6 @@ venv
 *.jbc
 _precompiled/
 _dist/
-**/content/docs/
 _planning/
 
 # Distribution / packaging
@@ -75,6 +74,14 @@ demo/
 
 node_modules
 
+# Zig build artifacts. jac/.gitignore covers the in-tree binary build under jac/,
+# but `jac run` invoking the native backend emits a .zig-cache/ at the *repo
+# root* (its cwd) too -- and a release `git add -A` (release.yml) will
+# otherwise sweep in the >100 MB outputs and get rejected by GitHub's file-size
+# limit. These patterns are path-anchored to any depth, so they catch both.
+.zig-cache/
+zig-out/
+
 # Agent / IDE working notes (not repo artifacts)
 AGENTS.md
 PLAN.md
@@ -88,3 +95,11 @@ CLAUDE.local.md
 jactastic/**
 .mcp.json
 .gstack/
+
+# Docs "Build Anything" track pages live under docs/docs/build/ — the bare
+# `build` rule above would otherwise ignore them. Keep this content tracked.
+!docs/docs/build/
+!docs/docs/build/**
+
+# Zig 0.16 project-local package cache (fetched, hash-pinned deps)
+zig-pkg/

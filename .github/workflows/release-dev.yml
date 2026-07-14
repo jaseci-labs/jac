@@ -1,0 +1,68 @@
+name: Release jac dev binary (rolling main)
+
+# Rolling "dev" prerelease: pushes to main that touch the binary's inputs
+# rebuild the per-platform binaries and re-publish them under the single
+# force-moved `dev` tag, so .../releases/download/dev/jac-dev-<platform>
+# always maps to the last binary-relevant commit on main. The build itself
+# is build-binaries.yml on the dev channel (cached, host-native).
+
+on:
+  push:
+    branches: [main]
+    # Non-jac pushes (docs, CI plumbing, scripts) cannot change the binary;
+    # skipping them keeps the dev tag pointing at the exact commit the
+    # published binaries were built from -- and stops three full rebuilds
+    # per docs-only merge.
+    paths:
+      - "jac/**"
+      - ".github/workflows/release-dev.yml"
+      - ".github/workflows/build-binaries.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# A newer push to main supersedes an in-flight dev build.
+concurrency:
+  group: release-dev
+  cancel-in-progress: true
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      # SHA-pinned: this workflow holds contents:write and ships user-downloaded
+      # binaries, so a re-pointed tag on the action must not reach it.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+
+      - name: Point the `dev` prerelease at this commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euxo pipefail
+          SHA="${GITHUB_SHA}"
+          SHORT="${SHA:0:7}"
+          NOTES="Rolling build of \`main\` @ ${SHORT}. Auto-updated on every push to main; not a stable release."
+          git tag -f dev "$SHA"
+          git push -f origin refs/tags/dev
+          if gh release view dev >/dev/null 2>&1; then
+            gh release edit dev --prerelease --target "$SHA" \
+              --title "Dev build (main)" --notes "$NOTES"
+          else
+            gh release create dev --prerelease --target "$SHA" \
+              --title "Dev build (main)" --notes "$NOTES"
+          fi
+
+  build:
+    needs: prepare
+    permissions:
+      contents: write
+    uses: ./.github/workflows/build-binaries.yml
+    with:
+      tag: dev
+      channel: dev
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}

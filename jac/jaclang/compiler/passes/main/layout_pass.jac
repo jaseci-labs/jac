@@ -1,25 +1,9 @@
-"""Type layout analysis pass for the Jac compiler.
-
-Computes class hierarchy, C3 MRO, field layout, and vtable structure
-for all archetypes in a module. Results are stored in a LayoutRegistry
-that all backends (Python, ES, Native/LLVM) can query.
-
-Runs after SemanticAnalysisPass (needs resolved symbols) and before
-codegen passes.
-"""
-import from collections.abc { Sequence }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
 import from jaclang.jac0core.passes.transform { Transform }
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.diagnostics { E5030, W5031, W5032 }
 
-"""Set of primitive type names that have a known, fixed-size native layout.
-
-obj fields must resolve to one of these, another obj, an enum, a typed
-collection (list[T], dict[K,V], set[T]) where element types are also
-layout-compatible, or a callable with explicit signature (function pointer).
-"""
 glob LAYOUT_COMPATIBLE_PRIMITIVES: set[str] = {
          "int",
          "float",
@@ -37,9 +21,9 @@ glob LAYOUT_COMPATIBLE_PRIMITIVES: set[str] = {
          "f32",
          "f64",
 
-     };
+     },
+     VTABLE_HEADER_SLOTS: int = 1;
 
-"""Per-field layout descriptor."""
 obj FieldInfo {
     has name: str,
         index: int,
@@ -47,10 +31,10 @@ obj FieldInfo {
         type_node: (uni.UniNode | None) = None,
         default_expr: (uni.UniNode | None) = None,
         owner: str = "",
-        is_func_ptr: bool = False;
+        is_func_ptr: bool = False,
+        decl_node: (uni.UniNode | None) = None;
 }
 
-"""Per-method descriptor for vtable layout."""
 obj MethodSlot {
     has name: str,
         index: int,
@@ -58,7 +42,6 @@ obj MethodSlot {
         signature: (uni.UniNode | None) = None;
 }
 
-"""Complete layout for one archetype/class."""
 obj ArchetypeLayout {
     has name: str,
         arch_type: str,
@@ -69,46 +52,53 @@ obj ArchetypeLayout {
         methods: list[MethodSlot] = [],
         method_index: dict[str, int] = {},
         has_vtable: bool = False,
-        parent_field_start: dict[str, int] = {};
+        parent_field_start: dict[str, int] = {},
+        is_osp: bool = False,
+        is_acyclic: bool = False,
+        vtable_ptr_slot: (int | None) = None,
+        type_tag_slot: (int | None) = None,
+        reports_slot: (int | None) = None;
 }
 
-"""Get or compute the layout registry for a module.
+obj EnumMemberLayout {
+    has name: str,
+        ordinal: int,
+        int_value: int = 0,
+        str_value: (str | None) = None;
+}
 
-Backends call this lazily instead of LayoutPass being in the schedule.
-Avoids re-entrancy issues with the self-hosting compiler bootstrap.
-"""
+obj EnumLayout {
+    has name: str,
+        underlying: str = "i64",
+        is_string_enum: bool = False,
+        members: list[EnumMemberLayout] = [];
+}
+
 def get_layout_registry(module: uni.Module, prog: any = None) -> LayoutRegistry {
     reg = module.gen.layout_registry;
     if reg is not None {
         return reg;
     }
-    # Compute lazily
+
     pass_inst = LayoutPass(ir_in=module, prog=prog);
     return module.gen.layout_registry or LayoutRegistry();
 }
 
-"""Module-level layout registry."""
 obj LayoutRegistry {
     has layouts: dict[str, ArchetypeLayout] = {},
         class_parents: dict[str, list[str]] = {},
         mro_order: dict[str, list[str]] = {},
-        topo_order: list[str] = [];
+        topo_order: list[str] = [],
+        enums: dict[str, EnumLayout] = {};
 
     def get_layout(name: str) -> (ArchetypeLayout | None);
+    def get_enum_layout(name: str) -> (EnumLayout | None);
+    def resolve_method_owner(arch_name: str, method_name: str) -> (str | None);
     def get_mro(name: str) -> list[str];
     def get_topo_order -> list[str];
-    def get_field_index(class_name: str, field_name: str) -> (int | None);
-    def get_method_slot(class_name: str, method_name: str) -> (int | None);
-    def is_subclass(child: str, parent: str) -> bool;
     def is_primary_ancestor(child: str, ancestor: str) -> bool;
 }
 
-"""Layout analysis pass.
-
-Does not traverse the tree node-by-node; all analysis is performed
-in transform() via bulk sub-node queries, so we extend Transform
-directly instead of UniPass.
-"""
 obj LayoutPass(Transform[uni.Module, uni.Module]) {
     has ir_in: uni.Module,
         prog: any,
@@ -117,16 +107,20 @@ obj LayoutPass(Transform[uni.Module, uni.Module]) {
 
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;
-    # Core analysis
     def _collect_archetypes(module: uni.Module) -> dict[str, uni.Archetype];
     def _build_hierarchy(archetypes: dict[str, uni.Archetype]) -> None;
     def _compute_c3_mro(class_name: str) -> list[str];
     def _topo_sort(arch_map: dict[str, uni.Archetype]) -> list[str];
     def _build_layout(arch: uni.Archetype) -> ArchetypeLayout;
+    def _build_enum_layouts(module: uni.Module) -> None;
+    def _compute_acyclicity -> None;
+    def _acyclic_walk(name: str, state: dict[str, int]) -> int;
+    def _expand_type_keys(key: str) -> (list[str] | None);
+    def _split_top_level(s: str, sep: str) -> list[str];
     def _build_vtable_layout(
         arch_name: str, arch_map: dict[str, uni.Archetype]
     ) -> None;
-    # Field type validation for obj archetypes (CType struct contract)
+
     def _validate_obj_fields(
         arch: uni.Archetype, arch_map: dict[str, uni.Archetype]
     ) -> None;

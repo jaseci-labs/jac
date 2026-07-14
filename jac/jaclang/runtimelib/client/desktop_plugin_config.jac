@@ -1,15 +1,9 @@
-"""Plugin configuration hooks for jac-desktop.
-
-Registers metadata and schema for the [plugins.desktop] section in jac.toml.
-"""
 import os;
 
 import from importlib.metadata { version as pkg_version }
 import from pathlib { Path }
-import from jaclang.jac0core.runtime { hookimpl }
 
 
-"""Plugin metadata for jac-desktop."""
 obj PluginMetadata {
     has name: str,
         version: str,
@@ -25,28 +19,16 @@ obj PluginMetadata {
 }
 
 
-"""Return the absolute path of desktop_api.cl.jac for the jac.modules entry point.
-
-The SDK file ships beside this module as package data, so the same relative
-path resolves from both a source checkout and an installed wheel."""
 def desktop_sdk_path -> str {
     this_dir = os.path.dirname(os.path.abspath(__file__));
     return os.path.join(this_dir, 'targets', 'desktop', 'plugin', 'desktop_api.cl.jac');
 }
 
 
-"""Public symbol names exported by the @jac/desktop client SDK.
-
-The authoritative export list for desktop_api.cl.jac, kept beside the SDK it
-describes. jaclang's client compiler reads it via the `jac.module_exports`
-entry point (so the desktop symbol set lives here, not in core) because the SDK
-is built from `obj` types that the generic export extractor doesn't pick up.
-Keep in sync with the top-level `obj` declarations in desktop_api.cl.jac."""
 def desktop_sdk_exports -> list[str] {
     return ['app_window', 'clipboard', 'dialog', 'fs', 'notification', 'path', 'shell'];
 }
 
-"""Single option spec in a plugin config schema."""
 obj ConfigOptionSpec {
     has type: str,
         description: str,
@@ -97,7 +79,6 @@ obj ConfigOptionSpec {
     }
 }
 
-"""Full plugin config schema returned by get_config_schema."""
 obj PluginConfigSchema {
     has section: str,
         options: dict[str, ConfigOptionSpec];
@@ -145,7 +126,6 @@ def schema_dict_option(
     );
 }
 
-"""Build the [plugins.desktop] configuration schema."""
 def _desktop_config_schema -> PluginConfigSchema {
     return PluginConfigSchema(
         section="desktop",
@@ -155,6 +135,10 @@ def _desktop_config_schema -> PluginConfigSchema {
                 "com.myapp", "Reverse-domain identifier (com.example.myapp)"
             ),
             "version": schema_str_option("1.0.0", "Desktop app version"),
+            "engine": schema_str_option(
+                "native",
+                "Desktop engine: 'native' (OS webview) or 'cef' (Chromium Embedded Framework)"
+            ),
             "window": schema_dict_option(
                 "Window geometry: title, width, height, min_width, min_height, resizable.",
                 nested={
@@ -212,9 +196,7 @@ def _desktop_config_schema -> PluginConfigSchema {
     );
 }
 
-"""Plugin configuration hooks for jac-desktop."""
 class JacDesktopPluginConfig {
-    @hookimpl
     static def get_plugin_metadata -> dict[str, str] {
         return PluginMetadata(
             name="desktop",
@@ -223,37 +205,21 @@ class JacDesktopPluginConfig {
         ).to_dict();
     }
 
-    @hookimpl
     static def get_config_schema -> dict[str, object] {
         return _desktop_config_schema().to_dict();
     }
 
-    """The built-in `desktop` project-kind template.
-
-    Called directly by core's template-registry init (not via the
-    `register_project_template` hook) so the template survives a JacRuntime reset.
-    """
     static def desktop_project_template -> dict[str, object] | None {
         return _load_desktop_template();
     }
 }
 
-"""Load the bundled `desktop` project template (kind=desktop).
-
-Mirrors the client loader: the template lives in
-`jaclang/runtimelib/client/templates/desktop/` as a directory template whose
-jac.toml carries `[project] kind = "desktop"`. Reuses the client
-`_post_create_client` hook so the scaffolded app gets the same client bootstrap
-(Bun + npm deps).
-"""
 def _load_desktop_template -> dict[str, object] | None {
     import from jaclang.project.template_loader { load_template_from_directory }
     import from jaclang.cli.console { console }
     import from jaclang.runtimelib.client.plugin_config { _post_create_client }
 
-    # Templates are siblings of this module at
-    # jaclang/runtimelib/client/templates/desktop.
-    module_dir = Path(str(__file__)).parent;  # jaclang/runtimelib/client directory
+    module_dir = Path(str(__file__)).parent;
     template_dir = module_dir / "templates" / "desktop";
     if not template_dir.exists() or not template_dir.is_dir() {
         return None;

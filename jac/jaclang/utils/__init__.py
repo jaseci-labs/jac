@@ -3,7 +3,7 @@
 import importlib
 
 # lang_tools.py remains here as it's a high-level tool with many dependencies
-# NonGPT.jac and symtable_test_helpers.jac remain here as well
+# NonGPT.jac remains here as well
 
 
 def __getattr__(name: str) -> object:

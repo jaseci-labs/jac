@@ -1,10 +1,3 @@
-"""RD parser validation tests – migrated from test_rd_parser_validation.py.
-
-Validates the recursive descent parser on the full micro suite files and
-gap coverage files. Also tests that the parser correctly rejects invalid
-constructs.
-"""
-
 import os;
 import from pathlib { Path }
 import from tests.support { JAC_ROOT }
@@ -21,7 +14,6 @@ glob GAP_DIR = os.path.join(
          JAC_ROOT, "tests", "compiler", "fixtures", "rd_parser_gaps"
      );
 
-"""Parse source with the RD parser, returning a Module or None on error."""
 def parse_with_rd(source: str, file_path: str) -> Module | None {
     try {
         import from jaclang.jac0core.parser.parser { parse }
@@ -35,7 +27,6 @@ def parse_with_rd(source: str, file_path: str) -> Module | None {
     }
 }
 
-"""Verify RD parser can parse a single file without errors."""
 def rd_parser_test(filename: str) {
     source = read_file_with_encoding(filename);
     saved_test_count = JacTest.TEST_COUNT;
@@ -89,7 +80,8 @@ glob GAP_FILES = [
          "glob_chained_assign.jac",
          "edge_ref_subscript.jac",
          "lambda_typed_params.jac",
-         "lambda_keyword_params.jac"
+         "lambda_keyword_params.jac",
+         "lambda_zero_param_no_parens.jac"
      ],
      MUST_REJECT: dict[str, str] = {
          "can_without_event_clause": "obj Foo { can bar { } }",
@@ -136,6 +128,8 @@ glob GAP_FILES = [
          "match_missing_expression": "with entry { match { case 1: x=1; } }",
          "for_empty_iter": "with entry { for x in { } }",
          "while_empty_condition": "with entry { while { } }",
+         "forever_with_condition": "with entry { forever true { } }",
+         "forever_with_else": "with entry { forever { } else { } }",
          "test_with_semi": "test foo;",
          "impl_without_target": "impl { }",
          "impl_invalid_spec": "impl (int) -> int { }",
@@ -164,16 +158,15 @@ glob GAP_FILES = [
          "double_else_on_if": "with entry { if true { } else { } else { } }",
          "from_import_empty_items": "import from foo { };",
          "bare_semi_at_module_level": ";",
-         # --- Strictness gaps: semicolons optional where they should be required ---
          "assignment_missing_semi": 'with entry { x = 5 }',
          "augmented_assign_missing_semi": 'with entry { x += 1 }',
          "expression_stmt_missing_semi": 'with entry { print("hi") }',
          "report_missing_semi": 'with entry { report 5 }',
          "chained_assign_missing_semi": 'with entry { x = y = 5 }',
          "typed_assign_missing_semi": 'with entry { x: int = 5 }',
-         # --- Strictness gaps: keywords as parameter names ---
          "keyword_param_if": "def foo(if: int) { }",
          "keyword_param_while": "def foo(while: str) { }",
+         "keyword_param_forever": "def foo(forever: int) { }",
          "keyword_param_for": "def foo(for: int) { }",
          "keyword_param_return": "def foo(return: int) { }",
          "keyword_param_import": "def foo(import: int) { }",
@@ -183,13 +176,17 @@ glob GAP_FILES = [
          "keyword_param_obj": "def foo(obj: int) { }",
          "keyword_param_node": "def foo(node: int) { }",
          "keyword_param_override": "def foo(override: bool) { }",
-         "keyword_param_in_lambda": "with entry { x = lambda if: int : if; }",
-         # --- Strictness gaps: enum in code blocks (not allowed at stmt level in Lark) ---
+         "keyword_param_root": "def foo(root: int) { }",
+         "keyword_param_super": "def foo(super: int) { }",
+         "keyword_param_in_lambda": "with entry { x = lambda (if: int) { if; }; }",
+         "keyword_param_root_in_lambda": "with entry { x = lambda (root: int) { root; }; }",
+         "keyword_param_super_in_lambda": "with entry { x = lambda (super: int) { super; }; }",
+         "lambda_params_require_parens": "with entry { f = lambda x { x; }; }",
+         "lambda_colon_body_removed": "with entry { f = lambda (y): y + 1; }",
          "enum_inside_if": "with entry { if true { enum Color { RED } } }",
          "enum_inside_function": "def foo() { enum Color { RED } }"
      },
      MUST_REJECT_VALIDATION: dict[str, str] = {
-         # These are valid at the parser level but rejected by ASTValidationPass
          "pass_keyword": "with entry { match x { case 1: pass; } }",
          "with_exit_at_module_level": 'with exit { print("bye"); }',
          "empty_match_body": "with entry { match x { } }",
@@ -200,15 +197,31 @@ glob GAP_FILES = [
          "walrus_call_lhs": "with entry { foo() := 5; }",
          "walrus_subscript_lhs": "with entry { a[0] := 5; }",
          "assign_to_root": 'with entry { root = "s"; }',
-         "assign_to_super": "with entry { super = 1; }"
+         "assign_to_super": "with entry { super = 1; }",
+         "for_in_target_root": "with entry { for root in [1, 2] { } }",
+         "for_in_target_super": "with entry { for super in [1, 2] { } }",
+         "for_in_destructure_root": "with entry { for (a, root) in [(1, 2)] { } }",
+         "compr_target_root": "with entry { x = [root for root in [1, 2]]; }",
+         "has_var_root": "obj F { has root: int = 0; }",
+         "has_var_super": "obj F { has super: int = 0; }",
+         "with_as_root": 'with entry { with open("/x") as root { } }',
+         "del_root": "with entry { del root; }",
+         "walrus_root": "with entry { x = (root := 5); }"
+     },
+     MUST_VALIDATE_CLEAN: dict[str, str] = {
+         # The backtick escape hatch and the bindable special names
+         # (here/visitor/self/props) must NOT trip the non-bindable check.
+         "for_in_escaped_root": "with entry { for `root in [1, 2] { } }",
+         "has_var_escaped_root": "obj F { has `root: int = 0; }",
+         "for_in_here": "with entry { for here in [1, 2] { } }",
+         "has_var_visitor": "obj F { has visitor: int = 0; }"
      };
 
-"""Parse and run ASTValidationPass, returning True if errors were found."""
 def parse_and_validate(source: str, file_path: str) -> bool {
     try {
         import from jaclang.jac0core.parser.parser { parse }
-        (module, parse_errors, lex_errors) = parse(source, file_path);
-        if lex_errors or parse_errors {
+        (module, had_error) = parse(source, file_path);
+        if had_error {
             return True;
         }
         if module is None {
@@ -234,20 +247,38 @@ def validation_strictness_test(name_snippet: tuple[str, str]) {
     assert has_errors , f"Parser + ASTValidationPass must reject '{name}': {snippet}";
 }
 
+def validation_clean_test(name_snippet: tuple[str, str]) {
+    (name, snippet) = name_snippet;
+    has_errors = parse_and_validate(snippet, "/tmp/strictness_test.jac");
+    assert not has_errors , f"Parser + ASTValidationPass must accept '{name}': {snippet}";
+}
+
 with entry {
     parametrize(
-        "rd parse", MICRO_JAC_FILES, rd_parse_file_test, id_fn=lambda f : Path(f).stem
+        "rd parse",
+        MICRO_JAC_FILES,
+        rd_parse_file_test,
+        id_fn=lambda (f) { Path(f).stem; }
     );
     parametrize(
-        "rd gap", GAP_FILES, rd_gap_test, id_fn=lambda f : f.replace(".jac", "")
+        "rd gap", GAP_FILES, rd_gap_test, id_fn=lambda (f) { f.replace(".jac", ""); }
     );
     parametrize(
-        "rd strict", list(MUST_REJECT.items()), strictness_test, id_fn=lambda x : x[0]
+        "rd strict",
+        list(MUST_REJECT.items()),
+        strictness_test,
+        id_fn=lambda (x) { x[0]; }
     );
     parametrize(
         "rd strict validation",
         list(MUST_REJECT_VALIDATION.items()),
         validation_strictness_test,
-        id_fn=lambda x : x[0]
+        id_fn=lambda (x) { x[0]; }
+    );
+    parametrize(
+        "rd clean validation",
+        list(MUST_VALIDATE_CLEAN.items()),
+        validation_clean_test,
+        id_fn=lambda (x) { x[0]; }
     );
 }

@@ -1,41 +1,31 @@
-"""Implementation of JIR writer and reader methods."""
 import struct;
 import sys;
 import zlib;
 
-# =============================================================================
-# JirWriter implementation
-# =============================================================================
 impl JirWriter.write_module(
     module: Module, sections: (dict[int, bytes] | None) = None
 ) -> bytes {
     import from jaclang.jac0core.jir { HEADER_FMT, HEADER_SIZE, MAGIC, FORMAT_VERSION }
     import from importlib.metadata { version as pkg_version }
 
-    # Phase 1: Post-order walk to assign IDs
     self._assign_ids(module);
 
-    # Phase 2: Serialize each node
     ir_buf = bytearray();
     for ir_item in self._nodes {
         self._write_node(ir_buf, ir_item);
     }
 
-    # Phase 3: Serialize link table
     link_buf = bytearray();
     self._write_link_table(link_buf);
 
-    # Phase 4: Build string pool
     pool_bytes = self._pool.serialize();
 
-    # Phase 5: Assemble with header
     try {
         jac_ver = pkg_version('jaclang');
     } except Exception {
         jac_ver = "0.0.0";
     }
 
-    # Compute source hash
     source_hash = 0;
     if module?.source and module.source is not None {
         src_str = module.source.code;
@@ -46,7 +36,6 @@ impl JirWriter.write_module(
 
     sym_count = self._count_symbols(module);
 
-    # Flags: bit 0 = is_stub
     flags = 0;
     if module.stub_only {
         flags |= 1;
@@ -65,7 +54,6 @@ impl JirWriter.write_module(
         flags
     );
 
-    # Assemble: header (uncompressed) + zlib(pool + nodes + links) + optional sections
     import from jaclang.jac0core.jir { write_sections }
     payload = pool_bytes + bytes(ir_buf) + bytes(link_buf);
     compressed = zlib.compress(payload, 6);
@@ -77,7 +65,6 @@ impl JirWriter.write_module(
 }
 
 impl JirWriter._assign_ids(ir_node: UniNode) -> int {
-    # Visit children first (post-order)
     for kid in ir_node.kid {
         self._assign_ids(kid);
     }
@@ -115,10 +102,8 @@ impl JirWriter._write_node(buf: bytearray, ir_node: UniNode) -> None {
     is_cfg = isinstance(ir_node, UniCFGNode);
     is_context_aware = isinstance(ir_node, ContextAwareNode);
 
-    # Write type index as varint
     _write_varint(buf, type_idx);
 
-    # Write overlay flags as a single byte
     overlay_flags = 0;
     if is_scope {
         overlay_flags |= 1;
@@ -134,38 +119,32 @@ impl JirWriter._write_node(buf: bytearray, ir_node: UniNode) -> None {
     }
     buf.append(overlay_flags);
 
-    # Write child count and child IDs
     _write_varint(buf, len(list(ir_node.kid)));
     for kid in ir_node.kid {
         _write_varint(buf, self._get_node_id(kid));
     }
 
-    # Write constructor fields per spec
     for field_desc in spec.fields {
         self._write_field(buf, ir_node, field_desc.name, field_desc.kind);
     }
 
-    # Write scope overlay
     if is_scope {
         _write_varint(buf, self._pool.intern(ir_node.scope_name));
 
-        # parent_scope -> link table (deferred)
         parent_scope_id = self._get_node_id(ir_node.parent_scope);
         self._parent_scope_links.append((self._node_ids[id(ir_node)], parent_scope_id));
 
-        # names_in_scope: symbol entries
         _write_varint(buf, len(ir_node.names_in_scope));
         for (sym_name, sym) in ir_node.names_in_scope.items() {
             _write_varint(buf, self._pool.intern(sym_name));
             self._write_symbol(buf, sym);
         }
 
-        # names_in_scope_overload
         overload_map = ir_node.names_in_scope_overload;
         non_empty = {
             k: v
             for (k, v) in overload_map.items()
-            if v  # Preserve any overloads (was: len(v) > 1, which dropped single overloads)
+            if v
         };
         _write_varint(buf, len(non_empty));
         for (sym_name, sym_list) in non_empty.items() {
@@ -176,7 +155,6 @@ impl JirWriter._write_node(buf: bytearray, ir_node: UniNode) -> None {
             }
         }
 
-        # inherited_scope
         inherited = getattr(ir_node, 'inherited_scope', []);
         _write_varint(buf, len(inherited));
         for inh in inherited {
@@ -190,7 +168,6 @@ impl JirWriter._write_node(buf: bytearray, ir_node: UniNode) -> None {
         }
     }
 
-    # Write CFG overlay
     if is_cfg {
         bb_in = ir_node.bb_in;
         bb_out = ir_node.bb_out;
@@ -210,7 +187,6 @@ impl JirWriter._write_node(buf: bytearray, ir_node: UniNode) -> None {
         }
     }
 
-    # Write NameAtom overlay
     if isinstance(ir_node, NameAtom) {
         sym = ir_node._sym;
         if sym is not None {
@@ -223,14 +199,12 @@ impl JirWriter._write_node(buf: bytearray, ir_node: UniNode) -> None {
             buf.append(0);
         }
 
-        # name_of -> AstSymbolNode (deferred to link table)
         name_of = ir_node.name_of;
         if name_of is not None and name_of is not ir_node {
             na_id = self._node_ids[id(ir_node)];
             self._name_of_links.append((na_id, self._get_node_id(name_of)));
         }
 
-        # _sym_name and _sym_category
         sym_name = ir_node._sym_name;
         _write_varint(buf, self._pool.intern(sym_name));
         sym_cat = ir_node._sym_category;
@@ -241,7 +215,6 @@ impl JirWriter._write_node(buf: bytearray, ir_node: UniNode) -> None {
         }
     }
 
-    # Write code_context overlay (postinit field, not in spec)
     if is_context_aware {
         ctx = ir_node.code_context;
         if ctx == CodeContext.CLIENT {
@@ -249,34 +222,50 @@ impl JirWriter._write_node(buf: bytearray, ir_node: UniNode) -> None {
         } elif ctx == CodeContext.NATIVE {
             buf.append(2);
         } else {
-            buf.append(0);  # SERVER (default)
+            buf.append(0);
         }
     }
 }
 
 impl JirWriter._write_symbol(buf: bytearray, sym: Symbol) -> None {
-    # defn nodes
     _write_varint(buf, len(sym.defn));
     for defn in sym.defn {
         _write_varint(buf, self._get_node_id(defn));
     }
-    # uses nodes
+
     _write_varint(buf, len(sym.uses));
     for use in sym.uses {
         _write_varint(buf, self._get_node_id(use));
     }
-    # access (string enum -> pool index)
+
     access_str = sym.access?.value or str(sym.access);
     _write_varint(buf, self._pool.intern(access_str));
-    # imported flag
+
     buf.append(1 if sym.imported else 0);
+
+    try {
+        buf.append(int(sym.ownership.value) & 0xFF);
+    } except Exception {
+        buf.append(0);
+    }
+    _fact_flags = 0;
+    if getattr(sym, 'param_rebound', False) {
+        _fact_flags |= 1;
+    }
+    if getattr(sym, 'na_escapes', False) {
+        _fact_flags |= 2;
+    }
+    if getattr(sym, 'na_stack_ok', False) {
+        _fact_flags |= 4;
+    }
+    buf.append(_fact_flags);
 }
 
 impl JirWriter._write_field(
     buf: bytearray, ir_node: UniNode, field_name: str, kind: int
 ) -> None {
     val = getattr(ir_node, field_name, None);
-    # Token stores line/col under aliased names; fall back when primary is None
+
     if val is None and kind == FieldKind.INT {
         _TOKEN_ALIASES = {
             'line': 'line_no',
@@ -319,15 +308,10 @@ impl JirWriter._write_field(
                 _write_varint(buf, self._get_node_id(item));
             }
         } else {
-            # Single node value (union types like Sequence[X] | Y)
             _write_varint(buf, 1);
             _write_varint(buf, self._get_node_id(val));
         }
     } elif kind == FieldKind.OPT_NODE_LIST {
-        # Like NODE_LIST but preserves None vs [] via a leading presence byte.
-        # A plain `has` field has accessors=None; a bare NODE_LIST encoding
-        # round-trips None to [], making the field look like a setter-less
-        # property on cache reload (false E1005). The flag keeps the distinction.
         if val is None {
             buf.append(0);
         } else {
@@ -371,17 +355,15 @@ impl JirWriter._write_field(
             _write_varint(buf, int(val));
         }
     }
-    # FieldKind.SKIP: do nothing
 }
 
 impl JirWriter._write_link_table(buf: bytearray) -> None {
-    # parent_scope links
     _write_varint(buf, len(self._parent_scope_links));
     for (scope_id, parent_id) in self._parent_scope_links {
         _write_varint(buf, scope_id);
         _write_varint(buf, parent_id);
     }
-    # name_of links (NameAtom -> AstSymbolNode forward refs)
+
     _write_varint(buf, len(self._name_of_links));
     for (na_id, name_of_id) in self._name_of_links {
         _write_varint(buf, na_id);
@@ -400,9 +382,6 @@ impl JirWriter._count_symbols(module: Module) -> int {
     return count;
 }
 
-# =============================================================================
-# JirReader implementation
-# =============================================================================
 impl JirReader.read_module(data: bytes) -> (Module | None) {
     import from jaclang.jac0core.jir { HEADER_FMT, HEADER_SIZE, MAGIC, FORMAT_VERSION }
     try {
@@ -416,7 +395,6 @@ impl JirReader.read_module(data: bytes) -> (Module | None) {
         return None;
     }
 
-    # Parse header
     try {
         (
             magic,
@@ -437,12 +415,10 @@ impl JirReader.read_module(data: bytes) -> (Module | None) {
         return None;
     }
 
-    # Reject JIR files built with a different jaclang version (node layout may differ)
     if _current_jac_hash != 0 and jac_hash != _current_jac_hash {
         return None;
     }
 
-    # Decompress payload
     try {
         payload_bytes = zlib.decompress(data[HEADER_SIZE:]);
     } except zlib.error {
@@ -451,25 +427,20 @@ impl JirReader.read_module(data: bytes) -> (Module | None) {
     payload = memoryview(payload_bytes);
     pos = 0;
 
-    # Read string pool
     (self._pool, pos) = _deserialize_string_pool(payload, pos);
 
-    # Lazy-load class mapping and cache imports
     if not self._class_map {
         self._class_map = get_class_mapping();
         self._init_caches();
     }
 
-    # Read node stream
     self._nodes = [None] * ir_node_count;
     for i in range(ir_node_count) {
         pos = self._read_node(payload, pos, i);
     }
 
-    # Read link table
     pos = self._read_link_table(payload, pos);
 
-    # The last node (post-order) is the root Module
     if self._nodes {
         last_node = self._nodes[-1];
         import from jaclang.jac0core.unitree { Module as ModuleCls }
@@ -478,36 +449,10 @@ impl JirReader.read_module(data: bytes) -> (Module | None) {
                 self._wire_source(last_node);
             }
             self._fix_param_kinds();
-            # Decode trailing TLV sections (bytecode, MTIR, LLVM IR, interop, type tags)
-            import from jaclang.jac0core.jir {
-                SEC_BYTECODE,
-                SEC_MTIR,
-                SEC_LLVM_IR,
-                SEC_INTEROP
-            }
-            secs = self._read_trailing_sections(data);
-            self.bytecode_section = secs.get(SEC_BYTECODE);
-            self.mtir_section = secs.get(SEC_MTIR);
-            self.llvm_ir_section = secs.get(SEC_LLVM_IR);
-            self.interop_section = secs.get(SEC_INTEROP);
             return last_node;
         }
     }
     return None;
-}
-
-impl JirReader._read_trailing_sections(data: bytes) -> dict[int, bytes] {
-    import from jaclang.jac0core.jir { HEADER_SIZE, SECTIONS_MAGIC, read_sections }
-    try {
-        magic_bytes: any = SECTIONS_MAGIC;
-        pos = data.find(magic_bytes, HEADER_SIZE);
-        if pos < 0 {
-            return {};
-        }
-        return read_sections(data, pos + len(magic_bytes));
-    } except Exception {
-        return {};
-    }
 }
 
 impl JirReader._wire_source(module: Module) -> None {
@@ -525,7 +470,6 @@ impl JirReader._wire_source(module: Module) -> None {
     src = Source(source_content, self._source_path);
     module.source = src;
 
-    # Walk all nodes and set orig_src on Token instances
     stack = [module];
     visited: set[int] = set();
     while stack {
@@ -610,7 +554,8 @@ impl JirReader._init_caches -> None {
         SymbolAccess,
         SymbolType,
         EdgeDir,
-        CodeContext
+        CodeContext,
+        OwnershipKind
     }
     import from jaclang.jac0core.codeinfo { CodeLocInfo }
     import ast as ast3;
@@ -637,11 +582,6 @@ impl JirReader._init_caches -> None {
 
     self._uni_types = (UniScopeNode, UniCFGNode, NameAtom);
 
-    # Stub-symbol category per AstSymbolStubNode subclass — mirrors the
-    # sym_type each class's postinit passes to AstSymbolStubNode._init_stub.
-    # Used to fabricate name_spec during JIR deserialization so the round-trip
-    # restores the same _sym_category the live compile produced. SetCompr and
-    # GenCompr inherit ListCompr's postinit, so they don't need entries.
     self._stub_sym_types = {
         MultiString: SymbolType.STRING,
         FString: SymbolType.STRING,
@@ -658,14 +598,14 @@ impl JirReader._init_caches -> None {
         JsxElement: SymbolType.OBJECT_ARCH
     };
 
-    # Build reverse lookup: enum_value_string -> enum_member
     self._enum_cache = {};
     enum_mapping = {
         'sym_category': SymbolType,
         'sym_type': SymbolType,
         'access': SymbolAccess,
         'edge_dir': EdgeDir,
-        'code_context': CodeContext
+        'code_context': CodeContext,
+        'ownership': OwnershipKind
     };
     for (fname, enum_cls) in enum_mapping.items() {
         cache: dict[str, object] = {};
@@ -695,15 +635,12 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
 
     _SN = SENTINEL_NONE;
 
-    # Read type index
     (type_idx, pos) = _read_varint(data, pos);
     spec = IDX_TO_SPEC[type_idx];
 
-    # Read overlay flags
     overlay_flags = data[pos];
     pos += 1;
 
-    # Read children
     (child_count, pos) = _read_varint(data, pos);
     child_ids: list[int] = [];
     for _ in range(child_count) {
@@ -711,12 +648,10 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
         child_ids.append(cid);
     }
 
-    # Construct ir_node via __new__ (skips init)
     cls = class_map[spec.class_name];
     ir_node: any = cls.__new__(cls);
     nd = ir_node.__dict__;
 
-    # Read fields and set directly on the ir_node
     enum_cache = self._enum_cache;
     pool_get = pool.get;
     for field_desc in spec.fields {
@@ -807,10 +742,8 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
                 nd[fname] = val;
             }
         }
-        # FieldKind.SKIP: do nothing
     }
 
-    # Set kid/parent links
     kids = [];
     for cid in child_ids {
         if cid < _SN {
@@ -824,7 +757,6 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
     nd['kid'] = kids;
     nd['parent'] = None;
 
-    # Initialize internal state from base class inits
     nd['_UniNode__sub_node_tab'] = None;
     nd['_in_mod_nodes'] = [];
     nd['_gen'] = None;
@@ -833,14 +765,12 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
     assert uni_types is not None;
     (_UniScopeNode, _UniCFGNode, _NameAtom) = uni_types;
 
-    # Expr.init: _type_sym_tab, type, attached_tokens
     if isinstance(ir_node, self._Expr) {
         nd.setdefault('_type_sym_tab', None);
         nd.setdefault('type', None);
         nd.setdefault('attached_tokens', None);
     }
 
-    # NameAtom.init: name_of, _sym, _sym_name, _sym_category, _py_ctx_func
     if isinstance(ir_node, _NameAtom) {
         nd.setdefault('name_of', ir_node);
         nd.setdefault('_sym', None);
@@ -849,7 +779,6 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
         nd.setdefault('_py_ctx_func', self._ast3_Load);
     }
 
-    # AstSymbolNode.init: name_spec, semstr
     if isinstance(ir_node, self._AstSymbolNode) {
         nd.setdefault('semstr', '');
         if 'name_spec' not in nd {
@@ -864,44 +793,30 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
                     }
                 }
             }
-            # Name/SpecialVarRef are NameAtom subclasses where name_spec == self
+
             if 'name_spec' not in nd and isinstance(ir_node, _NameAtom) {
                 nd['name_spec'] = ir_node;
             }
         }
     }
 
-    # ParamVar.init: param_kind
     if isinstance(ir_node, self._ParamVar) {
         nd.setdefault('param_kind', self._ParamKind_NORMAL);
     }
 
-    # FuncCall postinit: call_kind, callee_decl. Neither is serialized to JIR
-    # (the checker restamps them on a real inference run), but `__new__`-based
-    # construction skips postinit, so a JIR-reloaded FuncCall would otherwise
-    # have no attribute at all. Seed the postinit defaults so backends that
-    # read `.callee_decl`/`.call_kind` (native + client/JS codegen) see a clean
-    # `None` — an unresolved call — instead of crashing with AttributeError on
-    # a warm build. See jaseci-labs/jaseci#6656 (Ask #2).
     if isinstance(ir_node, self._FuncCall) {
         nd.setdefault('call_kind', None);
         nd.setdefault('callee_decl', None);
     }
 
-    # WalkerStmtOnlyNode.init: from_walker
     if isinstance(ir_node, self._WalkerStmtOnlyNode) {
         nd.setdefault('from_walker', False);
     }
 
-    # ContextAwareNode.postinit: code_context (backward compat for old JIR
-    # files without the overlay; new files read it from the bit-3 overlay)
     if isinstance(ir_node, self._ContextAwareNode) {
         nd.setdefault('code_context', self._CodeContext_SERVER);
     }
 
-    # SpecialVarRef: token kind ('name') is deserialized directly from registry.
-    # Point orig at self (py_resolve_name uses self.orig.name == self.name), then
-    # derive value. No separate inner Name node exists in the kid list.
     if isinstance(ir_node, self._SpecialVarRef) {
         nd['orig'] = ir_node;
         try {
@@ -912,7 +827,6 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
         }
     }
 
-    # Token.init aliases: line -> line_no, col_start -> c_start, col_end -> c_end
     if isinstance(ir_node, self._Token) {
         if 'line' in nd {
             nd['line_no'] = nd['line'];
@@ -925,23 +839,19 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
         }
     }
 
-    # Module.init: extra attributes
     if isinstance(ir_node, self._Module) {
         nd.setdefault('src_terminals', None);
         nd.setdefault('is_raised_from_py', False);
     }
 
-    # Import.init: hint
     if isinstance(ir_node, self._Import) {
         nd.setdefault('hint', {});
     }
 
-    # ModulePath.init / ModuleItem.init: abs_path
     if isinstance(ir_node, self._ModulePath) or isinstance(ir_node, self._ModuleItem) {
         nd.setdefault('abs_path', None);
     }
 
-    # Source.init: hash, file_path, comments
     if isinstance(ir_node, self._Source) {
         if 'value' in nd {
             import hashlib;
@@ -951,44 +861,23 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
         nd.setdefault('comments', []);
     }
 
-    # Set loc
     try {
         ir_node.loc = self._CodeLocInfo(*ir_node.resolve_tok_range());
     } except Exception {
         ;
     }
 
-    # AstSymbolStubNode (MultiString, FString, ListVal, SetVal, TupleVal,
-    # DictVal, {List,Dict,Set,Gen}Compr, IndexSlice, EdgeOpRef, FilterCompr,
-    # AssignCompr, JsxElement): fabricate stub name_spec if not already
-    # populated. Each class's postinit normally calls
-    # AstSymbolStubNode._init_stub, which builds a stub Name via
-    # Name.gen_stub_from_node and wires it as self.name_spec. JIR doesn't
-    # persist that fabricated Name (it's not part of any declared field on
-    # the stub node), and the earlier name_spec fallbacks above all miss
-    # because these nodes neither expose a 'name'/'name_ref' field nor have
-    # a NameAtom in their kid list. Without this restoration, downstream
-    # passes that walk AtomTrailer chains and touch chain[0].sym (notably
-    # DeclImplMatchPass._resolve_symbols_in_subtree, invoked from
-    # TypeEvaluator._reattach_impl_modules after a JIR cache hit) raise
-    # AttributeError: '<StubClass>' object has no attribute 'name_spec'
-    # whenever a literal sits at the head of an attribute chain
-    # (e.g. "x".upper(), [..].method(), or a JSX subtree on a trailer).
     if (isinstance(ir_node, self._AstSymbolStubNode) and nd.get('name_spec') is None) {
         sym_type = self._stub_sym_types.get(type(ir_node), self._SymbolType_UNKNOWN);
         try {
             ir_node._init_stub(sym_type);
         } except Exception {
-            # Best-effort: if loc/kid wiring isn't complete enough for
-            # gen_stub_from_node, leave name_spec unset. Callers that touch
-            # it will still surface a clearer error than a silent miss.
             ;
         }
     }
 
     nodes[idx] = ir_node;
 
-    # Read overlays (isinstance checks satisfy type checker; flags guarantee correctness)
     import from jaclang.jac0core.unitree {
         UniScopeNode,
         UniCFGNode,
@@ -1014,7 +903,6 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
             } elif ctx_byte == 2 {
                 ir_node.code_context = CodeContext.NATIVE;
             }
-            # 0 = SERVER, already the default from postinit
         }
     }
 
@@ -1029,18 +917,15 @@ impl JirReader._read_scope_overlay(
 
     assert self._pool is not None;
 
-    # scope_name
     (name_idx, pos) = _read_varint(data, pos);
     scope_node.scope_name = self._pool.get(name_idx);
 
-    # parent_scope is set via link table
     scope_node.parent_scope = None;
     scope_node.kid_scope = [];
     scope_node.names_in_scope = {};
     scope_node.names_in_scope_overload = {};
     scope_node.inherited_scope = [];
 
-    # Read symbols
     (sym_count, pos) = _read_varint(data, pos);
     for _ in range(sym_count) {
         (sym_name_idx, pos) = _read_varint(data, pos);
@@ -1052,7 +937,6 @@ impl JirReader._read_scope_overlay(
         }
     }
 
-    # Read overloads
     (overload_count, pos) = _read_varint(data, pos);
     for _ in range(overload_count) {
         (sym_name_idx, pos) = _read_varint(data, pos);
@@ -1070,7 +954,6 @@ impl JirReader._read_scope_overlay(
         }
     }
 
-    # Read inherited scopes
     (inh_count, pos) = _read_varint(data, pos);
     for _ in range(inh_count) {
         (src_id, pos) = _read_varint(data, pos);
@@ -1101,7 +984,6 @@ impl JirReader._read_symbol(data: (bytes | memoryview), pos: int) -> tuple {
     import from jaclang.jac0core.unitree { Symbol, NameAtom }
     import from jaclang.jac0core.constant { SymbolAccess }
 
-    # defn nodes
     (defn_count, pos) = _read_varint(data, pos);
     defn_ids = [];
     for _ in range(defn_count) {
@@ -1109,7 +991,6 @@ impl JirReader._read_symbol(data: (bytes | memoryview), pos: int) -> tuple {
         defn_ids.append(nid);
     }
 
-    # uses nodes
     (uses_count, pos) = _read_varint(data, pos);
     uses_ids = [];
     for _ in range(uses_count) {
@@ -1117,7 +998,6 @@ impl JirReader._read_symbol(data: (bytes | memoryview), pos: int) -> tuple {
         uses_ids.append(nid);
     }
 
-    # access
     (access_idx, pos) = _read_varint(data, pos);
     assert self._pool is not None;
     access_str = self._pool.get(access_idx);
@@ -1127,11 +1007,20 @@ impl JirReader._read_symbol(data: (bytes | memoryview), pos: int) -> tuple {
         access = SymbolAccess.PUBLIC;
     }
 
-    # imported
     imported = bool(data[pos]);
     pos += 1;
 
-    # Resolve defn nodes
+    import from jaclang.jac0core.constant { OwnershipKind }
+    _own_raw = data[pos];
+    pos += 1;
+    try {
+        _ownership = OwnershipKind(_own_raw);
+    } except (ValueError, KeyError) {
+        _ownership = OwnershipKind.NONE;
+    }
+    _fact_flags = data[pos];
+    pos += 1;
+
     defn_nodes = [];
     for nid in defn_ids {
         n = self._resolve_node(nid);
@@ -1144,7 +1033,6 @@ impl JirReader._read_symbol(data: (bytes | memoryview), pos: int) -> tuple {
         return (None, pos);
     }
 
-    # Create Symbol with __new__ (skip init); getattr avoids type-checker arity check
     sym: any = getattr(Symbol, '__new__')(Symbol);
     sym.defn = defn_nodes;
     sym.uses = [];
@@ -1152,15 +1040,17 @@ impl JirReader._read_symbol(data: (bytes | memoryview), pos: int) -> tuple {
     sym.access = access;
     sym.parent_tab = None;
     sym.semstr = '';
+    sym.ownership = _ownership;
+    sym.param_rebound = bool(_fact_flags & 1);
+    sym.na_escapes = bool(_fact_flags & 2);
+    sym.na_stack_ok = bool(_fact_flags & 4);
 
-    # Wire up _sym on defn nodes
     for d in defn_nodes {
         if isinstance(d, NameAtom) {
             d._sym = sym;
         }
     }
 
-    # Resolve uses
     for nid in uses_ids {
         n = self._resolve_node(nid);
         if n is not None {
@@ -1177,7 +1067,6 @@ impl JirReader._read_symbol(data: (bytes | memoryview), pos: int) -> tuple {
 impl JirReader._read_cfg_overlay(
     data: (bytes | memoryview), pos: int, cfg_node: UniCFGNode
 ) -> int {
-    # bb_in
     (bb_in_count, pos) = _read_varint(data, pos);
     bb_in_ids = [];
     for _ in range(bb_in_count) {
@@ -1185,7 +1074,6 @@ impl JirReader._read_cfg_overlay(
         bb_in_ids.append(nid);
     }
 
-    # bb_out
     (bb_out_count, pos) = _read_varint(data, pos);
     bb_out_ids = [];
     for _ in range(bb_out_count) {
@@ -1193,7 +1081,6 @@ impl JirReader._read_cfg_overlay(
         bb_out_ids.append(nid);
     }
 
-    # affected_symbols
     (aff_count, pos) = _read_varint(data, pos);
     affected = set();
     assert self._pool is not None;
@@ -1220,7 +1107,6 @@ impl JirReader._read_cfg_overlay(
 impl JirReader._read_name_atom_overlay(
     data: (bytes | memoryview), pos: int, na_node: NameAtom
 ) -> int {
-    # has_sym
     has_sym = data[pos];
     pos += 1;
     if has_sym {
@@ -1228,10 +1114,8 @@ impl JirReader._read_name_atom_overlay(
         for _ in range(defn_count) {
             (nid, pos) = _read_varint(data, pos);
         }
-        # Symbol is already wired up during scope overlay reading
     }
 
-    # Read _sym_name and _sym_category
     assert self._pool is not None;
     (sym_name_idx, pos) = _read_varint(data, pos);
     na_node._sym_name = self._pool.get(sym_name_idx);
@@ -1251,9 +1135,6 @@ impl JirReader._read_name_atom_overlay(
         na_node._sym_category = ST3.UNKNOWN;
     }
 
-    # name_of / _sym / _py_ctx_func defaults are already seeded by `_read_node`
-    # (via setdefault) when the NameAtom is constructed, before this overlay
-    # runs, so no backfill is needed here.
     return pos;
 }
 
@@ -1262,7 +1143,6 @@ impl JirReader._read_link_table(data: (bytes | memoryview), pos: int) -> int {
 
     nodes = self._nodes;
 
-    # parent_scope links
     (count, pos) = _read_varint(data, pos);
     for _ in range(count) {
         (scope_id, pos) = _read_varint(data, pos);
@@ -1284,7 +1164,6 @@ impl JirReader._read_link_table(data: (bytes | memoryview), pos: int) -> int {
         }
     }
 
-    # name_of links (NameAtom -> AstSymbolNode)
     (count, pos) = _read_varint(data, pos);
     for _ in range(count) {
         (na_id, pos) = _read_varint(data, pos);

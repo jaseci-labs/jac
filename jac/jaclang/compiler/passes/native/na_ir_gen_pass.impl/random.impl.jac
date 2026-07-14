@@ -1,25 +1,9 @@
-"""random module codegen: a CPython-faithful MT19937 (issue #6404, congruence
-decision #1).
-
-To make `random.seed(x)` produce the SAME sequence on sv and na, this emits
-the exact Mersenne-Twister CPython ships in _randommodule.c — init_genrand,
-init_by_array (used by seed() for an int key), genrand_uint32 (res53 for
-random()), getrandbits, and the _randbelow rejection loop used by randint.
-State is process-global; these runtime functions are emitted once.
-
-Supported: seed(int), random(), getrandbits(k<=64), randint(a,b),
-randrange(stop)/randrange(start,stop), uniform(a,b). Auto-seeding without an
-explicit seed() is a documented gap (a parity test must seed first).
-"""
-
-# MT constants (CPython _randommodule.c).
 glob _MT_N: int = 624,
      _MT_M: int = 397,
      _MT_MATRIX_A: int = 0x9908B0DF,
      _MT_UPPER: int = 0x80000000,
      _MT_LOWER: int = 0x7FFFFFFF;
 
-"""Emit MT19937 state + runtime functions once (idempotent)."""
 impl NaIRGenPass._mt_ensure -> None {
     if "mt19937" in self._stdlib_helpers_emitted {
         return;
@@ -31,7 +15,6 @@ impl NaIRGenPass._mt_ensure -> None {
     void = ir.VoidType();
     arr_ty = ir.ArrayType(i32, _MT_N);
 
-    # --- global state: mt[624], index (625 = "regenerate on first draw") ---
     mt = ir.GlobalVariable(self.llvm_module, arr_ty, name="__mt_state");
     mt.linkage = "internal";
     mt.global_constant = False;
@@ -45,7 +28,6 @@ impl NaIRGenPass._mt_ensure -> None {
         return b.gep(mt, [ir.Constant(i32, 0), k]);
     }
 
-    # ── __mt_init_genrand(i32 s) ──────────────────────────────────────────
     f_init = ir.Function(
         self.llvm_module, ir.FunctionType(void, [i32]), "__mt_init_genrand"
     );
@@ -74,7 +56,6 @@ impl NaIRGenPass._mt_ensure -> None {
     b.store(ir.Constant(i32, _MT_N), idx);
     b.ret_void();
 
-    # ── __mt_init_by_array(i32* key, i32 keylen) ─────────────────────────
     f_iba = ir.Function(
         self.llvm_module,
         ir.FunctionType(void, [i32.as_pointer(), i32]),
@@ -89,10 +70,10 @@ impl NaIRGenPass._mt_ensure -> None {
     kp = b.alloca(i32, name="k");
     b.store(ir.Constant(i32, 1), ip);
     b.store(ir.Constant(i32, 0), jp);
-    # k = max(N, keylen)
+
     klen_gt = b.icmp_unsigned(">", keylen, ir.Constant(i32, _MT_N));
     b.store(b.select(klen_gt, keylen, ir.Constant(i32, _MT_N)), kp);
-    # loop 1: while k--
+
     c1 = f_iba.append_basic_block("c1");
     b1 = f_iba.append_basic_block("b1");
     c2 = f_iba.append_basic_block("c2");
@@ -114,7 +95,7 @@ impl NaIRGenPass._mt_ensure -> None {
     b.store(nv, elem(b, i));
     i = b.add(i, ir.Constant(i32, 1));
     j = b.add(j, ir.Constant(i32, 1));
-    # if i >= N: mt[0]=mt[N-1]; i=1
+
     ige = b.icmp_unsigned(">=", i, ir.Constant(i32, _MT_N));
     w1t = f_iba.append_basic_block("w1t");
     w1c = f_iba.append_basic_block("w1c");
@@ -124,14 +105,14 @@ impl NaIRGenPass._mt_ensure -> None {
     b.branch(w1c);
     b.position_at_end(w1c);
     i = b.select(ige, ir.Constant(i32, 1), i);
-    # if j >= keylen: j = 0
+
     jge = b.icmp_unsigned(">=", j, keylen);
     j = b.select(jge, ir.Constant(i32, 0), j);
     b.store(i, ip);
     b.store(j, jp);
     b.store(b.sub(b.load(kp), ir.Constant(i32, 1)), kp);
     b.branch(c1);
-    # loop 2: for (k=N-1; k; k--)
+
     b.position_at_end(c2);
     b.store(ir.Constant(i32, _MT_N - 1), kp);
     c2b = f_iba.append_basic_block("c2b");
@@ -166,7 +147,6 @@ impl NaIRGenPass._mt_ensure -> None {
     b.store(ir.Constant(i32, _MT_N), idx);
     b.ret_void();
 
-    # ── __mt_genrand_u32() -> i32 ────────────────────────────────────────
     f_gen = ir.Function(self.llvm_module, ir.FunctionType(i32, []), "__mt_genrand_u32");
     b = ir.IRBuilder(f_gen.append_basic_block("e"));
     need = b.icmp_unsigned(">=", b.load(idx), ir.Constant(i32, _MT_N));
@@ -185,15 +165,15 @@ impl NaIRGenPass._mt_ensure -> None {
     b.cbranch(b.icmp_unsigned("<", k, ir.Constant(i32, _MT_N)), gb, gd);
     b.position_at_end(gb);
     k = b.load(kp);
-    # y = (mt[k] & UPPER) | (mt[(k+1)%N] & LOWER)
+
     kp1 = b.urem(b.add(k, ir.Constant(i32, 1)), ir.Constant(i32, _MT_N));
     hi = b.and_(b.load(elem(b, k)), ir.Constant(i32, _MT_UPPER));
     lo = b.and_(b.load(elem(b, kp1)), ir.Constant(i32, _MT_LOWER));
     y = b.or_(hi, lo);
-    # nxt = mt[(k+M)%N] ^ (y>>1)
+
     kpm = b.urem(b.add(k, ir.Constant(i32, _MT_M)), ir.Constant(i32, _MT_N));
     nxt = b.xor(b.load(elem(b, kpm)), b.lshr(y, ir.Constant(i32, 1)));
-    # if y & 1: nxt ^= MATRIX_A
+
     odd = b.icmp_unsigned("!=", b.and_(y, ir.Constant(i32, 1)), ir.Constant(i32, 0));
     nxt = b.select(odd, b.xor(nxt, ir.Constant(i32, _MT_MATRIX_A)), nxt);
     b.store(nxt, elem(b, k));
@@ -206,14 +186,13 @@ impl NaIRGenPass._mt_ensure -> None {
     cur = b.load(idx);
     y = b.load(elem(b, cur));
     b.store(b.add(cur, ir.Constant(i32, 1)), idx);
-    # tempering
+
     y = b.xor(y, b.lshr(y, ir.Constant(i32, 11)));
     y = b.xor(y, b.and_(b.shl(y, ir.Constant(i32, 7)), ir.Constant(i32, 0x9D2C5680)));
     y = b.xor(y, b.and_(b.shl(y, ir.Constant(i32, 15)), ir.Constant(i32, 0xEFC60000)));
     y = b.xor(y, b.lshr(y, ir.Constant(i32, 18)));
     b.ret(y);
 
-    # ── __mt_getrandbits(i32 k) -> i64  (CPython random_getrandbits) ──────
     f_grb = ir.Function(
         self.llvm_module, ir.FunctionType(i64, [i32]), "__mt_getrandbits"
     );
@@ -235,15 +214,14 @@ impl NaIRGenPass._mt_ensure -> None {
     r = b.call(f_gen, []);
     kcur = b.load(krem);
     lt32 = b.icmp_unsigned("<", kcur, ir.Constant(i32, 32));
-    # last partial word: r >>= (32 - k)
+
     shifted = b.lshr(r, b.sub(ir.Constant(i32, 32), kcur));
     r = b.select(lt32, shifted, r);
     r64 = b.zext(r, i64);
     contrib = b.shl(r64, b.zext(b.load(shp), i64));
     b.store(b.or_(b.load(resp), contrib), resp);
     b.store(b.add(b.load(shp), ir.Constant(i32, 32)), shp);
-    # k -= 32  (unsigned; loop guard handles k<32 -> next iter k becomes huge,
-    # so instead branch: if k<=32 we are done)
+
     kle = b.icmp_unsigned("<=", kcur, ir.Constant(i32, 32));
     b.store(
         b.select(kle, ir.Constant(i32, 0), b.sub(kcur, ir.Constant(i32, 32))), krem
@@ -252,19 +230,17 @@ impl NaIRGenPass._mt_ensure -> None {
     b.position_at_end(wd);
     b.ret(b.load(resp));
 
-    # ── __mt_randbelow(i64 n) -> i64  (CPython _randbelow_with_getrandbits)
     f_rb = ir.Function(self.llvm_module, ir.FunctionType(i64, [i64]), "__mt_randbelow");
     b = ir.IRBuilder(f_rb.append_basic_block("e"));
     n = f_rb.args[0];
-    # n==0 -> 0
+
     zero = f_rb.append_basic_block("zero");
     work = f_rb.append_basic_block("work");
     b.cbranch(b.icmp_unsigned("==", n, ir.Constant(i64, 0)), zero, work);
     b.position_at_end(zero);
     b.ret(ir.Constant(i64, 0));
     b.position_at_end(work);
-    # k = bit_length(n): count shifts until n becomes 0 (avoids llvm.ctlz, whose
-    # arg arity differs across LLVM versions).
+
     blp = b.alloca(i32, name="bl");
     tmpp = b.alloca(i64, name="tmp");
     b.store(ir.Constant(i32, 0), blp);
@@ -287,7 +263,7 @@ impl NaIRGenPass._mt_ensure -> None {
     b.store(b.call(f_grb, [kbits]), rv);
     b.branch(rc);
     b.position_at_end(rc);
-    # while r >= n: r = getrandbits(k)
+
     ge = b.icmp_unsigned(">=", b.load(rv), n);
     redraw = f_rb.append_basic_block("redraw");
     b.cbranch(ge, redraw, rdone);
@@ -298,14 +274,13 @@ impl NaIRGenPass._mt_ensure -> None {
     b.ret(b.load(rv));
 }
 
-"""Lower a `random.<fn>(args)` call. Returns None if unsupported."""
 impl NaIRGenPass._emit_random_call(name: str, nd: uni.FuncCall) -> (ir.Value | None) {
     self._mt_ensure();
     f64 = ir.DoubleType();
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     params = nd.params or [];
-    # Retrieve the once-emitted MT runtime functions by name.
+
     f_gen = self._get_or_declare_extern("__mt_genrand_u32", i32, []);
     f_iba = self._get_or_declare_extern(
         "__mt_init_by_array", ir.VoidType(), [i32.as_pointer(), i32]
@@ -319,7 +294,7 @@ impl NaIRGenPass._emit_random_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
             return None;
         }
         sv = self._coerce_type(sv, i64);
-        # key = abs(seed) as little-endian 32-bit words (1 word if high==0).
+
         isneg = self.builder.icmp_signed("<", sv, ir.Constant(i64, 0));
         absv = self.builder.select(
             isneg, self.builder.sub(ir.Constant(i64, 0), sv), sv
@@ -375,7 +350,6 @@ impl NaIRGenPass._emit_random_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
         return self.builder.fadd(av, self.builder.fmul(span, rnum));
     }
 
-    # randint(a, b) = a + randbelow(b - a + 1)
     if name == "randint" and len(params) >= 2 {
         av = self._coerce_type(self._codegen_expr(params[0]), i64);
         bv = self._coerce_type(self._codegen_expr(params[1]), i64);
@@ -383,7 +357,6 @@ impl NaIRGenPass._emit_random_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
         return self.builder.add(av, self.builder.call(f_rb, [width]));
     }
 
-    # randrange(stop) or randrange(start, stop) = start + randbelow(stop-start)
     if name == "randrange" and params {
         if len(params) == 1 {
             stop = self._coerce_type(self._codegen_expr(params[0]), i64);

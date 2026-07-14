@@ -1,0 +1,465 @@
+name: Build jac native binaries
+
+# Builds the self-contained `jac` binary per platform and attaches it to a
+# GitHub Release. One parameterized workflow serves both channels:
+#   - channel=release (default): cold, glibc-2.17-pinned builds attached to a
+#     versioned release. Called by release.yml after it cuts the release (a
+#     GITHUB_TOKEN-created release emits no release.published event); the
+#     release event is the safety net for releases published by a real user.
+#   - channel=dev: cache-accelerated host-native builds re-published under the
+#     rolling `dev` prerelease. Called by release-dev.yml on pushes to main.
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release tag to upload assets to: canonical v<version>, or `dev` for the rolling prerelease."
+        required: true
+        type: string
+      channel:
+        description: "release: cold + glibc-pinned; dev: cached + host-native."
+        required: false
+        default: release
+        type: string
+    # Called workflows do not see the caller's repo secrets unless passed
+    # explicitly; without these the docker-image job skips its push steps.
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: false
+      DOCKERHUB_TOKEN:
+        required: false
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        # Use the canonical `v<version>` tag; a new tag would create a
+        # duplicate release. Empty = build the artifact only, attach nothing.
+        description: "Canonical release tag to upload assets to (e.g. v0.30.1). Empty = artifact only."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        # One native runner per target so the smoke test runs on real hardware.
+        # zig_target pins each Linux binary's glibc floor (2.17, manylinux2014)
+        # on the release channel; the dev channel builds host-native so it can
+        # reuse the native-ABI LLVMPY shim cache (the shim cache key does not
+        # encode a target triple). macOS builds host-native on both channels.
+        # No Intel-Mac leg: LLVM ships no macOS-x64 prebuilt for the pinned
+        # release.
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86_64
+            zig_target: x86_64-linux-gnu.2.17
+          - os: ubuntu-24.04-arm
+            platform: linux-aarch64
+            zig_target: aarch64-linux-gnu.2.17
+          - os: macos-14
+            platform: macos-aarch64
+    runs-on: ${{ matrix.os }}
+    env:
+      # -Dtarget flag for zig build: set on release-channel Linux legs, empty
+      # (host-native) on the dev channel and macOS.
+      DTARGET: ${{ inputs.channel != 'dev' && matrix.zig_target && format('-Dtarget={0}', matrix.zig_target) || '' }}
+    steps:
+      # Check out the release tag (release channel) or the pushed commit (dev
+      # channel), so a recovery run after main advanced still builds the
+      # release's own source. SHA-pinned: this job holds contents:write and
+      # ships user-downloaded binaries, so a re-pointed tag on the action must
+      # not reach it.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ inputs.channel == 'dev' && github.sha || inputs.tag || github.event.release.tag_name }}
+
+      # Dev channel only: reuse the read-mostly caches main seeds. The release
+      # channel builds cold on purpose (a cached payload could ship stale
+      # bits). The LLVMPY_* shim is the most expensive artifact and depends
+      # only on native/**, build.zig, and the pinned LLVM slice; same cache key
+      # as setup-jac, so main usually has it warm (the arm64 leg self-seeds:
+      # no other workflow runs on Linux-ARM64).
+      - name: Restore cached LLVMPY shim (dev channel)
+        if: inputs.channel == 'dev'
+        id: shim-cache
+        uses: actions/cache@v4
+        with:
+          path: jac/jaclang/compiler/passes/native/llvm/libjacllvm.*
+          key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/launcher/llvm_release.zig') }}
+
+      # Keyed on llvm_release.zig to match the entries setup-jac seeds (the
+      # old release-dev key hashed payload.zig, so it never matched them and
+      # duplicated the ~0.5 GB tree into the cache pool).
+      - name: Restore cached LLVM (dev channel)
+        if: inputs.channel == 'dev' && steps.shim-cache.outputs.cache-hit != 'true'
+        id: llvm-cache
+        uses: actions/cache@v4
+        with:
+          path: jac/.llvm-build
+          key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/llvm_release.zig') }}
+
+      # mkpayload re-validates every seeded .jir per module, so a stale tree
+      # from the previous push is safe and exactly what restore-keys is for.
+      - name: Restore cached JIR precompile tree (dev channel)
+        if: inputs.channel == 'dev'
+        uses: actions/cache@v4
+        with:
+          path: jac/.precompiled-build
+          key: jac-precompiled-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/**') }}
+          restore-keys: |
+            jac-precompiled-${{ runner.os }}-${{ runner.arch }}-
+
+      # The Zig package store (.zig-cache/p): the neovim fork + its transitive
+      # PUC Lua source off lua.org's FTP (the build's flakiest fetch), mini.nvim,
+      # tree-sitter-jac, etc. Content-addressed source packages -- immutable, so
+      # (unlike the payload-artifact caches above, kept dev-only to avoid
+      # shipping stale bits) this is safe on BOTH channels, and a release is
+      # exactly when a lua.org blip must not fail the build. Same key as
+      # setup-jac so the Linux-x86_64 leg reuses the entry main seeds; a cross
+      # -Dtarget build fetches the same source, so os/arch is the right axis.
+      - name: Cache the Zig package store (avoids re-fetching Lua/neovim deps)
+        uses: actions/cache@v4
+        with:
+          path: .zig-cache/p
+          key: zig-pkgs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/build.zig.zon') }}
+          restore-keys: |
+            zig-pkgs-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Install host tools (zstd)
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            sudo apt-get update && sudo apt-get install -y zstd
+          else
+            brew install zstd
+          fi
+
+      - name: Set up Zig 0.16.0
+        # SHA-pinned: same shipping-binaries rationale as the checkout.
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: 0.16.0
+          # Fresh cache each run: a cached payload could ship stale bits.
+          use-cache: false
+
+      - name: Read version (from jac.toml)
+        id: ver
+        working-directory: jac
+        run: echo "version=$(grep -m1 '^version' jac.toml | sed -E 's/.*"([^"]+)".*/\1/')" >> "$GITHUB_OUTPUT"
+
+      # The native backend statically links a pinned LLVM; fetch it per target
+      # before `zig build`. Skipped on a dev-channel shim-cache hit (-Dshim-bin
+      # needs no LLVM at all) or LLVM-cache hit (tree already restored). Both
+      # gates are vacuous on the release channel: the restore steps are
+      # skipped there, so their cache-hit outputs are empty and the fetch runs.
+      - name: Fetch LLVM for the jacllvm shim
+        if: steps.shim-cache.outputs.cache-hit != 'true' && steps.llvm-cache.outputs.cache-hit != 'true'
+        working-directory: jac
+        run: zig build fetch-llvm $DTARGET --summary all
+
+      - name: Build the jac binary (one command)
+        working-directory: jac
+        # On a dev-channel shim-cache hit, stage the shim outside its in-tree
+        # place path: the build copies -Dshim-bin back there, and a self-copy
+        # would read the file it is truncating. Mirrors setup-jac.
+        run: |
+          SHIM_ARG=()
+          if [ "${{ steps.shim-cache.outputs.cache-hit }}" = "true" ]; then
+            mkdir -p .shim-build
+            cp jaclang/compiler/passes/native/llvm/libjacllvm.* .shim-build/
+            SHIM_ARG=(-Dshim-bin=".shim-build/$(ls .shim-build | head -1)")
+          fi
+          zig build $DTARGET "${SHIM_ARG[@]}" --summary all
+
+      # Launcher unit tests (`zig build test`) live in ci.yml's `test-launcher`
+      # job so they gate every PR on Linux + macOS, not just release time. The
+      # smoke tests below validate the actually-shipped cross-compiled binary.
+      - name: Smoke test (no system Python)
+        working-directory: jac
+        run: |
+          set -euxo pipefail
+          BIN="$PWD/zig-out/bin/jac"
+          WORK="$(mktemp -d)"
+          env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" --version
+          printf 'with entry { print("ok"); }\n' > "$WORK/h.jac"
+          env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/h.jac" | grep -q ok
+
+      # Guards #7047: the binary must not leak PYTHONHOME/PYTHONPATH (or any
+      # interpreter config) into subprocesses -- a python-based child spawned
+      # by a jac program must run with its OWN stdlib, and the user's ambient
+      # PYTHONHOME/PYTHONPATH must pass through to children untouched.
+      - name: Smoke test (no env leak into subprocesses)
+        working-directory: jac
+        run: |
+          set -euxo pipefail
+          BIN="$PWD/zig-out/bin/jac"
+          WORK="$(mktemp -d)"
+          cat > "$WORK/leak.jac" <<'EOF'
+          import os;
+          import subprocess;
+          with entry {
+              assert "PYTHONHOME" not in os.environ;
+              assert "PYTHONPATH" not in os.environ or os.environ["PYTHONPATH"] == "/user/own";
+              r = subprocess.run(
+                  ["python3", "-c", "import os, encodings; print('child', os.environ.get('PYTHONPATH'))"],
+                  capture_output=True, text=True
+              );
+              assert r.returncode == 0, r.stderr[:200];
+              print(r.stdout.strip());
+          }
+          EOF
+          # Clean env: nothing leaks in.
+          env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/leak.jac" | grep -qx 'child None'
+          # User-supplied PYTHONPATH: passes through to children untouched.
+          env -i HOME="$WORK" PATH=/usr/bin:/bin PYTHONPATH=/user/own "$BIN" run "$WORK/leak.jac" | grep -qx 'child /user/own'
+
+      # Guards #7082: neither the launcher nor the LLVMPY_* shim may reference
+      # a glibc symbol newer than the zig_target floor. Release channel only:
+      # dev binaries are host-native with no pinned floor.
+      - name: Verify glibc floor (from zig_target)
+        if: runner.os == 'Linux' && inputs.channel != 'dev'
+        working-directory: jac
+        env:
+          ZIG_TARGET: ${{ matrix.zig_target }}
+        run: |
+          set -euxo pipefail
+          FLOOR="${ZIG_TARGET##*gnu.}"
+          check() {
+            local f="$1" hi
+            [ -f "$f" ] || { echo "::error::missing $f"; exit 1; }
+            hi="$(objdump -T "$f" 2>/dev/null | grep -oE 'GLIBC_[0-9]+(\.[0-9]+)+' | sed 's/GLIBC_//' | sort -V | tail -1)"
+            : "${hi:=0}"
+            echo "$f -> max GLIBC_$hi (floor $FLOOR)"
+            if [ "$(printf '%s\n%s\n' "$FLOOR" "$hi" | sort -V | tail -1)" != "$FLOOR" ]; then
+              echo "::error::$f requires GLIBC_$hi (> $FLOOR)"; exit 1
+            fi
+          }
+          check zig-out/bin/jac
+          SHIM="jaclang/compiler/passes/native/llvm/libjacllvm.so"
+          [ -f "$SHIM" ] || zig build jacllvm -Dtarget=${{ matrix.zig_target }} --summary all
+          [ -f "$SHIM" ] || SHIM="zig-out/lib/libjacllvm.so"
+          check "$SHIM"
+
+      - name: Package asset (+ checksum)
+        id: pkg
+        working-directory: jac
+        run: |
+          set -euxo pipefail
+          if [ "${{ inputs.channel }}" = "dev" ]; then
+            ASSET="jac-dev-${{ matrix.platform }}"
+          else
+            ASSET="jac-${{ steps.ver.outputs.version }}-${{ matrix.platform }}"
+          fi
+          mkdir -p dist
+          cp zig-out/bin/jac "dist/$ASSET"
+          # No codesign on macOS: the payload tarball appended past the Mach-O
+          # end fails codesign's strict validation; the zig linker's ad-hoc
+          # signature is content-based and survives cp.
+          ( cd dist && shasum -a 256 "$ASSET" > "$ASSET.sha256" )
+          echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
+
+      - name: Upload to GitHub Release
+        if: github.event_name == 'release' || inputs.tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: jac
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.tag }}"
+          [ -n "$TAG" ] || TAG="${{ github.event.release.tag_name }}"
+          gh release upload "$TAG" \
+            "dist/${{ steps.pkg.outputs.asset }}" \
+            "dist/${{ steps.pkg.outputs.asset }}.sha256" \
+            --clobber
+
+      # install.sh's real `curl ... | bash` path is verified against the
+      # published release out-of-band: nightly.yml `installer-live` (daily, both
+      # platforms) and ci.yml `installer-test` (PRs touching scripts/install.sh).
+      # It is deliberately NOT re-run here as a blocking release gate: install.sh
+      # queries the GitHub API unauthenticated, and on shared macOS runners the
+      # 60/hr anon rate limit routinely trips -- failing a release whose assets
+      # uploaded fine.
+
+      # Release channel only: dev binaries are already published on the `dev`
+      # prerelease, and a per-push 3x ~130 MB artifact would be pure storage
+      # churn.
+      - name: Upload as workflow artifact
+        if: inputs.channel != 'dev'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.pkg.outputs.asset }}
+          path: jac/dist/*
+
+  # The admin console is platform-independent, so build it once with the
+  # linux-x86_64 binary this run produced (same-commit compiler) and attach
+  # it to the release as its own asset for the deploy driver to download.
+  admin-dist:
+    needs: build
+    if: github.event_name == 'release' || inputs.tag != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ inputs.channel == 'dev' && github.sha || inputs.tag || github.event.release.tag_name }}
+
+      - name: Read version (from jac.toml)
+        id: ver
+        working-directory: jac
+        run: echo "version=$(grep -m1 '^version' jac.toml | sed -E 's/.*"([^"]+)".*/\1/')" >> "$GITHUB_OUTPUT"
+
+      # Dev-channel legs keep no workflow artifact; that path pulls the
+      # asset this run just re-published on the rolling prerelease instead.
+      - name: Fetch this run's linux-x86_64 binary (release channel)
+        if: inputs.channel != 'dev'
+        uses: actions/download-artifact@v4
+        with:
+          name: jac-${{ steps.ver.outputs.version }}-linux-x86_64
+          path: jacbin
+
+      - name: Build the console and package the dist
+        id: pkg
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euxo pipefail
+          mkdir -p jacbin
+          if [ "${{ inputs.channel }}" = "dev" ]; then
+            gh release download dev --repo "$GITHUB_REPOSITORY" \
+              --pattern "jac-dev-linux-x86_64" --dir jacbin --clobber
+            ASSET="jac-dev-admin-dist.tar.gz"
+          else
+            ASSET="jac-${{ steps.ver.outputs.version }}-admin-dist.tar.gz"
+          fi
+          BIN="$PWD/$(ls jacbin/jac-*linux-x86_64)"
+          chmod +x "$BIN"
+          ( cd jac/jaclang/scale/admin/ui && "$BIN" build main.jac )
+          DIST=jac/jaclang/scale/admin/ui/.jac/client/dist
+          test -f "$DIST/index.html"
+          mkdir -p dist
+          tar -C "$DIST" -czf "dist/$ASSET" .
+          ( cd dist && shasum -a 256 "$ASSET" > "$ASSET.sha256" )
+          echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
+
+      - name: Upload to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.tag }}"
+          [ -n "$TAG" ] || TAG="${{ github.event.release.tag_name }}"
+          gh release upload "$TAG" \
+            "dist/${{ steps.pkg.outputs.asset }}" \
+            "dist/${{ steps.pkg.outputs.asset }}.sha256" \
+            --clobber
+
+  # Publishes jaseci/jaclang (Docker Hub) from the binaries this run produced:
+  #   <version> + latest on the release channel, dev on the rolling prerelease.
+  # The image bakes the extracted runtime and the scale serve closure (see
+  # docker/jaclang.Dockerfile), so it doubles as the deployment base image.
+  #
+  # Setup (one-time, repo secrets): DOCKERHUB_USERNAME + DOCKERHUB_TOKEN, an
+  # access token from the `jaseci` Docker Hub org with write access. The job
+  # is skipped when the secrets are absent (forks).
+  docker-image:
+    needs: build
+    if: github.event_name == 'release' || inputs.tag != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      # Presence flag ("true"/"false"): `secrets` is not available in step
+      # `if:` expressions, and the token value itself must not sit in env.
+      DOCKERHUB_TOKEN_SET: ${{ secrets.DOCKERHUB_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ inputs.channel == 'dev' && github.sha || inputs.tag || github.event.release.tag_name }}
+
+      - name: Read version (from jac.toml)
+        id: ver
+        working-directory: jac
+        run: echo "version=$(grep -m1 '^version' jac.toml | sed -E 's/.*"([^"]+)".*/\1/')" >> "$GITHUB_OUTPUT"
+
+      # Dev-channel legs keep no workflow artifact; that path pulls the
+      # binaries this run just re-published on the rolling prerelease instead.
+      - name: Fetch this run's linux-x86_64 binary (release channel)
+        if: inputs.channel != 'dev'
+        uses: actions/download-artifact@v4
+        with:
+          name: jac-${{ steps.ver.outputs.version }}-linux-x86_64
+          path: ctx/amd64
+
+      - name: Fetch this run's linux-aarch64 binary (release channel)
+        if: inputs.channel != 'dev'
+        uses: actions/download-artifact@v4
+        with:
+          name: jac-${{ steps.ver.outputs.version }}-linux-aarch64
+          path: ctx/arm64
+
+      - name: Stage binaries into the build context
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euxo pipefail
+          mkdir -p ctx/amd64 ctx/arm64
+          if [ "${{ inputs.channel }}" = "dev" ]; then
+            gh release download dev --repo "$GITHUB_REPOSITORY" \
+              --pattern "jac-dev-linux-x86_64" --dir ctx/amd64 --clobber
+            gh release download dev --repo "$GITHUB_REPOSITORY" \
+              --pattern "jac-dev-linux-aarch64" --dir ctx/arm64 --clobber
+          fi
+          # The release-channel artifact carries the binary's .sha256 beside
+          # it; drop it so the rename glob matches exactly one file.
+          rm -f ctx/amd64/*.sha256 ctx/arm64/*.sha256
+          mv ctx/amd64/jac-* ctx/amd64/jac
+          mv ctx/arm64/jac-* ctx/arm64/jac
+          chmod +x ctx/amd64/jac ctx/arm64/jac
+          cp docker/jaclang.Dockerfile ctx/Dockerfile
+
+      # Forks skip publishing quietly, but on the org repo missing secrets
+      # mean a misconfiguration (e.g. a caller not passing them through) --
+      # fail loudly instead of green-skipping the publish.
+      - name: Fail if publishing secrets are missing (org repo)
+        if: github.repository == 'jaseci-labs/jac' && (env.DOCKERHUB_USERNAME == '' || env.DOCKERHUB_TOKEN_SET != 'true')
+        run: |
+          echo "::error::DOCKERHUB_USERNAME/DOCKERHUB_TOKEN did not reach this job; workflow_call callers must pass them via 'secrets:'."
+          exit 1
+
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+        if: env.DOCKERHUB_USERNAME != ''
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+        if: env.DOCKERHUB_USERNAME != ''
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        if: env.DOCKERHUB_USERNAME != ''
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Compute image tags
+        id: tags
+        if: env.DOCKERHUB_USERNAME != ''
+        run: |
+          set -euo pipefail
+          IMAGE="jaseci/jaclang"
+          if [ "${{ inputs.channel }}" = "dev" ]; then
+            TAGS="$IMAGE:dev"
+          else
+            TAGS="$IMAGE:${{ steps.ver.outputs.version }},$IMAGE:latest"
+          fi
+          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push (linux/amd64, linux/arm64)
+        if: env.DOCKERHUB_USERNAME != ''
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: ctx
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}

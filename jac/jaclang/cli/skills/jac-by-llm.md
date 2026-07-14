@@ -6,7 +6,7 @@ description: Delegating a function's body to an LLM call - structured outputs (o
 `by llm(...)` replaces a function body with an LLM call. The signature declares typed args and a return type; at call time the LLM generates a value matching the return type, optionally using any functions listed in `tools=[...]` as ReAct helpers. Describe every LLM-visible thing - the function itself, each parameter, each field of a return obj - with `sem` statements, not docstrings. `sem` is the prompt the LLM sees.
 
 ```jac
-import from byllm.lib { Model }
+import from jaclang.byllm.lib { Model }
 
 glob llm: Model = Model(model_name="gpt-4o");
 
@@ -95,7 +95,7 @@ def stream_story(topic: str) -> str by llm(stream=True);
 Runs without API keys - mock outputs are consumed sequentially, one per `by` call. For typed returns put pre-built instances in `outputs` (e.g. `Priority.HIGH`, `[Task(...)]`). See `jac-testing` for `jac test` mechanics.
 
 ```jac
-import from byllm.lib { MockLLM }
+import from jaclang.byllm.lib { MockLLM }
 
 glob llm = MockLLM(model_name="mockllm", config={"outputs": ["Bonjour", "Salut"]});
 
@@ -109,14 +109,14 @@ test "mock outputs consumed in order" {
 
 ## Errors & retries
 
-- All byLLM exceptions inherit `ByLLMError`, importable from `byllm.lib`: `AuthenticationError`, `RateLimitError`, `ModelNotFoundError`, `OutputConversionError`, `UnknownToolError`, `ConfigurationError`.
+- All byLLM exceptions inherit `ByLLMError`, importable from `byllm.lib`: `AuthenticationError`, `RateLimitError`, `ModelNotFoundError`, `OutputConversionError`, `ConfigurationError`.
 - Typed (non-`str`) returns auto-retry malformed output with corrective feedback: `max_output_retries` (default 3, `0` disables). `str` returns are never retried.
 - The rejected text rides on `OutputConversionError` - read it with `getattr(e, "raw_output", "")`; direct `e.raw_output` fails `jac check` (E1030, it's a dynamic attribute).
 
 ## Images & video
 
 ```jac
-import from byllm.lib { Image, Video }
+import from jaclang.byllm.lib { Image, Video }
 
 def parse_receipt(img: Image) -> Receipt by llm();   # structured output straight from an image
 def describe_clip(v: Video) -> str by llm();
@@ -130,9 +130,9 @@ def describe_clip(v: Video) -> str by llm();
 
 - Inline `by llm` expressions DO NOT exist: `x = "prompt" by llm;` even passes `jac check`, then raises `NotImplementedError` at runtime. Always declare a function and call it.
 - `method="ReAct"` is deprecated and was never functional - the ReAct loop turns on automatically when you pass `tools=[...]`.
-- `llm` is an **ambient builtin** - the model powering it is configured project-wide in `jac.toml` under `[plugins.byllm.model]` (e.g. `default_model = "gpt-4o-mini"`). A module-level `glob llm: Model = Model(...)` is an *optional* per-file override, not a requirement: `by llm()` type-checks and runs with no `glob llm` declared at all.
+- `llm` is an **ambient builtin** - the model powering it is configured project-wide in `jac.toml` under `[byllm.model]` (e.g. `default_model = "gpt-4o-mini"`). A module-level `glob llm: Model = Model(...)` is an *optional* per-file override, not a requirement: `by llm()` type-checks and runs with no `glob llm` declared at all.
 - `by llm(...)` REPLACES the body - never write both `{ body }` and `by llm(...)` on the same signature.
 - Use `sem`, NOT docstrings, for every LLM-visible description. Triple-quoted strings inside a body fail with W0060.
 - Tools are **function references**, NOT strings: `tools=[word_count]`, never `tools=["word_count"]`. Each tool needs its own `sem` and per-arg `sem` so the LLM knows when to call it.
 - Common `by llm(...)` options: `tools`, `temperature`, `max_tokens`, `max_react_iterations`, `conversation`, `system_prompt`, `stream`, `incl_info` (extra context dict), `on_iteration` (ReAct loop control), `max_output_retries`. `jac check` does **not** validate `by llm` keyword names - a misspelled option surfaces at runtime, not at check time.
-- For fallback/load-balancing across several providers, see `ModelPool` in the byLLM reference; project-wide `temperature`/`max_tokens` defaults live in `jac.toml` under `[plugins.byllm.call_params]`.
+- For fallback/load-balancing across several providers, see `ModelPool` in the byLLM reference; project-wide `temperature`/`max_tokens` defaults live in `jac.toml` under `[byllm.call_params]`.

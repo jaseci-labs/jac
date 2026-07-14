@@ -69,6 +69,11 @@ cl {
             total -= 1;
             counter -= 1;
         }
+
+        forever {
+            total += 1;
+            break;
+        }
         return total;
     }
 

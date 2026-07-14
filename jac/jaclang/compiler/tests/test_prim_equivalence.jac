@@ -1,12 +1,3 @@
-"""Unified cross-backend primitive equivalence tests.
-
-One test per emitter class in primitives.jac. Each fixture exposes a
-func_py / cl func_cl / na func_na returning a JSON-able dict; the shared
-`xbackend_equiv` harness runs them across the sv/cl/na backends and compares
-with intersection semantics (a backend that returns {} or fails to compile is
-silently skipped).
-"""
-
 import ctypes;
 import from jaclang.compiler.tests.xbackend_equiv {
     run_with_both,
@@ -19,33 +10,24 @@ import from jaclang.compiler.tests.xbackend_equiv {
 }
 
 
-# =======================================================================
-# Tests — one per emitter class in primitives.jac
-# =======================================================================
-
-# --- Numeric Types (IntEmitter) ---
 test "int" {
     run_with_both("prim_int.jac", "int_py", "int_cl", "int_na");
 }
 
-# --- Numeric Types (FloatEmitter) ---
 test "float" {
     run_with_both("prim_float.jac", "float_py", "float_cl", "float_na");
 }
 
-# --- Numeric Types (ComplexEmitter) ---
 test "complex" {
     run_with_both(
         "prim_complex.jac", "complex_ops_py", "complex_ops_cl", "complex_ops_na"
     );
 }
 
-# --- String Types (StrEmitter) ---
 test "str" {
     run_with_both("prim_str.jac", "str_py", "str_cl", "str_na");
 }
 
-# --- String literal escape sequences (#6476 item 1), cl required ---
 test "string escapes" {
     run_with_both(
         "cl_string_escapes.jac",
@@ -56,7 +38,6 @@ test "string escapes" {
     );
 }
 
-# --- String Types (BytesEmitter) ---
 test "bytes search" {
     run_with_both(
         "prim_bytes.jac", "bytes_search_py", "bytes_search_cl", "bytes_search_na"
@@ -77,12 +58,10 @@ test "bytes test methods" {
     run_with_both("prim_bytes.jac", "bytes_test_py", "bytes_test_cl", "bytes_test_na");
 }
 
-# --- Collection Types (ListEmitter) ---
 test "list" {
     run_with_both("prim_list.jac", "list_py", "list_cl", "list_na");
 }
 
-# --- Native list/`any` codegen gaps (#6435), na required ---
 test "native list pop index" {
     run_with_both(
         "native_list_any_ops.jac",
@@ -133,7 +112,6 @@ test "native list container truthiness dfs" {
     );
 }
 
-# --- #6449: scalar/boxed `any` values round-trip through the native JacVal, na required ---
 test "native any scalar box" {
     run_with_both(
         "native_list_any_ops.jac",
@@ -164,64 +142,154 @@ test "native any tuple roundtrip" {
     );
 }
 
-# --- Collection Types (DictEmitter) ---
 test "dict" {
     run_with_both("prim_dict.jac", "dict_py", "dict_cl", "dict_na");
 }
 
-# --- Collection Types (SetEmitter) ---
 test "set" {
     run_with_both("prim_set.jac", "set_py", "set_cl", "set_na");
 }
 
-# --- Collection Types (FrozensetEmitter) ---
 test "frozenset" {
     run_with_both("prim_frozenset.jac", "frozenset_py", "frozenset_cl", "frozenset_na");
 }
 
-# --- Collection Types (TupleEmitter) ---
 test "tuple" {
     run_with_both("prim_tuple.jac", "tuple_py", "tuple_cl", "tuple_na");
 }
 
-# --- Collection Types (RangeEmitter) ---
 test "range" {
     run_with_both("prim_range.jac", "range_py", "range_cl", "range_na");
 }
 
-# --- Builtin Functions (BuiltinEmitter) ---
 test "builtins" {
     run_with_both("prim_builtins.jac", "builtins_py", "builtins_cl", "builtins_na");
 }
 
-# --- Stdlib: math module (Mechanism A → libm, issue #6404 v1) ---
 test "math" {
     run_with_both("prim_math.jac", "math_py", "math_cl", "math_na", require=["na"]);
 }
 
-# --- Stdlib: time module (Mechanism A → clock_gettime/nanosleep, #6404 v1) ---
 test "time" {
     run_with_both("prim_time.jac", "time_py", "time_cl", "time_na", require=["na"]);
 }
 
-# --- Stdlib: sys module (Mechanism A, issue #6404 v1) ---
 test "sys" {
     run_with_both("prim_sys.jac", "sys_py", "sys_cl", "sys_na", require=["na"]);
 }
 
-# --- Stdlib: os + os.path (Mechanism A/H → libc, issue #6404 v1) ---
 test "os" {
     run_with_both("prim_os.jac", "os_py", "os_cl", "os_na", require=["na"]);
 }
 
-# --- Stdlib: random module (CPython-faithful MT19937, issue #6404 v1) ---
+test "os.path bundled" {
+    run_with_both(
+        "prim_ospath.jac", "ospath_py", "ospath_cl", "ospath_na", require=["na"]
+    );
+}
+
+test "zlib bundled" {
+    run_with_both("prim_zlib.jac", "zlib_py", "zlib_cl", "zlib_na", require=["na"]);
+}
+
+test "gzip bundled" {
+    run_with_both("prim_gzip.jac", "gzip_py", "gzip_cl", "gzip_na", require=["na"]);
+}
+
+test "bz2 bundled" {
+    run_with_both("prim_bz2.jac", "bz2_py", "bz2_cl", "bz2_na", require=["na"]);
+}
+
+test "fractions bundled" {
+    run_with_both(
+        "prim_fractions.jac",
+        "fractions_py",
+        "fractions_cl",
+        "fractions_na",
+        require=["na"]
+    );
+}
+
+test "hashlib + hmac bundled" {
+    run_with_both(
+        "prim_hashlib.jac", "hashlib_py", "hashlib_cl", "hashlib_na", require=["na"]
+    );
+}
+
+test "secrets bundled" {
+    run_with_both(
+        "prim_secrets.jac", "secrets_py", "secrets_cl", "secrets_na", require=["na"]
+    );
+}
+
+test "uuid bundled" {
+    run_with_both("prim_uuid.jac", "uuid_py", "uuid_cl", "uuid_na", require=["na"]);
+}
+
+test "static members" {
+    run_with_both(
+        "prim_static_members.jac",
+        "static_members_py",
+        "static_members_cl",
+        "static_members_na",
+        require=["na"]
+    );
+}
+
+test "datetime bundled" {
+    run_with_both(
+        "prim_datetime.jac", "datetime_py", "datetime_cl", "datetime_na", require=["na"]
+    );
+}
+
+test "json bundled" {
+    run_with_both("prim_json.jac", "json_py", "json_cl", "json_na", require=["na"]);
+}
+
+test "base64 bundled" {
+    run_with_both(
+        "prim_base64.jac", "base64_py", "base64_cl", "base64_na", require=["na"]
+    );
+}
+
+test "textwrap bundled" {
+    run_with_both(
+        "prim_textwrap.jac", "textwrap_py", "textwrap_cl", "textwrap_na", require=["na"]
+    );
+}
+
+test "csv bundled" {
+    run_with_both("prim_csv.jac", "csv_py", "csv_cl", "csv_na", require=["na"]);
+}
+
+test "pprint bundled" {
+    run_with_both(
+        "prim_pprint.jac", "pprint_py", "pprint_cl", "pprint_na", require=["na"]
+    );
+}
+
+test "difflib bundled" {
+    run_with_both(
+        "prim_difflib.jac", "difflib_py", "difflib_cl", "difflib_na", require=["na"]
+    );
+}
+
+test "native call resolves bundled stdlib signature, not typeshed (#7037)" {
+    (eng, _) = compile_native("bundled_stdlib_sig.jac");
+    pos = get_func(eng, "dumps_pos_len", ctypes.c_int64);
+    kw = get_func(eng, "dumps_kw_len", ctypes.c_int64);
+    pos_len = pos();
+    kw_len = kw();
+    assert pos_len == 4 , f"positional dumps len {pos_len}";
+    assert kw_len == 4 , f"keyword dumps len {kw_len}";
+}
+
 test "random" {
     run_with_both(
         "prim_random.jac", "random_py", "random_cl", "random_na", require=["na"]
     );
 }
 
-# --- isinstance-on-`any` + scalar box/unbox round-trip (issue #6421, gates json) ---
 test "any dispatch" {
     run_with_both(
         "prim_any.jac",
@@ -232,7 +300,66 @@ test "any dispatch" {
     );
 }
 
-# --- dict insertion-order lock (issue #6404 congruence #3, gates json) ---
+test "native any congruence" {
+    run_with_both(
+        "native_any_stdlib_gaps.jac",
+        "congruence_check_py",
+        "congruence_check_cl",
+        "congruence_check_na",
+        require=["na"]
+    );
+}
+
+test "native any container ops" {
+    run_with_both(
+        "native_any_stdlib_gaps.jac",
+        "any_ops_check_py",
+        "any_ops_check_cl",
+        "any_ops_check_na",
+        require=["na"]
+    );
+}
+
+test "native any guarded consume" {
+    run_with_both(
+        "native_any_stdlib_gaps.jac",
+        "guard_consume_check_py",
+        "guard_consume_check_cl",
+        "guard_consume_check_na",
+        require=["na"]
+    );
+}
+
+test "native bare list flow inference" {
+    run_with_both(
+        "native_any_stdlib_gaps.jac",
+        "bare_list_check_py",
+        "bare_list_check_cl",
+        "bare_list_check_na",
+        require=["na"]
+    );
+}
+
+test "native none any consume" {
+    run_with_both(
+        "native_any_stdlib_gaps.jac",
+        "none_consume_check_py",
+        "none_consume_check_cl",
+        "none_consume_check_na",
+        require=["na"]
+    );
+}
+
+test "native any alias retain" {
+    run_with_both(
+        "native_any_alias_retain.jac",
+        "alias_retain_py",
+        "alias_retain_cl",
+        "alias_retain_na",
+        require=["na"]
+    );
+}
+
 test "dict order" {
     run_with_both(
         "prim_dictorder.jac",
@@ -243,7 +370,6 @@ test "dict order" {
     );
 }
 
-# --- Exception Types (ExceptionEmitter) — dict-comparison for py/cl ---
 test "exception hierarchy" {
     py_result = run_py_fixture("prim_exceptions", "exceptions_py");
     try {
@@ -266,7 +392,6 @@ test "runtime error hierarchy" {
     } except Exception { }
 }
 
-# --- Exception Types (ExceptionEmitter) — NA int-returning tests ---
 test "exception basic catch" {
     (eng, _) = compile_native("prim_exceptions.jac");
     f = get_func(eng, "test_basic_catch_na", ctypes.c_int64);
@@ -393,12 +518,6 @@ test "runtime error with finally" {
     assert f() == 11;
 }
 
-# --- Builtin Functions (BuiltinEmitter) — introspection methods ---
-# emit_enumerate, emit_zip, emit_map, emit_filter, emit_isinstance,
-# emit_issubclass, emit_type, emit_repr, emit_ascii, emit_callable,
-# emit_hash, emit_id, emit_iter, emit_next, emit_hasattr, emit_getattr,
-# emit_setattr, emit_vars, emit_delattr, emit_dir, emit_print,
-# emit_input, emit_open
 test "builtins introspection" {
     run_with_both(
         "prim_builtins_introspection.jac",

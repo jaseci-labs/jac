@@ -1,0 +1,37 @@
+[project]
+name = "jac-scale-admin"
+version = "1.0.0"
+description = "JAC-Scale Admin Portal"
+entry-point = "main.jac"
+
+[serve]
+base_route_app = "app"
+
+[client]
+base_path = "/admin/"
+
+[client.app_meta_data]
+title = "JAC-Scale Admin"
+author = "Jaseci"
+
+[client.vite]
+plugins = ["tailwindcss()"]
+lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
+
+[dependencies.npm]
+tailwindcss = "latest"
+lucide-react = "latest"
+react = "^18.2.0"
+react-dom = "^18.2.0"
+react-router-dom = "^6.22.0"
+react-error-boundary = "^5.0.0"
+zod = "^4.3.6"
+"@tanstack/react-form" = "^1.33.0"
+
+[dependencies.npm.dev]
+"@tailwindcss/vite" = "^4.1.17"
+vite = "^6.4.1"
+"@vitejs/plugin-react" = "^4.2.1"
+typescript = "^5.3.3"
+"@types/react" = "^18.2.0"
+"@types/react-dom" = "^18.2.0"

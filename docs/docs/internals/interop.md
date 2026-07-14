@@ -63,10 +63,10 @@ remaining rows.
 | # | Direction | Boundary kind | Mechanism | What crosses | Synthesised by |
 |---|-----------|---------------|-----------|--------------|----------------|
 | 1 | **`sv → sv`** (in-process) | Free | Direct Python call | Live CPython objects (by ref) | -- (plain `import`) |
-| 2 | **`sv → sv`** (microservice) | Marshalled | HTTP `POST` between deployments | JSON (`_to_wire`/`_from_wire`) | `PyastGenPass` (`sv import` stub) + `jac-scale` |
+| 2 | **`sv → sv`** (microservice) | Marshalled | HTTP `POST` between deployments | JSON (`_to_wire`/`_from_wire`) | `PyastGenPass` (`sv import` stub) + `jaclang.scale` |
 | 3 | **`cl → cl`** | Free | Direct JS call | JS values (by ref) | -- (`cl import`) |
 | 4 | **`na → na`** | Free | Linker symbol reference | Native values / pointers | `NativeCompilePass` relocation |
-| 5 | **`cl → sv`** | Marshalled | HTTP `POST /walker/*` or `/function/*` | JSON envelope | `EsastGenPass` (`__jacSpawn`/`__jacCallFunction`) + `jac-scale` |
+| 5 | **`cl → sv`** | Marshalled | HTTP `POST /walker/*` or `/function/*` | JSON envelope | `EsastGenPass` (`__jacSpawn`/`__jacCallFunction`) + `jaclang.scale` |
 | 6 | **`sv → cl`** | Marshalled (one-shot) | Static bundle + bootstrap JSON (CSR) | The compiled JS bundle + init payload | `PyastGenPass` static route + Vite/Bun bundler |
 | 7 | **`sv → na`** | Marshalled | `ctypes.CFUNCTYPE` over the JIT address (or AOT `.so`) | C-ABI scalars; Jac objects as zero-copy views | `PyastGenPass` ctypes stub + `NaIRGenPass` C-ABI export |
 | 8 | **`na → sv`** | Marshalled | Python callback registered as a JIT symbol | C-ABI scalars | `interop_bridge` (`llvm.add_symbol`) |
@@ -185,8 +185,8 @@ deduped, *writer* endpoints fetch then invalidate overlapping readers
 
 ### The server endpoint
 
-The HTTP server is **not** in the compiler -- it is the `jac-scale` plugin
-(`jac-scale/jac_scale/jserver/`, a FastAPI/uvicorn binding written in Jac).
+The HTTP server is **not** in the compiler -- it is the built-in `scale` subsystem
+(`jac/jaclang/scale/jserver/`, a FastAPI/uvicorn binding written in Jac).
 `jac start` brings it up. For every public walker it registers two routes
 (`register_walkers_endpoints`):
 
@@ -293,7 +293,7 @@ can cross -- the exception being Python-style monkey-patched classes.
 
 `jac run --autonative` JITs `jac_entry` directly when a module is
 `native_compat` (and silently falls back to the Python path otherwise). The
-*ahead-of-time* counterpart is the **`na → C host`** shared-library export
+*ahead-of-time* counterpart is the **`na → C host`** native-lib export
 path (below), where the native side is packaged as a real `.so` and a host (Python via `ctypes`, or C) loads
 it across the process boundary.
 
@@ -435,7 +435,7 @@ sv import from billing { ChargeCard }   # billing may be a different process
 
 At runtime the provider URL comes from `JAC_SV_<MODULE>_URL`, else an
 auto-started loopback sibling. This is the only place a `.jac` → Python
-lowering converts an import into an RPC; it is consumed by `jac-scale`.
+lowering converts an import into an RPC; it is consumed by the built-in `scale` subsystem.
 
 ---
 
@@ -550,20 +550,21 @@ built into `jaclang` core (`jac/jaclang/runtimelib/client/targets/desktop/`).
 > **Status note.** Older release notes mention a "PyTauri shell +
 > PyInstaller sidecar" and a `jac desktop` CLI -- those are **stale**. The
 > shipping architecture is a native host binary + the OS webview, and there
-> is no dedicated `jac desktop` command. Wiring the `sv` walkers onto the
-> *embedded* interpreter is still in progress (issue #6436); today the UI
-> talks to a backend `sv` server reached via `api_base`, while the embedded
-> CPython runs a stdlib loopback broker that serves the bundle and brokers
-> SSO.
+> is no dedicated `jac desktop` command. The `sv` walkers and functions run
+> **in-process** on the embedded CPython (shipped via #7045): the webview
+> binds `__jac_invoke` to `inprocess_dispatch`, so walker/function calls
+> never leave the binary. A stdlib loopback broker still serves the bundle
+> and brokers SSO/session/logout over `/__jac`. Only per-OS packaging and
+> code-signing remain open (issue #6436, phase 5).
 
 ### Developer workflow
 
 Configuration is declarative in `jac.toml`:
 
 ```toml
-[plugins.desktop]
+[desktop]
 name = "my-app"
-[plugins.desktop.window]
+[desktop.window]
 title  = "My App"
 width  = 1000
 height = 700
@@ -572,6 +573,7 @@ height = 700
 ```bash
 jac build --client desktop   # -> .jac/client/desktop/<app> (binary + dist/ + libwebview.so)
 jac start --client desktop   # build if needed, then launch the native window
+jac start --client desktop --dev   # HMR: Vite on 127.0.0.1 + recompile on .jac saves
 (cd .jac/client/desktop && ./my-app)   # or run the binary directly
 ```
 
@@ -587,8 +589,8 @@ core `build`/`start` commands delegate to the target.
 | UI | `cl` (Vite/React bundle) | `NativeDesktopTarget` subclasses `WebTarget`; reuses the standard `.jac/client/dist/` bundle |
 | Host binary | `na` (LLVM, pure-Jac linker) | A generated `host.na.jac`, compiled by `jac nacompile`; records `libwebview.so` as `DT_NEEDED` with an `$ORIGIN` runpath |
 | Window | C FFI → `libwebview` | OS-native webview: WebKitGTK (Linux), WKWebView (macOS), WebView2 (Windows) |
-| Local runtime | C FFI → `libpython` | Embedded CPython runs a stdlib loopback HTTP server (the OAuth/bundle broker) |
-| Backend | `sv` over HTTP | Reached via `api_base` (currently remote; in-process embedding is the goal of #6436) |
+| Local runtime | C FFI → `libpython` | Embedded CPython runs `inprocess_dispatch` (walker/function invokes) **and** a stdlib loopback HTTP broker (bundle + SSO/session) |
+| Backend | `sv` in-process | Walker/function calls route through the embedded runtime via `__jac_invoke`; a remote `api_base` is optional for external backends |
 
 The generated host wires it all together (paraphrasing
 `native_desktop_target.impl.jac`):
@@ -600,7 +602,7 @@ import from "libpython3.x.so" { Py_Initialize, PyRun_SimpleString, ... }
 
 with entry {
     Py_Initialize();
-    PyRun_SimpleString(SERVE_PY);     # loopback http.server (broker) in a daemon thread
+    PyRun_SimpleString(BOOT_PY);      # host_boot.boot(): plugins + runtime + loopback broker
     url = f"http://127.0.0.1:{port}/";
     wv  = new_webview(False);
     wv.title(...); wv.size(...); wv.on_load(BOOTSTRAP_JS);
@@ -640,7 +642,7 @@ RPC to the backend). It is the matrix in miniature.
 |---------|-------|
 | Boundary discovery | `jac0core/passes/impl/boundary_analysis_pass.impl.jac`; `InteropAnalysisPass`; [`codeinfo.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/codeinfo.jac) (`InteropBinding`, `InteropManifest`) |
 | Context split / coercion | [`compiler.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/compiler.jac) (`_coerce_module`); `constant.jac` (`CodeContext`) |
-| `cl → sv` | `compiler/passes/ecmascript/impl/esast_gen_pass.impl.jac` (`__jacSpawn`/`__jacCallFunction`); `runtimelib/impl/client_runtime.impl.jac`; `jac-scale/jac_scale/impl/serve.endpoints.impl.jac` |
+| `cl → sv` | `compiler/passes/ecmascript/impl/esast_gen_pass.impl.jac` (`__jacSpawn`/`__jacCallFunction`); `runtimelib/impl/client_runtime.impl.jac`; `jac/jaclang/scale/server/impl/serve.endpoints.impl.jac` |
 | `sv → cl` | `runtimelib/client/impl/{compiler,vite_bundler}.impl.jac`; `runtimelib/impl/server.impl.jac`; `passes/ast_gen/impl/jsx_processor.impl.jac` |
 | `sv ↔ na` | `jac0core/{interop_bridge,native_marshal}.jac`; `passes/impl/pyast_gen_pass.impl.jac` (`_gen_native_interop_stubs`, `_generate_sv_to_sv_stubs`); `passes/native/impl/na_compile_pass.impl.jac` |
 | `na ↔ C` | `compiler/targets/{foreign,abi}.jac`; `passes/native/na_ir_gen_pass.impl/{clib_abi,clib_vtable}.impl.jac` |

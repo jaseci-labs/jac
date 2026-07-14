@@ -1,17 +1,9 @@
-"""
-NormalizePass: rebuilds kid lists from semantic fields.
-
-This pass traverses the AST using enter_* methods (pre-order)
-to rebuild each node's kid list from its semantic fields.
-This is needed before passes that read .kid (e.g., DocIRGenPass).
-"""
 import from collections.abc { Sequence }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
 import from jaclang.jac0core.constant { CodeContext, EdgeDir }
 import from jaclang.jac0core.unitree { Tok, EmptyToken, Token }
 
-"""Rebuild kid lists from semantic fields."""
 obj NormalizePass(UniPass) {
     def enter_sub_tag(nd: uni.SubTag) -> None;
     def enter_module(nd: uni.Module) -> None;
@@ -38,6 +30,9 @@ obj NormalizePass(UniPass) {
     def enter_arch_has(nd: uni.ArchHas) -> None;
     def enter_has_var(nd: uni.HasVar) -> None;
     def enter_typed_ctx_block(nd: uni.TypedCtxBlock) -> None;
+    def _normalize_cond_block(nd: uni.UniNode, kw: Tok) -> None;
+    def _normalize_name_list_stmt(nd: uni.UniNode, op: Tok) -> None;
+    def enter_region_stmt(nd: uni.RegionStmt) -> None;
     def enter_if_stmt(nd: uni.IfStmt) -> None;
     def enter_else_if(nd: uni.ElseIf) -> None;
     def enter_else_stmt(nd: uni.ElseStmt) -> None;
@@ -49,6 +44,7 @@ obj NormalizePass(UniPass) {
     def enter_iter_for_stmt(nd: uni.IterForStmt) -> None;
     def enter_in_for_stmt(nd: uni.InForStmt) -> None;
     def enter_while_stmt(nd: uni.WhileStmt) -> None;
+    def enter_forever_stmt(nd: uni.ForeverStmt) -> None;
     def enter_with_stmt(nd: uni.WithStmt) -> None;
     def enter_expr_as_item(nd: uni.ExprAsItem) -> None;
     def enter_raise_stmt(nd: uni.RaiseStmt) -> None;

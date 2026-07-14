@@ -1,31 +1,10 @@
-"""Python AST Generation Pass for the Jac compiler.
-
-This pass transforms the Jac AST into equivalent Python AST by:
-
-1. Traversing the Jac AST and generating corresponding Python AST nodes
-2. Handling all Jac language constructs and translating them to Python
-equivalents:
-   - Classes, functions, and methods
-   - Control flow statements (if/else, loops, try/except)
-   - Data structures (lists, dictionaries, sets)
-   - Special Jac features (walkers, abilities, archetypes)
-   - Object spatial operations (node/edge connections)
-
-3. Managing imports and dependencies between modules
-4. Preserving source location information for error reporting
-5. Generating appropriate Python code for Jac-specific constructs
-
-The output of this pass is a complete Python AST representation that can be
-compiled to Python bytecode or serialized to Python source code.
-"""
 import ast as ast3;
 import copy;
 import textwrap;
 import from collections.abc { Sequence }
-import from dataclasses { dataclass }
 import from typing { ClassVar, TypeVar, cast }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.constant { CodeContext, EdgeDir }
+import from jaclang.jac0core.constant { CodeContext, EdgeDir, is_borrow_kind }
 import from jaclang.jac0core.constant { Constants as Con }
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.codeinfo { BoundaryTypeInfo, InteropBinding }
@@ -93,7 +72,6 @@ glob T = TypeVar('T', bound=ast3.AST),
          Tok.MINUS: ast3.USub
      };
 
-"""Jac blue transpilation to python pass."""
 obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
     has debuginfo: dict[str, list[str]] by postinit,
         already_added: list[str] = [],
@@ -111,58 +89,18 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
         _ambient_typing_names: ClassVar[(set[str] | None)] = None;
     }
 
-    """Get the set of builtin names, cached after first successful access."""
     @classmethod
     def _get_builtin_names(cls: any) -> set[str];
 
-    """Get the curated ambient typing names. Single source of truth is
-    `compiler/type_system/typing_ambient.pyi` — the same file TypeEvaluator
-    uses to drive its merge into `builtins_module`. Parsing the stub's
-    __all__ here lets codegen auto-emit `from typing import <names>` when
-    a reference appears, keeping `typing.get_type_hints` / pydantic /
-    FastAPI annotation introspection working at runtime."""
     @classmethod
     def _get_ambient_typing_names(cls: any) -> set[str];
 
     def postinit -> None;
-    """Enter node."""
     def enter_node(nd: uni.UniNode) -> None;
-
-    """Exit node."""
     def exit_node(nd: uni.UniNode) -> None;
-
-    """Generate Python stubs for native interop at the NativeBlock position.
-
-        For native_exports (native functions called from Python):
-          Generates a Python stub function that calls the native function via
-ctypes.
-        For native_imports (Python functions called from native):
-          Generates a registration statement that stores the Python function
-          in the interop callback table.
-        """
     def _gen_native_interop_stubs(nd: uni.NativeBlock) -> None;
-
-    """Build shim body statements for a natively-lowered test block.
-
-        The shim calls the test's native function through the module's JIT
-        engine and re-raises its failure message as an AssertionError, so
-        native tests report through the same unittest pipeline as Python
-        tests.
-        """
     def _native_test_shim_stmts(nd: uni.Test) -> list;
-
-    """Generate Python HTTP client stubs for sv-to-sv microservice imports.
-
-        For each function imported via an sv import from another server module,
-        generates a Python function that routes the call over HTTP via
-        jaclang.runtimelib.sv_client. For each typed object imported, generates
-        a lightweight stub class with from_wire / to_wire reconstruction.
-        Returns True if the import was handled (caller should not emit a normal
-        Python import), False otherwise.
-        """
     def _generate_sv_to_sv_stubs(nd: uni.Import) -> bool;
-
-    """Build a Python source string for an sv-to-sv function stub."""
     def _gen_py_sv_func_stub(
         local_name: str,
         func_name: str,
@@ -171,15 +109,6 @@ ctypes.
         boundary_types: dict[str, BoundaryTypeInfo]
     ) -> str;
 
-    """Build a Python source string for an sv-to-sv walker stub.
-
-    A walker stub is a class whose constructor performs a remote spawn:
-    instantiating `Greet(name="x")` on the consumer issues a POST to
-    `/walker/Greet` on the provider, deserialises the response, and
-    returns an instance with `has` fields and a `reports` attribute
-    populated. The consumer-side class shape mirrors the provider's
-    walker so type identity and boundary-typed fields survive the trip.
-    """
     def _gen_py_sv_walker_stub(
         local_name: str,
         walker_name: str,
@@ -188,119 +117,41 @@ ctypes.
         boundary_types: dict[str, BoundaryTypeInfo]
     ) -> str;
 
-    """Build a Python source string for a boundary type stub class."""
     def _gen_py_boundary_stub_class(class_name: str, info: BoundaryTypeInfo) -> str;
-
-    """Return the object from jaclib as ast node based on the import config."""
     def jaclib_obj(obj_name: str) -> ast3.Name;
-
-    """Return a builtin name and track it for importing.
-
-        Note: Some names like 'Enum' are provided by other imports (e.g.,
-needs_enum)
-        and should not be added to builtin_imports.
-        """
     def builtin_name(name: str) -> ast3.Name;
-
-    """True if `target` is (or transitively wraps) an edge-ref trailer whose
-    codegen produces a `Jac.refs(...)` call we can fuse a `slc=` kwarg into."""
     def _is_edge_ref_target(target: uni.UniNode) -> bool;
-
-    """Append an import statement to the preamble once."""
     def _add_preamble_once(key: str, nd: ast3.AST) -> None;
-
-    """Ensure typing is imported only once."""
-    def needs_typing -> None;
-
-    """Ensure Enum utilities are imported only once."""
-    def needs_enum -> None;
-
-    """Ensure a specific enum kind (IntEnum, StrEnum, ...) is imported once."""
     def needs_enum_kind(kind: str) -> None;
-
-    """Ensure concurrent Future is imported only once."""
-    def needs_future -> None;
-
-    """Generate a deterministic temporary name for synthesized definitions."""
     def _next_temp_name(prefix: str) -> str;
-
-    """Convert Jac identifiers to Python runtime identifiers."""
     def _py_name(nd: uni.AstSymbolNode) -> str;
-
-    """Convert a synthesized function definition into an executable expression.
-
-        Instead of using make_block_lambda at runtime, we hoist the function
-        definition to be emitted before the current statement, then return
-        a reference to the function name.
-        """
+    def _emit_jobj_ref(nd: uni.UnaryExpr) -> None;
     def _function_expr_from_def(
         func_def: (ast3.FunctionDef | ast3.AsyncFunctionDef),
         jac_node: uni.UniNode,
         filename_hint: str
     ) -> ast3.Name;
 
-    """Create a semstring decorator for the given semantic strings.
-
-        Example:
-            @_.sem(
-                "Returns the weather for a given city.", {
-                    "city" : "Name of the city to get the weather for.",
-                }
-            )
-            def get_weather(city: str);
-
-        This the second parameter (dict) will also used in the class `has`
-variables
-        enum values etc.
-        """
     def _get_sem_decorator(nd: uni.UniNode) -> (ast3.Call | None);
-
-    """Safe accessor for a node's generated py_ast.
-
-        Raises an ICE with source location instead of a bare IndexError
-        when py_ast is unexpectedly empty.
-        """
     def py_ast_val(nd: uni.UniNode) -> ast3.AST;
-
-    """Sync ast locations."""
     def sync(
         py_node: T, jac_node: (uni.UniNode | None) = None, deep: bool = False
     ) -> T;
 
-    """Sync ast locations."""
     def pyinline_sync(py_nodes: list[ast3.AST]) -> list[ast3.AST];
-
-    """Resolve switch case pattern."""
     def resolve_switch_pattern(
         pattern: uni.MatchPattern, target: uni.Expr
     ) -> ast3.expr;
 
-    """Resolve switch statement."""
     def resolve_switch_stmt(nd: uni.SwitchStmt) -> list[ast3.AST];
-
-    """Unwind codeblock."""
     def resolve_stmt_block(
         nd: Sequence[uni.CodeBlockStmt] | Sequence[uni.EnumBlockStmt] | None,
         doc: (uni.String | None) = None
     ) -> list[ast3.AST];
 
-    """Sync ast locations."""
-    def sync_many(py_nodes: list[T], jac_node: uni.UniNode) -> list[T];
-
-    """Convert list to attribute."""
-    def list_to_attrib(
-        attribute_list: list[str], sync_node_list: Sequence[uni.UniNode]
-    ) -> ast3.AST;
-
-    """Resolve Self to the appropriate Python construct based on context."""
     def _resolve_self_type(nd: uni.Name) -> (ast3.expr | None);
-
-    """Check if a node is in a type annotation context."""
     def _is_in_type_annotation(nd: uni.UniNode) -> bool;
-
-    """Check if a node is or is a descendant of another node."""
     def _is_descendant_of(nd: uni.UniNode, ancestor: uni.UniNode) -> bool;
-
     def exit_sub_tag(nd: uni.SubTag[uni.T]) -> None;
     def exit_module(nd: uni.Module) -> None;
     def exit_type_param(nd: uni.TypeParam) -> None;
@@ -308,19 +159,11 @@ variables
     def exit_global_vars(nd: uni.GlobalVars) -> None;
     def exit_test(nd: uni.Test) -> None;
     def exit_module_code(nd: uni.ModuleCode) -> None;
-    """Handle ClientBlock - already set to empty in enter_node."""
     def exit_client_block(nd: uni.ClientBlock) -> None;
-
-    """Handle ServerBlock - unwrap its children to module level."""
     def exit_server_block(nd: uni.ServerBlock) -> None;
-
-    """Handle NativeBlock - already pruned in enter_node."""
     def exit_native_block(nd: uni.NativeBlock) -> None;
-
     def exit_py_inline_code(nd: uni.PyInlineCode) -> None;
-    """Exit import node."""
     def exit_import(nd: uni.Import) -> None;
-
     def exit_module_path(nd: uni.ModulePath) -> None;
     def exit_module_item(nd: uni.ModuleItem) -> None;
     def enter_archetype(nd: uni.Archetype) -> None;
@@ -328,14 +171,11 @@ variables
     def enter_enum(nd: uni.Enum) -> None;
     def exit_enum(nd: uni.Enum) -> None;
     def enter_ability(nd: uni.Ability) -> None;
-    """Reusable method to codegen call_llm / acall_llm; returns Await when is_async."""
     def _invoke_llm_call(
         model: ast3.expr, caller: ast3.expr, args: ast3.Dict, is_async: bool = False
     ) -> ast3.expr;
 
-    """Generate the by LLM body."""
     def gen_llm_body(nd: uni.Ability) -> list[ast3.stmt];
-
     def exit_ability(nd: uni.Ability) -> None;
     def exit_impl_def(nd: uni.ImplDef) -> None;
     def exit_sem_def(nd: uni.SemDef) -> None;
@@ -345,6 +185,7 @@ variables
     def exit_arch_has(nd: uni.ArchHas) -> None;
     def exit_has_var(nd: uni.HasVar) -> None;
     def exit_typed_ctx_block(nd: uni.TypedCtxBlock) -> None;
+    def exit_region_stmt(nd: uni.RegionStmt) -> None;
     def exit_if_stmt(nd: uni.IfStmt) -> None;
     def exit_else_if(nd: uni.ElseIf) -> None;
     def exit_else_stmt(nd: uni.ElseStmt) -> None;
@@ -356,6 +197,7 @@ variables
     def exit_iter_for_stmt(nd: uni.IterForStmt) -> None;
     def exit_in_for_stmt(nd: uni.InForStmt) -> None;
     def exit_while_stmt(nd: uni.WhileStmt) -> None;
+    def exit_forever_stmt(nd: uni.ForeverStmt) -> None;
     def exit_with_stmt(nd: uni.WithStmt) -> None;
     def exit_expr_as_item(nd: uni.ExprAsItem) -> None;
     def exit_raise_stmt(nd: uni.RaiseStmt) -> None;
@@ -378,6 +220,7 @@ variables
     def exit_cfg_expr(nd: uni.CfgExpr) -> None;
     def exit_bool_expr(nd: uni.BoolExpr) -> None;
     def exit_lambda_expr(nd: uni.LambdaExpr) -> None;
+    def _emit_lambda_expr_body(nd: uni.LambdaExpr, body_node: uni.Expr) -> None;
     def _remove_lambda_param_annotations(signature: uni.FuncSignature) -> None;
     def exit_unary_expr(nd: uni.UnaryExpr) -> None;
     def exit_if_else_expr(nd: uni.IfElseExpr) -> None;
@@ -397,7 +240,6 @@ variables
     def exit_dict_compr(nd: uni.DictCompr) -> None;
     def exit_atom_trailer(nd: uni.AtomTrailer) -> None;
     def exit_atom_unit(nd: uni.AtomUnit) -> None;
-    """Generate the arguments for a function call."""
     def gen_call_args(
         nd: uni.FuncCall
     ) -> tuple[(list[ast3.expr], list[ast3.keyword])];
@@ -432,36 +274,16 @@ variables
     def exit_builtin_type(nd: uni.BuiltinType) -> None;
     def exit_null(nd: uni.Null) -> None;
     def exit_ellipsis(nd: uni.Ellipsis) -> None;
-    """Generate Python AST for JSX elements."""
     def exit_jsx_element(nd: uni.JsxElement) -> None;
-
-    """Generate Python AST for JSX element names."""
     def exit_jsx_element_name(nd: uni.JsxElementName) -> None;
-
-    """Bases class for JSX attributes - handled by subclasses."""
     def exit_jsx_attribute(nd: uni.JsxAttribute) -> None;
-
-    """Generate Python AST for JSX spread attributes."""
     def exit_jsx_spread_attribute(nd: uni.JsxSpreadAttribute) -> None;
-
-    """Generate Python AST for JSX normal attributes."""
     def exit_jsx_normal_attribute(nd: uni.JsxNormalAttribute) -> None;
-
-    """Bases class for JSX children - handled by subclasses."""
     def exit_jsx_child(nd: uni.JsxChild) -> None;
-
-    """Generate Python AST for JSX text nodes."""
     def exit_jsx_text(nd: uni.JsxText) -> None;
-
-    """Generate Python AST for JSX expression children."""
     def exit_jsx_expression(nd: uni.JsxExpression) -> None;
-
-    """Generate Python AST for JSX statement-form slots."""
     def exit_jsx_slot(nd: uni.JsxSlot) -> None;
-
-    """Generate Python AST for JSX block comments (no-op)."""
     def exit_jsx_comment(nd: uni.JsxComment) -> None;
-
     def exit_semi(nd: uni.Semi) -> None;
     def exit_comment_token(nd: uni.CommentToken) -> None;
 }

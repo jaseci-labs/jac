@@ -1,9 +1,6 @@
-"""Implementation file for native (LLVM) backend primitive emitters."""
-
 impl NativeIntEmitter.emit_to_bytes(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # to_bytes(length, byteorder): convert int to bytes
     if len(args) < 2 {
         return None;
     }
@@ -17,17 +14,17 @@ impl NativeIntEmitter.emit_to_bytes(
     one64 = ir.Constant(i64, 1);
     eight64 = ir.Constant(i64, 8);
     mask_ff = ir.Constant(i64, 0xFF);
-    length = p._coerce_type(args[0], i64);  # i64
-    byteorder = args[1];  # i8* "big" or "little"
-    # Allocate a length-aware bytes value of exactly `length` data bytes.
+    length = p._coerce_type(args[0], i64);
+    byteorder = args[1];
+
     bv = p._bytes_alloc(length);
     buf = p._bytes_data_ptr(bv);
-    # Determine if big-endian: strcmp(byteorder, "big") == 0
+
     big_str = p._make_global_string("big");
     strcmp_fn = p._get_or_declare_extern("strcmp", i32, [i8p, i8p]);
     cmp_res = b.call(strcmp_fn, [byteorder, big_str], name="tb.cmp");
     is_big = b.icmp_signed("==", cmp_res, ir.Constant(i32, 0), name="tb.isbig");
-    # Loop: for i in range(length)
+
     func = b.basic_block.function;
     entry_bb = b.basic_block;
     loop_bb = func.append_basic_block(name="tb.loop");
@@ -40,12 +37,12 @@ impl NativeIntEmitter.emit_to_bytes(
     at_end = b.icmp_unsigned(">=", idx, length, name="tb.atend");
     b.cbranch(at_end, done_bb, body_bb);
     b.position_at_start(body_bb);
-    # Extract byte: (target >> (i * 8)) & 0xFF
+
     shift_amt = b.mul(idx, eight64, name="tb.shift");
     shifted = b.lshr(target, shift_amt, name="tb.shifted");
     byte_val = b.and_(shifted, mask_ff, name="tb.byte");
     byte_i8 = b.trunc(byte_val, i8, name="tb.i8");
-    # Store position: big-endian = length-1-i, little-endian = i
+
     big_pos = b.sub(b.sub(length, one64, name="tb.lm1"), idx, name="tb.bigpos");
     store_pos = b.select(is_big, big_pos, idx, name="tb.pos");
     byte_ptr = b.gep(buf, [store_pos], name="tb.ptr");
@@ -60,7 +57,6 @@ impl NativeIntEmitter.emit_to_bytes(
 impl NativeIntEmitter.emit_as_integer_ratio(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # as_integer_ratio for int: returns (n, 1) as a 2-element tuple
     p = ctx.pass_ref;
     b = get_builder(p);
     i32 = ir.IntType(32);
@@ -92,14 +88,12 @@ impl NativeIntEmitter.emit_as_integer_ratio(
 impl NativeIntEmitter.emit_bit_length(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # bit_length: number of bits needed to represent abs(target), excluding sign and leading zeros
-    # 0.bit_length() == 0, 1.bit_length() == 1, 255.bit_length() == 8
     p = ctx.pass_ref;
     b = get_builder(p);
     i64 = ir.IntType(64);
     zero = ir.Constant(i64, 0);
     one = ir.Constant(i64, 1);
-    # abs(target)
+
     is_neg = b.icmp_signed("<", target, zero, name="bitlen.neg");
     neg_val = b.sub(zero, target, name="bitlen.abs");
     abs_val = b.select(is_neg, neg_val, target, name="bitlen.absv");
@@ -129,13 +123,12 @@ impl NativeIntEmitter.emit_bit_length(
 impl NativeIntEmitter.emit_bit_count(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # bit_count: number of ones in the binary representation (popcount)
     p = ctx.pass_ref;
     b = get_builder(p);
     i64 = ir.IntType(64);
     zero = ir.Constant(i64, 0);
     one = ir.Constant(i64, 1);
-    # Use abs value for negative numbers (Python counts bits of magnitude)
+
     is_neg = b.icmp_signed("<", target, zero, name="bitcnt.neg");
     neg_val = b.sub(zero, target, name="bitcnt.abs");
     abs_val = b.select(is_neg, neg_val, target, name="bitcnt.absv");
@@ -166,14 +159,12 @@ impl NativeIntEmitter.emit_bit_count(
 impl NativeIntEmitter.emit_conjugate(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # conjugate of an integer is itself
     return target;
 }
 
 impl NativeIntEmitter.emit_from_bytes(
     self, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # int.from_bytes(bytes_str, byteorder): reconstruct int from bytes (i8*)
     if len(args) < 2 {
         return None;
     }
@@ -186,11 +177,9 @@ impl NativeIntEmitter.emit_from_bytes(
     zero64 = ir.Constant(i64, 0);
     one64 = ir.Constant(i64, 1);
     eight64 = ir.Constant(i64, 8);
-    bytes_obj = args[0];  # length-aware bytes value, or a NUL-terminated i8*
-    byteorder = args[1];  # i8* "big" or "little"
-    # Length-aware bytes: read the exact byte count + data pointer (never
-    # strlen — the buffer may contain embedded NULs). A plain i8* (e.g. a str
-    # used as a byte view, as the rune-aware lexer does) falls back to strlen.
+    bytes_obj = args[0];
+    byteorder = args[1];
+
     if p._is_bytes_value(bytes_obj) {
         length = p._bytes_len_val(bytes_obj);
         bytes_ptr = p._bytes_data_ptr(bytes_obj);
@@ -199,12 +188,12 @@ impl NativeIntEmitter.emit_from_bytes(
         length = b.call(strlen_fn, [bytes_obj], name="fb.len");
         bytes_ptr = bytes_obj;
     }
-    # Determine if big-endian
+
     big_str = p._make_global_string("big");
     strcmp_fn = p._get_or_declare_extern("strcmp", i32, [i8p, i8p]);
     cmp_res = b.call(strcmp_fn, [byteorder, big_str], name="fb.cmp");
     is_big = b.icmp_signed("==", cmp_res, ir.Constant(i32, 0), name="fb.isbig");
-    # Loop: accumulate bytes into result i64
+
     func = b.basic_block.function;
     entry_bb = b.basic_block;
     loop_bb = func.append_basic_block(name="fb.loop");
@@ -219,12 +208,11 @@ impl NativeIntEmitter.emit_from_bytes(
     at_end = b.icmp_unsigned(">=", idx, length, name="fb.atend");
     b.cbranch(at_end, done_bb, body_bb);
     b.position_at_start(body_bb);
-    # Load byte at idx
+
     byte_ptr = b.gep(bytes_ptr, [idx], name="fb.bptr");
     byte_val = b.load(byte_ptr, name="fb.byte");
     byte_i64 = b.zext(byte_val, i64, name="fb.ext");
-    # For big-endian: shift_amt = (length - 1 - i) * 8
-    # For little-endian: shift_amt = i * 8
+
     big_shift_idx = b.sub(b.sub(length, one64, name="fb.lm1"), idx, name="fb.bidx");
     shift_idx = b.select(is_big, big_shift_idx, idx, name="fb.sidx");
     shift_amt = b.mul(shift_idx, eight64, name="fb.shift");
@@ -241,12 +229,11 @@ impl NativeIntEmitter.emit_from_bytes(
 impl NativeFloatEmitter.emit_is_integer(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # is_integer: True if float has no fractional part
     p = ctx.pass_ref;
     b = get_builder(p);
     i64 = ir.IntType(64);
     assert b is not None , "Builder should be set in pass_ref";
-    # Convert to int and back, compare
+
     truncated = b.fptosi(target, i64, name="isint.trunc");
     roundtripped = b.sitofp(truncated, ir.DoubleType(), name="isint.rt");
     is_eq = b.fcmp_ordered("==", target, roundtripped, name="isint.eq");
@@ -256,17 +243,15 @@ impl NativeFloatEmitter.emit_is_integer(
 impl NativeFloatEmitter.emit_as_integer_ratio(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # as_integer_ratio for float: returns (numerator, denominator) as tuple
-    # Algorithm: multiply by 2 until integer, track denominator
     p = ctx.pass_ref;
     b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     f64 = ir.DoubleType();
     func = b.basic_block.function;
-    # Get floor function
+
     floor_fn = p._get_or_declare_extern("floor", f64, [f64]);
-    # Loop: while floor(num) != num, num *= 2, den *= 2
+
     entry_bb = b.basic_block;
     loop_bb = func.append_basic_block(name="fair.loop");
     body_bb = func.append_basic_block(name="fair.body");
@@ -287,7 +272,7 @@ impl NativeFloatEmitter.emit_as_integer_ratio(
     num_phi.add_incoming(new_num, body_bb);
     den_phi.add_incoming(new_den, body_bb);
     b.branch(loop_bb);
-    # Build result tuple
+
     b.position_at_start(done_bb);
     numer = b.fptosi(num_phi, i64, name="fair.numer");
     tuple_type = ir.LiteralStructType([i64, i64]);
@@ -316,14 +301,12 @@ impl NativeFloatEmitter.emit_as_integer_ratio(
 impl NativeFloatEmitter.emit_conjugate(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # conjugate of a float is itself
     return target;
 }
 
 impl NativeFloatEmitter.emit_hex(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # float.hex(): return hex representation using C %a format
     p = ctx.pass_ref;
     b = get_builder(p);
     i8 = ir.IntType(8);
@@ -343,7 +326,6 @@ impl NativeFloatEmitter.emit_hex(
 impl NativeFloatEmitter.emit_fromhex(
     self, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # float.fromhex(s): parse hex float string (C strtod supports hex)
     if not args {
         return None;
     }
@@ -357,12 +339,6 @@ impl NativeFloatEmitter.emit_fromhex(
     return result;
 }
 
-"""Bool-specific emitter.
-
-Inherits all int operations but overrides bitwise operators so that
-True & False yields False (bool i1) rather than 0 (i64), matching
-Python semantics where bool & bool -> bool.
-"""
 impl NativeBoolEmitter.emit_op_and(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
@@ -396,7 +372,6 @@ impl NativeBoolEmitter.emit_op_xor(
     return b.xor(lhs, rhs, name="bool.xor");
 }
 
-"""Helper: load real and imag from a JacComplex pointer."""
 impl NativeComplexEmitter._load_parts(
     self, ctx: NativeEmitCtx, val: ir.Value
 ) -> (tuple | None) {
@@ -410,7 +385,6 @@ impl NativeComplexEmitter._load_parts(
     return (r, im);
 }
 
-"""Helper: create a new JacComplex from real and imag f64 values."""
 impl NativeComplexEmitter._make_complex(
     self, ctx: NativeEmitCtx, real: ir.Value, imag: ir.Value
 ) -> ir.Value {
@@ -496,11 +470,9 @@ impl NativeComplexEmitter.emit_op_pos(
     return None;
 }
 
-# Case conversion
 impl NativeStrEmitter.emit_capitalize(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # Capitalize: uppercase first char, lowercase the rest
     p = ctx.pass_ref;
     b = get_builder(p);
     i8 = ir.IntType(8);
@@ -524,7 +496,7 @@ impl NativeStrEmitter.emit_capitalize(
     body_bb = func.append_basic_block(name="cap.body");
     done_bb = func.append_basic_block(name="cap.done");
     b.cbranch(is_empty, done_bb, first_bb);
-    # Uppercase the first character
+
     b.position_at_start(first_bb);
     first_ch = b.load(target, name="cap.first.ch");
     first_i32 = b.zext(first_ch, i32, name="cap.first.i32");
@@ -532,7 +504,7 @@ impl NativeStrEmitter.emit_capitalize(
     upper_i8 = b.trunc(upper_ch, i8, name="cap.first.i8");
     b.store(upper_i8, result);
     b.branch(loop_bb);
-    # Lowercase remaining characters
+
     b.position_at_start(loop_bb);
     idx = b.phi(i64, name="cap.idx");
     idx.add_incoming(ir.Constant(i64, 1), first_bb);
@@ -558,7 +530,6 @@ impl NativeStrEmitter.emit_capitalize(
 impl NativeStrEmitter.emit_casefold(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # casefold is equivalent to lower for ASCII
     return self._emit_case_transform(ctx, target, "tolower");
 }
 
@@ -623,8 +594,6 @@ impl NativeStrEmitter._emit_case_transform(
 impl NativeStrEmitter.emit_title(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # title: uppercase first char of each word, lowercase rest
-    # Word boundary = after non-alpha character
     p = ctx.pass_ref;
     b = get_builder(p);
     i8 = ir.IntType(8);
@@ -693,7 +662,6 @@ impl NativeStrEmitter.emit_title(
 impl NativeStrEmitter.emit_swapcase(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # Swapcase: toupper if lower, tolower if upper
     p = ctx.pass_ref;
     b = get_builder(p);
     i8 = ir.IntType(8);
@@ -732,7 +700,7 @@ impl NativeStrEmitter.emit_swapcase(
     is_up = b.call(isupper_fn, [ch_i32], name="swap.isup");
     is_up_bool = b.icmp_signed("!=", is_up, ir.Constant(i32, 0), name="swap.isup.b");
     lower_ch = b.call(tolower_fn, [ch_i32], name="swap.lower");
-    # If lower -> use upper, elif upper -> use lower, else keep original
+
     pick1 = b.select(is_up_bool, lower_ch, ch_i32, name="swap.pick1");
     pick2 = b.select(is_low_bool, upper_ch, pick1, name="swap.pick2");
     out_i8 = b.trunc(pick2, i8, name="swap.out");
@@ -747,11 +715,9 @@ impl NativeStrEmitter.emit_swapcase(
     return result;
 }
 
-# Search
 impl NativeStrEmitter.emit_count(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # Count non-overlapping occurrences of substring using strstr loop
     if not args {
         return None;
     }
@@ -764,16 +730,25 @@ impl NativeStrEmitter.emit_count(
     sub_len = b.call(strlen_fn, [args[0]], name="cnt.sub.len");
     null_ptr = ir.Constant(i8p, None);
     func = b.basic_block.function;
-    entry_bb = b.basic_block;
+    empty_bb = func.append_basic_block(name="cnt.empty");
+    scan_bb = func.append_basic_block(name="cnt.scan");
     loop_bb = func.append_basic_block(name="cnt.loop");
     found_bb = func.append_basic_block(name="cnt.found");
     done_bb = func.append_basic_block(name="cnt.done");
+
+    is_empty = b.icmp_unsigned("==", sub_len, ir.Constant(i64, 0), name="cnt.isempty");
+    b.cbranch(is_empty, empty_bb, scan_bb);
+    b.position_at_start(empty_bb);
+    tgt_len = b.call(strlen_fn, [target], name="cnt.tgt.len");
+    empty_count = b.add(tgt_len, ir.Constant(i64, 1), name="cnt.empty.n");
+    b.branch(done_bb);
+    b.position_at_start(scan_bb);
     b.branch(loop_bb);
     b.position_at_start(loop_bb);
     cur_ptr = b.phi(i8p, name="cnt.cur");
     count = b.phi(i64, name="cnt.count");
-    cur_ptr.add_incoming(target, entry_bb);
-    count.add_incoming(ir.Constant(i64, 0), entry_bb);
+    cur_ptr.add_incoming(target, scan_bb);
+    count.add_incoming(ir.Constant(i64, 0), scan_bb);
     found = b.call(strstr_fn, [cur_ptr, args[0]], name="cnt.found.ptr");
     is_null = b.icmp_unsigned("==", found, null_ptr, name="cnt.null");
     b.cbranch(is_null, done_bb, found_bb);
@@ -786,7 +761,10 @@ impl NativeStrEmitter.emit_count(
     count.add_incoming(new_count, found_bb);
     b.branch(loop_bb);
     b.position_at_start(done_bb);
-    return count;
+    result = b.phi(i64, name="cnt.result");
+    result.add_incoming(empty_count, empty_bb);
+    result.add_incoming(count, loop_bb);
+    return result;
 }
 
 impl NativeStrEmitter.emit_find(
@@ -800,7 +778,21 @@ impl NativeStrEmitter.emit_find(
     i8p = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
     strstr_fn = p._get_or_declare_extern("strstr", i8p, [i8p, i8p]);
-    found = b.call(strstr_fn, [target, args[0]], name="find.ptr");
+    search_from = target;
+    if len(args) >= 2 {
+        strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
+        slen = b.call(strlen_fn, [target], name="find.slen");
+        start = p._coerce_type(args[1], i64);
+        neg = b.icmp_signed("<", start, ir.Constant(i64, 0), name="find.st.neg");
+        wrapped = b.add(start, slen, name="find.st.wrap");
+        start = b.select(neg, wrapped, start, name="find.st.pos");
+        below = b.icmp_signed("<", start, ir.Constant(i64, 0), name="find.st.lo");
+        start = b.select(below, ir.Constant(i64, 0), start, name="find.st.lo.c");
+        above = b.icmp_signed(">", start, slen, name="find.st.hi");
+        start = b.select(above, slen, start, name="find.st.hi.c");
+        search_from = b.gep(target, [start], name="find.from");
+    }
+    found = b.call(strstr_fn, [search_from, args[0]], name="find.ptr");
     null_ptr = ir.Constant(i8p, None);
     is_null = b.icmp_unsigned("==", found, null_ptr, name="find.null");
     target_int = b.ptrtoint(target, i64, name="find.tgt.int");
@@ -812,8 +804,6 @@ impl NativeStrEmitter.emit_find(
 impl NativeStrEmitter.emit_rfind(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # rfind: find last occurrence of substring, return index or -1
-    # Empty substring returns len(target) matching Python semantics
     if not args {
         return None;
     }
@@ -829,7 +819,7 @@ impl NativeStrEmitter.emit_rfind(
     target_int = b.ptrtoint(target, i64, name="rfind.tgt.int");
     func = b.basic_block.function;
     entry_bb = b.basic_block;
-    # Handle empty substring: return len(target)
+
     empty_bb = func.append_basic_block(name="rfind.empty");
     search_bb = func.append_basic_block(name="rfind.search");
     loop_bb = func.append_basic_block(name="rfind.loop");
@@ -869,7 +859,6 @@ impl NativeStrEmitter.emit_rfind(
 impl NativeStrEmitter.emit_index(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # index: like find but raises ValueError if not found
     if not args {
         return None;
     }
@@ -890,14 +879,13 @@ impl NativeStrEmitter.emit_index(
 impl NativeStrEmitter.emit_rindex(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # rindex: like rfind but raises ValueError if not found
     if not args {
         return None;
     }
     p = ctx.pass_ref;
     b = get_builder(p);
     i64 = ir.IntType(64);
-    # Reuse rfind logic
+
     rfind_result = self.emit_rfind(ctx, target, args);
     if rfind_result is None {
         return None;
@@ -950,14 +938,9 @@ impl NativeStrEmitter.emit_endswith(
     return b.select(too_long, ir.Constant(i64, 0), match_i64, name="ew.result");
 }
 
-# Modification
 impl NativeStrEmitter.emit_replace(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # replace(old, new[, count])
-    # count < 0 or omitted means replace all occurrences.
-    # count == 0 means replace nothing.
-    # count > 0 means replace at most that many occurrences.
     if len(args) < 2 {
         return None;
     }
@@ -972,14 +955,12 @@ impl NativeStrEmitter.emit_replace(
     memcpy_fn = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
     old_str = args[0];
     new_str = args[1];
-    # count_val: use the third arg if provided, else -1 (unlimited sentinel).
-    # The loop checks remaining == 0 to stop; -1 decrements to -2, -3, ...
-    # and never reaches 0, so unlimited behaviour is preserved.
+
     count_val: ir.Value = ir.Constant(i64, -1) if len(args) < 3 else args[2];
     target_len = b.call(strlen_fn, [target], name="repl.tgt.len");
     old_len = b.call(strlen_fn, [old_str], name="repl.old.len");
     new_len = b.call(strlen_fn, [new_str], name="repl.new.len");
-    # Worst-case allocation: every char replaced
+
     generous_factor = b.add(new_len, ir.Constant(i64, 1), name="repl.factor");
     generous_size = b.mul(target_len, generous_factor, name="repl.generous");
     alloc_size = b.add(generous_size, ir.Constant(i64, 1), name="repl.alloc");
@@ -1001,7 +982,7 @@ impl NativeStrEmitter.emit_replace(
     src.add_incoming(target, entry_bb);
     dst_off.add_incoming(ir.Constant(i64, 0), entry_bb);
     remaining.add_incoming(count_val, entry_bb);
-    # Stop replacing when count is exhausted (remaining == 0).
+
     count_exhausted = b.icmp_signed(
         "==", remaining, ir.Constant(i64, 0), name="repl.exhausted"
     );
@@ -1021,7 +1002,7 @@ impl NativeStrEmitter.emit_replace(
     dst_off3 = b.add(dst_off2, new_len, name="repl.off3");
     next_src_int = b.add(found_int, old_len, name="repl.next.int");
     next_src = b.inttoptr(next_src_int, i8p, name="repl.next.src");
-    # Decrement remaining; -1 wraps to -2, -3, ... (never hits 0 → unlimited).
+
     next_remaining = b.sub(remaining, ir.Constant(i64, 1), name="repl.next.rem");
     src.add_incoming(next_src, found_bb);
     dst_off.add_incoming(dst_off3, found_bb);
@@ -1042,105 +1023,22 @@ impl NativeStrEmitter.emit_replace(
 impl NativeStrEmitter.emit_strip(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return ctx.pass_ref._codegen_str_strip(target);
+    charset = args[0] if args else None;
+    return ctx.pass_ref._codegen_str_strip_chars(target, charset, True, True);
 }
 
 impl NativeStrEmitter.emit_lstrip(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # lstrip: skip leading whitespace, return new string
-    p = ctx.pass_ref;
-    b = get_builder(p);
-    i8 = ir.IntType(8);
-    i8p = i8.as_pointer();
-    i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
-    strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
-    rc_alloc_fn = p.rc_alloc_fn;
-    isspace_fn = p._get_or_declare_extern("isspace", i32, [i32]);
-    strcpy_fn = p._get_or_declare_extern("strcpy", i8p, [i8p, i8p]);
-    slen = b.call(strlen_fn, [target], name="lstrip.len");
-    func = b.basic_block.function;
-    entry_bb = b.basic_block;
-    loop_bb = func.append_basic_block(name="lstrip.loop");
-    body_bb = func.append_basic_block(name="lstrip.body");
-    done_bb = func.append_basic_block(name="lstrip.done");
-    b.branch(loop_bb);
-    b.position_at_start(loop_bb);
-    idx = b.phi(i64, name="lstrip.idx");
-    idx.add_incoming(ir.Constant(i64, 0), entry_bb);
-    at_end = b.icmp_unsigned(">=", idx, slen, name="lstrip.atend");
-    b.cbranch(at_end, done_bb, body_bb);
-    b.position_at_start(body_bb);
-    ch_ptr = b.gep(target, [idx], name="lstrip.ch.ptr");
-    ch = b.load(ch_ptr, name="lstrip.ch");
-    ch_i32 = b.zext(ch, i32, name="lstrip.ch.i32");
-    is_sp = b.call(isspace_fn, [ch_i32], name="lstrip.issp");
-    is_sp_bool = b.icmp_signed("!=", is_sp, ir.Constant(i32, 0), name="lstrip.issp.b");
-    next_idx = b.add(idx, ir.Constant(i64, 1), name="lstrip.next");
-    idx.add_incoming(next_idx, body_bb);
-    b.cbranch(is_sp_bool, loop_bb, done_bb);
-    b.position_at_start(done_bb);
-    start = b.phi(i64, name="lstrip.start");
-    start.add_incoming(idx, loop_bb);
-    start.add_incoming(idx, body_bb);
-    new_len = b.sub(slen, start, name="lstrip.newlen");
-    alloc_size = b.add(new_len, ir.Constant(i64, 1), name="lstrip.alloc");
-    p._set_rc_ctx("lstrip", "");
-    result = b.call(rc_alloc_fn, [alloc_size], name="lstrip.buf");
-    p._clear_rc_ctx();
-    start_ptr = b.gep(target, [start], name="lstrip.start.ptr");
-    b.call(strcpy_fn, [result, start_ptr]);
-    return result;
+    charset = args[0] if args else None;
+    return ctx.pass_ref._codegen_str_strip_chars(target, charset, True, False);
 }
 
 impl NativeStrEmitter.emit_rstrip(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # rstrip: remove trailing whitespace
-    p = ctx.pass_ref;
-    b = get_builder(p);
-    i8 = ir.IntType(8);
-    i8p = i8.as_pointer();
-    i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
-    strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
-    rc_alloc_fn = p.rc_alloc_fn;
-    isspace_fn = p._get_or_declare_extern("isspace", i32, [i32]);
-    memcpy_fn = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
-    slen = b.call(strlen_fn, [target], name="rstrip.len");
-    func = b.basic_block.function;
-    entry_bb = b.basic_block;
-    loop_bb = func.append_basic_block(name="rstrip.loop");
-    body_bb = func.append_basic_block(name="rstrip.body");
-    done_bb = func.append_basic_block(name="rstrip.done");
-    b.branch(loop_bb);
-    b.position_at_start(loop_bb);
-    end = b.phi(i64, name="rstrip.end");
-    end.add_incoming(slen, entry_bb);
-    is_zero = b.icmp_unsigned("==", end, ir.Constant(i64, 0), name="rstrip.iszero");
-    b.cbranch(is_zero, done_bb, body_bb);
-    b.position_at_start(body_bb);
-    prev = b.sub(end, ir.Constant(i64, 1), name="rstrip.prev");
-    ch_ptr = b.gep(target, [prev], name="rstrip.ch.ptr");
-    ch = b.load(ch_ptr, name="rstrip.ch");
-    ch_i32 = b.zext(ch, i32, name="rstrip.ch.i32");
-    is_sp = b.call(isspace_fn, [ch_i32], name="rstrip.issp");
-    is_sp_bool = b.icmp_signed("!=", is_sp, ir.Constant(i32, 0), name="rstrip.issp.b");
-    end.add_incoming(prev, body_bb);
-    b.cbranch(is_sp_bool, loop_bb, done_bb);
-    b.position_at_start(done_bb);
-    final_end = b.phi(i64, name="rstrip.final.end");
-    final_end.add_incoming(end, loop_bb);
-    final_end.add_incoming(end, body_bb);
-    alloc_size = b.add(final_end, ir.Constant(i64, 1), name="rstrip.alloc");
-    p._set_rc_ctx("rstrip", "");
-    result = b.call(rc_alloc_fn, [alloc_size], name="rstrip.buf");
-    p._clear_rc_ctx();
-    b.call(memcpy_fn, [result, target, final_end]);
-    null_ptr = b.gep(result, [final_end], name="rstrip.null.ptr");
-    b.store(ir.Constant(i8, 0), null_ptr);
-    return result;
+    charset = args[0] if args else None;
+    return ctx.pass_ref._codegen_str_strip_chars(target, charset, False, True);
 }
 
 impl NativeStrEmitter.emit_removeprefix(
@@ -1172,7 +1070,7 @@ impl NativeStrEmitter.emit_removeprefix(
     cmp = b.call(strncmp_fn, [target, args[0], prefix_len], name="rmpfx.cmp");
     is_match = b.icmp_signed("==", cmp, ir.Constant(i32, 0), name="rmpfx.eq");
     b.cbranch(is_match, match_bb, nomatch_bb);
-    # Matched: return target + prefix_len
+
     b.position_at_start(match_bb);
     rest_len = b.sub(target_len, prefix_len, name="rmpfx.rest.len");
     alloc_m = b.add(rest_len, ir.Constant(i64, 1), name="rmpfx.alloc.m");
@@ -1182,7 +1080,7 @@ impl NativeStrEmitter.emit_removeprefix(
     rest_ptr = b.gep(target, [prefix_len], name="rmpfx.rest.ptr");
     b.call(strcpy_fn, [result_m, rest_ptr]);
     b.branch(done_bb);
-    # Not matched: return copy of original
+
     b.position_at_start(nomatch_bb);
     alloc_n = b.add(target_len, ir.Constant(i64, 1), name="rmpfx.alloc.n");
     p._set_rc_ctx("removeprefix", "");
@@ -1228,7 +1126,7 @@ impl NativeStrEmitter.emit_removesuffix(
     cmp = b.call(strcmp_fn, [end_ptr, args[0]], name="rmsfx.cmp");
     is_match = b.icmp_signed("==", cmp, ir.Constant(i32, 0), name="rmsfx.eq");
     b.cbranch(is_match, match_bb, nomatch_bb);
-    # Matched: copy without suffix
+
     b.position_at_start(match_bb);
     new_len = b.sub(target_len, suffix_len, name="rmsfx.newlen");
     alloc_m = b.add(new_len, ir.Constant(i64, 1), name="rmsfx.alloc.m");
@@ -1239,7 +1137,7 @@ impl NativeStrEmitter.emit_removesuffix(
     null_ptr_m = b.gep(result_m, [new_len], name="rmsfx.null.m");
     b.store(ir.Constant(i8, 0), null_ptr_m);
     b.branch(done_bb);
-    # Not matched: copy original
+
     b.position_at_start(nomatch_bb);
     alloc_n = b.add(target_len, ir.Constant(i64, 1), name="rmsfx.alloc.n");
     p._set_rc_ctx("removesuffix", "");
@@ -1256,7 +1154,6 @@ impl NativeStrEmitter.emit_removesuffix(
     return result_phi;
 }
 
-# Split and join
 impl NativeStrEmitter.emit_split(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
@@ -1269,7 +1166,6 @@ impl NativeStrEmitter.emit_split(
 impl NativeStrEmitter.emit_rsplit(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # rsplit(sep) without maxsplit: same result as split(sep)
     if args {
         return ctx.pass_ref._codegen_str_split(target, args[0]);
     }
@@ -1279,7 +1175,6 @@ impl NativeStrEmitter.emit_rsplit(
 impl NativeStrEmitter.emit_splitlines(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # splitlines(): split on "\n" separator
     p = ctx.pass_ref;
     nl_sep = p._make_global_string("\n", name_prefix=".nl.sep");
     return p._codegen_str_split(target, nl_sep);
@@ -1288,7 +1183,6 @@ impl NativeStrEmitter.emit_splitlines(
 impl NativeStrEmitter.emit_join(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # join(list): concatenate list elements with separator (target)
     if not args {
         return None;
     }
@@ -1302,7 +1196,7 @@ impl NativeStrEmitter.emit_join(
     strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
     rc_alloc_fn = p.rc_alloc_fn;
     memcpy_fn = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
-    # Ensure list helpers for "ptr" (string list)
+
     p._emit_list_helpers("ptr", i8p);
     lhelpers = p.list_helpers.get("ptr");
     if lhelpers is None {
@@ -1312,20 +1206,20 @@ impl NativeStrEmitter.emit_join(
     sep_len = b.call(strlen_fn, [target], name="jn.seplen");
     list_len = b.call(lhelpers["len"], [the_list], name="jn.listlen");
     func = b.basic_block.function;
-    # Check if list is empty
+
     is_empty = b.icmp_unsigned("==", list_len, zero, name="jn.isempty");
     empty_bb = func.append_basic_block(name="jn.empty");
     pass1_bb = func.append_basic_block(name="jn.pass1");
     done_bb = func.append_basic_block(name="jn.done");
     b.cbranch(is_empty, empty_bb, pass1_bb);
-    # Empty list: return empty string
+
     b.position_at_start(empty_bb);
     p._set_rc_ctx("join", "");
     empty_buf = b.call(rc_alloc_fn, [one], name="jn.empty.buf");
     p._clear_rc_ctx();
     b.store(ir.Constant(i8, 0), empty_buf);
     b.branch(done_bb);
-    # Pass 1: compute total length
+
     b.position_at_start(pass1_bb);
     entry_p1 = b.basic_block;
     loop1_bb = func.append_basic_block(name="jn.len.loop");
@@ -1347,7 +1241,7 @@ impl NativeStrEmitter.emit_join(
     p1_idx.add_incoming(next_p1, body1_bb);
     p1_total.add_incoming(new_total, body1_bb);
     b.branch(loop1_bb);
-    # Calculate total with separators
+
     b.position_at_start(pass2_start);
     total_phi = b.phi(i64, name="jn.total");
     total_phi.add_incoming(p1_total, loop1_bb);
@@ -1358,7 +1252,7 @@ impl NativeStrEmitter.emit_join(
     p._set_rc_ctx("join", "");
     buf = b.call(rc_alloc_fn, [alloc_sz], name="jn.buf");
     p._clear_rc_ctx();
-    # Pass 2: copy elements with separator
+
     entry_p2 = b.basic_block;
     loop2_bb = func.append_basic_block(name="jn.cp.loop");
     body2_bb = func.append_basic_block(name="jn.cp.body");
@@ -1381,7 +1275,7 @@ impl NativeStrEmitter.emit_join(
     b.call(memcpy_fn, [dst2, elem2, elen2]);
     off_after_elem = b.add(p2_off, elen2, name="jn.p2.off2");
     b.branch(sep_check);
-    # Check if need separator
+
     b.position_at_start(sep_check);
     next_p2 = b.add(p2_idx, one, name="jn.p2.next");
     is_last = b.icmp_unsigned(">=", next_p2, list_len, name="jn.p2.islast");
@@ -1391,7 +1285,7 @@ impl NativeStrEmitter.emit_join(
     b.call(memcpy_fn, [sep_dst, target, sep_len]);
     off_after_sep = b.add(off_after_elem, sep_len, name="jn.p2.off3");
     b.branch(next_iter);
-    # Merge offset
+
     b.position_at_start(next_iter);
     merged_off = b.phi(i64, name="jn.p2.moff");
     merged_off.add_incoming(off_after_elem, sep_check);
@@ -1399,14 +1293,14 @@ impl NativeStrEmitter.emit_join(
     p2_idx.add_incoming(next_p2, next_iter);
     p2_off.add_incoming(merged_off, next_iter);
     b.branch(loop2_bb);
-    # Null-terminate
+
     b.position_at_start(copy_done);
     final_off = b.phi(i64, name="jn.final.off");
     final_off.add_incoming(p2_off, loop2_bb);
     null_p = b.gep(buf, [final_off], name="jn.null");
     b.store(ir.Constant(i8, 0), null_p);
     b.branch(done_bb);
-    # Done
+
     b.position_at_start(done_bb);
     result = b.phi(i8p, name="jn.result");
     result.add_incoming(empty_buf, empty_bb);
@@ -1417,7 +1311,6 @@ impl NativeStrEmitter.emit_join(
 impl NativeStrEmitter.emit_partition(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # partition(sep) -> list[str] of [before, sep_or_empty, after_or_empty]
     if not args {
         return None;
     }
@@ -1447,7 +1340,7 @@ impl NativeStrEmitter.emit_partition(
     notfound_bb = func.append_basic_block(name="part.no");
     merge_bb = func.append_basic_block(name="part.merge");
     b.cbranch(is_found, found_bb, notfound_bb);
-    # Found: before = [0, offset), sep = args[0], after = offset+sep_len..end
+
     b.position_at_start(found_bb);
     base_int = b.ptrtoint(target, i64, name="part.base");
     found_int = b.ptrtoint(found_ptr, i64, name="part.fint");
@@ -1469,7 +1362,7 @@ impl NativeStrEmitter.emit_partition(
     b.call(lh["append"], [result_list, sep_val]);
     b.call(lh["append"], [result_list, after_ptr]);
     b.branch(merge_bb);
-    # Not found: [target, "", ""]
+
     b.position_at_start(notfound_bb);
     empty1 = b.call(p.rc_alloc_fn, [ir.Constant(i64, 1)], name="part.e1");
     b.store(ir.Constant(i8, 0), empty1);
@@ -1486,7 +1379,6 @@ impl NativeStrEmitter.emit_partition(
 impl NativeStrEmitter.emit_rpartition(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # rpartition(sep) -> list[str] of [before_or_empty, sep_or_empty, after_or_target]
     if not args {
         return None;
     }
@@ -1507,7 +1399,7 @@ impl NativeStrEmitter.emit_rpartition(
     result_list = b.call(lh["new"], [], name="rpart.list");
     sep_len = b.call(strlen_fn, [sep_val], name="rpart.seplen");
     str_len = b.call(strlen_fn, [target], name="rpart.strlen");
-    # Find last occurrence: scan forward keeping the latest match
+
     func = b.basic_block.function;
     entry_bb = b.basic_block;
     loop_bb = func.append_basic_block(name="rpart.loop");
@@ -1516,7 +1408,7 @@ impl NativeStrEmitter.emit_rpartition(
     found_bb = func.append_basic_block(name="rpart.yes");
     notfound_bb = func.append_basic_block(name="rpart.no");
     merge_bb = func.append_basic_block(name="rpart.merge");
-    # Allocate last_match on stack (pointer, null = not found)
+
     last_match_alloca = b.alloca(i8p, name="rpart.last");
     b.store(ir.Constant(i8p, None), last_match_alloca);
     cur_alloca = b.alloca(i8p, name="rpart.cur");
@@ -1537,7 +1429,7 @@ impl NativeStrEmitter.emit_rpartition(
     last_match = b.load(last_match_alloca, name="rpart.last.v");
     is_any = b.icmp_unsigned("!=", last_match, null_i8p, name="rpart.isany");
     b.cbranch(is_any, found_bb, notfound_bb);
-    # Found: before = [0, offset), sep = args[0], after = offset+sep_len..end
+
     b.position_at_start(found_bb);
     base_int = b.ptrtoint(target, i64, name="rpart.base");
     last_int = b.ptrtoint(last_match, i64, name="rpart.lint");
@@ -1559,7 +1451,7 @@ impl NativeStrEmitter.emit_rpartition(
     b.call(lh["append"], [result_list, sep_val]);
     b.call(lh["append"], [result_list, after_ptr]);
     b.branch(merge_bb);
-    # Not found: ["", "", target]
+
     b.position_at_start(notfound_bb);
     empty1 = b.call(p.rc_alloc_fn, [ir.Constant(i64, 1)], name="rpart.e1");
     b.store(ir.Constant(i8, 0), empty1);
@@ -1573,14 +1465,11 @@ impl NativeStrEmitter.emit_rpartition(
     return result_list;
 }
 
-# Formatting and alignment
 impl NativeStrEmitter.emit_format(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # str.format(*args): replace {} placeholders with string args
-    # Implements by chaining single-replace operations for each arg
     if not args {
-        return target;  # No args, return template unchanged
+        return target;
     }
     p = ctx.pass_ref;
     b = get_builder(p);
@@ -1596,42 +1485,36 @@ impl NativeStrEmitter.emit_format(
     );
     rc_alloc_fn = p.rc_alloc_fn;
     placeholder = p._make_global_string("{}");
-    ph_len = ir.Constant(i64, 2);  # strlen("{}")
+    ph_len = ir.Constant(i64, 2);
     null_ptr = ir.Constant(i8p, None);
-    # Convert each arg to i8* string
+
     str_args: list[ir.Value] = [];
     for arg in args {
         if isinstance(arg.type, ir.IntType) and arg.type.width > 1 {
-            # Integer: snprintf("%ld", val)
             buf = b.call(rc_alloc_fn, [ir.Constant(i64, 32)], name="fmt.ibuf");
             fmt_s = p._make_global_string("%ld");
             b.call(snprintf_fn, [buf, ir.Constant(i64, 32), fmt_s, arg]);
             str_args.append(buf);
         } elif isinstance(arg.type, ir.DoubleType) {
-            # Float: snprintf("%g", val)
-            buf = b.call(rc_alloc_fn, [ir.Constant(i64, 32)], name="fmt.fbuf");
-            fmt_s = p._make_global_string("%g");
-            b.call(snprintf_fn, [buf, ir.Constant(i64, 32), fmt_s, arg]);
-            str_args.append(buf);
+            str_args.append(p._emit_float_repr(arg));
         } else {
-            # Already i8* (string or pointer)
             str_args.append(arg);
         }
     }
-    # Chain single-replace operations: for each arg, replace first {} with arg_str
+
     current = target;
     for i in range(len(str_args)) {
         arg_str = str_args[i];
         arg_len = b.call(strlen_fn, [arg_str], name=f"fmt.a{i}.len");
         cur_len = b.call(strlen_fn, [current], name=f"fmt.c{i}.len");
-        # Generous allocation: cur_len - 2 + arg_len + 1
+
         alloc_sz = b.add(
             b.sub(cur_len, ph_len, name=f"fmt.sub{i}"),
             b.add(arg_len, ir.Constant(i64, 1), name=f"fmt.aln{i}"),
             name=f"fmt.alloc{i}"
         );
         result = b.call(rc_alloc_fn, [alloc_sz], name=f"fmt.res{i}");
-        # Find first {} in current
+
         found = b.call(strstr_fn, [current, placeholder], name=f"fmt.fnd{i}");
         is_null = b.icmp_unsigned("==", found, null_ptr, name=f"fmt.null{i}");
         func = b.basic_block.function;
@@ -1639,7 +1522,7 @@ impl NativeStrEmitter.emit_format(
         skip_bb = func.append_basic_block(name=f"fmt.skip{i}");
         merge_bb = func.append_basic_block(name=f"fmt.merge{i}");
         b.cbranch(is_null, skip_bb, replace_bb);
-        # Replace path: copy prefix + arg_str + suffix
+
         b.position_at_start(replace_bb);
         cur_int = b.ptrtoint(current, i64, name=f"fmt.ci{i}");
         fnd_int = b.ptrtoint(found, i64, name=f"fmt.fi{i}");
@@ -1657,9 +1540,9 @@ impl NativeStrEmitter.emit_format(
         null_term = b.gep(result, [total_len], name=f"fmt.nt{i}");
         b.store(ir.Constant(i8, 0), null_term);
         b.branch(merge_bb);
-        # Skip path: no {} found, return current unchanged
+
         b.position_at_start(skip_bb);
-        # Copy current string to result
+
         b.call(memcpy_fn, [result, current, cur_len]);
         null_term2 = b.gep(result, [cur_len], name=f"fmt.nt2.{i}");
         b.store(ir.Constant(i8, 0), null_term2);
@@ -1673,16 +1556,12 @@ impl NativeStrEmitter.emit_format(
 impl NativeStrEmitter.emit_format_map(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # format_map(mapping): replace {key} placeholders with dict values
-    # Complex: requires runtime dict lookup for each placeholder key
-    # Deferring for now - returns None to fall through
     return None;
 }
 
 impl NativeStrEmitter.emit_center(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # center(width): center string, pad with spaces on both sides
     if not args {
         return None;
     }
@@ -1703,7 +1582,7 @@ impl NativeStrEmitter.emit_center(
     nopad_bb = func.append_basic_block(name="center.nopad");
     done_bb = func.append_basic_block(name="center.done");
     b.cbranch(needs_pad, pad_bb, nopad_bb);
-    # Pad case: match CPython formula: left = marg//2 + (marg & width & 1)
+
     b.position_at_start(pad_bb);
     total_pad = b.sub(width, slen, name="center.totalpad");
     half = b.udiv(total_pad, ir.Constant(i64, 2), name="center.half");
@@ -1713,19 +1592,19 @@ impl NativeStrEmitter.emit_center(
     right_pad = b.sub(total_pad, left_pad, name="center.rpad");
     alloc_pad = b.add(width, ir.Constant(i64, 1), name="center.alloc");
     buf_pad = b.call(rc_alloc_fn, [alloc_pad], name="center.buf");
-    # Fill left padding with spaces
+
     b.call(memset_fn, [buf_pad, ir.Constant(ir.IntType(32), 32), left_pad]);
-    # Copy string after left padding
+
     str_ptr = b.gep(buf_pad, [left_pad], name="center.str.ptr");
     b.call(memcpy_fn, [str_ptr, target, slen]);
-    # Fill right padding with spaces
+
     right_ptr = b.gep(str_ptr, [slen], name="center.rpad.ptr");
     b.call(memset_fn, [right_ptr, ir.Constant(ir.IntType(32), 32), right_pad]);
-    # Null terminate
+
     null_pad = b.gep(buf_pad, [width], name="center.null");
     b.store(ir.Constant(i8, 0), null_pad);
     b.branch(done_bb);
-    # No pad: return copy
+
     b.position_at_start(nopad_bb);
     alloc_nopad = b.add(slen, ir.Constant(i64, 1), name="center.alloc.np");
     buf_nopad = b.call(rc_alloc_fn, [alloc_nopad], name="center.buf.np");
@@ -1743,7 +1622,6 @@ impl NativeStrEmitter.emit_center(
 impl NativeStrEmitter.emit_ljust(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # ljust(width): left-justify, pad with spaces on right
     if not args {
         return None;
     }
@@ -1764,7 +1642,7 @@ impl NativeStrEmitter.emit_ljust(
     nopad_bb = func.append_basic_block(name="ljust.nopad");
     done_bb = func.append_basic_block(name="ljust.done");
     b.cbranch(needs_pad, pad_bb, nopad_bb);
-    # Pad case: copy string + fill spaces
+
     b.position_at_start(pad_bb);
     alloc_pad = b.add(width, ir.Constant(i64, 1), name="ljust.alloc");
     buf_pad = b.call(rc_alloc_fn, [alloc_pad], name="ljust.buf");
@@ -1775,7 +1653,7 @@ impl NativeStrEmitter.emit_ljust(
     null_pad = b.gep(buf_pad, [width], name="ljust.null");
     b.store(ir.Constant(i8, 0), null_pad);
     b.branch(done_bb);
-    # No pad: return copy
+
     b.position_at_start(nopad_bb);
     alloc_nopad = b.add(slen, ir.Constant(i64, 1), name="ljust.alloc.np");
     buf_nopad = b.call(rc_alloc_fn, [alloc_nopad], name="ljust.buf.np");
@@ -1793,7 +1671,6 @@ impl NativeStrEmitter.emit_ljust(
 impl NativeStrEmitter.emit_rjust(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # rjust(width): right-justify, pad with spaces on left
     if not args {
         return None;
     }
@@ -1841,7 +1718,6 @@ impl NativeStrEmitter.emit_rjust(
 impl NativeStrEmitter.emit_zfill(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # zfill(width): pad with '0' on left, keeping sign char
     if not args {
         return None;
     }
@@ -1862,7 +1738,7 @@ impl NativeStrEmitter.emit_zfill(
     nopad_bb = func.append_basic_block(name="zfill.nopad");
     done_bb = func.append_basic_block(name="zfill.done");
     b.cbranch(needs_pad, pad_bb, nopad_bb);
-    # Pad case: check for sign char
+
     b.position_at_start(pad_bb);
     alloc_pad = b.add(width, ir.Constant(i64, 1), name="zfill.alloc");
     buf_pad = b.call(rc_alloc_fn, [alloc_pad], name="zfill.buf");
@@ -1871,11 +1747,11 @@ impl NativeStrEmitter.emit_zfill(
     is_minus = b.icmp_unsigned("==", first_ch, ir.Constant(i8, 45), name="zfill.minus");
     has_sign = b.or_(is_plus, is_minus, name="zfill.hassign");
     pad_len = b.sub(width, slen, name="zfill.pad.len");
-    # If sign: write sign char first, then zeros, then rest of string
+
     sign_off = b.select(
         has_sign, ir.Constant(i64, 1), ir.Constant(i64, 0), name="zfill.soff"
     );
-    # Store sign char at position 0 if present
+
     sign_bb = func.append_basic_block(name="zfill.sign");
     nosign_bb = func.append_basic_block(name="zfill.nosign");
     merge_bb = func.append_basic_block(name="zfill.merge");
@@ -1908,7 +1784,7 @@ impl NativeStrEmitter.emit_zfill(
     null_pad = b.gep(buf_pad, [width], name="zfill.null");
     b.store(ir.Constant(i8, 0), null_pad);
     b.branch(done_bb);
-    # No pad: return copy
+
     b.position_at_start(nopad_bb);
     alloc_nopad = b.add(slen, ir.Constant(i64, 1), name="zfill.alloc.np");
     buf_nopad = b.call(rc_alloc_fn, [alloc_nopad], name="zfill.buf.np");
@@ -1926,7 +1802,6 @@ impl NativeStrEmitter.emit_zfill(
 impl NativeStrEmitter.emit_expandtabs(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # expandtabs(tabsize=8): replace tabs with spaces to next tab stop
     p = ctx.pass_ref;
     b = get_builder(p);
     i8 = ir.IntType(8);
@@ -1937,13 +1812,13 @@ impl NativeStrEmitter.emit_expandtabs(
     strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
     rc_alloc_fn = p.rc_alloc_fn;
     slen = b.call(strlen_fn, [target], name="et.len");
-    # tabsize: default 8 if no args
+
     if args {
         tabsize = args[0];
     } else {
         tabsize = ir.Constant(i64, 8);
     }
-    # Worst case allocation: every char is a tab → slen * max(tabsize, 1) + 1
+
     ts_or_one = b.select(
         b.icmp_unsigned("==", tabsize, zero), one, tabsize, name="et.ts1"
     );
@@ -1964,7 +1839,7 @@ impl NativeStrEmitter.emit_expandtabs(
     next_bb = func.append_basic_block(name="et.next");
     done_bb = func.append_basic_block(name="et.done");
     b.branch(loop_bb);
-    # Main loop header with phi nodes
+
     b.position_at_start(loop_bb);
     si = b.phi(i64, name="et.si");
     di = b.phi(i64, name="et.di");
@@ -1972,24 +1847,24 @@ impl NativeStrEmitter.emit_expandtabs(
     si.add_incoming(zero, entry_bb);
     di.add_incoming(zero, entry_bb);
     col.add_incoming(zero, entry_bb);
-    # Load current char
+
     cp = b.gep(target, [si], name="et.cp");
     ch = b.load(cp, name="et.ch");
     is_end = b.icmp_unsigned("==", ch, ir.Constant(i8, 0), name="et.end");
     b.cbranch(is_end, done_bb, check_tab);
-    # Check if tab char (0x09)
+
     b.position_at_start(check_tab);
     is_tab = b.icmp_unsigned("==", ch, ir.Constant(i8, 9), name="et.istab");
     b.cbranch(is_tab, do_tab, check_nl);
-    # Tab: calculate spaces = tabsize - (col % tabsize), min 1
+
     b.position_at_start(do_tab);
     is_ts_zero = b.icmp_unsigned("==", tabsize, zero, name="et.ts0");
-    # If tabsize==0, spaces=0; else spaces = tabsize - (col % tabsize)
+
     col_mod = b.urem(col, ts_or_one, name="et.colmod");
     spaces_calc = b.sub(tabsize, col_mod, name="et.spcalc");
     spaces = b.select(is_ts_zero, zero, spaces_calc, name="et.spaces");
     b.branch(tab_loop);
-    # Tab fill loop
+
     b.position_at_start(tab_loop);
     ti = b.phi(i64, name="et.ti");
     di_t = b.phi(i64, name="et.di.t");
@@ -1997,7 +1872,7 @@ impl NativeStrEmitter.emit_expandtabs(
     di_t.add_incoming(di, do_tab);
     ti_done = b.icmp_unsigned(">=", ti, spaces, name="et.tidone");
     b.cbranch(ti_done, tab_done, tab_write);
-    # Write one space
+
     b.position_at_start(tab_write);
     dp = b.gep(buf, [di_t], name="et.dp.tw");
     b.store(ir.Constant(i8, 32), dp);
@@ -2006,25 +1881,25 @@ impl NativeStrEmitter.emit_expandtabs(
     ti.add_incoming(next_ti, tab_write);
     di_t.add_incoming(next_di_t, tab_write);
     b.branch(tab_loop);
-    # After tab fill
+
     b.position_at_start(tab_done);
     new_col_tab = b.add(col, spaces, name="et.col.tab");
     next_si_tab = b.add(si, one, name="et.si.tab");
     b.branch(next_bb);
-    # Check newline/carriage return
+
     b.position_at_start(check_nl);
     is_nl = b.icmp_unsigned("==", ch, ir.Constant(i8, 10), name="et.isnl");
     is_cr = b.icmp_unsigned("==", ch, ir.Constant(i8, 13), name="et.iscr");
     is_line_end = b.or_(is_nl, is_cr, name="et.isle");
     b.cbranch(is_line_end, do_nl, do_char);
-    # Newline: copy char, reset column to 0
+
     b.position_at_start(do_nl);
     dp_nl = b.gep(buf, [di], name="et.dp.nl");
     b.store(ch, dp_nl);
     next_di_nl = b.add(di, one, name="et.ndi.nl");
     next_si_nl = b.add(si, one, name="et.si.nl");
     b.branch(next_bb);
-    # Normal char: copy and increment column
+
     b.position_at_start(do_char);
     dp_ch = b.gep(buf, [di], name="et.dp.ch");
     b.store(ch, dp_ch);
@@ -2032,7 +1907,7 @@ impl NativeStrEmitter.emit_expandtabs(
     next_col_ch = b.add(col, one, name="et.col.ch");
     next_si_ch = b.add(si, one, name="et.si.ch");
     b.branch(next_bb);
-    # Merge block for next iteration
+
     b.position_at_start(next_bb);
     new_si = b.phi(i64, name="et.new.si");
     new_di = b.phi(i64, name="et.new.di");
@@ -2050,7 +1925,7 @@ impl NativeStrEmitter.emit_expandtabs(
     si.add_incoming(new_si, next_bb);
     di.add_incoming(new_di, next_bb);
     col.add_incoming(new_col, next_bb);
-    # Done: null-terminate
+
     b.position_at_start(done_bb);
     done_di = b.phi(i64, name="et.done.di");
     done_di.add_incoming(di, loop_bb);
@@ -2059,8 +1934,6 @@ impl NativeStrEmitter.emit_expandtabs(
     return buf;
 }
 
-# Character tests
-"""Helper: loop over chars, call C ctype function, return 1 if all pass."""
 impl NativeStrEmitter._emit_char_test(
     self,
     ctx: NativeEmitCtx,
@@ -2131,7 +2004,6 @@ impl NativeStrEmitter.emit_isalpha(
 impl NativeStrEmitter.emit_isascii(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # isascii: empty string returns True, check each char < 128
     p = ctx.pass_ref;
     b = get_builder(p);
     i8 = ir.IntType(8);
@@ -2187,7 +2059,6 @@ impl NativeStrEmitter.emit_isdigit(
 impl NativeStrEmitter.emit_isidentifier(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # isidentifier: non-empty, first char is alpha/underscore, rest are alnum/underscore
     p = ctx.pass_ref;
     b = get_builder(p);
     i8 = ir.IntType(8);
@@ -2208,7 +2079,7 @@ impl NativeStrEmitter.emit_isidentifier(
     pass_bb = func.append_basic_block(name="isid.pass");
     done_bb = func.append_basic_block(name="isid.done");
     b.cbranch(is_empty, fail_bb, first_bb);
-    # Check first char: must be alpha or underscore
+
     b.position_at_start(first_bb);
     first_ch = b.load(target, name="isid.first.ch");
     first_i32 = b.zext(first_ch, i32, name="isid.first.i32");
@@ -2221,7 +2092,7 @@ impl NativeStrEmitter.emit_isidentifier(
     );
     first_ok = b.or_(is_alpha_ok, is_underscore, name="isid.first.ok");
     b.cbranch(first_ok, loop_bb, fail_bb);
-    # Loop remaining chars
+
     b.position_at_start(loop_bb);
     idx = b.phi(i64, name="isid.idx");
     idx.add_incoming(ir.Constant(i64, 1), first_bb);
@@ -2252,7 +2123,6 @@ impl NativeStrEmitter.emit_isidentifier(
 impl NativeStrEmitter.emit_islower(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # islower: at least one cased char, all cased chars are lowercase
     p = ctx.pass_ref;
     b = get_builder(p);
     i8 = ir.IntType(8);
@@ -2335,7 +2205,6 @@ impl NativeStrEmitter.emit_isspace(
 impl NativeStrEmitter.emit_istitle(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # istitle: uppercase chars follow non-cased, lowercase follow cased
     p = ctx.pass_ref;
     b = get_builder(p);
     i8 = ir.IntType(8);
@@ -2410,7 +2279,6 @@ impl NativeStrEmitter.emit_istitle(
 impl NativeStrEmitter.emit_isupper(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # isupper: at least one cased char, all cased chars are uppercase
     p = ctx.pass_ref;
     b = get_builder(p);
     i8 = ir.IntType(8);
@@ -2468,13 +2336,9 @@ impl NativeStrEmitter.emit_isupper(
     return result_phi;
 }
 
-# Encoding
 impl NativeStrEmitter.emit_encode(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # encode(): native strings are UTF-8 i8* already; copy the bytes (up to the
-    # NUL terminator) into a length-aware bytes value so the encoding's length
-    # is exact and downstream slicing / struct can reinterpret it (#6404).
     p = ctx.pass_ref;
     b = get_builder(p);
     i8p = ir.IntType(8).as_pointer();
@@ -2487,16 +2351,9 @@ impl NativeStrEmitter.emit_encode(
 impl NativeStrEmitter.emit_decode(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # decode(): the result of `.encode()` is an i8* the type system tracks as
-    # `str`, so `.decode()` dispatches here. Native strings are already a
-    # UTF-8 i8* buffer — return as-is (mirrors emit_encode). Makes
-    # `s.encode("utf-8")[a:b].decode("utf-8")` a portable byte-range -> str
-    # slice, matching the Python backend, which the rune-aware lexer uses for
-    # token-value extraction.
     return target;
 }
 
-# Translation
 impl NativeStrEmitter.emit_translate(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
@@ -2509,14 +2366,9 @@ impl NativeStrEmitter.emit_maketrans(
     return None;
 }
 
-# Decoding
 impl NativeBytesEmitter.emit_decode(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # decode(): copy the length-aware bytes into a fresh NUL-terminated str
-    # buffer. `s.encode("utf-8")[a:b].decode("utf-8")` stays a portable
-    # byte-range -> str slice, matching the Python backend (the rune-aware
-    # lexer relies on this for token-value extraction).
     p = ctx.pass_ref;
     b = get_builder(p);
     i8 = ir.IntType(8);
@@ -2548,7 +2400,6 @@ impl NativeBytesEmitter.emit_fromhex(
     return None;
 }
 
-# Search
 impl NativeBytesEmitter.emit_count(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
@@ -2591,7 +2442,6 @@ impl NativeBytesEmitter.emit_endswith(
     return None;
 }
 
-# Modification
 impl NativeBytesEmitter.emit_replace(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
@@ -2628,7 +2478,6 @@ impl NativeBytesEmitter.emit_removesuffix(
     return None;
 }
 
-# Split and join
 impl NativeBytesEmitter.emit_split(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
@@ -2665,7 +2514,6 @@ impl NativeBytesEmitter.emit_rpartition(
     return None;
 }
 
-# Case (ASCII only)
 impl NativeBytesEmitter.emit_capitalize(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
@@ -2696,7 +2544,6 @@ impl NativeBytesEmitter.emit_swapcase(
     return None;
 }
 
-# Character tests (ASCII only)
 impl NativeBytesEmitter.emit_isalnum(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
@@ -2745,7 +2592,6 @@ impl NativeBytesEmitter.emit_isupper(
     return None;
 }
 
-# Alignment
 impl NativeBytesEmitter.emit_center(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
@@ -2776,7 +2622,6 @@ impl NativeBytesEmitter.emit_expandtabs(
     return None;
 }
 
-# Translation
 impl NativeBytesEmitter.emit_translate(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
@@ -2797,17 +2642,13 @@ impl NativeListEmitter.emit_append(
     if helpers is None or not args {
         return None;
     }
-    # Box value tuples to heap-allocated pointers for container storage.
-    # _coerce_type propagates the is_owned marker through any bitcast it
-    # emits, so checking `val` after coerce is correct.
+
     _boxed_val = p._box_value_tuple(args[0]);
     val = p._coerce_type(_boxed_val, helpers["elem_type"]);
-    # Set RC ctx AFTER boxing so _box_value_tuple's internal "box" ctx (which
-    # overwrites and then clears the ctx) does not hide the "append" attribution.
+
     _append_loc = getattr(args[0], 'jac_loc', "");
     p._rc_call_with_ctx(helpers["append"], [target, val], op="append", loc=_append_loc);
-    # if the boxed value was freshly allocated (owned), release the caller's
-    # ref now that helpers["append"] has retained it (rc: 1→2→1).
+
     if isinstance(_boxed_val.type, ir.PointerType) and p._is_owned(_boxed_val) {
         p._emit_rc_release_simple(_boxed_val, op="append", loc=_append_loc);
     }
@@ -2817,7 +2658,6 @@ impl NativeListEmitter.emit_append(
 impl NativeListEmitter.emit_extend(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # extend: iterate source list, append each element
     if not args {
         return None;
     }
@@ -2858,7 +2698,6 @@ impl NativeListEmitter.emit_extend(
 impl NativeListEmitter.emit_insert(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # insert(index, value): shift elements right, set at index
     if len(args) < 2 {
         return None;
     }
@@ -2872,15 +2711,15 @@ impl NativeListEmitter.emit_insert(
     i64 = ir.IntType(64);
     insert_idx = args[0];
     insert_val = p._coerce_type(args[1], helpers["elem_type"]);
-    # First append a dummy to grow the list
+
     b.call(helpers["append"], [target, insert_val]);
-    # Get the new length
+
     len_ptr = b.gep(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ins.len.ptr"
     );
     new_len = b.load(len_ptr, name="ins.newlen");
     last_idx = b.sub(new_len, ir.Constant(i64, 1), name="ins.last");
-    # Shift elements right from end to insert_idx
+
     func = b.basic_block.function;
     entry_bb = b.basic_block;
     loop_bb = func.append_basic_block(name="ins.loop");
@@ -2899,7 +2738,7 @@ impl NativeListEmitter.emit_insert(
     si.add_incoming(prev, body_bb);
     b.branch(loop_bb);
     b.position_at_start(done_bb);
-    # Set the value at insert_idx
+
     b.call(helpers["set"], [target, insert_idx, insert_val]);
     return ir.Constant(i64, 0);
 }
@@ -2907,7 +2746,6 @@ impl NativeListEmitter.emit_insert(
 impl NativeListEmitter.emit_remove(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # remove(value): find first occurrence, shift left, decrease length
     if not args {
         return None;
     }
@@ -2933,7 +2771,7 @@ impl NativeListEmitter.emit_remove(
     shift_body = func.append_basic_block(name="rem.shift.body");
     done_bb = func.append_basic_block(name="rem.done");
     b.branch(find_bb);
-    # Find loop: search for first occurrence
+
     b.position_at_start(find_bb);
     fi = b.phi(i64, name="rem.fi");
     fi.add_incoming(ir.Constant(i64, 0), entry_bb);
@@ -2945,9 +2783,9 @@ impl NativeListEmitter.emit_remove(
     next_fi = b.add(fi, ir.Constant(i64, 1), name="rem.nextfi");
     fi.add_incoming(next_fi, find_body);
     b.cbranch(eq, found_bb, find_bb);
-    # Found: shift elements left from found_idx+1
+
     b.position_at_start(found_bb);
-    # release the element being removed
+
     if isinstance(helpers["elem_type"], ir.PointerType) {
         if p.rc_release_simple_fn is None {
             p._emit_rc_helpers();
@@ -2967,9 +2805,6 @@ impl NativeListEmitter.emit_remove(
     b.position_at_start(shift_body);
     prev = b.sub(si, ir.Constant(i64, 1), name="rem.prev");
     if isinstance(helpers["elem_type"], ir.PointerType) {
-        # Raw GEP+store for ptr lists: avoid spurious retain/release during shift.
-        # helpers["set"] (i.e. __list_set_ptr) retains the incoming element and
-        # releases the outgoing slot -- both are wrong when shifting for removal.
         _sh_dpp = b.gep(
             target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="sh_dpp"
         );
@@ -2985,9 +2820,9 @@ impl NativeListEmitter.emit_remove(
     next_si = b.add(si, ir.Constant(i64, 1), name="rem.nextsi");
     si.add_incoming(next_si, shift_body);
     b.branch(shift_bb);
-    # Done: decrease length (only if found)
+
     b.position_at_start(done_bb);
-    # PHI must be at top of block
+
     found_phi = b.phi(i64, name="rem.found");
     found_phi.add_incoming(ir.Constant(i64, 0), find_bb);
     found_phi.add_incoming(ir.Constant(i64, 1), shift_bb);
@@ -3003,9 +2838,6 @@ impl NativeListEmitter.emit_remove(
 impl NativeListEmitter.emit_pop(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # pop([index]): remove and return the element at `index` (default: last).
-    # The element at `index` is read (and returned, transferring its ref to the
-    # caller), then elements after it are shifted left and the length decreased.
     p = ctx.pass_ref;
     helpers = p.list_helpers.get(ctx.type_key);
     if helpers is None {
@@ -3019,9 +2851,7 @@ impl NativeListEmitter.emit_pop(
     );
     cur_len = b.load(len_ptr, name="pop.len");
     new_len = b.sub(cur_len, ir.Constant(i64, 1), name="pop.newlen");
-    # Resolve the pop index: default is the last element (new_len). An explicit
-    # arg is honored with Python semantics (a negative index counts from the
-    # end). Without an arg, no shift loop runs (pop_idx == new_len).
+
     pop_idx = new_len;
     if args {
         raw_idx = p._coerce_type(args[0], i64);
@@ -3030,7 +2860,7 @@ impl NativeListEmitter.emit_pop(
         pop_idx = b.select(is_neg, adj_idx, raw_idx, name="pop.idx");
     }
     popped = b.call(helpers["get"], [target, pop_idx], name="pop.val");
-    # Shift elements left: for si in (pop_idx, cur_len), data[si-1] = data[si].
+
     is_ptr = isinstance(helpers["elem_type"], ir.PointerType);
     func = b.basic_block.function;
     shift_start = b.add(pop_idx, ir.Constant(i64, 1), name="pop.shstart");
@@ -3047,8 +2877,6 @@ impl NativeListEmitter.emit_pop(
     b.position_at_start(shift_body);
     prev = b.sub(si, ir.Constant(i64, 1), name="pop.prev");
     if is_ptr {
-        # Raw GEP+store for ptr lists: helpers["set"] would retain the incoming
-        # element and release the outgoing slot, both wrong when merely shifting.
         _dpp = b.gep(
             target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="pop.dpp"
         );
@@ -3080,7 +2908,7 @@ impl NativeListEmitter.emit_clear(
     len_ptr = b.gep(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="clear.len.ptr"
     );
-    # release all pointer elements before zeroing length
+
     if helpers is not None and isinstance(helpers["elem_type"], ir.PointerType) {
         if p.rc_release_simple_fn is None {
             p._emit_rc_helpers();
@@ -3098,13 +2926,13 @@ impl NativeListEmitter.emit_clear(
         _clr_i_a = p._entry_alloca(i64, "clr_i");
         b.store(ir.Constant(i64, 0), _clr_i_a);
         b.branch(_clr_loop_bb);
-        # loop header
+
         p.builder.position_at_end(_clr_loop_bb);
         b = p.builder;
         _li_c = b.load(_clr_i_a, name="clr_li");
         _clr_cmp = b.icmp_unsigned(">=", _li_c, _cur_len_c, name="clr_done");
         b.cbranch(_clr_cmp, _clr_end_bb, _clr_body_bb);
-        # loop body
+
         p.builder.position_at_end(_clr_body_bb);
         b = p.builder;
         _li2_c = b.load(_clr_i_a, name="clr_li2");
@@ -3116,7 +2944,7 @@ impl NativeListEmitter.emit_clear(
         _ni_c = b.add(_li3_c, ir.Constant(i64, 1), name="clr_ni");
         b.store(_ni_c, _clr_i_a);
         b.branch(_clr_loop_bb);
-        # after loop
+
         p.builder.position_at_end(_clr_end_bb);
         b = p.builder;
     }
@@ -3223,7 +3051,6 @@ impl NativeListEmitter.emit_count(
 impl NativeListEmitter.emit_sort(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # sort(): in-place bubble sort
     p = ctx.pass_ref;
     helpers = p.list_helpers.get(ctx.type_key);
     if helpers is None {
@@ -3235,13 +3062,58 @@ impl NativeListEmitter.emit_sort(
     zero = ir.Constant(i64, 0);
     one = ir.Constant(i64, 1);
     elem_type = helpers["elem_type"];
+
+    _kw = ctx?.call_kwargs or {};
+    _key_node = _kw.get("key");
+    _rev_node = _kw.get("reverse");
+    _unknown_kw = [
+        k
+        for k in _kw.keys()
+        if k not in ("key", "reverse")
+    ];
+    if _unknown_kw {
+        p.emit(
+            E5092,
+            node_override=_key_node or _rev_node,
+            kind="sort keyword argument",
+            name=", ".join(_unknown_kw)
+        );
+        return None;
+    }
+    key_fn: (ir.Function | None) = None;
+    if _key_node is not None {
+        _key_val = p._codegen_expr(_key_node);
+        _key_caps = p._pending_lambda_captures;
+        p._pending_lambda_captures = None;
+        if (
+            not isinstance(_key_val, ir.Function)
+            or _key_caps is not None
+            or len(_key_val.args) != 1
+        ) {
+            p.emit(
+                E5092,
+                node_override=_key_node,
+                kind="sort key",
+                name="key= (only a capture-free single-parameter lambda works)"
+            );
+            return None;
+        }
+        key_fn = _key_val;
+    }
+    rev_i1: (ir.Value | None) = None;
+    if _rev_node is not None {
+        _rev_val = p._codegen_expr(_rev_node);
+        if _rev_val is not None {
+            rev_i1 = p._to_bool(_rev_val);
+        }
+    }
     len_ptr = b.gep(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="sort.len.ptr"
     );
     list_len = b.load(len_ptr, name="sort.len");
     func = b.basic_block.function;
     entry_bb = b.basic_block;
-    # Outer loop: i from 0 to len-1
+
     outer_bb = func.append_basic_block(name="sort.outer");
     inner_start = func.append_basic_block(name="sort.inner.start");
     inner_bb = func.append_basic_block(name="sort.inner");
@@ -3253,55 +3125,72 @@ impl NativeListEmitter.emit_sort(
     done_bb = func.append_basic_block(name="sort.done");
     len_m1 = b.sub(list_len, one, name="sort.lenm1");
     b.branch(outer_bb);
-    # Outer loop header
+
     b.position_at_start(outer_bb);
     oi = b.phi(i64, name="sort.oi");
     oi.add_incoming(zero, entry_bb);
     outer_end = b.icmp_unsigned(">=", oi, len_m1, name="sort.oend");
     b.cbranch(outer_end, done_bb, inner_start);
-    # Compute inner limit: len - i - 1
+
     b.position_at_start(inner_start);
     inner_limit = b.sub(len_m1, oi, name="sort.ilimit");
     b.branch(inner_bb);
-    # Inner loop header
+
     b.position_at_start(inner_bb);
     ji = b.phi(i64, name="sort.ji");
     ji.add_incoming(zero, inner_start);
     inner_end = b.icmp_unsigned(">=", ji, inner_limit, name="sort.iend");
     b.cbranch(inner_end, outer_next, inner_body);
-    # Inner body: compare adjacent elements
+
     b.position_at_start(inner_body);
     j1 = b.add(ji, one, name="sort.j1");
     ej = b.call(helpers["get"], [target, ji], name="sort.ej");
     ej1 = b.call(helpers["get"], [target, j1], name="sort.ej1");
-    # Compare based on element type
-    if isinstance(elem_type, ir.DoubleType) {
-        needs_swap = b.fcmp_ordered(">", ej, ej1, name="sort.gt");
-    } elif isinstance(elem_type, ir.PointerType) {
+
+    (cj, cj1) = (ej, ej1);
+    cmp_type = elem_type;
+    if key_fn is not None {
+        _kp_type = key_fn.args[0].type;
+        cj = b.call(key_fn, [p._coerce_type(ej, _kp_type)], name="sort.kj");
+        cj1 = b.call(key_fn, [p._coerce_type(ej1, _kp_type)], name="sort.kj1");
+        cmp_type = key_fn.function_type.return_type;
+    }
+    if isinstance(cmp_type, ir.DoubleType) {
+        cmp_gt = b.fcmp_ordered(">", cj, cj1, name="sort.gt");
+        cmp_lt = b.fcmp_ordered("<", cj, cj1, name="sort.lt");
+    } elif isinstance(cmp_type, ir.PointerType) {
         strcmp_fn = p._get_or_declare_extern(
-            "strcmp", ir.IntType(32), [elem_type, elem_type]
+            "strcmp", ir.IntType(32), [cmp_type, cmp_type]
         );
-        cmp_result = b.call(strcmp_fn, [ej, ej1], name="sort.cmp");
-        needs_swap = b.icmp_signed(
+        cmp_result = b.call(strcmp_fn, [cj, cj1], name="sort.cmp");
+        cmp_gt = b.icmp_signed(
             ">", cmp_result, ir.Constant(ir.IntType(32), 0), name="sort.gt"
         );
+        cmp_lt = b.icmp_signed(
+            "<", cmp_result, ir.Constant(ir.IntType(32), 0), name="sort.lt"
+        );
     } else {
-        needs_swap = b.icmp_signed(">", ej, ej1, name="sort.gt");
+        cmp_gt = b.icmp_signed(">", cj, cj1, name="sort.gt");
+        cmp_lt = b.icmp_signed("<", cj, cj1, name="sort.lt");
     }
+
+    needs_swap = cmp_gt
+        if rev_i1 is None
+        else b.select(rev_i1, cmp_lt, cmp_gt, name="sort.dir");
     b.cbranch(needs_swap, swap_bb, no_swap);
-    # Swap
+
     b.position_at_start(swap_bb);
     b.call(helpers["set"], [target, ji, ej1]);
     b.call(helpers["set"], [target, j1, ej]);
     b.branch(inner_next);
     b.position_at_start(no_swap);
     b.branch(inner_next);
-    # Inner next
+
     b.position_at_start(inner_next);
     next_ji = b.add(ji, one, name="sort.nji");
     ji.add_incoming(next_ji, inner_next);
     b.branch(inner_bb);
-    # Outer next
+
     b.position_at_start(outer_next);
     next_oi = b.add(oi, one, name="sort.noi");
     oi.add_incoming(next_oi, outer_next);
@@ -3393,7 +3282,6 @@ impl NativeListEmitter.emit_copy(
 impl NativeDictEmitter.emit_get(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # get(key, default=None): return value for key, or default if missing
     if not args {
         return None;
     }
@@ -3411,11 +3299,11 @@ impl NativeDictEmitter.emit_get(
     notfound_bb = func.append_basic_block(name="dget.no");
     done_bb = func.append_basic_block(name="dget.done");
     b.cbranch(found_i1, found_bb, notfound_bb);
-    # Found: get the value
+
     b.position_at_start(found_bb);
     val = b.call(helpers["get"], [target, key], name="dget.val");
     b.branch(done_bb);
-    # Not found: use default or zero
+
     b.position_at_start(notfound_bb);
     val_type = helpers["val_type"];
     if len(args) >= 2 {
@@ -3426,7 +3314,7 @@ impl NativeDictEmitter.emit_get(
         default_val = ir.Constant(val_type, 0);
     }
     b.branch(done_bb);
-    # Merge
+
     b.position_at_start(done_bb);
     result = b.phi(val_type, name="dget.result");
     result.add_incoming(val, found_bb);
@@ -3437,7 +3325,6 @@ impl NativeDictEmitter.emit_get(
 impl NativeDictEmitter.emit_keys(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # keys(): return list of all keys
     p = ctx.pass_ref;
     helpers = p.dict_helpers.get(ctx.type_key);
     if helpers is None {
@@ -3446,7 +3333,7 @@ impl NativeDictEmitter.emit_keys(
     b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
-    # Determine key type name from type_key ("key_type:val_type")
+
     key_type = helpers["key_type"];
     if isinstance(key_type, ir.PointerType) {
         kt_name = "ptr";
@@ -3489,7 +3376,6 @@ impl NativeDictEmitter.emit_keys(
 impl NativeDictEmitter.emit_values(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # values(): return list of all values
     p = ctx.pass_ref;
     helpers = p.dict_helpers.get(ctx.type_key);
     if helpers is None {
@@ -3498,7 +3384,7 @@ impl NativeDictEmitter.emit_values(
     b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
-    # Determine val type name
+
     val_type = helpers["val_type"];
     if isinstance(val_type, ir.PointerType) {
         vt_name = "ptr";
@@ -3542,7 +3428,6 @@ impl NativeDictEmitter.emit_values(
 impl NativeDictEmitter.emit_items(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # items(): return list of (key, value) 2-tuples
     p = ctx.pass_ref;
     helpers = p.dict_helpers.get(ctx.type_key);
     if helpers is None {
@@ -3554,9 +3439,9 @@ impl NativeDictEmitter.emit_items(
     i8p = ir.IntType(8).as_pointer();
     key_type = helpers["key_type"];
     val_type = helpers["val_type"];
-    # Build 2-tuple struct type
+
     tuple_type = ir.LiteralStructType([key_type, val_type]);
-    # Register tuple type
+
     kt_str = "i8p"
         if isinstance(key_type, ir.PointerType)
         else ("f64" if isinstance(key_type, ir.DoubleType) else "i64");
@@ -3567,23 +3452,23 @@ impl NativeDictEmitter.emit_items(
     if tkey not in p.tuple_types {
         p.tuple_types[tkey] = tuple_type;
     }
-    # Create result list of pointers (each element is a tuple pointer)
+
     p._emit_list_helpers("ptr", i8p);
     lhelpers = p.list_helpers.get("ptr");
     if lhelpers is None {
         return None;
     }
     new_list = b.call(lhelpers["new"], [], name="ditems.list");
-    # Get dict length
+
     len_ptr = b.gep(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ditems.len.ptr"
     );
     dict_len = b.load(len_ptr, name="ditems.len");
-    # Compute tuple size once
+
     null_ptr = ir.Constant(tuple_type.as_pointer(), None);
     size_gep = b.gep(null_ptr, [ir.Constant(i32, 1)], name="ditems.sizeof.gep");
     tup_size = b.ptrtoint(size_gep, i64, name="ditems.sizeof");
-    # Loop over dict entries
+
     func = b.basic_block.function;
     entry_bb = b.basic_block;
     loop_bb = func.append_basic_block(name="ditems.loop");
@@ -3596,10 +3481,10 @@ impl NativeDictEmitter.emit_items(
     at_end = b.icmp_unsigned(">=", idx, dict_len, name="ditems.atend");
     b.cbranch(at_end, done_bb, body_bb);
     b.position_at_start(body_bb);
-    # Get key and value at this index
+
     key = b.call(helpers["get_key"], [target, idx], name="ditems.key");
     val = b.call(helpers["get"], [target, key], name="ditems.val");
-    # Allocate 2-tuple
+
     raw = b.call(p.rc_alloc_fn, [tup_size], name="ditems.alloc");
     tup_ptr = b.bitcast(raw, tuple_type.as_pointer(), name="ditems.tup");
     k_ptr = b.gep(
@@ -3610,7 +3495,7 @@ impl NativeDictEmitter.emit_items(
     );
     b.store(key, k_ptr);
     b.store(val, v_ptr);
-    # Append tuple pointer (as i8*) to list
+
     tup_i8p = b.bitcast(tup_ptr, i8p, name="ditems.i8p");
     b.call(lhelpers["append"], [new_list, tup_i8p]);
     next_idx = b.add(idx, ir.Constant(i64, 1), name="ditems.next");
@@ -3623,7 +3508,6 @@ impl NativeDictEmitter.emit_items(
 impl NativeDictEmitter.emit_pop(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # pop(key, default=None): remove key and return value, or default/KeyError
     if not args {
         return None;
     }
@@ -3639,17 +3523,17 @@ impl NativeDictEmitter.emit_pop(
     val_type = helpers["val_type"];
     key_type = helpers["key_type"];
     has_default = len(args) >= 2;
-    # Check if key exists
+
     found_i1 = b.call(helpers["contains"], [target, key], name="dpop.found");
     func = b.basic_block.function;
     found_bb = func.append_basic_block(name="dpop.yes");
     notfound_bb = func.append_basic_block(name="dpop.no");
     done_bb = func.append_basic_block(name="dpop.done");
     b.cbranch(found_i1, found_bb, notfound_bb);
-    # Found: get value, then find index and shift arrays
+
     b.position_at_start(found_bb);
     saved_val = b.call(helpers["get"], [target, key], name="dpop.val");
-    # Find the index of the key via linear search
+
     len_ptr = b.gep(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="dpop.len.ptr"
     );
@@ -3663,7 +3547,7 @@ impl NativeDictEmitter.emit_pop(
     keys_arr = b.load(keys_ptr, name="dpop.keys");
     vals_arr = b.load(vals_ptr, name="dpop.vals");
     new_len = b.sub(dict_len, ir.Constant(i64, 1), name="dpop.newlen");
-    # Search for key index
+
     search_bb = func.append_basic_block(name="dpop.search");
     search_body = func.append_basic_block(name="dpop.search.body");
     search_found = func.append_basic_block(name="dpop.search.found");
@@ -3691,7 +3575,7 @@ impl NativeDictEmitter.emit_pop(
     next_si = b.add(si, ir.Constant(i64, 1), name="dpop.nsi");
     si.add_incoming(next_si, search_body);
     b.cbranch(keq, search_found, search_bb);
-    # Found index: shift elements left from si to end
+
     b.position_at_start(search_found);
     found_idx = b.phi(i64, name="dpop.fidx");
     found_idx.add_incoming(si, search_body);
@@ -3699,7 +3583,7 @@ impl NativeDictEmitter.emit_pop(
     shift_bb = func.append_basic_block(name="dpop.shift");
     shift_body_bb = func.append_basic_block(name="dpop.shift.body");
     shift_done = func.append_basic_block(name="dpop.shift.done");
-    # release the stored key (val is transferred to caller)
+
     if isinstance(key_type, ir.PointerType) {
         if p.rc_release_simple_fn is None {
             p._emit_rc_helpers();
@@ -3718,12 +3602,12 @@ impl NativeDictEmitter.emit_pop(
     b.cbranch(ji_end, shift_done, shift_body_bb);
     b.position_at_start(shift_body_bb);
     next_ji = b.add(ji, ir.Constant(i64, 1), name="dpop.nji");
-    # Shift key
+
     src_kp = b.gep(keys_arr, [next_ji], name="dpop.src.kp");
     skv = b.load(src_kp, name="dpop.skv");
     dst_kp = b.gep(keys_arr, [ji], name="dpop.dst.kp");
     b.store(skv, dst_kp);
-    # Shift val
+
     src_vp = b.gep(vals_arr, [next_ji], name="dpop.src.vp");
     svv = b.load(src_vp, name="dpop.svv");
     dst_vp = b.gep(vals_arr, [ji], name="dpop.dst.vp");
@@ -3733,7 +3617,7 @@ impl NativeDictEmitter.emit_pop(
     b.position_at_start(shift_done);
     b.store(new_len, len_ptr);
     b.branch(done_bb);
-    # Not found
+
     b.position_at_start(notfound_bb);
     if has_default {
         default_val = p._coerce_type(args[1], val_type);
@@ -3748,7 +3632,7 @@ impl NativeDictEmitter.emit_pop(
         }
     }
     b.branch(done_bb);
-    # Merge
+
     b.position_at_start(done_bb);
     result = b.phi(val_type, name="dpop.result");
     result.add_incoming(saved_val, shift_done);
@@ -3759,7 +3643,6 @@ impl NativeDictEmitter.emit_pop(
 impl NativeDictEmitter.emit_remove(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # d.remove(key) / del d[key]: remove key, raise KeyError if missing.
     if not args {
         return None;
     }
@@ -3785,14 +3668,14 @@ impl NativeDictEmitter.emit_remove(
     shift_body = func.append_basic_block(name="drem.shift.body");
     store_bb = func.append_basic_block(name="drem.store");
     done_bb = func.append_basic_block(name="drem.done");
-    # Contains check → branch to found or not-found
+
     found_i1 = b.call(helpers["contains"], [target, key], name="drem.has");
     b.cbranch(found_i1, found_bb, nokey_bb);
-    # Not found → KeyError, then fall to done
+
     b.position_at_start(nokey_bb);
     p._emit_runtime_raise(ir.Constant(ir.IntType(1), 1), "KeyError", "key not found");
     b.branch(done_bb);
-    # Found: load struct fields
+
     b.position_at_start(found_bb);
     len_ptr = b.gep(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="drem.len.p"
@@ -3808,7 +3691,7 @@ impl NativeDictEmitter.emit_remove(
     vals_arr = b.load(vals_ptr, name="drem.vals");
     new_len = b.sub(dict_len, ir.Constant(i64, 1), name="drem.newlen");
     b.branch(search_bb);
-    # Linear search for the index of key
+
     b.position_at_start(search_bb);
     si = b.phi(i64, name="drem.si");
     si.add_incoming(ir.Constant(i64, 0), found_bb);
@@ -3831,12 +3714,12 @@ impl NativeDictEmitter.emit_remove(
     next_si = b.add(si, ir.Constant(i64, 1), name="drem.nsi");
     si.add_incoming(next_si, search_body);
     b.cbranch(keq, sfound_bb, search_bb);
-    # Have found index: set up shift loop
+
     b.position_at_start(sfound_bb);
     found_idx = b.phi(i64, name="drem.fidx");
     found_idx.add_incoming(si, search_body);
     found_idx.add_incoming(dict_len, search_bb);
-    # release key and val for the entry being removed
+
     _i8p_dr = ir.IntType(8).as_pointer();
     if isinstance(key_type, ir.PointerType) {
         if p.rc_release_simple_fn is None {
@@ -3874,12 +3757,11 @@ impl NativeDictEmitter.emit_remove(
     );
     ji.add_incoming(next_ji, shift_body);
     b.branch(shift_bb);
-    # Store the new length (only reachable from the found path, so
-    # new_len and len_ptr are in scope / dominate this block).
+
     b.position_at_start(store_bb);
     b.store(new_len, len_ptr);
     b.branch(done_bb);
-    # Done: builder left positioned here for subsequent statements.
+
     b.position_at_start(done_bb);
     return None;
 }
@@ -3887,7 +3769,6 @@ impl NativeDictEmitter.emit_remove(
 impl NativeDictEmitter.emit_popitem(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # popitem(): remove and return last (key, value) pair as 2-tuple
     p = ctx.pass_ref;
     helpers = p.dict_helpers.get(ctx.type_key);
     if helpers is None {
@@ -3898,21 +3779,21 @@ impl NativeDictEmitter.emit_popitem(
     i64 = ir.IntType(64);
     key_type = helpers["key_type"];
     val_type = helpers["val_type"];
-    # Load dict length
+
     len_ptr = b.gep(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="dpi.len.ptr"
     );
     dict_len = b.load(len_ptr, name="dpi.len");
-    # Raise KeyError if empty
+
     is_empty = b.icmp_signed("==", dict_len, ir.Constant(i64, 0), name="dpi.empty");
     p._emit_runtime_raise(is_empty, "KeyError", "popitem(): dictionary is empty");
-    # Get last key/value
+
     last_idx = b.sub(dict_len, ir.Constant(i64, 1), name="dpi.last");
     last_key = b.call(helpers["get_key"], [target, last_idx], name="dpi.key");
     last_val = b.call(helpers["get"], [target, last_key], name="dpi.val");
-    # Decrement length
+
     b.store(last_idx, len_ptr);
-    # Build 2-tuple with actual key/value types
+
     tuple_type = ir.LiteralStructType([key_type, val_type]);
     null_ptr = ir.Constant(tuple_type.as_pointer(), None);
     size_gep = b.gep(null_ptr, [ir.Constant(i32, 1)], name="dpi.sizeof.gep");
@@ -3927,7 +3808,7 @@ impl NativeDictEmitter.emit_popitem(
     );
     b.store(last_key, k_ptr);
     b.store(last_val, v_ptr);
-    # Register tuple type
+
     kt_str = "i8p"
         if isinstance(key_type, ir.PointerType)
         else ("f64" if isinstance(key_type, ir.DoubleType) else "i64");
@@ -3944,7 +3825,6 @@ impl NativeDictEmitter.emit_popitem(
 impl NativeDictEmitter.emit_setdefault(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # setdefault(key, default=None): if key not in dict, set it to default; return value
     if not args {
         return None;
     }
@@ -3958,22 +3838,22 @@ impl NativeDictEmitter.emit_setdefault(
     key = args[0];
     val_type = helpers["val_type"];
     default_val = args[1] if len(args) >= 2 else ir.Constant(val_type, 0);
-    # Check if key exists
+
     found = b.call(helpers["contains"], [target, key], name="sdef.found");
     func = b.basic_block.function;
     found_bb = func.append_basic_block(name="sdef.yes");
     notfound_bb = func.append_basic_block(name="sdef.no");
     done_bb = func.append_basic_block(name="sdef.done");
     b.cbranch(found, found_bb, notfound_bb);
-    # Found: just get the value
+
     b.position_at_start(found_bb);
     existing = b.call(helpers["get"], [target, key], name="sdef.existing");
     b.branch(done_bb);
-    # Not found: set default and return it
+
     b.position_at_start(notfound_bb);
     b.call(helpers["set"], [target, key, default_val]);
     b.branch(done_bb);
-    # Merge
+
     b.position_at_start(done_bb);
     result = b.phi(val_type, name="sdef.result");
     result.add_incoming(existing, found_bb);
@@ -3984,7 +3864,6 @@ impl NativeDictEmitter.emit_setdefault(
 impl NativeDictEmitter.emit_update(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # update(other): merge all key-value pairs from other into target
     if not args {
         return None;
     }
@@ -4026,7 +3905,6 @@ impl NativeDictEmitter.emit_update(
 impl NativeDictEmitter.emit_clear(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # clear: set length to 0
     p = ctx.pass_ref;
     helpers = p.dict_helpers.get(ctx.type_key);
     if helpers is None {
@@ -4045,7 +3923,6 @@ impl NativeDictEmitter.emit_clear(
 impl NativeDictEmitter.emit_copy(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # copy: create new dict, copy all key-value pairs
     p = ctx.pass_ref;
     helpers = p.dict_helpers.get(ctx.type_key);
     if helpers is None {
@@ -4087,7 +3964,6 @@ impl NativeDictEmitter.emit_fromkeys(
     return None;
 }
 
-# Mutation
 impl NativeSetEmitter.emit_add(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
@@ -4098,12 +3974,7 @@ impl NativeSetEmitter.emit_add(
     }
     val = p._coerce_type(args[0], helpers["elem_type"]);
     get_builder(p).call(helpers["add"], [target, val]);
-    # __set_add retained the stored element; release our owned reference to it
-    # so its refcount is balanced. We check `val` (the coerced value actually
-    # stored), not the raw arg: a value-tuple arg `s.add((a, b))` is a
-    # LiteralStructType that _coerce_type boxes into a fresh owned heap tuple —
-    # that box, not the unboxed arg, is what add retained and what leaks if we
-    # never release it. (For an already-owned pointer arg, val is that arg.)
+
     if isinstance(val.type, ir.PointerType) and p._is_owned(val) {
         _b_sa = get_builder(p);
         _i8p_sa = ir.IntType(8).as_pointer();
@@ -4119,7 +3990,6 @@ impl NativeSetEmitter.emit_add(
 impl NativeSetEmitter.emit_remove(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # remove: like discard but raises KeyError if element not found
     if not args {
         return None;
     }
@@ -4152,7 +4022,7 @@ impl NativeSetEmitter.emit_remove(
     shift_done = func.append_basic_block(name="srem.shift.done");
     done_bb = func.append_basic_block(name="srem.done");
     b.branch(loop_bb);
-    # Search loop
+
     b.position_at_start(loop_bb);
     idx = b.phi(i64, name="srem.idx");
     idx.add_incoming(ir.Constant(i64, 0), entry_bb);
@@ -4169,15 +4039,15 @@ impl NativeSetEmitter.emit_remove(
     next_idx = b.add(idx, ir.Constant(i64, 1), name="srem.next");
     b.cbranch(eq, found_bb, loop_bb);
     idx.add_incoming(next_idx, check_bb);
-    # Not found: raise KeyError
+
     b.position_at_start(notfound_bb);
     p._emit_runtime_raise(
         ir.Constant(ir.IntType(1), 1), "KeyError", "element not in set"
     );
     b.branch(done_bb);
-    # Found: shift remaining elements left
+
     b.position_at_start(found_bb);
-    # release element being removed
+
     if isinstance(elem_type, ir.PointerType) {
         if p.rc_release_simple_fn is None {
             p._emit_rc_helpers();
@@ -4213,7 +4083,6 @@ impl NativeSetEmitter.emit_remove(
 impl NativeSetEmitter.emit_discard(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # discard: remove element if present (no error if absent)
     if not args {
         return None;
     }
@@ -4261,9 +4130,9 @@ impl NativeSetEmitter.emit_discard(
     next_idx = b.add(idx, ir.Constant(i64, 1), name="disc.next");
     b.cbranch(eq, found_bb, loop_bb);
     idx.add_incoming(next_idx, check_bb);
-    # Found: shift remaining elements left
+
     b.position_at_start(found_bb);
-    # release element being discarded
+
     if isinstance(elem_type, ir.PointerType) {
         if p.rc_release_simple_fn is None {
             p._emit_rc_helpers();
@@ -4299,7 +4168,6 @@ impl NativeSetEmitter.emit_discard(
 impl NativeSetEmitter.emit_pop(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # pop: remove and return an arbitrary element, raise KeyError if empty
     p = ctx.pass_ref;
     helpers = p.set_helpers.get(ctx.type_key);
     if helpers is None {
@@ -4315,10 +4183,10 @@ impl NativeSetEmitter.emit_pop(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="spop.elems.ptr"
     );
     set_len = b.load(len_ptr, name="spop.len");
-    # Raise KeyError if empty
+
     is_empty = b.icmp_unsigned("==", set_len, ir.Constant(i64, 0), name="spop.empty");
     p._emit_runtime_raise(is_empty, "KeyError", "pop from an empty set");
-    # Pop last element (arbitrary choice, O(1))
+
     new_len = b.sub(set_len, ir.Constant(i64, 1), name="spop.newlen");
     elems_arr = b.load(elems_ptr, name="spop.elems");
     last_ep = b.gep(elems_arr, [new_len], name="spop.last.ptr");
@@ -4330,7 +4198,6 @@ impl NativeSetEmitter.emit_pop(
 impl NativeSetEmitter.emit_clear(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # clear: set length to 0
     p = ctx.pass_ref;
     b = get_builder(p);
     i32 = ir.IntType(32);
@@ -4342,45 +4209,9 @@ impl NativeSetEmitter.emit_clear(
     return ir.Constant(i64, 0);
 }
 
-# Set algebra
-impl NativeSetEmitter._emit_set_iterate(
-    self, ctx: NativeEmitCtx, source: ir.Value, prefix: str
-) -> tuple {
-    # Helper: set up iteration over a set, returns (helpers, b, i32, i64, set_len, elems_arr, entry_bb, loop_bb, body_bb, done_bb, idx, elem)
-    p = ctx.pass_ref;
-    helpers = p.set_helpers.get(ctx.type_key);
-    b = get_builder(p);
-    i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
-    len_ptr = b.gep(
-        source, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name=f"{prefix}.len.ptr"
-    );
-    elems_ptr = b.gep(
-        source, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name=f"{prefix}.elems.ptr"
-    );
-    set_len = b.load(len_ptr, name=f"{prefix}.len");
-    elems_arr = b.load(elems_ptr, name=f"{prefix}.elems");
-    func = b.basic_block.function;
-    entry_bb = b.basic_block;
-    loop_bb = func.append_basic_block(name=f"{prefix}.loop");
-    body_bb = func.append_basic_block(name=f"{prefix}.body");
-    done_bb = func.append_basic_block(name=f"{prefix}.done");
-    b.branch(loop_bb);
-    b.position_at_start(loop_bb);
-    idx = b.phi(i64, name=f"{prefix}.idx");
-    idx.add_incoming(ir.Constant(i64, 0), entry_bb);
-    at_end = b.icmp_unsigned(">=", idx, set_len, name=f"{prefix}.atend");
-    b.cbranch(at_end, done_bb, body_bb);
-    b.position_at_start(body_bb);
-    ep = b.gep(elems_arr, [idx], name=f"{prefix}.ep");
-    ev = b.load(ep, name=f"{prefix}.ev");
-    return (helpers, b, i64, idx, ev, entry_bb, loop_bb, body_bb, done_bb);
-}
-
 impl NativeSetEmitter.emit_union(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # union(other): new set with all elements from both
     if not args {
         return None;
     }
@@ -4393,7 +4224,7 @@ impl NativeSetEmitter.emit_union(
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     new_set = b.call(helpers["new"], [], name="sunion.new");
-    # Copy all from self
+
     len1_ptr = b.gep(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="su.l1.ptr"
     );
@@ -4420,7 +4251,7 @@ impl NativeSetEmitter.emit_union(
     n1 = b.add(i1, ir.Constant(i64, 1), name="su.n1");
     i1.add_incoming(n1, body1);
     b.branch(loop1);
-    # Copy all from other
+
     b.position_at_start(mid_bb);
     other = args[0];
     len2_ptr = b.gep(
@@ -4452,7 +4283,6 @@ impl NativeSetEmitter.emit_union(
 impl NativeSetEmitter.emit_intersection(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # intersection(other): new set with elements in both self and other
     if not args {
         return None;
     }
@@ -4466,7 +4296,7 @@ impl NativeSetEmitter.emit_intersection(
     i64 = ir.IntType(64);
     new_set = b.call(helpers["new"], [], name="sinter.new");
     other = args[0];
-    # Iterate self
+
     len_ptr = b.gep(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="si.len.ptr"
     );
@@ -4507,7 +4337,6 @@ impl NativeSetEmitter.emit_intersection(
 impl NativeSetEmitter.emit_difference(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # difference(other): new set with elements in self but not in other
     if not args {
         return None;
     }
@@ -4546,7 +4375,7 @@ impl NativeSetEmitter.emit_difference(
     ep = b.gep(elems_arr, [idx], name="sd.ep");
     ev = b.load(ep, name="sd.ev");
     in_other = b.call(helpers["contains"], [other, ev], name="sd.inother");
-    # Add if NOT in other
+
     not_in = b.icmp_unsigned(
         "==", in_other, ir.Constant(ir.IntType(1), 0), name="sd.notin"
     );
@@ -4565,7 +4394,6 @@ impl NativeSetEmitter.emit_difference(
 impl NativeSetEmitter.emit_symmetric_difference(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # symmetric_difference(other): elements in either set but not both
     if not args {
         return None;
     }
@@ -4579,7 +4407,7 @@ impl NativeSetEmitter.emit_symmetric_difference(
     i64 = ir.IntType(64);
     new_set = b.call(helpers["new"], [], name="ssymd.new");
     other = args[0];
-    # Pass 1: add elements from self that are NOT in other
+
     len1_ptr = b.gep(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ssymd.l1.ptr"
     );
@@ -4616,7 +4444,7 @@ impl NativeSetEmitter.emit_symmetric_difference(
     n1 = b.add(i1, ir.Constant(i64, 1), name="ssymd.n1");
     i1.add_incoming(n1, skip1);
     b.branch(loop1);
-    # Pass 2: add elements from other that are NOT in self
+
     b.position_at_start(mid_bb);
     len2_ptr = b.gep(
         other, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ssymd.l2.ptr"
@@ -4656,11 +4484,9 @@ impl NativeSetEmitter.emit_symmetric_difference(
     return new_set;
 }
 
-# In-place set algebra
 impl NativeSetEmitter.emit_update(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # update(other): add all elements from other to self
     if not args {
         return None;
     }
@@ -4706,7 +4532,6 @@ impl NativeSetEmitter.emit_update(
 impl NativeSetEmitter.emit_intersection_update(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # intersection_update(other): keep only elements found in other
     if not args {
         return None;
     }
@@ -4719,7 +4544,7 @@ impl NativeSetEmitter.emit_intersection_update(
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     elem_type = helpers["elem_type"];
-    # Build a list of elements to remove (those NOT in other)
+
     len_ptr = b.gep(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="siupd.len.ptr"
     );
@@ -4727,12 +4552,11 @@ impl NativeSetEmitter.emit_intersection_update(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="siupd.elems.ptr"
     );
     other = args[0];
-    # We'll do a two-pass approach: first collect elements to keep, then rebuild
-    # Actually simpler: iterate backwards, discard elements not in other
+
     set_len = b.load(len_ptr, name="siupd.len");
     elems_arr = b.load(elems_ptr, name="siupd.elems");
     func = b.basic_block.function;
-    # Iterate forward; compact in place
+
     entry_bb = b.basic_block;
     loop_bb = func.append_basic_block(name="siupd.loop");
     body_bb = func.append_basic_block(name="siupd.body");
@@ -4752,23 +4576,23 @@ impl NativeSetEmitter.emit_intersection_update(
     ev = b.load(ep, name="siupd.ev");
     in_other = b.call(helpers["contains"], [other, ev], name="siupd.inother");
     b.cbranch(in_other, keep_bb, skip_bb);
-    # Keep: copy element to write position
+
     b.position_at_start(keep_bb);
     wp = b.gep(elems_arr, [write_idx], name="siupd.wp");
     b.store(ev, wp);
     new_widx = b.add(write_idx, ir.Constant(i64, 1), name="siupd.nwidx");
     next_ridx_k = b.add(read_idx, ir.Constant(i64, 1), name="siupd.nridx.k");
     b.branch(loop_bb);
-    # Skip: advance read only
+
     b.position_at_start(skip_bb);
     next_ridx_s = b.add(read_idx, ir.Constant(i64, 1), name="siupd.nridx.s");
     b.branch(loop_bb);
-    # Wire phi nodes
+
     read_idx.add_incoming(next_ridx_k, keep_bb);
     read_idx.add_incoming(next_ridx_s, skip_bb);
     write_idx.add_incoming(new_widx, keep_bb);
     write_idx.add_incoming(write_idx, skip_bb);
-    # Done: update length (write_idx in loop_bb has the correct final count)
+
     b.position_at_start(done_bb);
     b.store(write_idx, len_ptr);
     return ir.Constant(i64, 0);
@@ -4777,7 +4601,6 @@ impl NativeSetEmitter.emit_intersection_update(
 impl NativeSetEmitter.emit_difference_update(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # difference_update(other): remove all elements found in other
     if not args {
         return None;
     }
@@ -4799,7 +4622,7 @@ impl NativeSetEmitter.emit_difference_update(
     set_len = b.load(len_ptr, name="sdupd.len");
     elems_arr = b.load(elems_ptr, name="sdupd.elems");
     func = b.basic_block.function;
-    # Compact in place: keep elements NOT in other
+
     entry_bb = b.basic_block;
     loop_bb = func.append_basic_block(name="sdupd.loop");
     body_bb = func.append_basic_block(name="sdupd.body");
@@ -4818,7 +4641,7 @@ impl NativeSetEmitter.emit_difference_update(
     ep = b.gep(elems_arr, [read_idx], name="sdupd.ep");
     ev = b.load(ep, name="sdupd.ev");
     in_other = b.call(helpers["contains"], [other, ev], name="sdupd.inother");
-    # Keep if NOT in other
+
     not_in = b.icmp_unsigned(
         "==", in_other, ir.Constant(ir.IntType(1), 0), name="sdupd.notin"
     );
@@ -4836,7 +4659,7 @@ impl NativeSetEmitter.emit_difference_update(
     read_idx.add_incoming(next_ridx_s, skip_bb);
     write_idx.add_incoming(new_widx, keep_bb);
     write_idx.add_incoming(write_idx, skip_bb);
-    # Done: update length (write_idx in loop_bb has the correct final count)
+
     b.position_at_start(done_bb);
     b.store(write_idx, len_ptr);
     return ir.Constant(i64, 0);
@@ -4845,8 +4668,6 @@ impl NativeSetEmitter.emit_difference_update(
 impl NativeSetEmitter.emit_symmetric_difference_update(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # symmetric_difference_update(other): keep only elements in either but not both
-    # Strategy: compute symmetric_difference, then replace target contents
     if not args {
         return None;
     }
@@ -4859,17 +4680,17 @@ impl NativeSetEmitter.emit_symmetric_difference_update(
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     other = args[0];
-    # Step 1: build the symmetric difference as a new set
+
     result = self.emit_symmetric_difference(ctx, target, [other]);
     if result is None {
         return None;
     }
-    # Step 2: clear target
+
     len_ptr = b.gep(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ssdupd.len.ptr"
     );
     b.store(ir.Constant(i64, 0), len_ptr);
-    # Step 3: add all elements from result to target
+
     res_len_ptr = b.gep(
         result, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ssdupd.rlen.ptr"
     );
@@ -4900,14 +4721,15 @@ impl NativeSetEmitter.emit_symmetric_difference_update(
     return ir.Constant(i64, 0);
 }
 
-# Tests
-impl NativeSetEmitter.emit_issubset(
-    self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
+impl NativeSetEmitter._emit_set_relation(
+    self,
+    ctx: NativeEmitCtx,
+    iter_set: ir.Value,
+    probe_set: ir.Value,
+    prefix: str,
+    chk: str,
+    exit_on_hit: bool
 ) -> (ir.Value | None) {
-    # issubset(other): return 1 if all elements of self are in other
-    if not args {
-        return None;
-    }
     p = ctx.pass_ref;
     helpers = p.set_helpers.get(ctx.type_key);
     if helpers is None {
@@ -4916,153 +4738,78 @@ impl NativeSetEmitter.emit_issubset(
     b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
-    other = args[0];
     len_ptr = b.gep(
-        target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ssub.len.ptr"
+        iter_set, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name=f"{prefix}.len.ptr"
     );
     elems_ptr = b.gep(
-        target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="ssub.elems.ptr"
+        iter_set, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name=f"{prefix}.elems.ptr"
     );
-    set_len = b.load(len_ptr, name="ssub.len");
-    elems_arr = b.load(elems_ptr, name="ssub.elems");
+    set_len = b.load(len_ptr, name=f"{prefix}.len");
+    elems_arr = b.load(elems_ptr, name=f"{prefix}.elems");
     func = b.basic_block.function;
     entry_bb = b.basic_block;
-    loop_bb = func.append_basic_block(name="ssub.loop");
-    body_bb = func.append_basic_block(name="ssub.body");
-    false_bb = func.append_basic_block(name="ssub.false");
-    done_bb = func.append_basic_block(name="ssub.done");
+    loop_bb = func.append_basic_block(name=f"{prefix}.loop");
+    body_bb = func.append_basic_block(name=f"{prefix}.body");
+    exit_bb = func.append_basic_block(
+        name=f"{prefix}.found" if exit_on_hit else f"{prefix}.false"
+    );
+    done_bb = func.append_basic_block(name=f"{prefix}.done");
     b.branch(loop_bb);
     b.position_at_start(loop_bb);
-    idx = b.phi(i64, name="ssub.idx");
+    idx = b.phi(i64, name=f"{prefix}.idx");
     idx.add_incoming(ir.Constant(i64, 0), entry_bb);
-    at_end = b.icmp_unsigned(">=", idx, set_len, name="ssub.atend");
+    at_end = b.icmp_unsigned(">=", idx, set_len, name=f"{prefix}.atend");
     b.cbranch(at_end, done_bb, body_bb);
     b.position_at_start(body_bb);
-    ep = b.gep(elems_arr, [idx], name="ssub.ep");
-    ev = b.load(ep, name="ssub.ev");
-    in_other = b.call(helpers["contains"], [other, ev], name="ssub.inother");
-    next_idx = b.add(idx, ir.Constant(i64, 1), name="ssub.next");
+    ep = b.gep(elems_arr, [idx], name=f"{prefix}.ep");
+    ev = b.load(ep, name=f"{prefix}.ev");
+    hit = b.call(helpers["contains"], [probe_set, ev], name=f"{prefix}.{chk}");
+    next_idx = b.add(idx, ir.Constant(i64, 1), name=f"{prefix}.next");
     idx.add_incoming(next_idx, body_bb);
-    b.cbranch(in_other, loop_bb, false_bb);
-    b.position_at_start(false_bb);
+    if exit_on_hit {
+        b.cbranch(hit, exit_bb, loop_bb);
+    } else {
+        b.cbranch(hit, loop_bb, exit_bb);
+    }
+    b.position_at_start(exit_bb);
     b.branch(done_bb);
     b.position_at_start(done_bb);
-    result = b.phi(i64, name="ssub.result");
+    result = b.phi(i64, name=f"{prefix}.result");
     result.add_incoming(ir.Constant(i64, 1), loop_bb);
-    result.add_incoming(ir.Constant(i64, 0), false_bb);
+    result.add_incoming(ir.Constant(i64, 0), exit_bb);
     return result;
+}
+
+impl NativeSetEmitter.emit_issubset(
+    self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
+) -> (ir.Value | None) {
+    if not args {
+        return None;
+    }
+    return self._emit_set_relation(ctx, target, args[0], "ssub", "inother", False);
 }
 
 impl NativeSetEmitter.emit_issuperset(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # issuperset(other): return 1 if all elements of other are in self
     if not args {
         return None;
     }
-    p = ctx.pass_ref;
-    helpers = p.set_helpers.get(ctx.type_key);
-    if helpers is None {
-        return None;
-    }
-    b = get_builder(p);
-    i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
-    other = args[0];
-    # Iterate OTHER, check each in SELF
-    len_ptr = b.gep(
-        other, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ssup.len.ptr"
-    );
-    elems_ptr = b.gep(
-        other, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="ssup.elems.ptr"
-    );
-    other_len = b.load(len_ptr, name="ssup.len");
-    elems_arr = b.load(elems_ptr, name="ssup.elems");
-    func = b.basic_block.function;
-    entry_bb = b.basic_block;
-    loop_bb = func.append_basic_block(name="ssup.loop");
-    body_bb = func.append_basic_block(name="ssup.body");
-    false_bb = func.append_basic_block(name="ssup.false");
-    done_bb = func.append_basic_block(name="ssup.done");
-    b.branch(loop_bb);
-    b.position_at_start(loop_bb);
-    idx = b.phi(i64, name="ssup.idx");
-    idx.add_incoming(ir.Constant(i64, 0), entry_bb);
-    at_end = b.icmp_unsigned(">=", idx, other_len, name="ssup.atend");
-    b.cbranch(at_end, done_bb, body_bb);
-    b.position_at_start(body_bb);
-    ep = b.gep(elems_arr, [idx], name="ssup.ep");
-    ev = b.load(ep, name="ssup.ev");
-    in_self = b.call(helpers["contains"], [target, ev], name="ssup.inself");
-    next_idx = b.add(idx, ir.Constant(i64, 1), name="ssup.next");
-    idx.add_incoming(next_idx, body_bb);
-    b.cbranch(in_self, loop_bb, false_bb);
-    b.position_at_start(false_bb);
-    b.branch(done_bb);
-    b.position_at_start(done_bb);
-    result = b.phi(i64, name="ssup.result");
-    result.add_incoming(ir.Constant(i64, 1), loop_bb);
-    result.add_incoming(ir.Constant(i64, 0), false_bb);
-    return result;
+    return self._emit_set_relation(ctx, args[0], target, "ssup", "inself", False);
 }
 
 impl NativeSetEmitter.emit_isdisjoint(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # isdisjoint(other): return 1 if no elements in common
     if not args {
         return None;
     }
-    p = ctx.pass_ref;
-    helpers = p.set_helpers.get(ctx.type_key);
-    if helpers is None {
-        return None;
-    }
-    b = get_builder(p);
-    i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
-    other = args[0];
-    len_ptr = b.gep(
-        target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="sdisj.len.ptr"
-    );
-    elems_ptr = b.gep(
-        target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="sdisj.elems.ptr"
-    );
-    set_len = b.load(len_ptr, name="sdisj.len");
-    elems_arr = b.load(elems_ptr, name="sdisj.elems");
-    func = b.basic_block.function;
-    entry_bb = b.basic_block;
-    loop_bb = func.append_basic_block(name="sdisj.loop");
-    body_bb = func.append_basic_block(name="sdisj.body");
-    found_bb = func.append_basic_block(name="sdisj.found");
-    done_bb = func.append_basic_block(name="sdisj.done");
-    b.branch(loop_bb);
-    b.position_at_start(loop_bb);
-    idx = b.phi(i64, name="sdisj.idx");
-    idx.add_incoming(ir.Constant(i64, 0), entry_bb);
-    at_end = b.icmp_unsigned(">=", idx, set_len, name="sdisj.atend");
-    b.cbranch(at_end, done_bb, body_bb);
-    b.position_at_start(body_bb);
-    ep = b.gep(elems_arr, [idx], name="sdisj.ep");
-    ev = b.load(ep, name="sdisj.ev");
-    in_other = b.call(helpers["contains"], [other, ev], name="sdisj.inother");
-    next_idx = b.add(idx, ir.Constant(i64, 1), name="sdisj.next");
-    idx.add_incoming(next_idx, body_bb);
-    # If found in other, not disjoint
-    b.cbranch(in_other, found_bb, loop_bb);
-    b.position_at_start(found_bb);
-    b.branch(done_bb);
-    b.position_at_start(done_bb);
-    result = b.phi(i64, name="sdisj.result");
-    result.add_incoming(ir.Constant(i64, 1), loop_bb);
-    result.add_incoming(ir.Constant(i64, 0), found_bb);
-    return result;
+    return self._emit_set_relation(ctx, target, args[0], "sdisj", "inother", True);
 }
 
 impl NativeSetEmitter.emit_copy(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # copy: create new set and add all elements
     p = ctx.pass_ref;
     helpers = p.set_helpers.get(ctx.type_key);
     if helpers is None {
@@ -5102,7 +4849,6 @@ impl NativeSetEmitter.emit_copy(
     return new_set;
 }
 
-"""Frozenset emitter — delegates to set emitter since frozenset uses same LLVM type."""
 impl NativeFrozensetEmitter._get_set_emitter(
     self, ctx: NativeEmitCtx
 ) -> (object | None) {
@@ -5165,7 +4911,6 @@ impl NativeFrozensetEmitter.emit_copy(
     return se.emit_copy(ctx, target, args) if se is not None else None;
 }
 
-"""Helper: get struct type and element count from context."""
 impl NativeTupleEmitter._get_struct_info(
     self, ctx: NativeEmitCtx, target: ir.Value
 ) -> (object | None) {
@@ -5173,7 +4918,7 @@ impl NativeTupleEmitter._get_struct_info(
     and isinstance(target.type.pointee, ir.LiteralStructType) {
         return target.type.pointee;
     }
-    # Fallback: look up from tuple_types using type_key
+
     p = ctx.pass_ref;
     st = p.tuple_types.get(ctx.type_key);
     return st;
@@ -5225,7 +4970,7 @@ impl NativeTupleEmitter.emit_index(
     i64 = ir.IntType(64);
     n = len(st.elements);
     val = args[0];
-    # Use select chain: start with -1 (not found), update on match
+
     result = ir.Constant(i64, -1);
     for i in range(n - 1, -1, -1) {
         ep = b.gep(
@@ -5301,7 +5046,6 @@ impl NativeTupleEmitter.emit_op_contains(
     return None;
 }
 
-"""Helper: load start, stop, step from JacRange pointer."""
 impl NativeRangeEmitter._load_range(
     self, ctx: NativeEmitCtx, target: ir.Value
 ) -> (tuple | None) {
@@ -5321,7 +5065,6 @@ impl NativeRangeEmitter._load_range(
     return (start, stop, step);
 }
 
-"""Helper: check if val is in range(start, stop, step)."""
 impl NativeRangeEmitter._in_range(
     self,
     ctx: NativeEmitCtx,
@@ -5457,7 +5200,7 @@ impl NativeBuiltinEmitter.emit_round(
         rounded = b.call(round_fn, [arg_val], name="round.f");
         return b.fptosi(rounded, i64, name="round.result");
     }
-    # int rounds to itself
+
     if isinstance(arg_val.type, ir.IntType) {
         return arg_val;
     }
@@ -5507,7 +5250,6 @@ impl NativeBuiltinEmitter.emit_max(
 impl NativeBuiltinEmitter.emit_sum(
     self, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # sum(list) -> int: iterate list elements and accumulate
     if not args {
         return None;
     }
@@ -5515,7 +5257,7 @@ impl NativeBuiltinEmitter.emit_sum(
     b = get_builder(p);
     i64 = ir.IntType(64);
     list_val = args[0];
-    # Find matching list helpers
+
     helpers: (dict | None) = None;
     elem_key: (str | None) = None;
     for (lk, lt) in p.list_types.items() {
@@ -5556,13 +5298,12 @@ impl NativeBuiltinEmitter.emit_sum(
 impl NativeBuiltinEmitter.emit_sorted(
     self, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # sorted(list) -> new sorted copy
     if not args {
         return None;
     }
     p = ctx.pass_ref;
     list_val = args[0];
-    # Find matching list helpers from the argument type
+
     helpers: (dict | None) = None;
     elem_key: (str | None) = None;
     for (lk, lt) in p.list_types.items() {
@@ -5579,26 +5320,29 @@ impl NativeBuiltinEmitter.emit_sorted(
     if _le is None {
         return None;
     }
-    _ctx2 = ctx.__class__(pass_ref=p, type_key=elem_key or "");
-    # Copy the list then sort the copy
+    _ctx2 = ctx.__class__(
+        pass_ref=p, type_key=elem_key or "", call_kwargs=(ctx?.call_kwargs or {})
+    );
+
     sorted_copy = _le.emit_copy(_ctx2, list_val, []);
     if sorted_copy is None {
         return None;
     }
-    _le.emit_sort(_ctx2, sorted_copy, []);
+    if _le.emit_sort(_ctx2, sorted_copy, []) is None and (ctx?.call_kwargs or {}) {
+        return None;
+    }
     return sorted_copy;
 }
 
 impl NativeBuiltinEmitter.emit_reversed(
     self, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # reversed(list) -> new reversed copy
     if not args {
         return None;
     }
     p = ctx.pass_ref;
     list_val = args[0];
-    # Find matching list helpers from the argument type
+
     helpers: (dict | None) = None;
     elem_key: (str | None) = None;
     for (lk, lt) in p.list_types.items() {
@@ -5616,7 +5360,7 @@ impl NativeBuiltinEmitter.emit_reversed(
         return None;
     }
     _ctx2 = ctx.__class__(pass_ref=p, type_key=elem_key or "");
-    # Copy the list then reverse the copy
+
     rev_copy = _le.emit_copy(_ctx2, list_val, []);
     if rev_copy is None {
         return None;
@@ -5652,7 +5396,6 @@ impl NativeBuiltinEmitter.emit_filter(
 impl NativeBuiltinEmitter.emit_any(
     self, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # any(list) -> int: return 1 if any element is truthy
     if not args {
         return None;
     }
@@ -5701,7 +5444,6 @@ impl NativeBuiltinEmitter.emit_any(
 impl NativeBuiltinEmitter.emit_all(
     self, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # all(list) -> int: return 1 if all elements are truthy (or list is empty)
     if not args {
         return None;
     }
@@ -5756,7 +5498,6 @@ impl NativeBuiltinEmitter.emit_isinstance(
 impl NativeBuiltinEmitter.emit_divmod(
     self, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # divmod(a, b) -> tuple of (a // b, a % b)
     if len(args) < 2 {
         return None;
     }
@@ -5766,7 +5507,6 @@ impl NativeBuiltinEmitter.emit_divmod(
     a = args[0];
     v = args[1];
     if isinstance(a.type, ir.IntType) and isinstance(v.type, ir.IntType) {
-        # ZeroDivisionError check
         izero = ir.Constant(i64, 0);
         is_zero = b.icmp_signed("==", v, izero, name="divmod.zero.chk");
         p._emit_runtime_raise(
@@ -5774,7 +5514,7 @@ impl NativeBuiltinEmitter.emit_divmod(
         );
         quot = b.sdiv(a, v, name="divmod.quot");
         rem = b.srem(a, v, name="divmod.rem");
-        # Build a 2-element tuple (struct {i64, i64})
+
         tuple_type = ir.LiteralStructType([i64, i64]);
         null_ptr = ir.Constant(tuple_type.as_pointer(), None);
         size_gep = b.gep(
@@ -5783,7 +5523,7 @@ impl NativeBuiltinEmitter.emit_divmod(
         size = b.ptrtoint(size_gep, i64, name="divmod.sizeof");
         raw_ptr = b.call(p.rc_alloc_fn, [size], name="divmod.alloc");
         tuple_ptr = b.bitcast(raw_ptr, tuple_type.as_pointer(), name="divmod.ptr");
-        # Store quotient and remainder
+
         q_ptr = b.gep(
             tuple_ptr,
             [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0)],
@@ -5796,7 +5536,7 @@ impl NativeBuiltinEmitter.emit_divmod(
         );
         b.store(quot, q_ptr);
         b.store(rem, r_ptr);
-        # Register the tuple type
+
         tkey = f"Tuple.2.i64.i64";
         if tkey not in p.tuple_types {
             p.tuple_types[tkey] = tuple_type;
@@ -5869,7 +5609,6 @@ impl NativeBuiltinEmitter.emit_open(
 impl NativeBuiltinEmitter.emit_format(
     self, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # format(value, spec) - format value according to format spec
     if len(args) < 2 {
         return None;
     }
@@ -5884,20 +5623,20 @@ impl NativeBuiltinEmitter.emit_format(
     snprintf = p._get_or_declare_extern(
         "snprintf", ir.IntType(32), [i8p, i64, i8p], var_arg=True
     );
-    # Build format string: "%" + spec
+
     strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
     memcpy_fn = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
     spec_len = b.call(strlen_fn, [spec_val], name="fmt.speclen");
-    # Allocate fmt string: "%" + spec + null = spec_len + 2
+
     fmt_size = b.add(spec_len, ir.Constant(i64, 2), name="fmt.fmtsz");
     fmt_buf = b.call(rc_alloc_fn, [fmt_size], name="fmt.fmtbuf");
-    # Store '%' at position 0
+
     b.store(ir.Constant(ir.IntType(8), 37), fmt_buf);
-    # Copy spec after '%'
+
     fmt_rest = b.gep(fmt_buf, [ir.Constant(i64, 1)], name="fmt.rest");
     copy_len = b.add(spec_len, ir.Constant(i64, 1), name="fmt.copylen");
     b.call(memcpy_fn, [fmt_rest, spec_val, copy_len]);
-    # Call snprintf with the constructed format
+
     b.call(snprintf, [buf_ptr, ir.Constant(i64, 64), fmt_buf, arg_val]);
     return buf_ptr;
 }
@@ -5905,12 +5644,9 @@ impl NativeBuiltinEmitter.emit_format(
 impl NativeBuiltinEmitter.emit_ascii(
     self, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # ascii(s) - for strings, return repr-like with non-ASCII escaped
-    # Simplified: just return repr() for now (handles basic cases)
     return self.emit_repr(ctx, args);
 }
 
-# Type conversion builtins
 impl NativeBuiltinEmitter.emit_str(
     self, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
@@ -5921,34 +5657,43 @@ impl NativeBuiltinEmitter.emit_str(
     p = ctx.pass_ref;
     b = get_builder(p);
     i8p = ir.IntType(8).as_pointer();
-    # str(bytes): the CPython b'...' repr (#6749). Must precede the generic
-    # pointer path below, which would bitcast the jacbytes struct to i8* and
-    # print its length header instead.
+
     if p._is_bytes_value(arg_val) {
         return p._emit_bytes_repr(arg_val);
     }
-    # str() of something already a string (char*) is the string itself.
-    # Native strings and bound exception messages are both i8*, so str(e)
-    # in `except E as e` returns the message rather than formatting the
-    # pointer address.
+
+    if isinstance(arg_val.type, ir.IntType) and arg_val.type.width == 1 {
+        true_s = p._make_global_string("True", name_prefix=".str.true");
+        false_s = p._make_global_string("False", name_prefix=".str.false");
+        return b.select(arg_val, true_s, false_s, name="str.bool");
+    }
+
     if isinstance(arg_val.type, ir.PointerType) {
         if arg_val.type != i8p {
+            obj_s = p._emit_obj_str(arg_val);
+            if obj_s is not None {
+                return obj_s;
+            }
             return b.bitcast(arg_val, i8p, name="str.identity");
         }
-        return arg_val;
+
+        none_s = p._make_global_string("None", name_prefix=".str.none");
+        is_null = b.icmp_unsigned(
+            "==", arg_val, ir.Constant(i8p, None), name="str.isnone"
+        );
+        return b.select(is_null, none_s, arg_val, name="str.ornone");
+    }
+
+    if isinstance(arg_val.type, ir.DoubleType) {
+        return p._emit_float_repr(arg_val);
     }
     rc_alloc_fn = p.rc_alloc_fn;
     buf_ptr = b.call(rc_alloc_fn, [ir.Constant(ir.IntType(64), 32)], name="str.buf");
     snprintf = p._get_or_declare_extern(
         "snprintf", ir.IntType(32), [i8p, ir.IntType(64), i8p], var_arg=True
     );
-    if isinstance(arg_val.type, ir.IntType) {
-        fmt = p._get_snprintf_fmt("%ld");
-    } elif isinstance(arg_val.type, ir.DoubleType) {
-        fmt = p._get_snprintf_fmt("%g");
-    } else {
-        fmt = p._get_snprintf_fmt("%ld");
-    }
+
+    fmt = p._get_snprintf_fmt("%ld");
     fmt_ptr = b.bitcast(fmt, i8p, name="str.fmt.ptr");
     b.call(
         snprintf,
@@ -5968,18 +5713,18 @@ impl NativeBuiltinEmitter.emit_int(
     p = ctx.pass_ref;
     b = get_builder(p);
     i64 = ir.IntType(64);
-    # int(bool) / int(int): zero-extend narrower integers to i64, return i64 directly
+
     if isinstance(arg_val.type, ir.IntType) {
         if arg_val.type.width == 64 {
             return arg_val;
         }
         return b.zext(arg_val, i64, name="int.from.int");
     }
-    # int(float): truncate double to i64 (same as Python int(3.7) == 3)
+
     if isinstance(arg_val.type, ir.DoubleType) {
         return b.fptosi(arg_val, i64, name="int.from.float");
     }
-    # int(str): parse via strtol
+
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     strtol_fn = p._get_or_declare_extern("strtol", i64, [i8p, i8p.as_pointer(), i32]);
@@ -6009,7 +5754,7 @@ impl NativeBuiltinEmitter.emit_float(
     b = get_builder(p);
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
-    # String to float via strtod
+
     if isinstance(arg_val.type, ir.PointerType) {
         strtod_fn = p._get_or_declare_extern(
             "strtod", ir.DoubleType(), [i8p, i8p.as_pointer()]
@@ -6023,7 +5768,7 @@ impl NativeBuiltinEmitter.emit_float(
         );
         return result;
     }
-    # Int to float
+
     if isinstance(arg_val.type, ir.IntType) {
         return b.sitofp(arg_val, ir.DoubleType(), name="float.from.int");
     }
@@ -6041,19 +5786,16 @@ impl NativeBuiltinEmitter.emit_bool(
     b = get_builder(p);
     i64 = ir.IntType(64);
     if isinstance(arg_val.type, ir.IntType) {
-        # bool(int): nonzero is truthy
         is_nonzero = b.icmp_signed("!=", arg_val, ir.Constant(i64, 0), name="bool.nz");
         return b.zext(is_nonzero, i64, name="bool.result");
     }
     if isinstance(arg_val.type, ir.DoubleType) {
-        # bool(float): non-zero is truthy
         is_nonzero = b.fcmp_ordered(
             "!=", arg_val, ir.Constant(ir.DoubleType(), 0.0), name="bool.fnz"
         );
         return b.zext(is_nonzero, i64, name="bool.fresult");
     }
     if isinstance(arg_val.type, ir.PointerType) {
-        # bool(str): non-empty is truthy
         i8p = ir.IntType(8).as_pointer();
         if arg_val.type == i8p {
             strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
@@ -6063,18 +5805,18 @@ impl NativeBuiltinEmitter.emit_bool(
             );
             return b.zext(is_nonempty, i64, name="bool.sresult");
         }
-        # bool(bytes): non-empty is truthy (length-aware, #6749)
+
         if p._is_bytes_value(arg_val) {
             return b.zext(p._emit_bytes_truthy(arg_val), i64, name="bool.byresult");
         }
     }
-    return None;
+
+    return b.zext(p._to_bool(arg_val), i64, name="bool.result");
 }
 
 impl NativeBuiltinEmitter.emit_list(
     self, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # list(set) -> new list with all set elements; list(list) -> copy
     if not args {
         return None;
     }
@@ -6083,7 +5825,7 @@ impl NativeBuiltinEmitter.emit_list(
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     val = args[0];
-    # Convert set to list: set struct = {i64 len, i64 cap, elem* elems}
+
     for (sk, shelpers) in p.set_helpers.items() {
         stype = p.set_types.get(sk);
         if stype is not None and val.type == stype.as_pointer() {
@@ -6120,7 +5862,7 @@ impl NativeBuiltinEmitter.emit_list(
             return new_list;
         }
     }
-    # Pass-through: if already a list, copy it
+
     for (lk, lhelpers) in p.list_helpers.items() {
         ltype = p.list_types.get(lk);
         if ltype is not None and val.type == ltype.as_pointer() {
@@ -6138,11 +5880,9 @@ impl NativeBuiltinEmitter.emit_list(
 impl NativeBuiltinEmitter.emit_dict(
     self, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # dict() with no args -> empty dict; dict(other_dict) -> copy
     p = ctx.pass_ref;
     b = get_builder(p);
     if not args {
-        # Empty dict: create a new dict[str, int] as default
         p._emit_dict_helpers(
             "ptr", "i64", ir.IntType(8).as_pointer(), ir.IntType(64), 0
         );
@@ -6152,7 +5892,7 @@ impl NativeBuiltinEmitter.emit_dict(
         }
         return b.call(helpers["new"], [], name="dctor.new");
     }
-    # dict(other_dict) -> copy
+
     val = args[0];
     for (dk, dhelpers) in p.dict_helpers.items() {
         dtype = p.dict_types.get(dk);
@@ -6171,7 +5911,6 @@ impl NativeBuiltinEmitter.emit_dict(
 impl NativeBuiltinEmitter.emit_set(
     self, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # set(list) -> new set with all list elements; set(set) -> copy
     if not args {
         return None;
     }
@@ -6179,7 +5918,7 @@ impl NativeBuiltinEmitter.emit_set(
     b = get_builder(p);
     i64 = ir.IntType(64);
     val = args[0];
-    # Convert list to set
+
     for (lk, lhelpers) in p.list_helpers.items() {
         ltype = p.list_types.get(lk);
         if ltype is not None and val.type == ltype.as_pointer() {
@@ -6211,7 +5950,7 @@ impl NativeBuiltinEmitter.emit_set(
             return new_set;
         }
     }
-    # Pass-through: if already a set, copy it
+
     for (sk, shelpers) in p.set_helpers.items() {
         stype = p.set_types.get(sk);
         if stype is not None and val.type == stype.as_pointer() {
@@ -6235,17 +5974,12 @@ impl NativeBuiltinEmitter.emit_tuple(
 impl NativeBuiltinEmitter.emit_frozenset(
     self, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # frozenset(x) -> same as set(x) since they share LLVM type
     return self.emit_set(ctx, args);
 }
 
 impl NativeBuiltinEmitter.emit_bytes(
     self, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # bytes(list[int]) -> length-aware jacbytes struct (#6404 Track 0): allocate
-    # exactly list_len data bytes and store each trunc'd element. No NUL
-    # terminator — the length is carried explicitly so embedded 0x00 survives,
-    # mirroring the other byte-producing paths (struct.pack, file reads).
     if not args {
         return None;
     }
@@ -6289,7 +6023,6 @@ impl NativeBuiltinEmitter.emit_bytes(
 impl NativeBuiltinEmitter.emit_bytearray(
     self, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # bytearray(list_of_ints) -> same length-aware jacbytes value as bytes()
     return self.emit_bytes(ctx, args);
 }
 

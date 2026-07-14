@@ -305,6 +305,8 @@ test "lambda expr" {
     lines = output.split("\n");
     assert lines[0] == "9";
     assert lines[1] == "567";
+    assert lines[2] == "7";
+    assert lines[3] == "None";
 }
 
 test "override walker inherit" {
@@ -614,6 +616,17 @@ test "while else" {
     assert "Num:  4" in lines[0];
     assert "Num:  3" in lines[1];
     assert "Completed" in lines[2];
+}
+
+test "forever loop" {
+    output = run_jac(os.path.join(FIXTURES, "forever_loop.jac"));
+    lines = output.split("\n");
+    assert "Iter:  1" in lines[0];
+    assert "Iter:  2" in lines[1];
+    assert "Iter:  3" in lines[2];
+    assert "Done:  3" in lines[3];
+    assert "Sum:  30" in lines[4];  # 2+4+6+8+10, odds skipped via continue
+    assert "Nested:  2 2" in lines[5];  # inner break exits inner loop only
 }
 
 test "funccall genexpr" {

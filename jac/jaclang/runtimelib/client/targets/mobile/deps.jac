@@ -1,4 +1,3 @@
-"""Mobile target: toolchain dependency checks (Node, Android, iOS)."""
 import os;
 import shutil;
 import platform as platform_mod;
@@ -13,9 +12,7 @@ import from jaclang.runtimelib.client.targets.mobile.common {
     _normalize_mobile_platform
 }
 
-"""Check and report on Android build prerequisites."""
 def _check_android_dependencies {
-    # Java / JDK (Capacitor Android Gradle modules target Java 21+)
     (java_ok, java_line, java_major) = _get_java_runtime_details();
     (javac_ok, javac_line, javac_major) = _get_jdk_compiler_details();
     java_exe = shutil.which("java");
@@ -58,10 +55,7 @@ def _check_android_dependencies {
             style="muted"
         );
     }
-    # The JDK compiler (javac) is what Gradle actually invokes. Many distros
-    # split JRE/JDK packages, so probe it separately — a JRE-only install
-    # certifies green here today and then fails inside Gradle with an opaque
-    # "Toolchain ... does not provide [JAVA_COMPILER]" message.
+
     if javac_ok {
         console.print(f"  ✔ JDK compiler: {javac_line}", style="success");
         if (
@@ -88,7 +82,6 @@ def _check_android_dependencies {
         );
     }
 
-    # Android SDK (ANDROID_HOME or ANDROID_SDK_ROOT)
     android_home = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT");
     if android_home and Path(android_home).is_dir() {
         console.print(f"  ✔ Android SDK found: {android_home}", style="success");
@@ -103,7 +96,6 @@ def _check_android_dependencies {
         );
     }
 
-    # ADB (optional, needed for on-device deployment)
     (adb_ok, adb_ver) = _check_command_available(["adb", "--version"]);
     if adb_ok {
         first_line = (adb_ver or "").split("\n")[0];
@@ -115,7 +107,6 @@ def _check_android_dependencies {
         console.print("    ADB ships with Android SDK platform-tools", style="muted");
     }
 
-    # Gradle (optional, gradlew in android/ is preferred)
     (gradle_ok, gradle_ver) = _check_command_available(["gradle", "--version"]);
     if gradle_ok {
         first_line = (gradle_ver or "").split("\n")[0];
@@ -123,7 +114,6 @@ def _check_android_dependencies {
     }
 }
 
-"""Check and report on iOS build prerequisites."""
 def _check_ios_dependencies -> None {
     if platform_mod.system() != "Darwin" {
         console.warning("  ⚠ iOS builds require macOS — current OS is not macOS");
@@ -134,7 +124,6 @@ def _check_ios_dependencies -> None {
         return;
     }
 
-    # Xcode Command Line Tools
     (xcode_ok, xcode_ver) = _check_command_available(["xcode-select", "-p"]);
     if xcode_ok {
         console.print(f"  ✔ Xcode CLI tools found: {xcode_ver}", style="success");
@@ -143,7 +132,6 @@ def _check_ios_dependencies -> None {
         console.print("    Install with: xcode-select --install", style="muted");
     }
 
-    # xcodebuild
     (xcbuild_ok, xcbuild_ver) = _check_command_available(["xcodebuild", "-version"]);
     if xcbuild_ok {
         first_line = (xcbuild_ver or "").split("\n")[0];
@@ -156,7 +144,6 @@ def _check_ios_dependencies -> None {
         );
     }
 
-    # CocoaPods (used by Capacitor iOS)
     (pod_ok, pod_ver) = _check_command_available(["pod", "--version"]);
     if pod_ok {
         console.print(f"  ✔ CocoaPods found: {pod_ver}", style="success");
@@ -165,7 +152,6 @@ def _check_ios_dependencies -> None {
         console.print("    Install with: sudo gem install cocoapods", style="muted");
     }
 
-    # ios-deploy (optional, for on-device deployment)
     (iosdep_ok, _) = _check_command_available(["ios-deploy", "--version"]);
     if iosdep_ok {
         console.print("  ✔ ios-deploy found", style="success");
@@ -177,7 +163,6 @@ def _check_ios_dependencies -> None {
         console.print("    Install with: brew install ios-deploy", style="muted");
     }
 
-    # iOS Simulator CLI (xcrun simctl) — for simulator dev/build
     (simctl_ok, _) = _check_command_available(
         ["xcrun", "simctl", "help"], timeout=SUBPROCESS_TIMEOUT_SHORT
     );
@@ -194,35 +179,26 @@ def _check_ios_dependencies -> None {
     }
 }
 
-"""Check and report on all mobile build prerequisites for a given platform."""
 def _check_and_report_dependencies(plat: str = "android") {
     console.print("\n📦 Checking mobile build dependencies...", style="bold");
 
-    # Common: Node.js / Bun (required for Capacitor CLI)
-    (node_ok, node_ver) = _check_command_available(["node", "--version"]);
-    if node_ok {
-        console.print(f"  ✔ Node.js found: {node_ver}", style="success");
+    bun = get_bun();
+    if bun {
+        (bun_ok, bun_ver) = _check_command_available([bun, "--version"]);
     } else {
-        # Resolve via get_bun so the project-local .jac/bin copy counts too
-        # (auto-installs if neither node nor bun is present anywhere).
-        bun = get_bun();
-        if bun {
-            (bun_ok, bun_ver) = _check_command_available([bun, "--version"]);
-        } else {
-            (bun_ok, bun_ver) = (False, None);
-        }
-        if bun_ok {
-            console.print(f"  ✔ Bun found: {bun_ver}", style="success");
-        } else {
-            console.warning("  ✖ Node.js or Bun not found");
-            console.print(
-                "    Install Node.js (https://nodejs.org) or Bun (https://bun.sh)",
-                style="muted"
-            );
-        }
+        (bun_ok, bun_ver) = (False, None);
+    }
+    if bun_ok {
+        console.print(f"  ✔ Bundled Bun: {bun_ver}", style="success");
+    } else {
+        console.warning("  ✖ Bundled Bun not found");
+        console.print(
+            "    Shipped jac binaries include it; for a source checkout run "
+            "`zig build fetch-bun`, or set JAC_BUN to a bun binary.",
+            style="muted"
+        );
     }
 
-    # Platform-specific checks
     if plat == "android" {
         _check_android_dependencies();
     } elif plat == "ios" {
@@ -230,7 +206,6 @@ def _check_and_report_dependencies(plat: str = "android") {
     }
 }
 
-"""Run platform dependency check; log and continue on internal errors."""
 def _try_check_mobile_dependencies(plat: str) {
     try {
         _check_and_report_dependencies(plat);
@@ -239,7 +214,6 @@ def _try_check_mobile_dependencies(plat: str) {
     }
 }
 
-"""iOS native workflows need macOS; fail fast on other hosts."""
 def _require_macos_for_ios(plat: str) -> None {
     if _normalize_mobile_platform(plat) != "ios" {
         return;

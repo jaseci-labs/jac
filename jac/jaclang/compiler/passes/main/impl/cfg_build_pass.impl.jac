@@ -1,6 +1,3 @@
-"""Control flow graph build pass implementation."""
-
-"""Print the control flow graph."""
 impl cfg_dot_from_file(file_name: str) -> str {
     import from jaclang.jac0core.program { JacProgram }
     with open(file_name, encoding="utf-8") as f {
@@ -13,7 +10,6 @@ impl cfg_dot_from_file(file_name: str) -> str {
 }
 
 
-"""Generate dot graph for CFG."""
 impl CoalesceBBPass.printgraph_cfg -> str {
     bb_tails: dict[int, (uni.UniCFGNode | None)] = {};
     bb_heads: dict[int, (uni.UniCFGNode | None)] = {};
@@ -90,15 +86,13 @@ impl CoalesceBBPass.printgraph_cfg -> str {
     return dot;
 }
 
-"""Check if condition is a BoolExpr (short-circuit wiring active)."""
 impl CoalesceBBPass._has_bool_sc(condition: uni.Expr) -> bool {
     return isinstance(condition, uni.BoolExpr);
 }
 
-"""Generate a compact label for a CFG node."""
 impl CoalesceBBPass._node_label(nd: uni.UniNode) -> str {
     import from jaclang.jac0core.constant { Tokens as Tok }
-    # -- Branch --
+
     if isinstance(nd, uni.ElseIf) {
         return 'elif'
             if self._has_bool_sc(nd.condition)
@@ -112,11 +106,14 @@ impl CoalesceBBPass._node_label(nd: uni.UniNode) -> str {
     if isinstance(nd, uni.ElseStmt) {
         return 'else';
     }
-    # -- Loop --
+
     if isinstance(nd, uni.WhileStmt) {
         return 'while'
             if self._has_bool_sc(nd.condition)
             else 'while ' + nd.condition.unparse();
+    }
+    if isinstance(nd, uni.ForeverStmt) {
+        return 'forever';
     }
     if isinstance(nd, uni.InForStmt) {
         return 'for ' + nd.target.unparse() + ' in ' + nd.collection.unparse();
@@ -124,7 +121,7 @@ impl CoalesceBBPass._node_label(nd: uni.UniNode) -> str {
     if isinstance(nd, uni.IterForStmt) {
         return 'for ' + nd.iter.unparse() + nd.condition.unparse() + nd.count_by.unparse();
     }
-    # -- Match/Switch --
+
     if isinstance(nd, uni.MatchStmt) {
         return 'match ' + nd.target.unparse();
     }
@@ -137,7 +134,7 @@ impl CoalesceBBPass._node_label(nd: uni.UniNode) -> str {
     if isinstance(nd, uni.SwitchCase) {
         return 'case ' + nd.pattern.unparse() if nd.pattern else 'default';
     }
-    # -- Exception --
+
     if isinstance(nd, uni.TryStmt) {
         return 'try';
     }
@@ -147,7 +144,7 @@ impl CoalesceBBPass._node_label(nd: uni.UniNode) -> str {
     if isinstance(nd, uni.FinallyStmt) {
         return 'finally';
     }
-    # -- With --
+
     if isinstance(nd, uni.WithStmt) {
         label = 'with ';
         for (idx, e) in enumerate(nd.exprs) {
@@ -158,12 +155,11 @@ impl CoalesceBBPass._node_label(nd: uni.UniNode) -> str {
         }
         return label;
     }
-    # -- Scope boundaries --
+
     if isinstance(nd, uni.Archetype) {
         return 'obj ' + nd.name.unparse();
     }
     if isinstance(nd, uni.Ability) {
-        # Use actual keyword (def vs can)
         kw: str = 'can';
         for c in nd.kid {
             if isinstance(c, uni.Token) {
@@ -180,17 +176,14 @@ impl CoalesceBBPass._node_label(nd: uni.UniNode) -> str {
         }
         return kw;
     }
-    # ReturnStmt whose value is a ternary: suppress label here -- the condition
-    # and each branch are already shown as separate BBs below this block.
+
     if isinstance(nd, uni.ReturnStmt) {
         if nd.expr and isinstance(nd.expr, uni.IfElseExpr) {
             return "";
         }
         return nd.unparse();
     }
-    # CfgExpr that is the value or else_value (not the condition) of a ternary
-    # directly inside a ReturnStmt: re-attach "return" so the branch label
-    # makes the control-flow intent visible.
+
     if isinstance(nd, uni.CfgExpr) {
         par = nd.parent;
         if (
@@ -204,15 +197,13 @@ impl CoalesceBBPass._node_label(nd: uni.UniNode) -> str {
     return nd.unparse();
 }
 
-"""Enter CFG nodes (statements, archetypes, and leaf CfgExprs)."""
 impl CoalesceBBPass.enter_node(nd: uni.UniNode) -> None {
     is_cfg_node = (
         isinstance(nd, (uni.CodeBlockStmt, uni.Archetype))
         and not isinstance(nd, uni.Semi)
         and not _is_structural_child(nd)
     );
-    # Leaf CfgExprs participate; container CfgExprs (wrapping nested BoolExpr)
-    # are pass-throughs handled by the inner operands.
+
     if isinstance(nd, uni.CfgExpr) {
         cfg_nd: uni.CfgExpr = nd;
         if (cfg_nd.bb_in or cfg_nd.bb_out) and _unwrap_to_bool(cfg_nd) is None {
@@ -232,7 +223,6 @@ impl CoalesceBBPass.enter_node(nd: uni.UniNode) -> None {
     }
 }
 
-"""Get basic block."""
 impl CoalesceBBPass.get_bb(nd: uni.UniCFGNode) -> list[uni.UniCFGNode] {
     head = nd.get_head();
     tail = nd.get_tail();
@@ -253,26 +243,13 @@ impl CoalesceBBPass.get_bb(nd: uni.UniCFGNode) -> list[uni.UniCFGNode] {
     return bb_list;
 }
 
-"""Before pass."""
 impl CoalesceBBPass.before_pass -> None {
     self.basic_blocks = {};
     self.bb_counter = 0;
 }
 
-# ============================================================================
-# CFGBuildPass
-# ============================================================================
-"""Before pass -- no state needed."""
 impl CFGBuildPass.before_pass -> None { }
 
-# ============================================================================
-# Utilities
-# ============================================================================
-"""Link two CFG nodes: source.bb_out -> target, target.bb_in -> source.
-Also propagates affected_symbols for the Pyright-style branch-skipping optimization.
-When target already has internal bb_out edges (e.g., an IfStmt whose exit handler
-already linked to its body), new symbols from source are propagated to those internal
-nodes so that the backward CFG walk can find narrowing predicates through them."""
 impl CFGBuildPass.link_bbs(source: uni.UniCFGNode, target: uni.UniCFGNode) -> None {
     if source and target {
         if target not in source.bb_out {
@@ -283,10 +260,7 @@ impl CFGBuildPass.link_bbs(source: uni.UniCFGNode, target: uni.UniCFGNode) -> No
         }
         new_symbols = source.affected_symbols - target.affected_symbols;
         target.affected_symbols.update(source.affected_symbols);
-        # Propagate newly added symbols to already-linked internal nodes.
-        # This handles the case where exit_if_stmt linked S2→body before
-        # _link_sequential linked S1→S2, so body nodes missed S1's symbols.
-        # Uses iterative BFS to avoid recursion issues with cyclic CFGs.
+
         if new_symbols {
             visited: set[int] = {id(target)};
             queue: list[uni.UniCFGNode] = list(target.bb_out);
@@ -306,9 +280,6 @@ impl CFGBuildPass.link_bbs(source: uni.UniCFGNode, target: uni.UniCFGNode) -> No
     }
 }
 
-"""Link sequential statements in a body, skipping after terminals.
-For compound statements (if/while/for/try/match/etc.), also connects
-their internal unconnected tails to the next sibling."""
 impl CFGBuildPass._link_sequential(body: Sequence[uni.CodeBlockStmt]) -> None {
     for i in range(1, len(body)) {
         prev = body[i - 1];
@@ -317,8 +288,7 @@ impl CFGBuildPass._link_sequential(body: Sequence[uni.CodeBlockStmt]) -> None {
             continue;
         }
         has_else = isinstance(prev, uni.AstElseBodyNode) and prev.else_body is not None;
-        # Did the exit handler already wire a short-circuit chain? Peel
-        # parentheses so `(a and b)` matches `a and b`.
+
         has_bool_sc = False;
         if isinstance(prev, (uni.IfStmt, uni.ElseIf, uni.WhileStmt)) {
             has_bool_sc = isinstance(_unwrap_parens(prev.condition), uni.BoolExpr);
@@ -327,11 +297,8 @@ impl CFGBuildPass._link_sequential(body: Sequence[uni.CodeBlockStmt]) -> None {
         and isinstance(
             prev, (uni.IfStmt, uni.WhileStmt, uni.InForStmt, uni.IterForStmt)
         ) {
-            # Exit paths covered -- no direct prev→next edge, unless an
-            # empty true body or empty ElseStmt body creates a fall-through.
             self._connect_tails(prev, next);
             if isinstance(prev, uni.IfStmt) {
-                # Fall-through if true body is empty or else body is empty
                 empty_true = not prev.body;
                 eb = prev.else_body;
                 empty_else = isinstance(eb, uni.ElseStmt) and not eb.body;
@@ -340,38 +307,31 @@ impl CFGBuildPass._link_sequential(body: Sequence[uni.CodeBlockStmt]) -> None {
                 }
             }
         } elif has_bool_sc {
-            # Short-circuit wiring handled false path via BoolExpr chain -- no direct prev→next.
             self._connect_tails(prev, next);
         } else {
-            # Direct prev→next edge (includes false-branch fallthrough for if-without-else).
             self.link_bbs(prev, next);
-            # Also connect internal tails for compound stmts.
             self._connect_tails(prev, next);
         }
     }
 }
 
-"""Find non-terminal CFG nodes with empty bb_out in parent's subtree and link to target.
-Skips expression subtrees and scope boundaries (Ability, Archetype, ImplDef).
-Recurses into compound stmts and non-CFG containers (ElseStmt, MatchCase, etc.)."""
 impl CFGBuildPass._connect_tails(parent: uni.UniNode, target: uni.UniCFGNode) -> None {
     for k in parent.kid {
         if not k or isinstance(k, uni.Expr) or isinstance(k, uni.Semi) {
             continue;
         }
-        # Skip structural Assignment fields of IterForStmt (iter, count_by)
+
         if isinstance(parent, uni.IterForStmt) {
             if k is parent.iter or k is parent.count_by {
                 continue;
             }
         }
         if isinstance(k, (uni.Ability, uni.Archetype, uni.ImplDef, uni.Test)) {
-            # Scope boundary -- don't recurse into nested scopes
             continue;
         }
-        if isinstance(k, (uni.WhileStmt, uni.InForStmt, uni.IterForStmt)) {
-            # Loop boundary -- body tails back-edge to the loop header (wired by
-            # the loop's exit handler), so don't sweep them to the successor.
+        if isinstance(
+            k, (uni.WhileStmt, uni.ForeverStmt, uni.InForStmt, uni.IterForStmt)
+        ) {
             if not k.bb_out and not self._is_terminal(k) {
                 self.link_bbs(k, target);
             }
@@ -379,11 +339,8 @@ impl CFGBuildPass._connect_tails(parent: uni.UniNode, target: uni.UniCFGNode) ->
         }
         if isinstance(k, uni.UniCFGNode) {
             if not k.bb_out and not self._is_terminal(k) {
-                # Unconnected tail -- link to target
                 self.link_bbs(k, target);
             } elif isinstance(k, uni.IfStmt) and not k.else_body {
-                # If/elif without else: false branch falls through to target,
-                # but only if not already connected by _link_sequential in its own body context.
                 first_body = k.body[0] if k.body else None;
                 has_false_branch = any(o is not first_body for o in k.bb_out);
                 if not has_false_branch {
@@ -391,17 +348,14 @@ impl CFGBuildPass._connect_tails(parent: uni.UniNode, target: uni.UniCFGNode) ->
                 }
                 self._connect_tails(k, target);
             } else {
-                # Has outgoing edges or is terminal -- check children
                 self._connect_tails(k, target);
             }
         } else {
-            # Non-CFG container (ElseStmt, MatchCase, etc.) -- check children
             self._connect_tails(k, target);
         }
     }
 }
 
-"""Unwrap AtomUnit (parentheses) to reach the actual expression."""
 def _unwrap_parens(expr: uni.Expr) -> uni.Expr {
     while isinstance(expr, uni.AtomUnit) and isinstance(expr.value, uni.Expr) {
         expr = expr.value;
@@ -409,24 +363,16 @@ def _unwrap_parens(expr: uni.Expr) -> uni.Expr {
     return expr;
 }
 
-"""Return the nested BoolExpr wrapped by a CfgExpr (through parens), or None."""
 def _unwrap_to_bool(cfg: uni.CfgExpr) -> uni.BoolExpr | None {
     inner = _unwrap_parens(cfg.expr);
     return inner if isinstance(inner, uni.BoolExpr) else None;
 }
 
-"""Check if a BoolExpr uses AND (vs OR)."""
 def _bool_is_and(expr: uni.BoolExpr) -> bool {
     import from jaclang.jac0core.constant { Tokens as Tok }
     return isinstance(expr.op, uni.Token) and expr.op.name == Tok.KW_AND;
 }
 
-"""Wire short-circuit boolean flow through CfgExpr operands.
-Each operand branches to the next operand on its continuing edge (true for
-AND, false for OR) and to the external target on its exit edge. Nested
-BoolExpr operands are flattened: all inner operands short-circuit to the
-outer exit target, and the last inner operand's continuing target becomes
-the outer continuation. Returns the entry CfgExpr (first operand)."""
 impl CFGBuildPass._wire_bool_operands(
     values: list[uni.CfgExpr],
     op_is_and: bool,
@@ -435,8 +381,7 @@ impl CFGBuildPass._wire_bool_operands(
 ) -> uni.CfgExpr {
     import from jaclang.compiler.symbol_utils { collect_narrowing_symbols }
     n = len(values);
-    # Resolve entry nodes — for operands wrapping a nested BoolExpr, the
-    # entry is the first inner operand (already wired by exit_bool_expr).
+
     entries: list[uni.CfgExpr] = [];
     for cfg in values {
         cfg.affected_symbols.update(collect_narrowing_symbols(cfg.expr));
@@ -445,7 +390,7 @@ impl CFGBuildPass._wire_bool_operands(
             nested.values[0] if (nested and len(nested.values) >= 2) else cfg
         );
     }
-    # Wire each operand's true/false edges.
+
     for i in range(n) {
         next_entry = entries[i + 1] if i < n - 1 else None;
         my_true = (next_entry or true_target) if op_is_and else true_target;
@@ -462,7 +407,6 @@ impl CFGBuildPass._wire_bool_operands(
     return entries[0];
 }
 
-"""Set sc targets on a CfgExpr and link them."""
 impl CFGBuildPass._set_and_link(
     cfg: uni.CfgExpr,
     true_target: (uni.UniCFGNode | None),
@@ -478,9 +422,6 @@ impl CFGBuildPass._set_and_link(
     }
 }
 
-"""Patch a nested BoolExpr's inner operand edges with outer targets.
-All inner operands' short-circuit-exit edge points to the outer exit; the
-last inner operand's continuing edge points to the outer continuation."""
 impl CFGBuildPass._patch_inner_bool(
     nested: uni.BoolExpr,
     my_true: (uni.UniCFGNode | None),
@@ -514,8 +455,6 @@ impl CFGBuildPass._patch_inner_bool(
     }
 }
 
-"""Wire CfgExpr operand chain for standalone BoolExpr (not a condition).
-Conditions of if/while/elif are wired by exit_if_stmt/exit_while_stmt."""
 impl CFGBuildPass.exit_bool_expr(nd: uni.BoolExpr) -> None {
     if isinstance(nd.parent, (uni.IfStmt, uni.WhileStmt, uni.ElseIf))
     and nd is nd.parent.condition {
@@ -523,11 +462,7 @@ impl CFGBuildPass.exit_bool_expr(nd: uni.BoolExpr) -> None {
     }
     if len(nd.values) >= 2 {
         entry = self._wire_bool_operands(nd.values, _bool_is_and(nd), None, None);
-        # Connect the operand sub-CFG to the nearest enclosing CFG node so
-        # that upstream narrowing (e.g., isinstance guard on an enclosing
-        # if-stmt) flows into the operand chain. Without this edge the
-        # sub-CFG is orphaned and narrowing established before the BoolExpr
-        # cannot be discovered by the backward CFG walk.
+
         enclosing_flow = nd.find_parent_of_type(uni.UniCFGNode);
         if enclosing_flow is not None {
             self.link_bbs(enclosing_flow, entry);
@@ -535,18 +470,10 @@ impl CFGBuildPass.exit_bool_expr(nd: uni.BoolExpr) -> None {
     }
 }
 
-"""Wire CfgExpr branches for IfElseExpr (ternary). Also links into nested
-IfElseExpr/BoolExpr so narrowing propagates through nested ternaries."""
 impl CFGBuildPass.exit_if_else_expr(nd: uni.IfElseExpr) -> None {
     import from jaclang.compiler.symbol_utils { collect_narrowing_symbols }
     nd.condition.affected_symbols.update(collect_narrowing_symbols(nd.condition.expr));
 
-    # If the condition is a BoolExpr, wire the operand short-circuit chain
-    # through to the branches the same way `exit_if_stmt` does. This lets
-    # the backward walker traverse operands individually, so per-operand
-    # narrowings accumulate on the edge into the branch (critical for
-    # patterns like `0 if s is None or not isinstance(s, T) else s.m()`
-    # where the else branch needs s narrowed to T via double negation).
     unwrapped_cond = _unwrap_parens(nd.condition.expr);
     if isinstance(unwrapped_cond, uni.BoolExpr) and len(unwrapped_cond.values) >= 2 {
         op_is_and = _bool_is_and(unwrapped_cond);
@@ -557,23 +484,12 @@ impl CFGBuildPass.exit_if_else_expr(nd: uni.IfElseExpr) -> None {
             self.link_bbs(nd.condition, entry);
         }
     } else {
-        # Simple condition: the outer CfgExpr is the branch point.
         nd.condition.sc_true_target = nd.value;
         nd.condition.sc_false_target = nd.else_value;
         self.link_bbs(nd.condition, nd.value);
         self.link_bbs(nd.condition, nd.else_value);
     }
 
-    # Connect the ternary sub-CFG to its nearest enclosing CFG node so
-    # that narrowing established upstream flows into the condition and
-    # branches. For a top-level ternary this is the enclosing statement
-    # (CodeBlockStmt); for a nested ternary it is the outer ternary's
-    # branch CfgExpr, which correctly carries the outer ternary's own
-    # narrowing (skipping past it would lose the enclosing narrowing).
-    # Without this edge the sub-CFG is orphaned from surrounding flow
-    # and patterns like
-    # `if x is None { return } return x.m() if isinstance(x, T) else x.m()`
-    # bottom out with the declared type.
     enclosing_flow = nd.find_parent_of_type(uni.UniCFGNode);
     if enclosing_flow is not None {
         self.link_bbs(enclosing_flow, nd.condition);
@@ -589,22 +505,18 @@ impl CFGBuildPass.exit_if_else_expr(nd: uni.IfElseExpr) -> None {
     }
 }
 
-"""Check if a node is a terminal (no control flow continues past it)."""
 impl CFGBuildPass._is_terminal(nd: uni.UniNode) -> bool {
     return isinstance(
         nd, (uni.ReturnStmt, uni.RaiseStmt, uni.CtrlStmt, uni.DisengageStmt)
     );
 }
 
-"""Find the nearest ancestor matching one of the given types."""
 impl CFGBuildPass._find_parent_of_types(
     nd: uni.UniNode, types: tuple[type[uni.UniCFGNode], ...]
 ) -> (uni.UniCFGNode | None) {
     cur = nd.parent;
     while cur {
         if isinstance(cur, types) {
-            # isinstance with a runtime tuple can't be statically narrowed,
-            # but the types param guarantees UniCFGNode subtypes.
             return cast(uni.UniCFGNode, cur);
         }
         cur = cur?.parent;
@@ -612,7 +524,6 @@ impl CFGBuildPass._find_parent_of_types(
     return None;
 }
 
-"""Find the next CodeBlockStmt sibling after child in parent.body."""
 impl CFGBuildPass._find_next_cfg_stmt_after(
     parent: uni.UniNode, child: uni.UniNode
 ) -> (uni.UniCFGNode | None) {
@@ -631,11 +542,6 @@ impl CFGBuildPass._find_next_cfg_stmt_after(
     return None;
 }
 
-# ============================================================================
-# Symbol collection (enter handlers)
-# ============================================================================
-"""Check if a node is a structural part of its parent (not a flow participant).
-E.g. IterForStmt.iter and IterForStmt.count_by are structural assignments."""
 impl _is_structural_child(nd: uni.UniNode) -> bool {
     if isinstance(nd.parent, uni.IterForStmt) {
         p: uni.IterForStmt = nd.parent;
@@ -646,7 +552,6 @@ impl _is_structural_child(nd: uni.UniNode) -> bool {
     return False;
 }
 
-"""Collect affected_symbols for all CFG nodes, then dispatch to type-specific enter."""
 impl CFGBuildPass.enter_node(nd: uni.UniNode) -> None {
     import from jaclang.compiler.symbol_utils { collect_assigned_symbols }
     if isinstance(nd, (uni.CodeBlockStmt, uni.Archetype))
@@ -654,43 +559,34 @@ impl CFGBuildPass.enter_node(nd: uni.UniNode) -> None {
     and not _is_structural_child(nd) {
         nd.affected_symbols.update(collect_assigned_symbols(nd));
     }
-    # Dispatch to enter_if_stmt, enter_assert_stmt, etc.
+
     super.enter_node(nd);
 }
 
-"""Collect narrowing symbols from if condition."""
 impl CFGBuildPass.enter_if_stmt(nd: uni.IfStmt) -> None {
     import from jaclang.compiler.symbol_utils { collect_narrowing_symbols }
     nd.affected_symbols.update(collect_narrowing_symbols(nd.condition));
 }
 
-"""Collect narrowing symbols from elif condition."""
 impl CFGBuildPass.enter_else_if(nd: uni.ElseIf) -> None {
     import from jaclang.compiler.symbol_utils { collect_narrowing_symbols }
     nd.affected_symbols.update(collect_narrowing_symbols(nd.condition));
 }
 
-"""Collect narrowing symbols from assert condition."""
 impl CFGBuildPass.enter_assert_stmt(nd: uni.AssertStmt) -> None {
     import from jaclang.compiler.symbol_utils { collect_narrowing_symbols }
     nd.affected_symbols.update(collect_narrowing_symbols(nd.condition));
 }
 
-"""Collect affected symbols from match target."""
 impl CFGBuildPass.enter_match_stmt(nd: uni.MatchStmt) -> None {
     if isinstance(nd.target, uni.Name) {
         nd.affected_symbols.add(nd.target.value);
     }
 }
 
-# ============================================================================
-# Edge building (exit handlers) -- Branch
-# ============================================================================
-"""IfStmt: link to body + else_body, with short-circuit wiring for BoolExpr conditions."""
 impl CFGBuildPass.exit_if_stmt(nd: uni.IfStmt) -> None {
     true_target: (uni.UniCFGNode | None) = nd.body[0] if nd.body else None;
 
-    # Determine false target
     false_target: (uni.UniCFGNode | None) = None;
     if nd.else_body {
         if isinstance(nd.else_body, uni.ElseIf) {
@@ -700,12 +596,10 @@ impl CFGBuildPass.exit_if_stmt(nd: uni.IfStmt) -> None {
         }
     }
 
-    # Peel parens so `if (a and b)` wires the same as `if a and b`.
     unwrapped = _unwrap_parens(nd.condition);
     cond_bool = unwrapped if isinstance(unwrapped, uni.BoolExpr) else None;
 
     if cond_bool is not None and true_target {
-        # For if-without-else, the false path falls through to the next sibling.
         if not false_target and not nd.else_body and nd.parent {
             false_target = self._find_next_cfg_stmt_after(nd.parent, nd);
         }
@@ -717,7 +611,6 @@ impl CFGBuildPass.exit_if_stmt(nd: uni.IfStmt) -> None {
             self.link_bbs(nd, entry);
         }
     } else {
-        # Simple condition — direct edges
         if true_target {
             self.link_bbs(nd, true_target);
         }
@@ -726,32 +619,24 @@ impl CFGBuildPass.exit_if_stmt(nd: uni.IfStmt) -> None {
         }
     }
 
-    # Sequential linking within body
     if nd.body {
         self._link_sequential(nd.body);
     }
 }
 
-"""ElseIf: same structure as IfStmt (ElseIf extends IfStmt)."""
 impl CFGBuildPass.exit_else_if(nd: uni.ElseIf) -> None {
     self.exit_if_stmt(nd);
 }
 
-"""ElseStmt: sequential link within body (incoming edge set by parent IfStmt/ElseIf)."""
 impl CFGBuildPass.exit_else_stmt(nd: uni.ElseStmt) -> None {
     if nd.body {
         self._link_sequential(nd.body);
     }
 }
 
-# ============================================================================
-# Edge building (exit handlers) -- Loop
-# ============================================================================
-"""WhileStmt: body + back-edge + else_body, with short-circuit wiring for BoolExpr conditions."""
 impl CFGBuildPass.exit_while_stmt(nd: uni.WhileStmt) -> None {
     true_target: (uni.UniCFGNode | None) = nd.body[0] if nd.body else None;
 
-    # Determine false target: else_body or next sibling
     false_target: (uni.UniCFGNode | None) = None;
     if nd.else_body and isinstance(nd.else_body, uni.ElseStmt) and nd.else_body.body {
         false_target = nd.else_body.body[0];
@@ -759,7 +644,6 @@ impl CFGBuildPass.exit_while_stmt(nd: uni.WhileStmt) -> None {
         false_target = self._find_next_cfg_stmt_after(nd.parent, nd);
     }
 
-    # Peel parens so `while (a and b)` wires the same as `while a and b`.
     unwrapped = _unwrap_parens(nd.condition);
     cond_bool = unwrapped if isinstance(unwrapped, uni.BoolExpr) else None;
 
@@ -783,10 +667,15 @@ impl CFGBuildPass.exit_while_stmt(nd: uni.WhileStmt) -> None {
     self._link_body_tails_to_header(nd);
 }
 
-"""Back-edge every unconnected body tail to the loop header, including branch
-tails inside the body (e.g. the true arm of an if-without-else)."""
+impl CFGBuildPass.exit_forever_stmt(nd: uni.ForeverStmt) -> None {
+    self._link_body_tails_to_header(nd);
+    if nd.body {
+        self.link_bbs(nd, nd.body[0]);
+    }
+}
+
 impl CFGBuildPass._link_body_tails_to_header(
-    nd: uni.WhileStmt | uni.InForStmt | uni.IterForStmt
+    nd: uni.WhileStmt | uni.ForeverStmt | uni.InForStmt | uni.IterForStmt
 ) -> None {
     if not nd.body {
         return;
@@ -795,13 +684,12 @@ impl CFGBuildPass._link_body_tails_to_header(
     if not self._is_terminal(nd.body[-1]) {
         self.link_bbs(nd.body[-1], nd);
     }
-    # Scope to body stmts so else_body / successor never joins the cycle.
+
     for stmt in nd.body {
         self._connect_tails(stmt, nd);
     }
 }
 
-"""InForStmt: body + back-edge + else_body."""
 impl CFGBuildPass.exit_in_for_stmt(nd: uni.InForStmt) -> None {
     self._link_body_tails_to_header(nd);
     if nd.body {
@@ -812,7 +700,6 @@ impl CFGBuildPass.exit_in_for_stmt(nd: uni.InForStmt) -> None {
     }
 }
 
-"""IterForStmt: body + back-edge + else_body."""
 impl CFGBuildPass.exit_iter_for_stmt(nd: uni.IterForStmt) -> None {
     self._link_body_tails_to_header(nd);
     if nd.body {
@@ -823,17 +710,6 @@ impl CFGBuildPass.exit_iter_for_stmt(nd: uni.IterForStmt) -> None {
     }
 }
 
-# ============================================================================
-# Edge building (exit handlers) -- Comprehension head
-# ============================================================================
-"""ListCompr / SetCompr / GenCompr / DictCompr: wire each `if` filter as a
-CfgExpr predecessor of the comprehension itself, so the existing CFG
-narrowing engine threads filter narrowing into the head expression
-(out_expr / kv_pair). The comprehension is the flow_node that
-`_find_cfg_node_for` returns for anything inside the head, so its bb_in
-chain is what the narrowing walker visits. Each filter's true edge
-points back at the comprehension (head context); the false edge is
-left dangling (skip-iteration has no AST representation)."""
 impl CFGBuildPass.exit_list_compr(nd: uni.ListCompr) -> None {
     self._wire_compr_filters(nd, nd.compr);
 }
@@ -857,26 +733,7 @@ impl CFGBuildPass._wire_compr_filters(
     if not comprs {
         return;
     }
-    # Splice the comprehension into the enclosing CFG flow so narrowing
-    # established by an outer guard (`if r is None { return; }`)
-    # continues to reach the comprehension. The chain is
-    #     enclosing -> InnerCompr_1 -> ... -> InnerCompr_n -> ...
-    #                  -> CfgExpr_filter_1 -> ... -> CfgExpr_filter_m -> target
-    # so the head's bb_in is just the final CFG node in the chain
-    # (filter true-edge if any filter, last InnerCompr otherwise). The
-    # narrowing engine walks back through the chain to find enclosing
-    # narrowing, while filter narrowing applies on its true edge.
-    #
-    # When the immediately enclosing CFG node is an Assignment (the
-    # comprehension sits on its RHS), walk past it to find a non-
-    # Assignment ancestor. Otherwise narrowing for a Name on the
-    # assignment LHS that is also referenced inside the comprehension
-    # (`out = [t for t in out if ...]`) would resolve the Name through
-    # the in-progress write — a circular dependency on the comprehension
-    # being typed — and fall back to Unknown, blowing up the head
-    # expression with cascading E1032s. Skipping the Assignment lets the
-    # narrowing engine walk to the prior statement's CFG node, where
-    # the declared / last-written type for that Name is intact.
+
     encl: uni.UniNode | None = target_node.parent;
     while encl is not None {
         if isinstance(encl, uni.UniCFGNode)
@@ -897,12 +754,6 @@ impl CFGBuildPass._wire_compr_filters(
         }
         new_conditional: list[uni.Expr] = [];
         for cond in compr.conditional {
-            # Wrap in a CfgExpr if the parser didn't already (BoolExpr
-            # operands are CfgExpr-wrapped at parse time; simple
-            # conditions like `x is not None` are bare Exprs). Splice
-            # the wrapper into both compr.conditional and compr.kid so
-            # parent-chain walks (sym_tab lookup, _resolve_symbols_in_subtree)
-            # find the proper ancestor through the new CfgExpr.
             cfg_pred: uni.CfgExpr;
             if isinstance(cond, uni.CfgExpr) {
                 cfg_pred = cond;
@@ -920,21 +771,15 @@ impl CFGBuildPass._wire_compr_filters(
         }
         compr.conditional = new_conditional;
     }
-    # Final link from the last node in the chain to the head context.
-    # When the last node is a CfgExpr, this is the same edge already
-    # wired by `_set_and_link` (link_bbs is idempotent).
+
     if prev_node is not None and prev_node is not target_node {
         self.link_bbs(prev_node, target_node);
     }
 }
 
-# ============================================================================
-# Edge building (exit handlers) -- Control flow
-# ============================================================================
-"""CtrlStmt: break -> next after loop, continue -> loop header."""
 impl CFGBuildPass.exit_ctrl_stmt(nd: uni.CtrlStmt) -> None {
     loop = self._find_parent_of_types(
-        nd, (uni.WhileStmt, uni.InForStmt, uni.IterForStmt)
+        nd, (uni.WhileStmt, uni.ForeverStmt, uni.InForStmt, uni.IterForStmt)
     );
     if not loop {
         return;
@@ -952,29 +797,22 @@ impl CFGBuildPass.exit_ctrl_stmt(nd: uni.CtrlStmt) -> None {
     }
 }
 
-# ============================================================================
-# Edge building (exit handlers) -- Exception
-# ============================================================================
-"""TryStmt: body + except handlers + finally."""
 impl CFGBuildPass.exit_try_stmt(nd: uni.TryStmt) -> None {
-    # Try body
     if nd.body {
         self.link_bbs(nd, nd.body[0]);
         self._link_sequential(nd.body);
     }
-    # Conservative: any stmt in try could throw -> link to each except handler
+
     for exc in nd.excepts {
         self.link_bbs(nd, exc);
     }
-    # Try-else: runs on normal completion (no exception)
+
     if nd.else_body and isinstance(nd.else_body, uni.ElseStmt) and nd.else_body.body {
         if nd.body and not self._is_terminal(nd.body[-1]) {
             self.link_bbs(nd.body[-1], nd.else_body.body[0]);
         }
     }
-    # Finally: all paths flow through it — always link, even from terminal
-    # statements (return/raise). The finally block executes regardless, and
-    # the link propagates affected_symbols needed for narrowing analysis.
+
     if nd.finally_body {
         if nd.body {
             self.link_bbs(nd.body[-1], nd.finally_body);
@@ -987,7 +825,6 @@ impl CFGBuildPass.exit_try_stmt(nd: uni.TryStmt) -> None {
     }
 }
 
-"""Except: link to body."""
 impl CFGBuildPass.exit_except(nd: uni.Except) -> None {
     if nd.body {
         self.link_bbs(nd, nd.body[0]);
@@ -995,7 +832,6 @@ impl CFGBuildPass.exit_except(nd: uni.Except) -> None {
     }
 }
 
-"""FinallyStmt: link to body."""
 impl CFGBuildPass.exit_finally_stmt(nd: uni.FinallyStmt) -> None {
     if nd.body {
         self.link_bbs(nd, nd.body[0]);
@@ -1003,17 +839,12 @@ impl CFGBuildPass.exit_finally_stmt(nd: uni.FinallyStmt) -> None {
     }
 }
 
-# ============================================================================
-# Edge building (exit handlers) -- Multi-branch
-# ============================================================================
-"""MatchStmt: link to each MatchCase node."""
 impl CFGBuildPass.exit_match_stmt(nd: uni.MatchStmt) -> None {
     for case in nd.cases {
         self.link_bbs(nd, case);
     }
 }
 
-"""MatchCase: link to body (incoming set by MatchStmt)."""
 impl CFGBuildPass.exit_match_case(nd: uni.MatchCase) -> None {
     if nd.body {
         self.link_bbs(nd, nd.body[0]);
@@ -1021,14 +852,12 @@ impl CFGBuildPass.exit_match_case(nd: uni.MatchCase) -> None {
     }
 }
 
-"""SwitchStmt: link to each SwitchCase node."""
 impl CFGBuildPass.exit_switch_stmt(nd: uni.SwitchStmt) -> None {
     for case in nd.cases {
         self.link_bbs(nd, case);
     }
 }
 
-"""SwitchCase: link to body (incoming set by SwitchStmt)."""
 impl CFGBuildPass.exit_switch_case(nd: uni.SwitchCase) -> None {
     if nd.body {
         self.link_bbs(nd, nd.body[0]);
@@ -1036,10 +865,6 @@ impl CFGBuildPass.exit_switch_case(nd: uni.SwitchCase) -> None {
     }
 }
 
-# ============================================================================
-# Edge building (exit handlers) -- Other
-# ============================================================================
-"""WithStmt: link to body."""
 impl CFGBuildPass.exit_with_stmt(nd: uni.WithStmt) -> None {
     if nd.body {
         self.link_bbs(nd, nd.body[0]);
@@ -1047,7 +872,6 @@ impl CFGBuildPass.exit_with_stmt(nd: uni.WithStmt) -> None {
     }
 }
 
-"""TypedCtxBlock: link to body."""
 impl CFGBuildPass.exit_typed_ctx_block(nd: uni.TypedCtxBlock) -> None {
     if nd.body {
         self.link_bbs(nd, nd.body[0]);
@@ -1055,20 +879,13 @@ impl CFGBuildPass.exit_typed_ctx_block(nd: uni.TypedCtxBlock) -> None {
     }
 }
 
-"""JsxSlot: wire the slot body into the enclosing function's CFG.
+impl CFGBuildPass.exit_region_stmt(nd: uni.RegionStmt) -> None {
+    if nd.body {
+        self.link_bbs(nd, nd.body[0]);
+        self._link_sequential(nd.body);
+    }
+}
 
-The slot lives in expression position inside a `CodeBlockStmt` (e.g. a
-`return <jsx>;` or an assignment). Its body is the author's faithful
-`{ stmt; stmt; ... }` template — the cl-target accumulator lowering
-happens later, in EsastGenPass, so the control-flow shape the CFG cares
-about (the `if`/`for`/`skip`/`return` guards) is exactly the author's.
-Those statements need their own intra-body sequential linking;
-additionally, the first body statement must inherit incoming flow from
-the slot's enclosing `CodeBlockStmt` so backward narrowing walks from
-inside the slot pick up guards established earlier in the surrounding
-function (e.g. an `if x is None { return; }` before the JSX). Without
-this link the slot body is an island in the CFG and any narrowing
-established outside is silently dropped at the boundary."""
 impl CFGBuildPass.exit_jsx_slot(nd: uni.JsxSlot) -> None {
     if nd.body and isinstance(nd.body, Sequence) {
         body = [
@@ -1086,10 +903,6 @@ impl CFGBuildPass.exit_jsx_slot(nd: uni.JsxSlot) -> None {
     }
 }
 
-# ============================================================================
-# Edge building (exit handlers) -- Scope boundaries
-# ============================================================================
-"""Ability: scope boundary, link to body."""
 impl CFGBuildPass.exit_ability(nd: uni.Ability) -> None {
     if nd.body and isinstance(nd.body, Sequence) {
         body = [
@@ -1104,7 +917,6 @@ impl CFGBuildPass.exit_ability(nd: uni.Ability) -> None {
     }
 }
 
-"""Archetype: scope boundary, link to each child (declarations are independent)."""
 impl CFGBuildPass.exit_archetype(nd: uni.Archetype) -> None {
     if nd.body and isinstance(nd.body, Sequence) {
         for s in nd.body {
@@ -1115,7 +927,6 @@ impl CFGBuildPass.exit_archetype(nd: uni.Archetype) -> None {
     }
 }
 
-"""ImplDef: scope boundary, link to body."""
 impl CFGBuildPass.exit_impl_def(nd: uni.ImplDef) -> None {
     if nd.body and isinstance(nd.body, Sequence) {
         body = [
@@ -1130,14 +941,12 @@ impl CFGBuildPass.exit_impl_def(nd: uni.ImplDef) -> None {
     }
 }
 
-"""ModuleCode: sequential link body (not a CFG node, no parent edge)."""
 impl CFGBuildPass.exit_module_code(nd: uni.ModuleCode) -> None {
     if nd.body {
         self._link_sequential(nd.body);
     }
 }
 
-"""Test: scope boundary, link to body (same as Ability)."""
 impl CFGBuildPass.exit_test(nd: uni.Test) -> None {
     if nd.body and isinstance(nd.body, Sequence) {
         body = [

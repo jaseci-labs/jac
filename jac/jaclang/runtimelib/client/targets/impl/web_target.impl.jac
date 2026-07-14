@@ -1,4 +1,3 @@
-"""Implementation of WebTarget methods."""
 import os;
 import types;
 import from pathlib { Path }
@@ -9,7 +8,6 @@ glob DEFAULT_FUNCTION_NAME = "app",
      JAC_FILE_EXTENSION = ".jac",
      JAC_LANG_ID = "jac";
 
-"""Extract base path and module name from entry file path."""
 def _parse_entry_file(entry_file: Path) -> tuple[str, str] {
     (base, mod) = os.path.split(str(entry_file));
     base = base or "./";
@@ -19,24 +17,15 @@ def _parse_entry_file(entry_file: Path) -> tuple[str, str] {
     return (base, mod);
 }
 
-"""Setup web target (no-op - web works out of the box)."""
 impl WebTarget.setup(project_dir: Path) -> None { }
 
-"""Start web dev server with HMR.
-
-For web target, this delegates to the core jac start --dev behavior.
-The actual HMR implementation is in jaclang/cli/commands/impl/execution.impl.jac.
-This method is called when using non-default targets that inherit from WebTarget.
-"""
 impl WebTarget.dev(
     entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
 ) -> None {
     import from jaclang.cli.console { console }
-    # `port` = Vite dev server, `api_port` = API (0 = port+1), same as core `jac start --dev`.
+
     api_p = api_port if api_port > 0 else port + 1;
-    # Web dev mode is handled by core jac start --dev
-    # When called directly (e.g., from PWATarget.dev() -> super().dev()),
-    # we start the Vite dev server
+
     bundler = ViteBundler(project_dir=project_dir);
     client_dir = bundler._get_client_dir();
     bundler.create_vite_config(entry_file, is_dev=True, api_port=api_p);
@@ -55,40 +44,29 @@ impl WebTarget.dev(
             try {
                 process.wait(timeout=5);
             } except Exception {
-                # Force kill if graceful termination fails
                 process.kill();
             }
         }
     }
 }
 
-"""Start web target in production preview mode.
-
-For web target, this builds the bundle and starts the API server.
-Uses Jac.get_api_server_class() to respect plugin hooks (e.g., jac-scale).
-This method is called when using non-default targets that inherit from WebTarget.
-"""
 impl WebTarget.start(
     entry_file: Path, project_dir: Path, api_port: int = 8000
 ) -> None {
     import from jaclang.cli.console { console }
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
 
-    # Build the bundle first
     bundler = ViteBundler(project_dir=project_dir);
     console.print("\n🌐 Building web bundle for production preview...", style="bold");
     self.build(entry_file, project_dir, None);
 
-    # Verify dist directory exists
     dist_dir = bundler.output_dir;
     if not dist_dir or not dist_dir.exists() {
         raise RuntimeError(f"Build output not found: {dist_dir}");
     }
 
-    # Parse entry file to get base path and module name
     (base, mod) = _parse_entry_file(entry_file);
 
-    # Create server using plugin hook (allows jac-scale to provide enhanced server)
     ServerClass = Jac.get_api_server_class();
     server = ServerClass(module_name=mod, port=api_port, base_path=base);
 
@@ -104,7 +82,6 @@ impl WebTarget.start(
     }
 }
 
-"""Build web bundle using existing Vite pipeline."""
 impl WebTarget.build(
     entry_file: Path, project_dir: Path, platform: Optional[str] = None
 ) -> Path {
@@ -116,7 +93,6 @@ impl WebTarget.build(
 
     bundler = ViteBundler(project_dir=project_dir);
 
-    # Clean dist directory for fresh build
     dist_dir = bundler.output_dir;
     if dist_dir {
         if dist_dir.exists() {
@@ -125,10 +101,8 @@ impl WebTarget.build(
         dist_dir.mkdir(parents=True, exist_ok=True);
     }
 
-    # Parse entry file to get base path and module name
     (base, mod) = _parse_entry_file(entry_file);
 
-    # Import the module
     Jac.jac_import(target=mod, base_path=base, lng=JAC_LANG_ID);
     if Jac.program.errors_had {
         errors = '\n'.join(str(e) for e in Jac.program.errors_had);
@@ -156,7 +130,6 @@ impl WebTarget.build(
     return bundle_path;
 }
 
-"""Get the first client export function name from a loaded module."""
 def _get_client_function_name(loaded_mod: types.ModuleType) -> str {
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
 
@@ -186,7 +159,6 @@ def _get_client_function_name(loaded_mod: types.ModuleType) -> str {
     return DEFAULT_FUNCTION_NAME;
 }
 
-"""Build CSS link tag if CSS file exists."""
 def _build_css_link(bundler: ViteBundler) -> str {
     import hashlib;
 
@@ -202,7 +174,6 @@ def _build_css_link(bundler: ViteBundler) -> str {
     return '';
 }
 
-"""Get app meta data from project config."""
 def _get_app_meta_data -> dict {
     import from jaclang.project.config { get_config }
 
@@ -218,7 +189,6 @@ def _get_app_meta_data -> dict {
 }
 
 
-"""Generate static index.html file for the built bundle."""
 def _generate_index_html(
     bundle_path: Path,
     bundler: ViteBundler,
@@ -246,7 +216,7 @@ def _generate_index_html(
         "argOrder": [],
         "globals": {}
     };
-    # Escape </ to prevent closing script tag early (don't use html.escape - breaks JSON)
+
     init_json = json.dumps(init_payload).replace('</', '<\\/');
     bundle_filename = bundle_path.name;
     base_path = bundler.config_loader.get_base_path();

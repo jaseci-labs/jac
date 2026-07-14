@@ -1,20 +1,8 @@
-"""Debug helpers: post_transform dumps/validates the generated LLVM IR.
-
-Environment variables
----------------------
-JAC_DEBUG_IR=1        — save IR to <stem>.ll in the module's native cache dir
-JAC_VERIFY_IR=1       — run llvmlite parse_assembly to verify the IR
-"""
 import from jaclang.cli.console { console }
-import from llvmlite { binding as llvm }
+import from jaclang.compiler.passes.native.llvm { binding as llvm }
 import os;
 import sys;
 
-"""Attach a DWARF DISubprogram to an LLVM function (JAC_NATIVE_DEBUG=1).
-
-Creates DISubroutineType + DISubprogram metadata and sets it on the function.
-Also marks the function as noinline so GDB sees real stack frames.
-No-op when di_cu is None (debug mode disabled)."""
 impl NaIRGenPass._attach_di_subprogram(
     func: ir.Function, name: str, line: int
 ) -> None {
@@ -40,18 +28,10 @@ impl NaIRGenPass._attach_di_subprogram(
         );
         func.set_metadata("dbg", _di_sp);
         self._di_current_sp = _di_sp;
-    } except Exception {
-        pass;
-    }
+    } except Exception { }
     func.attributes.add("noinline");
 }
 
-"""Tag all instructions in a function that lack !dbg metadata with a fallback location.
-
-LLVM verifier requires that all inlinable calls inside a function with
-DISubprogram metadata carry a !dbg location.  This walks all blocks and
-fills in a fallback DILocation for any untagged instruction.
-No-op when _di_current_sp is None."""
 impl NaIRGenPass._finalize_di_locations(func: ir.Function, fallback_line: int) -> None {
     if self._di_current_sp is None {
         return;
@@ -68,18 +48,14 @@ impl NaIRGenPass._finalize_di_locations(func: ir.Function, fallback_line: int) -
                 }
             }
         }
-    } except Exception {
-        pass;
-    }
+    } except Exception { }
 }
 
-"""Dump and/or validate the generated LLVM IR.  Called after transform()."""
 impl NaIRGenPass.post_transform -> None {
     if not self.has_native_code {
         return;
     }
 
-    # ── Emit DWARF compile-unit and required module flags (JAC_NATIVE_DEBUG) ──
     if self.di_cu is not None {
         try {
             self.llvm_module.add_named_metadata("llvm.dbg.cu").add(self.di_cu);
@@ -102,14 +78,11 @@ impl NaIRGenPass.post_transform -> None {
                     ]
                 )
             );
-        } except Exception {
-            pass;  # debug flags are best-effort
-        }
+        } except Exception { }
     }
 
     ir_str = str(self.llvm_module);
 
-    # ── Auto-save IR to the native cache dir when JAC_DEBUG_IR is set ────────
     if os.environ.get("JAC_DEBUG_IR", "").strip().lower() in (
         "1",
         "true",

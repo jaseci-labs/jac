@@ -34,6 +34,11 @@ Bug index:
   #STARGUARD-1 - version-guarded names re-exported via `from M import *` (e.g. Buffer) fail to resolve
   #BYTES-1 - Byte-string literals (b"...") typed as str instead of bytes
   #EVOLVING-NONE - `x = None` then reassign inside `if` lost the new type post-branch
+  #LITWIDEN - literal initializers not widened for mutable vars/attrs/container elements
+  #INCLUDE-MEMBER-1 - member access on `include`d (absorb) symbols resolved to
+                      Unknown when the included submodule imported back from its
+                      own package (circular self-import); poisoned the vendored
+                      llvm ir/binding surface and every native pass (#7163)
 """
 
 import os;
@@ -141,6 +146,39 @@ test "bug_6_mro_not_c3_diamond" {
     assert mro_names == expected_c3 , "Bug #6: MRO is not C3 linearized. "
     f"Expected {expected_c3} but got {mro_names}. "
     "In diamond inheritance, C should come before A in the MRO.";
+}
+
+# =========================================================================
+# Cyclic heritage: compute_mro_linearization must not recurse infinitely
+#
+# compute_mro_linearization recursed into base_classes with no in-progress
+# guard. A malformed or cyclic inheritance graph (a self-referential class,
+# or A -> B -> A) recursed until the stack overflowed instead of degrading
+# to a best-effort MRO. The fix adds an in-progress guard keyed on the class.
+# =========================================================================
+test "cyclic_heritage_mro_does_not_recurse" {
+    # Self-referential: A lists itself as a base.
+    a_shared = ClassType.ClassDetailsShared(
+        class_name="A", symbol_table=None, mro=[], base_classes=[]
+    );
+    a_type = ClassType(_shared=a_shared, flags=TypeFlags.Instantiable);
+    a_type.shared.base_classes = [a_type];
+    compute_mro_linearization(a_type);
+    assert a_type.shared.mro and a_type.shared.mro[0] is a_type;
+
+    # Mutual cycle: B -> C -> B.
+    b_shared = ClassType.ClassDetailsShared(
+        class_name="B", symbol_table=None, mro=[], base_classes=[]
+    );
+    b_type = ClassType(_shared=b_shared, flags=TypeFlags.Instantiable);
+    c_shared = ClassType.ClassDetailsShared(
+        class_name="C", symbol_table=None, mro=[], base_classes=[]
+    );
+    c_type = ClassType(_shared=c_shared, flags=TypeFlags.Instantiable);
+    b_type.shared.base_classes = [c_type];
+    c_type.shared.base_classes = [b_type];
+    compute_mro_linearization(b_type);
+    assert b_type.shared.mro and b_type.shared.mro[0] is b_type;
 }
 
 # =========================================================================
@@ -981,5 +1019,47 @@ test "bug_evolving_none_narrowing" {
         "Bug #EVOLVING-NONE: `x = None; if cond { x = real_value; }; return x;` "
         "must narrow to the assigned type post-branch (Pyright evolving-locals). "
         f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# Bug #LITWIDEN: literal types inferred from a literal initializer were not
+# widened for mutable variables and container elements, so `row = ["."] * 3;
+# row[0] = "B";` failed with E1001 (Cannot assign Literal["B"] to Literal["."]).
+# Widening must reach into container element types (list/dict/set), matching
+# mypy/pyright, while explicit annotations and expression-position literals
+# keep their Literal type.
+test "bug_literal_widening_for_mutable_declarations" {
+    program = compile_and_check("checker_bug_literal_widening.jac");
+    assert program.errors_had == [] , (
+        "Bug #LITWIDEN: literals inferred for mutable variables and container "
+        "elements must widen to their base type (['.'] * 3 -> list[str]) so "
+        "later stores of a different value are allowed. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# Bug #INCLUDE-MEMBER-1 / #7163: a class re-exported into a package only via
+# `include` (absorb) was Unknown when reached through the package namespace
+# (`ir.Value`) if the included submodule imported back from its own package
+# (circular self-import, as the vendored llvm ir/binding submodules do). The
+# module-item path (`from pkg import X`) already fell back to walking the absorb
+# imports via _resolve_star_import_symbol; the member-access path did not, and
+# returned UnknownType on the lookup miss. This poisoned the whole llvm surface
+# -- the native passes do `import from ...llvm { ir }` then `ir.Value` /
+# `ir.Module` / ... -- cascading ~1,700 E1030/E1032 errors across every native
+# pass. The base Value class also did not declare its `type` attribute. With the
+# absorb-aware fallback in place and Value.type declared, the issue's repro must
+# type-check clean.
+#
+# The reproduction rides the vendored llvm package on purpose: the bug only
+# surfaces when the absorbing package is resolved through the type evaluator's
+# cross-module import path (external / JIR-cached), which a fixture compiled as
+# the main target does not exercise.
+test "bug_7163_llvm_ir_boundary_resolves" {
+    program = compile_and_check("checker_llvm_ir_boundary.jac");
+    assert program.errors_had == [] , (
+        "Bug #7163: `import from ...llvm { ir }` then `ir.Value` with `.type` "
+        "must resolve. `ir.Value` was Unknown (member access on an absorbed "
+        f"symbol). Got errors: {[str(e) for e in program.errors_had]}"
     );
 }

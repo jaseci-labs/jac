@@ -1,0 +1,13 @@
+# Example jac.toml for system prompt configuration testing
+[project]
+name = "byllm-test"
+version = "0.1.0"
+
+[byllm]
+system_prompt = "You are a friendly assistant. Greet the person warmly and briefly."
+
+[byllm.model]
+default_model = "gpt-4o-mini"
+
+[byllm.call_params]
+temperature = 0.7

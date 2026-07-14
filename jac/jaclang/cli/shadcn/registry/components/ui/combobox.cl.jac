@@ -2,7 +2,7 @@ import from "@base-ui/react" { Combobox as ComboboxPrimitive }
 import from react { useRef }
 import from ...lib.utils { cn }
 import from .button { Button }
-import from ".input-group" {
+import from ".input_group" {
     InputGroup,
     InputGroupAddon,
     InputGroupButton,
@@ -68,7 +68,7 @@ def:pub ComboboxInput(props: any) -> JsxElement {
     showClear = props["showClear"] or False;
 
     inputProps = {};
-    for key in Object.keys(props) {  # jac:ignore[W6001]
+    for key in Object.keys(props) {
         if key not in _comboboxInputExclude {
             inputProps[key] = props[key];
         }

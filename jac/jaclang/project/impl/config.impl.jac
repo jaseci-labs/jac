@@ -1,15 +1,10 @@
-"""Implementation of Jac project configuration module."""
-
-# ===============================================================================
-# Environment Variable Interpolation Implementation
-# ===============================================================================
 impl interpolate_env_vars(value: str) -> str {
     import os;
     import re;
     if not isinstance(value, str) {
         return value;
     }
-    # Pattern to match ${VAR}, ${VAR:-default}, ${VAR:?error}
+
     pattern = r"\$\{([^}:]+)(?:(:[-?])([^}]*))?\}";
     def replace_env_var(`match: re.Match) -> str {
         var_name = `match.group(1);
@@ -33,54 +28,33 @@ impl interpolate_env_vars(value: str) -> str {
     return re.sub(pattern, replace_env_var, value);
 }
 
-# ===============================================================================
-# Project Discovery Implementation
-# ===============================================================================
 impl find_project_root(start: Path | None = None) -> tuple[Path, Path] | None {
-    import from pathlib { Path }
-    if start is None {
-        start = Path.cwd();
-    }
-    current = start.resolve();
-    while current != current.parent {
-        toml_path = current / "jac.toml";
-        if toml_path.exists() {
-            return (current, toml_path);
-        }
-        current = current.parent;
-    }
-    toml_path = current / "jac.toml";
-    if toml_path.exists() {
-        return (current, toml_path);
-    }
-    return None;
+    import from jaclang.jac0core.modresolver { find_project_root as _find_project_root }
+    return _find_project_root(start);
 }
 
 impl is_in_project -> bool {
     return find_project_root() is not None;
 }
 
-# ===============================================================================
-# Multi-File Config Discovery
-# ===============================================================================
 impl discover_config_files(
     project_root: Path, profile: str | None = None
 ) -> list[Path] {
     import from pathlib { Path }
     files: list[Path] = [];
-    # 1. Base config (always)
+
     base = project_root / "jac.toml";
     if base.exists() {
         files.append(base);
     }
-    # 2. Profile-specific file (only when profile is set)
+
     if profile {
         profile_path = project_root / f"jac.{profile}.toml";
         if profile_path.exists() {
             files.append(profile_path);
         }
     }
-    # 3. Local overrides (always, if present)
+
     local_path = project_root / "jac.local.toml";
     if local_path.exists() {
         files.append(local_path);
@@ -88,9 +62,6 @@ impl discover_config_files(
     return files;
 }
 
-# ===============================================================================
-# JacConfig Implementation
-# ===============================================================================
 impl JacConfig.discover(
     start_path: Path | None = None, profile: str | None = None
 ) -> JacConfig | None {
@@ -101,8 +72,7 @@ impl JacConfig.discover(
     }
     (project_root, toml_path) = result;
     config = JacConfig.load(toml_path);
-    # Record whether discovery had to climb out of the starting directory, so
-    # a later write can warn before modifying an ancestor project's jac.toml.
+
     base = start_path if start_path is not None else Path.cwd();
     config.discovered_from_ancestor = project_root.resolve() != base.resolve();
     if profile {
@@ -138,34 +108,6 @@ impl JacConfig.apply_env_interpolation -> None {
     self.environments = _interpolate_recursive(self.environments);
 }
 
-impl JacConfig.apply_cli_overrides(args: dict[(str, Any)]) -> None {
-    if args.get("session") {
-        self.run.session = args["session"];
-    }
-    if "main" in args {
-        self.run.main = args["main"];
-    }
-    if "cache" in args {
-        self.run.cache = args["cache"];
-    }
-    if args.get("port") {
-        self.serve.port = args["port"];
-    }
-    if args.get("directory") {
-        self.test.directory = args["directory"];
-    }
-    if "verbose" in args {
-        self.test.verbose = args["verbose"];
-    }
-    if args.get("xit") {
-        self.test.fail_fast = args["xit"];
-    }
-    if args.get("maxfail") {
-        self.test.max_failures = args["maxfail"];
-    }
-}
-
-"""Deep merge two dicts: recursively merges nested dicts, overwrites scalars."""
 def _deep_merge(base: dict, `override: dict) -> dict {
     result = base.copy();
     for (key, value) in `override.items() {
@@ -180,28 +122,8 @@ def _deep_merge(base: dict, `override: dict) -> dict {
     return result;
 }
 
-impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> None {
-    if profile_name not in self.environments {
-        return;
-    }
-    # Cycle detection
-    if _visited is None {
-        _visited = set();
-    }
-    if profile_name in _visited {
-        return;
-    }
-    _visited.add(profile_name);
-    profile = self.environments[profile_name];
-    # Handle inheritance first
-    if "inherits" in profile {
-        parent_name = profile["inherits"];
-        if parent_name in self.environments {
-            self.apply_profile(parent_name, _visited=_visited);
-        }
-    }
-    # Generic sections: setattr loop
-    section_map: dict = {
+impl JacConfig._section_map -> dict {
+    return {
         "run": self.run,
         "build": self.build,
         "test": self.test,
@@ -212,6 +134,30 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
         "environment": self.environment,
         "client": self.client
     };
+}
+
+impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> None {
+    if profile_name not in self.environments {
+        return;
+    }
+
+    if _visited is None {
+        _visited = set();
+    }
+    if profile_name in _visited {
+        return;
+    }
+    _visited.add(profile_name);
+    profile = self.environments[profile_name];
+
+    if "inherits" in profile {
+        parent_name = profile["inherits"];
+        if parent_name in self.environments {
+            self.apply_profile(parent_name, _visited=_visited);
+        }
+    }
+
+    section_map = self._section_map();
     for (section, obj) in section_map.items() {
         if section in profile {
             for (key, value) in profile[section].items() {
@@ -221,7 +167,7 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
             }
         }
     }
-    # Special case: project (kebab-case -> snake_case)
+
     if "project" in profile {
         for (key, value) in profile["project"].items() {
             attr = key.replace("-", "_");
@@ -230,7 +176,7 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
             }
         }
     }
-    # Special case: check (nested lint)
+
     if "check" in profile {
         check_data = profile["check"];
         for (key, value) in check_data.items() {
@@ -245,7 +191,7 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
             }
         }
     }
-    # Special case: storage (type -> storage_type)
+
     if "storage" in profile {
         storage_data = profile["storage"];
         for (key, value) in storage_data.items() {
@@ -256,11 +202,17 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
             }
         }
     }
-    # Plugins: deep merge
-    if "plugins" in profile {
-        self.plugins = _deep_merge(self.plugins, profile["plugins"]);
+
+    for _feat in ("byllm", "scale", "client", "mcp", "desktop") {
+        if _feat in profile and isinstance(profile[_feat], dict) {
+            if _feat in self.plugins {
+                self.plugins[_feat] = _deep_merge(self.plugins[_feat], profile[_feat]);
+            } else {
+                self.plugins[_feat] = profile[_feat];
+            }
+        }
     }
-    # Dict sections: merge
+
     if "dependencies" in profile {
         for (key, value) in profile["dependencies"].items() {
             if isinstance(value, str) {
@@ -280,26 +232,18 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
     }
 }
 
-"""Apply profile overlay files on top of the base config.
-
-Handles the full multi-file merge sequence in correct priority order:
-  1. jac.<profile>.toml (if profile is set and file exists)
-  2. [environments.<profile>] in-file overrides (if profile is set)
-  3. jac.local.toml (always, if present — highest file priority)
-"""
 impl JacConfig.apply_profile_overlay(profile_name: str | None = None) -> None {
     if self.project_root is None {
         return;
     }
     if profile_name {
-        # Step 1: Merge profile-specific file (e.g. jac.prod.toml)
         profile_path = self.project_root / f"jac.{profile_name}.toml";
         self.merge_from_toml_file(profile_path);
-        # Step 2: Apply in-file [environments.<profile>] overrides
+
         self.apply_profile(profile_name);
         self.active_profile = profile_name;
     }
-    # Step 3: Merge local overrides (always highest file priority)
+
     local_path = self.project_root / "jac.local.toml";
     self.merge_from_toml_file(local_path);
 }
@@ -311,17 +255,7 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
     }
     data = read_toml_with_encoding(str(toml_path));
     data = _interpolate_recursive(data);
-    section_map: dict = {
-        "run": self.run,
-        "build": self.build,
-        "test": self.test,
-        "serve": self.serve,
-        "format": self.format,
-        "dot": self.dot,
-        "cache": self.cache,
-        "environment": self.environment,
-        "client": self.client
-    };
+    section_map = self._section_map();
     for (section, obj) in section_map.items() {
         if section in data {
             for (key, value) in data[section].items() {
@@ -346,7 +280,7 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
             }
         }
     }
-    # Check section with nested lint
+
     if "check" in data {
         check_data = data["check"];
         for (key, value) in check_data.items() {
@@ -361,7 +295,7 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
             }
         }
     }
-    # Storage section with type -> storage_type mapping
+
     if "storage" in data {
         storage_data = data["storage"];
         for (key, value) in storage_data.items() {
@@ -372,28 +306,16 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
             }
         }
     }
-    if "plugins" in data {
-        plugins_data = data["plugins"];
-        if "discovery" in plugins_data {
-            self.plugins_config.discovery = plugins_data["discovery"];
-        }
-        if "enabled" in plugins_data {
-            self.plugins_config.enabled = plugins_data["enabled"];
-        }
-        if "disabled" in plugins_data {
-            self.plugins_config.disabled = plugins_data["disabled"];
-        }
-        for (key, value) in plugins_data.items() {
-            if isinstance(value, dict) {
-                if key in self.plugins {
-                    self.plugins[key] = _deep_merge(self.plugins[key], value);
-                } else {
-                    self.plugins[key] = value;
-                }
+    for _feat in ("byllm", "scale", "client", "mcp", "desktop") {
+        if _feat in data and isinstance(data[_feat], dict) {
+            if _feat in self.plugins {
+                self.plugins[_feat] = _deep_merge(self.plugins[_feat], data[_feat]);
+            } else {
+                self.plugins[_feat] = data[_feat];
             }
         }
     }
-    # Dict sections: merge rather than replace
+
     if "dependencies" in data {
         deps = data["dependencies"];
         for (key, value) in deps.items() {
@@ -439,7 +361,7 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
     if toml_path not in self.config_files {
         self.config_files.append(toml_path);
     }
-    # Merge raw data for _is_explicitly_set checks
+
     for (key, value) in data.items() {
         if key in self._raw_data
         and isinstance(self._raw_data[key], dict)
@@ -453,11 +375,11 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
 
 impl JacConfig.get_plugin_deps(dep_type: str) -> dict[str, any] {
     deps = self.plugin_dependencies.get(dep_type, {});
-    # Filter out the "dev" key which holds dev dependencies
+
     return {
         k: v
         for (k, v) in deps.items()
-        if k != "dev"
+        if k != "dev" and not isinstance(v, dict)
     };
 }
 
@@ -465,34 +387,29 @@ impl JacConfig.get_plugin_config(plugin_name: str) -> dict[str, any] {
     return self.plugins.get(plugin_name, {});
 }
 
-"""Get the base build directory for all artifacts."""
+impl JacConfig.get_section(name: str) -> dict[str, any] | None {
+    section = self._raw_data.get(name) if isinstance(self._raw_data, dict) else None;
+    return section if isinstance(section, dict) else None;
+}
+
 impl JacConfig.get_build_dir -> Path {
     import from pathlib { Path }
     base = self.project_root or Path.cwd();
     return base / self.build.dir;
 }
 
-"""Get the cache directory ([build].dir / [cache].dir, default .jac/cache).
-
-The `[cache] dir` subdirectory name is honored here (defaulting to "cache"),
-so an absolute override relocates the cache wholesale while a relative one
-nests it under the build dir.
-"""
 impl JacConfig.get_cache_dir -> Path {
     return self.get_build_dir() / self.cache.dir;
 }
 
-"""Get the virtual environment directory (.jac/venv)."""
 impl JacConfig.get_venv_dir -> Path {
     return self.get_build_dir() / "venv";
 }
 
-"""Get the data directory for runtime artifacts (.jac/data)."""
 impl JacConfig.get_data_dir -> Path {
     return self.get_build_dir() / "data";
 }
 
-"""Get the client build directory (.jac/client)."""
 impl JacConfig.get_client_dir -> Path {
     return self.get_build_dir() / "client";
 }
@@ -505,15 +422,25 @@ impl JacConfig.save -> None {
     if self.toml_path is None {
         raise ValueError("No toml_path set, cannot save configuration");
     }
-    # Load existing data or start fresh
+
+    import copy;
+    text = "";
+    old_doc: dict[str, any] = {};
     if self.toml_path.exists() {
-        import from jaclang.jac0core.helpers { read_toml_with_encoding }
-        doc = read_toml_with_encoding(str(self.toml_path));
-    } else {
-        doc = {};
+        import tomllib;
+        import from jaclang.jac0core.helpers {
+            MalformedJacTomlError,
+            read_file_with_encoding
+        }
+        text = read_file_with_encoding(str(self.toml_path));
+        try {
+            old_doc = tomllib.loads(text);
+        } except tomllib.TOMLDecodeError as exc {
+            raise MalformedJacTomlError(str(self.toml_path), exc);
+        }
     }
-    # Replace Python dependencies (use replace to handle removals)
-    # Preserve sub-tables (git, npm, etc.) that live under [dependencies]
+    doc = copy.deepcopy(old_doc);
+
     old_deps = doc.get("dependencies", {});
     sub_tables = {
         k: v
@@ -521,73 +448,58 @@ impl JacConfig.save -> None {
         if isinstance(v, dict)
     };
     doc["dependencies"] = dict(self.dependencies);
-    # Restore sub-tables
+
     for (k, v) in sub_tables.items() {
         doc["dependencies"][k] = v;
     }
-    # Replace git dependencies under [dependencies.git]
+
     if self.git_dependencies {
         doc["dependencies"]["git"] = dict(self.git_dependencies);
     } elif "git" in doc.get("dependencies", {}) {
         del doc["dependencies"]["git"];
     }
-    # Replace dev-dependencies (use replace to handle removals)
+
     if self.dev_dependencies {
         doc["dev-dependencies"] = dict(self.dev_dependencies);
     } elif "dev-dependencies" in doc {
         doc["dev-dependencies"] = {};
     }
-    # Update plugin dependencies (npm, etc.)
-    # Replace the entire plugin dep section to handle removals
+
     for (dep_type, deps) in self.plugin_dependencies.items() {
         if dep_type not in doc["dependencies"] {
             doc["dependencies"][dep_type] = {};
         }
-        # Handle dev deps separately
+
         dev_deps = deps.get("dev", {}) if isinstance(deps.get("dev"), dict) else {};
         regular_deps = {
             k: v
             for (k, v) in deps.items()
             if k != "dev"
         };
-        # Replace the entire section (to handle removals)
+
         doc["dependencies"][dep_type] = regular_deps.copy();
         if dev_deps {
             doc["dependencies"][dep_type]["dev"] = dev_deps;
         }
     }
-    # Update plugins configuration
-    # IMPORTANT: We must preserve raw values (e.g. ${VAR}) from the original file,
-    # so we only update the disabled list, not the entire plugin configs.
-    # Plugin configs are updated via plugin-specific save methods when needed.
-    if self.plugins_config.disabled is not None {
-        # Persist disabled plugins list - handle both setting and clearing.
-        # Only materialize the [plugins] table when there is something to
-        # write, so an empty disabled list never leaves a stray empty table.
-        if self.plugins_config.disabled {
-            if "plugins" not in doc {
-                doc["plugins"] = {};
-            }
-            doc["plugins"]["disabled"] = self.plugins_config.disabled;
-        } elif "disabled" in doc.get("plugins", {}) {
-            del doc["plugins"]["disabled"];
-            if not doc["plugins"] {
-                del doc["plugins"];  # Drop the table if it is now empty
-            }
+
+    if text {
+        updated = _toml_minimal_update(
+            text, old_doc, doc, ["dependencies", "dev-dependencies"]
+        );
+        if updated is not None {
+            self._write_toml_text(updated);
+            return;
         }
     }
-    # Route the write through the single chokepoint (handles the ancestor warning).
     self.persist_doc(doc);
 }
 
-"""Serialize `doc` to `self.toml_path` -- the one jac.toml write chokepoint.
-
-Every code path that persists jac.toml (JacConfig.save and the `jac config`
-set/unset helpers) goes through here, so the ancestor-directory guard cannot be
-silently skipped by a future mutating command: warn once, here, whenever this
-config was discovered by climbing out of the current directory.
-"""
 impl JacConfig.persist_doc(doc: dict[str, any]) -> None {
+    self._write_toml_text(serialize_toml(doc));
+}
+
+impl JacConfig._write_toml_text(text: str) -> None {
     if self.toml_path is None {
         raise ValueError("No toml_path set, cannot save configuration");
     }
@@ -603,17 +515,15 @@ impl JacConfig.persist_doc(doc: dict[str, any]) -> None {
         );
     }
     with open(self.toml_path, "w") as f {
-        f.write(serialize_toml(doc));
+        f.write(text);
     }
 }
 
-# Check if a TOML key needs quoting (bare keys can only contain A-Za-z0-9_-)
 def _needs_quoting(key: str) -> bool {
     import re;
     return not bool(re.match(r'^[A-Za-z0-9_-]+$', key));
 }
 
-# Quote a TOML key if necessary
 def _quote_key(key: str) -> str {
     if _needs_quoting(key) {
         escaped = key.replace("\\", "\\\\").replace('"', '\\"');
@@ -622,16 +532,319 @@ def _quote_key(key: str) -> str {
     return key;
 }
 
-# Simple TOML serializer (does not preserve comments). This is the single
-# canonical writer -- callers that need dict-to-TOML use this, never a copy.
+def _toml_flatten_into(
+    view: dict[tuple, dict[str, any]], path: tuple, table: dict[str, any]
+) {
+    flat: dict[str, any] = {};
+    for (k, v) in table.items() {
+        if isinstance(v, dict) {
+            _toml_flatten_into(view, path + (k, ), v);
+        } else {
+            flat[k] = v;
+        }
+    }
+    view[path] = flat;
+}
+
+def _toml_flatten(
+    doc: dict[str, any], roots: list[str]
+) -> dict[tuple, dict[str, any]] | None {
+    view: dict[tuple, dict[str, any]] = {};
+    for root_key in roots {
+        if root_key not in doc {
+            continue;
+        }
+        table = doc[root_key];
+        if not isinstance(table, dict) {
+            return None;
+        }
+        _toml_flatten_into(view, (root_key, ), table);
+    }
+    return view;
+}
+
+def _toml_token_alt(name: str) -> str {
+    import re;
+    alts: list[str] = [];
+    if name and not _needs_quoting(name) {
+        alts.append(re.escape(name));
+    }
+    basic = name.replace("\\", "\\\\").replace('"', '\\"');
+    alts.append(re.escape(f'"{basic}"'));
+    if "'" not in name {
+        alts.append(re.escape(f"'{name}'"));
+    }
+    return "(?:" + "|".join(alts) + ")";
+}
+
+def _toml_find_span(lines: list[str], parts: tuple) -> tuple[int, int] | None {
+    import re;
+    header_re = re.compile(
+        r"^\s*\[\s*" + r"\s*\.\s*".join([_toml_token_alt(p) for p in parts]) + r"\s*\]\s*(?:#.*)?$"
+    );
+    header = -1;
+    for (i, line) in enumerate(lines) {
+        if header_re.match(line) {
+            if header >= 0 {
+                return None;
+            }
+            header = i;
+        }
+    }
+    if header < 0 {
+        return None;
+    }
+    end = len(lines);
+    for j in range(header + 1, len(lines)) {
+        if lines[j].lstrip().startswith("[") {
+            end = j;
+            break;
+        }
+    }
+    return (header, end);
+}
+
+def _toml_find_key(
+    lines: list[str], span: tuple[int, int], key: str
+) -> tuple[int, int] | None {
+    import re;
+    key_re = re.compile(r"^\s*" + _toml_token_alt(key) + r"\s*=\s*");
+    found = -1;
+    value_start = -1;
+    for i in range(span[0] + 1, span[1]) {
+        m = key_re.match(lines[i]);
+        if m {
+            if found >= 0 {
+                return None;
+            }
+            found = i;
+            value_start = m.end();
+        }
+    }
+    if found < 0 {
+        return None;
+    }
+    return (found, value_start);
+}
+
+def _toml_value_end(line: str, start: int) -> int | None {
+    n = len(line);
+    if start >= n {
+        return None;
+    }
+    c = line[start];
+    if c in ('"', "'") {
+        if line[start:start + 3] == c * 3 {
+            closing = line.find(c * 3, start + 3);
+            return closing + 3 if closing >= 0 else None;
+        }
+        j = start + 1;
+        while j < n {
+            if line[j] == "\\" and c == '"' {
+                j += 2;
+                continue;
+            }
+            if line[j] == c {
+                return j + 1;
+            }
+            j += 1;
+        }
+        return None;
+    }
+    if c in ("[", "{") {
+        depth = 0;
+        in_str = "";
+        j = start;
+        while j < n {
+            ch = line[j];
+            if in_str {
+                if ch == "\\" and in_str == '"' {
+                    j += 2;
+                    continue;
+                }
+                if ch == in_str {
+                    in_str = "";
+                }
+            } elif ch in ('"', "'") {
+                in_str = ch;
+            } elif ch in ("[", "{") {
+                depth += 1;
+            } elif ch in ("]", "}") {
+                depth -= 1;
+                if depth == 0 {
+                    return j + 1;
+                }
+            }
+            j += 1;
+        }
+        return None;
+    }
+    j = start;
+    while j < n and line[j] != "#" {
+        j += 1;
+    }
+    while j > start and line[j - 1] in (" ", "\t") {
+        j -= 1;
+    }
+    return j if j > start else None;
+}
+
+def _toml_replace_key(
+    lines: list[str], parts: tuple, key: str, value_text: str
+) -> bool {
+    import re;
+    span = _toml_find_span(lines, parts);
+    if span is None {
+        return False;
+    }
+    hit = _toml_find_key(lines, span, key);
+    if hit is None {
+        return False;
+    }
+    (idx, value_start) = hit;
+    line = lines[idx];
+    value_end = _toml_value_end(line, value_start);
+    if value_end is None or not re.match(r"^\s*(?:#.*)?$", line[value_end:]) {
+        return False;
+    }
+    lines[idx] = line[:value_start] + value_text + line[value_end:];
+    return True;
+}
+
+def _toml_delete_key(lines: list[str], parts: tuple, key: str) -> bool {
+    span = _toml_find_span(lines, parts);
+    if span is None {
+        return False;
+    }
+    hit = _toml_find_key(lines, span, key);
+    if hit is None {
+        return False;
+    }
+    lines.pop(hit[0]);
+    return True;
+}
+
+def _toml_insert_key(
+    lines: list[str], parts: tuple, key: str, value_text: str
+) -> bool {
+    span = _toml_find_span(lines, parts);
+    if span is None {
+        return False;
+    }
+    at = span[0];
+    for j in range(span[0] + 1, span[1]) {
+        stripped = lines[j].strip();
+        if stripped and not stripped.startswith("#") {
+            at = j;
+        }
+    }
+    lines.insert(at + 1, f"{_quote_key(key)} = {value_text}");
+    return True;
+}
+
+def _toml_append_section(lines: list[str], parts: tuple, flat: dict[str, any]) {
+    while lines and not lines[-1].strip() {
+        lines.pop();
+    }
+    if lines {
+        lines.append("");
+    }
+    header = ".".join([_quote_key(p) for p in parts]);
+    lines.append(f"[{header}]");
+    for (k, v) in flat.items() {
+        lines.append(f"{_quote_key(k)} = {toml_value(v)}");
+    }
+    lines.append("");
+}
+
+def _toml_remove_section(lines: list[str], parts: tuple) -> bool {
+    span = _toml_find_span(lines, parts);
+    if span is None {
+        return False;
+    }
+    for _ in range(span[1] - span[0]) {
+        lines.pop(span[0]);
+    }
+    return True;
+}
+
+def _toml_minimal_update(
+    text: str, old_doc: dict[str, any], new_doc: dict[str, any], roots: list[str]
+) -> str | None {
+    old_view = _toml_flatten(old_doc, roots);
+    new_view = _toml_flatten(new_doc, roots);
+    if old_view is None or new_view is None {
+        return None;
+    }
+    lines: list[str] = text.split("\n");
+    for path in sorted(set(old_view.keys()) | set(new_view.keys())) {
+        old_flat = old_view.get(path);
+        new_flat = new_view.get(path);
+        if new_flat is None {
+            if not _toml_remove_section(lines, path) and old_flat {
+                return None;
+            }
+            continue;
+        }
+        if old_flat is None {
+            if new_flat {
+                if _toml_find_span(lines, path) is not None {
+                    return None;
+                }
+                _toml_append_section(lines, path, new_flat);
+            }
+            continue;
+        }
+        removed = [
+            k
+            for k in old_flat.keys()
+            if k not in new_flat
+        ];
+        added = {
+            k: v
+            for (k, v) in new_flat.items()
+            if k not in old_flat
+        };
+        changed = {
+            k: v
+            for (k, v) in new_flat.items()
+            if k in old_flat and old_flat[k] != v
+        };
+        if not (removed or added or changed) {
+            continue;
+        }
+        if _toml_find_span(lines, path) is None {
+            if removed or changed or old_flat {
+                return None;
+            }
+            _toml_append_section(lines, path, added);
+            continue;
+        }
+        for k in removed {
+            if not _toml_delete_key(lines, path, k) {
+                return None;
+            }
+        }
+        for (k, v) in changed.items() {
+            if not _toml_replace_key(lines, path, k, toml_value(v)) {
+                return None;
+            }
+        }
+        for (k, v) in added.items() {
+            if not _toml_insert_key(lines, path, k, toml_value(v)) {
+                return None;
+            }
+        }
+    }
+    return "\n".join(lines);
+}
+
 impl serialize_toml(data: dict[str, any], prefix: str = "") -> str {
     lines: list[str] = [];
     tables: list[tuple[str, dict]] = [];
 
-    # First pass: write simple key-value pairs
     for (key, value) in data.items() {
         if isinstance(value, dict) {
-            # Collect tables for later - quote the key NOW before building path
             quoted_key = _quote_key(key);
             table_key = f"{prefix}{quoted_key}" if prefix else quoted_key;
             tables.append((table_key, value));
@@ -640,17 +853,13 @@ impl serialize_toml(data: dict[str, any], prefix: str = "") -> str {
         }
     }
 
-    # Add blank line before tables if we had values
     if lines and tables {
         lines.append("");
     }
 
-    # Second pass: write tables
     for (table_key, table_data) in tables {
-        # Check if this is a nested table or has nested tables
         has_nested = any(isinstance(v, dict) for v in table_data.values());
         if has_nested {
-            # Write nested tables with dotted keys
             simple_values: list[tuple[str, any]] = [];
             nested_tables: list[tuple[str, dict]] = [];
             for (k, v) in table_data.items() {
@@ -685,10 +894,8 @@ impl serialize_toml(data: dict[str, any], prefix: str = "") -> str {
     return "\n".join(lines);
 }
 
-# Convert a Python value to its TOML literal representation.
 impl toml_value(value: any) -> str {
     if value is None {
-        # TOML has no null literal; mirror the legacy writer and use "".
         return '""';
     } elif isinstance(value, bool) {
         return "true" if value else "false";
@@ -697,21 +904,18 @@ impl toml_value(value: any) -> str {
     } elif isinstance(value, float) {
         return str(value);
     } elif isinstance(value, str) {
-        # Escape quotes and backslashes
         escaped = value.replace("\\", "\\\\").replace('"', '\\"');
         return f'"{escaped}"';
     } elif isinstance(value, list) {
         items = [toml_value(item) for item in value];
         return f"[{', '.join(items)}]";
     } elif isinstance(value, dict) {
-        # Inline table, e.g. authors/maintainers entries: { key = value, ... }
         if not value {
             return "{}";
         }
         pairs = [f"{_quote_key(k)} = {toml_value(v)}" for (k, v) in value.items()];
         return "{ " + ", ".join(pairs) + " }";
     } else {
-        # Fallback: convert to string
         return f'"{value}"';
     }
 }
@@ -774,9 +978,6 @@ impl JacConfig.remove_dependency(
     return False;
 }
 
-# ===============================================================================
-# Helper Functions Implementation
-# ===============================================================================
 impl _parse_persons(raw: list[any]) -> list[PersonConfig] {
     result: list[PersonConfig] = [];
     for item in raw {
@@ -808,9 +1009,20 @@ impl _parse_toml_data(
     }
     if "project" in data {
         proj = data["project"];
+
+        client_kind = str(proj.get("client_kind", "web")).strip().lower();
+        if client_kind not in VALID_CLIENT_KINDS {
+            import from jaclang.cli.console { console }
+            console.warning(
+                f"[project] client_kind='{proj.get('client_kind')}' is not "
+                f"one of {VALID_CLIENT_KINDS}; defaulting to 'web'."
+            );
+            client_kind = "web";
+        }
         config.project = ProjectConfig(
             name=proj.get("name", ""),
             version=proj.get("version", "0.1.0"),
+            client_kind=client_kind,
             description=proj.get("description", ""),
             authors=_parse_persons(proj.get("authors", [])),
             maintainers=_parse_persons(proj.get("maintainers", [])),
@@ -848,7 +1060,6 @@ impl _parse_toml_data(
             if isinstance(value, str) {
                 config.dev_dependencies[key] = value;
             } elif isinstance(value, dict) {
-                # Handle plugin dev dependencies like [dev-dependencies.npm]
                 if key not in config.plugin_dependencies {
                     config.plugin_dependencies[key] = {};
                 }
@@ -886,10 +1097,7 @@ impl _parse_toml_data(
     }
     if "serve" in data {
         serve_data = data["serve"];
-        # Normalize + validate the OCC policy: only "retry"/"fail" are meaningful
-        # (anything else is treated as "retry" downstream). Catch a typo'd value
-        # here so a mis-set `on_conflict = "Fail"` does not silently disable
-        # fail-fast; warn once at load and fall back to the safe default.
+
         on_conflict = str(serve_data.get("on_conflict", "retry")).strip().lower();
         if on_conflict not in ("retry", "fail") {
             import from jaclang.cli.console { console }
@@ -912,9 +1120,11 @@ impl _parse_toml_data(
     }
     if "format" in data {
         fmt = data["format"];
-        config.format = FormatConfig(
-            outfile=fmt.get("outfile", ""), fix=fmt.get("fix", False)
-        );
+        config.format = FormatConfig(outfile=fmt.get("outfile", ""));
+    }
+    if "precommit" in data {
+        pc_data = data["precommit"];
+        config.precommit = PrecommitConfig(typecheck=pc_data.get("typecheck", True));
     }
     if "check" in data {
         check_data = data["check"];
@@ -932,7 +1142,8 @@ impl _parse_toml_data(
             lint=lint_config,
             suppress=check_data.get("suppress", []),
             suppress_categories=check_data.get("suppress_categories", []),
-            enforce_access=check_data.get("enforce_access", False)
+            enforce_access=check_data.get("enforce_access", False),
+            warn_native_seams=check_data.get("warn_native_seams", True)
         );
     }
     if "dot" in data {
@@ -972,17 +1183,17 @@ impl _parse_toml_data(
         client_data = data["client"];
         config.client = ClientConfig(framework=client_data.get("framework", "react"));
     }
-    if "plugins" in data {
-        plugins_data = data["plugins"];
-        config.plugins_config = PluginsConfig(
-            discovery=plugins_data.get("discovery", "auto"),
-            enabled=plugins_data.get("enabled", []),
-            disabled=plugins_data.get("disabled", [])
+    if "dev" in data {
+        dev_data = data["dev"];
+
+        config.dev = DevConfig(
+            jaclang_source=str(dev_data.get("jaclang_source", "")),
+            test_jobs=str(dev_data.get("test_jobs", "auto"))
         );
-        for (key, value) in plugins_data.items() {
-            if isinstance(value, dict) {
-                config.plugins[key] = value;
-            }
+    }
+    for _feat in ("byllm", "scale", "client", "mcp", "desktop") {
+        if _feat in data and isinstance(data[_feat], dict) {
+            config.plugins[_feat] = data[_feat];
         }
     }
     if "environment" in data {
@@ -1029,20 +1240,49 @@ impl _interpolate_recursive(`obj: any) -> any {
     return `obj;
 }
 
-# ===============================================================================
-# Global Configuration Singleton Implementation
-# ===============================================================================
 impl get_config(
     start_path: Path | None = None, force_discover: bool = False
 ) -> JacConfig | None {
-    global _config;
+    global _config,_config_explicit,_config_by_root;
     if _config is None or force_discover {
         _config = JacConfig.discover(start_path=start_path);
+
+        _config_explicit = False;
+
+        if force_discover {
+            _config_by_root = {};
+        }
     }
     return _config;
 }
 
 impl set_config(config: JacConfig) -> None {
-    global _config;
+    global _config,_config_explicit,_config_by_root;
     _config = config;
+
+    _config_explicit = config is not None;
+
+    _config_by_root = {};
+}
+
+impl get_explicit_config -> JacConfig | None {
+    return _config if _config_explicit else None;
+}
+
+impl get_config_for_path(start_path: Path) -> JacConfig | None {
+    global _config_by_root;
+    explicit = get_explicit_config();
+    if explicit is not None {
+        return explicit;
+    }
+    result = find_project_root(start_path);
+    if result is None {
+        return None;
+    }
+    (project_root, _) = result;
+    key = str(project_root);
+    if key not in _config_by_root {
+        _config_by_root[key] = JacConfig.discover(start_path=project_root);
+    }
+    return _config_by_root[key];
 }

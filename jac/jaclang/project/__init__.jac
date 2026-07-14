@@ -1,10 +1,3 @@
-"""Project configuration and management for Jac projects.
-
-This module provides the jac.toml configuration system, including:
-- JacConfig: Central configuration class for project settings
-- Project discovery: Auto-detection of jac.toml in parent directories
-- Dependency management: Install, add, remove dependencies
-"""
 import from jaclang.project.config {
     BuildConfig,
     CacheConfig,
@@ -14,7 +7,6 @@ import from jaclang.project.config {
     FormatConfig,
     JacConfig,
     NativeBuildConfig,
-    PluginsConfig,
     ProjectConfig,
     RunConfig,
     ServeConfig,
@@ -26,21 +18,55 @@ import from jaclang.project.config {
     set_config
 }
 import from jaclang.project.kinds {
+    KIND_SPECS,
+    KindSpec,
     RunPlan,
     VALID_KINDS,
     is_valid_kind,
+    kind_entry,
+    kind_spec,
     plan_project_run,
     resolve_entry,
     resolve_project_kind
 }
-import from jaclang.project.dependencies {
-    DependencyInstaller,
-    DependencyResolver,
+import from jaclang.project.providers {
+    DependencyPlan,
+    EcosystemProvider,
+    InstallContext,
+    ProviderRegistry,
+    PythonProvider,
     ResolvedDependency,
+    capability_dependencies,
+    get_provider_registry,
+    get_python_provider,
+    initialize_provider_registry,
+    manifest_plugin_deps,
+    resolve_plan
+}
+import from jaclang.project.pyvenv {
     get_venv_site_packages,
     add_venv_to_path,
     remove_venv_from_path,
     is_venv_in_path
+}
+import from jaclang.project.capabilities {
+    Capability,
+    CapabilityClosure,
+    CAPABILITY_SPECS,
+    RUNTIME,
+    DEPLOY,
+    all_capability_names,
+    capability_for_package,
+    command_capabilities,
+    derive_capabilities,
+    get_capability,
+    get_capability_registry,
+    missing_capability_error,
+    package_missing_error,
+    resolve_closure,
+    resolve_closures,
+    resolve_config_closures,
+    scale_intent_from_config
 }
 import from jaclang.project.template_registry { ProjectTemplate }
 import from jaclang.project.template_loader {
@@ -62,20 +88,55 @@ glob __all__ = [
          'CheckConfig',
          'DotConfig',
          'CacheConfig',
-         'PluginsConfig',
          'EnvironmentConfig',
          'get_config',
          'set_config',
          'find_project_root',
          'is_in_project',
          'interpolate_env_vars',
-         'DependencyInstaller',
-         'DependencyResolver',
+         'KIND_SPECS',
+         'KindSpec',
+         'RunPlan',
+         'VALID_KINDS',
+         'is_valid_kind',
+         'kind_entry',
+         'kind_spec',
+         'plan_project_run',
+         'resolve_entry',
+         'resolve_project_kind',
+         'DependencyPlan',
+         'EcosystemProvider',
+         'InstallContext',
+         'ProviderRegistry',
+         'PythonProvider',
          'ResolvedDependency',
+         'capability_dependencies',
+         'get_provider_registry',
+         'get_python_provider',
+         'initialize_provider_registry',
+         'manifest_plugin_deps',
+         'resolve_plan',
          'get_venv_site_packages',
          'add_venv_to_path',
          'remove_venv_from_path',
          'is_venv_in_path',
+         'Capability',
+         'CapabilityClosure',
+         'CAPABILITY_SPECS',
+         'RUNTIME',
+         'DEPLOY',
+         'all_capability_names',
+         'capability_for_package',
+         'command_capabilities',
+         'derive_capabilities',
+         'get_capability',
+         'get_capability_registry',
+         'missing_capability_error',
+         'package_missing_error',
+         'resolve_closure',
+         'resolve_closures',
+         'resolve_config_closures',
+         'scale_intent_from_config',
          'ProjectTemplate',
          'load_template_from_directory',
          'load_template_from_json',

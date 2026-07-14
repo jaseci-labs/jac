@@ -25,7 +25,7 @@ import numpy as np;                                      # any installed PyPI pa
 import from sklearn.linear_model { LinearRegression }
 ```
 
-Local `.py` files import the same way: `import validators;` then `validators.validate_title(t)` - drop the file next to your `.jac` sources, zero config. Note `jac check` can only type what it can resolve: stdlib modules are fully stubbed, while a PyPI package that isn't installed (or ships no types) reports its members as Unknown.
+Local `.py` files import the same way: `import validators;` then `validators.validate_title(t)` - drop the file next to your `.jac` sources, zero config. Note `jac check` can only type what it can resolve: stdlib modules are fully stubbed, while a PyPI package that isn't installed (or ships no types) reports its members as Unknown. **Only the typeshed *stdlib* stubs ship in the `jac` binary** - third-party stubs are no longer bundled. For a typed PyPI package without inline types, install its stub package (`jac install types-requests`) and the checker resolves it via PEP 561 from the project's `.jac/venv`, so types track the installed version.
 
 **The untyped boundary:** untyped Python returns arrive as `any`, and Jac's strict rule blocks `any` from flowing silently into typed destinations (E1001). Three fixes - type the source (`.pyi` stub), accept-and-narrow with `isinstance`, or `value as Type` cast. Full playbook in `jac-types`.
 
@@ -97,7 +97,7 @@ print(w.names)
 
 Library-mode basics: archetypes subclass `Node` / `Edge` / `Walker` / `Obj`, abilities are `@on_entry` methods, `connect(a, b)` ≈ `a ++> b`, `spawn(walker, node)` ≈ `node spawn walker`. **`root` is a function in library mode** (`root()`), the opposite of `.jac` source where bare `root` is the keyword and `root()` warns W0062.
 
-`jac jac2py file.jac` prints the equivalent library-mode Python - the fastest way to learn the `jaclang.lib` API or to hand a module to a Python-only team.
+`jac tool jac2py file.jac` prints the equivalent library-mode Python - the fastest way to learn the `jaclang.lib` API or to hand a module to a Python-only team.
 
 ## Pitfalls
 

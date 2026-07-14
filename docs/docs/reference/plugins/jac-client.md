@@ -2,7 +2,7 @@
 
 jac-client adds client-side compilation to Jac so you can write React-style UI components using `cl { }` blocks (or `.cl.jac` files). The compiler separates your code automatically -- server-side logic compiles to Python, while client-side components compile to JavaScript with React as the rendering engine.
 
-You also get project scaffolding (`jac create --use client`), npm dependency management, a Vite-powered dev server with HMR, and automatic HTTP bridge generation so your client components can call server walkers without manual API wiring. This reference covers installation, project structure, the module system, component authoring, and build configuration.
+You also get project scaffolding (`jac create --use web-static`), npm dependency management, a Vite-powered dev server with HMR, and automatic HTTP bridge generation so your client components can call server walkers without manual API wiring. This reference covers installation, project structure, the module system, component authoring, and build configuration.
 
 ---
 
@@ -21,7 +21,7 @@ curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/ins
 ### Create New Project
 
 ```bash
-jac create myapp --use client
+jac create myapp --use web-static
 cd myapp
 ```
 
@@ -87,6 +87,29 @@ import "./styles.css";
 import "./global.css";
 ```
 
+### npm import type checking (`jac check`)
+
+Client npm imports are type-checked from each package's TypeScript declarations. During `jac check`, Jac locates the `.d.ts` for a specifier (via `package.json` `types`/`typings`, the `exports` `types` condition, a sibling declaration file next to the resolved entry, or `@types/<package>` fallback) and ingests a pragmatic subset:
+
+- **Functions, constants, and type aliases** get their declared signatures.
+- **`interface` and `class` declarations** are synthesized into structural types, so member access on imported values and on locals annotated with an imported interface/class resolves with real field types, and **method calls** (`c.onChange(v)`) are checked against their declared parameter and return types.
+- **Unions, arrays, literals, optional/rest parameters, namespaces with `export =`, and `extends` heritage** are modeled where the parser supports them.
+
+```jac
+cl import from "cfgpkg" { getConfig, Config }
+
+def:pub use() -> str {
+    c: Config = getConfig();
+    theme: str = c.theme;   # field access is checked
+    c.onChange("ready");    # method call is checked against its signature
+    return theme;
+}
+```
+
+Constructs outside the supported subset (generics, conditional/mapped types, `export *`, and similar) degrade to a declared foreign `any` at that boundary rather than failing the whole module. Imports with no declarations at all carry foreign `any` and surface **`W1102`** once; set **`[check] untyped-external = "error"`** in `jac.toml` to escalate those to **`E1120`**. Synthesized interface values use their declared structure: field access and matching interface annotations are checked precisely; whole-object assignment into an unrelated Jac type is rejected. Individual `any` fields on an interface still flow gradually, like other foreign sources. Assignments *into* an imported interface annotation remain strict.
+
+This is a type-checker feature only; bundling under `jac start` / `jac build` is unchanged.
+
 ### Include Statements
 
 Include merges code directly (like C's `#include`):
@@ -131,7 +154,7 @@ sv import from .database { connect_db }
 sv node SecretData { has value: str; }
 ```
 
-> **Note on `sv import` between two server modules.** When both the importer and the importee are server-context modules running as separate microservices, `sv import` generates HTTP client stubs instead of pulling the provider into the consumer's process. The same source also works as a monolith. See [Microservice Interop (sv-to-sv)](jac-scale.md#microservice-interop-sv-to-sv) in the jac-scale reference for details.
+> **Note on `sv import` between two server modules.** When both the importer and the importee are server-context modules running as separate microservices, `sv import` generates HTTP client stubs instead of pulling the provider into the consumer's process. The same source also works as a monolith. See [Microservice Interop (sv-to-sv)](jac-scale-http.md#microservice-interop-sv-to-sv) in the Scale reference for details.
 
 ### REST API with jac start
 
@@ -251,22 +274,6 @@ cl {
 
 A `cl { ... }` block also works inside a function or class body to locally override the active codespace. In `.cl.jac` files, the whole file is already client-side, so no wrapper is needed.
 
-### Section Headers
-
-As an alternative to a block, the `to cl:` section header tags **every following module-level element** as client-side, until the next `to X:` header or end of file. This is convenient for a file that is mostly client code, since it avoids a wrapping block:
-
-```jac
-to cl:
-
-def:pub app() -> JsxElement {
-    return <div>
-        <h1>Hello, World!</h1>
-    </div>;
-}
-```
-
-You can switch back with `to sv:`, `to na:`, or end the file.
-
 ### Single-Statement Forms
 
 For one-off client-side declarations, use the single-statement `cl` prefix:
@@ -357,7 +364,7 @@ cl {
 
 ### The `has` Keyword
 
-Inside client-tagged code (a `cl { }` block, a `.cl.jac` file, or a `to cl:` section), `has` creates reactive state:
+Inside client-tagged code (a `cl { }` block or a `.cl.jac` file), `has` creates reactive state:
 
 ```jac
 cl {
@@ -538,7 +545,7 @@ cl {
             localStorage.setItem(key, JSON.stringify(value));
         }, [value]);
 
-        return (value, lambda v: any -> None { value = v; });
+        return (value, lambda (v: any) -> None { value = v; });
     }
 
     def:pub Settings() -> JsxElement {
@@ -908,7 +915,7 @@ jac-client provides built-in authentication functions via `@jac/runtime`.
 | `jacLogout()` | `void` | Clear auth token |
 | `jacIsLoggedIn()` | `bool` | Check if user is authenticated |
 
-**Additional user management operations** (available via API endpoints when using jac-scale):
+**Additional user management operations** (available via API endpoints when serving with the built-in scale subsystem):
 
 | Operation | Description |
 |-----------|-------------|
@@ -1008,7 +1015,7 @@ walker:pub GetMyData {
 Configure in `jac.toml`:
 
 ```toml
-[plugins.scale.sso.google]
+[scale.sso.google]
 client_id = "your-google-client-id"
 client_secret = "your-google-client-secret"
 ```
@@ -1174,7 +1181,7 @@ cl {
 }
 ```
 
-> **Note:** In jac-shadcn projects `jac add --shadcn` / `jac create --use jac-shadcn` generate `lib/utils.cl.jac` for you. You can also write `cn()` by hand -- entirely in Jac (no TypeScript needed) with a variadic parameter:
+> **Note:** In jac-shadcn projects `jac install --shadcn` / `jac create --use jac-shadcn` generate `lib/utils.cl.jac` for you. You can also write `cn()` by hand -- entirely in Jac (no TypeScript needed) with a variadic parameter:
 >
 > ```jac
 > # lib/utils.cl.jac
@@ -1253,7 +1260,7 @@ Because a JS error boundary catches every error regardless of declared type, per
 
 ### Comments inside JSX
 
-Use Jac's block-comment syntax wrapped in a JSX expression slot -- `{#* ... *#}` -- to leave a note inside a JSX tree. The comment renders nothing and is preserved verbatim by `jac format`:
+Use Jac's block-comment syntax wrapped in a JSX expression slot -- `{#* ... *#}` -- to leave a note inside a JSX tree. The comment renders nothing and is preserved verbatim by `jac fmt`:
 
 ```jac
 cl {
@@ -1318,33 +1325,33 @@ version = "0.1.0"
 base_route_app = "app"        # Serve at /
 cl_route_prefix = "/cl"       # Client route prefix
 
-[plugins.client]
+[client]
 enabled = true
 
 # Import path aliases
-[plugins.client.paths]
+[client.paths]
 "@components/*" = "./components/*"
 "@utils/*" = "./utils/*"
 
-[plugins.client.configs.tailwind]
+[client.configs.tailwind]
 # Generates tailwind.config.js
 content = ["./src/**/*.{jac,tsx,jsx}"]
 
 # Private/scoped npm registries
-[plugins.client.npm.scoped_registries]
+[client.npm.scoped_registries]
 "@mycompany" = "https://npm.pkg.github.com"
 
-[plugins.client.npm.auth."//npm.pkg.github.com/"]
+[client.npm.auth."//npm.pkg.github.com/"]
 _authToken = "${NODE_AUTH_TOKEN}"
 
 # Global npm settings
-[plugins.client.npm.settings]
+[client.npm.settings]
 always-auth = true
 ```
 
 ### NPM Registry Configuration
 
-The `[plugins.client.npm]` section configures custom npm registries and authentication for private or scoped packages. This generates an `.npmrc` file automatically during dependency installation, eliminating the need to manage `.npmrc` files manually.
+The `[client.npm]` section configures custom npm registries and authentication for private or scoped packages. This generates an `.npmrc` file automatically during dependency installation, eliminating the need to manage `.npmrc` files manually.
 
 | Key | Type | Description |
 |-----|------|-------------|
@@ -1355,7 +1362,7 @@ The `[plugins.client.npm]` section configures custom npm registries and authenti
 **Global settings** emit arbitrary `.npmrc` key-value pairs:
 
 ```toml
-[plugins.client.npm.settings]
+[client.npm.settings]
 registry = "https://registry.internal.example.com"
 always-auth = true
 strict-ssl = false
@@ -1365,7 +1372,7 @@ proxy = "http://proxy.company.com:8080"
 **Scoped registries** map `@scope` prefixes to custom registry URLs:
 
 ```toml
-[plugins.client.npm.scoped_registries]
+[client.npm.scoped_registries]
 "@mycompany" = "https://npm.pkg.github.com"
 "@internal" = "https://registry.internal.example.com"
 ```
@@ -1373,20 +1380,20 @@ proxy = "http://proxy.company.com:8080"
 **Auth tokens** configure authentication for each registry. Use environment variables to avoid committing secrets:
 
 ```toml
-[plugins.client.npm.auth."//npm.pkg.github.com/"]
+[client.npm.auth."//npm.pkg.github.com/"]
 _authToken = "${NODE_AUTH_TOKEN}"
 ```
 
 The `${NODE_AUTH_TOKEN}` syntax is resolved via the existing jac.toml environment variable interpolation. If the variable is not set at config load time, it passes through as a literal `${NODE_AUTH_TOKEN}` in the generated `.npmrc`, which npm and bun also resolve natively.
 
-The generated `.npmrc` is placed in `.jac/client/configs/` and is automatically applied when Jac installs dependencies (e.g., via `jac add --npm`, `jac start`, or `jac build`).
+The generated `.npmrc` is placed in `.jac/client/configs/` and is automatically applied when Jac installs dependencies (e.g., via `jac install --npm`, `jac start`, or `jac build`).
 
 ### Import Path Aliases
 
-The `[plugins.client.paths]` section lets you define custom import path aliases. Aliases are automatically applied to the generated Vite `resolve.alias` and TypeScript `compilerOptions.paths`, so both bundling and IDE autocompletion work out of the box.
+The `[client.paths]` section lets you define custom import path aliases. Aliases are automatically applied to the generated Vite `resolve.alias` and TypeScript `compilerOptions.paths`, so both bundling and IDE autocompletion work out of the box.
 
 ```toml
-[plugins.client.paths]
+[client.paths]
 "@components/*" = "./components/*"
 "@utils/*" = "./utils/*"
 "@shared" = "./shared/index"
@@ -1412,10 +1419,10 @@ cl {
 
 ### Vite Plugin Integration
 
-The `[plugins.client.vite]` section lets you extend the Vite build with any npm-based Vite plugin. All external tool integration follows the same two-step pattern:
+The `[client.vite]` section lets you extend the Vite build with any npm-based Vite plugin. All external tool integration follows the same two-step pattern:
 
 1. Declare the npm package in `[dependencies.npm]`
-2. Wire the plugin in `[plugins.client.vite]`
+2. Wire the plugin in `[client.vite]`
 
 | Key | Type | Description |
 |-----|------|-------------|
@@ -1427,11 +1434,11 @@ These are written directly into the generated `vite.config.js` - `lib_imports` b
 **Example: Tailwind CSS v4**
 
 ```bash
-jac add --npm --dev tailwindcss @tailwindcss/vite
+jac install --npm --dev tailwindcss @tailwindcss/vite
 ```
 
 ```toml
-[plugins.client.vite]
+[client.vite]
 plugins = ["tailwindcss()"]
 lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 
@@ -1457,7 +1464,7 @@ cl {
 **Example: Multiple plugins**
 
 ```toml
-[plugins.client.vite]
+[client.vite]
 plugins = ["tailwindcss()", "myPlugin({ option: 'value' })"]
 lib_imports = [
     "import tailwindcss from '@tailwindcss/vite'",
@@ -1467,10 +1474,10 @@ lib_imports = [
 
 #### Build Options
 
-Override Vite build options via `[plugins.client.vite.build]`:
+Override Vite build options via `[client.vite.build]`:
 
 ```toml
-[plugins.client.vite.build]
+[client.vite.build]
 sourcemap = true
 minify = "esbuild"
 outDir = "dist"
@@ -1478,10 +1485,10 @@ outDir = "dist"
 
 #### Dev Server Options
 
-Configure the Vite dev server via `[plugins.client.vite.server]`:
+Configure the Vite dev server via `[client.vite.server]`:
 
 ```toml
-[plugins.client.vite.server]
+[client.vite.server]
 port = 3000
 open = true
 host = "0.0.0.0"
@@ -1490,23 +1497,23 @@ cors = true
 
 ### Generic Config File Generation
 
-`[plugins.client.configs]` generates `<name>.config.js` files in `.jac/client/configs/` from TOML. Use this for tools that expect a `*.config.js` file - PostCSS, Tailwind v3, ESLint, Prettier, etc. No standalone config files needed in your project root.
+`[client.configs]` generates `<name>.config.js` files in `.jac/client/configs/` from TOML. Use this for tools that expect a `*.config.js` file - PostCSS, Tailwind v3, ESLint, Prettier, etc. No standalone config files needed in your project root.
 
 **Example: Tailwind CSS v3 + PostCSS**
 
 ```bash
-jac add --npm --dev tailwindcss autoprefixer postcss
+jac install --npm --dev tailwindcss autoprefixer postcss
 ```
 
 ```toml
-[plugins.client.configs.postcss]
+[client.configs.postcss]
 plugins = ["tailwindcss", "autoprefixer"]
 
-[plugins.client.configs.tailwind]
+[client.configs.tailwind]
 content = ["./**/*.jac", "./**/*.cl.jac", "./.jac/client/**/*.{js,jsx,ts,tsx}"]
 plugins = []
 
-[plugins.client.configs.tailwind.theme.extend.colors]
+[client.configs.tailwind.theme.extend.colors]
 primary = "#3490dc"
 
 [dependencies.npm.dev]
@@ -1519,8 +1526,8 @@ This generates `.jac/client/configs/postcss.config.js` and `.jac/client/configs/
 
 | Use case | Config section |
 |---|---|
-| Vite plugins (Tailwind v4, custom plugins) | `[plugins.client.vite]` |
-| PostCSS / Tailwind v3 / ESLint / Prettier | `[plugins.client.configs]` |
+| Vite plugins (Tailwind v4, custom plugins) | `[client.vite]` |
+| PostCSS / Tailwind v3 / ESLint / Prettier | `[client.configs]` |
 
 ### shadcn/ui Configuration
 
@@ -1528,11 +1535,11 @@ The `[jac-shadcn]` section configures the shadcn/ui component system, provided a
 
 - `jac create --use jac-shadcn [--style … --theme … --font … --radius … --baseColor … --menuAccent …]` scaffolds a themed starter and writes these fields here.
 - `jac retheme [--theme … --font … --style …]` regenerates `global.css` from this section (and re-resolves installed components when `style` changes).
-- `jac add --shadcn <name>` reads `style` to choose which style's Tailwind classes to emit.
+- `jac install --shadcn <name>` reads `style` to choose which style's Tailwind classes to emit.
 
 ```toml
 [jac-shadcn]
-style = "nova"            # Component style variant (read by `jac add`)
+style = "nova"            # Component style variant (read by `jac install --shadcn`)
 baseColor = "neutral"     # Base color palette
 theme = "amber"           # Accent color theme
 font = "inter"            # Font family
@@ -1543,7 +1550,7 @@ menuColor = "default"     # Menu color scheme
 
 | Key | Description | Examples |
 |-----|-------------|---------|
-| `style` | Component style variant -- read by `jac add` to resolve bundled components | `"nova"`, `"vega"`, `"maia"`, `"lyra"`, `"mira"` |
+| `style` | Component style variant -- read by `jac install --shadcn` to resolve bundled components | `"nova"`, `"vega"`, `"maia"`, `"lyra"`, `"mira"` |
 | `baseColor` | Base neutral color palette | `"neutral"`, `"stone"`, `"zinc"`, `"gray"` |
 | `theme` | Accent/primary color | `"amber"`, `"blue"`, `"green"`, `"red"` |
 | `font` | Typography font family | `"figtree"` (default), `"inter"`, `"geist"`, `"outfit"` |
@@ -1553,16 +1560,16 @@ shadcn components use semantic color tokens (`bg-primary`, `text-foreground`, `b
 
 ### TypeScript Configuration
 
-Override the generated `tsconfig.json` via `[plugins.client.ts]`:
+Override the generated `tsconfig.json` via `[client.ts]`:
 
 ```toml
-[plugins.client.ts.compilerOptions]
+[client.ts.compilerOptions]
 strict = false
 target = "ES2022"
 noUnusedLocals = false
 noUnusedParameters = false
 
-[plugins.client.ts]
+[client.ts]
 include = ["components/**/*", "lib/**/*", "types/**/*"]
 ```
 
@@ -1570,10 +1577,10 @@ include = ["components/**/*", "lib/**/*", "types/**/*"]
 
 ### App Metadata
 
-Set HTML `<head>` tags for the client app via `[plugins.client.app_meta_data]`:
+Set HTML `<head>` tags for the client app via `[client.app_meta_data]`:
 
 ```toml
-[plugins.client.app_meta_data]
+[client.app_meta_data]
 title = "My App"
 description = "App description"
 keywords = "jac, fullstack"
@@ -1590,7 +1597,7 @@ og_image = "/assets/og-image.png"
 Set the backend API base URL used by client-side requests:
 
 ```toml
-[plugins.client.api]
+[client.api]
 base_url = "https://api.example.com"
 ```
 
@@ -1601,7 +1608,7 @@ Useful for production deployments where the API lives on a different domain than
 Control minification in production builds:
 
 ```toml
-[plugins.client]
+[client]
 minify = true
 ```
 
@@ -1612,7 +1619,7 @@ Defaults to `true` for `jac build` and `false` for `jac start --dev`.
 Control the base path for asset resolution (JS/CSS) in the generated `index.html`. Useful for deploying the app on a subpath (e.g., `https://example.com/myapp/`).
 
 ```toml
-[plugins.client]
+[client]
 base_path = "/myapp/"
 ```
 
@@ -1626,22 +1633,25 @@ Defaults to `"/"`. Can also be set to `"./"` for relative path resolution if nee
 
 | Command | Description |
 |---------|-------------|
-| `jac create myapp --use client` | Create new full-stack project |
+| `jac create myapp --use web-static` | Create new full-stack project |
 | `jac start` | Start dev server |
 | `jac start --dev` | Dev server with HMR |
 | `jac start --client pwa` | Start PWA (builds then serves) |
 | `jac start --client desktop` | Start desktop app (see [jac-desktop](jac-desktop.md)) |
 | `jac start --client mobile` | Start mobile app on device/simulator |
+| `jac start --client react-native --dev` | Start React Native app with Fast Refresh |
 | `jac build` | Build for production (web) |
 | `jac build --client desktop` | Build desktop app (see [jac-desktop](jac-desktop.md)) |
 | `jac build --client mobile` | Build mobile app (Android/iOS) |
+| `jac build --client react-native` | Build React Native app (Android/iOS, native views) |
+| `jac setup react-native` | One-time React Native scaffold (`.jac/mobile-rn/`) |
 | `jac build --client pwa` | Build PWA with offline support |
 | `jac build --client static` | Build client-only app as a portable, self-contained page (opens from `file://`) |
 | `jac start --client static` | Serve a client-only app with a minimal static server |
 | `jac setup pwa` | One-time PWA setup (icons directory) |
-| `jac add --npm <pkg>` | Add npm package |
-| `jac add --npm --dev <pkg>` | Add npm dev dependency |
-| `jac add --npm` | Install all npm dependencies from jac.toml |
+| `jac install --npm <pkg>` | Add npm package |
+| `jac install --npm --dev <pkg>` | Add npm dev dependency |
+| `jac install --npm` | Install all npm dependencies from jac.toml |
 | `jac remove --npm <pkg>` | Remove npm package |
 
 npm dependencies can also be declared in `jac.toml`:
@@ -1667,10 +1677,10 @@ jac build [filename] [--client TARGET] [-p PLATFORM]
 | Option | Description | Default |
 |--------|-------------|---------|
 | `filename` | Path to .jac file | `main.jac` |
-| `--client` | Build target (`web`, `pwa`, `static`, `desktop`, `mobile`) | `web` |
-| `-p, --platform` | Platform for **mobile** (`android`, `ios`) or **desktop sidecar naming** (`windows` selects `.exe`; no cross-compilation yet) | Current platform |
+| `--client` | Build target (`web`, `pwa`, `static`, `desktop`, `mobile`, `react-native`) | `web` |
+| `-p, --platform` | Platform for **mobile** / **react-native** (`android`, `ios`) or **desktop sidecar naming** (`windows` selects `.exe`; no cross-compilation yet) | Current platform |
 
-A project whose `jac.toml` declares `kind = "client"` is built with the
+A project whose `jac.toml` declares `kind = "web-static"` is built with the
 `static` target automatically -- no `--client` flag needed (see [Client-only apps](#client-only-apps)).
 
 For desktop builds, see the [jac-desktop Reference](jac-desktop.md): the desktop target compiles your `cl` UI into a single native binary that embeds the OS webview. In all desktop builds the build environment sets `JAC_BUILD=1` so import-time server starts stay inert.
@@ -1710,12 +1720,12 @@ to in-browser WebAssembly). Declare it once in `jac.toml`:
 [project]
 name = "browser-app"
 entry-point = "main.jac"
-kind = "client"
+kind = "web-static"
 
-[plugins.client]
+[client]
 ```
 
-With `kind = "client"` set, `jac build` and `jac start` auto-detect the
+With `kind = "web-static"` set, `jac build` and `jac start` auto-detect the
 client-only project and take the portable path -- no `--client static` flag
 required. An explicit non-web `--client <target>` (e.g. `--client pwa`)
 overrides the auto-detection.
@@ -1725,7 +1735,7 @@ generated `index.html` has its JS bundle and CSS **inlined**, making it fully
 self-contained:
 
 ```bash
-jac build                      # auto-detected from kind = "client"
+jac build                      # auto-detected from kind = "web-static"
 # -> .jac/client/dist/index.html  (open directly from disk)
 ```
 
@@ -1769,8 +1779,8 @@ jac setup <target> [-p PLATFORM]
 
 | Option | Description |
 |--------|-------------|
-| `target` | Target to setup (`desktop`, `mobile`, `pwa`) |
-| `-p, --platform` | Mobile setup platform (`android`, `ios`, `all`) |
+| `target` | Target to setup (`desktop`, `mobile`, `pwa`, `react-native`) |
+| `-p, --platform` | Mobile (Capacitor) setup platform (`android`, `ios`, `all`); the React Native scaffold is platform-neutral |
 
 **Examples:**
 
@@ -1783,6 +1793,9 @@ jac setup mobile --platform ios
 
 # Setup both mobile platforms (macOS only)
 jac setup mobile --platform all
+
+# Setup React Native target (scaffolds .jac/mobile-rn/ with Expo/Metro)
+jac setup react-native
 ```
 
 ### Extended Core Commands
@@ -1791,11 +1804,11 @@ jac-client extends several core commands:
 
 | Command | Added Option | Description |
 |---------|-------------|-------------|
-| `jac create` | `--use client` | Create full-stack project template |
+| `jac create` | `--use web-static` | Create full-stack project template |
 | `jac create` | `--skip` | Skip npm package installation |
 | `jac start` | `--client <target>` | Client build target for dev server |
-| `jac add` | `--npm` | Add npm (client-side) dependency |
-| `jac add` | `--npm --dev` | Add npm dev dependency |
+| `jac install` | `--npm` | Add npm (client-side) dependency |
+| `jac install` | `--npm --dev` | Add npm dev dependency |
 | `jac remove` | `--npm` | Remove npm (client-side) dependency |
 
 ---
@@ -1808,7 +1821,9 @@ jac-client supports building for multiple deployment targets from a single codeb
 |--------|---------|--------|----------------|
 | **Web** (default) | `jac build` | `.jac/client/dist/` | No |
 | **Desktop** (native webview) | `jac build --client desktop` | Single binary under `.jac/client/desktop/` | No |
+| **CEF** (Chromium) | `jac build --client cef` | CEF bundle under `.jac/client/cef/` | No |
 | **Mobile** (Capacitor) | `jac build --client mobile --platform android` | Android APK / iOS build products | Yes |
+| **React Native** (beta) | `jac build --client react-native --platform android` | Android APK / iOS `.app` bundle (native views; `.ipa` via EAS) | Yes |
 | **PWA** | `jac build --client pwa` | Installable web app | No |
 
 ### Web Target (Default)
@@ -1822,16 +1837,28 @@ jac start --dev              # Dev server with HMR
 
 **Output:** `.jac/client/dist/` with `index.html`, bundled JS, and CSS.
 
-### Desktop Target (native webview)
+### Desktop Targets
 
-The desktop target ships with `jaclang` core (documented in the **[jac-desktop Reference](jac-desktop.md)**). It reuses jac-client's Vite frontend pipeline and compiles a native host (`jac nacompile`) that embeds the OS webview to render your `cl` UI - one self-contained binary, no Rust toolchain, no PyInstaller, no setup step.
+The desktop targets ship with `jaclang` core (documented in the **[jac-desktop Reference](jac-desktop.md)**). They reuse jac-client's Vite frontend pipeline and compile a native host (`jac nacompile`) that renders your `cl` UI - one self-contained binary, no Rust toolchain, no PyInstaller, no setup step.
 
 ```bash
 jac build --client desktop
 jac start --client desktop
+
+jac build --client cef
+jac start --client cef
 ```
 
-See the **[jac-desktop Reference](jac-desktop.md)** for architecture and `[plugins.desktop]` configuration.
+Use `desktop` for the OS-native webview. Use `cef` for a bundled
+Chromium Embedded Framework renderer:
+
+```toml
+[desktop]
+engine = "cef"
+```
+
+See the **[jac-desktop Reference](jac-desktop.md)** for architecture,
+`[desktop]` configuration, and CEF runtime flags.
 
 Tutorial: [Building a Desktop App](../../tutorials/fullstack/desktop.md).
 
@@ -1841,7 +1868,7 @@ Native mobile applications for Android and iOS using [Capacitor](https://capacit
 
 **Prerequisites:**
 
-- Node.js (or Bun)
+- Node.js is **not** required -- all JS tooling (installs, Expo/Metro, Vite) runs on the Bun runtime bundled with the `jac` binary (`JAC_BUN` overrides which bun is used)
 - **Android**: Java/JDK 21+, Android SDK ([Android Studio](https://developer.android.com/studio))
 - **iOS** (macOS only): Xcode, Xcode Command Line Tools, [CocoaPods](https://cocoapods.org/)
 
@@ -1872,10 +1899,10 @@ jac build --client mobile --platform ios
 - Android: APK in `android/app/build/outputs/apk/`
 - iOS: Xcode build products in `ios/App/build/`
 
-**Configuration** via `[plugins.client.mobile]` in `jac.toml`:
+**Configuration** via `[client.mobile]` in `jac.toml`:
 
 ```toml
-[plugins.client.mobile]
+[client.mobile]
 app_name = "My App"
 app_id = "com.example.myapp"
 release = false          # true for release builds
@@ -1887,14 +1914,211 @@ ios_destination = "platform=iOS Simulator,name=iPhone 16,OS=latest"
 
 **Notes:**
 
-- `jac setup mobile` uses `--platform` when provided, otherwise `[plugins.client.mobile].default_platform`, otherwise host default (`ios` on macOS, `android` elsewhere).
+- `jac setup mobile` uses `--platform` when provided, otherwise `[client.mobile].default_platform`, otherwise host default (`ios` on macOS, `android` elsewhere).
 - Mobile dev networking is auto-resolved by default; use `--host <ip>` only when you need to force a specific host.
 - Android mobile dev auto-attempts `adb reverse` for Vite/API ports before launching Capacitor.
 - iOS device builds and App Store archives require Xcode provisioning profiles. Use `npx cap open ios` to open the project in Xcode for signing configuration.
 - Android release builds and signing require a keystore configured in `android/app/build.gradle`.
-- Native Capacitor plugins (camera, geolocation, etc.) can be added via `jac add --npm @capacitor/<plugin>` followed by `npx cap sync`.
+- Native Capacitor plugins (camera, geolocation, etc.) can be added via `jac install --npm @capacitor/<plugin>` followed by `npx cap sync`.
 
 For a step-by-step tutorial, see [Building a Mobile App](../../tutorials/fullstack/mobile.md).
+
+### React Native Target (beta)
+
+Native mobile applications for Android and iOS using [React Native](https://reactnative.dev/). Unlike the [Capacitor mobile target](#mobile-target-capacitor) (which wraps a web bundle in a webview), the React Native target compiles your `cl` UI to **platform-native views** via Expo/Metro/Hermes, giving native gesture/scroll performance and access to the RN ecosystem.
+
+A React Native app is a **mobUI** project: one source tree that compiles to both web (via `react-native-web`) and native (Android/iOS). mobUI projects use Jac's `@jac/mobui` component vocabulary instead of HTML -- see [The `@jac/mobui` vocabulary](#the-jacmobui-vocabulary) below.
+
+**Prerequisites:**
+
+- Node.js is **not** required -- all JS tooling (installs, Expo/Metro, Vite) runs on the Bun runtime bundled with the `jac` binary (`JAC_BUN` overrides which bun is used)
+- **Android**: Java/JDK 21+, Android SDK ([Android Studio](https://developer.android.com/studio))
+- **iOS** (macOS only): Xcode, Xcode Command Line Tools, [CocoaPods](https://cocoapods.org/)
+
+**Setup & Build:**
+
+```bash
+# 1. One-time setup (scaffolds Expo/Metro project at .jac/mobile-rn/)
+jac setup react-native
+
+# 2. Development: Fast Refresh on device/emulator
+jac start main.jac --client react-native --dev
+# Metro serves both platforms; pick the device in the Expo CLI
+# (press `a` for Android, `i` for iOS simulator) or scan the QR in Expo Go.
+
+# 3. Build for Android
+jac build --client react-native --platform android
+
+# 4. Build for iOS (macOS only; non-macOS points at EAS Build)
+jac build --client react-native --platform ios
+```
+
+**Dev-loop knobs:** Metro defaults to port `8081` (override with `JAC_RN_METRO_PORT`); the device-visible host is auto-detected from your LAN IPv4 (override with `JAC_RN_DEV_HOST`). Each `--dev` run starts Metro with `--clear`, so warm starts re-bundle from scratch.
+
+**Output:**
+
+- Android: APK via `gradlew assembleDebug` (or EAS Build with `android_builder = "eas"`)
+- iOS: simulator `.app` bundle via `xcodebuild` on macOS -- `jac build` prints the
+  `xcrun simctl install booted <app>` command, and `jac start --client react-native`
+  builds, installs, and launches it for you; a distributable `.ipa` comes from the
+  EAS Build path (`ios_builder = "eas"`)
+
+**Configuration** via `[client.react_native]` in `jac.toml`:
+
+```toml
+[client.react_native]
+project_dir = ".jac/mobile-rn"   # Expo project location (under the .jac build root; override to relocate)
+release = false                  # true for release variants
+default_platform = "android"     # platform used by plain `jac start --client react-native`
+android_builder = "gradle"       # "gradle" (local) or "eas" (EAS Build)
+ios_builder = "xcodebuild"       # "xcodebuild" (local, macOS) or "eas" (EAS Build)
+eas_profile = ""                 # "" -> "production" (release) / "preview" (debug)
+# EAS Update (OTA) -- opt-in, see "EAS Update (OTA)" below
+eas_update = false               # true to publish an update after each build
+eas_update_branch = ""           # "" -> "production" (release) / "preview" (debug)
+eas_update_message = ""          # "" -> pass --auto to `eas update`
+```
+
+**Opting in:** set `client_kind = "mobui"` under `[project]` in `jac.toml` to mark the project as targeting React Native as well as the web:
+
+```toml
+[project]
+name = "myapp"
+version = "0.1.0"
+client_kind = "mobui"
+```
+
+**Notes:**
+
+- `jac setup react-native` scaffolds an Expo project at `.jac/mobile-rn/` (configurable via `[client.react_native].project_dir`; under the centralized `.jac` build root, so it stays out of the source tree). Capacitor keeps `android/` + `ios/` -- both targets can coexist in one repo.
+- Dev networking is auto-resolved (LAN IPv4 > `127.0.0.1`); `adb reverse` is auto-attempted for Android. The dev API base URL is injected into `app.json` and restored on exit.
+- iOS device builds and App Store archives require Xcode signing. On non-macOS hosts, `--platform ios` errors out and points at EAS Build.
+- Release/debug variants via `[client.react_native].release = true`.
+- EAS Update integration for OTA updates is opt-in via config -- see [EAS Update (OTA)](#eas-update-ota) below.
+
+#### EAS Update (OTA)
+
+`jac setup react-native` scaffolds a baseline `eas.json` with `preview` and `production` build profiles, so `eas build` and `eas update` work once the project is linked. OTA publishing is wired into the `jac build` flow: when `eas_update = true`, a successful build runs `eas update --branch <branch> --platform <plat>` against the scaffolded Expo project.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `eas_update` | bool | `false` | Run `eas update` after a successful build. Also accepts the legacy alias `ota_update`. |
+| `eas_update_branch` | str | `""` | Update branch name. Empty falls back to `production` for release builds, `preview` for debug. Legacy alias: `ota_update_branch`. |
+| `eas_update_message` | str | `""` | Commit message for the update. Empty passes `--auto` (EAS derives one from the git log). |
+| `eas_profile` | str | `""` | Build profile for `eas build`. Empty falls back to `production` for release builds, `preview` for debug. |
+
+**One-time setup** (run inside `.jac/mobile-rn/`):
+
+```bash
+# 1. Install expo-updates (resolves the SDK-matched version automatically).
+npx expo install expo-updates
+
+# 2. Link an EAS project and write expo.updates.url into app.json.
+#    `eas update:configure` adds the updates block pointing at u.expo.dev.
+eas update:configure
+```
+
+`expo-updates` is intentionally **not** pinned in the scaffold's `package.json` -- `npx expo install expo-updates` resolves the version matched to your Expo SDK, which is more reliable than a hand-pinned pin that drifts. Without `expo-updates` installed and `expo.updates.url` set, `eas update` publishes but the app never checks for updates.
+
+**Then opt in via `jac.toml`:**
+
+```toml
+[client.react_native]
+eas_update = true
+eas_update_branch = "production"   # or leave "" for the release/debug default
+```
+
+Every subsequent `jac build --client react-native` publishes an OTA update to the configured branch after the native artifact is produced. `eas_update_message` lets you pin a fixed message; leave it empty to let EAS derive one (`--auto`).
+
+#### Capacitor vs React Native
+
+Both targets produce mobile apps. They are **complementary**, not replacements:
+
+| | Capacitor (`mobile`) | React Native (`react-native`) |
+|--|---------------------|-------------------------------|
+| UI engine | WebView + React DOM | Native views |
+| Code reuse with web | ~100% bundle reuse | Partial (logic yes, UI via `@jac/mobui`) |
+| Setup complexity | Lower | Higher |
+| Native feel | Moderate | High |
+| Web-only npm libs | Work | Break |
+| CLI | `jac setup mobile` | `jac setup react-native` |
+
+Authors choose per project -- or ship both targets from one repo while keeping selection in the build target (`--client`) layer.
+
+#### The `@jac/mobui` vocabulary
+
+`@jac/mobui` is Jac's UI standard library for mobUI projects -- a sealed, Jac-owned component vocabulary whose semantics are React Native's component/style model. It is **not** "re-exported React Native." mobUI apps import **nothing** from `react-native` or `react` directly; the vocabulary is the entire authoring surface, and RN / `react-native-web` are swappable implementation backends behind it.
+
+| `@jac/mobui` | Replaces HTML | Native backend (RN) | Web backend (RNW) |
+|-----------|---------------|---------------------|-------------------|
+| `View` | `div`, `section`, `main`, `article`, `header`, `footer`, `nav`, `aside` | `View` | RNW `View` |
+| `Text` | `span`, `p`, `h1`-`h6`, `label`, `strong`, `em`, `small` | `Text` | RNW `Text` |
+| `Pressable` | `button`, `a` | `Pressable` | RNW `Pressable` |
+| `TextInput` | `input`, `textarea` | `TextInput` | RNW `TextInput` |
+| `Image` | `img` | `Image` | RNW `Image` |
+| `ScrollView` | `ul`, `ol`, scroll areas | `ScrollView` | RNW `ScrollView` |
+| `Animated` / `Easing` | (CSS transitions) | `Animated` / `Easing` | RNW `Animated` / `Easing` |
+| `useWindowDimensions` | (media queries) | `useWindowDimensions` | RNW `useWindowDimensions` |
+| `StyleSheet` | CSS / `className` | `StyleSheet.create` | RNW `StyleSheet` |
+
+Styling is React Native's model only: `style={{...}}` objects over a flexbox subset, plus an optional design-token/theme object. HTML tags are rejected at compile time (E1105); CSS imports are warned about and stripped from native builds (`.css` files never reach Metro).
+
+!!! note "Web builds need `react-native-web`"
+    On the web target, `@jac/mobui` lowers to DOM through `react-native-web`. Declare it under `[dependencies.npm]` in `jac.toml` (the mobUI examples do); the bundler only aliases `react-native` to `react-native-web` when the dependency is present, so plain web projects that never touch `@jac/mobui` are unaffected.
+
+```jac
+cl {
+    import from "@jac/mobui" {
+        View, Text, Pressable, TextInput, Image, ScrollView, StyleSheet
+    }
+
+    glob styles = StyleSheet.create({
+        card: {padding: 16, borderRadius: 16, backgroundColor: "#1b2030", gap: 12},
+        title: {fontSize: 22, fontWeight: "bold", color: "#f4f5fb"},
+    });
+
+    def:pub app -> JsxElement {
+        has name: str = "";
+        return
+            <ScrollView style={{flex: 1, backgroundColor: "#10131c"}}>
+                <View style={styles.card}>
+                    <Text style={styles.title}>Hello, {name or "stranger"}</Text>
+                    <Pressable onPress={lambda { name = "Jac"; }}>
+                        <Text>Tap me</Text>
+                    </Pressable>
+                </View>
+            </ScrollView>;
+    }
+}
+```
+
+#### Compile-time enforcement (E1105)
+
+In a mobUI project, raw HTML host tags are **compile errors** with a fix-it pointing at the `@jac/mobui` primitive to use instead. The guard (`JsxIntrinsicGuardPass`) resolves every tag name in the enclosing scope -- only **unresolved lowercase names** are treated as HTML host elements and rejected:
+
+```
+error[E1105]: JSX tag '<div>' is not in scope in a mobUI project; use View instead
+```
+
+- **Uppercase components** (`<Card>`, `<Image>`) are always allowed.
+- **Lowercase components that resolve to an in-scope symbol are allowed** (e.g. a local `counter` component used as `<counter .../>`).
+- Only unresolved lowercase names (`div`, `span`, ...) are rejected.
+- **`.cl.jac` web-boundary files are exempt** (raw HTML stays valid where the code can only run in a browser) -- but `.native.cl.jac` files are not, since they target React Native. Modules outside the project root (framework and third-party code) are exempt too. The kind is discovered from each module's own project `jac.toml`, never the process cwd.
+
+See [`E1105`](../diagnostics.md#mobui-project-jsx-host-tags) in the diagnostics reference. Web projects (`client_kind` unset) are unaffected -- HTML tags remain valid there.
+
+#### Platform divergence
+
+Platform differences are handled in priority order:
+
+1. **The vocabulary absorbs divergence** (primary). Components own their platform differences internally -- `ScrollView`, `Image`, and future additions present one API and branch inside `@jac/mobui`. Authors see a single component.
+2. **`.native.cl.jac` platform files** (rare). For wrapping platform-exclusive native modules -- see `examples/mobui/littlex`'s `icon.cl.jac` / `icon.native.cl.jac` split. The compiler picks the `.native.cl.jac` variant when `--client react-native` is selected and falls back to `.cl.jac` when not found. (A `Platform.os` / `Platform.select` one-liner API is planned but not yet part of `@jac/mobui`.)
+
+#### What carries over from web
+
+The React Native target reuses the same Jac -> JS compilation pipeline, the same `JacForm` / `useJacForm` form system (adapted to RN `TextInput`), the same auth helpers (`jacSignup`, `jacLogin`, `jacLogout` backed by `expo-secure-store`), and the same walker-call API (`jacSpawn`, `__jacCallFunction`). Routing is adapted to React Navigation: `Router` -> `NavigationContainer`, `Routes` + `Route` -> `Stack.Navigator` + `Stack.Screen`, `Link` -> `Pressable` with `useNavigate`.
+
+For a step-by-step tutorial, see [Building a Mobile App -- React Native target](../../tutorials/fullstack/mobile.md#react-native-target).
 
 ### PWA Target
 
@@ -1928,12 +2152,12 @@ jac start --client pwa
 **Configuration in jac.toml:**
 
 ```toml
-[plugins.client.pwa]
+[client.pwa]
 theme_color = "#000000"
 background_color = "#ffffff"
 cache_name = "my-app-cache-v1"
 
-[plugins.client.pwa.manifest]
+[client.pwa.manifest]
 name = "My App"
 short_name = "App"
 description = "My awesome Jac app"
@@ -1955,7 +2179,7 @@ After running `jac setup pwa`, your app automatically shows a native-style insta
 **Banner Configuration in jac.toml:**
 
 ```toml
-[plugins.client.pwa]
+[client.pwa]
 theme_color = "#000000"
 background_color = "#ffffff"
 
@@ -2032,11 +2256,11 @@ When client builds fail, jac-client displays structured error diagnostics instea
 
 | Code | Issue | Example Fix |
 |------|-------|-------------|
-| `JAC_CLIENT_001` | Missing npm dependency | `jac add --npm <package>` |
+| `JAC_CLIENT_001` | Missing npm dependency | `jac install --npm <package>` |
 | `JAC_CLIENT_003` | Syntax error in client code | Check source snippet |
 | `JAC_CLIENT_004` | Unresolved import | Verify import path |
 
-To see raw error output alongside formatted diagnostics, set `debug = true` under `[plugins.client]` in `jac.toml` or set the `JAC_DEBUG=1` environment variable.
+To see raw error output alongside formatted diagnostics, set `debug = true` under `[client]` in `jac.toml` or set the `JAC_DEBUG=1` environment variable.
 
 > **Note:** Debug mode is enabled by default for a better development experience. For production deployments, set `debug = false` in `jac.toml`.
 
@@ -2044,10 +2268,10 @@ To see raw error output alongside formatted diagnostics, set `debug = true` unde
 
 ## Build-Time Constants
 
-Define global variables that are replaced at compile time using the `[plugins.client.vite.define]` section in `jac.toml`:
+Define global variables that are replaced at compile time using the `[client.vite.define]` section in `jac.toml`:
 
 ```toml
-[plugins.client.vite.define]
+[client.vite.define]
 "globalThis.API_URL" = "\"https://api.example.com\""
 "globalThis.FEATURE_ENABLED" = true
 "globalThis.BUILD_VERSION" = "\"1.2.3\""
@@ -2069,7 +2293,7 @@ cl {
 
 ### Prerequisites
 
-jac-client uses [Bun](https://bun.sh/) for package management and JavaScript bundling. If Bun is not installed, the CLI prompts you to install it automatically.
+jac-client uses [Bun](https://bun.sh/) for package management and JavaScript bundling. A Bun runtime ships inside the `jac` binary and is the only JS runtime jac invokes -- no Node.js/npm install is needed or consulted. Set `JAC_BUN` to substitute a specific bun binary.
 
 ### Start Server
 
@@ -2109,8 +2333,8 @@ cl {
         return <div>
             <input
                 value={value}
-                onChange={lambda e: ChangeEvent { value = e.target.value; }}
-                onKeyPress={lambda e: KeyboardEvent {
+                onChange={lambda (e: ChangeEvent) { value = e.target.value; }}
+                onKeyPress={lambda (e: KeyboardEvent) {
                     if e.key == "Enter" { submit(); }
                 }}
             />
@@ -2173,17 +2397,17 @@ cl {
         return <div>
             <input
                 value={text}
-                onChange={lambda e: ChangeEvent { text = e.target.value; }}
-                onKeyDown={lambda e: KeyboardEvent {
+                onChange={lambda (e: ChangeEvent) { text = e.target.value; }}
+                onKeyDown={lambda (e: KeyboardEvent) {
                     if e.key == "Enter" and not e.shiftKey { submit(); }
                 }}
             />
             <input
                 type="checkbox"
                 checked={checked}
-                onChange={lambda e: ChangeEvent { checked = e.target.checked; }}
+                onChange={lambda (e: ChangeEvent) { checked = e.target.checked; }}
             />
-            <form onSubmit={lambda e: FormEvent {
+            <form onSubmit={lambda (e: FormEvent) {
                 e.preventDefault();
                 handleSubmit();
             }}>
@@ -2199,10 +2423,10 @@ cl {
 
     ```jac
     # Before
-    onChange={lambda e: any -> None { value = e.target.value; }}
+    onChange={lambda (e: any) -> None { value = e.target.value; }}
 
     # After (no import needed)
-    onChange={lambda e: ChangeEvent { value = e.target.value; }}
+    onChange={lambda (e: ChangeEvent) { value = e.target.value; }}
     ```
 
 ---
@@ -2427,7 +2651,7 @@ Changes to `.jac` files automatically reload without restart.
 ### Debug Mode
 
 ```bash
-jac debug main.jac
+jac run --debug main.jac
 ```
 
 Provides:

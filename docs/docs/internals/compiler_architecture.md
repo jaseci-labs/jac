@@ -7,9 +7,9 @@ targets, called **codespaces**:
 
 | Codespace | Selector | Backend output | Runs on |
 |-----------|----------|----------------|---------|
-| **Server** (`sv`) | `to sv:` header, `sv` prefix, `.sv.jac` file, or default | Python AST → CPython bytecode | CPython |
-| **Client** (`cl`) | `to cl:` header, `cl` prefix, or `.cl.jac` file | ESTree → JavaScript | Browsers / Node |
-| **Native** (`na`) | `to na:` header, `na` prefix, or `.na.jac` file | LLVM IR → object code → executable | Bare machine (Linux / macOS, x86_64 / arm64) |
+| **Server** (`sv`) | `sv { }` block, `sv` prefix, `.sv.jac` file, or default | Python AST → CPython bytecode | CPython |
+| **Client** (`cl`) | `cl { }` block, `cl` prefix, or `.cl.jac` file | ESTree → JavaScript | Browsers / Node |
+| **Native** (`na`) | `na { }` block, `na` prefix, or `.na.jac` file | LLVM IR → object code → executable | Bare machine (Linux / macOS, x86_64 / arm64) |
 
 A single `.jac` file can mix all three codespaces. The compiler routes each
 declaration to the correct backend, synthesises the interop bridges at the
@@ -133,7 +133,7 @@ classes to run, and the `JacCompiler.compile` method walks them in order.
 Every codespace shares the **same front end**.
 
 - Tokens are declared in [`jac0core/parser/tokens.na.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/parser/tokens.na.jac).
-  The `to`, `sv`, `cl`, and `na` keywords are ordinary tokens -- no codespace
+  The `sv`, `cl`, and `na` keywords are ordinary tokens -- no codespace
   has a separate grammar.
 - The grammar is in [`jac0core/parser/impl/parser.impl.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/parser/impl/parser.impl.jac).
 - AST nodes are defined in [`jac0core/unitree.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/unitree.jac)
@@ -143,9 +143,9 @@ Codespace-tagged regions surface as three sibling AST nodes:
 
 | Source form | AST node |
 |-------------|----------|
-| `sv { ... }` block / `to sv:` region | `ServerBlock` |
-| `cl { ... }` block / `to cl:` region | `ClientBlock` |
-| `na { ... }` block / `to na:` region | `NativeBlock` |
+| `sv { ... }` block | `ServerBlock` |
+| `cl { ... }` block | `ClientBlock` |
+| `na { ... }` block | `NativeBlock` |
 
 The bootstrap compiler (`jac0.py`) and the full compiler share this front end
 verbatim -- see [Abstractions Inventory](abstractions.md) for the full keyword
@@ -156,8 +156,8 @@ table.
 ## Stage 2: Codespace Coercion
 
 After parsing, the compiler decides what context each top-level statement
-belongs to. This is driven by the file extension and by the section
-headers / blocks in the source.
+belongs to. This is driven by the file extension and by the codespace
+blocks in the source.
 
 The coercion helpers live in
 [`compiler.jac:_coerce_module`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/compiler.jac#L250)
@@ -169,11 +169,10 @@ and three wrappers around it:
 | `_coerce_client_module` | `.cl.jac` extension | Unfolds `ClientBlock`, strips `ServerBlock`, marks `CodeContext.CLIENT` |
 | `_coerce_native_module` | `.na.jac` extension | Unfolds `NativeBlock`, strips both `ServerBlock` and `ClientBlock`, marks `CodeContext.NATIVE` |
 
-For mixed `.jac` files, the section header (`to sv:` / `to cl:` / `to na:`)
-flips a parser-side default that the AST visitor uses to tag each
-`ContextAwareNode` with its `code_context`. From this point on, every
-declaration carries a `CodeContext` enum value that downstream passes use
-to dispatch to the correct backend.
+For mixed `.jac` files, a `sv { ... }` / `cl { ... }` / `na { ... }` block
+tags each `ContextAwareNode` inside it with its `code_context`. From this
+point on, every declaration carries a `CodeContext` enum value that
+downstream passes use to dispatch to the correct backend.
 
 ---
 
@@ -322,7 +321,7 @@ common base class -- [`ModuleCodegenPass`](https://github.com/Jaseci-Labs/jaseci
 nodes whose `code_context` matches its target**. A node tagged `CLIENT` is
 invisible to the Python codegen and vice versa.
 
-### Server backend -- `to sv:`
+### Server backend -- `sv { }`
 
 | Pass | Source | Output |
 |------|--------|--------|
@@ -340,7 +339,7 @@ Builtins and language keywords ultimately resolve to methods on
 The primitive type contract for this backend lives in
 [`pycore/passes/primitives_py.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/pycore/passes/primitives_py.jac).
 
-### Client backend -- `to cl:`
+### Client backend -- `cl { }`
 
 | Pass | Source | Output |
 |------|--------|--------|
@@ -371,7 +370,7 @@ endpoints exposed by `jac start`. The client is currently **CSR-only**:
 the server returns an HTML shell with a bootstrapping payload, and the
 browser handles all rendering.
 
-### Native backend -- `to na:`
+### Native backend -- `na { }`
 
 | Pass | Source | Output |
 |------|--------|--------|
@@ -466,7 +465,7 @@ user-facing reference, [Primitives & Codespace Semantics](../reference/language/
 | `sv → na` | In-process `ctypes.CFUNCTYPE` over the JIT'd function address (MCJIT); an AOT `--shared` build is loaded across the process boundary instead | `PyastGenPass` emits the ctypes stub; `NaIRGenPass` exposes the function with C ABI |
 | `na → sv` | Python callback wrapped in a `ctypes.CFUNCTYPE` and registered as a JIT symbol (`llvm.add_symbol`), so MCJIT resolves the native call back into CPython | `interop_bridge.register_py_callbacks`, alongside the `sv → na` stub |
 | `na → na` | Direct symbol reference resolved by the in-tree linker | `InteropAnalysisPass` records the import; `NativeCompilePass` emits the relocation |
-| `sv → sv` (microservice) | HTTP between processes when an `sv import` resolves to a different deployment | `PyastGenPass` emits a generated `__jac_sv_client` RPC stub; the manifest is consumed by `jac-scale` |
+| `sv → sv` (microservice) | HTTP between processes when an `sv import` resolves to a different deployment | `PyastGenPass` emits a generated `__jac_sv_client` RPC stub; the manifest is consumed by the built-in `scale` subsystem |
 
 Boundary types are serialised through the schemas in
 [`codeinfo.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/codeinfo.jac).

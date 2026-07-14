@@ -1,36 +1,30 @@
-"""WheelBuilder — zips all wheel components into a PEP 427 .whl archive."""
-
 import from pathlib { Path }
 import from jaclang.project.config { JacConfig }
 
-# Fixed timestamp for all zip entries — produces reproducible wheels.
-# (year, month, day, hour, minute, second) — convention used by pip and hatch.
 glob _WHEEL_TIMESTAMP: tuple = (2016, 1, 1, 0, 0, 0),
-     # Unix timestamp equivalent of 2016-01-01 00:00:00 UTC — used for sdist tar entries.
      _SDIST_MTIME: int = 1451606400;
 
-"""Builds a .whl archive from a JacConfig and the project source tree."""
 obj WheelBuilder {
     has config: JacConfig,
         project_root: Path | None = None,
         pure_python: bool = True,
         python_tag: str = "py3",
         abi_tag: str = "none",
-        platform_tag: str = "any";
+        platform_tag: str = "any",
+        transpile_jac: bool = True,
+        skipped_codespace: list[str] = [],
+        vendored_runtime_modules: int = 0,
+        _src_data_cache: dict[str, bytes] | None = None;
 
     def postinit -> None;
-    """Build the wheel in memory and return its raw bytes; raises ValueError when project name is missing."""
+    def source_data -> dict[str, bytes];
+    def _assemble_src_data -> dict[str, bytes];
+    def _vendor_runtime_into(src_data: dict[str, bytes], codes: list[str]) -> None;
+    def _top_level_names(src_data: dict[str, bytes]) -> list[str];
+    def _build_backend_script(src_data: dict[str, bytes]) -> str;
     def build -> bytes;
-
-    """Build the wheel and write it to output_dir/<name>.whl; returns the Path written."""
     def build_to(output_dir: Path) -> Path;
-
-    """Write dist-info for an editable install of src_dir into site_pkgs; returns the .pth path written."""
     def install_editable(src_dir: Path, site_pkgs: Path) -> Path;
-
-    """Build a PEP 625 sdist tarball in memory and return its raw bytes."""
     def build_sdist -> bytes;
-
-    """Build the sdist and write it to output_dir/<name>.tar.gz; returns the Path written."""
     def build_sdist_to(output_dir: Path) -> Path;
 }

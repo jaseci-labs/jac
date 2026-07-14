@@ -42,8 +42,8 @@ cl def:pub app -> JsxElement {
     }
     return <div>
         <input value={text}
-            onChange={lambda e: ChangeEvent { text = e.target.value; }}
-            onKeyPress={lambda e: KeyboardEvent { if e.key == "Enter" { add(); } }}
+            onChange={lambda (e: ChangeEvent) { text = e.target.value; }}
+            onKeyPress={lambda (e: KeyboardEvent) { if e.key == "Enter" { add(); } }}
             placeholder="Add a todo..." />
         <button onClick={add}>Add</button>
         {[<p key={jid(t)}>{t.title} ({t.category})</p> for t in todos]}
@@ -74,12 +74,12 @@ This single file defines a persistent data model, an AI-powered categorizer, a R
     [serve]
     base_route_app = "app"
 
-    [plugins.scale]
+    [scale]
 
-    [plugins.client]
+    [client]
 
-    [plugins.byllm.model]
-    default_model = "claude-sonnet-4-20250514"
+    [byllm.model]
+    default_model = "anthropic/claude-sonnet-4-6"
     ```
 
     Install Jac, set your API key, and run:
@@ -130,92 +130,19 @@ This philosophy rests on three pillars.
 
     Your code doesn't change when you move from laptop to cloud. Declare `node` types and connect them to `root` -- the runtime handles persistence automatically. Run `jac start --scale` and your app deploys to Kubernetes with Redis, MongoDB, load balancing, and health checks provisioned for you. Zero DevOps.
 
-    [:octicons-arrow-right-24: How Persistence Works](what-makes-jac-different.md#2-how-does-jac-fully-abstract-away-database-organization-and-interactions-and-the-complexity-of-multiuser-persistent-data) · [:octicons-arrow-right-24: Deployment Reference](../reference/plugins/jac-scale.md) · [:octicons-arrow-right-24: jac-scale Plugin](../reference/plugins/jac-scale.md)
+    [:octicons-arrow-right-24: How Persistence Works](what-makes-jac-different.md#2-how-does-jac-fully-abstract-away-database-organization-and-interactions-and-the-complexity-of-multiuser-persistent-data) · [:octicons-arrow-right-24: Deployment Reference](../reference/plugins/jac-scale.md) · [:octicons-arrow-right-24: Scale Reference](../reference/plugins/jac-scale.md)
 
 </div>
 
 ---
 
-## One Language: Frontend, Backend, Native
+## Build Anything
 
-Jac introduces **codespaces** -- regions of code that target different execution environments. Instead of maintaining separate projects in separate languages, you write everything in Jac and the compiler produces the right output for each target:
+These three pillars combine into whatever you're shipping -- a CLI tool, a REST API, a full-stack app, a desktop or mobile build, native compute in the browser, or a redistributable library. The [**Build Anything**](project-kinds.md) hub has a small working recipe for each, and every recipe links to a guided **"I like to build…"** track that takes you from a 5-minute quick win to the full tutorials.
 
-| Codespace | Target | Ecosystem | Syntax |
-|-----------|--------|-----------|--------|
-| **Server** | Python runtime | PyPI (`numpy`, `pandas`, `fastapi`) | `sv { }` or `.sv.jac` |
-| **Client** | Browser/JavaScript | npm (`react`, `tailwind`, `@mui`) | `cl { }` or `.cl.jac` |
-| **Native** | Compiled binary | C ABI | `na { }` or `.na.jac` |
+For the *why* and *how* behind the pillars -- codespaces, object-spatial programming, and `by llm()` -- read [Core Concepts](what-makes-jac-different.md).
 
-Server definitions are visible to client sections. When the client calls a server function, the compiler generates the HTTP request, serialization, and routing automatically. You write one language; the compiler produces the interop layer.
-
-!!! example "See it in action"
-    Want to see exactly how much code Jac eliminates? Check out [Jac vs Traditional Stack](jac-vs-traditional-stack.md) -- a side-by-side comparison showing **~30 lines of Jac** vs **>300 lines** of Python + FastAPI + SQLite + TypeScript + React for the same Todo app.
-
----
-
-## AI Native: LLMs as Code Constructs
-
-Jac's approach to AI is called [Meaning Typed Programming](https://arxiv.org/pdf/2405.08965). Instead of writing prompts in strings and parsing responses manually, you declare **what** you want through function signatures and let the compiler handle the **how**:
-
-```jac
-# The function name, types, and return type ARE the specification
-def classify_sentiment(text: str) -> str by llm;
-
-# Enums constrain the LLM to valid outputs
-enum Priority { LOW, MEDIUM, HIGH, CRITICAL }
-def triage_ticket(description: str) -> Priority by llm();
-
-# sem provides additional semantic context where names aren't enough
-obj Ingredient {
-    has name: str, cost: float, carby: bool;
-}
-sem Ingredient.cost = "Estimated cost in USD";
-sem Ingredient.carby = "True if high in carbohydrates";
-
-def plan_shopping(recipe: str) -> list[Ingredient] by llm();
-```
-
-The return type serves as the output contract -- `enum` means the LLM can only produce one of its values, `obj` means every field must be filled. No parsing code. No validation code. The type system enforces correctness.
-
-For **agentic workflows**, Jac's graph constructs (nodes, edges, walkers) naturally model AI agents that traverse structured state spaces, make decisions with `by llm()`, and call tools:
-
-```jac
-def get_weather(city: str) -> str { return fetch_weather_api(city); }
-def search_web(query: str) -> list[str] { return web_search_api(query); }
-
-# The LLM decides which tools to call and in what order
-def answer_question(question: str) -> str
-    by llm(tools=[get_weather, search_web]);
-```
-
-[:octicons-arrow-right-24: byLLM Quickstart Tutorial](../tutorials/ai/quickstart.md) · [:octicons-arrow-right-24: Agentic AI Tutorial](../tutorials/ai/agentic.md)
-
----
-
-## Scale Native: No Code Changes from Laptop to Cloud
-
-Every Jac program has a built-in `root` node. Nodes reachable from `root` are **persistent** -- they survive process restarts. The runtime generates storage schemas from your node declarations. You never write database code:
-
-```jac
-node Todo { has title: str, done: bool = False; }
-
-with entry {
-    root ++> Todo(title="Learn Jac");  # Automatically persisted
-}
-```
-
-This same program runs three ways with no code changes. With no filename, both `jac run` and `jac start` use the project's `jac.toml` (a bare `jac run` dispatches on the project's `kind`):
-
-| Command | What Happens |
-|---------|-------------|
-| `jac main.jac` | Runs locally, SQLite persistence |
-| `jac run` (no filename) | Runs the current project per its `[project] kind` |
-| `jac start` (or `jac start main.jac`) | HTTP API server, walkers become REST endpoints |
-| `jac start --scale` | Kubernetes deployment with Redis, MongoDB, load balancing |
-
-The runtime handles database schemas, user authentication (per-user graph isolation), API generation (Swagger docs at `/docs`), caching tiers, and Kubernetes orchestration. You write application logic; the runtime handles infrastructure.
-
-[:octicons-arrow-right-24: Production Deployment Tutorial](../tutorials/production/local.md) · [:octicons-arrow-right-24: Kubernetes Tutorial](../tutorials/production/kubernetes.md)
+[:octicons-arrow-right-24: Browse what you can build](project-kinds.md)
 
 ---
 
@@ -227,7 +154,7 @@ The runtime handles database schemas, user authentication (per-user graph isolat
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 ```
 
-This installs the self-contained `jac` binary -- no Python, pip, or uv required. It includes the compiler and the built-in full-stack frontend/desktop framework. Add AI integration and deployment with `jac install byllm` and `jac install jac-scale`.
+This installs the self-contained `jac` binary -- no Python, pip, or uv required. It includes the compiler, the built-in full-stack frontend/desktop framework, and the built-in `scale` subsystem for serving and deployment. Add AI integration with `jac install byllm`; scale's optional deps (MongoDB, Redis, Kubernetes, ...) are pulled per-project by your `[scale.*]` config plus `jac install`.
 
 Verify your installation:
 
@@ -261,38 +188,6 @@ Note: `jac` is shorthand for `jac run` -- both work identically.
 
 ---
 
-## Choose Your Path
-
-<div class="grid cards" markdown>
-
-- :material-rocket-launch:{ .lg .middle } **Just want to try it?**
-
-    ---
-
-    Follow the [Installation](install.md) guide to get set up and run your first program in 2 minutes.
-
-- :material-web:{ .lg .middle } **Building a web app?**
-
-    ---
-
-    Jump to [Build an AI Day Planner](../tutorials/first-app/build-ai-day-planner.md) -- a complete 7-part tutorial covering backend, frontend, persistence, auth, and AI.
-
-- :material-robot:{ .lg .middle } **Working with AI/LLMs?**
-
-    ---
-
-    Start with the [byLLM Quickstart](../tutorials/ai/quickstart.md), then explore [Agentic AI](../tutorials/ai/agentic.md) for tool-calling agents and multi-agent systems.
-
-- :material-graph:{ .lg .middle } **Interested in graphs and OSP?**
-
-    ---
-
-    Read [What Makes Jac Different](what-makes-jac-different.md) for the concepts, then the [OSP Tutorial](../tutorials/language/osp.md) for hands-on practice with nodes, edges, and walkers.
-
-</div>
-
----
-
 ## Who is Jac For?
 
 Jac is designed for developers who want to build AI-powered applications without the complexity of managing multiple languages and tools. If you've ever wished you could write your frontend, backend, AI logic, and deployment config in one place -- Jac is for you.
@@ -307,20 +202,6 @@ Jac is designed for developers who want to build AI-powered applications without
 
 !!! note "What You Should Know"
     Jac compiles to Python bytecode, so **Python familiarity is assumed** throughout these docs. If you plan to use the full-stack features, basic **React/JSX** knowledge helps. No graph database experience is needed -- Jac teaches you that.
-
----
-
-## Quick Links
-
-| Resource | Description |
-|----------|-------------|
-| [Installation](install.md) | Setup, first program, scaffolding, and Jacpacks |
-| [What Makes Jac Different](what-makes-jac-different.md) | The three core concepts: codespaces, OSP, and AI integration |
-| [Syntax Cheatsheet](syntax-cheatsheet.md) | Comprehensive syntax reference |
-| [Build an AI Day Planner](../tutorials/first-app/build-ai-day-planner.md) | Complete 7-part tutorial covering all Jac features |
-| [Language Reference](../reference/language/foundation.md) | Complete language documentation |
-| [CLI Reference](../reference/cli/index.md) | All `jac` commands |
-| [FAQ](faq.md) | Learning paths by experience level |
 
 ---
 

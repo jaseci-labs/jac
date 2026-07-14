@@ -1,6 +1,7 @@
 """Type checker pass tests -- migrated from test_checker_pass.py."""
 
 import os;
+import from pathlib { Path }
 import from tests.support { JAC_ROOT }
 import jaclang;
 import jaclang.jac0core.unitree as uni;
@@ -640,7 +641,19 @@ test "checker_import_missing_module" {
     program = JacProgram();
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
-    assert len(program.errors_had) == 6;
+    # Each missing module is reported once (W1100). The Unknowns that flow
+    # from an already-diagnosed import are poisoned and no longer cascade
+    # into hard errors (E1032 attribute access, E1001/E1002 assignments) at
+    # every use site -- one actionable diagnostic per root cause.
+    w1100s = [
+        w
+        for w in program.warnings_had
+        if w.code is not None and w.code.code == "W1100"
+    ];
+    assert len(w1100s) == 4 , f"expected 4 W1100s, got {len(w1100s)}";
+    assert len(program.errors_had) == 0 , f"diagnosed-import Unknowns must not cascade: {[
+        e.pretty_print() for e in program.errors_had
+    ]}";
 }
 
 test "checker_jac_runtime_alias" {
@@ -2874,6 +2887,21 @@ test "destructure_element_narrowing" {
     assert 'Cannot return int | str' in msg , f"Expected non-strict-narrow error, got: {msg}";
 }
 
+"""Per-position tuple index typing + variadic destructuring (issue #7238)."""
+test "tuple_index_typing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_tuple_index_typing.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    # Only `per_position_mismatch` errors: `t[1]` is bytes, assigned to str.
+    assert len(program.errors_had) == 1 , "Expected 1 type error, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+    msg = program.errors_had[0].pretty_print();
+    assert 'Cannot assign bytes to str' in msg , f"Expected per-position mismatch, got: {msg}";
+}
+
 """Match-case narrowing is killed by a later assignment to the subject."""
 test "match_case_reassign_reset" {
     program = JacProgram();
@@ -3958,9 +3986,14 @@ test "root_cause_6_stdlib_returns_unknown" {
         for e in program.errors_had
         if e.loc and 267 <= e.loc.first_line <= 305
     ];
-    # importlib.util resolves to Unknown — each function using it reports errors.
+    # 11 (down from 15): `importlib.util` itself now resolves — ModuleType
+    # attribute access falls back to on-disk submodule resolution, so the four
+    # `.util`-on-Unknown errors are gone. spec_from_file_location still types
+    # Unknown because util.pyi only re-exports it (`from importlib.
+    # _bootstrap_external import spec_from_file_location as ...`) and aliased
+    # stub re-exports are not followed yet; its cascades remain.
     # Cascade suppression handles chained AtomTrailer accesses but not Name targets.
-    assert len(rc6_errors) == 15 , f"Expected 15 stdlib-unknown errors, got {len(
+    assert len(rc6_errors) == 11 , f"Expected 11 stdlib-unknown errors, got {len(
         rc6_errors
     )}:\n" + "\n---\n".join(e.pretty_print() for e in rc6_errors);
 }
@@ -4053,12 +4086,41 @@ test "root_cause_9_any_in_union" {
         for e in program.errors_had
         if e.loc and 396 <= e.loc.first_line <= 415
     ];
-    # 2 errors: 2 E1099 (attr missing from Any in union). Previously 4 because
-    # cascading E1002/E1053 from Unknown returns. Now partial union member access
-    # returns the resolved type from non-Any members, eliminating cascades.
+    # 2 errors. The Any-in-union attr-access bug is fixed (#7158): `Any` now
+    # absorbs, so no E1099 "missing from Any" is emitted here. The 2 remaining
+    # errors are E1002/E1053 cascades from the fixture's undefined EdgeAnchor /
+    # GenericEdge symbols (Unknown members), not the union-with-Any handling.
     assert len(rc9_errors) == 2 , f"Expected 2 any-in-union errors, got {len(
         rc9_errors
     )}:\n" + "\n---\n".join(e.pretty_print() for e in rc9_errors);
+}
+
+"""Issue #7158: `Any` must absorb inside a union for attribute access.
+
+`typing.Any` used as an annotation resolves to the `Any` class (not the
+internal `AnyType`), so attribute-access handling must recognize that form as a
+wildcard: access on `T | ... | Any` validates only the non-`Any` members and
+yields `result | Any` instead of reporting the attribute missing from `Any`.
+Assignability is intentionally left strict -- explicit `Any` in a union is held
+to the same rule as bare explicit `Any -> Concrete` -- so the fixture exercises
+the attribute-access path plus a no-`Any` concrete-union assignment; it is
+entirely well-typed and must produce zero errors.
+"""
+test "any_in_union_is_wildcard" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_any_in_union.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    errors = [
+        e
+        for e in program.errors_had
+        if e.code is not None and e.code.code in ("E1099", "E1053", "E1002", "E1032")
+    ];
+    assert len(errors) == 0 , f"Expected 0 any-in-union errors, got {len(errors)}:\n" + "\n---\n".join(
+        e.pretty_print() for e in errors
+    );
 }
 
 """Root Cause 10: TypeVar in impl blocks.
@@ -4121,10 +4183,12 @@ test "root_causes_total_error_count" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    # 29 errors (down from 35): partial union member access now returns
-    # resolved types instead of Unknown, eliminating 6 cascading errors
-    # (E1002 "return Unknown" and E1053 "Unknown->Sized" that followed E1099).
-    assert len(program.errors_had) == 29 , f"Expected 29 total errors, got {len(
+    # 26 errors (down from 29): dotted stdlib submodules (`importlib.util`)
+    # now resolve through ModuleType attribute access, removing the
+    # `.util`-on-Unknown errors from the Root Cause 6 corpus. Before that,
+    # 29 was down from 35: partial union member access returning resolved
+    # types instead of Unknown eliminated 6 cascading errors.
+    assert len(program.errors_had) == 26 , f"Expected 26 total errors, got {len(
         program.errors_had
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }
@@ -4480,14 +4544,17 @@ test "jsx_step4_lambda_inference" {
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
 
-    e1032_errors = [
+    # `e` is inferred as MouseEvent, so accessing `.nonexistent` is a no-such-
+    # attribute error on a known type (E1030) -- stronger than E1032 (Unknown),
+    # which would mean the param type was never inferred.
+    attr_errors = [
         e
         for e in program.errors_had
-        if e.code and e.code.code == "E1032"
+        if e.code and e.code.code in ["E1030", "E1032"]
     ];
-    assert len(e1032_errors) >= 1 , f"Expected E1032 for e.nonexistent on inferred MouseEvent, got {len(
-        e1032_errors
-    )} E1032 errors. All errors:\n" + "\n---\n".join(
+    assert len(attr_errors) >= 1 , f"Expected an attribute error for e.nonexistent on inferred MouseEvent, got {len(
+        attr_errors
+    )}. All errors:\n" + "\n---\n".join(
         f"{err.code.code if err.code else '?'}: {err.pretty_print()}"
         for err in program.errors_had
     );
@@ -4943,45 +5010,26 @@ test "generator_yield_return_type_check" {
     );
 }
 
-test "strict_any_in_jac_modules" {
-    # Layer 2: in `.jac` files, `Any` can no longer be silently assigned to a
-    # declared non-Any destination. The rule applies uniformly at every
-    # "destination has a declared type" site: annotated assignments,
-    # has-var initializers, function arguments, and return statements,
-    # and recurses into containers (list[any] -> list[T] errors).
-    # Inferred destinations and explicit `any` annotations remain
-    # permissive — that is the user's escape valve.
-    path = os.path.join(CHECKER_FIXTURES, "checker_strict_any_jac.jac");
-    program = JacProgram();
-    mod = program.compile(path, options=NO_TC);
-    TypeCheckPass(ir_in=mod, prog=program);
-    # The four expected strict-Any sites:
+test "uniform_gradual_any_in_jac_modules" {
+    # Uniform gradual typing: in `.jac` files `Any` is assignable to a declared
+    # non-Any destination at every "destination has a declared type" site
+    # (annotated assignments, has-var initializers, function arguments, return
+    # statements), recursing into containers (list[any] -> list[T]). This
+    # replaced a codespace-split policy that rejected Any -> T in server/client
+    # while permitting it in native; the split broke cross-backend congruence
+    # on identical code, so the verdict is now uniform-gradual everywhere.
     #   1. `t: Task = a;`              -- annotated assignment
     #   2. `ts: list[Task] = xs;`      -- annotated assignment (nested any)
     #   3. `needs_task(a);`            -- function arg
     #   4. `return make_any();`        -- typed return
-    # Each emits one type-mismatch error (E1001/E1002/E1053). We assert
-    # the *total* count rather than the per-code split, since the
-    # specific code depends on which checker site catches the violation.
-    strict_codes = ("E1001", "E1002", "E1053");
-    strict_errors = [
-        e
-        for e in program.errors_had
-        if e.code and e.code.code in strict_codes
-    ];
-    assert len(strict_errors) == 4 , f"Expected 4 strict-Any errors (Any -> declared T at 4 sites), got {len(
-        strict_errors
-    )}:\n" + "\n---\n".join(e.pretty_print() for e in strict_errors);
-    # No errors should fire on the `inferred destination` or `explicit any`
-    # paths above.
-    other = [
-        e
-        for e in program.errors_had
-        if e.code and e.code.code not in strict_codes
-    ];
-    assert len(other) == 0 , f"Expected no other errors, got {len(other)}:\n" + "\n---\n".join(
-        e.pretty_print() for e in other
-    );
+    # None of these narrowing sites emits a type-mismatch error anymore.
+    path = os.path.join(CHECKER_FIXTURES, "checker_strict_any_jac.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected no errors under uniform gradual Any, got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }
 
 test "walker_typed_reports_validation" {
@@ -5342,4 +5390,300 @@ test "edge_endpoint_clause_rejected_on_non_edge" {
     assert has_e2027 , "Expected E2027 for endpoint clause on a node, got:\\n" + "\\n---\\n".join(
         e.pretty_print() for e in program.errors_had
     );
+}
+
+test "mobui_project_forbids_html_intrinsic_tags" {
+    # D17: in a mobui (React Native) project, raw HTML host tags are
+    # forbidden — JsxIntrinsicGuardPass emits E1105 for each lowercase tag,
+    # with a fix-it pointing at the @jac/mobui / RN component. Uppercase user
+    # components (<Card>) are allowed. The pass runs in get_ir_gen_sched, so
+    # it fires even with type_check=False (the .cl.jac / build path).
+    path = os.path.join(CHECKER_FIXTURES, "checker_jsx_mobui_html_forbidden.jac");
+    program = JacProgram();
+    program.compile(
+        path,
+        options=CompileOptions(
+            type_check=False, project_kind="mobui", project_root=CHECKER_FIXTURES
+        )
+    );
+
+    e1105 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1105"
+    ];
+    # Host tags: <span>, <div>, <button>, <img> => 4. <Card> is exempt.
+    assert len(e1105) == 4 , f"Expected 4 E1105 (div/span/button/img), got {len(
+        e1105
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1105);
+
+    # Assert against the diagnostic messages (not pretty_print, whose source
+    # context would include nearby lines like the <Card .../> line).
+    msgs = "\n".join(e.msg for e in e1105);
+    # No component tag is ever flagged.
+    assert "<Card>" not in msgs , f"<Card> must not be flagged:\n{msgs}";
+    # The fix-it suggestions are present (div -> View, span -> Text, etc.).
+    assert "View" in msgs , f"Expected a 'View' suggestion:\n{msgs}";
+    assert "Text" in msgs , f"Expected a 'Text' suggestion:\n{msgs}";
+}
+
+test "web_project_allows_html_intrinsic_tags" {
+    # The same fixture compiled as a plain web project (default kind) emits no
+    # E1105 — host tags are allowed there.
+    path = os.path.join(CHECKER_FIXTURES, "checker_jsx_mobui_html_forbidden.jac");
+    program = JacProgram();
+    program.compile(path, options=NO_TC);
+
+    e1105 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1105"
+    ];
+    assert len(e1105) == 0 , f"Expected no E1105 in a web project, got {len(
+        e1105
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1105);
+}
+
+test "mobui_project_allows_lowercase_component_in_scope" {
+    # An in-scope lowercase component must NOT trigger E1105 — the guard
+    # resolves it via scope lookup and recognises it as a user component.
+    # The 4 HTML host tags in the same fixture still emit E1105 as expected.
+    path = os.path.join(CHECKER_FIXTURES, "checker_jsx_mobui_html_forbidden.jac");
+    program = JacProgram();
+    program.compile(
+        path,
+        options=CompileOptions(
+            type_check=False, project_kind="mobui", project_root=CHECKER_FIXTURES
+        )
+    );
+    e1105 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1105"
+    ];
+    msgs = "\n".join(e.msg for e in e1105);
+    assert "<myCard>" not in msgs , f"<myCard> is in scope and must not be flagged:\n{msgs}";
+    assert len(e1105) == 4 , f"Expected 4 E1105 (div/span/button/img), got {len(
+        e1105
+    )}:\n{msgs}";
+}
+
+test "mobui_project_lowercase_component_no_w1050" {
+    # Gap 3: in a mobui project, an in-scope lowercase component must not
+    # produce W1050 ('Unknown intrinsic JSX element'). The type evaluator
+    # routes it via scope resolution, not the _JsxIntrinsicElements registry.
+    path = os.path.join(
+        CHECKER_FIXTURES, "checker_jsx_lowercase_imported_component.jac"
+    );
+    program = JacProgram();
+    program.compile(
+        path,
+        options=CompileOptions(
+            type_check=True, project_kind="mobui", project_root=CHECKER_FIXTURES
+        )
+    );
+    w1050 = [
+        w
+        for w in program.warnings_had
+        if w.code and w.code.code == "W1050"
+    ];
+    assert len(w1050) == 0 , f"Expected no W1050 for in-scope lowercase component, got:\n" + "\n".join(
+        w.pretty_print() for w in w1050
+    );
+}
+
+test "mobui_kind_does_not_leak_outside_project_root" {
+    # Regression: a consumer's project_kind="mobui" must not reach files
+    # outside the project root. The real failure was client_runtime.cl.jac
+    # (from jac-client) being compiled into the user's JacProgram during
+    # `jac build` and receiving E1105 for its HTML tags ("kind-leak").
+    # We simulate it by passing an explicit project_root that does NOT contain
+    # the fixture, mimicking a framework file outside the user's project.
+    import tempfile;
+    path = os.path.join(CHECKER_FIXTURES, "checker_jsx_cl_html_allowed.cl.jac");
+    with tempfile.TemporaryDirectory() as tmp_root {
+        program = JacProgram();
+        program.compile(
+            path,
+            options=CompileOptions(
+                type_check=False, project_kind="mobui", project_root=tmp_root
+            )
+        );
+        e1105 = [
+            e
+            for e in program.errors_had
+            if e.code and e.code.code == "E1105"
+        ];
+        assert len(e1105) == 0 , (
+            f"E1105 must not fire on files outside project_root (kind-leak regression), "
+            f"got {len(e1105)}:\n" + "\n---\n".join(e.pretty_print() for e in e1105)
+        );
+    }
+}
+
+test "cl_jac_files_inside_project_root_also_exempt" {
+    # Even when a .cl.jac file lives inside the project root (user's own
+    # web-client boundary file), E1105 must not fire — .cl.jac always targets
+    # the browser and raw HTML is valid there.
+    path = os.path.join(CHECKER_FIXTURES, "checker_jsx_cl_html_allowed.cl.jac");
+    fixtures_dir = os.path.dirname(path);
+    program = JacProgram();
+    program.compile(
+        path,
+        options=CompileOptions(
+            type_check=False, project_kind="mobui", project_root=fixtures_dir
+        )
+    );
+    e1105 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1105"
+    ];
+    assert len(e1105) == 0 , (
+        f"E1105 must not fire on .cl.jac files even inside project_root, "
+        f"got {len(e1105)}:\n" + "\n---\n".join(e.pretty_print() for e in e1105)
+    );
+}
+
+test "jac_toml_kind_mobui_round_trip" {
+    # Verify the jac.toml → per-path discovery → compile() code path for
+    # `[project] client_kind = "mobui"`. All other mobui-project tests set
+    # project_kind via CompileOptions directly; this one writes a real
+    # project (jac.toml + module) and relies on the guard pass discovering
+    # the kind from the module's own path -- no cwd, no config singleton.
+    import shutil;
+    import tempfile;
+    import from jaclang.project.config { JacConfig }
+
+    toml_content = '[project]\nname = "test-proj"\nclient_kind = "mobui"\n';
+
+    with tempfile.TemporaryDirectory() as tmp_dir {
+        toml_path = Path(tmp_dir) / "jac.toml";
+        toml_path.write_text(toml_content);
+        # Part 1: round-trip — JacConfig.load() must parse client_kind correctly.
+        cfg = JacConfig.load(toml_path);
+        assert cfg.project.client_kind == "mobui" , f"Expected client_kind='mobui' from jac.toml, got '{cfg.project.client_kind}'";
+        # Part 2: per-path discovery -- a module inside the project picks up
+        # "mobui" with a plain CompileOptions() (no explicit project_kind),
+        # causing JsxIntrinsicGuardPass to emit E1105.
+        fixture = os.path.join(tmp_dir, "main.jac");
+        shutil.copyfile(
+            os.path.join(CHECKER_FIXTURES, "checker_jsx_mobui_html_forbidden.jac"),
+            fixture
+        );
+        program = JacProgram();
+        program.compile(fixture, options=CompileOptions(type_check=False));
+        e1105 = [
+            e
+            for e in program.errors_had
+            if e.code and e.code.code == "E1105"
+        ];
+        assert len(e1105) == 4 , f"Expected 4 E1105 from jac.toml client_kind=mobui, got {len(
+            e1105
+        )}:\n" + "\n---\n".join(e.pretty_print() for e in e1105);
+    }
+}
+
+test "mobui_hello_example_discovers_kind_and_stays_e1105_clean" {
+    # Integration over the shipped starter example: its jac.toml declares
+    # client_kind = "mobui", per-path discovery must switch the guard on for
+    # its modules, and the example itself must stay free of raw HTML tags.
+    import from jaclang.project.client_kind { resolve_client_kind_context }
+
+    example_dir = os.path.join(JAC_ROOT, "examples", "mobui", "hello");
+    entry = os.path.join(example_dir, "main.jac");
+    assert os.path.isfile(entry) , f"mobui hello example missing at {entry}";
+
+    (kind, proj_root) = resolve_client_kind_context(entry);
+    assert kind == "mobui" , (
+        f"per-path discovery must resolve mobui for the example, got '{kind}'"
+    );
+    assert proj_root and os.path.samefile(proj_root, example_dir) , (
+        f"project root must be the example dir, got '{proj_root}'"
+    );
+
+    program = JacProgram();
+    program.compile(entry, options=CompileOptions(type_check=False));
+    e1105 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1105"
+    ];
+    assert len(e1105) == 0 , (
+        "shipped mobUI example must be E1105-clean:\n" + "\n---\n".join(
+            e.pretty_print() for e in e1105
+        )
+    );
+}
+
+test "builtin_inference_regressions" {
+    # Two regressions from the this_is_jac showcase QA (fixture documents
+    # both): `round(...)` failed E1054 everywhere because typeshed declares
+    # it against the PRIVATE protocols `_SupportsRound1/2`, which the
+    # evaluator's structural-protocol table did not know by name; and
+    # `{**c}` folded the spread dict in as a single entry VALUE, inferring
+    # dict[<Unknown>, dict[K, V]] instead of dict[K, V].
+    program = JacProgram();
+    program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_builtin_inference.jac"), type_check=True
+    );
+    pretty = "\n".join([e.pretty_print() for e in program.errors_had]);
+    assert len(program.errors_had) == 0 , "round() results and **spread dict literals must infer cleanly, "
+    f"got {len(program.errors_had)} diagnostic(s):\n{pretty}";
+}
+
+test "bare_list_flow_inference" {
+    # Issue #6943 NA-7: an empty bare `list = []` defaulted its element type
+    # (the native backend then locked in `List.i64` and a later `str.join`
+    # mismatched). The declaration now flow-infers its element type from the
+    # mutations that follow: append/insert args, extend/`+=` operands'
+    # element types, and index-store values, widened out of literal types.
+    # Only concrete scalar evidence refines: mixed scalars (or None beside a
+    # scalar) collapse to the heterogeneous `any` element (backends lower
+    # `list[any]` as the boxed layout; a union would silently lower as its
+    # first member), while `any`/Unknown/object evidence aborts the
+    # inference - a dynamic value is absence of information, not proof of
+    # heterogeneity, and native code (the OSP kernel's handle lists) relies
+    # on the bare default. Multi-target assignments pool evidence from every
+    # bound name. No evidence leaves the list bare, and an explicit
+    # `list[T]` annotation still wins over usage.
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_bare_list_flow_inference.jac"),
+        type_check=True
+    );
+    assert len(program.errors_had) == 0 , "Unexpected errors:\n" + "\n---\n".join(
+        e.pretty_print() for e in program.errors_had
+    );
+    expected = {
+        "flow_strs": "list[str]",
+        "flow_ints": "list[int]",
+        "flow_mixed": "list[Any]",
+        "flow_ext": "list[str]",
+        "flow_ins": "list[float]",
+        "flow_aug": "list[str]",
+        "flow_idx": "list[str]",
+        "flow_unann": "list[str]",
+        "flow_none": "list",
+        "flow_nonemix": "list[Any]",
+        "flow_dyn": "list",
+        "flow_poison": "list",
+        "flow_obj": "list",
+        "flow_bare": "list",
+        "flow_pinned": "list[int]",
+        "flow_multi_a": "list[str]",
+        "flow_multi_b": "list[str]",
+        "flow_rebound": "list[Any]"
+    };
+    seen: dict[str, str] = {};
+    for nm in mod.get_all_sub_nodes(uni.Name) {
+        if nm.value in expected and nm.type is not None {
+            seen[nm.value] = str(nm.type);
+        }
+    }
+    for (target, want) in expected.items() {
+        assert seen.get(target) == want , f"{target}: expected {want}, got {seen.get(
+            target
+        )}";
+    }
 }

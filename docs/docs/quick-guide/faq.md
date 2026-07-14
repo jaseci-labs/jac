@@ -30,7 +30,7 @@ Answers to common questions about Jac, organized by topic. Click a category to e
     ??? question "What's the difference between Jac, Jaclang, and Jaseci?"
         - Jac: The language
         - Jaclang: The compiler/runtime, shipped as the self-contained `jac` binary
-        - Jaseci: The broader framework and ecosystem, including plugins (byllm, jac-scale, etc.) installed via `jac install`
+        - Jaseci: The broader framework and ecosystem. All core capabilities -- `scale` for serving and deployment, byLLM for AI, the full-stack client framework, and the MCP server -- ship built into the `jac` binary; only their optional third-party dependencies are pulled per-project via `jac install`
 
     ??? question "Do I need to know graph theory to use Jaseci?"
         No. Learn OSP: [OSP Guide](https://docs.jaseci.org/tutorials/language/osp/)
@@ -100,10 +100,10 @@ Answers to common questions about Jac, organized by topic. Click a category to e
         - [Local Deployment](https://docs.jaseci.org/tutorials/production/local/): `jac start` creates an HTTP API server.
         - [Kubernetes Deployment](https://docs.jaseci.org/tutorials/production/kubernetes/): Deploy with a single command.
 
-    ??? question "Do I need Docker/Kubernetes knowledge to use jac-scale?"
-        No. jac-scale handles containerization and orchestration automatically.
+    ??? question "Do I need Docker/Kubernetes knowledge to deploy with scale?"
+        No. Scale (built into `jaclang`) handles containerization and orchestration automatically.
 
-    ??? question "What does jac-scale do automatically?"
+    ??? question "What does scale do automatically?"
         - Containerizes Jac application
         - Sets up Kubernetes deployment
         - Manages scaling and load balancing
@@ -112,7 +112,7 @@ Answers to common questions about Jac, organized by topic. Click a category to e
 ??? "Common Issues"
 
     ??? question "I installed Jac with the one-line installer but `pip show` says packages aren't installed."
-        The one-line installer uses [uv](https://docs.astral.sh/uv/) to install Jac in an isolated environment, separate from your system Python. This means `pip show` and `pip list` won't find Jac packages. Use `jac --version` instead -- it lists all installed plugins and their versions.
+        The one-line installer downloads the self-contained native `jac` binary -- it does not install anything into a Python environment, so `pip show` and `pip list` have nothing to find. Use `jac --version` to confirm the installed version.
 
     ??? question "`jac clean --all` says 'No jac.toml found'."
         `jac clean --all` (and the project-level cleanup flags it implies) needs a Jac project -- a directory with a `jac.toml`. Plain `jac clean` (no flags) only clears the local `.jac/data/` directory, but `--all`, `--cache`, and `--packages` operate on project artifacts and require the project root. If you're running standalone `.jac` scripts outside a project, delete the data directory manually: `rm -rf .jac/`. To create a project, run `jac create <name>`.
@@ -129,8 +129,8 @@ Answers to common questions about Jac, organized by topic. Click a category to e
         return {"id": jid(task), "title": task.title, "done": task.done};
         ```
 
-    ??? question "`jac create --use client` fails or asks about Bun."
-        The `--use client` template requires [Bun](https://bun.sh) for frontend bundling. If Bun isn't installed, `jac create` will offer to install it automatically. You can also install it manually: `curl -fsSL https://bun.sh/install | bash`.
+    ??? question "`jac create --use web-static` fails or asks about Bun."
+        The `--use web-static` template requires [Bun](https://bun.sh) for frontend bundling. If Bun isn't installed, `jac create` will offer to install it automatically. You can also install it manually: `curl -fsSL https://bun.sh/install | bash`.
 
 ??? "Debugging & Support"
 

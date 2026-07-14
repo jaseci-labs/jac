@@ -1,404 +1,92 @@
 # Reference
 
-This section is the complete technical reference for Jac. Use the sidebar to navigate to the topic you need, or use the summaries below to find the right starting point.
+The complete technical reference for Jac -- pure lookup, organized by subject. If you're new, start with [**Build Anything**](../quick-guide/project-kinds.md) and the guided [**"I like to build…"** tracks](../build/cli-and-native.md), or work through the [**Learn**](../tutorials/language/basics.md) tutorials. Come here when you need the exact syntax, option, or API.
+
+## How to use this reference
+
+- **Looking up language syntax?** → [Language](#language) below.
+- **Looking up a `jac` command?** → [CLI Commands](cli/index.md).
+- **Configuring a project?** → [Configuration (`jac.toml`)](config/index.md).
+- **Wiring AI, deployment, or the full-stack client?** → [Capabilities and Plugins](#capabilities-and-plugins).
 
 ---
 
-## Language Specification
+## Language
 
-The language spec covers all core Jac constructs:
+The core language -- syntax, types, objects, graphs, concurrency, and native compilation.
 
-- **[Foundation](language/foundation.md)** - Syntax, types, literals, variables, scoping, operators, control flow, pattern matching
-- **[Functions & Objects](language/functions-objects.md)** - Function declarations, `can` vs `def`, OOP, inheritance, enums, access modifiers, impl blocks
-- **[Object-Spatial Programming](language/osp.md)** - Nodes, edges, walkers, `visit`, `report`, `disengage`, graph construction, object spatial queries, common patterns
-- **[Concurrency](language/concurrency.md)** - Async/await, `flow`/`wait` concurrent expressions, parallel operations
-- **[Comprehensions & Filters](language/advanced.md)** - Filter/assign comprehensions, typed filters
+- **[Foundation](language/foundation.md)** -- syntax, types, literals, variables, scoping, operators, control flow, pattern matching
+- **[Primitives & Codespace Semantics](language/primitives.md)** -- values, the `sv`/`cl`/`na` codespaces
+- **[Functions & Objects](language/functions-objects.md)** -- `can` vs `def`, OOP, inheritance, enums, impl blocks
+- **[Access Modifiers](language/access-modifiers.md)** -- `:pub` / `:protect` / `:priv` across member, module, and service contexts
+- **[Object-Spatial Programming](language/osp.md)** -- nodes, edges, walkers, `visit`/`report`/`disengage`, graph queries
+- **[Concurrency](language/concurrency.md)** -- async/await, `flow`/`wait`, parallel operations
+- **[Comprehensions & Filters](language/advanced.md)** -- filter/assign comprehensions, typed filters
+- **[Walker Patterns](language/walker-responses.md)** -- the `.reports` array, response patterns, nested spawning
+- **[Appendices](language/appendices.md)** -- keyword & operator reference, grammar, gotchas, migration
+- **[Syntax Cheatsheet](../quick-guide/syntax-cheatsheet.md)** -- one-page lookup
+- **[Native Compilation](language/native-pathway.md)** -- compiling to native binaries and C-ABI shared libraries
 
-## AI Integration
+## Capabilities and Plugins
 
-- **[byLLM Reference](plugins/byllm.md)** - `by llm()`, model configuration, tool calling, streaming, multimodal input, agentic patterns
+AI, deployment, and the full-stack frameworks. byLLM and Scale are **built into the `jac` binary** (capability-gated); jac-client and jac-desktop are first-party plugins that ship with core.
 
-## Full-Stack Development
-
-- **[jac-client Reference](plugins/jac-client.md)**: Codespaces, components, state, routing, authentication, npm packages, web/PWA/mobile targets
-- **[jac-desktop Reference](plugins/jac-desktop.md)**: Native desktop (PyTauri), sidecar bundling, `jac desktop plugin`, `[plugins.desktop]` config
-
-## Deployment & Scaling
-
-- **[jac-scale Reference](plugins/jac-scale.md)** - Production deployment, API generation, Kubernetes, monitoring
-
-## Tools & Config
-
-- **[CLI Commands](cli/index.md)** - Every `jac` subcommand with options and examples
-- **[Configuration](config/index.md)** - Project settings via `jac.toml`
-- **[Testing](testing.md)** - Test syntax, assertions, and CLI test commands
+- **[byLLM](plugins/byllm.md)** -- `by llm()`, model config, tool calling, streaming, multimodal, agentic patterns
+- **Scale** -- production serving, storage, and Kubernetes (built into `jaclang` core):
+  - [Overview](plugins/jac-scale.md) · [HTTP API & Walkers](plugins/jac-scale-http.md) · [Data & Storage](plugins/jac-scale-persistence.md) · [Kubernetes & Operations](plugins/jac-scale-kubernetes.md)
+- **[jac-client](plugins/jac-client.md)** -- codespaces, components, state, routing, auth, npm packages, web/PWA/mobile targets
+- **[jac-desktop](plugins/jac-desktop.md)** -- native desktop window, sidecar bundling, `[desktop]` config
 
 ## Python Integration
 
-- **[Interoperability](language/python-integration.md)** - Importing and using Python packages in Jac, five adoption patterns
-- **[Library Mode](language/library-mode.md)** - Using Jac features from pure Python code
+- **[Interoperability](language/python-integration.md)** -- importing and using Python packages in Jac, the adoption patterns
+- **[Library Mode](language/library-mode.md)** -- using Jac from pure Python (`jaclang.lib`, `jac2py`)
+- **[Import Anything](../quick-guide/import-anything.md)** -- importing from PyPI, npm, and C across the codespaces
 
-## Quick Reference
+## Developer Workflow
 
-- **[Walker Patterns](language/walker-responses.md)** - The `.reports` array, response patterns, nested walker spawning
-- **[Appendices](language/appendices.md)** - Complete keyword reference, operator quick reference, grammar, gotchas, migration guide
+- **[CLI Commands](cli/index.md)** -- every `jac` subcommand with options and examples
+- **[MCP Server](mcp.md)** -- expose your project to AI coding assistants via `jac mcp`
+- **[Agent Skills & MCP](../quick-guide/agent-skills-and-mcp.md)** -- `jac guide`, exportable skills, and when to use each
+- **[Plugin Authoring](plugin-authoring.md)** -- write your own CLI/runtime/config plugin
+- **[Configuration](config/index.md)** -- `jac.toml`, profiles, environments
+- **[Publishing Packages](publishing.md)** -- building wheels and npm tarballs
+- **[Persistence & Schema Migration](persistence.md)** -- the `root` graph, schema drift, migrations
+- **[Errors & Warnings](diagnostics.md)** -- diagnostic codes
+- **[Code Organization](code-organization.md)** · **[Testing](testing.md)**
 
 ---
 
-## Quick Start
+## Quick start
 
 ```bash
 # 1. Install the jac binary
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 
-# 2. Scaffold a new project
-jac create myapp --use client
+# 2. Scaffold a new project (pick a kind -- see Build Anything)
+jac create myapp --kind web-app
 
-# 3. Run
+# 3. Run it
 jac start
 ```
 
-!!! note
-    `main.jac` is the default entry point. If your entry point has a different name (e.g., `app.jac`), pass it explicitly: `jac start app.jac`.
+`main.jac` is the default entry point; pass a different name explicitly (e.g. `jac start app.jac`). See [Installation](../quick-guide/install.md) for details.
 
 ---
 
-## CLI Quick Reference
+## Using Jac with AI coding assistants
 
-The `jac` command is your primary interface to the Jac toolchain. For the full reference, see [CLI Commands](cli/index.md).
-
-### Execution Commands
-
-| Command | Description |
-|---------|-------------|
-| `jac run <file>` | Execute Jac program |
-| `jac enter <file> <entry>` | Run named entry point |
-| `jac start [file]` | Start web server |
-| `jac debug <file>` | Run in debug mode |
-
-### Analysis Commands
-
-| Command | Description |
-|---------|-------------|
-| `jac check` | Type check code |
-| `jac format` | Format source files |
-| `jac test` | Run test suite |
-
-### Transform Commands
-
-| Command | Description |
-|---------|-------------|
-| `jac py2jac <file>` | Convert Python to Jac |
-| `jac jac2py <file>` | Convert Jac to Python |
-| `jac jac2js <file>` | Compile to JavaScript |
-
-### Project Commands
-
-| Command | Description |
-|---------|-------------|
-| `jac create` | Create new project |
-| `jac install` | Install all dependencies (pip, git, plugins) |
-| `jac add <pkg>` | Add dependency |
-| `jac remove <pkg>` | Remove dependency |
-| `jac update [pkg]` | Update dependencies to latest compatible versions |
-| `jac clean` | Clean build artifacts |
-| `jac purge` | Purge global bytecode cache |
-| `jac script <name>` | Run project script |
-
-### Tool Commands
-
-| Command | Description |
-|---------|-------------|
-| `jac dot <file>` | Generate graph visualization |
-| `jac lsp` | Start language server |
-| `jac config` | Manage configuration |
-| `jac plugins` | Manage plugins |
-
----
-
-## Plugin System
-
-### Available Plugins
-
-| Plugin | Package | Description |
-|--------|---------|-------------|
-| byllm | `jac install byllm` | LLM integration |
-| jac-scale | `jac install jac-scale` | Production deployment |
-
-(Full-stack web and native-desktop app building -- formerly the `jac-client` / `jac-desktop` plugins -- now ship with `jaclang` core; no separate install.)
-
-### Managing Plugins
-
-```bash
-# List installed plugins
-jac plugins list
-
-# Show currently disabled plugins
-jac plugins disabled
-
-# Disable a plugin (writes to jac.toml)
-jac plugins disable byllm
-
-# Re-enable a previously disabled plugin (removes from disabled list)
-jac plugins enable byllm
-
-# Plugin info
-jac plugins info byllm
-```
-
-`jac plugins enable` and `jac plugins disable` toggle the `disabled` list in
-`[plugins]`; calling `enable` on a plugin that is not currently disabled is
-a no-op.
-
-### Plugin Configuration
-
-In `jac.toml`:
-
-```toml
-[plugins.byllm.model]
-default_model = "gpt-4o"
-
-[plugins.byllm.call_params]
-temperature = 0.7
-
-[plugins.client.npm.scoped_registries]
-"@mycompany" = "https://npm.pkg.github.com"
-
-[plugins.scale.server]
-port = 8000
-host = "0.0.0.0"
-```
-
----
-
-## Project Configuration
-
-For the full reference, see [Configuration](config/index.md).
-
-### jac.toml Structure
-
-```toml
-[project]
-name = "my-app"
-version = "1.0.0"
-description = "My Jac application"
-entry-point = "main.jac"
-
-[dependencies]
-numpy = "^1.24.0"
-pandas = "^2.0.0"
-
-[dependencies.dev]
-pytest = "^7.0.0"
-
-[dependencies.npm]
-react = "^18.0.0"
-"@mui/material" = "^5.0.0"
-
-[plugins.byllm.model]
-default_model = "gpt-4o"
-
-# Private npm registries (generates .npmrc)
-[plugins.client.npm.scoped_registries]
-"@mycompany" = "https://npm.pkg.github.com"
-
-[plugins.client.npm.auth."//npm.pkg.github.com/"]
-_authToken = "${NODE_AUTH_TOKEN}"
-
-[scripts]
-dev = "jac start --dev"
-test = "jac test"
-build = "jac build"
-
-[environments.production]
-OPENAI_API_KEY = "${OPENAI_API_KEY}"
-```
-
-### Running Scripts
-
-```bash
-jac script dev
-jac script test
-jac script build
-```
-
-### Configuration Profiles
-
-Jac supports multi-file configuration with profile-based overrides.
-
-**File loading order** (lowest to highest priority):
-
-| File | When loaded | Git tracked? |
-|------|-------------|--------------|
-| `jac.toml` | Always | Yes |
-| `jac.<profile>.toml` | When `--profile` or `JAC_PROFILE` is set | Yes |
-| `[environments.<profile>]` in `jac.toml` | When profile is set | Yes |
-| `jac.local.toml` | Always if present | No (gitignored) |
-
-**Using profiles:**
-
-```bash
-# Via --profile flag
-jac run --profile prod app.jac
-jac start --profile staging
-
-# Via JAC_PROFILE environment variable
-JAC_PROFILE=ci jac test
-
-# Via jac.toml default
-# [environment]
-# default_profile = "dev"
-```
-
-**Example profile files:**
-
-=== "jac.prod.toml"
-    ```toml
-    [serve]
-    port = 80
-
-    [plugins.byllm.model]
-    default_model = "gpt-4o"
-    ```
-
-=== "jac.local.toml (gitignored, developer-specific)"
-    ```toml
-    [serve]
-    port = 9000
-
-    [run]
-    cache = false
-    ```
-
-> **Note:** `JAC_ENV` is deprecated. Use `JAC_PROFILE` instead.
-
-### Environment Variables
-
-**Server-side:**
-
-| Variable | Description |
-|----------|-------------|
-| `OPENAI_API_KEY` | OpenAI API key |
-| `ANTHROPIC_API_KEY` | Anthropic API key |
-| `REDIS_URL` | Redis connection URL |
-| `MONGODB_URI` | MongoDB connection URI |
-| `JWT_SECRET` | JWT signing secret |
-
-**Client-side (Vite):**
-
-Variables prefixed with `VITE_` are exposed to client. Define them in a `.env` file:
-
-```toml
-# .env
-VITE_API_URL=https://api.example.com
-```
-
-Then access in client code:
-
-```jac
-cl {
-    def:pub app() -> JsxElement {
-        api_url = import.meta.env.VITE_API_URL;
-        return <div>{api_url}</div>;
-    }
-}
-```
-
----
-
-## JavaScript/npm Interoperability
-
-### npm Packages
-
-```jac
-cl {
-    import from react { useState, useEffect, useCallback }
-    import from "@tanstack/react-query" { useQuery, useMutation }
-    import from lodash { debounce, throttle }
-    import from axios { default as axios }
-}
-```
-
-### TypeScript Configuration
-
-TypeScript is supported through the jac-client Vite toolchain for client-side code. Override the generated `tsconfig.json` from `jac.toml`:
-
-```toml
-[plugins.client.ts]
-compilerOptions = { target = "ES2022", strict = true }
-include = ["src/**/*"]
-exclude = ["node_modules"]
-```
-
-> **Note:** Jac does not parse TypeScript files directly. TypeScript support is provided through Vite's built-in TypeScript handling in client-side (`cl {}`) code.
-
-### Browser APIs
-
-```jac
-cl {
-    def:pub app() -> JsxElement {
-        # Window
-        width = window.innerWidth;
-
-        # LocalStorage
-        window.localStorage.setItem("key", "value");
-        value = window.localStorage.getItem("key");
-
-        # Document
-        element = document.getElementById("my-id");
-
-        return <div>{width}</div>;
-    }
-
-    # Fetch
-    async def load_data() -> None {
-        response = await fetch("/api/data");
-        data = await response.json();
-    }
-}
-```
-
----
-
-## IDE & AI Tool Integration
-
-Jac is a new language, so AI coding assistants may hallucinate syntax from outdated or nonexistent versions. The Jaseci team maintains an official condensed language reference designed for LLM context windows: [jaseci-llmdocs](https://github.com/jaseci-labs/jaseci-llmdocs).
-
-### Setup
-
-Grab the latest `candidate.txt` and add it to your AI tool's persistent context:
+Jac is a young language, so AI assistants may hallucinate outdated syntax. The Jaseci team maintains an official condensed reference sized for LLM context windows: [jaseci-llmdocs](https://github.com/jaseci-labs/jaseci-llmdocs). Add it to your assistant's persistent context:
 
 ```bash
 curl -LO https://github.com/jaseci-labs/jaseci-llmdocs/releases/latest/download/candidate.txt
 ```
 
-### Context File Locations
+| Tool | Context file | Quick setup |
+|------|-------------|-------------|
+| Claude Code | `CLAUDE.md` (or `~/.claude/CLAUDE.md`) | `cat candidate.txt >> CLAUDE.md` |
+| Gemini CLI / Antigravity | `GEMINI.md` | `cat candidate.txt >> GEMINI.md` |
+| Cursor | `.cursor/rules/jac-reference.mdc` | `mkdir -p .cursor/rules && cp candidate.txt .cursor/rules/jac-reference.mdc` |
+| OpenAI Codex | `AGENTS.md` (or `~/.codex/AGENTS.md`) | `cat candidate.txt >> AGENTS.md` |
 
-| Tool | Context File |
-|------|-------------|
-| Claude Code | `CLAUDE.md` in project root (or `~/.claude/CLAUDE.md` for global) |
-| Gemini CLI | `GEMINI.md` in project root (or `~/.gemini/GEMINI.md` for global) |
-| Cursor | `.cursor/rules/jac-reference.mdc` (or Settings > Rules) |
-| Antigravity | `GEMINI.md` in project root (or `.antigravity/rules.md`) |
-| OpenAI Codex | `AGENTS.md` in project root (or `~/.codex/AGENTS.md` for global) |
-
-### Quick Setup Commands
-
-```bash
-# Claude Code
-cat candidate.txt >> CLAUDE.md
-
-# Gemini CLI
-cat candidate.txt >> GEMINI.md
-
-# Cursor
-mkdir -p .cursor/rules && cp candidate.txt .cursor/rules/jac-reference.mdc
-
-# Antigravity
-cat candidate.txt >> GEMINI.md
-
-# OpenAI Codex
-cat candidate.txt >> AGENTS.md
-```
-
-When you update Jac, pull a fresh copy from the releases page to stay current.
+For a live, always-current option, point your assistant at the built-in [MCP server](mcp.md) (`jac mcp`) instead. Pull a fresh `candidate.txt` when you upgrade Jac.

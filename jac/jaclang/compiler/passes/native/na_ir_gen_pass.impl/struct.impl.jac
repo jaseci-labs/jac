@@ -1,28 +1,9 @@
-"""struct module codegen (#6404): the sv-congruent way to reinterpret bytes ↔
-scalars.
-
-The format string is a compile-time literal, so pack / unpack / calcsize are
-fully resolved here — no native-only decode primitives. Bytes are assembled /
-disassembled one byte at a time honoring the declared endianness, so results
-are host-independent and bit-identical to CPython's struct.
-
-Supported byte-order prefixes:
-  '<' little · '>' / '!' big (network) · '=' / '@' native (little on the JIT
-  host; no alignment padding is inserted — the standard-size interpretation).
-Supported codes (with optional repeat counts, e.g. "2I"):
-  x (pad) · b/B · h/H · i/I · l/L · q/Q · n/N · f · d
-unpack returns a tuple of i64 (integer codes) / f64 (float codes); pack returns
-a length-aware bytes value; calcsize returns the byte width.
-"""
-
-"""Lower struct.pack / struct.unpack / struct.calcsize (#6404)."""
 impl NaIRGenPass._emit_struct_call(name: str, nd: uni.FuncCall) -> (ir.Value | None) {
     params = nd.params or [];
     if not params {
         return None;
     }
-    # The format must be a compile-time string literal (the whole point is that
-    # the layout is resolved in codegen).
+
     _fnode = params[0];
     if isinstance(_fnode, uni.MultiString) and len(_fnode.strings) == 1 {
         _fnode = _fnode.strings[0];
@@ -36,11 +17,11 @@ impl NaIRGenPass._emit_struct_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
     }
     if fmt is None {
         self.emit(
-            E5090, node_override=nd, kind="struct format", name="non-literal format"
+            E5092, node_override=nd, kind="struct format", name="non-literal format"
         );
         return None;
     }
-    # Parse: byte order + flat field list [(kind, size, signed)].
+
     little = True;
     fmt_body = fmt;
     if len(fmt) > 0 and fmt[0] in "<>=!@" {
@@ -94,16 +75,14 @@ impl NaIRGenPass._emit_struct_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
                 fields.append(("float", _sz, False));
                 total = total + _sz;
             }
-        } elif ch == " " {
-            pass;
-        } else {
+        } elif ch == " " { } else {
             parse_ok = False;
             break;
         }
         i = i + 1;
     }
     if not parse_ok {
-        self.emit(E5090, node_override=nd, kind="struct format code", name=fmt);
+        self.emit(E5092, node_override=nd, kind="struct format code", name=fmt);
         return None;
     }
     i64 = ir.IntType(64);
@@ -119,7 +98,6 @@ impl NaIRGenPass._emit_struct_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
     return None;
 }
 
-"""Write the value args into a fresh bytes value per the parsed fields."""
 impl NaIRGenPass._emit_struct_pack(
     nd: uni.FuncCall, params: list, fields: list, total: int, little: bool
 ) -> (ir.Value | None) {
@@ -129,10 +107,7 @@ impl NaIRGenPass._emit_struct_pack(
     i64 = ir.IntType(64);
     f32 = ir.FloatType();
     f64 = ir.DoubleType();
-    # Value args follow the format. The count is statically known, so a
-    # mismatch with the non-pad field count is a compile-time error (CPython
-    # raises struct.error at runtime; failing fast is strictly better and
-    # avoids emitting a bytes value with uninitialised tail bytes).
+
     _expected = len(
         [
             f
@@ -142,7 +117,7 @@ impl NaIRGenPass._emit_struct_pack(
     );
     if len(params) - 1 != _expected {
         self.emit(
-            E5090,
+            E5092,
             node_override=nd,
             kind="struct.pack argument count",
             name=f"expected {_expected}, got {len(params) - 1}"
@@ -172,7 +147,7 @@ impl NaIRGenPass._emit_struct_pack(
         }
         raw = arg_vals[ai];
         ai = ai + 1;
-        # Reduce every field to its raw integer bit pattern, then spill bytes.
+
         bits: ir.Value = ir.Constant(i64, 0);
         if kind == "float" and sz == 4 {
             fv = self._coerce_type(raw, f64);
@@ -197,7 +172,6 @@ impl NaIRGenPass._emit_struct_pack(
     return bv;
 }
 
-"""Read the parsed fields out of a bytes buffer into a fresh tuple."""
 impl NaIRGenPass._emit_struct_unpack(
     nd: uni.FuncCall, params: list, fields: list, total: int, little: bool
 ) -> (ir.Value | None) {
@@ -213,16 +187,14 @@ impl NaIRGenPass._emit_struct_unpack(
     data_val = self._codegen_expr(params[1]);
     if data_val is None or not self._is_bytes_value(data_val) {
         self.emit(
-            E5090,
+            E5092,
             node_override=nd,
             kind="struct.unpack buffer",
             name="non-bytes buffer"
         );
         return None;
     }
-    # Bounds: the buffer must hold at least `total` bytes, else the field loads
-    # below would read past the rc_alloc'd block. CPython raises struct.error;
-    # do the same instead of an out-of-bounds read.
+
     buf_len = self._bytes_len_val(data_val);
     too_short = self.builder.icmp_signed(
         "<", buf_len, ir.Constant(ir.IntType(64), total), name="up.short"
@@ -231,7 +203,7 @@ impl NaIRGenPass._emit_struct_unpack(
         too_short, "struct.error", f"unpack requires a buffer of {total} bytes"
     );
     data = self._bytes_data_ptr(data_val);
-    # Assemble each field; collect (llvm value, llvm type).
+
     values: list = [];
     elem_types: list = [];
     off = 0;
@@ -271,7 +243,7 @@ impl NaIRGenPass._emit_struct_unpack(
             elem_types.append(i64);
         }
     }
-    # Build the result tuple (always a tuple, even for one value — Python parity).
+
     tuple_type = ir.LiteralStructType(elem_types);
     null_ptr = ir.Constant(tuple_type.as_pointer(), None);
     size_gep = b.gep(null_ptr, [ir.Constant(i32, 1)], name="up.sizeof.gep");

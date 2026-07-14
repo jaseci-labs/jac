@@ -34,14 +34,14 @@ byLLM supports image inputs through the `Image` type. Images can be provided as 
 !!! tip "Model for vision tasks"
     Vision tasks require a vision-capable model like `gpt-4o`. Set it in your `jac.toml`:
     ```toml
-    [plugins.byllm.model]
+    [byllm.model]
     default_model = "gpt-4o"
     ```
 
 ### Basic Example
 
 ```jac
-import from byllm.lib { Image }
+import from jaclang.byllm.lib { Image }
 
 """Describe what you see in this image."""
 def describe_image(img: Image) -> str by llm();
@@ -58,7 +58,7 @@ with entry {
 Combine image input with structured outputs for powerful data extraction:
 
 ```jac
-import from byllm.lib { Image }
+import from jaclang.byllm.lib { Image }
 
 enum Personality {
     INTROVERT,
@@ -116,7 +116,7 @@ The `Image` type accepts multiple input formats:
 ### In-Memory Usage
 
 ```jac
-import from byllm.lib { Image }
+import from jaclang.byllm.lib { Image }
 import io;
 import from PIL { Image as PILImage }
 
@@ -151,7 +151,7 @@ byLLM supports video inputs through the `Video` type. Videos are processed by ex
 ### Basic Example
 
 ```jac
-import from byllm.lib { Video }
+import from jaclang.byllm.lib { Video }
 
 """Describe what happens in this video."""
 def explain_video(video: Video) -> str by llm();
@@ -182,7 +182,7 @@ creating a peaceful and cheerful atmosphere.
 Lower `fps` values extract fewer frames, reducing token usage. Higher values provide more temporal detail.
 
 ```jac
-import from byllm.lib { Video }
+import from jaclang.byllm.lib { Video }
 
 with entry {
     # Extract 1 frame per second (good for most cases)
@@ -200,7 +200,7 @@ with entry {
 ### Receipt Analyzer
 
 ```jac
-import from byllm.lib { Image }
+import from jaclang.byllm.lib { Image }
 
 obj LineItem {
     has description: str;
@@ -235,7 +235,7 @@ with entry {
 ### Math Problem Solver
 
 ```jac
-import from byllm.lib { Image }
+import from jaclang.byllm.lib { Image }
 
 obj MathSolution {
     has problem: str;
@@ -264,7 +264,7 @@ with entry {
 ### Video Content Analysis
 
 ```jac
-import from byllm.lib { Video }
+import from jaclang.byllm.lib { Video }
 
 obj VideoAnalysis {
     has summary: str;
@@ -296,7 +296,7 @@ with entry {
 Multimodal inputs work with tool calling:
 
 ```jac
-import from byllm.lib { Image }
+import from jaclang.byllm.lib { Image }
 
 """Search for products matching the description."""
 def search_products(query: str) -> list[str] {

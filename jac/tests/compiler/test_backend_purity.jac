@@ -42,18 +42,24 @@ glob FORBIDDEN: dict[str, str] = {
      # at sites where the declaration IS the fact.
      SANCTIONED: dict[tuple, tuple] = {
          ("ecmascript/impl/esast_gen_pass.impl.jac", "symbol_utils"): (
-             2,
-             "classify_call fallback for call nodes synthesized AFTER "
-             "checking (no stamp can exist), and "
+             3,
              "collect_field_names/symbol_owner_archetype - symbol-FACT "
-             "readers over an already-resolved walker symbol"
+             "readers over an already-resolved walker symbol; and "
+             "ability_of_symbol, the shared central helper (deduped from a "
+             "former local _ability_from_symbol) used to resolve a SOURCE "
+             "module's exported ability at sv-import client-stub generation. "
+             "The former classify_call fallback is deleted (#7418): "
+             "call_kind is stamped authoritatively by the required "
+             "inference schedule"
          ),
          ("ecmascript/impl/esast_gen_pass.impl.jac", ".lookup("): (
              2,
-             "cross-module import-surface reads: sv-import client stub "
-             "generation resolves the SOURCE module's exported ability; "
-             "spawn-by-name searches the main module - no fact on the "
-             "local tree exists for either"
+             "declaration-surface reads: (1) sv-import client stub "
+             "generation resolves the SOURCE module's exported ability - "
+             "no fact on the local tree exists; (2) component PascalCase "
+             "rename collision guard checks whether the capitalized name "
+             "is already declared in the module - the declared NAME is "
+             "the consumed fact, not a resolved type"
          ),
          ("ecmascript/impl/esast_gen_pass.impl.jac", "type_tag.tag"): (
              7,
@@ -63,7 +69,12 @@ glob FORBIDDEN: dict[str, str] = {
          ),
          ("native/na_ir_gen_pass.impl/calls.impl.jac", "symbol_utils"): (
              1,
-             "classify_call fallback for call nodes synthesized after " "checking"
+             "classify_call as the shadowing-aware builtin test for the "
+             "`type(None)` isinstance argument form (#6957) - consuming the "
+             "central classification instead of re-implementing name "
+             "resolution. The former classify_call fallback is deleted "
+             "(#7418): call_kind is stamped authoritatively by the required "
+             "inference schedule"
          ),
          ("native/na_ir_gen_pass.impl/objects.impl.jac", "symbol_utils"): (
              1,
@@ -76,7 +87,8 @@ glob FORBIDDEN: dict[str, str] = {
          ("native/na_ir_gen_pass.impl/func.impl.jac", "type_tag.tag"): (
              4,
              "scalar LLVM materialization from declared clib annotations "
-             "at the declaration site - the backend's lowering role"
+             "at the declaration site - the backend's lowering role "
+             "(sysv sig planning + fixed-param lowering, #6707, #6708)"
          ),
          ("native/na_ir_gen_pass.impl/objects.impl.jac", "type_tag.tag"): (
              1,

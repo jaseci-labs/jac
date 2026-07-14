@@ -1,4 +1,3 @@
-"""Return the effective type of root."""
 impl TypeEvaluator._get_type_of_root(node_: uni.SpecialVarRef) -> TypeBase {
     if self.prefetch and self.prefetch.root_class {
         node_.sym = self.prefetch.root_class.get_class_symbol();
@@ -8,11 +7,10 @@ impl TypeEvaluator._get_type_of_root(node_: uni.SpecialVarRef) -> TypeBase {
     return types.UnknownType();
 }
 
-"""Return the effective type of self."""
 impl TypeEvaluator._get_type_of_self(node_: uni.SpecialVarRef) -> TypeBase {
     if method := self._get_enclosing_method(node_) {
         cls = method.method_owner;
-        # self inside class method → instance of that class
+
         if isinstance(cls, uni.Archetype) {
             node_.sym = type_utils.lookup_symtab(
                 method, node_.value, self.builtins_module
@@ -20,7 +18,7 @@ impl TypeEvaluator._get_type_of_self(node_: uni.SpecialVarRef) -> TypeBase {
             node_.type = self.get_type_of_class(cls).clone_as_instance();
             return node_.type;
         }
-        # self inside enum method → instance of that enum
+
         if isinstance(cls, uni.Enum) {
             node_.sym = type_utils.lookup_symtab(
                 method, node_.value, self.builtins_module
@@ -32,13 +30,12 @@ impl TypeEvaluator._get_type_of_self(node_: uni.SpecialVarRef) -> TypeBase {
     return types.UnknownType();
 }
 
-"""Return the effective type of super (first parent class in MRO)."""
 impl TypeEvaluator._get_type_of_super(node_: uni.SpecialVarRef) -> TypeBase {
     if method := self._get_enclosing_method(node_) {
         cls = method.method_owner;
         if isinstance(cls, uni.Archetype) {
             current_class_type = self.get_type_of_class(cls);
-            # MRO[0] is current class, MRO[1] is first parent
+
             if len(current_class_type.shared.mro) > 1 {
                 parent_class_type = current_class_type.shared.mro[1];
                 node_.sym = type_utils.lookup_symtab(
@@ -52,23 +49,13 @@ impl TypeEvaluator._get_type_of_super(node_: uni.SpecialVarRef) -> TypeBase {
     return types.UnknownType();
 }
 
-"""Type an LHS Name receives from its enclosing assignment, or None.
-
-Flat `x = e` returns the type of `e`. Destructure `(x, _) = e` (and
-nested) descends the RHS tuple's `type_args` by positional path.
-
-None is returned — callers keep the declared type — for the declaration
-site itself (its cached `.type` doubles as the declared-type lookup for
-`_get_type_of_symbol`), augmented assignments, member assignments,
-starred slots, and RHS shapes that aren't a concrete positional tuple.
-"""
 impl TypeEvaluator._get_type_of_lhs_assignment(expr: uni.Name) -> TypeBase | None {
     import from jaclang.compiler.symbol_utils { find_destructure_index_path }
-    # Declaration site: leave the cached declared type intact.
+
     if expr.sym is not None and expr.sym.decl is expr {
         return None;
     }
-    # Peel destructure / paren wrappers to find the enclosing Assignment.
+
     parent = expr.parent;
     lhs_root: uni.UniNode = expr;
     while isinstance(parent, (uni.TupleVal, uni.ListVal, uni.AtomUnit)) {
@@ -79,11 +66,11 @@ impl TypeEvaluator._get_type_of_lhs_assignment(expr: uni.Name) -> TypeBase | Non
         return None;
     }
     assignment = parent;
-    # `x += e` evaluates to `x <op> e` — defer to the declared type.
+
     if assignment.aug_op is not None {
         return None;
     }
-    # Identity check — a TupleVal can appear on both sides, `in` uses equality.
+
     target_hit = False;
     for t in assignment.target {
         if t is lhs_root {
@@ -94,11 +81,11 @@ impl TypeEvaluator._get_type_of_lhs_assignment(expr: uni.Name) -> TypeBase | Non
     if not target_hit {
         return None;
     }
-    # Flat: the Name is the target.
+
     if lhs_root is expr {
         return self.get_type_of_expression(assignment.value);
     }
-    # Destructure: descend `type_args` by positional path.
+
     path = find_destructure_index_path(lhs_root, expr.value);
     if path is None or len(path) == 0 {
         return None;
@@ -108,13 +95,6 @@ impl TypeEvaluator._get_type_of_lhs_assignment(expr: uni.Name) -> TypeBase | Non
     );
 }
 
-"""Extract the element type at `idx` from a concrete tuple-like class.
-
-Handles regular `tuple[T1, T2, ...]` via `private.type_args` and
-NamedTuple via `is_namedtuple()` + `get_has_vars()`. Returns the
-element as an instance, or None when `tuple_type` isn't a concrete
-tuple with a valid slot at `idx`.
-"""
 impl TypeEvaluator._extract_tuple_element_type(
     tuple_type: TypeBase, idx: int
 ) -> TypeBase | None {
@@ -141,9 +121,54 @@ impl TypeEvaluator._extract_tuple_element_type(
     return None;
 }
 
-"""Element type yielded by iterating `iterable_type` (`__iter__` then
-`__next__`, falling back to the iterator's sole type arg). None when not
-iterable."""
+impl TypeEvaluator._tuple_has_variadic_arg(cls: types.ClassType) -> bool {
+    for ta in cls.private.type_args or [] {
+        if isinstance(ta, types.UnknownType) {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl TypeEvaluator._tuple_literal_index_type(
+    base_type: TypeBase, subscript_arg: uni.Expr
+) -> TypeBase | None {
+    if not isinstance(base_type, types.ClassType)
+    or not base_type.is_class_instance() {
+        return None;
+    }
+    cls: types.ClassType = base_type;
+    if not (
+        cls.is_builtin("tuple")
+        and cls.private.type_args
+        and not self._tuple_has_variadic_arg(cls)
+    ) {
+        return None;
+    }
+
+    idx_val: int | None = None;
+    if isinstance(subscript_arg, uni.Int) {
+        idx_val = subscript_arg.lit_value;
+    } elif (
+        isinstance(subscript_arg, uni.UnaryExpr)
+        and isinstance(subscript_arg.op, uni.Token)
+        and subscript_arg.op.name == Tok.MINUS
+        and isinstance(subscript_arg.operand, uni.Int)
+    ) {
+        idx_val = -subscript_arg.operand.lit_value;
+    }
+    if idx_val is None {
+        return None;
+    }
+
+    length = len(cls.private.type_args);
+    real_idx = idx_val if idx_val >= 0 else length + idx_val;
+    if real_idx < 0 or real_idx >= length {
+        return None;
+    }
+    return self._extract_tuple_element_type(cls, real_idx);
+}
+
 impl TypeEvaluator._get_iterable_element_type(
     iterable_type: TypeBase, node_for_error: uni.Expr | None = None
 ) -> TypeBase | None {
@@ -163,7 +188,7 @@ impl TypeEvaluator._get_iterable_element_type(
     and iter_type.private.type_args
     and len(iter_type.private.type_args) == 1 {
         elem_type = iter_type.private.type_args[0];
-        # Specialize an unbound element TypeVar from the source's type args.
+
         if isinstance(elem_type, types.TypeVarType)
         and isinstance(iterable_type, types.ClassType)
         and iterable_type.private.type_args {
@@ -179,17 +204,6 @@ impl TypeEvaluator._get_iterable_element_type(
     return None;
 }
 
-"""Native (#6403 phase 2) iter()/next() result type, or None to fall through.
-
-Structural binding of `list[int]` against `Iterable[_T]` does not bind the
-element TypeVar in the native checker, so the element type of a first-class
-iterator is resolved through the same `__iter__`/`__next__` machinery the
-for-loop uses (`_get_iterable_element_type`):
-  - `iter(x)`  -> native `Iterator[elem(x)]`  (lowered to a boxed JacIter)
-  - `next(it)` -> `elem(it)`  (it: Iterator[T] iterates to T nominally)
-Only the native ambient `iter`/`next` builtins are claimed; a user-defined
-shadow of either name resolves normally.
-"""
 impl TypeEvaluator._native_iter_next_result(expr: uni.FuncCall) -> TypeBase | None {
     if not (
         isinstance(expr.target, uni.Name)
@@ -203,10 +217,7 @@ impl TypeEvaluator._native_iter_next_result(expr: uni.FuncCall) -> TypeBase | No
         return None;
     }
     arg = expr.params[0];
-    # `iter`/`next` are positional-only (the `na_builtins.pyi` stubs name their
-    # params `__o`/`__i`), matching CPython where both reject keyword arguments.
-    # Don't claim a keyword call here: fall through so normal stub resolution
-    # rejects it, instead of typing a form the backend can't lower. (#6403)
+
     if isinstance(arg, uni.KWPair) {
         return None;
     }
@@ -229,8 +240,6 @@ impl TypeEvaluator._native_iter_next_result(expr: uni.FuncCall) -> TypeBase | No
     return self._convert_to_instance(iter_cls.specialize_generics([elem]));
 }
 
-"""Walk `tuple_type` through a positional index path and return the
-element type at the leaf, or None if any step fails."""
 impl TypeEvaluator._extract_tuple_element_type_path(
     tuple_type: TypeBase, path: list[int]
 ) -> TypeBase | None {
@@ -244,32 +253,16 @@ impl TypeEvaluator._extract_tuple_element_type_path(
     return cursor;
 }
 
-"""Return the effective type of the float."""
 impl TypeEvaluator.get_type_of_float(nd: uni.Float) -> TypeBase {
     assert self.prefetch.float_class is not None;
     return self.prefetch.float_class;
 }
 
-"""Return the effective type of the int."""
 impl TypeEvaluator.get_type_of_int(nd: uni.Int) -> TypeBase {
     assert self.prefetch.int_class is not None;
     return self.prefetch.int_class;
 }
 
-"""Return the effective type of the string."""
-impl TypeEvaluator.get_type_of_string(nd: uni.String | uni.MultiString) -> TypeBase {
-    # FIXME: Strings are a type of LiteralString type:
-    # "foo" is not `str` but Literal["foo"], however for now we'll
-    # not considering that and make it work and will implement that
-    # later.
-    #
-    # see: getTypeOfString() in pyright (it requires parsing the sub
-    # file of the typing module).
-    assert self.prefetch.str_class is not None;
-    return self.prefetch.str_class;
-}
-
-"""Return the effective type of an ability."""
 impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
     if node_.name_spec.type is not None {
         return node_.name_spec.type;
@@ -307,7 +300,7 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
             self.get_type_of_expression(node_.signature.return_type)
         );
     }
-    # Define helper function for parameter conversion.
+
     def _get_param_category(param: uni.ParamVar) -> types.ParameterCategory {
         if param.is_vararg {
             return types.ParameterCategory.ArgsList;
@@ -317,7 +310,7 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
         }
         return types.ParameterCategory.Positional;
     }
-    # Define helper function for parameter kind conversion.
+
     def _convert_param_kind(kind: uni.ParamKind) -> types.ParamKind {
         match kind {
             case uni.ParamKind.POSONLY:
@@ -334,13 +327,11 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
 
             case uni.ParamKind.KWARG:
                 return types.ParamKind.KWARG;
-                return types.ParamKind.NORMAL;
 
         }
     }
     parameters: list[types.Parameter] = [];
     for (idx, param) in enumerate(node_.signature.get_parameters()) {
-        # TODO: Set parameter category for *args, and **kwargs
         param_type: TypeBase | None = None;
 
         if param.type_tag {
@@ -348,21 +339,6 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
             param_type = self._convert_to_instance(param_type_cls);
         }
 
-        # For Python stub methods, check if first parameter is named 'self' or 'cls'
-        # In addition to the Jac-specific checks
-        # Note: For static methods, 'self' is just a regular parameter, not special
-        is_self_param = (
-            idx == 0
-            and (
-                self._is_expr_self(param.name)
-                or (
-                    isinstance(param.name, uni.Name)
-                    and param.name.value == "self"
-                    and node_.signature
-                    and not node_.signature.is_static
-                )
-            )
-        );
         is_cls_param = (
             idx == 0
             and (
@@ -371,6 +347,34 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
                     isinstance(param.name, uni.Name)
                     and param.name.value == "cls"
                     and node_.name_spec.sym_name == "__new__"
+                )
+            )
+        );
+
+        is_self_param = (
+            idx == 0
+            and not is_cls_param
+            and (
+                self._is_expr_self(param.name)
+                or (
+                    isinstance(param.name, uni.Name)
+                    and param.name.value == "self"
+                    and node_.signature
+                    and not node_.signature.is_static
+                )
+                or (
+                    node_.is_method
+                    and node_.signature.is_in_py_class
+                    and param.param_kind in (
+                        uni.ParamKind.POSONLY,
+                        uni.ParamKind.NORMAL
+                    )
+                    and node_.name_spec.sym_name not in (
+                        "__new__",
+                        "__init_subclass__",
+                        "__class_getitem__"
+                    )
+                    and not self._is_ability_staticmethod(node_)
                 )
             )
         );
@@ -386,9 +390,9 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
             )
         );
     }
-    # Set function flags for static/class methods
+
     flags = types.FunctionTypeFlags.Null;
-    if node_.is_static {
+    if self._is_ability_staticmethod(node_) {
         flags = flags | types.FunctionTypeFlags.StaticMethod;
     }
     if self._is_ability_classmethod(node_) {
@@ -407,12 +411,6 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
     return func_type;
 }
 
-"""Type an ability by applying its callable->callable decorators (e.g. contextmanager).
-
-Binds the decorator's TypeVars from `func_type` and adopts its result, with no
-per-decorator name special-casing. property/classmethod/etc. are ClassType, not
-matched here, and keep their own handling.
-"""
 impl TypeEvaluator._apply_function_decorators(
     node_: uni.Ability, func_type: types.FunctionType
 ) -> types.FunctionType {
@@ -426,7 +424,7 @@ impl TypeEvaluator._apply_function_decorators(
             continue;
         }
         params = decorator_type.parameters or [];
-        # Only callable->callable decorators: take one function, return one.
+
         if len(params) != 1
         or not isinstance(params[0].param_type, types.FunctionType)
         or not isinstance(decorator_type.return_type, types.FunctionType) {
@@ -442,29 +440,25 @@ impl TypeEvaluator._apply_function_decorators(
     return func_type;
 }
 
-"""Return the effective type of the class."""
 impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
-    # Is this type already cached?
     if node_.name_spec.type is not None {
         return cast(types.ClassType, node_.name_spec.type);
     }
-    # Gather type parameters.
+
     type_params = self._extract_type_params(node_);
     base_classes: list[TypeBase] = [];
     for base_class in node_.base_classes or [] {
         base_class_type = self.get_type_of_expression(base_class);
         base_classes.append(base_class_type);
     }
-    # Compute module flags using centralized helper (like Pyright's SourceFileInfo)
+
     parent_module = node_.find_parent_of_type(uni.Module);
     mod_flags = type_utils.compute_module_source_flags(
         parent_module.loc.mod_path if parent_module and parent_module.loc else ""
     );
     is_builtin_class = mod_flags.is_builtin_stub;
     is_from_stdlib_stub = mod_flags.is_stdlib_stub;
-    # Add implicit base classes for Jac archetype keywords.
-    # walker Foo {} → base_classes = [Walker]  (so .reports etc. are visible)
-    # node Foo {}   → base_classes = [Node]
+
     if not base_classes and self.prefetch {
         if (
             node_.sym_category == SymbolType.WALKER_ARCH
@@ -480,33 +474,27 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
             base_classes.append(self.prefetch.node_class);
         }
     }
-    # Add object as implicit base class (Every class inherits from object)
+
     if not base_classes and self.prefetch and self.prefetch.object_class {
         is_object_class = is_builtin_class and node_.name_spec.sym_name == "object";
         if not is_object_class {
             base_classes.append(self.prefetch.object_class);
         }
     }
-    # NOTE: obj, walker, node, edge are dataclass with symbol type as such but
-    # other classes are with symbol type TYPE.
-    # TODO: We need to handle @dataclass decorator as well.
+
     is_data_class = node_.sym_category != SymbolType.TYPE;
-    # Detect class-based enums: is_enum_class propagates from prefetched Enum.
+
     is_enum_class = any(
         isinstance(base, types.ClassType) and base.shared.is_enum_class
         for base in base_classes
     );
-    # Detect NamedTuple subclasses: class X(NamedTuple) { ... }
-    # Check both the name AND that it's a builtin class (from typing module)
-    # to avoid false positives from user-defined classes named "NamedTuple"
+
     is_namedtuple = any(
         isinstance(base, types.ClassType)
         and base.shared.is_builtin_class
         and base.shared.class_name == "NamedTuple" for base in base_classes
     );
-    # TypedDict-ness is inherited, and the direct `TypedDict` base resolves to
-    # a `_SpecialForm` (its alias_name is not attached in base position), so
-    # match either an already-TypedDict base or one written as `TypedDict`.
+
     is_typeddict = any(
         isinstance(base, types.ClassType) and base.shared.is_typeddict
         for base in base_classes
@@ -537,32 +525,24 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
         ),
         flags=types.TypeFlags.Instantiable,
     );
-    # Compute the MRO for the class.
+
     type_utils.compute_mro_linearization(cls_type);
-    # Collect TypedDict field types now that the MRO is available; the field
-    # annotations are resolved against the completed class.
+
     if is_typeddict {
         cls_type.shared.typeddict_fields = self._build_typeddict_fields(cls_type);
     }
-    # Cache the type, pyright is doing invalidateTypeCacheIfCanceled()
-    # we're not doing that any time sooner.
+
     node_.name_spec.type = cls_type;
     return cls_type;
 }
 
-"""Build the type for an enum class."""
 impl TypeEvaluator.get_type_of_enum(node_: uni.Enum) -> types.ClassType {
-    # Return cached type if available
     if node_.name_spec.type is not None {
         return cast(types.ClassType, node_.name_spec.type);
     }
-    # Collect base classes (Example: enum Color(IntEnum) → base_classes = [IntEnum])
+
     base_classes: list[types.TypeBase] = [];
-    # Typed-base shorthand `enum X: T { ... }` desugars to `class X(T, Enum)`
-    # for type-system purposes. T flows in as a leading base so the MRO carries
-    # both T and Enum — feeding get_special_enum_value_type_from_bases for the
-    # int/str shortcuts and exposing the mixin parent's attributes for custom
-    # variants. Mutually exclusive with parenthesized `enum X(B) { ... }`.
+
     if node_.value_type {
         base_classes.append(self.get_type_of_expression(node_.value_type));
     }
@@ -570,20 +550,17 @@ impl TypeEvaluator.get_type_of_enum(node_: uni.Enum) -> types.ClassType {
         base_class_type = self.get_type_of_expression(base_class);
         base_classes.append(base_class_type);
     }
-    # Plain `enum X { ... }` and typed `enum X: T { ... }` both get an
-    # implicit Enum base (matching what codegen emits as the trailing kind).
-    # `enum X(B) { ... }` does NOT — the user is responsible for inheriting
-    # from Enum themselves.
+
     if not node_.base_classes and self.prefetch and self.prefetch.enum_class {
         base_classes.append(self.prefetch.enum_class);
     }
-    # Get required value type for special enums (IntEnum → int, StrEnum → str, IntFlag → int)
+
     enum_value_type = enum_utils.get_special_enum_value_type_from_bases(
         base_classes, self.prefetch
     );
-    # Build member dictionary (RED=1, GREEN=2, etc.) with validation
+
     enum_members = enum_utils.build_enum_members(node_, self, enum_value_type);
-    # Compute module flags using centralized helper (like Pyright's SourceFileInfo)
+
     parent_module = node_.find_parent_of_type(uni.Module);
     mod_flags = type_utils.compute_module_source_flags(
         parent_module.loc.mod_path if parent_module and parent_module.loc else ""
@@ -604,12 +581,11 @@ impl TypeEvaluator.get_type_of_enum(node_: uni.Enum) -> types.ClassType {
         flags=types.TypeFlags.Instantiable,
     );
     type_utils.compute_mro_linearization(cls_type);
-    # Store in node for reuse
+
     node_.name_spec.type = cls_type;
     return cls_type;
 }
 
-"""Return the built-in type with the given name."""
 impl TypeEvaluator._get_type_from_module(module: uni.Module, name: str) -> TypeBase {
     if (
         symbol := type_utils.lookup_symtab(module, name, self.builtins_module)

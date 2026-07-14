@@ -199,17 +199,24 @@ test "planner bypasses index when no hop is filtered" {
             r +>:EdgeX:+> TypeA(val=i);
         }
 
-        # Fully unfiltered single-hop chain → planner must return None so
-        # the runtime falls back to the natural edge-walk.
+        # Fully unfiltered single-hop chain. The per-hop resolver still
+        # answers (via the index's unfiltered branch or the walk fallback);
+        # the all-or-nothing "bypass TI" gate from the legacy planner is
+        # gone, so the result is a list, not None.
         unfiltered_path = ObjectSpatialPath(
             [r], [ObjectSpatialDestination(EdgeDir.OUT)]
         );
-        assert execute_path(ctx.mem, unfiltered_path) is None , (
-            "planner should bypass TI for fully unfiltered chains"
+        unfiltered_result = execute_path(ctx.mem, unfiltered_path);
+        assert unfiltered_result is not None , (
+            "per-hop resolver never bails the whole query"
+        );
+        assert len(unfiltered_result) == 10 , (
+            f"unfiltered single-hop should reach 10 nodes, got "
+            f"{len(unfiltered_result)}"
         );
 
         # Edge-type filter alone is enough to engage the index.
-        edge_filter = lambda e: any : isinstance(e, EdgeX);
+        edge_filter = lambda (e: any) { isinstance(e, EdgeX); };
         edge_typed_path = ObjectSpatialPath(
             [r], [ObjectSpatialDestination(EdgeDir.OUT, edge_filter)]
         );
@@ -218,7 +225,7 @@ test "planner bypasses index when no hop is filtered" {
         );
 
         # Node-type filter alone also engages the index.
-        node_filter = lambda n: any : isinstance(n, TypeA);
+        node_filter = lambda (n: any) { isinstance(n, TypeA); };
         node_typed_path = ObjectSpatialPath(
             [r], [ObjectSpatialDestination(EdgeDir.OUT, None, node_filter)]
         );
@@ -226,8 +233,8 @@ test "planner bypasses index when no hop is filtered" {
         assert result is not None , "planner should engage TI when node_type is filtered";
         assert len(result) == 10 , f"expected 10 TypeA nodes, got {len(result)}";
 
-        # Multi-hop fully unfiltered → still bypasses. The contract is "every
-        # hop unfiltered", not just the first.
+        # Multi-hop fully unfiltered — also resolves via the per-hop fold
+        # now (each hop's unfiltered branch in the index, or walk fallback).
         two_hop_unfiltered = ObjectSpatialPath(
             [r],
             [
@@ -235,8 +242,8 @@ test "planner bypasses index when no hop is filtered" {
                 ObjectSpatialDestination(EdgeDir.OUT)
             ]
         );
-        assert execute_path(ctx.mem, two_hop_unfiltered) is None , (
-            "two-hop fully unfiltered should bypass TI"
+        assert execute_path(ctx.mem, two_hop_unfiltered) is not None , (
+            "per-hop resolver handles fully unfiltered chains"
         );
 
         # Multi-hop with a filter on only the second hop → engages. A single
@@ -287,7 +294,7 @@ test "planner bails when a hop has predicates beyond type" {
         # predicate detector returns True. On a single-hop (and therefore
         # final) chain, execute_path still engages: the planner post-applies
         # the predicate above the materialized list.
-        pred_filter = lambda n: any : isinstance(n, TypeA) and n.val > 5;
+        pred_filter = lambda (n: any) { isinstance(n, TypeA) and n.val > 5; };
         single_hop_pred = ObjectSpatialPath(
             [r], [ObjectSpatialDestination(EdgeDir.OUT, None, pred_filter)]
         );
@@ -295,7 +302,9 @@ test "planner bails when a hop has predicates beyond type" {
             "predicate on the FINAL hop should still engage TI"
         );
 
-        # Same predicate on a non-final hop in a 2-hop chain → bail.
+        # Same predicate on a non-final hop in a 2-hop chain. The per-hop
+        # fold falls back to the anchor walk for that one hop and uses the
+        # index for the rest — no global bail.
         two_hop_pred_first = ObjectSpatialPath(
             [r],
             [
@@ -303,8 +312,8 @@ test "planner bails when a hop has predicates beyond type" {
                 ObjectSpatialDestination(EdgeDir.OUT)
             ]
         );
-        assert execute_path(ctx.mem, two_hop_pred_first) is None , (
-            "predicate on a non-final hop should bail to linear path"
+        assert execute_path(ctx.mem, two_hop_pred_first) is not None , (
+            "per-hop fold handles non-final predicate via walk fallback"
         );
 
         # End-to-end correctness: predicate on final hop produces the right

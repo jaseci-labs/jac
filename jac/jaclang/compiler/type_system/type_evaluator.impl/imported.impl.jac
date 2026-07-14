@@ -1,21 +1,15 @@
-"""Return the effective type of the module item."""
-
 impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeBase {
-    # Module item can be both a module or a member of a module.
-    # import from .. { mod }   # <-- Here mod is not a member but a module itself.
-    # import from mod { item } # <-- Here item is not a module but a member of mod.
-    # Note: node_.name can be a Token (for default/star imports) or a Name node.
-    # Only Name nodes have a .type attribute.
     if isinstance(node_.name, uni.Name) and node_.name.type is not None {
         return node_.name.type;
     }
-    # TODO: Implement proper type resolution for default/star imports.
+
     if isinstance(node_.name, uni.Name) { } else {
         return types.UnknownType();
     }
+    import from jaclang.jac0core.modresolver { is_untyped_third_party_module }
     import_node = node_.parent_of_type(uni.Import);
     assert import_node.from_loc is not None;
-    # Resolve the base directory for the from-clause (e.g. from . import utils → current dir).
+
     from_path = self._resolve_from_path(import_node.from_loc);
     from_mod_type = self.get_type_of_module(import_node.from_loc);
     from_mod_name = import_node.from_loc.dot_path_str;
@@ -37,7 +31,6 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
             ) {
                 candidate_paths = [
                     (mod_dir / f"{node_.name.value}{ext}").resolve(),
-                    # Check for subpackage: e.g., llvmlite/ir/__init__.py
                     (mod_dir / node_.name.value / f"__init__{ext}").resolve(),
                     (mod_dir / f"__init__{ext}").resolve(),
 
@@ -48,24 +41,32 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
                         continue;
                     }
                     path_str = str(path);
-                    # Foreign-source submodule (e.g. `from .pkg import foo`
-                    # where foo.js exists). The Jac parser cannot consume
-                    # JS/TS/etc., so expose the submodule as an opaque
-                    # external module and type the imported name as Any.
-                    if not path_str.endswith((".jac", ".py", ".pyi")) {
+
+                    if (not path_str.endswith((".jac", ".py", ".pyi")))
+                    or is_untyped_third_party_module(path_str) {
                         mod_type = types.ModuleType(
                             mod_name=node_.name.sym_name,
                             file_uri=path,
                             symbol_table=None,
                             is_external=True,
                         );
-                        node_.name.type = types.AnyType();
+                        import from jaclang.jac0core.modresolver {
+                            sibling_declaration_file
+                        }
+                        sibling_dts = sibling_declaration_file(path_str);
+                        if sibling_dts {
+                            if declared := self._ts_declared_type_from_file(
+                                sibling_dts, node_.name.value
+                            ) {
+                                node_.name.type = declared;
+                                node_.name._sym_category = SymbolType.VAR;
+                                return node_.name.type;
+                            }
+                        }
+                        node_.name.type = types.AnyType(is_foreign=True);
                         node_.name._sym_category = SymbolType.VAR;
-                        self.emit_diag(
-                            W1102,
-                            node_.name,
-                            name=node_.name.value,
-                            module=from_mod_name
+                        self._emit_untyped_external(
+                            node_.name, node_.name.value, from_mod_name
                         );
                         return node_.name.type;
                     }
@@ -73,8 +74,6 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
                         path_str, importer_path=self._resolve_importer_path(node_)
                     );
 
-                    # Check if this is a subpackage's __init__ file (e.g., subpkg/__init__.py)
-                    # vs the parent module's __init__ file
                     is_subpackage_init = (
                         path.name.startswith("__init__")
                         and path.parent.name == node_.name.value
@@ -85,14 +84,12 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
                     );
 
                     if is_parent_init {
-                        # Look up the symbol in the parent's __init__.py
                         if sym := type_utils.lookup_symtab(
                             mod, node_.name.value, self.builtins_module
                         ) {
                             return self._set_module_item_symbol_and_type(node_, sym);
                         }
-                        # Fallback: follow star imports (from .submod import *)
-                        # to find re-exported symbols (e.g., asyncio.Queue from asyncio.queues).
+
                         if sym := self._resolve_star_import_symbol(
                             mod, node_.name.value
                         ) {
@@ -100,17 +97,8 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
                         }
                         continue;
                     }
-
-                    # For regular modules and subpackage __init__.py, create ModuleType
-                    flags = type_utils.compute_module_source_flags(str(path));
                     mod_type = types.ModuleType(
-                        mod_name=node_.name.sym_name,
-                        file_uri=path,
-                        symbol_table=mod,
-                        is_stub_file=flags.is_stub_file,
-                        is_stdlib_stub=flags.is_stdlib_stub,
-                        is_typing_stub=flags.is_typing_stub,
-                        is_builtin_stub=flags.is_builtin_stub,
+                        mod_name=node_.name.sym_name, file_uri=path, symbol_table=mod,
                     );
 
                     node_.name.type = mod_type;
@@ -119,28 +107,32 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
                     return mod_type;
                 }
             }
-            # Nothing matched in the package directory — the imported name
-            # doesn't exist either as a submodule or as a symbol in __init__.
-            node_.name.type = types.UnknownType();
+
+            node_.name.type = types.UnknownType(is_diagnosed=True);
             self.emit_diag(
                 W1101, node_.name, name=node_.name.value, module=from_mod_name
             );
             return node_.name.type;
         } else {
             if not isinstance(from_mod_type, types.ModuleType) {
-                # Module resolution failed; W1100 was emitted by
-                # get_type_of_module on the from-clause node.
-                node_.name.type = types.UnknownType();
+                node_.name.type = types.UnknownType(
+                    is_diagnosed=isinstance(from_mod_type, types.UnknownType)
+                    and from_mod_type.is_diagnosed
+                );
                 return node_.name.type;
             }
             if from_mod_type.is_external {
-                # Foreign-source module (JS/TS/asset/etc.). The Jac type
-                # system cannot see inside it; treat the imported name as
-                # gradual Any to avoid false-positive "name not found".
-                node_.name.type = types.AnyType();
+                if declared := self._get_ts_declared_item_type(
+                    import_node.from_loc, node_.name.value
+                ) {
+                    node_.name.type = declared;
+                    node_.name._sym_category = SymbolType.VAR;
+                    return node_.name.type;
+                }
+                node_.name.type = types.AnyType(is_foreign=True);
                 node_.name._sym_category = SymbolType.VAR;
-                self.emit_diag(
-                    W1102, node_.name, name=node_.name.value, module=from_mod_name
+                self._emit_untyped_external(
+                    node_.name, node_.name.value, from_mod_name
                 );
                 return node_.name.type;
             }
@@ -149,7 +141,6 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
             ) {
                 return self._set_module_item_symbol_and_type(node_, sym);
             }
-            # Fallback: follow star imports for re-exported symbols.
             if isinstance(from_mod_type.symbol_table, uni.Module) {
                 if sym := self._resolve_star_import_symbol(
                     from_mod_type.symbol_table, node_.name.value
@@ -157,26 +148,21 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
                     return self._set_module_item_symbol_and_type(node_, sym);
                 }
             }
-            # Module resolved but the imported name isn't defined in it.
-            node_.name.type = types.UnknownType();
+            node_.name.type = types.UnknownType(is_diagnosed=True);
             self.emit_diag(
                 W1101, node_.name, name=node_.name.value, module=from_mod_name
             );
             return node_.name.type;
         }
     }
-    # The from-clause didn't resolve at all — W1100 was emitted by
-    # get_type_of_module on the from-clause node.
+
+    if isinstance(from_mod_type, types.UnknownType) and from_mod_type.is_diagnosed {
+        node_.name.type = types.UnknownType(is_diagnosed=True);
+        return node_.name.type;
+    }
     return types.UnknownType();
 }
 
-"""Resolve a symbol through star imports (from .X import *) in a module.
-
-Python packages like asyncio re-export symbols from submodules via star imports
-in __init__.pyi. When a direct lookup in the module's symbol table fails, this
-method follows star imports to find the symbol in submodules. Uses a visited set
-to prevent infinite recursion from circular star imports.
-"""
 impl TypeEvaluator._resolve_star_import_symbol(
     mod: uni.Module, name: str, visited: set[int] | None = None
 ) -> uni.Symbol | None {
@@ -192,18 +178,15 @@ impl TypeEvaluator._resolve_star_import_symbol(
         if not imp.is_absorb or not imp.items {
             continue;
         }
-        # Star imports store the source module path in items[0] (a ModulePath).
+
         star_mod_path = imp.items[0];
         if not isinstance(star_mod_path, uni.ModulePath) {
             continue;
         }
-        # Resolve the submodule path (e.g., .queues -> asyncio/queues.pyi).
+
         resolved = star_mod_path.resolve_relative_path_list();
         submod: uni.Module | None = None;
         if resolved {
-            # resolve_relative_path_list() already returns the target as a full
-            # file path with its extension (single- and multi-segment alike), so
-            # use it directly.
             candidate = resolved[-1];
             if candidate and Path(candidate).exists() {
                 submod = self._import_module_from_path(
@@ -214,11 +197,11 @@ impl TypeEvaluator._resolve_star_import_symbol(
         if submod is None {
             continue;
         }
-        # Look up the symbol in the submodule.
+
         if sym := type_utils.lookup_symtab(submod, name, self.builtins_module) {
             return sym;
         }
-        # Recursively follow star imports in the submodule.
+
         if sym := self._resolve_star_import_symbol(submod, name, visited) {
             return sym;
         }
@@ -226,18 +209,19 @@ impl TypeEvaluator._resolve_star_import_symbol(
     return None;
 }
 
-"""Return the effective type of the module."""
 impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
+    import from jaclang.jac0core.modresolver { is_untyped_third_party_module }
     if node_.path {
-        if node_.path[-1].type {
-            return node_.path[-1].type;
+        last_type = node_.path[-1].type;
+
+        if last_type
+        and not (
+            isinstance(last_type, types.UnknownType) and not last_type.is_diagnosed
+        ) {
+            return last_type;
         }
         path_list = node_.resolve_relative_path_list();
-        # Calculate offset for relative imports: leading dots produce extra
-        # segments in resolve_relative_path_list() that don't have corresponding
-        # entries in node_.path. Align node_.path[-1] with path_list[-1] (the
-        # resolved target file); intermediate extras are the walked-up package
-        # contexts (either __init__.py for Python or dirs for Jac namespaces).
+
         offset = 0;
         if node_.path and len(path_list) > len(node_.path) and node_.level > 0 {
             offset = len(path_list) - len(node_.path);
@@ -246,11 +230,6 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
             mod_path = path_list[idx + offset];
 
             if mod_path in self._module_type_cache {
-                # Couple this cache to the hub freshness gate. Without this,
-                # a long-lived TypeEvaluator (e.g. on the LSP server) keeps
-                # returning a `ModuleType` whose `symbol_table` points at
-                # the pre-edit IR, so the strict hub eviction below is
-                # short-circuited and consumers stay stale.
                 resolved_for_cache = str(Path(mod_path).resolve());
                 if self.program.is_hub_entry_fresh(resolved_for_cache) {
                     npath.type = self._module_type_cache[mod_path];
@@ -261,15 +240,22 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
             }
 
             if not Path(mod_path).exists() {
-                # For intermediate path segments (not the last), skip rather than
-                # bail out. Namespace packages and directory-based imports may not
-                # resolve individually but the full path (last segment) may still
-                # resolve correctly.
                 npath._sym_category = SymbolType.MODULE;
                 if idx < len(node_.path) - 1 {
                     continue;
                 }
-                npath.type = types.UnknownType();
+                if npm_entry := self._resolve_client_npm_module(node_) {
+                    mod_type = types.ModuleType(
+                        mod_name=npath.value,
+                        file_uri=Path(npm_entry).resolve(),
+                        symbol_table=None,
+                        is_external=True,
+                    );
+                    npath.type = mod_type;
+                    npath._sym_category = SymbolType.MODULE;
+                    return npath.type;
+                }
+                npath.type = types.UnknownType(is_diagnosed=True);
                 self.emit_diag(W1100, npath);
                 return npath.type;
             }
@@ -278,13 +264,9 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
                 npath._sym_category = SymbolType.MODULE;
                 continue;
             }
-            # Only Jac / Python files are compiled for static analysis.
-            # Non-Jac files (JS/TS/assets/etc.) resolved via the module
-            # resolver become opaque external ModuleType instances; their
-            # imported names are typed as Any downstream (gradual typing),
-            # avoiding both false-positive "name not found" diagnostics
-            # and Jac-parser crashes on foreign syntax.
-            if not mod_path.endswith((".jac", ".py", ".pyi")) {
+
+            if (not mod_path.endswith((".jac", ".py", ".pyi")))
+            or is_untyped_third_party_module(mod_path) {
                 mod_type = types.ModuleType(
                     mod_name=npath.value,
                     file_uri=Path(mod_path).resolve(),
@@ -299,15 +281,10 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
             mod: uni.Module = self._import_module_from_path(
                 mod_path, importer_path=self._resolve_importer_path(node_)
             );
-            flags = type_utils.compute_module_source_flags(mod_path);
             mod_type = types.ModuleType(
                 mod_name=npath.value,
                 file_uri=Path(mod_path).resolve(),
                 symbol_table=mod,
-                is_stub_file=flags.is_stub_file,
-                is_stdlib_stub=flags.is_stdlib_stub,
-                is_typing_stub=flags.is_typing_stub,
-                is_builtin_stub=flags.is_builtin_stub,
             );
             npath.type = mod_type;
             npath._sym_category = SymbolType.MODULE;
@@ -323,26 +300,64 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
     return types.UnknownType();
 }
 
-"""Import a module from the given path."""
+impl TypeEvaluator._resolve_submodule_attr(
+    base_type: types.ModuleType, attr_name: str
+) -> (types.ModuleType | None) {
+    import from jaclang.jac0core.modresolver { is_untyped_third_party_module }
+    if base_type.file_uri is None {
+        return None;
+    }
+    base_path = Path(base_type.file_uri);
+    is_pkg_dir = base_path.is_dir();
+    if not is_pkg_dir and base_path.stem != "__init__" {
+        return None;
+    }
+    mod_dir = base_path if is_pkg_dir else base_path.parent;
+    for ext in (".jac", ".py", ".pyi") {
+        candidates = [
+            (mod_dir / f"{attr_name}{ext}").resolve(),
+            (mod_dir / attr_name / f"__init__{ext}").resolve(),
+
+        ];
+        for path in candidates {
+            if not path.exists() {
+                continue;
+            }
+            path_str = str(path);
+            if path_str in self._module_type_cache {
+                cached = self._module_type_cache[path_str];
+                if isinstance(cached, types.ModuleType) {
+                    return cached;
+                }
+            }
+            if is_untyped_third_party_module(path_str) {
+                return types.ModuleType(
+                    mod_name=attr_name,
+                    file_uri=path,
+                    symbol_table=None,
+                    is_external=True,
+                );
+            }
+            mod = self._import_module_from_path(path_str);
+            mod_type = types.ModuleType(
+                mod_name=attr_name, file_uri=path, symbol_table=mod
+            );
+            self._module_type_cache[path_str] = mod_type;
+            return mod_type;
+        }
+    }
+    return None;
+}
+
 impl TypeEvaluator._import_module_from_path(
     path: str, importer_path: (str | None) = None
 ) -> uni.Module {
-    # "../os/path.pyi" and "/abs/os/path.pyi" are the same file but different strings.
-    # resolve() converts both to "/abs/os/path.pyi" so hub always returns the same cached module.
     resolved_path = str(Path(path).resolve());
-    # Determine the correct hub: jaclang-internal imports (typeshed stubs,
-    # compiler modules, etc.) go to the compiler's internal hub so they
-    # don't pollute the user's module hub.
+
     compiler = self.program._get_compiler();
     target_program = compiler._resolve_program(resolved_path, self.program);
     target_hub = target_program.mod.hub;
 
-    # Hub-tier freshness gate: a long-lived JacProgram (e.g. the LSP)
-    # otherwise returns the same cached IR forever, even after the source
-    # file is rewritten on disk. `is_hub_entry_fresh` compares the source's
-    # current mtime (plus annexes/variants) against the cache stamp set
-    # when the IR was inserted. Stale entries are evicted here so the
-    # branch below falls through to JIR or full recompile.
     if (
         resolved_path in self.program.mod.hub
         and not self.program.is_hub_entry_fresh(resolved_path)
@@ -363,13 +378,6 @@ impl TypeEvaluator._import_module_from_path(
     } elif resolved_path in target_hub {
         mod = target_hub[resolved_path];
     } else {
-        # Try JIR cache first for .jac files, but never for .na.jac.
-        # JIR does not serialize Expr.type, so a JIR-loaded native module
-        # arrives untyped and its cross-module symbol links are degraded.
-        # On incremental builds this causes E2018/E5090 for types that
-        # come from transitively-imported native modules (issue #6793).
-        # Always fresh-compile .na.jac deps so the type evaluator builds
-        # full cross-module links, matching fresh-build behaviour.
         jir_mod: (uni.Module | None) = None;
         if resolved_path.endswith('.jac') and not resolved_path.endswith('.na.jac') {
             jir_mod = self._try_read_jir_cache(resolved_path);
@@ -382,7 +390,6 @@ impl TypeEvaluator._import_module_from_path(
             target_hub[resolved_path] = mod;
             target_program.hub_cache_stamp(resolved_path);
         } else {
-            # Cache miss — full compile
             mod = self.program.compile(
                 path, no_cgen=True, type_check=False, symtab_ir_only=True
             );
@@ -391,11 +398,6 @@ impl TypeEvaluator._import_module_from_path(
             }
             target_hub[resolved_path] = mod;
             target_program.hub_cache_stamp(resolved_path);
-            # Write JIR module cache for .jac files (best-effort).
-            # Only write if no valid cache exists yet — symtab-only compiles
-            # lack bytecode and must not overwrite a full cache that has it.
-            # Skip .na.jac: a symtab-only native cache would be untyped and
-            # trigger E2018/E5090 on the next incremental build (issue #6793).
             if resolved_path.endswith('.jac')
             and not resolved_path.endswith('.na.jac') {
                 try {
@@ -411,8 +413,7 @@ impl TypeEvaluator._import_module_from_path(
                     if not is_module_cache_valid(resolved_path, cache_path) {
                         cache_path.parent.mkdir(parents=True, exist_ok=True);
                         writer = JirWriter();
-                        # Always stamp SEC_MODKEY so the entry self-validates on
-                        # the mtime-ambiguous slow path (matches Tier 3).
+
                         sections: dict[int, bytes] = {
                             SEC_MODKEY: compute_module_key(resolved_path).encode(
                                 'utf-8'
@@ -423,12 +424,7 @@ impl TypeEvaluator._import_module_from_path(
                             sections[SEC_BYTECODE] = bc;
                         }
                         jir_bytes = writer.write_module(mod, sections=sections);
-                        # Write to a process-unique temp then atomically rename.
-                        # A shared `.tmp` name lets two concurrent compiles of the
-                        # same module (the agent's parallel tools, or CLI + LSP)
-                        # clobber each other mid-write and rename a corrupt file
-                        # whose header still validates -- read fails later on the
-                        # truncated body.
+
                         import os as _os;
                         tmp_path = cache_path.with_suffix(f'.{_os.getpid()}.tmp');
                         try {
@@ -444,23 +440,13 @@ impl TypeEvaluator._import_module_from_path(
             }
         }
     }
-    # Record the import edge so callers (long-lived clients like the LSP)
-    # can fan out re-checks to open consumers when a target module changes.
+
     if importer_path is not None {
         self.program.record_dependency(importer_path, resolved_path);
     }
     return mod;
 }
 
-"""Drop per-module entries from the evaluator's caches.
-
-After this returns, no `ModuleType` keyed by `resolved_path` remains in
-`_module_type_cache`, so the next type-of query rebuilds it against the
-fresh hub IR. Symbol tables on already-handed-out `ModuleType` instances
-in client AST nodes can still point at the previous IR — that is fine;
-they are only consulted via this evaluator's lookup paths, which all
-re-route through `_import_module_from_path` and pick up the refreshed
-hub entry."""
 impl TypeEvaluator.forget_module(resolved_path: str) -> None {
     if resolved_path in self._module_type_cache {
         del (self._module_type_cache[resolved_path], );
@@ -483,7 +469,6 @@ impl TypeEvaluator._resolve_importer_path(ast_node: uni.UniNode) -> (str | None)
     }
 }
 
-"""Try to read a compiled .jac module from the JIR cache. Returns None on any failure."""
 impl TypeEvaluator._try_read_jir_cache(resolved_path: str) -> (uni.Module | None) {
     import from jaclang.jac0core.jir { get_module_cache_path, is_module_cache_valid }
     import from jaclang.jac0core.jir_passes { JirReader }
@@ -497,20 +482,13 @@ impl TypeEvaluator._try_read_jir_cache(resolved_path: str) -> (uni.Module | None
         data = cache_path.read_bytes();
         reader = JirReader(_source_path=resolved_path);
         mod = reader.read_module(data);
-        # Annex content is merged into the head module's own tree by
-        # JacAnnexPass, so it serializes/deserializes with the rest of the JIR —
-        # no post-load re-attachment of impl modules is needed.
+
         return mod;
     } except Exception {
-        # A cache miss or a stale/incompatible entry is an expected, recoverable
-        # condition: returning None falls back to a full compile. Printing the
-        # traceback would spam every CLI and `jac ai` turn that recompiles, so it
-        # is gated behind JAC_JIR_DEBUG for diagnosing genuine reader bugs.
         if os.environ.get("JAC_JIR_DEBUG") {
             traceback.print_exc();
         }
-        # Drop the unreadable entry so the next compile rebuilds it fresh,
-        # instead of failing this read on every recompile of an importer.
+
         try {
             get_module_cache_path(resolved_path).unlink(missing_ok=True);
         } except Exception {
@@ -520,7 +498,6 @@ impl TypeEvaluator._try_read_jir_cache(resolved_path: str) -> (uni.Module | None
     }
 }
 
-"""Return the effective type of the symbol."""
 impl TypeEvaluator.get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
     if self.push_symbol_resolution(symbol) {
         try {
@@ -533,12 +510,6 @@ impl TypeEvaluator.get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
     return types.UnknownType();
 }
 
-"""Follow an imported symbol's re-export chain to its defining symbol.
-
-A `from pkg import f` symbol's decl is the imported `Name`, whose own `.sym`
-points at the next re-export hop (e.g. `pkg/__init__` → `pkg/sub` → the
-`def`). Walk that chain until a non-import decl (the definition) so callers
-collect overloads in the definition scope rather than a re-export scope."""
 impl TypeEvaluator.resolve_to_definition_symbol(symbol: uni.Symbol) -> uni.Symbol {
     visited: set[int] = set();
     cur = symbol;

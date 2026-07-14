@@ -1,17 +1,3 @@
-"""Jac IR (.jir) binary serialization for the unified intermediate representation.
-
-Provides fast, compact serialization of the unitree (AST + symbol table + CFG)
-for caching type-checked modules. Each node is serialized as a single record
-encoding all its overlay data (AST core, scope, CFG, symbol references).
-
-File format:
-  Header (32 bytes) -> String Pool -> Unified Node Stream -> Link Table -> Metadata
-
-Cache locations (platform-aware):
-  Linux:   ~/.cache/jac/jir/
-  macOS:   ~/Library/Caches/jac/jir/
-  Windows: %LOCALAPPDATA%/jac/cache/jir/
-"""
 import hashlib;
 import os;
 import struct;
@@ -19,143 +5,25 @@ import sys;
 import zlib;
 import from pathlib { Path }
 
-# --- Constants ---
-"""JIR file magic bytes."""
-glob MAGIC = b"JIR\x00";
+glob MAGIC = b"JIR\x00",
+     FORMAT_VERSION: int = 15,
+     HEADER_SIZE: int = 32,
+     HEADER_FMT: str = "<4sHHIIIIII",
+     EXTERNAL_REF: int = 0xFFFFFF,
+     SECTIONS_MAGIC: any = b"JIRX",
+     SEC_BYTECODE: int = 0x02,
+     SEC_MTIR: int = 0x03,
+     SEC_LLVM_IR: int = 0x04,
+     SEC_INTEROP: int = 0x05,
+     SEC_NATIVE_OBJ: int = 0x06,
+     SEC_SYMINDEX: int = 0x07,
+     SEC_MODKEY: int = 0x08,
+     SEC_DEBUG_SRC: int = 0x09,
+     SEC_TERMINATOR: int = 0xFF,
+     FLAG_PRECOMPILED: int = 0x02,
+     PRECOMPILE_SENTINEL: str = "__PKG_ROOT__",
+     FLAG_BOOTSTRAP: int = 0x04;
 
-"""Current format version. Increment on breaking changes."""
-glob FORMAT_VERSION: int = 13;
-
-"""Header size in bytes."""
-glob HEADER_SIZE: int = 32;
-
-"""Header struct format (little-endian)."""
-glob HEADER_FMT: str = "<4sHHIIIIII";
-
-"""Sentinel node ID for external references (e.g. builtins parent_scope)."""
-glob EXTERNAL_REF: int = 0xFFFFFF;
-
-# --- Section constants (extended JIR format) ---
-"""Magic bytes marking the start of optional TLV sections after the AST payload."""
-glob SECTIONS_MAGIC: any = b"JIRX";
-
-"""Section type: raw marshal.dumps(code_object) bytes."""
-glob SEC_BYTECODE: int = 0x02;
-
-"""Section type: pickle.dumps(mtir_map, HIGHEST_PROTOCOL) bytes."""
-glob SEC_MTIR: int = 0x03;
-
-"""Section type: zlib.compress(llvm_ir_str.encode()) bytes."""
-glob SEC_LLVM_IR: int = 0x04;
-
-"""Section type: json.dumps(interop_dict).encode() bytes."""
-glob SEC_INTEROP: int = 0x05;
-
-"""Section type: post-optimization LLVM bitcode bytes.
-
-Stores the native module's bitcode after optimization passes have run.
-This is faster to parse than text IR (SEC_LLVM_IR) and produces properly
-optimized code on cache reload. Includes a platform header:
-  [triple_len: 2 LE] [triple: UTF-8] [bitcode ...]
-"""
-glob SEC_NATIVE_OBJ: int = 0x06;
-
-"""Section type: json.dumps(module_structural_index).encode() bytes.
-
-A flat, parse-only structural index of one module -- its archetypes (with
-fields, member signatures, base classes) and walker entry points -- with no
-cross-module pointers. Lets `CodeIntelligence` serve `project_map` / structural
-queries on a cold start without re-running the semantic pipeline. Self-keyed by
-the source's content hash (the JIR header's `source_content_hash`), so it needs
-no transitive-dependency tracking: a parse-only index depends only on its own
-source and spliced annex files. See `jaclang.compiler.code_intel`.
-"""
-glob SEC_SYMINDEX: int = 0x07;
-
-"""Section type: the module identity key (UTF-8 hex SHA-256).
-
-The canonical "what inputs produced this artifact" value: a digest over the
-jaclang/python/format versions plus the source and every related (impl, test,
-variant, style) file. Computed by `compute_module_key` and stamped into every
-cached JIR (module cache and precompiled bundle alike). A single
-`jir_matches_source` key-compare validates both tiers — no external manifest,
-no mtime laundering. See `jaclang.jac0core.compiler`.
-"""
-glob SEC_MODKEY: int = 0x08;
-
-"""Section terminator byte."""
-glob SEC_TERMINATOR: int = 0xFF;
-
-"""Header flag: JIR was shipped as a precompiled bundle (no live AST required)."""
-glob FLAG_PRECOMPILED: int = 0x02;
-
-"""Sentinel co_filename embedded in precompiled bundles at build time.
-
-Patched back to the install directory on load (the bundle is built in CI at a
-different absolute path). Shared by the generator and the loader.
-"""
-glob PRECOMPILE_SENTINEL: str = "__PKG_ROOT__";
-
-"""Header flag: JIR is a bootstrap-only artifact (no AST payload, bytecode only)."""
-glob FLAG_BOOTSTRAP: int = 0x04;
-
-# --- Varint (LEB128) ---
-"""Encode an unsigned integer as LEB128 varint, appending to buf."""
-def write_varint(buf: bytearray, value: int) {
-    while value >= 0x80 {
-        buf.append((value & 0x7F) | 0x80);
-        value >>= 7;
-    }
-    buf.append(value & 0x7F);
-}
-
-"""Decode an unsigned LEB128 varint from data at pos. Returns (value, new_pos)."""
-def read_varint(data: (bytes | memoryview), pos: int) -> tuple[int, int] {
-    result = 0;
-    shift = 0;
-    byte = data[pos];
-    while (byte & 0x80) != 0 {
-        result |= (byte & 0x7F) << shift;
-        shift += 7;
-        pos += 1;
-        byte = data[pos];
-    }
-    result |= (byte & 0x7F) << shift;
-    pos += 1;
-    return (result, pos);
-}
-
-# --- String Pool ---
-"""Deduplicated string table for identifiers, paths, and token values.
-
-Strings are assigned sequential indices. The pool is serialized as:
-  count: varint, then for each string: [length: varint, UTF-8 bytes].
-"""
-class StringPool {
-    def init(self: StringPool) -> None;
-    def intern(self: StringPool, s: str) -> int;
-    def get(self: StringPool, idx: int) -> str;
-    def __len__(self: StringPool) -> int;
-    def serialize(self: StringPool) -> bytes;
-}
-
-"""Deserialize a string pool from data at pos. Returns (pool, new_pos)."""
-def deserialize_string_pool(
-    data: (bytes | memoryview), pos: int
-) -> tuple[StringPool, int] {
-    pool = StringPool();
-    (count, pos) = read_varint(data, pos);
-    for _ in range(count) {
-        (length, pos) = read_varint(data, pos);
-        s = bytes(data[pos:pos + length]).decode('utf-8');
-        pool.intern(s);
-        pos += length;
-    }
-    return (pool, pos);
-}
-
-# --- Header ---
-"""JIR file header (32 bytes fixed size)."""
 obj JirHeader {
     has magic: any = b"JIR\x00",
         format_version: int = FORMAT_VERSION,
@@ -171,7 +39,6 @@ obj JirHeader {
     def is_compatible -> bool;
 }
 
-"""Create a JirHeader for the current environment."""
 def create_header(
     source_hash: int,
     node_count: int,
@@ -198,7 +65,6 @@ def create_header(
     );
 }
 
-"""Deserialize a JirHeader from bytes. Returns None if magic/version mismatch."""
 def parse_header(data: (bytes | memoryview)) -> (JirHeader | None) {
     if len(data) < HEADER_SIZE {
         return None;
@@ -226,26 +92,11 @@ def parse_header(data: (bytes | memoryview)) -> (JirHeader | None) {
     );
 }
 
-# --- Cache Directory ---
-"""Get the platform-appropriate global cache directory for JIR files.
-
-Delegates to the pure-Python `jaclang.jac0core.cache_paths` so the platform
-resolution rule lives in exactly one place, shared with the bootstrap bytecode
-cache in `meta_importer`.
-"""
 def get_jir_cache_dir -> Path {
     import from jaclang.jac0core.cache_paths { get_jir_cache_dir as _root }
     return _root();
 }
 
-"""Compute CRC32 of file content for fast-reject validation."""
-def compute_content_crc32(file_path: str) -> int {
-    with open(file_path, 'rb') as f {
-        return zlib.crc32(f.read()) & 0xFFFFFFFF;
-    }
-}
-
-"""Compute SHA-256 hex digest of file content."""
 def compute_content_sha256(file_path: str) -> str {
     h = hashlib.sha256();
     with open(file_path, 'rb') as f {
@@ -260,13 +111,6 @@ def compute_content_sha256(file_path: str) -> str {
     return h.hexdigest();
 }
 
-"""Enumerate the related files that contribute to a module's identity.
-
-Returns ``(rel_key, sha256)`` pairs for every impl/test/variant/style annex
-of ``source_path``, sorted for determinism. ``rel_key`` is the path relative
-to the source's directory (location-independent, so a bundle built in CI
-matches the same module installed elsewhere).
-"""
 def _related_files(source_path: str) -> list[tuple[str, str]] {
     import from jaclang.jac0core.bccache {
         discover_annex_files,
@@ -291,15 +135,45 @@ def _related_files(source_path: str) -> list[tuple[str, str]] {
     return result;
 }
 
-"""Compute the canonical identity key for a module (hex SHA-256).
+glob _client_kind_probe_active: bool = False;
 
-Folds the jaclang version, Python version, JIR FORMAT_VERSION, the source
-content, and every related file (impl/test/variant/style) — the single source
-of truth for "what inputs produced this artifact." Stamped into cached JIRs as
-SEC_MODKEY and checked by `jir_matches_source`. Mirrors the bootstrap key
-formula in `meta_importer.py` (kept as a separate pure-Python implementation
-only because it runs before any .jac is compiled).
-"""
+def _module_client_kind(source_path: str) -> str {
+    global _client_kind_probe_active;
+    if _client_kind_probe_active {
+        return "web";
+    }
+    _client_kind_probe_active = True;
+    try {
+        import from jaclang.project.client_kind { resolve_client_kind_context }
+        (kind, _) = resolve_client_kind_context(source_path);
+        return kind;
+    } except Exception {
+        return "web";
+    } finally {
+        _client_kind_probe_active = False;
+    }
+}
+
+glob _SCHEMA_DIGEST_CACHE: list = [];
+
+def schema_digest -> str {
+    if _SCHEMA_DIGEST_CACHE {
+        return _SCHEMA_DIGEST_CACHE[0];
+    }
+    import from jaclang.jac0core.jir_registry { NODE_SPECS }
+    h = hashlib.sha256();
+    for spec in NODE_SPECS {
+        h.update(str(getattr(spec, 'type_idx', -1)).encode());
+        h.update(getattr(spec, 'class_name', '').encode());
+        for fd in (getattr(spec, 'fields', ()) or ()) {
+            h.update(getattr(fd, 'name', '').encode());
+            h.update(str(getattr(fd, 'kind', -1)).encode());
+        }
+    }
+    _SCHEMA_DIGEST_CACHE.append(h.hexdigest());
+    return _SCHEMA_DIGEST_CACHE[0];
+}
+
 def compute_module_key(source_path: str) -> str {
     import from importlib.metadata { version as pkg_version }
     try {
@@ -311,6 +185,8 @@ def compute_module_key(source_path: str) -> str {
     h.update(jac_ver.encode());
     h.update(struct.pack('<H', (sys.version_info.major << 8) | sys.version_info.minor));
     h.update(struct.pack('<H', FORMAT_VERSION));
+    h.update(schema_digest().encode());
+    h.update(_module_client_kind(source_path).encode());
     h.update(compute_content_sha256(source_path).encode());
     for (rel, digest) in _related_files(source_path) {
         h.update(rel.encode());
@@ -319,7 +195,6 @@ def compute_module_key(source_path: str) -> str {
     return h.hexdigest();
 }
 
-"""Read the SEC_MODKEY section from a JIR blob, or None if absent."""
 def read_modkey(data: bytes) -> (str | None) {
     try {
         magic: any = SECTIONS_MAGIC;
@@ -335,11 +210,6 @@ def read_modkey(data: bytes) -> (str | None) {
     }
 }
 
-"""Validate a JIR blob against its source by comparing embedded module keys.
-
-The single validator shared by the module cache (slow path) and the
-precompiled bundle. Returns False when the JIR carries no key (legacy/stale).
-"""
 def jir_matches_source(jir_data: bytes, source_path: str) -> bool {
     stored = read_modkey(jir_data);
     if stored is None {
@@ -348,11 +218,6 @@ def jir_matches_source(jir_data: bytes, source_path: str) -> bool {
     return stored == compute_module_key(source_path);
 }
 
-"""Parse cache-control env vars. Returns (rebuild, no_precompile).
-
-JAC_REBUILD=1      -> ignore all on-disk caches, force a fresh compile (still writes).
-JAC_NO_PRECOMPILE=1 -> skip the shipped _precompiled/ bundle.
-"""
 def cache_mode -> tuple[bool, bool] {
     truthy: set = {'1', 'true', 'True', 'TRUE', 'yes', 'YES', 'on', 'ON'};
     rebuild = os.environ.get('JAC_REBUILD', '') in truthy;
@@ -360,26 +225,12 @@ def cache_mode -> tuple[bool, bool] {
     return (rebuild, no_precompile);
 }
 
-"""Get the cache path for a stub file."""
-def get_stub_cache_path(stub_path: str, content_hash: str) -> Path {
-    cache_dir = get_jir_cache_dir() / 'stubs';
-    name = Path(stub_path).stem;
-    (major, minor) = (sys.version_info.major, sys.version_info.minor);
-    return cache_dir / f"{name}.{content_hash[:16]}.cpython-{major}{minor}.jir";
-}
-
-"""Get the cache directory for a module based on its origin.
-
-1. Source inside sys.prefix or jaclang package (installed/editable) → global cache
-2. Source inside active project root → project .jac/cache/
-3. Otherwise (standalone user file) → .jac/cache/ next to source
-"""
 glob _jaclang_pkg_dir: str = str(Path(__file__).resolve().parent.parent);
 
 def _get_module_cache_dir(source_path: str) -> Path {
     resolved = Path(source_path).resolve();
     resolved_str = str(resolved);
-    # Installed or editable-installed packages always use global cache
+
     if resolved_str.startswith(_jaclang_pkg_dir + os.sep) {
         return get_jir_cache_dir() / 'modules';
     }
@@ -387,7 +238,7 @@ def _get_module_cache_dir(source_path: str) -> Path {
         resolved.relative_to(sys.prefix);
         return get_jir_cache_dir() / 'modules';
     } except ValueError { }
-    # Check for active project context
+
     try {
         config_mod = __import__("jaclang.project.config", fromlist=["get_config"]);
         cfg = config_mod.get_config();
@@ -396,15 +247,14 @@ def _get_module_cache_dir(source_path: str) -> Path {
                 resolved.relative_to(cfg.project_root);
                 return cfg.get_cache_dir();
             } except ValueError { }
-            # Source is outside project — use global cache
+
             return get_jir_cache_dir() / 'modules';
         }
     } except Exception { }
-    # No project context — use .jac/cache/ next to source
+
     return resolved.parent / ".jac" / "cache";
 }
 
-"""Get the cache path for a user module."""
 def get_module_cache_path(source_path: str) -> Path {
     cache_dir = _get_module_cache_dir(source_path);
     source = Path(source_path).resolve();
@@ -413,32 +263,16 @@ def get_module_cache_path(source_path: str) -> Path {
     return cache_dir / f"{source.stem}.{path_hash}.cpython-{major}{minor}.jir";
 }
 
-"""Get the cache directory for a module's native (LLVM IR / object) artifacts.
-
-Routed through the same project/global resolution as the `.jir` module cache
-(`_get_module_cache_dir`) so native artifacts land in the project's
-`.jac/cache/native/` (or the global cache for installed/external sources)
-instead of a hardcoded `.jac_ir/` sibling of the source. This keeps every
-cached artifact under one tree that `jac clean`/`--scrub` can wipe.
-"""
 def get_native_cache_dir(source_path: str) -> Path {
     return _get_module_cache_dir(source_path) / "native";
 }
 
-"""Wipe project-local cache directories under a source tree (best-effort).
-
-Removes every `.jac/cache/` directory found beneath ``root`` (holding both the
-`.jir` module caches and native IR/object artifacts), plus any legacy
-`.jac_ir/` directories left by older builds. Returns the number of directories
-removed. Shared by `jac run --no-cache`, `jac nacompile --scrub`, and the
-clean command so they stay in lock-step.
-"""
-def scrub_cache_dirs(root: str) -> int {
+def scrub_cache_dirs(root_dir: str) -> int {
     import glob as _glob;
     import shutil as _shutil;
     patterns = [
-        os.path.join(root, "**", ".jac", "cache"),
-        os.path.join(root, "**", ".jac_ir")
+        os.path.join(root_dir, "**", ".jac", "cache"),
+        os.path.join(root_dir, "**", ".jac_ir")
     ];
     removed = 0;
     seen: set[str] = set();
@@ -455,11 +289,6 @@ def scrub_cache_dirs(root: str) -> int {
     return removed;
 }
 
-"""Serialize a dict of section_type -> bytes into a TLV blob.
-
-Returns bytes: SECTIONS_MAGIC + for each section [type(1) + len(4LE) + data]
-+ SEC_TERMINATOR + 0x00000000.
-"""
 def write_sections(sections: (dict[int, bytes] | None)) -> bytes {
     if not sections {
         return bytes();
@@ -476,11 +305,6 @@ def write_sections(sections: (dict[int, bytes] | None)) -> bytes {
     return bytes(buf);
 }
 
-"""Parse TLV sections from data starting at start_pos.
-
-start_pos should point to the byte immediately after SECTIONS_MAGIC.
-Returns dict mapping section_type -> bytes. Returns {} on any error.
-"""
 def read_sections(data: (bytes | memoryview), start_pos: int) -> dict[int, bytes] {
     result: dict[int, bytes] = {};
     pos = start_pos;
@@ -508,11 +332,6 @@ def read_sections(data: (bytes | memoryview), start_pos: int) -> dict[int, bytes
     return result;
 }
 
-"""Fast path: find and return raw bytecode section bytes without deserializing AST.
-
-Scans for SECTIONS_MAGIC after the header, then reads only SEC_BYTECODE.
-Returns None if no bytecode section is present.
-"""
 def read_bytecode_only(data: bytes) -> (bytes | None) {
     try {
         magic_bytes: any = SECTIONS_MAGIC;
@@ -527,16 +346,11 @@ def read_bytecode_only(data: bytes) -> (bytes | None) {
     }
 }
 
-"""Build a minimal JIR file containing only a bytecode section (no AST).
-
-Used for precompiled bundles (FLAG_PRECOMPILED) and the laundered copies they
-seed into the module cache. The AST payload is an empty zlib-compressed single
-byte (varint 0x00 = empty string pool). When `module_key` is given it is
-stamped as a SEC_MODKEY section so the artifact self-validates via
-`jir_matches_source`.
-"""
 def write_precompiled_jir(
-    bytecode: bytes, module_key: str = "", flags: int = 0
+    bytecode: bytes,
+    module_key: str = "",
+    flags: int = 0,
+    extra_sections: (dict[int, bytes] | None) = None
 ) -> bytes {
     import from importlib.metadata { version as pkg_version }
     try {
@@ -561,23 +375,28 @@ def write_precompiled_jir(
     if module_key {
         sections[SEC_MODKEY] = module_key.encode('utf-8');
     }
+    if extra_sections {
+        sections.update(extra_sections);
+    }
     section_bytes = write_sections(sections);
     return header + empty_payload + section_bytes;
 }
 
-"""Check whether a module's JIR cache is still valid (hybrid invalidation).
+def read_debug_source(data: bytes) -> (str | None) {
+    try {
+        magic_bytes: any = SECTIONS_MAGIC;
+        pos = data.find(magic_bytes, HEADER_SIZE);
+        if pos < 0 {
+            return None;
+        }
+        sections = read_sections(data, pos + len(magic_bytes));
+        src = sections.get(SEC_DEBUG_SRC);
+        return zlib.decompress(src).decode('utf-8') if src is not None else None;
+    } except Exception {
+        return None;
+    }
+}
 
-Fast path: the cache is valid if it exists, was written by a compatible
-compiler version, and its mtime is strictly newer than the source and every
-related file (impl, test, variant, style). This avoids hashing on the hot
-path of clean incremental builds.
-
-Slow path: when mtime is ambiguous (cache older-or-equal than some input —
-e.g. after a git checkout, touch, or copy), fall back to the embedded
-SEC_MODKEY key-compare via `jir_matches_source`. This is the same validator
-the precompiled bundle uses, so a stale-but-fresh-mtime cache can no longer
-serve old bytecode.
-"""
 def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
     import from jaclang.jac0core.bccache {
         discover_annex_files,
@@ -594,7 +413,7 @@ def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
             return False;
         }
         cache_mtime = os.path.getmtime(cache_path);
-        # Fast path: mtime says "definitely fresh" against all inputs.
+
         related = (
             discover_annex_files(source_path, '.impl.jac') + discover_annex_files(
                 source_path, '.test.jac'
@@ -621,7 +440,7 @@ def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
         if fresh {
             return True;
         }
-        # Slow path: mtime ambiguous -> trust the embedded module key.
+
         return jir_matches_source(data, source_path);
     } except OSError {
         return False;

@@ -51,7 +51,7 @@ jac install byllm
 
     ```toml
     # jac.toml
-    [plugins.byllm.model]
+    [byllm.model]
     default_model = "ollama/gemma3:4b"
     ```
 
@@ -66,7 +66,7 @@ jac install byllm
 
     ```toml
     # jac.toml
-    [plugins.byllm.model]
+    [byllm.model]
     default_model = "local:gemma-4-e4b"
     ```
 
@@ -164,7 +164,7 @@ byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) under the hood, giv
 
 === "OpenAI"
     ```toml
-    [plugins.byllm.model]
+    [byllm.model]
     default_model = "gpt-4o-mini"
     ```
     ```bash
@@ -173,7 +173,7 @@ byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) under the hood, giv
 
 === "Anthropic"
     ```toml
-    [plugins.byllm.model]
+    [byllm.model]
     default_model = "claude-sonnet-4-6"
     ```
     ```bash
@@ -182,7 +182,7 @@ byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) under the hood, giv
 
 === "Google"
     ```toml
-    [plugins.byllm.model]
+    [byllm.model]
     default_model = "gemini/gemini-2.0-flash"
     ```
     ```bash
@@ -191,14 +191,14 @@ byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) under the hood, giv
 
 === "Ollama (Local)"
     ```toml
-    [plugins.byllm.model]
+    [byllm.model]
     default_model = "ollama/llama3:70b"
     ```
     No API key needed - runs locally. See [Ollama](https://ollama.ai/) for setup.
 
 === "HuggingFace"
     ```toml
-    [plugins.byllm.model]
+    [byllm.model]
     default_model = "huggingface/meta-llama/Llama-3.3-70B-Instruct"
     ```
     ```bash
@@ -208,7 +208,7 @@ byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) under the hood, giv
 You can also override the model per-file when needed:
 
 ```jac
-import from byllm.lib { Model }
+import from jaclang.byllm.lib { Model }
 glob llm = Model(model_name="gpt-4o");  # overrides the builtin for this file
 ```
 
@@ -304,13 +304,13 @@ with entry {
 Control model, parameters, and system prompt in `jac.toml`:
 
 ```toml
-[plugins.byllm.model]
+[byllm.model]
 default_model = "gpt-4o-mini"       # any LiteLLM-supported model
 
-[plugins.byllm.call_params]
+[byllm.call_params]
 temperature = 0.7
 
-[plugins.byllm]
+[byllm]
 system_prompt = "You are a helpful assistant."
 ```
 
@@ -342,7 +342,7 @@ with entry {
 Use MockLLM for deterministic tests:
 
 ```jac
-import from byllm.lib { MockLLM }
+import from jaclang.byllm.lib { MockLLM }
 
 glob llm = MockLLM(
     model_name="mockllm",
@@ -368,7 +368,7 @@ test "translate" {
 
 | Concept | Syntax |
 |---------|--------|
-| Configure LLM | `jac.toml` `[plugins.byllm.model]` or `glob llm = Model(...)` |
+| Configure LLM | `jac.toml` `[byllm.model]` or `glob llm = Model(...)` |
 | AI function | `def func() -> Type by llm()` |
 | Semantic context | `sem func = "..."` |
 | Type safety | Return type annotation |

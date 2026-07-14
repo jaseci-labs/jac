@@ -1,25 +1,3 @@
-"""Pure-Jac WebAssembly linker for native Jac compilation.
-
-Takes the relocatable wasm object bytes from llvmlite's emit_object() (target
-triple wasm32-unknown-unknown) and produces a single instantiable wasm module.
-No external linker (wasm-ld / lld) required.
-
-Single-translation-unit model: the whole .na.jac module compiles to ONE LLVM
-module -> ONE object, so there is no cross-object merge. The linker:
-  - drops placeholder env imports (__linear_memory / __stack_pointer / ...),
-  - assigns the final function index space (kept imports first, then defined),
-  - lays out data segments + a stack in linear memory,
-  - synthesizes the memory, __stack_pointer + __heap_base globals, and the
-    indirect-function table + elem segment,
-  - rewrites code relocations (FUNCTION_INDEX / MEMORY_ADDR / GLOBAL_INDEX /
-    TABLE_INDEX / TABLE_NUMBER), and
-  - exports memory, the magic globals, and every defined function.
-
-Undefined externs (raylib, malloc/free/memcpy, __multi3, ...) remain wasm
-imports from module "env", satisfied by the JS host at instantiation time.
-"""
-
-# Names llvmlite emits as env placeholders that the linker resolves itself.
 glob _PLACEHOLDER: set = {
          "__linear_memory",
          "__indirect_function_table",
@@ -28,8 +6,6 @@ glob _PLACEHOLDER: set = {
          "__table_base"
      };
 
-# ─── LEB128 / byte emit helpers ──────────────────────────────────────────────
-"""Read an unsigned LEB128. Returns (value, new_offset)."""
 def _rd_uleb(b: bytes, o: int) -> tuple {
     r = 0;
     s = 0;
@@ -44,7 +20,6 @@ def _rd_uleb(b: bytes, o: int) -> tuple {
     }
 }
 
-"""Read a signed LEB128. Returns (value, new_offset)."""
 def _rd_sleb(b: bytes, o: int) -> tuple {
     r = 0;
     s = 0;
@@ -62,7 +37,6 @@ def _rd_sleb(b: bytes, o: int) -> tuple {
     }
 }
 
-"""Encode an unsigned LEB128 (minimal length)."""
 def _uleb(v: int) -> bytes {
     out = bytearray();
     while True {
@@ -77,10 +51,6 @@ def _uleb(v: int) -> bytes {
     }
 }
 
-"""Encode a fixed 5-byte padded unsigned LEB128 (for in-place reloc rewrite).
-
-Also valid as a 5-byte signed LEB for small non-negative values (memory
-addresses, table slots), since the sign bit of the 5th byte stays clear."""
 def _uleb5(v: int) -> bytes {
     out = bytearray();
     i = 0;
@@ -96,7 +66,6 @@ def _uleb5(v: int) -> bytes {
     return bytes(out);
 }
 
-"""Encode a signed LEB128 (minimal length), used for init-expr constants."""
 def _sleb_bytes(v: int) -> bytes {
     out = bytearray();
     while True {
@@ -110,34 +79,28 @@ def _sleb_bytes(v: int) -> bytes {
     }
 }
 
-"""Little-endian u32."""
 def _u32le(v: int) -> bytes {
     return (v & 0xffffffff).to_bytes(4, "little");
 }
 
-"""Read a length-prefixed name. Returns (str, new_offset)."""
 def _rd_name(b: bytes, o: int) -> tuple {
     (n, o) = _rd_uleb(b, o);
     return (b[o:o + n].decode("latin1"), o + n);
 }
 
-"""Emit a length-prefixed UTF-8 name."""
 def _nm_bytes(s: str) -> bytes {
     e = s.encode("utf-8");
     return _uleb(len(e)) + e;
 }
 
-"""Emit a section: id byte, ULEB size, payload."""
 def _section(sid: int, payload: bytes) -> bytes {
     return bytes([sid]) + _uleb(len(payload)) + payload;
 }
 
-"""Emit a vector: ULEB count then concatenated items."""
 def _vec(items: list) -> bytes {
     return _uleb(len(items)) + b"".join(items);
 }
 
-"""Overwrite buf[off:off+len(data)] in place (byte-wise; no slice assign)."""
 def _patch(buf: bytearray, off: int, data: bytes) {
     i = 0;
     while i < len(data) {
@@ -146,15 +109,6 @@ def _patch(buf: bytearray, off: int, data: bytes) {
     }
 }
 
-# ─── Parsed relocatable object ───────────────────────────────────────────────
-"""A parsed relocatable wasm object (subset of sections the linker needs).
-
-imports : list of [kind, module, field, extra]  (kind in func/table/mem/global)
-func_types : type index per defined function
-symtab : list of [kind, flags, idx_or_seginfo, name]   (linking symbol table)
-relocs : list of [reloc_section_name, type, offset, sym_index, addend]
-seg_info : list of (name, align_log2, flags) from SEGMENT_INFO
-"""
 obj WasmObj {
     has b: bytes,
         types_raw: list = [],
@@ -196,7 +150,7 @@ impl WasmObj.parse -> None {
             ci = 0;
             while ci < n {
                 st = o;
-                o += 1;  # 0x60 form byte
+                o += 1;
                 (np, o) = _rd_uleb(b, o);
                 o += np;
                 (nr, o) = _rd_uleb(b, o);
@@ -236,9 +190,9 @@ impl WasmObj.parse -> None {
                 } elif k == 3 {
                     vt = b[o];
                     o += 1;
-                    mut = b[o];
+                    is_mut = b[o];
                     o += 1;
-                    self.imports.append(["global", mod, fld, (vt, mut)]);
+                    self.imports.append(["global", mod, fld, (vt, is_mut)]);
                 }
                 ci += 1;
             }
@@ -274,7 +228,7 @@ impl WasmObj.parse_linking(o: int, end: int) -> None {
         o += 1;
         (pl, o) = _rd_uleb(b, o);
         se = o + pl;
-        if sub == 8 {  # WASM_SYMBOL_TABLE
+        if sub == 8 {
             (cnt, o) = _rd_uleb(b, o);
             ci = 0;
             while ci < cnt {
@@ -282,14 +236,7 @@ impl WasmObj.parse_linking(o: int, end: int) -> None {
                 o += 1;
                 (flags, o) = _rd_uleb(b, o);
                 undef = flags & 0x10;
-                if kind == 0 or kind == 2 or kind == 5 {
-                    (idx, o) = _rd_uleb(b, o);
-                    nm = None;
-                    if not undef {
-                        (nm, o) = _rd_name(b, o);
-                    }
-                    self.symtab.append([kind, flags, idx, nm]);
-                } elif kind == 1 {  # DATA
+                if kind == 1 {
                     (nm, o) = _rd_name(b, o);
                     info = None;
                     if not undef {
@@ -299,10 +246,20 @@ impl WasmObj.parse_linking(o: int, end: int) -> None {
                         info = (sg, of, sz);
                     }
                     self.symtab.append([kind, flags, info, nm]);
+                } elif kind == 3 {
+                    (idx, o) = _rd_uleb(b, o);
+                    self.symtab.append([kind, flags, idx, None]);
+                } else {
+                    (idx, o) = _rd_uleb(b, o);
+                    nm = None;
+                    if (not undef) or (flags & 0x40) {
+                        (nm, o) = _rd_name(b, o);
+                    }
+                    self.symtab.append([kind, flags, idx, nm]);
                 }
                 ci += 1;
             }
-        } elif sub == 5 {  # WASM_SEGMENT_INFO
+        } elif sub == 5 {
             (cnt, o) = _rd_uleb(b, o);
             ci = 0;
             while ci < cnt {
@@ -318,6 +275,9 @@ impl WasmObj.parse_linking(o: int, end: int) -> None {
 }
 
 impl WasmObj.parse_reloc(nm: str, o: int, end: int) -> None {
+    if nm != "reloc.CODE" {
+        return;
+    }
     b = self.b;
     (sec, o) = _rd_uleb(b, o);
     (cnt, o) = _rd_uleb(b, o);
@@ -336,7 +296,6 @@ impl WasmObj.parse_reloc(nm: str, o: int, end: int) -> None {
     }
 }
 
-"""Parse the data section payload into a list of segment content byte strings."""
 def _parse_data_segments(b: bytes) -> list {
     if not b {
         return [];
@@ -347,14 +306,14 @@ def _parse_data_segments(b: bytes) -> list {
     ci = 0;
     while ci < n {
         (flags, o) = _rd_uleb(b, o);
-        if flags == 0 {  # active, mem 0, offset expr
-            o += 1;  # 0x41 i32.const
+        if flags == 0 {
+            o += 1;
             (_v, o) = _rd_sleb(b, o);
-            o += 1;  # 0x0b end
+            o += 1;
             (sz, o) = _rd_uleb(b, o);
             segs.append(b[o:o + sz]);
             o += sz;
-        } elif flags == 1 {  # passive
+        } elif flags == 1 {
             (sz, o) = _rd_uleb(b, o);
             segs.append(b[o:o + sz]);
             o += sz;
@@ -366,11 +325,9 @@ def _parse_data_segments(b: bytes) -> list {
     return segs;
 }
 
-"""Resolve a linking-table symbol index to its final value.
-
-FUNCTION -> final function index; GLOBAL -> 0 (the synthesized __stack_pointer);
-DATA -> final linear-memory address (segment base + intra-segment offset)."""
-def _sym_val(ob: WasmObj, si: int, old2new: dict, seg_base: list) -> int {
+def _sym_val(
+    ob: WasmObj, si: int, old2new: dict, seg_base: list, heap_base: int = -1
+) -> int {
     e = ob.symtab[si];
     k = e[0];
     idx = e[2];
@@ -381,33 +338,39 @@ def _sym_val(ob: WasmObj, si: int, old2new: dict, seg_base: list) -> int {
         return 0;
     }
     if k == 1 {
+        if idx is None {
+            if e[3] == "__heap_base" and heap_base >= 0 {
+                return heap_base;
+            }
+            raise ValueError(f"undefined data symbol {e[3]}");
+        }
         return seg_base[idx[0]] + idx[1];
     }
     raise ValueError(f"unsupported symbol kind {k}");
 }
 
-# ─── Linker ──────────────────────────────────────────────────────────────────
-"""Pure-Jac single-object wasm linker.
-
-`link` turns one relocatable wasm object into an instantiable module.
-"""
 obj WasmLinker {
-    """Link `obj_bytes` into a complete wasm module.
-
-    export_funcs: names to export; empty => export every defined function.
-    mem_pages: initial linear-memory size in 64 KiB pages."""
     static def link(
-        obj_bytes: bytes, export_funcs: list = [], mem_pages: int = 256
+        obj_bytes: bytes,
+        export_funcs: list = [],
+        mem_pages: int = 256,
+        host_abi: (set | None) = None,
+        host_module: str = "jac_host1",
+        app_imports: (set | None) = None,
     ) -> bytes;
 }
 
 impl WasmLinker.link(
-    obj_bytes: bytes, export_funcs: list = [], mem_pages: int = 256
+    obj_bytes: bytes,
+    export_funcs: list = [],
+    mem_pages: int = 256,
+    host_abi: (set | None) = None,
+    host_module: str = "jac_host1",
+    app_imports: (set | None) = None,
 ) -> bytes {
     ob = WasmObj(b=obj_bytes);
     segs = _parse_data_segments(ob.data_raw);
 
-    # ── memory layout: data segments at 1024, then a stack, then the heap ──
     base = 1024;
     seg_base = [];
     i = 0;
@@ -423,10 +386,9 @@ impl WasmLinker.link(
         i += 1;
     }
     base = ((base + 15) // 16) * 16;
-    stack_top = base + (1 << 18);  # 256 KiB stack
+    stack_top = base + (1 << 18);
     heap_base = ((stack_top + 15) // 16) * 16;
 
-    # ── final function index space: kept imports first, then defined funcs ──
     obj_func_imports = [
         im
         for im in ob.imports
@@ -437,6 +399,14 @@ impl WasmLinker.link(
     oi = 0;
     for im in obj_func_imports {
         if im[2] in _PLACEHOLDER { } else {
+            fld = im[2];
+            if host_abi is not None and fld in host_abi {
+                im = [im[0], host_module, fld, im[3]];
+            } elif app_imports is not None and fld not in app_imports {
+                raise RuntimeError(
+                    f"wasm import '{fld}' is neither part of the " + f"{host_module} host ABI nor declared by the app; " + "the native floor references a symbol missing from the " + "vendored wasm_rt libc (compiler drift) — add it to " + "wasm_rt or to wasm_host_abi.jac"
+                );
+            }
             old2new[oi] = len(kept);
             kept.append(im);
         }
@@ -450,9 +420,6 @@ impl WasmLinker.link(
         di += 1;
     }
 
-    # ── assign indirect-table slots to address-taken funcs (slot 0 = null) ──
-    # needs_table: the code references table 0 (call_indirect / table ops) even
-    # if no function is address-taken in this object - the table must still exist.
     slot_of = {};
     nslot = 1;
     needs_table = False;
@@ -462,7 +429,7 @@ impl WasmLinker.link(
             needs_table = True;
         }
         if rt == 1 or rt == 2 {
-            fi = _sym_val(ob, r[3], old2new, seg_base);
+            fi = _sym_val(ob, r[3], old2new, seg_base, heap_base);
             if fi in slot_of { } else {
                 slot_of[fi] = nslot;
                 nslot += 1;
@@ -470,7 +437,6 @@ impl WasmLinker.link(
         }
     }
 
-    # ── rewrite code relocations in place ──
     code = bytearray(ob.code);
     for r in ob.relocs {
         rnm = r[0];
@@ -482,27 +448,36 @@ impl WasmLinker.link(
             continue;
         }
         if rt == 0 {
-            _patch(code, off, _uleb5(_sym_val(ob, sym, old2new, seg_base)));
+            _patch(code, off, _uleb5(_sym_val(ob, sym, old2new, seg_base, heap_base)));
         } elif rt == 1 {
-            _patch(code, off, _uleb5(slot_of[_sym_val(ob, sym, old2new, seg_base)]));
+            _patch(
+                code,
+                off,
+                _uleb5(slot_of[_sym_val(ob, sym, old2new, seg_base, heap_base)])
+            );
         } elif rt == 2 {
-            _patch(code, off, _u32le(slot_of[_sym_val(ob, sym, old2new, seg_base)]));
+            _patch(
+                code,
+                off,
+                _u32le(slot_of[_sym_val(ob, sym, old2new, seg_base, heap_base)])
+            );
         } elif rt == 3 or rt == 4 {
-            _patch(code, off, _uleb5(_sym_val(ob, sym, old2new, seg_base) + add));
+            _patch(
+                code, off, _uleb5(_sym_val(ob, sym, old2new, seg_base, heap_base) + add)
+            );
         } elif rt == 5 {
-            _patch(code, off, _u32le(_sym_val(ob, sym, old2new, seg_base) + add));
-        } elif rt == 6 {
-            # TYPE_INDEX_LEB - identity for a single object (type section kept as-is)
-        } elif rt == 7 {
-            _patch(code, off, _uleb5(_sym_val(ob, sym, old2new, seg_base)));
+            _patch(
+                code, off, _u32le(_sym_val(ob, sym, old2new, seg_base, heap_base) + add)
+            );
+        } elif rt == 6 { } elif rt == 7 {
+            _patch(code, off, _uleb5(_sym_val(ob, sym, old2new, seg_base, heap_base)));
         } elif rt == 20 {
-            _patch(code, off, _uleb5(0));  # TABLE_NUMBER_LEB -> table 0
+            _patch(code, off, _uleb5(0));
         } else {
             raise ValueError(f"unsupported reloc type {rt}");
         }
     }
 
-    # ── emit the module ──
     out = bytearray(b"\x00asm");
     out += _u32le(1);
     out += _section(1, _vec(ob.types_raw));
@@ -513,18 +488,18 @@ impl WasmLinker.link(
     out += _section(2, _vec(imps));
     out += _section(3, _vec([_uleb(t) for t in ob.func_types]));
     if needs_table {
-        out += _section(4, _vec([b"\x70\x00" + _uleb(nslot)]));  # funcref table
+        out += _section(4, _vec([b"\x70\x00" + _uleb(nslot)]));
     }
-    out += _section(5, _vec([b"\x00" + _uleb(mem_pages)]));  # memory
-    g_sp = b"\x7f\x01\x41" + _sleb_bytes(stack_top) + b"\x0b";  # mut i32
-    g_hb = b"\x7f\x00\x41" + _sleb_bytes(heap_base) + b"\x0b";  # const i32
+    out += _section(5, _vec([b"\x00" + _uleb(mem_pages)]));
+    g_sp = b"\x7f\x01\x41" + _sleb_bytes(stack_top) + b"\x0b";
+    g_hb = b"\x7f\x00\x41" + _sleb_bytes(heap_base) + b"\x0b";
     out += _section(6, _vec([g_sp, g_hb]));
 
     ef = export_funcs;
     if not ef {
         ef = [];
         for e in ob.symtab {
-            if e[0] == 0 and e[3] and not (e[1] & 0x10) {
+            if e[0] == 0 and e[3] and not (e[1] & 0x10) and not (e[1] & 0x2) {
                 ef.append(e[3]);
             }
         }
@@ -549,7 +524,7 @@ impl WasmLinker.link(
         pairs = [];
         for kv in slot_of.items() {
             pairs.append((kv[1], kv[0]));
-        }  # (slot, funcidx)
+        }
         pairs.sort();
         funcidxs = [p[1] for p in pairs];
         expr = b"\x41" + _sleb_bytes(1) + b"\x0b";
@@ -569,5 +544,30 @@ impl WasmLinker.link(
     if dsegs {
         out += _section(11, _vec(dsegs));
     }
+
+    nm_entries = [];
+    fi2 = 0;
+    for im in kept {
+        nm_entries.append((fi2, im[2]));
+        fi2 += 1;
+    }
+    seen_fi = set();
+    for e in ob.symtab {
+        if e[0] == 0 and e[3] and not (e[1] & 0x10) and e[2] in old2new {
+            nfi = old2new[e[2]];
+            if nfi not in seen_fi {
+                seen_fi.add(nfi);
+                nm_entries.append((nfi, e[3]));
+            }
+        }
+    }
+    nm_entries.sort();
+    nm_map = bytearray();
+    for pair in nm_entries {
+        nm_map += _uleb(pair[0]) + _nm_bytes(pair[1]);
+    }
+    sub = _uleb(len(nm_entries)) + bytes(nm_map);
+    payload = _nm_bytes("name") + b"\x01" + _uleb(len(sub)) + sub;
+    out += _section(0, payload);
     return bytes(out);
 }

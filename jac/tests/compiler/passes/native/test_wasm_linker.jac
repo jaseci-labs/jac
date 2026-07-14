@@ -30,7 +30,7 @@ import from jaclang.compiler.passes.native.wasm_linker {
     _rd_sleb,
     _u32le
 }
-import llvmlite.binding as llvm;
+import jaclang.compiler.passes.native.llvm.binding as llvm;
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "passes", "native", "fixtures"
@@ -57,7 +57,7 @@ def emit_wasm_object(fixture: str) -> bytes {
         mod = llvm.parse_assembly(str(ir.gen.llvm_ir));
         mod.verify();
         tm = llvm.Target.from_triple(WASM_TRIPLE).create_target_machine(opt=2);
-        pto = llvm.create_pipeline_tuning_options(speed_level=2, size_level=0);
+        pto = llvm.create_pipeline_tuning_options(speed_level=2);
         pb = llvm.create_pass_builder(tm, pto);
         pb.getModulePassManager().run(mod, pb);
         relobj = tm.emit_object(mod);
@@ -254,6 +254,8 @@ const env = {
   malloc: (n) => { n = Number(n); const p = M.h; M.h = (M.h + n + 7) & ~7; return p; },
   calloc: (c, s) => { const n = Number(c) * Number(s); const p = M.h; M.h = (M.h + n + 7) & ~7;
                       new Uint8Array(M.mem.buffer).fill(0, p, p + n); return p; },
+  realloc: (p, n) => { p = Number(p); n = Number(n); const q = M.h; M.h = (M.h + n + 7) & ~7;
+                       if (p) { new Uint8Array(M.mem.buffer).copyWithin(q, p, p + n); } return q; },
   free: () => {}, malloc_usable_size: () => 0,
   memcpy: (d, s, n) => { new Uint8Array(M.mem.buffer).copyWithin(d, s, s + Number(n)); return d; },
   memcmp: (a, b, n) => { const m = new Uint8Array(M.mem.buffer); n = Number(n);

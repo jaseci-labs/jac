@@ -1,44 +1,40 @@
-"""
-Type system evaluator for JacLang.
-
-PyrightReference:
-    packages/pyright-internal/src/analyzer/typeEvaluator.ts
-    packages/pyright-internal/src/analyzer/typeEvaluatorTypes.ts
-"""
-
 import ast as py_ast;
 import os;
 import from pathlib { Path }
 import from typing { cast }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.constant { TOKEN_MAP }
-import from jaclang.jac0core.constant { SymbolType, Tokens as Tok, EdgeDir }
+import from jaclang.jac0core.constant {
+    TOKEN_MAP,
+    SymbolType,
+    Tokens as Tok,
+    EdgeDir,
+    SymbolAccess,
+}
 import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
 import from jaclang.jac0core.passes.sym_tab_build_pass { SymTabBuildPass }
 import from jaclang.compiler.type_system { types }
 import from jaclang.jac0core.helpers { read_file_with_encoding }
 import type from jaclang.jac0core.program { JacProgram }
 
-# FIXME: Conver the bellow to dot import (from . import ...)
-# Currently its not possible with jac+python hybrid repos.
 import from jaclang.compiler.type_system { operations }
 import from jaclang.compiler.type_system { type_utils }
 import from jaclang.compiler.type_system { properties }
 import from jaclang.compiler.symbol_utils { int_subscript_suffix }
 import from jaclang.compiler.type_system { enum_utils }
 import from jaclang.compiler.type_system.types { TypeBase }
+import from jaclang.compiler.type_system.ts_decl_parser {
+    TsDecl,
+    TsType,
+    TsTypeKind,
+    TsDeclKind,
+    TsAccess,
+    TsMember
+}
 
 import from jaclang.jac0core.diagnostics {
     DiagnosticInfo,
     E1001,
-    E1002,
-    E1003,
-    E1004,
     E1010,
-    E1011,
-    E1020,
-    E1021,
-    E1022,
     E1023,
     E1030,
     E1031,
@@ -56,8 +52,6 @@ import from jaclang.jac0core.diagnostics {
     E1054,
     E1056,
     E1057,
-    E1060,
-    E1061,
     E1062,
     E1063,
     E1064,
@@ -68,12 +62,6 @@ import from jaclang.jac0core.diagnostics {
     E1073,
     E1080,
     E1081,
-    E1090,
-    E1091,
-    E1092,
-    E1093,
-    E1094,
-    E1095,
     E1096,
     E1097,
     E1098,
@@ -85,6 +73,7 @@ import from jaclang.jac0core.diagnostics {
     E1104,
     E1110,
     E1111,
+    E1120,
     W0062,
     W1050,
     W1051,
@@ -93,16 +82,12 @@ import from jaclang.jac0core.diagnostics {
     W1102
 }
 
-"""Types whose definitions are prefetched and cached by the type evaluator."""
 obj PrefetchedTypes {
     has none_type_class: types.ClassType | None = None,
         object_class: types.ClassType | None = None,
         type_class: types.ClassType | None = None,
-        union_type_class: types.ClassType | None = None,
-        awaitable_class: types.ClassType | None = None,
         coroutine_class: types.ClassType | None = None,
         function_class: types.ClassType | None = None,
-        method_class: types.ClassType | None = None,
         tuple_class: types.ClassType | None = None,
         bool_class: types.ClassType | None = None,
         int_class: types.ClassType | None = None,
@@ -111,21 +96,14 @@ obj PrefetchedTypes {
         bytes_class: types.ClassType | None = None,
         dict_class: types.ClassType | None = None,
         list_class: types.ClassType | None = None,
-        module_type_class: types.ClassType | None = None,
-        typed_dict_class: types.ClassType | None = None,
-        typed_dict_private_class: types.ClassType | None = None,
-        supports_keys_and_get_item_class: types.ClassType | None = None,
-        mapping_class: types.ClassType | None = None,
-        template_class: types.ClassType | None = None,
+        slice_class: types.ClassType | None = None,
         type_var_class: types.ClassType | None = None,
         param_spec_class: types.ClassType | None = None,
         type_var_tuple_class: types.ClassType | None = None,
         classmethod_class: types.ClassType | None = None,
-        # Prefetch from typing.pyi file
         protocol_class: types.ClassType | None = None,
         any_class: types.ClassType | None = None,
         callable_class: types.ClassType | None = None,
-        # Prefetched from jac_builtins.pyi file
         final_class: types.ClassType | None = None,
         literal_string_class: types.ClassType | None = None,
         root_class: types.ClassType | None = None,
@@ -133,59 +111,31 @@ obj PrefetchedTypes {
         walker_class: types.ClassType | None = None,
         path_class: types.ClassType | None = None,
         jsx_element_class: types.ClassType | None = None,
-        # Intrinsic element prop types (from dom_types.pyi)
         html_common_props_class: types.ClassType | None = None,
         jsx_intrinsic_elements_class: types.ClassType | None = None,
-        # Fixed-width numeric types
-        i8_class: types.ClassType | None = None,
-        u8_class: types.ClassType | None = None,
-        i16_class: types.ClassType | None = None,
-        u16_class: types.ClassType | None = None,
-        i32_class: types.ClassType | None = None,
-        u32_class: types.ClassType | None = None,
-        i64_class: types.ClassType | None = None,
-        u64_class: types.ClassType | None = None,
-        f32_class: types.ClassType | None = None,
-        f64_class: types.ClassType | None = None,
-        # Prefetched enum base class
         enum_class: types.ClassType | None = None,
         set_class: types.ClassType | None = None;
 }
 
-"""Represents a single entry in the symbol resolution stack."""
 obj SymbolResolutionStackEntry {
     has symbol: uni.Symbol,
-        # Initially true, it's set to false if a recursion
-        # is detected.
         is_result_valid: bool = True,
-        # Some limited forms of recursion are allowed. In these
-        # cases, a partially-constructed type can be registered.
         partial_type: TypeBase | None = None;
 }
 
-"""Result of matching arguments to parameters."""
 obj MatchArgsToParamsResult {
     has arg_params: dict[(uni.Expr | uni.KWPair, types.Parameter | None)],
         overload: types.FunctionType | None = None,
         argument_errors: bool = False;
 }
 
-"""Wraps the identity of what is being narrowed (a symbol or a dotted expression).
-
-`deps` is the set of identifier names the key textually depends on
-beyond the key itself -- the base name plus any Name indices for
-subscript expressions (`x[r]` depends on `{x, r}`). The CFG
-assignment barrier consults this set so reassigning an index
-invalidates the narrowing without re-parsing the key string.
-"""
 obj NarrowingTarget {
-    has key: str,  # "x" or "bmw.speed"
+    has key: str,
         declared_type: TypeBase,
-        symbol: uni.Symbol | None = None,  # None for expression-based narrowing
+        symbol: uni.Symbol | None = None,
         deps: frozenset[str] = frozenset();
 }
 
-"""Represents a narrowing operation from a conditional predicate."""
 obj NarrowingPredicate {
     has key: str,
         narrow_type: TypeBase,
@@ -193,7 +143,6 @@ obj NarrowingPredicate {
         attr_name: str | None = None;
 }
 
-"""Classification of a leaf narrowing condition."""
 enum NarrowingKind {
     ISINSTANCE = "isinstance",
     CALLABLE = "callable",
@@ -205,12 +154,6 @@ enum NarrowingKind {
     HASATTR = "hasattr"
 }
 
-"""Result of classifying a leaf condition node.
-
-Captures the narrowing-kind-specific info extracted from the AST.
-Structural wrappers (parens, NOT, AND, OR) are handled by callers
-before reaching classification.
-"""
 obj ConditionInfo {
     has kind: NarrowingKind,
         key: str,
@@ -218,10 +161,8 @@ obj ConditionInfo {
         attr_name: str | None = None;
 }
 
-"""Type evaluator for JacLang."""
 obj TypeEvaluator {
     has program: "JacProgram",
-        # Path constants - initialized in postinit (use __file__ from impl)
         _BUILTINS_STUB_FILE_PATH: str by postinit,
         _TYPING_STUB_FILE_PATH: str by postinit,
         _TYPES_STUB_FILE_PATH: str by postinit,
@@ -230,66 +171,30 @@ obj TypeEvaluator {
         _NA_BUILTINS_STUB_FILE_PATH: str by postinit,
         _JS_GLOBALS_STUB_FILE_PATH: str by postinit,
         _TYPING_AMBIENT_STUB_FILE_PATH: str by postinit,
-        # Names made ambient by typing_ambient.pyi's __all__, keyed by the
-        # source module the stub re-exports them from (typing /
-        # collections.abc). Built once in postinit by parsing the stub's
-        # `from <module> import (...)` blocks and intersecting with __all__,
-        # so this stays in lockstep with the merged builtins and the
-        # PyastGenPass codegen preamble. Lint passes (e.g.
-        # StaticAnalysisPass) consume this to detect redundant imports.
         ambient_typing_names_by_module: dict[str, set[str]] = {},
         _ENUM_STUB_FILE_PATH: str by postinit,
-        _SPECIAL_FORM_CLASS_NAMES: tuple[(str, ...)] = (
-            "Union",
-            "Protocol",
-            "Callable",
-            "Type",
-            "NoReturn",
-            "ClassVar",
-            "Optional",
-            "Tuple",
-            "Final",
-            "Literal",
-            "TypedDict"
-        ),
-        # Resolution and state
         symbol_resolution_stack: list[SymbolResolutionStackEntry] = [],
         prefetch: PrefetchedTypes by postinit,
         _pass: object | None = None,
         builtins_module: uni.Module | None = None,
-        # Type narrowing (CFG-based only — no scope stack)
         _flow_node_type_cache: dict[tuple, types.TypeBase | None] = {},
         _flow_pending_symbols: set[int] by postinit,
         _flow_pending_keys: set[str] by postinit,
         _module_type_cache: dict[str, types.ModuleType] = {},
-        # Cache for `_is_strict_site` keyed by `id(module)`. Maps to True
-        # when the module is Jac source (Layer 2 strict-Any applies),
-        # False when it is Python source (PEP 484 stays permissive).
+        _mobui_module_cache: dict[str, bool] = {},
         _strict_site_cache: dict[int, bool] = {},
-        # Per-module set of symbol ids bound by `sv import` to a server
-        # function, keyed by `id(module)`. Calls to these are async RPC stubs
-        # on the client. Scoped per module so a server function called
-        # server-side (same shared symbol) is unaffected. Same id-keyed,
-        # recompile-invalidated pattern as `_strict_site_cache`.
         _sv_async_syms_cache: dict[int, set[int]] = {},
-        # Temporary type overrides for isinstance narrowing within AND conditions.
-        # Maps symbol id → narrowed type. Set during BoolExpr(and) evaluation so
-        # that RHS operands see the narrowed type from LHS isinstance checks.
         _and_narrowing_overrides: dict[int, TypeBase] = {},
-        # Stub modules - initialized in postinit
+        _ts_decl_cache: dict[str, (dict[str, TsDecl] | None)] = {},
+        _ts_decl_path_cache: dict[str, (str | None)] = {},
+        _ts_synth_class_cache: dict[int, (dict[str, types.ClassType] | None)] = {},
+        _untyped_external_cfg_cache: dict[str, bool] = {},
         typing_module: uni.Module by postinit,
         types_module: uni.Module by postinit,
         enum_module: uni.Module by postinit,
         jac_builtins_module: uni.Module by postinit,
         dom_types_module: uni.Module by postinit,
-        # Native (.na.jac) ambient stub. Unlike dom_types, this is NOT merged
-        # into builtins: its names (File, native open) resolve only in native
-        # context via a gated lookup, so they never leak into regular .jac.
         na_builtins_module: uni.Module by postinit,
-        # ECMAScript / browser ambient stub for client code. Like na_builtins
-        # (and unlike dom_types), NOT merged into builtins: its names (Date,
-        # Math, console, window, ...) resolve only in client context via a
-        # gated lookup, so they never leak into server .jac code.
         js_globals_module: uni.Module by postinit;
 
     def postinit -> None;
@@ -298,48 +203,68 @@ obj TypeEvaluator {
     def _prefetch_types;
     def get_none_type -> TypeBase;
     def emit_diag(diag: DiagnosticInfo, nd: uni.UniNode, **kwargs: object) -> None;
-    # Clear cached `.type` on an expr subtree so it re-resolves (used after
-    # seeding lambda params).
     def _invalidate_expr_type_cache(node_: uni.UniNode) -> None;
     def get_index_of_symbol_resolution(symbol: uni.Symbol) -> int | None;
     def push_symbol_resolution(symbol: uni.Symbol) -> bool;
     def pop_symbol_resolution(symbol: uni.Symbol) -> bool;
-    # Pyright equivalent function name = getEffectiveTypeOfSymbol.
     def get_type_of_symbol(symbol: uni.Symbol) -> TypeBase;
-    # Follow an imported symbol's re-export chain to its defining symbol, so
-    # overload collection happens at the definition scope, not a re-export one.
     def resolve_to_definition_symbol(symbol: uni.Symbol) -> uni.Symbol;
-    # Widen literal types (e.g. Literal["x"] -> str) for the *declared* type
-    # of an unannotated variable, inferred from its first binding.
     def _widen_literal_for_declaration(ty: TypeBase) -> TypeBase;
-    # NOTE: This function doesn't exists in pyright, however it exists as a helper function
-    # for the following functions.
     def _import_module_from_path(
         path: str, importer_path: (str | None) = None
     ) -> uni.Module;
 
-    """Resolve the file path of the Module that contains the given AST
-    node, if any. Used by the import resolver to record reverse-dependency
-    edges (importer -> target). Returns None when no parent Module is
-    reachable or its source carries no file path (e.g. anonymous stub
-    modules)."""
     def _resolve_importer_path(ast_node: uni.UniNode) -> (str | None);
-
     def _try_read_jir_cache(resolved_path: str) -> (uni.Module | None);
-    """Drop per-module entries from the evaluator's caches.
-
-    Called by `JacProgram.invalidate_module` so the evaluator does not
-    keep returning stale `ModuleType` objects (or stale cached attribute
-    types pinned to the old module's symbol table) after the underlying
-    file changes."""
     def forget_module(resolved_path: str) -> None;
-
     def _resolve_from_path(from_mod: uni.ModulePath) -> Path;
+    def _resolve_client_npm_module(node_: uni.ModulePath) -> (str | None);
+    def _get_ts_declared_item_type(
+        from_loc: uni.ModulePath, item_name: str
+    ) -> (TypeBase | None);
+
+    def _ts_declared_type_from_file(
+        dts_path: str, item_name: str
+    ) -> (TypeBase | None);
+
+    def _load_ts_declarations(dts_path: str) -> (dict[str, TsDecl] | None);
+    def _map_ts_decl(
+        decl: TsDecl, decls: dict[str, TsDecl], item_name: str
+    ) -> (TypeBase | None);
+
+    def _map_ts_type(
+        ts: (TsType | None),
+        decls: dict[str, TsDecl],
+        seen: (set[str] | None) = None,
+        shells: (dict[str, types.ClassType] | None) = None
+    ) -> TypeBase;
+
+    def _synthesize_ts_decl_class(
+        decls: dict[str, TsDecl], item_name: str
+    ) -> (TypeBase | None);
+
+    def _install_synth_member(
+        scope: uni.UniScopeNode,
+        synth_src: uni.Source,
+        mname: str,
+        member_type: TypeBase
+    ) -> None;
+
+    def _ts_synth_class_types(
+        decls: dict[str, TsDecl]
+    ) -> (dict[str, types.ClassType] | None);
+
+    def _emit_untyped_external(name_node: uni.Name, name: str, module: str) -> None;
+    def _untyped_external_is_error(node_: uni.UniNode) -> bool;
     def _is_fstring_all_literal(fstring: uni.FString) -> bool;
     def _try_resolve_forward_ref(expr: uni.String) -> TypeBase | None;
     def _type_from_union_annotation_arg(val: uni.Expr) -> TypeBase;
     def get_type_of_module(node_: uni.ModulePath) -> types.TypeBase;
     def get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeBase;
+    def _resolve_submodule_attr(
+        base_type: types.ModuleType, attr_name: str
+    ) -> (types.ModuleType | None);
+
     def _resolve_star_import_symbol(
         mod: uni.Module, name: str, visited: set[int] | None = None
     ) -> uni.Symbol | None;
@@ -355,47 +280,29 @@ obj TypeEvaluator {
     def get_type_of_class(node_: uni.Archetype) -> types.ClassType;
     def get_type_of_enum(node_: uni.Enum) -> types.ClassType;
     def get_type_of_ability(node_: uni.Ability) -> TypeBase;
-    # Apply function-shaped decorators (e.g. contextmanager) to an ability's type.
     def _apply_function_decorators(
         node_: uni.Ability, func_type: types.FunctionType
     ) -> types.FunctionType;
 
-    def get_type_of_string(nd: uni.String | uni.MultiString) -> TypeBase;
     def get_type_of_int(nd: uni.Int) -> TypeBase;
     def get_type_of_float(nd: uni.Float) -> TypeBase;
     def get_type_of_expression(
         node_: uni.Expr, expected_type: TypeBase | None = None
     ) -> TypeBase;
-    # Check if a type is Any, object, Unknown, or TypeVar.
+
     def is_any_type(ty: TypeBase) -> bool;
     def is_explicit_any(ty: TypeBase) -> bool;
-    # Check if a type is `NoneType` (the type of the literal `None`),
-    # in either its class or instance form.
     def is_none_type(ty: TypeBase) -> bool;
     def _is_strict_site(nd: uni.UniNode) -> bool;
-    """True when the pass is currently checking a native (.na.jac) module."""
     def _in_native_context -> bool;
-    # Check if a type is the TypeVar class itself (the callable used to create TypeVars).
     def is_typevar_class(ty: TypeBase) -> bool;
-    # Check if a type is the ParamSpec class itself (not a TypeVarType instance).
     def is_paramspec_class(ty: TypeBase) -> bool;
-    # Check if a type is the TypeVarTuple class itself (not a TypeVarType instance).
     def is_type_var_tuple_class(ty: TypeBase) -> bool;
-    # Match a typing special form by canonical name from stdlib stubs so
-    # typing.X and typing_extensions.X (distinct classes in typeshed) both count.
     def _is_typing_special_form(ty: TypeBase, name: str) -> bool;
-    # Comments from pyright:
-    # // Determines if the source type can be assigned to the dest type.
-    # // If constraint are provided, type variables within the destType are
-    # // matched against existing type variables in the map. If a type variable
-    # // in the dest type is not in the type map already, it is assigned a type
-    # // and added to the map.
-    #
-    # dest_type = src_type;
     def assign_type(
         src_type: TypeBase, dest_type: TypeBase, strict: bool = False
     ) -> bool;
-    # TODO: This should take an argument list as parameter.
+
     def get_type_of_magic_method_call(
         obj_type: TypeBase,
         method_name: str,
@@ -403,8 +310,8 @@ obj TypeEvaluator {
         node_for_error: uni.Expr | None = None
     ) -> TypeBase | None;
 
+    def slice_assignment_is_valid(target: uni.Expr, value_node: uni.Expr) -> bool;
     def is_sub_class(super_cls: types.ClassType, sub_cls: types.ClassType) -> bool;
-    # --- Callable assignment compatibility ---
     def _assign_callable(
         src_func: types.FunctionType,
         dest_func: types.FunctionType,
@@ -412,17 +319,10 @@ obj TypeEvaluator {
     ) -> bool;
 
     def _is_ability_classmethod(node_: uni.Ability) -> bool;
-    # Shared classifier: single decorator walk, returns the property kind.
+    def _is_ability_staticmethod(node_: uni.Ability) -> bool;
     def _classify_property_symbol(symbol: uni.Symbol) -> type_utils.PropertyWriteKind;
-    # Property type utilities — both delegate to _classify_property_symbol.
     def get_getter_type_from_property(symbol: uni.Symbol) -> (TypeBase | None);
-    # Classifies a property symbol's writability for assignment checking.
-    # Returns a PropertyWriteResult with kind:
-    #   NOT_PROPERTY → normal field, caller should fall through
-    #   READ_ONLY    → @property with no setter, assignment is illegal
-    #   WRITABLE     → @cached_property or @property+setter, write_type set
     def get_property_write_type(symbol: uni.Symbol) -> type_utils.PropertyWriteResult;
-    # Extract setter value-param type from a @name.setter overload symbol.
     def _get_setter_value_type(
         symbol: uni.Symbol, prop_name: str
     ) -> (TypeBase | None);
@@ -430,35 +330,23 @@ obj TypeEvaluator {
     def _assign_class(
         src_type: types.ClassType, dest_type: types.ClassType, strict: bool = False
     ) -> bool;
-    # This function is a combination of the bellow pyright functions.
-    #  - getDeclaredTypeOfSymbol
-    #  - getTypeForDeclaration
-    #
-    # Implementation Note:
-    # Pyright is actually have some duplicate logic for handling declared
-    # type and inferred type, we're going to unify them (if it's required
-    # in the future, we can refactor this).
+
     def _get_type_of_symbol(symbol: uni.Symbol) -> TypeBase;
-    # Return EnumMemberType if `node_` is the Name of an enum member
-    # declaration (either `RED = 1` target or bare `RED,` inside enum body).
-    # Returns None when the Name is not an enum member declaration.
     def _get_enum_member_type_for_decl(
         node_: uni.Name
     ) -> (types.EnumMemberType | None);
-    # gets member type and specializes it with class type_args
+
     def get_type_of_member(member: any, class_type: types.ClassType) -> TypeBase;
-    # Pyright: partiallySpecializeType - substitutes TypeVars using class type_args
-    # Now uses type_utils.apply_solved_type_vars
     def specialize_member_type(
         member_type: TypeBase, class_type: types.ClassType
     ) -> TypeBase;
-    # Pyright equivalent function name = getTypeOfExpressionCore();
+
     def _get_type_of_expression_core(
         expr: uni.Expr, expected_type: TypeBase | None = None
     ) -> TypeBase;
-    # -----------------------------------------------------------------------------
-    # Helper functions
-    # -----------------------------------------------------------------------------
+
+    def _walk_compr_clauses(comprs: list[uni.InnerCompr]) -> None;
+    def _null_ok_attr_type(expr: uni.AtomTrailer) -> TypeBase;
     def _set_module_item_symbol_and_type(
         node_: uni.ModuleItem, sym: uni.Symbol
     ) -> TypeBase;
@@ -493,6 +381,11 @@ obj TypeEvaluator {
     def _get_type_of_root(node_: uni.SpecialVarRef) -> TypeBase;
     def _get_type_of_lhs_assignment(expr: uni.Name) -> TypeBase | None;
     def _extract_tuple_element_type(tuple_type: TypeBase, idx: int) -> TypeBase | None;
+    def _tuple_has_variadic_arg(cls: types.ClassType) -> bool;
+    def _tuple_literal_index_type(
+        base_type: TypeBase, subscript_arg: uni.Expr
+    ) -> TypeBase | None;
+
     def _extract_tuple_element_type_path(
         tuple_type: TypeBase, path: list[int]
     ) -> TypeBase | None;
@@ -509,7 +402,6 @@ obj TypeEvaluator {
 
     def _type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> bool;
     def _collect_unique_types(ty: TypeBase, result: list[TypeBase]) -> None;
-    # --- Expected type helpers for bidirectional inference ---
     def _get_expected_element_type(
         expected_type: TypeBase | None, container_class: TypeBase
     ) -> TypeBase | None;
@@ -517,16 +409,13 @@ obj TypeEvaluator {
     def _get_expected_kv_types(
         expected_type: TypeBase | None, dict_class: TypeBase
     ) -> tuple[TypeBase, TypeBase] | None;
-    # --- Special form handling (Callable, Union, etc.) ---
-    # Returns the prefetched special form type if the name AND type match.
-    # Verifies both name and that type is _SpecialForm to avoid conflicts
-    # with user-defined classes named "Callable".
+
+    def _infer_list_elem_from_mutations(expr: uni.ListVal) -> TypeBase | None;
+    def _list_mutation_elem_contrib(ref: uni.NameAtom) -> TypeBase | None;
     def _get_special_form_type(
         name: str, symbol_type: types.TypeBase
     ) -> types.TypeBase | None;
-    # creates Self TypeVar if symbol is typing.Self
-    def create_self_type(symbol_type: types.TypeBase) -> types.TypeVarType | None;
-    # --- Callable type handling (similar to Pyright's createCallableType) ---
+
     def _create_callable_type(
         type_args_expr: uni.Expr | None, error_node: uni.Expr
     ) -> types.FunctionType;
@@ -539,14 +428,7 @@ obj TypeEvaluator {
         base_type: types.ClassType, member: str
     ) -> type_utils.ClassMember | None;
 
-    # Get bound member from a class type, handling type[T] subscripts.
-    def get_type_of_bound_member(
-        object_type: types.ClassType, member_name: str
-    ) -> type_utils.ClassMember | None;
-
-    # Check if ClassType is type[T] (builtin type with type args).
     def _is_type_subscript(class_type: types.ClassType) -> bool;
-    # Get lookup type for member access (extracts T from type[T]).
     def _get_type_for_member_lookup(object_type: types.ClassType) -> types.ClassType;
     def _get_getattr_return_type(base_type: types.ClassType) -> TypeBase | None;
     def match_args_to_params(
@@ -560,21 +442,9 @@ obj TypeEvaluator {
     def _is_unbound_method_call(expr: uni.FuncCall) -> bool;
     def validate_call_args(expr: uni.FuncCall) -> TypeBase;
     def _unannotated_lambda_arg_name(expr: uni.FuncCall) -> str | None;
-    # --- async / await modeling ---
-    # Wrap a return type as `Coroutine[Any, Any, inner]` (the value an
-    # `async def` call evaluates to). Returns `inner` unchanged if Coroutine
-    # is unavailable or `inner` is already a generator-family type.
     def _make_coroutine_type(inner: TypeBase) -> TypeBase;
-    # True if `t` is an awaitable (Coroutine/Awaitable instance, or a class
-    # implementing `__await__`).
     def _is_awaitable_type(t: TypeBase) -> bool;
-    # Unwrap one `await`: Coroutine[Y,S,R]->R, Awaitable[T]->T, else via
-    # `__await__`. Non-awaitables pass through unchanged (lenient).
     def _unwrap_awaitable_type(t: TypeBase, node_: uni.UniNode) -> TypeBase;
-    # True if `expr` is a call to a function imported via `sv import` in the
-    # enclosing module — such functions lower to async RPC stubs on the
-    # client, so their calls return coroutines even though the server
-    # declaration is synchronous.
     def _is_sv_async_call(expr: uni.FuncCall) -> bool;
     def validate_arg_types(
         args: MatchArgsToParamsResult, checking_overload: bool = False
@@ -621,16 +491,9 @@ obj TypeEvaluator {
         method_member: any, caller_type: types.ClassType
     ) -> TypeBase;
 
-    # -------------------------------------------------------------------------
-    # Generic type inference
-    # -------------------------------------------------------------------------
     def assign_type_to_type_var(
         param_type: TypeBase, arg_type: TypeBase, bindings: dict[str, TypeBase]
     ) -> bool;
-
-    def infer_type_args(
-        caller_type: types.ClassType, expr: uni.FuncCall
-    ) -> list[TypeBase];
 
     def _infer_type_args_from_method(
         caller_type: types.ClassType,
@@ -652,11 +515,6 @@ obj TypeEvaluator {
         typ: types.TypeBase, bindings: dict[str, types.TypeBase]
     ) -> types.TypeBase;
 
-    def _get_constructor_for_inference(
-        caller_type: types.ClassType
-    ) -> types.FunctionType | None;
-
-    def _has_meaningful_params(method: types.FunctionType) -> bool;
     def _collect_type_var_bindings(
         method: types.FunctionType,
         expr: uni.FuncCall,
@@ -664,9 +522,6 @@ obj TypeEvaluator {
         is_constructor_call: bool = False
     ) -> dict[str, TypeBase];
 
-    # -------------------------------------------------------------------------
-    # JSX prop validation
-    # -------------------------------------------------------------------------
     def _validate_jsx_props(
         expr: uni.JsxElement, expected_type: TypeBase | None = None
     ) -> None;
@@ -675,40 +530,25 @@ obj TypeEvaluator {
         name: uni.JsxElementName
     ) -> types.FunctionType | None;
 
+    def _is_mobui_module(nd: uni.UniNode) -> bool;
     def _get_intrinsic_props_type(tag_name: str) -> types.ClassType | None;
     def _validate_component_jsx_props(
-        expr: uni.JsxElement, component_name: str
+        expr: uni.JsxElement,
+        component_name: str,
+        func_type: types.FunctionType | None = None
     ) -> None;
 
     def _validate_intrinsic_jsx_props(expr: uni.JsxElement, tag_name: str) -> None;
     def _resolve_intrinsic_jsx_tag(part: uni.Name, tag_name: str) -> None;
-    # -------------------------------------------------------------------------
-    # TypeVar scope validation (Pyright: validateTypeVarUsage)
-    # -------------------------------------------------------------------------
     def validate_typevar_in_type_expr(expr: uni.Expr) -> None;
     def validate_typevar_scope(expr: uni.Expr, type_var: types.TypeVarType) -> None;
     def validate_typevar_variance(func: uni.Ability) -> None;
-    def validate_typevar_operation(
-        expr: uni.Expr, operand_type: types.TypeBase, operation: str
-    ) -> None;
-
     def _get_enclosing_class_type_params(
         node_: uni.UniNode
     ) -> list[types.TypeVarType];
 
     def _get_function_type_params(func: uni.Ability) -> list[types.TypeVarType];
     def _get_outer_scope_type_params(node_: uni.UniNode) -> list[types.TypeVarType];
-    # -------------------------------------------------------------------------
-    # Type narrowing support
-    #
-    # Two narrowing systems work together:
-    # 1. Scope-based narrowing: Tracks narrowings within if/AND blocks using a
-    #    stack of scope dictionaries. Used during forward AST traversal.
-    # 2. CFG-based narrowing: Walks backward through the control flow graph to
-    #    find narrowing conditions. Used for flow-sensitive analysis.
-    # -------------------------------------------------------------------------
-
-    # --- CFG-based narrowing (backward traversal) ---
     def create_key_for_reference(expr: uni.Expr) -> str | None;
     def _find_symbol_by_key(key: str, condition: uni.Expr) -> uni.Symbol | None;
     def classify_condition(condition: uni.Expr) -> ConditionInfo | None;
@@ -722,7 +562,6 @@ obj TypeEvaluator {
     ) -> TypeBase | None;
 
     def _classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str;
-    # --- Shared narrowing utilities ---
     def _find_predicate_for(
         target: NarrowingTarget, condition: uni.Expr
     ) -> NarrowingPredicate | None;
@@ -733,10 +572,6 @@ obj TypeEvaluator {
         is_true_branch: bool,
         target: NarrowingTarget
     ) -> TypeBase | None;
-
-    def _refine_isinstance_type(
-        narrowing_key: str, isinstance_type: TypeBase, condition: uni.Expr
-    ) -> TypeBase;
 
     def _filter_union_for_isinstance(
         base_type: TypeBase, target_type: TypeBase
@@ -757,7 +592,6 @@ obj TypeEvaluator {
 
     def _is_callable_type(t: TypeBase) -> bool;
     def _filter_union_to_callables(union_type: TypeBase) -> TypeBase;
-    def _filter_union_to_non_callables(union_type: TypeBase) -> TypeBase;
     def _is_ellipsis_only_body(body: list[uni.CodeBlockStmt]) -> bool;
     def _is_type_alias_annotation(
         annotation_type: TypeBase, tag_expr: uni.Expr

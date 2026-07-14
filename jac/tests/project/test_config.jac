@@ -11,6 +11,8 @@ import from jaclang.project.config {
     discover_config_files,
     find_project_root,
     get_config,
+    get_config_for_path,
+    get_explicit_config,
     interpolate_env_vars,
     is_in_project,
     serialize_toml,
@@ -21,8 +23,8 @@ import jaclang.project.config as config_mod;
 glob FIXTURE_BASE = str(Path(__file__).parent / "fixtures"),
      JAC_TOML_CONTENT = "[project]\nname = \"test-project\"\nversion = \"0.1.0\"\ndescription = \"A test project\"\nentry-point = \"main.jac\"\n\n[dependencies]\nrequests = \">=2.28.0\"\n\n[dev-dependencies]\npytest = \">=8.0.0\"\n\n[run]\nmain = true\ncache = true\n\n[scripts]\ntest = \"jac test\"\n",
      MAIN_JAC_CONTENT = "\"\"\"Test main file.\"\"\"\n\nwith entry {\n    print(\"Hello, World!\");\n}\n",
-     BASE_TOML = "[project]\nname = \"jactastic\"\n\n[serve]\nport = 8090\nbase_route_app = \"app\"\n\n[plugins.client]\n\n[dependencies.npm]\njac-client-node = \"1.0.4\"\n\n[dev-dependencies]\nwatchdog = \">=3.0\"\n",
-     PROD_TOML = "[serve]\nport = 80\n\n[plugins.client]\nminify = true\n\n[plugins.byllm]\ndefault_model = \"gpt-4\"\n",
+     BASE_TOML = "[project]\nname = \"jactastic\"\n\n[serve]\nport = 8090\nbase_route_app = \"app\"\n\n[client]\n\n[dependencies.npm]\njac-client-node = \"1.0.4\"\n\n[dev-dependencies]\nwatchdog = \">=3.0\"\n",
+     PROD_TOML = "[serve]\nport = 80\n\n[client]\nminify = true\n\n[byllm]\ndefault_model = \"gpt-4\"\n",
      LOCAL_TOML = "[serve]\nport = 9000\n\n[run]\ncache = false\n";
 
 """Create a temporary project directory with jac.toml."""
@@ -166,6 +168,89 @@ test "is in project" {
             os.chdir(original_cwd);
         }
     }
+}
+
+test "find project anchored on a file path" {
+    config_mod._config = None;
+    with TemporaryDirectory() as tmpdir {
+        temp_project = make_temp_project(Path(tmpdir));
+        main_jac = temp_project / "src" / "main.jac";
+        # Passing a FILE (not a dir) resolves to its enclosing project.
+        result = find_project_root(main_jac);
+        assert result is not None;
+        (project_root, _) = result;
+        assert project_root.resolve() == temp_project.resolve();
+    }
+}
+
+test "get_config_for_path is cwd-independent (file-anchored)" {
+    config_mod._config = None;
+    config_mod._config_explicit = False;
+    config_mod._config_by_root = {};
+    with TemporaryDirectory() as tmpdir {
+        temp_project = make_temp_project(Path(tmpdir));
+        main_jac = temp_project / "src" / "main.jac";
+        original_cwd = os.getcwd();
+        try {
+            # From an unrelated cwd, the file's config still resolves to its own
+            # project root -- resolution follows the file, never the process cwd.
+            os.chdir(Path(tmpdir));
+            config_mod._config = None;
+            config_mod._config_by_root = {};
+            cfg = get_config_for_path(main_jac);
+            assert cfg is not None;
+            assert cfg.project_root.resolve() == temp_project.resolve();
+        } finally {
+            os.chdir(original_cwd);
+        }
+    }
+}
+
+test "get_config_for_path uses nearest jac.toml, never merges ancestors" {
+    config_mod._config = None;
+    config_mod._config_explicit = False;
+    config_mod._config_by_root = {};
+    with TemporaryDirectory() as tmpdir {
+        parent = Path(tmpdir) / "parent";
+        parent.mkdir();
+        # Parent enables a non-default lint selection.
+        (parent / "jac.toml").write_text(
+            "[project]\nname = \"parent\"\n\n[check.lint]\nselect = [\"all\"]\n"
+        );
+        child = parent / "child";
+        child.mkdir();
+        # Child has its own jac.toml with NO [check.lint] section.
+        (child / "jac.toml").write_text("[project]\nname = \"child\"\n");
+        child_file = child / "main.jac";
+        child_file.write_text(MAIN_JAC_CONTENT);
+        cfg = get_config_for_path(child_file);
+        assert cfg is not None;
+        assert cfg.project_root.resolve() == child.resolve();
+        # Absent [check.lint] in child => built-in default, NOT parent's ["all"].
+        assert cfg.check.lint.select == ["default"];
+    }
+}
+
+test "explicit set_config overrides file-anchored resolution" {
+    config_mod._config = None;
+    config_mod._config_explicit = False;
+    config_mod._config_by_root = {};
+    with TemporaryDirectory() as tmpdir {
+        temp_project = make_temp_project(Path(tmpdir));
+        main_jac = temp_project / "src" / "main.jac";
+        pinned = JacConfig();
+        try {
+            # An explicit override (tests, `jac test`, MCP) wins over the file's
+            # own jac.toml so callers can pin a config deterministically.
+            set_config(pinned);
+            assert get_explicit_config() is pinned;
+            assert get_config_for_path(main_jac) is pinned;
+        } finally {
+            set_config(None);
+        }
+    }
+    # set_config(None) clears the explicit flag.
+    assert get_explicit_config() is None;
 }
 
 # ===========================================================================
@@ -357,9 +442,30 @@ test "serve on_conflict default and normalization" {
     assert typo.serve.on_conflict == "retry";
 }
 
+test "dev section parsing" {
+    config_mod._config = None;
+    # Absent -> defaults (test_jobs 'auto', jaclang_source empty).
+    base = JacConfig.from_toml_str("\n[project]\nname = \"x\"\n");
+    assert base.dev.test_jobs == "auto";
+    assert base.dev.jaclang_source == "";
+
+    # Explicit string values pass through.
+    config_mod._config = None;
+    cfg = JacConfig.from_toml_str(
+        "\n[dev]\njaclang_source = \"jac\"\ntest_jobs = \"4\"\n"
+    );
+    assert cfg.dev.jaclang_source == "jac";
+    assert cfg.dev.test_jobs == "4";
+
+    # A bare integer test_jobs is coerced to str so it flows into pytest's `-n`.
+    config_mod._config = None;
+    as_int = JacConfig.from_toml_str("\n[dev]\ntest_jobs = 0\n");
+    assert as_int.dev.test_jobs == "0";
+}
+
 test "parse full config" {
     config_mod._config = None;
-    toml_str = "\n[project]\nname = \"full-project\"\nversion = \"1.2.3\"\ndescription = \"A full project\"\nauthors = [\"Jane Doe <jane@example.com>\"]\nlicense = \"MIT\"\nentry-point = \"app.jac\"\n\n[dependencies]\nnumpy = \">=1.24.0\"\npandas = \">=2.0.0\"\n\n[run]\nsession = \"my_session\"\nmain = false\ncache = false\n\n[build]\ntypecheck = true\n\n[test]\ndirectory = \"tests\"\nverbose = true\nfail_fast = true\nmax_failures = 5\n\n[serve]\nport = 9000\n\n[cache]\nenabled = false\ndir = \".cache\"\n\n[scripts]\nstart = \"jac run app.jac\"\nlint = \"jac lint . --fix\"\n\n[plugins.byllm]\ndefault_model = \"gpt-4\"\ntemperature = 0.7\n\n[environments.development]\n[environments.development.serve]\nport = 3000\n\n[environments.production]\n[environments.production.serve]\nport = 8000\n";
+    toml_str = "\n[project]\nname = \"full-project\"\nversion = \"1.2.3\"\ndescription = \"A full project\"\nauthors = [\"Jane Doe <jane@example.com>\"]\nlicense = \"MIT\"\nentry-point = \"app.jac\"\n\n[dependencies]\nnumpy = \">=1.24.0\"\npandas = \">=2.0.0\"\n\n[run]\nsession = \"my_session\"\nmain = false\ncache = false\n\n[build]\ntypecheck = true\n\n[test]\ndirectory = \"tests\"\nverbose = true\nfail_fast = true\nmax_failures = 5\n\n[serve]\nport = 9000\n\n[cache]\nenabled = false\ndir = \".cache\"\n\n[scripts]\nstart = \"jac run app.jac\"\nlint = \"jac lint . --fix\"\n\n[byllm]\ndefault_model = \"gpt-4\"\ntemperature = 0.7\n\n[environments.development]\n[environments.development.serve]\nport = 3000\n\n[environments.production]\n[environments.production.serve]\nport = 8000\n";
     cfg = JacConfig.from_toml_str(toml_str);
 
     # Project
@@ -566,7 +672,7 @@ test "is valid" {
 
 test "get plugin config" {
     config_mod._config = None;
-    toml_str = "\n[project]\nname = \"plugin-test\"\n\n[plugins.byllm]\nmodel = \"gpt-4\"\ntemperature = 0.5\n";
+    toml_str = "\n[project]\nname = \"plugin-test\"\n\n[byllm]\nmodel = \"gpt-4\"\ntemperature = 0.5\n";
     cfg = JacConfig.from_toml_str(toml_str);
     byllm_config = cfg.get_plugin_config("byllm");
     assert byllm_config["model"] == "gpt-4";
@@ -871,17 +977,14 @@ test "merge check with nested lint" {
     }
 }
 
-test "merge plugins config" {
+test "merge feature config" {
     config_mod._config = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
         overlay = temp_project / "overlay.toml";
-        overlay.write_text(
-            "[plugins]\ndiscovery = \"manual\"\n\n[plugins.byllm]\ndefault_model = \"gpt-4\"\n"
-        );
+        overlay.write_text("[byllm]\ndefault_model = \"gpt-4\"\n");
         cfg.merge_from_toml_file(overlay);
-        assert cfg.plugins_config.discovery == "manual";
         assert "byllm" in cfg.plugins;
         assert cfg.plugins["byllm"]["default_model"] == "gpt-4";
     }
@@ -1046,9 +1149,7 @@ test "merge env interpolation" {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
         overlay = temp_project / "overlay.toml";
-        overlay.write_text(
-            "[plugins.byllm]\napi_key = \"${TEST_API_KEY:-default_key}\"\n"
-        );
+        overlay.write_text("[byllm]\napi_key = \"${TEST_API_KEY:-default_key}\"\n");
         os.environ.pop("TEST_API_KEY", None);
         cfg.merge_from_toml_file(overlay);
         assert cfg.plugins["byllm"]["api_key"] == "default_key";
@@ -1221,13 +1322,13 @@ test "merge plugins deep nested" {
         temp_project = make_temp_project(Path(tmpdir));
         jac_toml = temp_project / "jac.toml";
         jac_toml.write_text(
-            "[project]\nname = \"test\"\n\n[plugins.byllm]\ndefault_model = \"gpt-4\"\n\n[plugins.byllm.options]\ntemperature = 0.7\nmax_tokens = 1000\n"
+            "[project]\nname = \"test\"\n\n[byllm]\ndefault_model = \"gpt-4\"\n\n[byllm.options]\ntemperature = 0.7\nmax_tokens = 1000\n"
         );
         cfg = JacConfig.load(jac_toml);
         assert cfg.plugins["byllm"]["options"]["temperature"] == 0.7;
         assert cfg.plugins["byllm"]["options"]["max_tokens"] == 1000;
         overlay = temp_project / "overlay.toml";
-        overlay.write_text("[plugins.byllm.options]\ntemperature = 0.9\n");
+        overlay.write_text("[byllm.options]\ntemperature = 0.9\n");
         cfg.merge_from_toml_file(overlay);
         assert cfg.plugins["byllm"]["options"]["temperature"] == 0.9;
         assert cfg.plugins["byllm"]["options"]["max_tokens"] == 1000;
@@ -1595,7 +1696,7 @@ test "save preserves special chars and env vars in plugins" {
 name = "test-special"
 version = "1.0.0"
 
-[plugins.client.npm.auth."//npm.pkg.github.com/"]
+[client.npm.auth."//npm.pkg.github.com/"]
 _authToken = "${TEST_AUTH_TOKEN}"
 
 [dependencies.npm]
@@ -1663,6 +1764,79 @@ jaclang = ">=0.15.2"
         # save() must not leave behind a stray empty [plugins] table.
         assert "plugins" not in parsed , "empty [plugins] table must not be emitted";
         assert parsed["dependencies"]["rich"] == ">=13.0.0";
+    }
+}
+
+test "save preserves comments when adding a dependency" {
+    # save() must perform a surgical edit of jac.toml: adding one dependency
+    # may not delete user comments, reorder keys, or touch unrelated lines.
+    config_mod._config = None;
+    commented_toml = """# Top-level note about this project.
+[project]
+name = "repro"
+version = "0.1.0"  # keep in sync with git tags
+
+[dependencies]
+# Pinned <5.0.0 deliberately: bcrypt 5.x breaks our password hashes.
+# DO NOT BUMP without migrating the hash format first.
+bcrypt = ">=4.0.0,<5.0.0"
+""";
+    with TemporaryDirectory() as tmpdir {
+        toml_path = Path(tmpdir) / "jac.toml";
+        toml_path.write_text(commented_toml);
+        cfg = JacConfig.load(toml_path);
+        cfg.add_dependency("httpx", "~=0.28");
+        cfg.save();
+        saved = toml_path.read_text();
+        assert "# Top-level note about this project." in saved , (
+            "full-line comments must survive save()"
+        );
+        assert "# keep in sync with git tags" in saved , (
+            "inline trailing comments must survive save()"
+        );
+        assert "# DO NOT BUMP without migrating the hash format first." in saved , (
+            "comments inside [dependencies] must survive save()"
+        );
+        assert 'bcrypt = ">=4.0.0,<5.0.0"' in saved , (
+            "untouched dependency lines must be preserved verbatim"
+        );
+        parsed = tomllib.loads(saved);
+        assert parsed["dependencies"]["httpx"] == "~=0.28";
+        assert parsed["dependencies"]["bcrypt"] == ">=4.0.0,<5.0.0";
+    }
+}
+
+test "save preserves comments when removing a dependency" {
+    # Removing one dependency must delete only that key's line; every comment
+    # and unrelated line stays byte-for-byte intact.
+    config_mod._config = None;
+    commented_toml = """[project]
+name = "repro"
+version = "0.1.0"
+
+[dependencies]
+# httpx stays on 0.28 until the retry middleware is ported.
+httpx = "~=0.28"
+# bcrypt 5.x breaks our password hashes.
+bcrypt = ">=4.0.0,<5.0.0"
+
+[dev-dependencies]
+# pytest 9 drops the plugin API we rely on.
+pytest = ">=8.0.0,<9.0.0"
+""";
+    with TemporaryDirectory() as tmpdir {
+        toml_path = Path(tmpdir) / "jac.toml";
+        toml_path.write_text(commented_toml);
+        cfg = JacConfig.load(toml_path);
+        assert cfg.remove_dependency("httpx");
+        cfg.save();
+        saved = toml_path.read_text();
+        assert "# bcrypt 5.x breaks our password hashes." in saved;
+        assert "# pytest 9 drops the plugin API we rely on." in saved;
+        assert 'bcrypt = ">=4.0.0,<5.0.0"' in saved;
+        assert 'pytest = ">=8.0.0,<9.0.0"' in saved;
+        parsed = tomllib.loads(saved);
+        assert "httpx" not in parsed["dependencies"];
     }
 }
 

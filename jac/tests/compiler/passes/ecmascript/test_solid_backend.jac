@@ -174,9 +174,10 @@ test "solid view seam emits un-thunked dynamic JSX, never wraps handlers (fixtur
     assert "{count()}" in js , "dynamic child should be an un-thunked accessor read";
     # Static literal attribute is a plain string attribute.
     assert 'type="text"' in js;
-    # Event handler is emitted as-is — never wrapped in a view thunk.
-    assert "onClick={" in js;
-    assert "onClick={() => count()" not in js , "handler must not be view-wrapped";
+    # Event handler is emitted as-is: the authored lambda's implicit return
+    # compiles to `() => count()`; a view wrap would add a second arrow layer.
+    assert "onClick={() => count()}" in js , "handler should be emitted as-is";
+    assert "onClick={() => () =>" not in js , "handler must not be view-wrapped";
 }
 
 test "solid lifts a keyed comprehension to native <For> (Branch 4)" {
@@ -429,7 +430,9 @@ test "solid runtime shim reaches router/form parity with the React shim" {
     ) , "Solid onTouched must validate on change only";
     # Error boundary + async boundary over solid-js primitives.
     assert "function JacClientErrorBoundary(" in js;
-    assert "function ErrorFallback(" in js;
+    # ErrorFallback is defined once in client_runtime_core and re-exported by
+    # both shims, so the shim js carries the binding rather than the function.
+    assert "ErrorFallback" in js;
     assert "function JacAwaiting(" in js;
     assert "SolidErrorBoundary" in js , "error boundary must use solid-js ErrorBoundary";
     assert "SolidSuspense" in js , "JacAwaiting must use solid-js Suspense";

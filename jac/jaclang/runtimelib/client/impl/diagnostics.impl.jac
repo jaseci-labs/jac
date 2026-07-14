@@ -1,4 +1,3 @@
-"""Implementation of diagnostics module."""
 import os;
 import from pathlib { Path }
 import from jaclang.runtimelib.source_mapping {
@@ -6,7 +5,6 @@ import from jaclang.runtimelib.source_mapping {
     _scan_source_comments
 }
 
-# ============== Hint Messages ==============
 glob HINT_JAC_SYNTAX = "Check your Jac syntax:\n  - Missing semicolons\n  - Unclosed braces or parentheses\n  - Invalid syntax in cl {{ }} blocks",
      HINT_JS_SYNTAX = "Check for:\n  - Missing or extra braces { }\n  - Unclosed JSX tags\n  - Missing semicolons",
      HINT_IMPORT_PATH = "Check the import path for:\n  - Correct spelling and case\n  - File extension (.jac not needed)",
@@ -19,15 +17,12 @@ glob HINT_JAC_SYNTAX = "Check your Jac syntax:\n  - Missing semicolons\n  - Uncl
      FALLBACK_ERROR_CODE = "JAC_CLIENT_999",
      INTERNAL_ERROR_CODE = "JAC_CLIENT_INTERNAL";
 
-# ============== BuildContext ==============
-"""Read source lines around error location. Delegates to centralized source_mapping utility."""
 impl BuildContext.read_source_lines(
     file_path: str, line: int, context_lines: int = 2
 ) -> str {
     return read_source_snippet(file_path, line, context_lines);
 }
 
-# ============== DiagnosticCollection ==============
 impl DiagnosticCollection.add(
     self: DiagnosticCollection, diagnostic: Diagnostic
 ) -> None {
@@ -40,7 +35,6 @@ impl DiagnosticCollection.add_all(
     self.items.extend(diagnostics);
 }
 
-# ============== BaseDetector ==============
 impl BaseDetector.handle(self: BaseDetector, error: str) -> bool {
     if not self.patterns {
         return False;
@@ -132,9 +126,6 @@ impl BaseDetector.find_importing_file(
     return ("", 0);
 }
 
-# ============== MissingDependencyDetector ==============
-
-# Core runtime dependencies (auto-injected by jac-client)
 glob CORE_DEPS = {
          "react",
          "react-dom",
@@ -165,40 +156,37 @@ impl MissingDependencyDetector.detect(
             self.create_diagnostic(
                 message="A required npm module could not be found.",
                 hint=HINT_CHECK_IMPORTS,
-                quick_fix="jac add --npm <package-name>"
+                quick_fix="jac install --npm <package-name>"
             )
         ];
     }
-    # Check if this is a bundled dependency
+
     is_core_dep = module_name in CORE_DEPS;
     is_dev_dep = module_name in DEV_DEPS;
     (jac_file, line_num) = self.find_importing_file(module_name, ctx);
     if is_core_dep {
-        # Core runtime dependency - suggest adding it directly
         diag = self.create_diagnostic(
             message=f'Core dependency "{module_name}" is missing.',
             file_path=jac_file,
             line=line_num,
             hint=f"This is a core jac-client dependency.\n  It should be auto-injected. Try: jac client install",
-            quick_fix=f"jac add --npm {module_name}"
+            quick_fix=f"jac install --npm {module_name}"
         );
     } elif is_dev_dep {
-        # Dev dependency - suggest adding it directly
         diag = self.create_diagnostic(
             message=f'Dev dependency "{module_name}" is missing.',
             file_path=jac_file,
             line=line_num,
             hint=f"This is a core jac-client dev dependency.\n  It should be auto-injected. Try: jac client install",
-            quick_fix=f"jac add --npm-dev {module_name}"
+            quick_fix=f"jac install --npm --dev {module_name}"
         );
     } else {
-        # Regular dependency
         diag = self.create_diagnostic(
             message=f'Module "{module_name}" is not installed.',
             file_path=jac_file,
             line=line_num,
             hint=HINT_ADD_PACKAGE,
-            quick_fix=f"jac add --npm {module_name}"
+            quick_fix=f"jac install --npm {module_name}"
         );
     }
     if jac_file and line_num > 0 {
@@ -207,15 +195,11 @@ impl MissingDependencyDetector.detect(
     return [diag];
 }
 
-# ============== CompilationErrorDetector ==============
-
-# Marker strings for parsing error output
 glob LINE_MARKER = ", line ",
      COL_MARKER = ", col ",
      NO_BYTECODE_MARKER = "no bytecode found for",
      FAILED_TO_COMPILE_MARKER = "failed to compile";
 
-"""Extract leading digits from a string."""
 def _extract_leading_number(text: str) -> int {
     num_str = "";
     for ch in text {
@@ -228,7 +212,6 @@ def _extract_leading_number(text: str) -> int {
     return int(num_str) if num_str else 0;
 }
 
-"""Extract file path from quoted text (single or double quotes)."""
 def _extract_quoted_path(text: str) -> str {
     for quote in ("'", '"') {
         if quote in text {
@@ -241,7 +224,6 @@ def _extract_quoted_path(text: str) -> str {
     return "";
 }
 
-"""Parse location info (line and column) from error output."""
 def _parse_location_info(error_output: str, error_lower: str) -> tuple[int, int] {
     line_num = 0;
     col_num = 0;
@@ -261,7 +243,6 @@ def _parse_location_info(error_output: str, error_lower: str) -> tuple[int, int]
     return (line_num, col_num);
 }
 
-"""Extract error detail from the last colon in error output."""
 def _extract_error_detail(error_output: str) -> str {
     if ": " not in error_output {
         return "";
@@ -285,13 +266,13 @@ impl CompilationErrorDetector.detect(
     col_num = 0;
     error_detail = "";
     error_lower = ctx.error_output.lower();
-    # Pattern 1: "Failed to compile '..path..' for client bundle:..path.., line X, col Y: Error"
+
     if FAILED_TO_COMPILE_MARKER in error_lower {
         file_path = _extract_quoted_path(ctx.error_output);
         (line_num, col_num) = _parse_location_info(ctx.error_output, error_lower);
         error_detail = _extract_error_detail(ctx.error_output);
     }
-    # Pattern 2: "No bytecode found for ..path.."
+
     if not file_path and NO_BYTECODE_MARKER in error_lower {
         idx = error_lower.find(NO_BYTECODE_MARKER);
         start = idx + len(NO_BYTECODE_MARKER);
@@ -302,7 +283,7 @@ impl CompilationErrorDetector.detect(
             file_path = rest.strip();
         }
     }
-    # Build message
+
     if error_detail {
         message = error_detail;
     } elif file_path {
@@ -319,7 +300,7 @@ impl CompilationErrorDetector.detect(
         hint=hint,
         quick_fix="jac check"
     );
-    # Add source snippet if we have file and line
+
     if file_path and line_num > 0 {
         diag.source_snippet = ctx.read_source_lines(file_path, line_num);
         diag.column = col_num;
@@ -327,7 +308,6 @@ impl CompilationErrorDetector.detect(
     return [diag];
 }
 
-# ============== SyntaxErrorDetector ==============
 impl SyntaxErrorDetector.detect(
     self: SyntaxErrorDetector, ctx: BuildContext
 ) -> list[Diagnostic] {
@@ -338,7 +318,6 @@ impl SyntaxErrorDetector.detect(
     ];
 }
 
-# ============== ImportNotFoundDetector ==============
 impl ImportNotFoundDetector.detect(
     self: ImportNotFoundDetector, ctx: BuildContext
 ) -> list[Diagnostic] {
@@ -356,7 +335,6 @@ impl ImportNotFoundDetector.detect(
     ];
 }
 
-# ============== DiagnosticEngine ==============
 impl DiagnosticEngine.register_all(
     self: DiagnosticEngine, detectors: list[BaseDetector]
 ) -> None {
@@ -366,7 +344,7 @@ impl DiagnosticEngine.register_all(
 impl DiagnosticEngine.analyze(
     self: DiagnosticEngine, ctx: BuildContext
 ) -> DiagnosticCollection {
-    self.detectors.sort(key=lambda d: BaseDetector : d.priority);
+    self.detectors.sort(key=lambda (d: BaseDetector) { d.priority; });
     collection = DiagnosticCollection();
     for detector in self.detectors {
         if detector.handle(ctx.error_output) {
@@ -398,7 +376,6 @@ impl DiagnosticEngine.analyze(
     return collection;
 }
 
-# ============== DiagnosticFormatter ==============
 impl DiagnosticFormatter.format_diagnostic(
     self: DiagnosticFormatter, diag: Diagnostic
 ) -> str {
@@ -490,7 +467,6 @@ impl DiagnosticFormatter._wrap(
     return lines;
 }
 
-# ============== Module Functions ==============
 impl get_default_detectors -> list[BaseDetector] {
     return [
         CompilationErrorDetector(),
@@ -501,7 +477,6 @@ impl get_default_detectors -> list[BaseDetector] {
 }
 
 impl is_debug_mode(config: object = None) -> bool {
-    # Check environment variable first (can override config)
     env_debug = os.environ.get("JAC_DEBUG", "").lower();
     if env_debug in ("1", "true", "yes") {
         return True;
@@ -509,7 +484,7 @@ impl is_debug_mode(config: object = None) -> bool {
     if env_debug in ("0", "false", "no") {
         return False;
     }
-    # Check config - default is True if not specified
+
     if config {
         try {
             client_cfg = config.get_plugin_config("client");
@@ -520,11 +495,10 @@ impl is_debug_mode(config: object = None) -> bool {
             ;
         }
     }
-    # Default to True (debug enabled by default)
+
     return True;
 }
 
-"""Collect all .jac files in project, excluding build directories."""
 def _collect_jac_files(project_dir: Path) -> list[Path] {
     jac_files: list[Path] = [];
     try {
@@ -540,7 +514,6 @@ def _collect_jac_files(project_dir: Path) -> list[Path] {
     return jac_files;
 }
 
-"""Scan node_modules to get installed package names."""
 def _scan_installed_packages(project_dir: Path) -> set[str] {
     installed_packages: set[str] = set();
     node_modules = project_dir / ".jac" / "client" / "node_modules";
@@ -554,7 +527,7 @@ def _scan_installed_packages(project_dir: Path) -> set[str] {
             if not item.is_dir() or item.name.startswith(".") {
                 continue;
             }
-            # Handle scoped packages (@org/package)
+
             if item.name.startswith("@") {
                 for subitem in item.iterdir() {
                     if subitem.is_dir() {
@@ -572,11 +545,9 @@ def _scan_installed_packages(project_dir: Path) -> set[str] {
     return installed_packages;
 }
 
-"""Create a BuildContext with all necessary information for diagnostics."""
 def _create_build_context(
     error_output: str, project_dir: Path, source_map: dict[str, str] = {}
 ) -> BuildContext {
-    # Auto-populate source_map from compiled JS headers if not provided
     if not source_map {
         compiled_dir = project_dir / ".jac" / "client" / "compiled";
         source_map = _scan_source_comments(compiled_dir);
@@ -590,7 +561,6 @@ def _create_build_context(
     );
 }
 
-"""Append debug information to formatted output."""
 def _append_debug_info(formatted: str, error_output: str) -> str {
     return formatted + "\n\n--- Raw Error (debug=true) ---\n" + error_output + "\n--- End Raw Error ---\n";
 }
@@ -602,11 +572,11 @@ impl format_build_error(
     config: object = None
 ) -> str {
     ctx = _create_build_context(error_output, project_dir, source_map);
-    # Run detectors
+
     engine = DiagnosticEngine();
     engine.register_all(get_default_detectors());
     diagnostics = engine.analyze(ctx);
-    # Format output
+
     formatter = DiagnosticFormatter();
     formatted = formatter.format_collection(diagnostics);
     if is_debug_mode(config) {
@@ -614,8 +584,3 @@ impl format_build_error(
     }
     return formatted;
 }
-# ============== Hint Messages ==============
-
-# ============== Fallback Error Codes ==============
-
-# Dev dependencies auto-injected by jac-client

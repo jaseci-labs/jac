@@ -1,20 +1,8 @@
-"""Hand-written recursive descent parser for Jac.
-
-This parser uses explicit precedence-level methods instead of a Pratt parser
-for native compilation compatibility. Each precedence level is a separate
-method, enabling direct function calls with no dynamic dispatch.
-
-This parser outputs unitree.py AST nodes directly.
-"""
-
 import from .tokens { Token, TokenKind, SourceLoc }
 import from .lexer { Lexer }
-# Module alias (not a name binding) so that, after deferred native
-# acceleration hot-swaps `tokenize_full` in the lexer module dict, parse()
-# resolves the native-backed wrapper rather than a stale Python reference.
+
 import jaclang.jac0core.parser.lexer as na_lexer;
 
-# Import unitree classes from Python
 import from jaclang.jac0core.unitree { UniNode, Token as UniToken, Expr }
 import from jaclang.jac0core.codeinfo { CodeLocInfo }
 import from jaclang.jac0core.passes.transform { Alert }
@@ -27,33 +15,19 @@ import from jaclang.jac0core.diagnostics {
     E0004,
     E0005,
     E0006,
-    E0010,
-    E0011,
     E0012,
     E0013,
-    E0020,
-    E0021,
     E0022,
-    E0023,
     E0025,
     E0026,
     E0027,
     E0028,
     E0030,
-    E0031,
     E0032,
-    E0033,
     E0034,
-    E0040,
-    E0041,
-    E0042,
-    E0043,
-    E0044,
     E0045,
     E0046,
     E0047,
-    E0050,
-    E0051,
     E2023,
     E2028,
     W0060,
@@ -103,6 +77,7 @@ import from jaclang.jac0core.unitree {
     ElseIf,
     ElseStmt,
     WhileStmt,
+    ForeverStmt,
     InForStmt,
     IterForStmt
 }
@@ -130,7 +105,12 @@ import from jaclang.jac0core.unitree {
     DisengageStmt,
     ExprStmt
 }
-import from jaclang.jac0core.unitree { TypedCtxBlock, GlobalStmt, NonLocalStmt }
+import from jaclang.jac0core.unitree {
+    TypedCtxBlock,
+    RegionStmt,
+    GlobalStmt,
+    NonLocalStmt
+}
 import from jaclang.jac0core.unitree {
     BinaryExpr,
     UnaryExpr,
@@ -195,14 +175,12 @@ import from jaclang.jac0core.unitree { JsxText, JsxExpression, JsxSlot, JsxComme
 
 import from jaclang.jac0core.constant {
     Tokens as Tok,
-    SymbolAccess,
-    SymbolType,
     EdgeDir,
-    CodeContext
+    CodeContext,
+    OwnershipKind
 }
 
 glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
-         # Literals
          TokenKind.INT: Tok.INT.value,
          TokenKind.HEX: Tok.HEX.value,
          TokenKind.BIN: Tok.BIN.value,
@@ -213,10 +191,8 @@ glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.NULL: Tok.NULL.value,
          TokenKind.ELLIPSIS: Tok.ELLIPSIS.value,
          TokenKind.PYNLINE: Tok.PYNLINE.value,
-         # Identifiers
          TokenKind.NAME: Tok.NAME.value,
          TokenKind.KWESC_NAME: Tok.KWESC_NAME.value,
-         # Built-in Types
          TokenKind.TYP_STRING: Tok.TYP_STRING.value,
          TokenKind.TYP_INT: Tok.TYP_INT.value,
          TokenKind.TYP_FLOAT: Tok.TYP_FLOAT.value,
@@ -238,7 +214,6 @@ glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.TYP_U64: Tok.TYP_U64.value,
          TokenKind.TYP_F32: Tok.TYP_F32.value,
          TokenKind.TYP_F64: Tok.TYP_F64.value,
-         # Keywords
          TokenKind.KW_ABSTRACT: Tok.KW_ABSTRACT.value,
          TokenKind.KW_OBJECT: Tok.KW_OBJECT.value,
          TokenKind.KW_CLASS: Tok.KW_CLASS.value,
@@ -268,6 +243,7 @@ glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.KW_TO: Tok.KW_TO.value,
          TokenKind.KW_BY: Tok.KW_BY.value,
          TokenKind.KW_WHILE: Tok.KW_WHILE.value,
+         TokenKind.KW_FOREVER: Tok.KW_FOREVER.value,
          TokenKind.KW_MATCH: Tok.KW_MATCH.value,
          TokenKind.KW_SWITCH: Tok.KW_SWITCH.value,
          TokenKind.KW_CASE: Tok.KW_CASE.value,
@@ -316,7 +292,6 @@ glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.KW_INIT: Tok.KW_INIT.value,
          TokenKind.KW_SUPER: Tok.KW_SUPER.value,
          TokenKind.KW_POST_INIT: Tok.KW_POST_INIT.value,
-         # Delimiters
          TokenKind.LPAREN: Tok.LPAREN.value,
          TokenKind.RPAREN: Tok.RPAREN.value,
          TokenKind.LBRACE: Tok.LBRACE.value,
@@ -327,7 +302,6 @@ glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.COLON: Tok.COLON.value,
          TokenKind.SEMI: Tok.SEMI.value,
          TokenKind.DOT: Tok.DOT.value,
-         # Assignment Operators
          TokenKind.EQ: Tok.EQ.value,
          TokenKind.WALRUS_EQ: Tok.WALRUS_EQ.value,
          TokenKind.ADD_EQ: Tok.ADD_EQ.value,
@@ -343,14 +317,12 @@ glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.LSHIFT_EQ: Tok.LSHIFT_EQ.value,
          TokenKind.RSHIFT_EQ: Tok.RSHIFT_EQ.value,
          TokenKind.MATMUL_EQ: Tok.MATMUL_EQ.value,
-         # Comparison Operators
          TokenKind.EE: Tok.EE.value,
          TokenKind.NE: Tok.NE.value,
          TokenKind.LT: Tok.LT.value,
          TokenKind.GT: Tok.GT.value,
          TokenKind.LTE: Tok.LTE.value,
          TokenKind.GTE: Tok.GTE.value,
-         # Arithmetic Operators
          TokenKind.PLUS: Tok.PLUS.value,
          TokenKind.MINUS: Tok.MINUS.value,
          TokenKind.STAR_MUL: Tok.STAR_MUL.value,
@@ -358,21 +330,18 @@ glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.FLOOR_DIV: Tok.FLOOR_DIV.value,
          TokenKind.MOD: Tok.MOD.value,
          TokenKind.STAR_POW: Tok.STAR_POW.value,
-         # Bitwise Operators
          TokenKind.BW_AND: Tok.BW_AND.value,
          TokenKind.BW_OR: Tok.BW_OR.value,
          TokenKind.BW_XOR: Tok.BW_XOR.value,
          TokenKind.BW_NOT: Tok.BW_NOT.value,
          TokenKind.LSHIFT: Tok.LSHIFT.value,
          TokenKind.RSHIFT: Tok.RSHIFT.value,
-         # Pipe Operators
          TokenKind.PIPE_FWD: Tok.PIPE_FWD.value,
          TokenKind.PIPE_BKWD: Tok.PIPE_BKWD.value,
          TokenKind.A_PIPE_FWD: Tok.A_PIPE_FWD.value,
          TokenKind.A_PIPE_BKWD: Tok.A_PIPE_BKWD.value,
          TokenKind.DOT_FWD: Tok.DOT_FWD.value,
          TokenKind.DOT_BKWD: Tok.DOT_BKWD.value,
-         # Arrow Operators
          TokenKind.ARROW_L: Tok.ARROW_L.value,
          TokenKind.ARROW_R: Tok.ARROW_R.value,
          TokenKind.ARROW_BI: Tok.ARROW_BI.value,
@@ -380,7 +349,6 @@ glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.ARROW_L_P2: Tok.ARROW_L_P2.value,
          TokenKind.ARROW_R_P1: Tok.ARROW_R_P1.value,
          TokenKind.ARROW_R_P2: Tok.ARROW_R_P2.value,
-         # Connect Arrows
          TokenKind.CARROW_L: Tok.CARROW_L.value,
          TokenKind.CARROW_R: Tok.CARROW_R.value,
          TokenKind.CARROW_BI: Tok.CARROW_BI.value,
@@ -388,11 +356,9 @@ glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.CARROW_L_P2: Tok.CARROW_L_P2.value,
          TokenKind.CARROW_R_P1: Tok.CARROW_R_P1.value,
          TokenKind.CARROW_R_P2: Tok.CARROW_R_P2.value,
-         # Special Operators
          TokenKind.RETURN_HINT: Tok.RETURN_HINT.value,
          TokenKind.NULL_OK: Tok.NULL_OK.value,
          TokenKind.DECOR_OP: Tok.DECOR_OP.value,
-         # F-String Tokens
          TokenKind.F_DQ_START: Tok.F_DQ_START.value,
          TokenKind.F_SQ_START: Tok.F_SQ_START.value,
          TokenKind.F_TDQ_START: Tok.F_TDQ_START.value,
@@ -403,7 +369,6 @@ glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.F_TSQ_END: Tok.F_TSQ_END.value,
          TokenKind.D_LBRACE: Tok.D_LBRACE.value,
          TokenKind.D_RBRACE: Tok.D_RBRACE.value,
-         # EOF
          TokenKind.EOF: "EOF"
      };
 
@@ -416,9 +381,7 @@ obj Parser {
         source_code: str = "",
         source: Source | None = None,
         prog: (JacProgram | None) = None,
-        _view_body_depth: int = 0,  # > 0 while parsing inside a JSX `{...}` slot body
-        # Comma UniTokens captured while parsing an impl enum body, consumed
-        # when assembling the ImplDef kid list. Reset per enum body.
+        _view_body_depth: int = 0,
         _impl_enum_comma_unis: list = [];
 
     def current -> Token;
@@ -439,12 +402,13 @@ obj Parser {
     def consume_uni(kind: TokenKind) -> UniToken;
     def expect_name -> Token;
     def _make_alert(
-        message: str, sloc: SourceLoc, code: DiagnosticInfo | None = None
+        message: str,
+        sloc: SourceLoc,
+        code: DiagnosticInfo | None = None,
+        help_text: str | None = None
     ) -> Alert;
 
     def error(message: str);
-    def error_at(message: str, loc: SourceLoc);
-    def warn_at(message: str, loc: SourceLoc);
     def emit_diag(
         diag: DiagnosticInfo, loc: SourceLoc | None = None, **kwargs: object
     );
@@ -458,6 +422,7 @@ obj Parser {
     def make_special_name(tok: Token) -> Name;
     def make_name_or_special(tok: Token) -> Name;
     def parse_access_tag -> SubTag | None;
+    def _make_literal(node_cls: type, name: str, tok: Token) -> object;
     def make_string(tok: Token) -> String;
     def make_string_from_value(value: str) -> String;
     def make_int(tok: Token) -> Int;
@@ -465,7 +430,6 @@ obj Parser {
     def make_bool(tok: Token) -> Bool;
     def make_null(tok: Token) -> Null;
     def make_ellipsis(tok: Token) -> EllipsisLit;
-    def gen_token(tok_type: str, value: str | None = None) -> UniToken;
     def make_semi -> Semi;
     def synchronize;
     def parse -> Module;
@@ -531,13 +495,9 @@ obj Parser {
     def parse_comprehension_clauses -> list;
     def parse_compr_clause -> InnerCompr;
     def parse_lambda_expr -> Expr;
-    def parse_lambda_params(sig_kid: list) -> list;
-    def parse_lambda_param -> ParamVar;
-    # JSX parsing
     def parse_jsx_element -> Expr;
     def _parse_jsx_dynamic_tag(open_kid: list) -> Expr;
     def _consume_jsx_dynamic_close(close_kid: list);
-    def parse_jsx_opening_element -> tuple;
     def parse_jsx_attributes -> list;
     def parse_jsx_children -> list;
     def parse_jsx_child -> Expr;
@@ -556,6 +516,8 @@ obj Parser {
     def parse_elif_stmt -> ElseIf;
     def parse_else_stmt -> ElseStmt;
     def parse_while_stmt -> WhileStmt;
+    def parse_region_stmt -> RegionStmt;
+    def parse_forever_stmt -> ForeverStmt;
     def parse_for_stmt;
     def parse_try_stmt -> TryStmt;
     def parse_except_handler -> Except;
@@ -588,6 +550,7 @@ obj Parser {
         target: Expr, require_semi: bool = True
     ) -> Assignment;
 
+    def parse_ownership_prefix(kids: list) -> OwnershipKind;
     def parse_import_stmt -> Import;
     def parse_from_path -> tuple;
     def parse_import_items(kid: list, is_clib_import: bool) -> tuple;
@@ -619,24 +582,11 @@ obj Parser {
     def parse_sem_def -> SemDef;
     def parse_type_alias -> TypeAlias;
     def parse_type_params -> tuple;
-    def parse_dotted_name -> Expr;
 }
 
 def parse(
     source: str, file_path: str = "<input>", prog: (JacProgram | None) = None
 ) -> tuple[Module, bool] {
-    # Lex via the structured surface (tokens + comments + diagnostics).
-    #
-    # Always resolve tokenize_full off the lexer module object so that whenever
-    # deferred native acceleration has hot-swapped it, parses transparently use
-    # the native-compiled lexer. Until (or unless) that swap happens,
-    # tokenize_full is the Python-compiled `.na.jac` lexer, which is the same
-    # Lexer used here directly — so routing through it is perf-neutral and the
-    # native and Python paths are verified to produce identical tokens,
-    # byte-offset positions, comments and diagnostics (incl. non-ASCII source).
-    #
-    # Set JAC_NATIVE_LEXER=0 to force the in-module Python Lexer (escape hatch
-    # for debugging a suspected native-lexer divergence).
     import os;
     if os.environ.get("JAC_NATIVE_LEXER") == "0" {
         _lx = Lexer(source=source, file_path=file_path);
@@ -649,9 +599,7 @@ def parse(
             source, file_path
         );
     }
-    # Replay structured lexer diagnostics into the program's alert lists. The
-    # lexer no longer constructs unitree Alerts inline (it cannot when running
-    # as native code), so reconstruction happens here on the Python side.
+
     if prog is not None and diags {
         diag_src = Source(source, mod_path=file_path);
         for d in diags {
@@ -678,7 +626,7 @@ def parse(
     }
     parser = Parser(tokens=tokens, file_path=file_path, source_code=source, prog=prog);
     module = parser.parse();
-    # Transfer captured comments to module source
+
     if module.source and comments {
         for cdata in comments {
             ct = CommentToken(
@@ -697,7 +645,7 @@ def parse(
             module.source.comments.append(ct);
         }
     }
-    # Parse inline suppressions from comments: # jac:ignore[CODE1, CODE2]
+
     if module.source {
         import re;
         ignore_pattern = re.compile(r'#\s*jac:ignore\[([^\]]+)\]');

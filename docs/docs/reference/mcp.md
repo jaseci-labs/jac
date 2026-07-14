@@ -1,16 +1,10 @@
-# MCP Server (jac-mcp)
+# MCP Server (jac mcp)
 
-The `jac-mcp` plugin provides a [Model Context Protocol](https://modelcontextprotocol.io/) server that gives AI assistants deep knowledge of the Jac language. It exposes grammar specifications, documentation, code examples, compiler tools, and prompt templates through a standardized protocol --so any MCP-compatible AI client can write, validate, format, and debug Jac code.
+The `jac mcp` server provides a [Model Context Protocol](https://modelcontextprotocol.io/) server that gives AI assistants deep knowledge of the Jac language. It exposes grammar specifications, documentation, code examples, compiler tools, and prompt templates through a standardized protocol --so any MCP-compatible AI client can write, validate, format, and debug Jac code.
 
 ## Installation
 
-`jac-mcp` is a plugin -- it is **not** bundled in the core `jac` binary, so you install it with `jac install jac-mcp`. To check whether it is already present, run `jac --version` or `jac plugins`, which list the installed plugins. If `jac-mcp` appears, you're good to go.
-
-Otherwise, install it:
-
-```bash
-jac install jac-mcp
-```
+The MCP server is **built into the `jac` binary** -- there is nothing to install. The protocol (JSON-RPC 2.0 over stdio, streamable-HTTP, and SSE) is implemented on the Python standard library, so it pulls in no third-party dependencies. Just run `jac mcp` (see Quick Start below). On older releases it shipped as a separate `jac-mcp` plugin; that package is no longer needed.
 
 ## Quick Start
 
@@ -252,7 +246,7 @@ jac mcp --inspect
 Add to your project's `jac.toml` to customize the server:
 
 ```toml
-[plugins.mcp]
+[mcp]
 # Transport settings
 transport = "stdio"          # "stdio", "sse", or "streamable-http"
 port = 3001                  # Port for SSE/HTTP transports
@@ -358,7 +352,7 @@ Resources are read-only reference materials that AI models can load for context.
 
 | URI                                    | Description                 |
 | -------------------------------------- | --------------------------- |
-| `jac://docs/jac-scale`                 | jac-scale plugin reference  |
+| `jac://docs/jac-scale`                 | Scale reference (deployment & scaling, built into core) |
 | `jac://docs/tutorial-production-local` | Local API server deployment |
 | `jac://docs/tutorial-production-k8s`   | Kubernetes deployment       |
 
@@ -1128,8 +1122,4 @@ The compiler bridge enforces a 10-second timeout per operation. If your code is 
 
 ### Resources show "Error: File not found"
 
-jaclang's documentation resources are always bundled inside the `jac` binary, so resources resolve from that bundled copy. If you see missing or stale resources, upgrade the plugin:
-
-```bash
-jac install jac-mcp
-```
+jaclang's documentation resources are always bundled inside the `jac` binary, so resources resolve from that bundled copy. If you see missing or stale resources, upgrade `jac` to the latest release (the MCP server and its resources ship inside the binary).

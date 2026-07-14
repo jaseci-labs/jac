@@ -24,8 +24,8 @@ with entry {
     doubled: list[int] = [n * 2 for n in [1, 2, 3]];
     label: str = "adult" if age >= 18 else "minor";   # ternary: A if cond else B
 
-    inc = lambda x: int : x + 1;                      # typed expression lambda
-    square = lambda(x: int) -> int { return x * x; }; # typed block lambda
+    inc = lambda (x: int) { x + 1; };                    # typed lambda, implicit return
+    square = lambda (x: int) -> int { return x * x; };   # optional return type, explicit return
     print(inc(4), square(5));
 
     greeting = f"hello {name}, {len(tags)} tags";
@@ -95,7 +95,7 @@ with entry:__main__ { increment(); }   # only when run directly (= Python __main
 ```
 import os;                              # module - takes `;`
 import numpy as np;                     # aliased - full PyPI access (see jac-python-interop)
-import from byllm.lib { Model }         # selective - NO `;`
+import from jaclang.byllm.lib { Model }         # selective - NO `;`
 import type from billing { Invoice }    # annotation-only - breaks circular imports (see jac-types)
 import ".styles/global.css";            # file - takes `;`
 ```
@@ -107,7 +107,7 @@ import from .button { Button }                        # relative (dots)
 import from "@jac/runtime" { Router, Routes, Route }  # npm (quoted)
 ```
 
-**`main.jac` is the one mixed-context file.** Server imports go at the top (server is the default context - no block needed). Then a `cl { ... }` block holds the client section: CSS import, top-level component, `def:pub app()`.
+**`main.jac` is the one mixed-context file.** Server imports go at the top (server is the default context - no block needed). Then a `cl { ... }` block holds the client section: CSS import, top-level component, `def:pub app` (no-arg for manual routing; `app(children)` that renders `children` for file-based routing - see `jac-cl-routing`).
 
 **No-dot imports are project-root absolute.** In server/native code (`.jac`, `.na.jac`, `.sv.jac`), `import from engine.math.vec3 { Vec3 }` resolves against the **project root** (the nearest `jac.toml` dir) from *anywhere* in the project - the importing file may sit at the root, under `tests/`, or any depth, and the import is identical. This is the idiomatic form; prefer it over dot-counting. A test in `tests/` imports the modules it exercises with the same no-dot path it would use at the root.
 
@@ -136,7 +136,7 @@ Generators (`yield` / `yield from`), decorators (`@deco` above `def`), walrus `(
 - **Unused names warn (`W2003`).** Prefix intentionally-unused names with `_`, or for unread exception bindings drop the clause: `except ValueError { ... }`, not `except ValueError as e`. A value bound only to *validate* still counts as unused - discard with `_ = int(s);`. This is the #1 reason otherwise-correct parsing/validation code fails `jac check`.
 - **Booleans are `True`/`False`, null is `None` - capitalized.** Lowercase `false` parses as an undefined name, so `return false;` fails with the *misleading* `E1002: Cannot return <Unknown>, expected bool`.
 - **Docstrings go immediately before a declaration, never inside its body** (`W0060`, often + `E0002`).
-- **Lambdas must be typed.** Expression form `lambda x: int : x + 1` (note the space before the body colon), parenthesized form `lambda (x: int, y: int) -> int : x * y`, or block form `lambda(x: int) -> int { return x; }`. Block-lambda params don't need parens and the return type is optional - all idiomatic: zero-arg `lambda { onSign(); }`, single typed param `lambda v: str { gbName = v; }` (in client code also `lambda e: ChangeEvent { ... }`), multi-param `lambda exports: any, fps: int { ... }`. The bare Python form `lambda x: x` parses but is untyped (W1051 fallout); `:x: x` and `<lambda x: x>` are hard parse errors.
+- **Lambdas have ONE form: `lambda (params) { body }`.** Params always parenthesized and annotated - zero-arg `lambda { onSign(); }`, single param `lambda (v: str) { gbName = v; }` (in client code also `lambda (e: ChangeEvent) { ... }`), multi-param `lambda (exports: any, fps: int) { ... }` - with an optional return type: `lambda (x: int) -> int { return x * x; }`. A body that is exactly one expression statement IS the implicit return (`lambda (x: int) { x + 1; }` returns `x + 1`); multi-statement bodies need an explicit `return ...;` or the lambda returns `None` (fine for event handlers). A param annotation may be omitted only where the type is inferable from context; otherwise it's E1119. The Python colon forms (`lambda x: x`, `lambda x: int : x + 1`) and any paren-less form that carries a parameter (`lambda x { ... }`, `lambda v: str { ... }`) are parse errors - only a zero-parameter lambda may drop the parens (`lambda { ... }`).
 - Ternary is **Python-style**: `A if cond else B`. NOT `cond ? A : B` - parse error.
 - **Python stdlib needs explicit import - Jac auto-imports nothing.** `datetime.now()` without `import from datetime { datetime }` = runtime `NameError`.
 - **`sv import` calls are `async` - always `await` them.** `items = fetch_items()` assigns a `Promise`, not the data.

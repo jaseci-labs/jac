@@ -82,6 +82,16 @@ def create_server(workspace_path: str | None = None) -> JacLangServer {
     return lsp;
 }
 
+"""Return documentation text for a completion label, if present."""
+def completion_doc(items: list[lspt.CompletionItem], label: str) -> (str | None) {
+    for item in items {
+        if item.label == label and item.documentation {
+            return item.documentation.value;
+        }
+    }
+    return None;
+}
+
 obj Case {
     has pos: lspt.Position,
         expected: list[str],
@@ -267,16 +277,16 @@ test "test_go_to_definition_md_path" {
             (7, 17, "typing.pyi:0:0-0:0"),
             (9, 18, "jaclang/jac0core/__init__.py:0:0-0:0"),
             (9, 25, "jaclang/jac0core/unitree.jac:0:0-0:0"),
-            (10, 34, "jaclang/__init__.py:22:"),
+            (10, 34, "jaclang/__init__.py:17:"),
             (11, 35, "jaclang/jac0core/constant.jac:0:0-0:0"),
-            (11, 47, "jaclang/jac0core/constant.jac:4:5-4:15"),
+            (11, 47, "jaclang/jac0core/constant.jac:2:5-2:15"),
             (13, 47, "jaclang/compiler/type_system/type_utils.jac:0:0-0:0"),
             (14, 34, "jaclang/compiler/type_system/__init__.py:0:0-0:0"),
-            (18, 5, "compiler/type_system/types.jac:61:4-61:12"),
+            (18, 5, "compiler/type_system/types.jac:38:4-38:12"),
             (20, 34, "jaclang/jac0core/unitree.jac:0:0-0:0"),
             (22, 22, "tests/langserve/fixtures/circle.jac:7:5-7:8"),
             (23, 28, "jaclang/lsp/uris.jac:0:0-0:0"),
-            (24, 40, "jaclang/lsp/server.jac:115:4-115:18"),
+            (24, 40, "jaclang/lsp/server.jac:92:4-92:18"),
             (26, 31, "jaclang/lsp/types.jac:0:0-0:0"),
 
         ];
@@ -410,6 +420,33 @@ test "test_completion" {
                 assert completion in str(completions);
             }
         }
+    } finally {
+        teardown_test();
+    }
+}
+
+test "test_completion_docs" {
+    import asyncio;
+
+    setup_test();
+    try {
+        lsp = create_server();
+        docs_file = uris.from_fs_path(fixture_path("completion_docs.jac"));
+        lsp.type_check_file(docs_file);
+
+        scope_results = asyncio.run(
+            lsp.get_completion(docs_file, lspt.Position(21, 5), completion_trigger="")
+        );
+        assert completion_doc(scope_results.items, "Circle") == "A circle shape.";
+        assert completion_doc(scope_results.items, "Direction") == "Cardinal directions.";
+
+        member_results = asyncio.run(
+            lsp.get_completion(docs_file, lspt.Position(23, 6), completion_trigger=".")
+        );
+        assert completion_doc(member_results.items, "radius") == "Radius of the circle.";
+        assert completion_doc(member_results.items, "add_values") == "Adds two numbers.";
+        assert completion_doc(member_results.items, "undocumented_field") is None;
+        assert completion_doc(member_results.items, "Circle") is None;
     } finally {
         teardown_test();
     }

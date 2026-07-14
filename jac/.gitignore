@@ -73,8 +73,26 @@ out.txt
 zig-out/
 dist/
 .pbs-build/
+# Pinned bun fetched per target by the fetch-bun step of launcher/payload.zig
+# and bundled into the payload (never committed). See build.zig.
+.bun-build/
+jaclang/runtimelib/client/_bun/
 
-# Vendored typeshed stdlib stubs are fetched at the pinned commit by
-# launcher/fetch-typeshed.sh, not committed -- only the PIN / LICENSE /
-# PROVENANCE.md beside the stubs are tracked.
-jaclang/vendor/typeshed/stdlib/
+# Vendored typeshed stdlib stubs are fetched at the pinned commit by the
+# fetch-typeshed step of launcher/payload.zig, not committed -- only the PIN /
+# TARBALL_SHA256 / LICENSE / PROVENANCE.md beside the stubs are tracked.
+jaclang/vendor/typeshed/stdlib
+.llvm-build/
+# CI staging dir for a cache-restored prebuilt shim (setup-jac -Dshim-bin).
+.shim-build/
+# Persistent JIR precompile cache: mkpayload seeds site/_precompiled from it
+# and writes the refreshed tree back (see build.zig --precompiled-cache).
+.precompiled-build/
+# Zig-built LLVMPY_* shim, placed in-tree per host platform (see build.zig).
+libjacllvm.so
+libjacllvm.dylib
+jacllvm.dll
+# Zig-built libjacpyembed desktop shim, placed in-tree per host platform.
+libjacpyembed.so
+libjacpyembed.dylib
+jacpyembed.dll

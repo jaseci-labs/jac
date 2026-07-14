@@ -6,6 +6,8 @@ ci:
 exclude: |
     (?x)(
         ^jac/jaclang/vendor/|
+        ^jac/jaclang/compiler/passes/native/llvm/|
+        ^jac/jaclang/compiler/passes/native/wasm_rt/vendor/|
         ^$
     )
 
@@ -45,15 +47,11 @@ repos:
               ^docs/docs/assets/org1_logo\.png$|
               ^docs/docs/assets/org2_logo\.png$|
               ^docs/docs/assets/org3_logo\.png$|
-              ^jac-byllm/examples/vision/math_question\.jpg$|
-              ^jac-byllm/examples/vision/mugen\.mp4$|
-              ^jac-byllm/examples/vision/person\.png$|
-              ^jac-byllm/examples/vision/receipt\.jpg$|
-              ^jac-byllm/tests/fixtures/SampleVideo_1280x720_2mb\.mp4$|
-              ^jac-byllm/tests/fixtures/alan-m-turing\.jpg$|
-              ^jac-byllm/tests/fixtures/image\.jpg$|
-              ^jac-byllm/tests/fixtures/math_question\.jpg$|
-              ^jac-byllm/tests/fixtures/webp_image_of_person\.webp$|
+              ^jac/jaclang/byllm/tests/fixtures/SampleVideo_1280x720_2mb\.mp4$|
+              ^jac/jaclang/byllm/tests/fixtures/alan-m-turing\.jpg$|
+              ^jac/jaclang/byllm/tests/fixtures/image\.jpg$|
+              ^jac/jaclang/byllm/tests/fixtures/math_question\.jpg$|
+              ^jac/jaclang/byllm/tests/fixtures/webp_image_of_person\.webp$|
               ^jac/examples/littleX/assets/littlex-logo\.png$
           )
 
@@ -95,10 +93,10 @@ repos:
       - id: jac-format
         name: jac-format
         description: Format and lint-fix Jac files
-        entry: jac format
+        entry: jac fmt
         language: system
         types: [file]
         args: [--lintfix]
         files: \.jac$
         require_serial: true
-        exclude: (/fixtures/|_err\.jac$|_syntax_err\.jac$|^scripts/)
+        exclude: (/fixtures/|_err\.jac$|_syntax_err\.jac$|^scripts/|jir_registry\.jac$)

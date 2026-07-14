@@ -1,8 +1,4 @@
-"""Register all built-in client build targets (web, pwa, static, mobile, desktop)."""
-import from jaclang.runtimelib.client.targets.registry {
-    get_target_registry,
-    TargetRegistry
-}
+import from jaclang.runtimelib.client.targets.registry { get_target_registry }
 import from jaclang.runtimelib.client.targets.web_target { WebTarget }
 import from jaclang.runtimelib.client.targets.pwa_target { PWATarget }
 import from jaclang.runtimelib.client.targets.static_target { StaticTarget }
@@ -10,12 +6,11 @@ import from jaclang.runtimelib.client.targets.mobile_target { MobileTarget }
 import from jaclang.runtimelib.client.targets.desktop.native_desktop_target {
     NativeDesktopTarget
 }
+import from jaclang.runtimelib.client.targets.desktop.cef_desktop_target {
+    CefDesktopTarget
+}
+import from jaclang.runtimelib.client.targets.react_native_target { ReactNativeTarget }
 
-"""Register the built-in client build targets.
-
-Called from the CLI client-command registration. Targets ship with core now, so they
-register directly instead of via a secondary plugin entry-point group.
-"""
 def register_targets {
     registry = get_target_registry();
     registry.register(WebTarget());
@@ -23,9 +18,11 @@ def register_targets {
     registry.register(StaticTarget());
     registry.register(MobileTarget());
     registry.register(NativeDesktopTarget());
+
+    registry.register(CefDesktopTarget());
+    registry.register(ReactNativeTarget());
 }
 
-"""Sync ``--client`` argparse choices on build/start with registered targets."""
 def sync_client_target_choices -> None {
     import from jaclang.cli.registry { get_registry }
     import from jaclang.runtimelib.client.targets.registry { get_target_factory }

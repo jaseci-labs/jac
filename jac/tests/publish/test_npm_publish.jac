@@ -1,6 +1,6 @@
 """Tests for the jaclang.publish npm pipeline.
 
-Covers the npm-package counterparts of the wheel pipeline:
+Covers the js-package counterparts of the wheel pipeline:
   package_json - package.json string generation from jac.toml
   jsdoc        - JSDoc block generation from typed Jac signatures
   npm_sources  - client-module collector + JS compilation + sv-boundary guard
@@ -518,7 +518,9 @@ test "jac bundle --target npm writes a tarball to dist/" {
     try {
         _scaffold_lib(tmp_path, "mylib");
         result = run(
-            ["jac", "bundle", "--target", "npm"], capture_output=True, text=True
+            ["jac", "build", "--as", "npm", "--no_typecheck"],
+            capture_output=True,
+            text=True
         );
         assert result.returncode == 0 , (
             f"exit {result.returncode}\nstdout: {result.stdout}\nstderr: {result.stderr}"

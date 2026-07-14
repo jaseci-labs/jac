@@ -1,13 +1,10 @@
-"""Implementation of jac-desktop configuration loader."""
 import from pathlib { Path }
 import from jaclang.cli.console { console }
 
-"""Plugin section name for [plugins.desktop]."""
 impl JacDesktopConfig.get_plugin_name(self: JacDesktopConfig) -> str {
     return "desktop";
 }
 
-"""Default [plugins.desktop] configuration."""
 impl JacDesktopConfig.get_default_config(self: JacDesktopConfig) -> dict[str, any] {
     project_name = "my-jac-app";
     project_version = "1.0.0";
@@ -49,6 +46,27 @@ impl JacDesktopConfig.get_window_config(self: JacDesktopConfig) -> WindowConfig 
     return WindowConfig.from_dict(window_data, title_fallback=identity.name);
 }
 
+impl JacDesktopConfig.get_dispatch_config(self: JacDesktopConfig) -> DispatchConfig {
+    config = self.load();
+    raw = config.get('dispatch', {});
+    data: dict[str, any] = {};
+    if isinstance(raw, dict) {
+        data = raw;
+    }
+    return DispatchConfig.from_dict(data);
+}
+
+impl JacDesktopConfig.get_engine(self: JacDesktopConfig) -> str {
+    config = self.load();
+    engine = str(config.get('engine', 'native'));
+    if engine not in ('native', 'cef') {
+        raise ValueError(
+            f"Desktop configuration error: engine must be 'native' or 'cef', got '{engine}'"
+        );
+    }
+    return engine;
+}
+
 impl JacDesktopConfig.get_plugin_configs(self: JacDesktopConfig) -> dict[str, any] {
     config = self.load();
     plugins = config.get('plugins', {});
@@ -63,7 +81,7 @@ impl JacDesktopConfig.validate(self: JacDesktopConfig) -> None {
     name = str(config.get('name', ''));
     if not name {
         raise ValueError(
-            "Desktop configuration error: 'name' is required in [plugins.desktop]"
+            "Desktop configuration error: 'name' is required in [desktop]"
         );
     }
     window = config.get('window', {});
@@ -83,22 +101,29 @@ impl JacDesktopConfig.validate(self: JacDesktopConfig) -> None {
             f"cannot be greater than window.height ({height})"
         );
     }
+    dispatch = config.get('dispatch', {});
+    if isinstance(dispatch, dict) {
+        timeout_s = float(dispatch.get('timeout_s', 30.0));
+        max_queue = int(dispatch.get('max_queue', 128));
+        if timeout_s <= 0 {
+            raise ValueError(
+                f"Desktop configuration error: dispatch.timeout_s ({timeout_s}) "
+                f"must be greater than 0"
+            );
+        }
+        if max_queue < 1 {
+            raise ValueError(
+                f"Desktop configuration error: dispatch.max_queue ({max_queue}) "
+                f"must be at least 1"
+            );
+        }
+    }
     plugins = config.get('plugins', {});
     if isinstance(plugins, dict) {
         _validate_plugin_keys(plugins);
     }
 }
 
-"""Reject unknown plugin names and unknown plugin sub-keys at build time.
-
-Without this, a typo under [plugins.desktop.plugins.*] is silently ignored:
-a misspelled `allow_read` leaves the fs allow-list empty (no file access),
-and a misspelled plugin name disables the capability — both with no warning.
-Valid keys are derived from the declared config schema (the single source of
-truth), so this never drifts from what the plugins actually accept. Only
-sub-keys for plugins that declare structured config (fs, shell, clipboard) are
-checked; bool-toggle plugins accept any value form.
-"""
 def _validate_plugin_keys(plugins: dict[str, any]) -> None {
     import from jaclang.runtimelib.client.desktop_plugin_config {
         _desktop_config_schema
@@ -113,7 +138,7 @@ def _validate_plugin_keys(plugins: dict[str, any]) -> None {
             valid = ", ".join(sorted(known.keys()));
             raise ValueError(
                 f"Desktop configuration error: unknown plugin "
-                f"'[plugins.desktop.plugins.{plugin_name}]'. Valid plugins: {valid}."
+                f"'[desktop.plugins.{plugin_name}]'. Valid plugins: {valid}."
             );
         }
         sub_schema = known[plugin_name].nested;
@@ -123,7 +148,7 @@ def _validate_plugin_keys(plugins: dict[str, any]) -> None {
                     valid = ", ".join(sorted(sub_schema.keys()));
                     raise ValueError(
                         f"Desktop configuration error: unknown option '{sub_key}' "
-                        f"under [plugins.desktop.plugins.{plugin_name}]. "
+                        f"under [desktop.plugins.{plugin_name}]. "
                         f"Valid options: {valid}."
                     );
                 }
@@ -133,7 +158,6 @@ def _validate_plugin_keys(plugins: dict[str, any]) -> None {
 }
 
 impl get_desktop_config(project_dir: Path | None = None) -> JacDesktopConfig {
-    # Module-level singleton mirrors jac-client/jac-scale; not thread-safe.
     global _desktop_config_instance;
     if (
         _desktop_config_instance is not None

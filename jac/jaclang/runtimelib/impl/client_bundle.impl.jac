@@ -1,12 +1,3 @@
-"""Look up a module in one program's hub with cross-platform path normalization
-(Windows case/separators).
-
-NOTE: this is deliberately single-hub, unlike `JacProgram.find_module`. The
-bundler produces output JS and must compile each module in its own (target)
-program context; on a miss it recompiles fresh. It must NOT reuse a module the
-router parked in the internal program (e.g. `@jac/runtime` under the jaclang
-root), whose JS-generation state is not guaranteed to be the full client build.
-"""
 impl _lookup_module_in_hub(path_key: str, hub: dict) -> (Module | None) {
     if path_key in hub {
         return hub[path_key];
@@ -20,7 +11,6 @@ impl _lookup_module_in_hub(path_key: str, hub: dict) -> (Module | None) {
     return None;
 }
 
-"""Run EsastGenPass if JS missing (Windows may skip ES pass during initial compile)."""
 impl _ensure_js_generated(mod: Module, program: any) -> None {
     if mod and not mod.gen.js {
         import from jaclang.compiler.passes.ecmascript.esast_gen_pass { EsastGenPass }
@@ -28,14 +18,36 @@ impl _ensure_js_generated(mod: Module, program: any) -> None {
     }
 }
 
-"""Initialise the builder with an optional override for the runtime path."""
 impl ClientBundleBuilder.postinit -> None {
     if not self.runtime_path {
         self.runtime_path = Path(__file__).with_name('client_runtime.cl.jac');
     }
 }
 
-"""Build (or reuse) a client bundle for the supplied module."""
+impl _prebuilt_bundle(module: ModuleType, source_path: Path) -> (ClientBundle | None) {
+    import from jaclang.runtimelib.sealed_serve { client_dist_for, serve_manifest_for }
+    dist = client_dist_for(str(source_path));
+    if dist is None {
+        return None;
+    }
+    candidates = sorted(dist.glob('client.*.js'));
+    if not candidates {
+        return None;
+    }
+    bundle_js = candidates[-1];
+    parts = bundle_js.name.split('.');
+    bundle_hash = parts[1] if len(parts) >= 3 else '';
+    sm = serve_manifest_for(str(source_path)) or {};
+    client_meta = sm.get('client', {}) or {};
+    return ClientBundle(
+        module_name=module.__name__,
+        code=bundle_js.read_text(encoding='utf-8'),
+        client_functions=list(client_meta.get('exports', []) or []),
+        client_globals=list(client_meta.get('globals', []) or []),
+        hash=bundle_hash
+    );
+}
+
 impl ClientBundleBuilder.build(
     module: ModuleType, force: bool = False
 ) -> ClientBundle {
@@ -46,6 +58,13 @@ impl ClientBundleBuilder.build(
     }
     module_path = module.__file__.replace('.py', '.jac');
     source_path = Path(module_path).resolve();
+    prebuilt = _prebuilt_bundle(module, source_path);
+    if prebuilt is not None {
+        self._cache[module.__name__] = _CachedBundle(
+            signature='sealed', bundle=prebuilt
+        );
+        return prebuilt;
+    }
     import from jaclang { JacRuntime as Jac }
     mod = _lookup_module_in_hub(str(source_path), Jac.program.mod.hub);
     if not mod {
@@ -68,29 +87,12 @@ impl ClientBundleBuilder.build(
     return bundle;
 }
 
-"""Extract client exports from manifest.
-
-Args:
-manifest: The client manifest, or None
-
-Returns:
-Sorted list of client export names
-"""
 impl ClientBundleBuilder._extract_client_exports(
     manifest: (ClientManifest | None)
 ) -> list[str] {
     return sorted(dict.fromkeys(manifest.exports)) if manifest else [];
 }
 
-"""Extract client globals from manifest and module.
-
-Args:
-manifest: The client manifest, or None
-module: The Python module
-
-Returns:
-Dictionary of global names to their values
-"""
 impl ClientBundleBuilder._extract_client_globals(
     manifest: (ClientManifest | None), module: ModuleType
 ) -> dict[str, any] {
@@ -109,9 +111,6 @@ impl ClientBundleBuilder._extract_client_globals(
     return {key: client_globals_map[key] for key in sorted(client_globals_map)};
 }
 
-"""Produce the browser-ready bundle. The base builder only compiles and
-extracts; concrete bundling is the built-in client framework's Vite/Bun pipeline,
-which overrides this. Invoked without that provider registered, it raises."""
 impl ClientBundleBuilder._compile_bundle(
     module: ModuleType, module_path: Path
 ) -> ClientBundle {
@@ -122,11 +121,6 @@ impl ClientBundleBuilder._compile_bundle(
     );
 }
 
-"""Compile the provided Jac file into JavaScript.
-
-Returns:
-Tuple of (js_code, compiled_module) where compiled_module contains the client_manifest
-"""
 impl ClientBundleBuilder._compile_to_js(source_path: Path) -> tuple[str, Module] {
     import from jaclang { JacRuntime as Jac }
     program = Jac.program;
@@ -143,12 +137,11 @@ impl ClientBundleBuilder._compile_to_js(source_path: Path) -> tuple[str, Module]
             );
         }
     }
-    # Ensure JS is generated (may be skipped on Windows during initial compile)
+
     _ensure_js_generated(mod, program);
     return ((mod.gen.js or ''), mod) if mod else ('', mod);
 }
 
-"""Compute a cache signature based on file modification times."""
 impl ClientBundleBuilder._signature(paths: Iterable[Path]) -> str {
     parts: list[str] = [];
     for path in paths {

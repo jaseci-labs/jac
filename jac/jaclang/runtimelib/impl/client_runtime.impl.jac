@@ -1,7 +1,3 @@
-# --- Public API forwarders to the framework-agnostic core -------------------
-# Thin pass-throughs so `@jac/runtime` exposes the core auth/nav/spawn surface
-# as typed functions (the bodies live in `client_runtime_core`). See the typed
-# re-export note in `client_runtime.cl.jac`.
 impl navigate(path: str) -> None {
     _navigate(path);
 }
@@ -54,18 +50,10 @@ impl __jacJsx(tag: any, props: dict = {}, children: any = []) -> JsxElement {
     }
     reactChildren = [];
     for child in childrenArray {
-        # Skip both `null` and `undefined`: a missing prop or omitted slot
-        # surfaces as `undefined` in the compiled bundle, and accessing
-        # `.__jacUnsafeHtml` on it would TypeError.
         if child == None or child == undefined {
             continue;
         }
-        # `unsafe_html(...)` sentinel: wrap in a <span dangerouslySetInnerHTML>
-        # so the raw markup renders inline with surrounding siblings. Property
-        # access on primitives (string / number / boolean) returns `undefined`
-        # in JS, so the check naturally rejects non-marker children -- no
-        # `typeof` / `__isObject` guard needed. Both `null` and `undefined`
-        # children were filtered above, so this access is safe.
+
         if child.__jacUnsafeHtml != undefined {
             reactChildren.append(
                 React.createElement(
@@ -102,8 +90,6 @@ impl useRouter -> dict {
     };
 }
 
-"""Auth guard component for file-based routing. Renders child routes if
-authenticated, otherwise redirects to the login path."""
 impl AuthGuard(redirect: str = "/login") -> JsxElement {
     if jacIsLoggedIn() {
         return <ReactRouterOutlet/>;
@@ -111,184 +97,14 @@ impl AuthGuard(redirect: str = "/login") -> JsxElement {
     return <ReactRouterNavigate to={redirect} replace={True}/>;
 }
 
-# Thin wrapper over React.Suspense for the `awaiting` template clause.
-# When a child throws a Promise (the React Suspense protocol), the
-# `fallback` element renders until the Promise settles. `flow`/`wait`
-# don't throw Promises today, so the fallback only appears when the
-# try-body itself opts into a Suspense-aware primitive (e.g. `use()`,
-# a fetcher that suspends). The wrapper is still useful as the named
-# integration point so the language-level lowering stays stable.
 impl JacAwaiting(props: dict) -> JsxElement {
     return React.createElement(
         React.Suspense, {"fallback": props.fallback}, props.children
     );
 }
 
-impl ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement {
-    # Reporting happens in __jacReactErrorHandler (the boundary's onError prop)
-    # which is the only place React exposes `info.componentStack`.
-    return
-        <div
-            role="alert"
-            style={{
-                minHeight: "100vh",
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                backgroundColor: "#f9fafb",
-                fontFamily: "system-ui, sans-serif",
-
-            }}
-        >
-            <div
-                role="alert"
-                style={{
-                    minHeight: "100vh",
-                    display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    backgroundColor: "#f9fafb",
-                    fontFamily: "system-ui, sans-serif",
-
-                }}
-            >
-                <h2 style={{color: "#dc2626", marginBottom: "12px"}}>
-                    🚨 Something went wrong
-                </h2>
-                <p style={{color: "#374151", marginBottom: "16px"}}>
-                    An unexpected error occurred. Please try again.
-                </p>
-                <pre
-                    style={{
-                        color: "#991b1b",
-                        background: "#fee2e2",
-                        padding: "12px",
-                        borderRadius: "8px",
-                        fontSize: "14px",
-                        overflowX: "auto",
-                        marginBottom: "16px",
-
-                    }}
-                >
-                    {error.error.message}
-                </pre>
-                <button
-                    onClick={lambda { error.resetErrorBoundary(); }}
-                    style={{
-                        backgroundColor: "#2563eb",
-                        color: "#fff",
-                        padding: "10px 16px",
-                        borderRadius: "8px",
-                        border: "none",
-                        cursor: "pointer",
-                        fontSize: "14px",
-
-                    }}
-                >
-                    🔄 Try again
-                </button>
-            </div>
-        </div>;
-}
-
-impl errorOverlay(filePath: str, errors: str) -> JsxElement {
-    return (
-        <div
-            style={{
-                position: "fixed",
-                top: 0,
-                left: 0,
-                width: "100%",
-                height: "100%",
-                background: "rgba(0, 0, 0, 0.85)",
-                color: "#fff",
-                fontFamily: "'Monaco', 'Menlo', 'Ubuntu Mono', monospace",
-                fontSize: 14,
-                zIndex: 999999,
-                overflow: "auto",
-                padding: 20,
-                boxSizing: "border-box",
-
-            }}
-        >
-            <div style={{maxWidth: 1200, margin: "0 auto"}}>
-                <div
-                    style={{
-                        background: "#d32f2f",
-                        color: "white",
-                        padding: "16px 24px",
-                        borderRadius: "8px 8px 0 0",
-                        fontSize: 18,
-                        fontWeight: "bold",
-
-                    }}
-                >
-                    ⚠️ Compilation Error
-                </div>
-                <div
-                    style={{
-                        background: "#1e1e1e",
-                        padding: 24,
-                        borderRadius: "0 0 8px 8px",
-
-                    }}
-                >
-                    <div style={{marginBottom: 16}}>
-                        <div style={{color: "#888", marginBottom: 8}}>File:</div>
-                        <div style={{color: "#64b5f6", fontWeight: "bold"}}>
-                            {filePath}
-                        </div>
-                    </div>
-                    <div>
-                        <div style={{color: "#888", marginBottom: 8}}>Error:</div>
-                        <pre
-                            style={{
-                                background: "#2d2d2d",
-                                padding: 16,
-                                borderRadius: 4,
-                                overflowX: "auto",
-                                margin: 0,
-                                borderLeft: "4px solid #d32f2f",
-                                lineHeight: 1.6,
-                                color: "#ff6b6b",
-
-                            }}
-                        >
-                            {errors}
-                        </pre>
-                    </div>
-                    <div
-                        style={{
-                            marginTop: 24,
-                            paddingTop: 16,
-                            borderTop: "1px solid #444",
-                            color: "#888",
-                            fontSize: 13,
-
-                        }}
-                    >
-                        💡 Fix the error and save the file to continue development.
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-}
-
 impl useJacForm(form_mode: str, schema: any, onSubmit: any = None) -> any {
-    actualSchema = schema;
-    try {
-        if not schema.shape {
-            if schema._def and schema._def.schema {
-                actualSchema = schema._def.schema;
-            } elif schema.def and schema.def.schema {
-                actualSchema = schema.def.schema;
-            }
-        }
-    } except Exception as e {
-        console.warn("Failed to unwrap schema:", e);
-    }
+    actualSchema = __unwrapFormSchema(schema);
     schemaShape = actualSchema.shape || {};
     defaults = {};
     for key in Object.keys(schemaShape) {
@@ -302,11 +118,6 @@ impl useJacForm(form_mode: str, schema: any, onSubmit: any = None) -> any {
     } elif form_mode == "onBlur" {
         validators["onBlur"] = schema;
     } elif form_mode == "onTouched" {
-        # onChange-only (same as Solid): errors are always fresh when values change.
-        # isTouched gate in renderError ensures errors show only after first blur.
-        # Wiring both onChange+onBlur leaves stale onBlur entries in other fields'
-        # errorMap after cross-field interaction (TanStack #1784), keeping
-        # isValid=false even after those fields have been corrected.
         validators["onChange"] = schema;
     } else {
         console.warn(f"Unknown validateMode '{form_mode}'; falling back to onBlur");
@@ -314,7 +125,7 @@ impl useJacForm(form_mode: str, schema: any, onSubmit: any = None) -> any {
     }
     opts = {"defaultValues": defaults, "validators": validators};
     if onSubmit {
-        opts["onSubmit"] = lambda args: any { return onSubmit(args.value); };
+        opts["onSubmit"] = lambda (args: any) { return onSubmit(args.value); };
     }
     return useForm(opts);
 }
@@ -329,18 +140,7 @@ impl JacForm(props: dict) -> JsxElement {
     gridColumns = props.gridColumns || 2;
     validateMode = props.validateMode || "onTouched";
     className = props.className || "";
-    actualSchema = schema;
-    try {
-        if not schema.shape {
-            if schema._def and schema._def.schema {
-                actualSchema = schema._def.schema;
-            } elif schema.def and schema.def.schema {
-                actualSchema = schema.def.schema;
-            }
-        }
-    } except Exception as e {
-        console.warn("Failed to unwrap schema:", e);
-    }
+    actualSchema = __unwrapFormSchema(schema);
     schemaShape = actualSchema.shape || {};
     fieldNames = Object.keys(schemaShape);
     form = useJacForm(validateMode, schema, onSubmit);
@@ -350,7 +150,7 @@ impl JacForm(props: dict) -> JsxElement {
         if depth >= maxDepth {
             return schema;
         }
-        # Prefer public Zod methods (optional/nullable expose .unwrap())
+
         try {
             if schema.unwrap {
                 return unwrapZodSchema(schema.unwrap(), depth + 1);
@@ -386,15 +186,15 @@ impl JacForm(props: dict) -> JsxElement {
     }
     def getEnumOptions(fieldSchema: any) -> list {
         unwrapped = unwrapZodSchema(fieldSchema);
-        # Public Zod v3/v4 API: z.enum() exposes .options array
+
         if unwrapped.options and Array.isArray(unwrapped.options) {
             return unwrapped.options;
         }
-        # Public Zod v3 API: z.nativeEnum() exposes .enum object
+
         if unwrapped.enum {
             return Object.keys(unwrapped.enum);
         }
-        # Fallback: Zod v4 internal _def.entries / def.entries
+
         if unwrapped._def and unwrapped._def.entries {
             return Object.keys(unwrapped._def.entries);
         }
@@ -430,7 +230,7 @@ impl JacForm(props: dict) -> JsxElement {
                         type="checkbox"
                         name={fieldName}
                         checked={field.state.value || False}
-                        onChange={lambda e: any { field.handleChange(
+                        onChange={lambda (e: any) { field.handleChange(
                             e.target.checked
                         ); }}
                         onBlur={field.handleBlur}
@@ -448,7 +248,7 @@ impl JacForm(props: dict) -> JsxElement {
                 <select
                     name={fieldName}
                     value={field.state.value || ""}
-                    onChange={lambda e: any { field.handleChange(e.target.value); }}
+                    onChange={lambda (e: any) { field.handleChange(e.target.value); }}
                     onBlur={field.handleBlur}
                     className={inputClassName}
                     style={{width: "100%", boxSizing: "border-box"}}
@@ -478,7 +278,7 @@ impl JacForm(props: dict) -> JsxElement {
                                 name={fieldName}
                                 value={opt}
                                 checked={field.state.value == opt}
-                                onChange={lambda e: any { field.handleChange(
+                                onChange={lambda (e: any) { field.handleChange(
                                     e.target.value
                                 ); }}
                                 onBlur={field.handleBlur}
@@ -500,7 +300,7 @@ impl JacForm(props: dict) -> JsxElement {
                     placeholder={placeholder}
                     rows={rows}
                     value={field.state.value}
-                    onChange={lambda e: any { field.handleChange(e.target.value); }}
+                    onChange={lambda (e: any) { field.handleChange(e.target.value); }}
                     onBlur={field.handleBlur}
                     className={inputClassName}
                     style={{
@@ -528,7 +328,7 @@ impl JacForm(props: dict) -> JsxElement {
                             name={fieldName}
                             placeholder={placeholder}
                             value={field.state.value}
-                            onChange={lambda e: any { field.handleChange(
+                            onChange={lambda (e: any) { field.handleChange(
                                 e.target.value
                             ); }}
                             onBlur={field.handleBlur}
@@ -559,8 +359,8 @@ impl JacForm(props: dict) -> JsxElement {
                         <input
                             type="checkbox"
                             checked={isVisible}
-                            onChange={lambda e: any { setPasswordVisible(
-                                lambda prev: any -> dict {
+                            onChange={lambda (e: any) { setPasswordVisible(
+                                lambda (prev: any) -> dict {
                                     newState = Object.assign({}, prev);
                                     newState[fieldName] = not isVisible;
                                     return newState;
@@ -580,7 +380,7 @@ impl JacForm(props: dict) -> JsxElement {
                 name={fieldName}
                 placeholder={placeholder}
                 value={field.state.value}
-                onChange={lambda e: any { field.handleChange(
+                onChange={lambda (e: any) { field.handleChange(
                     parseFloat(e.target.value)
                         if fieldType == "number"
                         else e.target.value
@@ -605,7 +405,7 @@ impl JacForm(props: dict) -> JsxElement {
 
         return (
             <form.Field name={fieldName} key={fieldName}>
-                {lambda field: JsxElement { return (
+                {lambda (field: JsxElement) { return (
                     <div className={fieldClassName} style={{marginBottom: "1rem"}}>
                         <label
                             className={labelClassName}
@@ -651,7 +451,7 @@ impl JacForm(props: dict) -> JsxElement {
     buttonClassName = submitClassName or "";
     return (
         <form
-            onSubmit={lambda e: any {
+            onSubmit={lambda (e: any) {
                 e.preventDefault();
                 e.stopPropagation();
                 form.handleSubmit();
@@ -660,16 +460,14 @@ impl JacForm(props: dict) -> JsxElement {
         >
             <div style={layoutStyle}>{fields}</div>
             <form.Subscribe
-                selector={lambda s: any { return {
+                selector={lambda (s: any) { return {
                     isDirty: s.isDirty,
                     isValid: s.isValid,
                     isTouched: s.isTouched,
                     isSubmitting: s.isSubmitting
                 }; }}
             >
-                {lambda fs: JsxElement {
-                    # onTouched: treat form as valid before any field is touched so the
-                    # eager onChange validator does not disable the button prematurely.
+                {lambda (fs: JsxElement) {
                     btnEffectiveIsValid = (
                         True
                             if (validateMode == "onTouched" and not fs.isTouched)
@@ -696,19 +494,4 @@ impl JacForm(props: dict) -> JsxElement {
             </form.Subscribe>
         </form>
     );
-}
-
-
-# ============================================================================
-# Client Error Reporting
-# ============================================================================
-impl __jacReactErrorHandler(error: any, info: any) -> None {
-    try {
-        message = error.message if error else "Unknown error";
-        stack = error.stack if error else "";
-        componentStack = info.componentStack if info else "";
-        __jacReportError(message, stack, "", "ErrorBoundary", componentStack);
-    } except Exception {
-    # Silent: error reporting from a React lifecycle must never throw.
-    }
 }
