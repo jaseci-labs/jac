@@ -1097,14 +1097,15 @@ newgrp microk8s
 microk8s status --wait-ready
 
 # Enable the addons the deploy needs
-microk8s enable dns ingress hostpath-storage
+microk8s enable dns hostpath-storage
+
+# Expose kubectl and the kubeconfig -- the deploy tooling needs both
+sudo snap alias microk8s.kubectl kubectl
+mkdir -p ~/.kube && microk8s config > ~/.kube/config
+chmod 600 ~/.kube/config
 ```
 
-MicroK8s ships its own kubectl; either use `microk8s kubectl ...` or alias it:
-
-```bash
-alias kubectl='microk8s kubectl'
-```
+The last two steps are required, not cosmetic: `jac start --scale` reads `~/.kube/config` to reach the cluster and shells out to a real `kubectl` binary to seed the source bundle. A shell alias (`alias kubectl='microk8s kubectl'`) is not enough because subprocesses cannot see it. You do not need the MicroK8s `ingress` addon -- the deploy ships its own NGINX ingress controller.
 
 After `jac start --scale`, the app is reachable at `http://localhost:30080` (see [Ports](#ports)).
 
