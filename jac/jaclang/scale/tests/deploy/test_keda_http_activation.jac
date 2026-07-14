@@ -150,10 +150,9 @@ test "build_interceptor_route produces a complete and valid InterceptorRoute bod
     assert body["kind"] == "InterceptorRoute";
     assert body["metadata"]["namespace"] == "staging";
     assert body["metadata"]["labels"]["managed"] == "jac-scale";
-    assert body["spec"]["scaleTargetRef"]["name"] == "preview-deployment";
-    assert body["spec"]["scaleTargetRef"]["kind"] == "Deployment";
-    assert body["spec"]["service"]["name"] == "preview-svc";
-    assert body["spec"]["service"]["port"] == 8080;
+    assert body["spec"]["target"]["service"] == "preview-svc";
+    assert body["spec"]["target"]["port"] == 8080;
+    assert body["spec"]["scalingMetric"]["concurrency"]["targetValue"] == 10;
     assert len(body["spec"]["rules"]) == 1;
 }
 
@@ -167,8 +166,8 @@ test "build_interceptor_route uses port_name instead of port when port is unset"
         concurrency=HTTPConcurrencyMetric(target_value=10)
     );
     m = keda._build_interceptor_route(spec);
-    assert m["body"]["spec"]["service"]["portName"] == "http";
-    assert "port" not in m["body"]["spec"]["service"];
+    assert m["body"]["spec"]["target"]["portName"] == "http";
+    assert "port" not in m["body"]["spec"]["target"];
 }
 
 test "build_interceptor_route includes cold_start placeholder only when set" {
@@ -191,7 +190,7 @@ test "build_interceptor_route includes cold_start placeholder only when set" {
     without_cold_start = keda._build_interceptor_route(
         HTTPActivationSpec(**base_kwargs)
     );
-    assert with_cold_start["body"]["spec"]["coldStart"]["placeholder"][
+    assert with_cold_start["body"]["spec"]["coldStart"]["placeholder"]["response"][
         "statusCode"
     ] == 503;
     assert "coldStart" not in without_cold_start["body"]["spec"];
@@ -210,8 +209,27 @@ test "build_interceptor_route includes cold_start fallback_service only when set
         )
     );
     m = keda._build_interceptor_route(spec);
-    assert m["body"]["spec"]["coldStart"]["fallbackService"]["name"] == "fallback-svc";
+    assert m["body"]["spec"]["coldStart"]["fallback"]["service"]["name"] == "fallback-svc";
     assert "placeholder" not in m["body"]["spec"]["coldStart"];
+}
+
+test "build_interceptor_route encodes request_rate as scalingMetric.requestRate" {
+    keda = KEDAAutoscaler();
+    spec = HTTPActivationSpec(
+        name="preview",
+        namespace="default",
+        scale_target_name="preview-deployment",
+        target=HTTPServiceTarget(service="preview-svc", port=8080),
+        request_rate=HTTPRequestRateMetric(
+            target_value=50, window="5m", granularity="10s"
+        )
+    );
+    m = keda._build_interceptor_route(spec);
+    scaling_metric = m["body"]["spec"]["scalingMetric"];
+    assert scaling_metric["requestRate"]["targetValue"] == 50;
+    assert scaling_metric["requestRate"]["window"] == "5m";
+    assert scaling_metric["requestRate"]["granularity"] == "10s";
+    assert "concurrency" not in scaling_metric;
 }
 
 test "build_interceptor_route includes timeouts only when set, omitted otherwise" {

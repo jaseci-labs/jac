@@ -547,20 +547,27 @@ impl KEDAAutoscaler._build_routing_rules{
 impl KEDAAutoscaler._build_interceptor_route{
     route_name = self.interceptor_route_name_for(spec.scale_target_name);
 
-    service: dict[str, any] = {"name": spec.target.service};
+    target: dict[str, any] = {"service": spec.target.service};
     if spec.target.port is not None {
-        service["port"] = spec.target.port;
+        target["port"] = spec.target.port;
     } else {
-        service["portName"] = spec.target.port_name;
+        target["portName"] = spec.target.port_name;
+    }
+
+    scaling_metric: dict[str, any] = {};
+    if spec.concurrency is not None {
+        scaling_metric["concurrency"] = {"targetValue": spec.concurrency.target_value};
+    } elif spec.request_rate is not None {
+        scaling_metric["requestRate"] = {
+            "targetValue": spec.request_rate.target_value,
+            "window": spec.request_rate.window,
+            "granularity": spec.request_rate.granularity
+        };
     }
 
     route_spec: dict[str, any] = {
-        "scaleTargetRef": {
-            "apiVersion": spec.scale_target_api_version,
-            "kind": spec.scale_target_kind,
-            "name": spec.scale_target_name
-        },
-        "service": service,
+        "target": target,
+        "scalingMetric": scaling_metric,
         "rules": self._build_routing_rules(spec.rules)
     };
 
@@ -578,7 +585,7 @@ impl KEDAAutoscaler._build_interceptor_route{
             if placeholder.headers {
                 placeholder_body["headers"] = placeholder.headers;
             }
-            cold_start["placeholder"] = placeholder_body;
+            cold_start["placeholder"] = {"response": placeholder_body};
         }
         fallback_service = spec.cold_start.fallback_service;
         if fallback_service is not None {
@@ -588,7 +595,7 @@ impl KEDAAutoscaler._build_interceptor_route{
             } else {
                 fallback_body["portName"] = fallback_service.port_name;
             }
-            cold_start["fallbackService"] = fallback_body;
+            cold_start["fallback"] = {"service": fallback_body};
         }
         if cold_start {
             route_spec["coldStart"] = cold_start;
