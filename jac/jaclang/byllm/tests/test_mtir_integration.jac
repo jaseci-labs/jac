@@ -806,6 +806,7 @@ test "json_to_instance recovers Title-Case keys" {
     emitted = {
         "Error Analysis": "two calls shared one list",
         "Root Cause": "mutable default arg cart=[]",
+
     };
     inv = schema.json_to_instance(emitted, Investigation);
 
@@ -842,12 +843,46 @@ test "key normalisation is type-directed for dict fields" {
     emitted = {
         "Investigation": {"Root Cause": "shared mutable default"},
         "scores": {"Root Cause": 5, "Error Analysis": 9},
+
     };
     team_report = schema.json_to_instance(emitted, TeamReport);
 
     assert isinstance(team_report, TeamReport);
     assert team_report.investigation.root_cause == "shared mutable default";
     assert team_report.scores == {"Root Cause": 5, "Error Analysis": 9};
+}
+
+test "exact field name wins over a Title-Case duplicate" {
+    jac_import("keydrop_schema", base_path=FIXTURE_DIR + "/");
+
+    import from keydrop_schema { Investigation }
+    import jaclang.byllm.schema as schema;
+
+    # Both the real name and its Title-Case variant present: the variant must
+    # not clobber the value supplied under the real field name.
+    inv = schema.json_to_instance(
+        {"root_cause": "correct", "Root Cause": "stale"}, Investigation
+    );
+
+    assert inv.root_cause == "correct";
+}
+
+test "union handling is type-directed and non-corrupting" {
+    jac_import("keydrop_schema", base_path=FIXTURE_DIR + "/");
+
+    import from keydrop_schema { OptHolder }
+    import jaclang.byllm.schema as schema;
+
+    # `investigation` (Investigation | None) has one structural arm, so its
+    # Title-Case keys are repaired; `scores` (dict[str,int] | None) carries
+    # real keys that must survive verbatim.
+    holder = schema.json_to_instance(
+        {"investigation": {"Root Cause": "recovered"}, "scores": {"Root Cause": 7},},
+        OptHolder,
+    );
+
+    assert holder.investigation.root_cause == "recovered";
+    assert holder.scores == {"Root Cause": 7};
 }
 
 # =============================================================================

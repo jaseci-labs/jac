@@ -12,3 +12,10 @@ obj TeamReport {
     has investigation: Investigation;
     has scores: dict[str, int];
 }
+
+# Union fields: `Optional[T]` has one structural arm (safe to repair), while
+# an `Optional[dict]` arm's keys are real data and must survive.
+obj OptHolder {
+    has investigation: Investigation | None = None;
+    has scores: dict[str, int] | None = None;
+}

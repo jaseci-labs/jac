@@ -448,14 +448,18 @@ impl _norm_key(k: str) -> str {
 """Type-directed remap of model-emitted keys onto real dataclass field names."""
 impl normalize_json_keys(data: object, ty: any) -> object {
     origin = get_origin(ty);
-    # Union: recurse into the dataclass arm.
+    # Union: descend only when exactly one arm is structural (dataclass /
+    # dict / list). With more than one we can't know which arm the value
+    # belongs to before pydantic validates, and rewriting keys against the
+    # wrong arm would corrupt data. Covers the common Optional[T] (T | None).
     if origin in (Union, UnionType) {
-        if isinstance(data, dict) {
-            for arm in get_args(ty) {
-                if is_dataclass(arm) {
-                    return normalize_json_keys(data, arm);
-                }
-            }
+        structural = [
+            arm
+            for arm in get_args(ty)
+            if is_dataclass(arm) or get_origin(arm) in (dict, list)
+        ];
+        if len(structural) == 1 {
+            return normalize_json_keys(data, structural[0]);
         }
         return data;
     }
@@ -486,13 +490,23 @@ impl normalize_json_keys(data: object, ty: any) -> object {
         lookup: dict = {_norm_key(str(name)): name for name in field_types};
         src: dict = data;
         out: dict = {};
+        # Exact field-name matches win: a Title-Case variant must never clobber
+        # a value the model already supplied under the real field name.
         for (k, v) in src.items() {
-            nk = _norm_key(str(k));
             if k in field_types {
                 out[k] = normalize_json_keys(v, field_types[k]);
-            } elif nk in lookup {
+            }
+        }
+        for (k, v) in src.items() {
+            if k in field_types {
+                continue;
+            }
+            nk = _norm_key(str(k));
+            if nk in lookup {
                 canon = lookup[nk];
-                out[canon] = normalize_json_keys(v, field_types[canon]);
+                if canon not in out {
+                    out[canon] = normalize_json_keys(v, field_types[canon]);
+                }
             } else {
                 logger.warning(
                     f"byllm: {ty.__name__} has no field for emitted key {k!r}; "
