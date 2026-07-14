@@ -8,6 +8,13 @@ import from jaclang.cli.check_report {
     print_final_summary
 }
 
+def _maybe_malloc_trim {
+    try {
+        import ctypes;
+        ctypes.CDLL("libc.so.6").malloc_trim(0);
+    } except (ImportError, OSError, AttributeError, ValueError) { }
+}
+
 impl check(
     paths: list,
     print_errs: bool = True,
@@ -81,7 +88,7 @@ impl check(
         }
         try {
             import from jaclang.jac0core.compile_options { CompileOptions }
-            console.print(f"  Checking {file_path}");
+            console.print(f"  Checking {file_path}...");
             (err_start, warn_start) = (len(prog.errors_had), len(prog.warnings_had));
             prog.compile(
                 file_path=file_path,
@@ -92,6 +99,11 @@ impl check(
                     suppress_codes=suppressed_codes
                 )
             );
+
+            for m in prog.mod.hub.values() {
+                m.terminals = [];
+                m.src_terminals = [];
+            }
             new_errors = prog.errors_had[err_start:];
             new_warnings = prog.warnings_had[warn_start:];
 
@@ -133,6 +145,8 @@ impl check(
         } except Exception as e {
             console.error(f"Error checking '{file_path}': {e}");
             return (False, 1, 0, [], []);
+        } finally {
+            prog.release_compile_closure();
         }
     }
     total_files = failed_files=total_errors=total_warnings=0;
@@ -141,6 +155,8 @@ impl check(
     total_to_check = len(all_files);
     for (idx, jac_file_path) in enumerate(all_files, 1) {
         process_file_result(jac_file_path, idx, total_to_check);
+
+        _maybe_malloc_trim();
     }
 
     if print_errs and len(failed_results) > 0 {
@@ -167,7 +183,7 @@ impl lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int {
             console.error(f"File '{file_path}' does not exist.");
             return (False, 1);
         }
-        console.print(f"  Linting {file_path}");
+        console.print(f"  Linting {file_path}...");
         try {
             prog = JacProgram.jac_file_linter(str(path_obj));
             error_count = 0;
@@ -190,7 +206,7 @@ impl lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int {
             console.error(f"File '{file_path}' does not exist.");
             return (False, 1, 1);
         }
-        console.print(f"  Lint-fixing {file_path}");
+        console.print(f"  Lint-fixing {file_path}...");
         try {
             prog = JacProgram.jac_file_formatter(str(path_obj), auto_lint=True);
             try {
@@ -497,7 +513,7 @@ impl format(
     }
     if not use_parallel {
         for fp in all_files {
-            console.print(f"Formatting {fp}");
+            console.print(f"Formatting {fp}...");
             results.append(_format_single_file_worker(fp, lintfix, check, covered));
         }
     }
@@ -711,7 +727,7 @@ impl precommit(
             }
         }
     }
-    console.print("precommit: formatting (--lintfix)", style="muted");
+    console.print("[precommit] Running format (--lintfix)...");
     fmt_ret = format(fmt_targets, to_screen=False, lintfix=True, check=verify);
     if tmp_root {
         shutil.rmtree(tmp_root, ignore_errors=True);
@@ -722,12 +738,10 @@ impl precommit(
         run_typecheck = pc_config.precommit.typecheck;
     }
     if run_typecheck {
-        console.print("precommit: type checking", style="muted");
+        console.print("[precommit] Running check...");
         check_ret = check(targets);
     } else {
-        console.print(
-            "precommit: skipping type check (typecheck = false)", style="muted"
-        );
+        console.print("[precommit] Skipping check ([precommit] typecheck = false).");
         check_ret = 0;
     }
     if not verify
