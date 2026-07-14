@@ -967,7 +967,9 @@ impl NaIRGenPass._emit_sys_exit(args: list[ir.Value]) -> (ir.Value | None) {
 }
 
 impl NaIRGenPass._emit_float_repr(fv: ir.Value) -> ir.Value {
-    return self.builder.call(self._float_repr_fn(), [fv], name="f.repr");
+    _repr = self.builder.call(self._float_repr_fn(), [fv], name="f.repr");
+    self._mark_owned(_repr);
+    return _repr;
 }
 
 impl NaIRGenPass._float_repr_fn -> ir.Function {
@@ -1084,6 +1086,10 @@ impl NaIRGenPass._float_repr_fn -> ir.Function {
     fr0 = b.sub(ndig, decpt, name="fr.frac0");
     is_neg = b.icmp_signed("<", fr0, ir.Constant(i64, 0), name="fr.fracneg");
     frac = b.select(is_neg, ir.Constant(i64, 0), fr0, name="fr.frac");
+    if self._nogc_headerless() {
+        _free_hl = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
+        b.call(_free_hl, [tmp]);
+    }
     fbuf = b.call(self.rc_alloc_fn, [cap], name="fr.fbuf");
     frac32 = b.trunc(frac, i32, name="fr.frac32");
     b.call(snprintf, [fbuf, cap, fmt_f, frac32, d]);
