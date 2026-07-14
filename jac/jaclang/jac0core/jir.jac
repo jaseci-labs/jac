@@ -175,7 +175,6 @@ def _module_client_kind(source_path: str) -> str {
         _client_kind_by_source[source_path] = kind;
         return kind;
     } except Exception {
-        _client_kind_by_source[source_path] = "web";
         return "web";
     } finally {
         _client_kind_probe_active = False;
