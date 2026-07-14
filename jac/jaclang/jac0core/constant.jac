@@ -114,6 +114,16 @@ enum CodeContext {
 
 enum EdgeDir { IN = 1, OUT = 2, ANY = 3 }
 
+enum OwnershipKind { NONE = 0, OWN = 1, BORROW = 2, MUT_BORROW = 3, VAL = 4 }
+
+def is_borrow_kind(k: OwnershipKind) -> bool {
+    return k == OwnershipKind.BORROW or k == OwnershipKind.MUT_BORROW;
+}
+
+def is_mut_kind(k: OwnershipKind) -> bool {
+    return k == OwnershipKind.MUT_BORROW;
+}
+
 enum SymbolAccess {
     PRIVATE = 'private',
     PUBLIC = 'public',
@@ -227,6 +237,7 @@ class Tokens(StrEnum) {
         KW_TO = 'KW_TO';
         KW_BY = 'KW_BY';
         KW_WHILE = 'KW_WHILE';
+        KW_FOREVER = 'KW_FOREVER';
         KW_CONTINUE = 'KW_CONTINUE';
         KW_BREAK = 'KW_BREAK';
         KW_DISENGAGE = 'KW_DISENGAGE';
@@ -448,6 +459,7 @@ glob TOKEN_MAP: dict[str, str] = {
          'KW_FINALLY': 'finally',
          'KW_FLOW': 'flow',
          'KW_FOR': 'for',
+         'KW_FOREVER': 'forever',
          'KW_FROM': 'from',
          'KW_GLOBAL': 'glob',
          'KW_HAS': 'has',

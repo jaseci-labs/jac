@@ -242,6 +242,23 @@ impl JirWriter._write_symbol(buf: bytearray, sym: Symbol) -> None {
     _write_varint(buf, self._pool.intern(access_str));
 
     buf.append(1 if sym.imported else 0);
+
+    try {
+        buf.append(int(sym.ownership.value) & 0xFF);
+    } except Exception {
+        buf.append(0);
+    }
+    _fact_flags = 0;
+    if getattr(sym, 'param_rebound', False) {
+        _fact_flags |= 1;
+    }
+    if getattr(sym, 'na_escapes', False) {
+        _fact_flags |= 2;
+    }
+    if getattr(sym, 'na_stack_ok', False) {
+        _fact_flags |= 4;
+    }
+    buf.append(_fact_flags);
 }
 
 impl JirWriter._write_field(
@@ -537,7 +554,8 @@ impl JirReader._init_caches -> None {
         SymbolAccess,
         SymbolType,
         EdgeDir,
-        CodeContext
+        CodeContext,
+        OwnershipKind
     }
     import from jaclang.jac0core.codeinfo { CodeLocInfo }
     import ast as ast3;
@@ -586,7 +604,8 @@ impl JirReader._init_caches -> None {
         'sym_type': SymbolType,
         'access': SymbolAccess,
         'edge_dir': EdgeDir,
-        'code_context': CodeContext
+        'code_context': CodeContext,
+        'ownership': OwnershipKind
     };
     for (fname, enum_cls) in enum_mapping.items() {
         cache: dict[str, object] = {};
@@ -991,6 +1010,17 @@ impl JirReader._read_symbol(data: (bytes | memoryview), pos: int) -> tuple {
     imported = bool(data[pos]);
     pos += 1;
 
+    import from jaclang.jac0core.constant { OwnershipKind }
+    _own_raw = data[pos];
+    pos += 1;
+    try {
+        _ownership = OwnershipKind(_own_raw);
+    } except (ValueError, KeyError) {
+        _ownership = OwnershipKind.NONE;
+    }
+    _fact_flags = data[pos];
+    pos += 1;
+
     defn_nodes = [];
     for nid in defn_ids {
         n = self._resolve_node(nid);
@@ -1010,6 +1040,10 @@ impl JirReader._read_symbol(data: (bytes | memoryview), pos: int) -> tuple {
     sym.access = access;
     sym.parent_tab = None;
     sym.semstr = '';
+    sym.ownership = _ownership;
+    sym.param_rebound = bool(_fact_flags & 1);
+    sym.na_escapes = bool(_fact_flags & 2);
+    sym.na_stack_ok = bool(_fact_flags & 4);
 
     for d in defn_nodes {
         if isinstance(d, NameAtom) {

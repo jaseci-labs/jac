@@ -210,7 +210,7 @@ test "structural index is persisted and served across loads without re-parsing" 
     # from the on-disk index -- zero re-parses -- yet answer identically.
     events: list[dict] = [];
     ci2 = CodeIntelligence(proj_dir=proj, structural=True);
-    ci2.on_event = lambda ev: dict : events.append(ev);
+    ci2.on_event = lambda (ev: dict) { events.append(ev); };
     ci2.load();
     assert len(events) == 1 , events;
     ev = events[0];
@@ -234,7 +234,7 @@ test "structural index cache invalidates only the edited module" {
 
     events: list[dict] = [];
     ci = CodeIntelligence(proj_dir=proj, structural=True);
-    ci.on_event = lambda ev: dict : events.append(ev);
+    ci.on_event = lambda (ev: dict) { events.append(ev); };
     ci.load();
     ev = events[0];
     assert ev["recompiled"] == 1 , ev;
@@ -251,7 +251,7 @@ test "lazy mode serves the map from cache and type-checks only on demand" {
 
     events: list[dict] = [];
     ci = CodeIntelligence(proj_dir=proj, lazy=True);
-    ci.on_event = lambda ev: dict : events.append(ev);
+    ci.on_event = lambda (ev: dict) { events.append(ev); };
     ci.load();
     # The lazy load is structural: both modules come from the on-disk index and
     # nothing is parsed or type-checked.

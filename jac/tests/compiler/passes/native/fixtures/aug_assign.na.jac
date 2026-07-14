@@ -115,3 +115,32 @@ def test_count_primes() -> int {
     }
     return num - 1;
 }
+
+def test_forever_break() -> int {
+    total: int = 0;
+    i: int = 0;
+    forever {
+        total += i;
+        i += 1;
+        if i >= 10 {
+            break;
+        }
+    }
+    return total;
+}
+
+def test_forever_continue() -> int {
+    total: int = 0;
+    i: int = 0;
+    forever {
+        i += 1;
+        if i > 10 {
+            break;
+        }
+        if i % 2 == 1 {
+            continue;
+        }
+        total += i;
+    }
+    return total;
+}

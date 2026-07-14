@@ -7,10 +7,16 @@ import from jaclang.scale.injector.binary {
     stage_admin_dist,
     toolchain_object_key
 }
-import from jaclang.scale.injector.bundle { content_address }
+import from jaclang.scale.injector.bundle { bundle_object_key, content_address }
 import from jaclang.scale.config.dev_config { Channel }
 
-glob logger = logging.getLogger(__name__);
+glob logger = logging.getLogger(__name__),
+     # Digest slotted into a dry-run plan's content-addressed object keys. The real
+     # keys are sha256 digests of the packed bundle and toolchain, which cannot be
+     # known without downloading the binary and packing the project -- exactly the
+     # work --dry-run promises to skip (issue #7431) -- so the plan renders an
+     # honest placeholder in their place.
+     DRY_RUN_DIGEST: str = "sha256-computed-at-deploy";
 
 
 obj BinaryInjector(PvcInjector) {
@@ -56,7 +62,8 @@ def select_injector(
     app_name: str,
     namespace: str,
     project_dir: str,
-    provisioned_database: str = ""
+    provisioned_database: str = "",
+    dry_run: bool = False
 ) -> tuple[PvcInjector, str] {
     import from jaclang.cli.console { console }
     import from jaclang.scale.config.dev_config { resolve_dev_channel }
@@ -67,6 +74,24 @@ def select_injector(
         Channel.DEV: "downloading the rolling `dev` (main HEAD) jac binary",
         Channel.STABLE: "downloading the latest published (stable) jac release"
     };
+    if dry_run {
+        # A dry run must not prepare() the injector: that reads the cluster's
+        # node architectures, downloads the pod binary and admin console, and
+        # packs the project. Placeholder digests keep the plan renderable while
+        # seed() still refuses to publish (no bundle bytes were produced).
+        injector = BinaryInjector(
+            channel=channel,
+            storage_class=storage_class,
+            provisioned_database=provisioned_database
+        );
+        injector._object_key = bundle_object_key(app_name, DRY_RUN_DIGEST);
+        injector._toolchain_object_key = toolchain_object_key(app_name, DRY_RUN_DIGEST);
+        console.print(
+            f"dry-run: skipped preparing the '{channel.value}' jac runtime "
+            f"({blurbs[channel]}); a real deploy computes the content digests."
+        );
+        return (injector, injector._toolchain_object_key);
+    }
     try {
         console.print(f"Preparing the '{channel.value}' jac runtime for pods.");
         injector = BinaryInjector(

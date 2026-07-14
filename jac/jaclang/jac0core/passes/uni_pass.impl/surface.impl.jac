@@ -358,6 +358,10 @@ impl UniPass.enter_raise_stmt(nd: uni.RaiseStmt) -> None {
     self.default_enter(nd);
 }
 
+impl UniPass.enter_region_stmt(nd: uni.RegionStmt) -> None {
+    self.default_enter(nd);
+}
+
 impl UniPass.enter_report_stmt(nd: uni.ReportStmt) -> None {
     self.default_enter(nd);
 }
@@ -443,6 +447,10 @@ impl UniPass.enter_visit_stmt(nd: uni.VisitStmt) -> None {
 }
 
 impl UniPass.enter_while_stmt(nd: uni.WhileStmt) -> None {
+    self.default_enter(nd);
+}
+
+impl UniPass.enter_forever_stmt(nd: uni.ForeverStmt) -> None {
     self.default_enter(nd);
 }
 
@@ -838,6 +846,10 @@ impl UniPass.exit_raise_stmt(nd: uni.RaiseStmt) -> None {
     self.default_exit(nd);
 }
 
+impl UniPass.exit_region_stmt(nd: uni.RegionStmt) -> None {
+    self.default_exit(nd);
+}
+
 impl UniPass.exit_report_stmt(nd: uni.ReportStmt) -> None {
     self.default_exit(nd);
 }
@@ -927,6 +939,10 @@ impl UniPass.exit_visit_stmt(nd: uni.VisitStmt) -> None {
 }
 
 impl UniPass.exit_while_stmt(nd: uni.WhileStmt) -> None {
+    self.default_exit(nd);
+}
+
+impl UniPass.exit_forever_stmt(nd: uni.ForeverStmt) -> None {
     self.default_exit(nd);
 }
 

@@ -407,7 +407,7 @@ impl NaIRGenPass._unbox_from_jacval(jv: ir.Value, target_type: ir.Type) -> ir.Va
         return b.inttoptr(payload, target_type, name="jv.unbox.p");
     }
 
-    self.emit(E5090, kind="expression", name=f"`any` unbox to {target_type}");
+    self.emit(E5092, kind="expression", name=f"`any` unbox to {target_type}");
     return ir.Constant(target_type, None);
 }
 
