@@ -21,13 +21,13 @@ def _class_info(arch: object) -> object {
 }
 
 
-def _safe_repr(value: object, limit: int = 120) -> str {
+def _safe_repr(value: object, limit: int | None = 120) -> str {
     try {
         text = repr(value);
     } except Exception {
         text = f"<{type(value).__name__}>";
     }
-    if len(text) <= limit {
+    if limit is None or len(text) <= limit {
         return text;
     }
     keep = (limit - 5) // 2;
@@ -35,7 +35,7 @@ def _safe_repr(value: object, limit: int = 120) -> str {
 }
 
 
-def _describe_arch(arch: object) -> str {
+def _describe_arch(arch: object, limit: int | None = 120) -> str {
     if arch is None {
         return "(none)";
     }
@@ -56,7 +56,7 @@ def _describe_arch(arch: object) -> str {
             if f.name.startswith("_") {
                 continue;
             }
-            val = _safe_repr(getattr(arch, f.name));
+            val = _safe_repr(getattr(arch, f.name), limit);
             label = f"{f.name} ({fsem[f.name]})" if f.name in fsem else f.name;
             parts.append(f"{label}={val}");
         }
@@ -293,10 +293,10 @@ def _build_recs(candidates: list, here_anchor: object) -> list {
 }
 
 
-def _render_candidates(recs: list, wkr: object) -> str {
+def _render_candidates(recs: list, wkr: object, limit: int | None = 120) -> str {
     lines: list = [];
     for r in recs {
-        node_txt = _describe_arch(r["node"]);
+        node_txt = _describe_arch(r["node"], limit);
         runs = _node_run_desc(r["node"], wkr);
         if runs {
             node_txt = node_txt + f" [runs: {runs}]";
@@ -304,7 +304,7 @@ def _render_candidates(recs: list, wkr: object) -> str {
         if r["edge"] is None {
             lines.append(f"{r['handle']}) {node_txt}");
         } else {
-            edge_txt = _describe_arch(r["edge"]);
+            edge_txt = _describe_arch(r["edge"], limit);
             if r["dir"] == "in" {
                 arrow = f"<--({edge_txt})--";
             } elif r["dir"] == "undir" {
@@ -468,7 +468,9 @@ def route_visit_multistage(candidates: list, model: object) -> list {
     (wkr, here_anchor) = _route_context();
     recs = _build_recs(candidates, here_anchor);
     handles = [r["handle"] for r in recs];
-    candidates_block = _render_candidates(recs, wkr);
+    # Multistage reasons over full context in free text, so field values are
+    # rendered untruncated (limit=None); the single-stage path keeps the cap.
+    candidates_block = _render_candidates(recs, wkr, None);
     directive = _select_directive(select);
 
     brief = _condense_context(intent, incl_info, model, api_params);
@@ -481,10 +483,10 @@ def route_visit_multistage(candidates: list, model: object) -> list {
         user_parts.append(f"Task brief:\n{brief}");
     }
     if wkr is not None {
-        user_parts.append(f"Walker:\n{_describe_arch(wkr)}");
+        user_parts.append(f"Walker:\n{_describe_arch(wkr, None)}");
     }
     if here_anchor is not None {
-        user_parts.append(f"Current node:\n{_describe_arch(here_anchor.archetype)}");
+        user_parts.append(f"Current node:\n{_describe_arch(here_anchor.archetype, None)}");
     }
     user_parts.append(f"Candidates (choose by handle):\n{candidates_block}");
 
