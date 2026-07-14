@@ -1048,6 +1048,12 @@ impl CGenPass.gen_raise(st: uni.RaiseStmt, ind: int) -> str {
     }
     cname = self.exc_type_name(cause);
     tid = JAC_TYPE_REGISTRY.exception_type_id(cname);
+
+    ctid = self.tid(cname);
+    if ctid in self.type_ids and isinstance(cause, uni.FuncCall) {
+        exc_obj = self.gen_expr(cause);
+        return pad + f"jac_exc_throw_owned({tid}, (void *){exc_obj});";
+    }
     payload = "(void *)0";
     owned_payload = False;
     if isinstance(cause, uni.FuncCall) and cause.params {
@@ -1122,16 +1128,53 @@ impl CGenPass.gen_try(st: uni.TryStmt, ind: int) -> str {
         kw = "if" if first else "else if";
         first = False;
         lines.append(pad + f"        {kw} ({cond}) " + "{");
+        typed_bind = False;
+        owned_mark = len(self.owned_locals);
         if exc.name is not None {
             bind = exc.name.value;
-            lines.append(pad + f"            void *{bind} = jac_exc_take_payload();");
-            lines.append(pad + f"            (void){bind};");
+            btid = self.tid(cname);
+            if btid in self.type_ids {
+                bcty = self.c_type(btid);
+                lines.append(
+                    pad + f"            {bcty} {bind} = ({bcty})jac_exc_take_payload();"
+                );
+                self.local_types[bind] = btid;
+                for tl in self.own_local(bind, bcty) {
+                    lines.append(pad + f"            {tl}");
+                }
+                typed_bind = True;
+            } else {
+                lines.append(
+                    pad + f"            void *{bind} = jac_exc_take_payload();"
+                );
+                lines.append(pad + f"            (void){bind};");
+            }
         } else {
             lines.append(pad + "            jac_exc_clear();");
         }
-        hbody = self.gen_block(exc.body, ind + 3);
-        if hbody {
-            lines.append(hbody);
+        if typed_bind {
+            for hst in (exc.body or []) {
+                r = self.gen_stmt(hst, ind + 3, False);
+                if r {
+                    lines.append(r);
+                }
+            }
+            extra = self.owned_locals[owned_mark:];
+            j = len(extra) - 1;
+            while j >= 0 {
+                v = extra[j];
+                for u in self.drop_owned(v) {
+                    lines.append(pad + f"            {u}");
+                }
+                lines.append(pad + f"            jac_rc_release({v});");
+                j -= 1;
+            }
+            self.owned_locals = self.owned_locals[:owned_mark];
+        } else {
+            hbody = self.gen_block(exc.body, ind + 3);
+            if hbody {
+                lines.append(hbody);
+            }
         }
         lines.append(pad + f"            {handled} = 1;");
         lines.append(pad + "        }");

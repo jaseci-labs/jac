@@ -114,10 +114,8 @@ test "jac2c tracks owned locals on exception frames for landing-pad unwind" {
         assert needle in c_src , f"missing {needle!r} in:\n{c_src}";
     }
     try_local = _fn_body(c_src, "int run_try_local(void)");
-    assert "jac_exc_track(c)" in try_local ,
-        f"try-body owned local must be tracked:\n{try_local}";
-    assert "struct Counter * c = NULL;" in try_local ,
-        f"try-body owned local must be function-hoisted:\n{try_local}";
+    assert "jac_exc_track(c)" in try_local , f"try-body owned local must be tracked:\n{try_local}";
+    assert "struct Counter * c = NULL;" in try_local , f"try-body owned local must be function-hoisted:\n{try_local}";
 }
 
 test "jac2c exception unwind releases owned locals (rc balanced)" {
@@ -127,8 +125,7 @@ test "jac2c exception unwind releases owned locals (rc balanced)" {
     calls = ["run_try_local", "run_callee_raise", "run_nothrow"];
     c_out = link_and_run(emit_units("exc_rc_unwind.jac"), calls, rc_live=True);
     py_out = interpreter_run(["exc_rc_unwind.jac"], "exc_rc_unwind.jac", calls);
-    assert c_out == f"{py_out} 0" ,
-        f"got {c_out!r}, want {py_out!r} + ' 0' (landing-pad must release on unwind)";
+    assert c_out == f"{py_out} 0" , f"got {c_out!r}, want {py_out!r} + ' 0' (landing-pad must release on unwind)";
 }
 
 test "jac2c uses OwnershipFacts callee conventions to move or copy across calls" {
@@ -186,5 +183,33 @@ test "jac2c reference-local aliasing is refcount-balanced under cc" {
     # run_alias would double-free without the aliased retain; run_transfer would
     # leak without the last-use move. Values match the interpreter and the
     # trailing jac_rc_live() == 0 proves both stay balanced.
+    assert c_out == f"{py_out} 0" , f"got {c_out!r}, want {py_out!r} + ' 0'";
+}
+
+test "jac2c throws a constructed exception object and binds it typed" {
+    c_src = unit_src("exc_typed.jac", "exc_typed.jac");
+    # raise builds the object and throws it as the owned payload (not the bare
+    # first constructor argument).
+    assert "jac_exc_throw_owned(" in c_src , f"raise must throw owned:\n{c_src}";
+    assert "AppError__new(7, 5)" in c_src , f"raise must construct the object:\n{c_src}";
+    # except binds a real typed struct pointer, so field access compiles.
+    read = _fn_body(c_src, "int run_read_field(void)");
+    assert "struct AppError * e = (struct AppError *)jac_exc_take_payload();" in read , f"handler must bind a typed exception object:\n{read}";
+    assert "e->code" in read , f"typed payload must allow field access:\n{read}";
+    # the taken payload is released on the handler exit path (rc-balanced).
+    assert "jac_rc_release(e)" in read , f"handler must release the owned payload:\n{read}";
+}
+
+test "jac2c typed exception payloads are value-correct and rc-balanced under cc" {
+    if cc() is None {
+        return;
+    }
+    calls = ["run_read_field", "run_field_across_call", "run_nothrow"];
+    c_out = link_and_run(emit_units("exc_typed.jac"), calls, rc_live=True);
+    py_out = interpreter_run(["exc_typed.jac"], "exc_typed.jac", calls);
+    # Field reads on the caught object match the interpreter (12, 39, 42), and
+    # the trailing jac_rc_live() == 0 proves the thrown-owned object is released
+    # exactly once on every path -- including the raise that crosses a call
+    # boundary into the outer handler.
     assert c_out == f"{py_out} 0" , f"got {c_out!r}, want {py_out!r} + ' 0'";
 }
