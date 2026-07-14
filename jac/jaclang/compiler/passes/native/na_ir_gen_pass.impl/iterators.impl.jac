@@ -900,16 +900,49 @@ impl NaIRGenPass._make_zip_iter(up_a: tuple, up_b: tuple) -> (tuple | None) {
     return (self._make_jac_iter(nfn, st), "tuple", tuple_type);
 }
 
-impl NaIRGenPass._resolve_method(
+impl NaIRGenPass._resolve_method_owner(
     arch_name: str, method_name: str
-) -> (ir.Function | None) {
-    for check_name in self._mro_of(arch_name) {
-        full_name = f"{check_name}.{method_name}";
-        if full_name in self.method_funcs {
-            return self.method_funcs[full_name];
+) -> (str | None) {
+    import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
+    owner = get_layout_registry(self.ir_in, self.prog).resolve_method_owner(
+        arch_name, method_name
+    );
+    if owner is not None {
+        return owner;
+    }
+    _arch = self.arch_ast_map.get(arch_name);
+    if isinstance(_arch, uni.Archetype) {
+        _mod = _arch.find_parent_of_type(uni.Module);
+        if _mod is not None and _mod is not self.ir_in {
+            return get_layout_registry(_mod, self.prog).resolve_method_owner(
+                arch_name, method_name
+            );
         }
     }
     return None;
+}
+
+impl NaIRGenPass._resolve_method(
+    arch_name: str, method_name: str
+) -> (ir.Function | None) {
+    import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
+    _reg = get_layout_registry(self.ir_in, self.prog);
+    cur: (str | None) = arch_name;
+    _guard = 0;
+    while cur is not None and _guard < 64 {
+        fn = self.method_funcs.get(f"{cur}.{method_name}");
+        if fn is not None {
+            return fn;
+        }
+        _parents = _reg.class_parents.get(cur, []);
+        cur = _parents[0] if _parents else None;
+        _guard += 1;
+    }
+    owner = self._resolve_method_owner(arch_name, method_name);
+    if owner is None {
+        return None;
+    }
+    return self.method_funcs.get(f"{owner}.{method_name}");
 }
 
 impl NaIRGenPass._arch_implements_iter(arch_name: str) -> bool {
@@ -1151,7 +1184,7 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
         self.builder.store(self.builder.extract_value(tup, 0, name="iterf.t0"), a0);
         self.builder.store(self.builder.extract_value(tup, 1, name="iterf.t1"), a1);
     }
-    import from jaclang.compiler.ownership { loop_body_locals }
+    import from jaclang.compiler.passes.main.rc_facts_pass { loop_body_locals }
     _saved = loop_body_locals(nd.body if isinstance(nd.body, (list, tuple)) else None);
 
     _iter_prebody = set(self.local_vars.keys());

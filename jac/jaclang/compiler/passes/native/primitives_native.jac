@@ -14,7 +14,7 @@ import from jaclang.compiler.primitives {
     BuiltinEmitter
 }
 import type from jaclang.compiler.passes.native.na_ir_gen_pass { NaIRGenPass }
-import from jaclang.jac0core.diagnostics { E5090 }
+import from jaclang.jac0core.diagnostics { E5092 }
 
 obj NativeEmitCtx {
     has pass_ref: NaIRGenPass,

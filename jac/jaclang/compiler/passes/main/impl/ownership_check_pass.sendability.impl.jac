@@ -17,7 +17,11 @@ impl OwnershipCheckPass._emit_sendability_diagnostics -> None {
         }
     }
 
+    import from jaclang.jac0core.constant { Tokens as Tok }
     for cexpr in self.idx_concurrent {
+        if cexpr.tok is not None and cexpr.tok.name == Tok.KW_WAIT {
+            continue;
+        }
         names: list[uni.Name] = [];
         if isinstance(cexpr.target, uni.Name) {
             names.append(cexpr.target);
@@ -31,6 +35,9 @@ impl OwnershipCheckPass._emit_sendability_diagnostics -> None {
             }
             sid = self._sym_id(nm);
             if sid is None or sid not in tracked or nm.sym is None {
+                continue;
+            }
+            if self._is_deep_immutable_scalar(nm) {
                 continue;
             }
             ownership = nm.sym.ownership;
@@ -58,4 +65,18 @@ impl OwnershipCheckPass._emit_sendability_diagnostics -> None {
             break;
         }
     }
+}
+
+impl OwnershipCheckPass._is_deep_immutable_scalar(nm: uni.Name) -> bool {
+    t = nm.type;
+    if t is None {
+        return False;
+    }
+    _mangled = "";
+    try {
+        _mangled = t.mangle();
+    } except Exception {
+        return False;
+    }
+    return _mangled in ("int", "float", "bool", "str", "bytes");
 }

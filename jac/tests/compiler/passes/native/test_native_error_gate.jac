@@ -1,6 +1,6 @@
 """Tests for the native error gate (issue #7239).
 
-A native module that accumulates codegen-time errors (E5090 and
+A native module that accumulates codegen-time errors (E5092 and
 friends) must not publish any artifact: no llvm ir, no jit engine, no
 python bytecode, and no .jir cache entry. Importing such a module must
 fail loudly with the real diagnostics, and the check path must surface
@@ -19,7 +19,7 @@ import from jaclang.jac0core.runtime { JacRuntime }
 
 # `eval` of a runtime string can never be lowered on the na pathway: it
 # would need an embedded interpreter inside the AOT-compiled binary. The
-# E5090 fires deep inside NaIRGenPass codegen and, crucially, is NOT caught
+# E5092 fires deep inside NaIRGenPass codegen and, crucially, is NOT caught
 # by the up-front capability blacklist -- that makes it the exact "drift"
 # class of error the gate exists for. (An earlier version leaned on
 # for-loop tuple destructuring, but #7238 later lowered that construct
@@ -73,8 +73,8 @@ test "na codegen errors withhold the native artifact" {
     src = write_module("gate_bad.na.jac", BAD_NA_SOURCE);
     prog = JacProgram();
     mod = prog.compile(file_path=src);
-    assert has_error_code(prog, "E5090") , (
-        f"Expected E5090 from native codegen, got: {fmt_errors(prog)}"
+    assert has_error_code(prog, "E5092") , (
+        f"Expected E5092 from native codegen, got: {fmt_errors(prog)}"
     );
     assert mod.gen.llvm_ir is None , (
         "a module with native codegen errors must not publish llvm ir"
@@ -110,7 +110,7 @@ test "import of an erroring na module raises with the diagnostics" {
     } except ImportError as e {
         caught = str(e);
     }
-    assert "E5090" in caught , (
+    assert "E5092" in caught , (
         f"import must fail loudly with the native diagnostics, got: {caught!r}"
     );
 }
@@ -119,7 +119,7 @@ test "check-path compile surfaces native codegen errors (check/run parity)" {
     src = write_module("gate_bad_check.na.jac", BAD_NA_SOURCE);
     prog = JacProgram();
     prog.compile(file_path=src, type_check=True, no_cgen=True);
-    assert has_error_code(prog, "E5090") , (
+    assert has_error_code(prog, "E5092") , (
         f"`jac check` path must report the same native errors `jac run` "
         f"does, got: {fmt_errors(prog)}"
     );

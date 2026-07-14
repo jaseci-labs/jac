@@ -36,8 +36,6 @@ import from jaclang.jac0core.diagnostics {
     W3051
 }
 
-glob PROPERTY_IMPL_TARGETS: dict[str, str] = {};
-
 obj JacAutoLintPass(UniPass) {
     has lint_enabled: bool = True,
         report_only: bool = False,
@@ -102,6 +100,7 @@ obj JacAutoLintPass(UniPass) {
     def exit_bool_expr(bool_node: uni.BoolExpr) -> None;
     def _is_future_annotations_import(stmt: uni.UniNode) -> bool;
     def _fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> None;
+    def _impl_owner_archetype(impl_node: uni.ImplDef) -> (uni.Archetype | None);
     def _base_decl_archetypes(annex_path: str) -> list[uni.Archetype];
     def _signatures_match(
         decl_sig: uni.FuncSignature, impl_sig: uni.FuncSignature
@@ -186,6 +185,10 @@ obj JacAutoLintPass(UniPass) {
         type_expr: (uni.Expr | None),
         accessors: list
     ) -> uni.ArchHas;
+
+    def _property_impl_roles(
+        arch: uni.Archetype, prop_name: str
+    ) -> dict[str, list[uni.Ability]];
 
     def _impl_property_kind(nd: uni.ImplDef) -> str;
     def _convert_property_impl(nd: uni.ImplDef) -> None;

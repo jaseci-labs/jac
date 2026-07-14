@@ -158,13 +158,13 @@ test "native partial class: native caller of a demoted method errors, not silent
         for e in (prog.errors_had or [])
         if e.code
     ];
-    assert "E5090" in codes , (
-        f"expected E5090 for native call to a demoted method, got {codes}"
+    assert "E5092" in codes , (
+        f"expected E5092 for native call to a demoted method, got {codes}"
     );
     # The diagnostic names the call site (the method), not the discarded
     # eval body that was demoted away.
     msgs = " ".join(str(e) for e in (prog.errors_had or []));
-    assert "Box.evaluate" in msgs , f"E5090 should name Box.evaluate, got: {msgs}";
+    assert "Box.evaluate" in msgs , f"E5092 should name Box.evaluate, got: {msgs}";
 }
 
 test "native partial class: un-lowerable virtual method stays a hard error" {
@@ -181,8 +181,8 @@ test "native partial class: un-lowerable virtual method stays a hard error" {
         for e in (prog.errors_had or [])
         if e.code
     ];
-    assert "E5090" in codes , (
-        f"expected E5090 for un-lowerable virtual method, got {codes}"
+    assert "E5092" in codes , (
+        f"expected E5092 for un-lowerable virtual method, got {codes}"
     );
 }
 
@@ -5018,8 +5018,8 @@ test "isinstance mixed tuple unsupported type errors" {
         for e in (prog.errors_had or [])
         if e.code
     ];
-    assert "E5090" in codes , (
-        f"expected E5090 for mixed-tuple isinstance, got {codes}"
+    assert "E5092" in codes , (
+        f"expected E5092 for mixed-tuple isinstance, got {codes}"
     );
 }
 

@@ -1,3 +1,30 @@
+impl KEDAAutoscaler._trigger_key{
+    return trigger.name or f"{trigger.type}-{trigger_index}";
+}
+
+impl KEDAAutoscaler._trigger_auth_name{
+    key = f"{app_name}/{self._trigger_key(trigger, trigger_index)}";
+    short_hash = hashlib.sha256(key.encode()).hexdigest()[:8];
+    return f"{app_name[:20].rstrip('-')}-{short_hash}-ta";
+}
+
+impl KEDAAutoscaler._validate_triggers{
+    seen: dict[str, int] = {};
+    for (i, trigger) in enumerate(spec.triggers) {
+        key = self._trigger_key(trigger, i);
+        if key in seen {
+            raise ValueError(
+                f"Trigger '{key}' in autoscaler spec for '{app_name}' collides with the trigger "
+                f"at index {seen[
+                    key
+                ]}; each trigger must resolve to a unique name so their "
+                "TriggerAuthentication resources do not overwrite one another."
+            );
+        }
+        seen[key] = i;
+    }
+}
+
 impl KEDAAutoscaler._get_cluster_key{
     try {
         import from kubernetes.client { Configuration }
@@ -65,7 +92,7 @@ impl KEDAAutoscaler._build_trigger{
         keda_trigger["name"] = trigger.name;
     }
     if trigger.auth and trigger.auth.secret_refs {
-        auth_name = f"{trigger.name or trigger.type}-trigger-auth";
+        auth_name = self._trigger_auth_name(app_name, trigger, trigger_index);
         keda_trigger["authenticationRef"] = {"name": auth_name};
     }
     return keda_trigger;
@@ -74,8 +101,9 @@ impl KEDAAutoscaler._build_trigger{
 impl KEDAAutoscaler._build_manifests{
     scaled_obj_name = spec.autoscaler_name or f"{spec.scale_target_name}-scaledobject";
     keda_triggers: list[dict[str, any]] = [];
-    for trigger in spec.triggers {
-        keda_triggers.append(self._build_trigger(trigger));
+    app_name = spec.app_name or spec.scale_target_name;
+    for (i, trigger) in enumerate(spec.triggers) {
+        keda_triggers.append(self._build_trigger(trigger, app_name, i));
     }
 
     if not keda_triggers {
@@ -132,7 +160,7 @@ impl KEDAAutoscaler._apply_trigger_auth{
     if not trigger.auth.secret_refs {
         return;
     }
-    auth_name = f"{trigger.name or trigger.type}-trigger-auth";
+    auth_name = self._trigger_auth_name(app_name, trigger, trigger_index);
     secret_target_refs: list[dict[str, any]] = [];
     for (param, ref) in trigger.auth.secret_refs.items() {
         if not isinstance(ref, dict) {
@@ -188,6 +216,8 @@ impl KEDAAutoscaler._apply_trigger_auth{
 }
 
 impl KEDAAutoscaler.apply{
+    app_name = spec.app_name or spec.scale_target_name;
+    self._validate_triggers(spec, app_name);
     warnings = self.preflight();
     if warnings {
         if self.logger {
@@ -201,8 +231,7 @@ impl KEDAAutoscaler.apply{
         (
             self._v2_api or AutoscalingV2Api()
         ).delete_namespaced_horizontal_pod_autoscaler(
-            name=f"{spec.app_name or spec.scale_target_name}-hpa",
-            namespace=spec.namespace
+            name=f"{app_name}-hpa", namespace=spec.namespace
         );
     } except ApiException as e {
         if e.status not in [404, 422] {
@@ -210,8 +239,8 @@ impl KEDAAutoscaler.apply{
         }
     }
 
-    for trigger in spec.triggers {
-        self._apply_trigger_auth(api, trigger, spec.namespace);
+    for (i, trigger) in enumerate(spec.triggers) {
+        self._apply_trigger_auth(api, trigger, spec.namespace, app_name, i);
     }
     manifests = self._build_manifests(spec);
     name = manifests["name"];

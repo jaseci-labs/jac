@@ -9,13 +9,29 @@ impl BoundaryAnalysisPass.before_pass(self: BoundaryAnalysisPass) -> None {
     self._visited: set[int] = set();
 }
 
+impl BoundaryAnalysisPass._resolved_native_decl(
+    self: BoundaryAnalysisPass, name_node: (uni.UniNode | None)
+) -> (uni.Ability | None) {
+    if name_node is None or not isinstance(name_node, uni.AstSymbolNode) {
+        return None;
+    }
+    import from jaclang.compiler.symbol_utils { ability_of_symbol }
+    decl = ability_of_symbol(name_node.sym);
+    if decl is not None and isinstance(decl.signature, uni.FuncSignature) {
+        return decl;
+    }
+    return None;
+}
+
 impl BoundaryAnalysisPass._get_context(
     self: BoundaryAnalysisPass, nd: uni.UniNode
 ) -> InteropContext {
-    if nd.in_native_context() {
+    import from jaclang.jac0core.constant { CodeContext }
+    cs = nd.codespace();
+    if cs == CodeContext.NATIVE {
         return InteropContext.NATIVE;
     }
-    if nd.in_client_context() {
+    if cs == CodeContext.CLIENT {
         return InteropContext.CLIENT;
     }
     return InteropContext.SERVER;
@@ -144,6 +160,7 @@ impl BoundaryAnalysisPass.enter_import(
                             or self._in_native_module()
                         );
                         if (is_native_ctx and func_name not in manifest.bindings) {
+                            _decl = self._resolved_native_decl(item.name);
                             binding = InteropBinding(
                                 name=func_name,
                                 source_context=InteropContext.NATIVE,
@@ -151,7 +168,7 @@ impl BoundaryAnalysisPass.enter_import(
                                 ret_type='int',
                                 param_types=[],
                                 param_names=[],
-                                ast_node=None,
+                                ast_node=_decl,
                                 route=[InteropContext.NATIVE, InteropContext.NATIVE],
                                 source_module=native_path
                             );
@@ -463,7 +480,7 @@ impl BoundaryAnalysisPass.enter_func_call(
                         ret_type='int',
                         param_types=[],
                         param_names=[],
-                        ast_node=None,
+                        ast_node=self._resolved_native_decl(nd.target.right),
                         route=[InteropContext.NATIVE, InteropContext.NATIVE],
                         source_module=mod_path
                     );
@@ -491,7 +508,7 @@ impl BoundaryAnalysisPass.enter_func_call(
                     ret_type='int',
                     param_types=[],
                     param_names=[],
-                    ast_node=None,
+                    ast_node=self._resolved_native_decl(nd.target),
                     route=[InteropContext.NATIVE, InteropContext.NATIVE],
                     source_module=source_module
                 );
@@ -1072,9 +1089,7 @@ impl BoundaryAnalysisPass._resolved_body(
             if isinstance(resolved, list) {
                 return resolved;
             }
-        } except Exception {
-            pass;
-        }
+        } except Exception { }
     }
     body = owner?.body;
     if isinstance(body, list) {
