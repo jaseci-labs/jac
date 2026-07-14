@@ -319,6 +319,12 @@ impl OwnershipCheckPass._call_move_gen(nd: uni.UniCFGNode) -> set[SymId] {
         if self._cfg_owner(call) is not nd {
             continue;
         }
+        if isinstance(call.target, uni.Name) and call.target.sym_name in (
+            "len", "print", "range", "isinstance", "next", "abs", "min", "max",
+            "sum", "sorted", "repr", "format", "chr", "ord", "hex", "oct", "bin"
+        ) {
+            continue;
+        }
         for param in self._call_params(call) {
             arg: uni.Expr | None = None;
             if isinstance(param, uni.KWPair) {
