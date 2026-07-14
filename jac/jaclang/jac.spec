@@ -336,7 +336,7 @@ else_stmt ::= "else" "{" code_block_stmts "}"
 
 while_stmt ::= "while" expression "{" code_block_stmts "}" else_stmt?
 
-region_stmt ::= "{" code_block_stmts "}"
+region_stmt ::= "region" "{" code_block_stmts "}"
 
 forever_stmt ::= "forever" "{" code_block_stmts "}"
 
@@ -408,7 +408,7 @@ global_stmt ::= "global" (NAME | KWESC_NAME) ("," (NAME | KWESC_NAME))* ";"
 
 nonlocal_stmt ::= "nonlocal" (NAME | KWESC_NAME) ("," (NAME | KWESC_NAME))* ";"
 
-ownership_prefix ::= "own" | NAME | "&" "mut"?
+ownership_prefix ::= "own" | "val" | "&" "mut"?
 
 assignment_with_target ::=
     (":" ownership_prefix pipe)? (

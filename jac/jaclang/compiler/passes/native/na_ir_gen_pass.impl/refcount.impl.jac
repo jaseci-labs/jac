@@ -7,6 +7,24 @@ impl NaIRGenPass._gc_mode -> str {
 }
 
 impl NaIRGenPass._emit_rc_helpers -> None {
+    if self._nogc_headerless() {
+        i8_ptr_hl = ir.IntType(8).as_pointer();
+        i64_hl = ir.IntType(64);
+        self.malloc_fn = self._get_or_declare_extern("malloc", i8_ptr_hl, [i64_hl]);
+        self.free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr_hl]);
+        if self.rc_alloc_fn is None {
+            _ha_fnty = ir.FunctionType(i8_ptr_hl, [i64_hl]);
+            _ha_fn = self._define_function("__jac_halloc", _ha_fnty);
+            _ha_fn.linkage = "private";
+            _ha_fn.args[0].name = "size";
+            _ha_bb = _ha_fn.append_basic_block("entry");
+            _ha_b = ir.IRBuilder(_ha_bb);
+            _ha_raw = _ha_b.call(self.malloc_fn, [_ha_fn.args[0]], name="raw");
+            _ha_b.ret(_ha_raw);
+            self.rc_alloc_fn = _ha_fn;
+        }
+        return;
+    }
     i8 = ir.IntType(8);
     i8_ptr = i8.as_pointer();
     i32 = ir.IntType(32);
@@ -568,6 +586,9 @@ impl NaIRGenPass._emit_rc_retain(ptr: ir.Value, op: str = "", loc: str = "") -> 
     if self._gc_mode() == "none" {
         return;
     }
+    if self._nogc_osp_skip(ptr) {
+        return;
+    }
     if self.rc_retain_fn is None {
         self._emit_rc_helpers();
     }
@@ -591,7 +612,17 @@ impl NaIRGenPass._emit_rc_retain(ptr: ir.Value, op: str = "", loc: str = "") -> 
 impl NaIRGenPass._emit_rc_release_simple(
     ptr: ir.Value, op: str = "", loc: str = ""
 ) -> None {
+    if self._nogc_headerless() {
+        if not self._nogc_osp_skip(ptr)
+        and not self._nogc_emit_drop(ptr, op=op, loc=loc) {
+            self._nogc_free_scratch(ptr, op);
+        }
+        return;
+    }
     if self._gc_mode() == "none" {
+        return;
+    }
+    if self._nogc_osp_skip(ptr) {
         return;
     }
     if self.rc_release_simple_fn is None {
@@ -618,6 +649,19 @@ impl NaIRGenPass._emit_rc_release_simple(
 impl NaIRGenPass._emit_rc_release_typed(
     val: ir.Value, op: str = "", loc: str = ""
 ) -> None {
+    if self._nogc_headerless() {
+        if not self._nogc_osp_skip(val)
+        and not self._nogc_emit_drop(val, op=op, loc=loc) {
+            self._nogc_free_scratch(val, op);
+        }
+        return;
+    }
+    if self._gc_mode() == "none" {
+        return;
+    }
+    if self._nogc_osp_skip(val) {
+        return;
+    }
     _tn = self._struct_ptr_pointee_name(val);
     if (
         _tn is not None
@@ -643,6 +687,199 @@ impl NaIRGenPass._arch_is_acyclic(arch_name: str) -> bool {
     return lay is not None and lay.is_acyclic;
 }
 
+impl NaIRGenPass._arch_is_osp_name(arch_name: str) -> bool {
+    import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
+    lay = get_layout_registry(self.ir_in, self.prog).get_layout(arch_name);
+    return lay is not None and lay.is_osp;
+}
+
+impl NaIRGenPass._nogc_headerless -> bool {
+    return getattr(self.ir_in.gen, "nogc_enforced", False)
+    and self._gc_mode() == "none";
+}
+
+impl NaIRGenPass._emit_struct_drop_fn(type_name: str) -> (ir.Function | None) {
+    if type_name in self.struct_drop_fns {
+        return self.struct_drop_fns[type_name];
+    }
+    struct_type = self.struct_types.get(type_name);
+    if struct_type is None {
+        return None;
+    }
+    i8p = ir.IntType(8).as_pointer();
+    i64 = ir.IntType(64);
+    fnty = ir.FunctionType(ir.VoidType(), [i8p]);
+    fn = ir.Function(self.llvm_module, fnty, name=f"__drop_{type_name}");
+    fn.linkage = "private";
+    fn.args[0].name = "self";
+    self.struct_drop_fns[type_name] = fn;
+
+    entry_bb = fn.append_basic_block("entry");
+    body_bb = fn.append_basic_block("body");
+    done_bb = fn.append_basic_block("done");
+    b = ir.IRBuilder(entry_bb);
+    is_null = b.icmp_unsigned(
+        "==", fn.args[0], ir.Constant(i8p, None), name="drop.null"
+    );
+    b.cbranch(is_null, done_bb, body_bb);
+
+    b.position_at_end(body_bb);
+    _dobj = b.bitcast(fn.args[0], struct_type.as_pointer(), name="drop.obj");
+    _hook = self.struct_drop_hooks.get(type_name)
+    or self.func_symtab.get(f"{type_name}.drop");
+    if _hook is not None {
+        self.struct_drop_hooks[type_name] = _hook;
+        b.call(_hook, [_dobj]);
+    }
+    field_types = self.struct_field_types.get(type_name, {});
+    field_indices = self.struct_field_indices.get(type_name, {});
+    opaque_fields = self.struct_field_opaque.get(type_name, set());
+    i32 = ir.IntType(32);
+    for (fname, ftype) in field_types.items() {
+        if fname in opaque_fields or not isinstance(ftype, ir.PointerType) {
+            continue;
+        }
+        idx = field_indices.get(fname, -1);
+        if idx < 0 {
+            continue;
+        }
+        _fld_drop: (ir.Function | None) = None;
+        _pointee = ftype?.pointee;
+        _pname = getattr(_pointee, "name", "") or "";
+        if _pname in self.struct_types or _pname == type_name {
+            _fld_drop = self._emit_struct_drop_fn(_pname);
+        } elif _pname.startswith("List.")
+        or _pname.startswith("Dict.")
+        or _pname.startswith("Set.") {
+            _fld_drop = self._emit_container_drop_fn(_pname);
+        }
+        if _fld_drop is None {
+            continue;
+        }
+        fp = b.gep(
+            _dobj, [ir.Constant(i32, 0), ir.Constant(i32, idx)], name=f"drop.{fname}.p"
+        );
+        fv = b.load(fp, name=f"drop.{fname}");
+        fv_i8 = b.bitcast(fv, i8p, name=f"drop.{fname}.i8");
+        b.call(_fld_drop, [fv_i8]);
+    }
+    free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
+    b.call(free_fn, [fn.args[0]]);
+    b.branch(done_bb);
+
+    b.position_at_end(done_bb);
+    b.ret_void();
+    return fn;
+}
+
+impl NaIRGenPass._emit_container_drop_fn(cont_name: str) -> (ir.Function | None) {
+    if cont_name in self.container_drop_fns {
+        return self.container_drop_fns[cont_name];
+    }
+    _struct = None;
+    try {
+        _struct = self.llvm_module.context.get_identified_type(cont_name);
+    } except Exception {
+        return None;
+    }
+    if _struct is None or not _struct?.elements {
+        return None;
+    }
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    fnty = ir.FunctionType(ir.VoidType(), [i8p]);
+    _safe = cont_name.replace(".", "_");
+    fn = ir.Function(self.llvm_module, fnty, name=f"__drop_{_safe}");
+    fn.linkage = "private";
+    fn.args[0].name = "self";
+    self.container_drop_fns[cont_name] = fn;
+
+    entry_bb = fn.append_basic_block("entry");
+    body_bb = fn.append_basic_block("body");
+    done_bb = fn.append_basic_block("done");
+    b = ir.IRBuilder(entry_bb);
+    is_null = b.icmp_unsigned(
+        "==", fn.args[0], ir.Constant(i8p, None), name="drop.null"
+    );
+    b.cbranch(is_null, done_bb, body_bb);
+
+    b.position_at_end(body_bb);
+    cont = b.bitcast(fn.args[0], _struct.as_pointer(), name="drop.cont");
+    free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
+    _elems = list(_struct.elements);
+    for (_fi, _fty) in enumerate(_elems) {
+        if _fi < 2 or not isinstance(_fty, ir.PointerType) {
+            continue;
+        }
+        dp = b.gep(
+            cont, [ir.Constant(i32, 0), ir.Constant(i32, _fi)], name=f"drop.data{_fi}.p"
+        );
+        dv = b.load(dp, name=f"drop.data{_fi}");
+        dv_i8 = b.bitcast(dv, i8p, name=f"drop.data{_fi}.i8");
+        b.call(free_fn, [dv_i8]);
+    }
+    b.call(free_fn, [fn.args[0]]);
+    b.branch(done_bb);
+
+    b.position_at_end(done_bb);
+    b.ret_void();
+    return fn;
+}
+
+impl NaIRGenPass._nogc_emit_drop(val: ir.Value, op: str = "", loc: str = "") -> bool {
+    if not isinstance(val.type, ir.PointerType) {
+        return False;
+    }
+    _tn = self._struct_ptr_pointee_name(val);
+    _fn: (ir.Function | None) = None;
+    if _tn is not None and _tn in self.struct_types {
+        _fn = self._emit_struct_drop_fn(_tn);
+    } else {
+        _pointee = val.type?.pointee;
+        _pname = getattr(_pointee, "name", "") or "";
+        if _pname.startswith("List.")
+        or _pname.startswith("Dict.")
+        or _pname.startswith("Set.") {
+            _fn = self._emit_container_drop_fn(_pname);
+        }
+    }
+    if _fn is None {
+        return False;
+    }
+    i8p = ir.IntType(8).as_pointer();
+    v_i8 = self.builder.bitcast(val, i8p, name="drop.cast");
+    self.builder.call(_fn, [v_i8]);
+    return True;
+}
+
+impl NaIRGenPass._nogc_free_scratch(val: ir.Value, op: str) -> None {
+    if op not in (
+        "print_tmp", "fstr_obj_tmp", "mstr_old", "mstr_val", "fstring", "str_index"
+    ) {
+        return;
+    }
+    if not isinstance(val.type, ir.PointerType) {
+        return;
+    }
+    i8p = ir.IntType(8).as_pointer();
+    _free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
+    _v_i8 = self.builder.bitcast(val, i8p, name="scratch.free.cast");
+    self.builder.call(_free_fn, [_v_i8]);
+}
+
+impl NaIRGenPass._nogc_osp_skip(val: ir.Value) -> bool {
+    if not getattr(self.ir_in.gen, "nogc_enforced", False) {
+        return False;
+    }
+    _tn = self._struct_ptr_pointee_name(val);
+    if _tn is None {
+        return False;
+    }
+    import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
+    lay = get_layout_registry(self.ir_in, self.prog).get_layout(_tn);
+    return lay is not None and lay.is_osp;
+}
+
 impl NaIRGenPass._emit_scope_cleanup(
     skip_var: (str | None) = None, ret_val: object = None, loc: str = ""
 ) -> None {
@@ -655,6 +892,9 @@ impl NaIRGenPass._emit_scope_cleanup(
         }
 
         if var_name in self.param_vars {
+            continue;
+        }
+        if var_name in self.nogc_stack_vars {
             continue;
         }
 
@@ -677,6 +917,9 @@ impl NaIRGenPass._emit_loop_iter_cleanup(body_locals: list, loc: str = "") -> No
     }
     for var_name in body_locals {
         if var_name == "self" or var_name in self.param_vars {
+            continue;
+        }
+        if var_name in self.nogc_stack_vars {
             continue;
         }
         alloca = self.local_vars.get(var_name);
@@ -716,6 +959,10 @@ impl NaIRGenPass._rc_strdup(ptr: ir.Value, name: str = "rc.str") -> ir.Value {
 }
 
 impl NaIRGenPass._emit_struct_release_fn(arch_name: str) -> None {
+    if self._nogc_headerless() {
+        self._emit_struct_drop_fn(arch_name);
+        return;
+    }
     if arch_name in self.struct_release_fns {
         return;
     }

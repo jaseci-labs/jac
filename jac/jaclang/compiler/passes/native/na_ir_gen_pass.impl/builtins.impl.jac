@@ -1009,7 +1009,12 @@ impl NaIRGenPass._float_repr_fn -> ir.Function {
     chk_pinf = fn.append_basic_block("fr.chk.pinf");
     b.cbranch(is_nan, nan_bb, chk_pinf);
     b.position_at_end(nan_bb);
-    b.ret(s_nan);
+    if self._nogc_headerless() {
+        _strdup_hl = self._get_or_declare_extern("strdup", i8p, [i8p]);
+        b.ret(b.call(_strdup_hl, [s_nan], name="fr.nan.dup"));
+    } else {
+        b.ret(s_nan);
+    }
     b.position_at_end(chk_pinf);
     pinf = ir.Constant(f64, float("inf"));
     ninf = ir.Constant(f64, float("-inf"));
@@ -1018,14 +1023,24 @@ impl NaIRGenPass._float_repr_fn -> ir.Function {
     chk_ninf = fn.append_basic_block("fr.chk.ninf");
     b.cbranch(is_pinf, pinf_bb, chk_ninf);
     b.position_at_end(pinf_bb);
-    b.ret(s_inf);
+    if self._nogc_headerless() {
+        _strdup_hl2 = self._get_or_declare_extern("strdup", i8p, [i8p]);
+        b.ret(b.call(_strdup_hl2, [s_inf], name="fr.inf.dup"));
+    } else {
+        b.ret(s_inf);
+    }
     b.position_at_end(chk_ninf);
     is_ninf = b.fcmp_ordered("==", d, ninf, name="fr.isninf");
     ninf_bb = fn.append_basic_block("fr.ninf");
     setup_bb = fn.append_basic_block("fr.setup");
     b.cbranch(is_ninf, ninf_bb, setup_bb);
     b.position_at_end(ninf_bb);
-    b.ret(s_ninf);
+    if self._nogc_headerless() {
+        _strdup_hl3 = self._get_or_declare_extern("strdup", i8p, [i8p]);
+        b.ret(b.call(_strdup_hl3, [s_ninf], name="fr.ninf.dup"));
+    } else {
+        b.ret(s_ninf);
+    }
 
     b.position_at_end(setup_bb);
     cap = ir.Constant(i64, 64);

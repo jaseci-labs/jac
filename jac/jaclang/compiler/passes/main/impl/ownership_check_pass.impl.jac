@@ -27,11 +27,13 @@ impl OwnershipCheckPass.transform(ir_in: uni.Module) -> uni.Module {
 
     self._build_index(ir_in);
     self._stamp_ownership();
+    self._nogc_setup();
     if not self.owned_decl
     and not self.borrow_meta
     and not self.val_decl
     and not self._has_region_blocks()
-    and not self.idx_concurrent {
+    and not self.idx_concurrent
+    and self.nogc_prov is None {
         return ir_in;
     }
 
@@ -51,6 +53,7 @@ impl OwnershipCheckPass.transform(ir_in: uni.Module) -> uni.Module {
     self._emit_region_escape_diagnostics();
     self._emit_sendability_diagnostics();
     self._emit_marker_diagnostics();
+    self._emit_enforcement_diagnostics();
     return ir_in;
 }
 

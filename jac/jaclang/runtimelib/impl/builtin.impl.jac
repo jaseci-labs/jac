@@ -187,6 +187,10 @@ impl unsafe_html(html: any) -> dict {
     return {"__jacUnsafeHtml": str(html) if (html is not None) else ""};
 }
 
+impl managed(x: any) -> any {
+    return x;
+}
+
 impl restspec(**specs: any) -> Callable {
     import from jaclang { JacRuntimeInterface as Jac }
     SpecsCls = Jac.get_api_server_class().RestSpecs;

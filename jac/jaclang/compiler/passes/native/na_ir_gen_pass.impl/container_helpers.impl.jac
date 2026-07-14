@@ -9,6 +9,9 @@ impl NaIRGenPass._emit_container_new_fn(
     result = self._emit_rc_alloc_container(b, container_ptr_type, data_types);
     container_ptr = result[0];
 
+    if self._nogc_headerless() {
+        dtor_fn = None;
+    }
     if dtor_fn is not None and self.rc_set_type_fn is not None {
         _dtor_name = dtor_fn?.name or str(dtor_fn);
         _type_name = _dtor_name[len("__rc_release_"):]
@@ -391,7 +394,11 @@ impl NaIRGenPass._emit_rc_alloc_container(
     null_ptr = ir.Constant(container_ptr_type, None);
     size_gep = b.gep(null_ptr, [ir.Constant(i32, 1)], name="sizeof");
     struct_size = b.ptrtoint(size_gep, i64, name="size");
-    raw = b.call(self.rc_alloc_fn, [struct_size], name="raw");
+    if self._nogc_headerless() {
+        raw = b.call(malloc_fn, [struct_size], name="raw");
+    } else {
+        raw = b.call(self.rc_alloc_fn, [struct_size], name="raw");
+    }
     container_ptr = b.bitcast(raw, container_ptr_type, name="container");
 
     len_p = b.gep(
@@ -453,10 +460,15 @@ impl NaIRGenPass._emit_grow_array(
     old_i8 = b.bitcast(old_data, i8_ptr, name="old.i8");
     new_i8 = b.bitcast(new_data, i8_ptr, name="new.i8");
     b.call(memcpy_fn, [new_i8, old_i8, old_bytes]);
-    if self.rc_safe_free_fn is None {
-        self._emit_rc_helpers();
+    if self._nogc_headerless() {
+        _free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
+        b.call(_free_fn, [old_i8]);
+    } else {
+        if self.rc_safe_free_fn is None {
+            self._emit_rc_helpers();
+        }
+        b.call(self.rc_safe_free_fn, [old_i8]);
     }
-    b.call(self.rc_safe_free_fn, [old_i8]);
     b.store(new_data, arr_ptr);
     return new_data;
 }
