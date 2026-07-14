@@ -3,7 +3,10 @@ import from jaclang.scale.models.deploy_context { DeployContext }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
-import from jaclang.scale.deploy.autoscale.autoscaler { DEFAULT_CPU_UTILIZATION_TARGET }
+import from jaclang.scale.deploy.autoscale.autoscaler {
+    DEFAULT_CPU_UTILIZATION_TARGET,
+    DEFAULT_MEMORY_UTILIZATION_TARGET
+}
 
 
 glob GATEWAY_NAME: str = "__gateway__",
@@ -650,6 +653,9 @@ obj MicroserviceManifestBuilder {
             "min": int(hpa.get("min", 1)),
             "max": int(hpa.get("max", 3)),
             "cpu_target": int(hpa.get("cpu_target", DEFAULT_CPU_UTILIZATION_TARGET)),
+            "memory_target": int(
+                hpa.get("memory_target", DEFAULT_MEMORY_UTILIZATION_TARGET)
+            ),
             "triggers": raw_triggers
         };
     }

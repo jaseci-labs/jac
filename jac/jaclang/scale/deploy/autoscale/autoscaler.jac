@@ -24,13 +24,38 @@ obj AutoscalerSpec {
         idle_replicas: (int | None) = None,
         polling_interval: int = 30,
         cooldown_period: int = 300,
-        initial_cooldown_period: int = 0;
+        initial_cooldown_period: int = 0,
+        scale_up_stabilization: int = 60,
+        scale_up_max_pods: int = 2;
 }
 
 
 class Autoscaler {
     static def _managed_labels -> dict[str, str] {
         return {"managed": "jac-scale"};
+    }
+
+    # Without this block the HPA default (double the fleet every 15s with no
+    # stabilization) bursts pods faster than nodes absorb their memory, which
+    # OOM-kills the fleet. Scale-down is percent-capped so survivors are not
+    # slammed with the full load at once.
+    static def _build_behavior(spec: AutoscalerSpec) -> dict[str, any] {
+        return {
+            "scaleUp": {
+                "stabilizationWindowSeconds": spec.scale_up_stabilization,
+                "policies": [
+                    {
+                        "type": "Pods",
+                        "value": spec.scale_up_max_pods,
+                        "periodSeconds": 60
+                    }
+                ]
+            },
+            "scaleDown": {
+                "stabilizationWindowSeconds": spec.cooldown_period,
+                "policies": [{"type": "Percent", "value": 50, "periodSeconds": 60}]
+            }
+        };
     }
 
     def apply(self: Autoscaler, spec: AutoscalerSpec) -> bool {

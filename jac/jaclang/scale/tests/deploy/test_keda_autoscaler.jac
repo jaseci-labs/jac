@@ -137,6 +137,26 @@ test "build manifests falls back to default cpu trigger when triggers list is em
     assert m["body"]["spec"]["triggers"][0]["type"] == "cpu";
 }
 
+test "build manifests embeds HPA behavior guardrails in the advanced block" {
+    keda = KEDAAutoscaler();
+    spec = AutoscalerSpec(
+        scale_target_name="svc-deployment",
+        namespace="default",
+        cooldown_period=450,
+        scale_up_stabilization=90,
+        scale_up_max_pods=3
+    );
+    m = keda._build_manifests(spec);
+    behavior = m["body"]["spec"]["advanced"]["horizontalPodAutoscalerConfig"][
+        "behavior"
+    ];
+    assert behavior["scaleUp"]["stabilizationWindowSeconds"] == 90;
+    assert behavior["scaleUp"]["policies"] == [
+        {"type": "Pods", "value": 3, "periodSeconds": 60}
+    ];
+    assert behavior["scaleDown"]["stabilizationWindowSeconds"] == 450;
+}
+
 test "build manifests includes every trigger in the ScaledObject spec" {
     keda = KEDAAutoscaler();
     spec = AutoscalerSpec(
