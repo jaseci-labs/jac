@@ -6,5 +6,10 @@ matching impl definitions must be re-targeted to dotted-impl form.
 
 obj Temperature {
     has _celsius: float = 0.0;
-    has celsius: float { getter; setter(value: float); }
+
+    @property
+    def celsius -> float;
+
+    @celsius.setter
+    def celsius(value: float);
 }

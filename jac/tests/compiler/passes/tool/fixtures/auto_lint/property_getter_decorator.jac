@@ -8,13 +8,20 @@ has no local native form and must survive the rewrite untouched.
 
 obj Container {
     has _val: int = 0;
-    has val: int {
-        getter {
-            return self._val + 1;
-        }
-        setter(new_val: int) {
-            self._val = new_val;
-        }
+
+    @property
+    def val -> int {
+        return self._val;
+    }
+
+    @val.getter
+    def val -> int {
+        return self._val + 1;
+    }
+
+    @val.setter
+    def val(new_val: int) {
+        self._val = new_val;
     }
 }
 

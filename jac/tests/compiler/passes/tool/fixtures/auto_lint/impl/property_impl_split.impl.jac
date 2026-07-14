@@ -1,7 +1,7 @@
-impl Temperature.celsius.getter -> float {
+impl Temperature.celsius -> float {
     return self._celsius;
 }
 
-impl Temperature.celsius.setter(value: float) {
+impl Temperature.celsius(value: float) {
     self._celsius = value;
 }

@@ -7,23 +7,31 @@ archetype is Python's compatibility escape hatch and stays exempt.
 
 obj Container {
     has _val: int = 0;
-    has val: int {
-        getter {
-            return self._val;
-        }
-        setter(new_val: int) {
-            self._val = new_val;
-        }
-        deleter {
-            self._val = 0;
-        }
+
+    @property
+    def val -> int {
+        return self._val;
+    }
+
+    @val.getter
+    def val -> int {
+        return self._val;
+    }
+
+    @val.setter
+    def val(new_val: int) {
+        self._val = new_val;
+    }
+
+    @val.deleter
+    def val {
+        self._val = 0;
     }
 }
 
 class Legacy {
-    has v: int {
-        getter {
-            return 1;
-        }
+    @property
+    def v(self: Legacy) -> int {
+        return 1;
     }
 }

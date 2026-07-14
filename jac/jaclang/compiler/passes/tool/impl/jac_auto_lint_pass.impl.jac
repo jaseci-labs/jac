@@ -1195,6 +1195,9 @@ impl JacAutoLintPass._is_future_annotations_import(stmt: uni.UniNode) -> bool {
 }
 
 impl JacAutoLintPass._fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> None {
+    if self._is_file_excluded(impl_node.loc.mod_path) {
+        return;
+    }
     decl: uni.Ability | None = None;
     if isinstance(impl_node.decl_link, uni.Ability) {
         decl = impl_node.decl_link;
@@ -2734,6 +2737,9 @@ impl JacAutoLintPass._build_property_has(
 }
 
 impl JacAutoLintPass._convert_properties(container: uni.Archetype) -> None {
+    if self._is_file_excluded(container.loc.mod_path) {
+        return;
+    }
     body = container.body;
     if not isinstance(body, list) {
         return;
@@ -2944,6 +2950,9 @@ impl JacAutoLintPass._impl_property_kind(nd: uni.ImplDef) -> str {
 }
 
 impl JacAutoLintPass._convert_property_impl(nd: uni.ImplDef) -> None {
+    if self._is_file_excluded(nd.loc.mod_path) {
+        return;
+    }
     kind = self._impl_property_kind(nd);
     if kind == "" {
         return;
