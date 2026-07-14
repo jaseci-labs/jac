@@ -1224,6 +1224,24 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             else 0}"
                     );
                 }
+            } elif (
+                self?.jacval_type
+                and alloca.type.pointee == self.jacval_type
+                and isinstance(value.type, ir.PointerType)
+                and getattr(value, 'opname', '') != 'inttoptr'
+                and not is_inplace_set_op
+            ) {
+                if not self._is_owned(value) and not self._can_native_move_lower(nd) {
+                    self._emit_rc_retain(
+                        value,
+                        op="assign_box",
+                        loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                            if nd.loc
+                            else 0}"
+                    );
+                } elif self._is_owned(value) {
+                    self.rc_ops_elided += 1;
+                }
             }
             self.builder.store(coerced, alloca);
         } elif var_name in self.global_vars
@@ -1399,6 +1417,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             self.builder.store(coerced, global_var);
         } else {
             var_type = value.type;
+            _pre_box_val = value;
             if nd.type_tag and nd.type_tag.tag {
                 tag_node = nd.type_tag.tag;
 
@@ -1444,6 +1463,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     var_type = value.type;
                 } else {
                     var_type = self._resolve_jac_type(tag_node);
+                    _pre_box_val = value;
                     value = self._coerce_type(value, var_type);
                 }
             }
@@ -1495,6 +1515,24 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             if nd.loc
                             else 0}"
                     );
+                }
+            } elif (
+                self?.jacval_type
+                and var_type == self.jacval_type
+                and isinstance(_pre_box_val.type, ir.PointerType)
+                and getattr(_pre_box_val, 'opname', '') != 'inttoptr'
+            ) {
+                if not self._is_owned(_pre_box_val)
+                and not self._can_native_move_lower(nd) {
+                    self._emit_rc_retain(
+                        _pre_box_val,
+                        op="assign_box",
+                        loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                            if nd.loc
+                            else 0}"
+                    );
+                } elif self._is_owned(_pre_box_val) {
+                    self.rc_ops_elided += 1;
                 }
             }
             self.builder.store(value, alloca);
