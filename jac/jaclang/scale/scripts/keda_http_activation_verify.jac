@@ -34,10 +34,12 @@ glob NAMESPACE: str = os.environ.get("KEDA_HTTP_E2E_NAMESPACE", "jac-http-e2e"),
      COOLDOWN_PERIOD: int = int(os.environ.get("KEDA_HTTP_E2E_COOLDOWN_PERIOD", "60"));
 
 def load_config {
+    # any: sidesteps a checker false positive on _optdeps' guarded import (NoneType inferred from its ImportError fallback branch).
+    kube_config: any = k8s_config;
     try {
-        k8s_config.load_kube_config();
+        kube_config.load_kube_config();
     } except ConfigException {
-        k8s_config.load_incluster_config();
+        kube_config.load_incluster_config();
     }
 }
 

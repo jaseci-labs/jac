@@ -492,26 +492,28 @@ import from jaclang.scale.deploy.autoscale.http_activation {
     HTTPConcurrencyMetric
 }
 
-# Override http_scaler_address= if the HTTP Add-on's external scaler
-# does not run in the default "keda" namespace.
-keda = KEDAAutoscaler();
+with entry {
+    # Override http_scaler_address= if the HTTP Add-on's external scaler
+    # does not run in the default "keda" namespace.
+    keda = KEDAAutoscaler();
 
-spec = HTTPActivationSpec(
-    name="preview",
-    namespace="jachammer-previews",
-    scale_target_name="preview-abc123",
-    target=HTTPServiceTarget(service="preview-abc123-svc", port=80),
-    rules=[HTTPRoutingRule(hosts=["abc123.previews.example.com"])],
-    min_replicas=0,
-    max_replicas=1,
-    cooldown_period=300,
-    concurrency=HTTPConcurrencyMetric(target_value=1)
-);
+    spec = HTTPActivationSpec(
+        name="preview",
+        namespace="jachammer-previews",
+        scale_target_name="preview-abc123",
+        target=HTTPServiceTarget(service="preview-abc123-svc", port=80),
+        rules=[HTTPRoutingRule(hosts=["abc123.previews.example.com"])],
+        min_replicas=0,
+        max_replicas=1,
+        cooldown_period=300,
+        concurrency=HTTPConcurrencyMetric(target_value=1)
+    );
 
-keda.apply_http_activation(spec);
+    keda.apply_http_activation(spec);
 
-# Later, once the preview is torn down:
-keda.destroy_http_activation("preview-abc123", "jachammer-previews");
+    # Later, once the preview is torn down:
+    keda.destroy_http_activation("preview-abc123", "jachammer-previews");
+}
 ```
 
 **Traffic topology**
