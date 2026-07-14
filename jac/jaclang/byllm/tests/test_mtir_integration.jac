@@ -852,19 +852,39 @@ test "key normalisation is type-directed for dict fields" {
     assert team_report.scores == {"Root Cause": 5, "Error Analysis": 9};
 }
 
-test "exact field name wins over a Title-Case duplicate" {
+test "conflicting real name and Title-Case alias are rejected" {
+    jac_import("keydrop_schema", base_path=FIXTURE_DIR + "/");
+
+    import from keydrop_schema { Investigation }
+    import jaclang.byllm.schema as schema;
+    import from jaclang.byllm.exceptions { OutputConversionError }
+
+    # The real field name and its Title-Case variant carry different values:
+    # ambiguous, so reject rather than silently pick the exact-name value.
+    raised = False;
+    try {
+        schema.json_to_instance(
+            {"root_cause": "correct", "Root Cause": "stale"}, Investigation
+        );
+    } except OutputConversionError {
+        raised = True;
+    }
+    assert raised;
+}
+
+test "identical real name and Title-Case alias are kept" {
     jac_import("keydrop_schema", base_path=FIXTURE_DIR + "/");
 
     import from keydrop_schema { Investigation }
     import jaclang.byllm.schema as schema;
 
-    # Both the real name and its Title-Case variant present: the variant must
-    # not clobber the value supplied under the real field name.
+    # Real name plus a redundant Title-Case label with the SAME value is a
+    # harmless duplicate -- keep it, do not reject.
     inv = schema.json_to_instance(
-        {"root_cause": "correct", "Root Cause": "stale"}, Investigation
+        {"root_cause": "same", "Root Cause": "same"}, Investigation
     );
 
-    assert inv.root_cause == "correct";
+    assert inv.root_cause == "same";
 }
 
 test "union handling is type-directed and non-corrupting" {
