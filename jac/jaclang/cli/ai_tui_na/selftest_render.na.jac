@@ -7,8 +7,9 @@
 #     <rendered rows>
 #     ===END===
 #
-# The outer runner (scripts/golden_render.py) splits these blocks, captures the
-# baseline into tests/golden/tui_render/<fixture.WxH>.txt (--update), and diffs
+# The golden-render regression test (tests/cli/test_tui_render_golden.jac)
+# splits these blocks, captures the baseline into
+# tests/golden/tui_render/<fixture.WxH>.txt (GOLDEN_UPDATE=1), and diffs
 # subsequent runs. Plan 01 Phase 1 re-points this at Screen.render and asserts
 # byte-identical output to the baseline captured here.
 #

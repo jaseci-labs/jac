@@ -3,8 +3,9 @@
 #
 # Compiles selftest_render.na.jac -> bin/selftest_render: a standalone native
 # binary (no embedded CPython, no fused-runtime trailer) that imports the REAL
-# screen_render and dumps framed, byte-exact frames to stdout. Used by
-# golden_render.py to capture baselines and guard the Plan 01 refactor.
+# screen_render and dumps framed, byte-exact frames to stdout. Used by the
+# golden-render regression test (tests/cli/test_tui_render_golden.jac) to
+# capture baselines and guard the Plan 01 refactor.
 #
 # This mirrors build_embed.sh's TTY-backend + libjacpyembed staging exactly
 # (screen_render's import closure reaches libc_tty via terminal, and jacpyembed
@@ -95,5 +96,5 @@ echo "==> Compiled: $SCRIPT_DIR/$TMP"
 cp "$SHIM_SRC" "bin/$SHIM"
 mv -f "$TMP" "$OUT"
 echo "==> Done. Golden-render harness: $SCRIPT_DIR/$OUT (+ bin/$SHIM)"
-echo "    Capture baseline: python3 golden_render.py --update"
-echo "    Verify:           python3 golden_render.py"
+echo "    Capture baseline: GOLDEN_UPDATE=1 pytest jac/tests/cli/test_tui_render_golden.jac"
+echo "    Verify:           pytest jac/tests/cli/test_tui_render_golden.jac"
