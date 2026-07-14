@@ -225,14 +225,14 @@ obj CodeGenTarget {
         _doc_ir: (Doc | None) = None,
         js: str = '',
         css: str = '',
-        client_manifest: ClientManifest = field(default_factory=ClientManifest),
+        _client_manifest: (ClientManifest | None) = None,
         py_ast: list = field(default_factory=`list),
         py_bytecode: (bytes | None) = None,
         es_ast: EsNode | Sequence[EsNode] | SliceInfo | IndexInfo | None = None,
         llvm_ir: (ModuleRef | None) = None,
         native_engine: (ExecutionEngine | None) = None,
         native_bitcode: (bytes | None) = None,
-        interop_manifest: InteropManifest = field(default_factory=InteropManifest),
+        _interop_manifest: (InteropManifest | None) = None,
         interop_py_funcs: dict[(str, Any)] = field(default_factory=`dict),
         _interop_callbacks: list[any] = field(default_factory=`list),
         native_layout: (NativeModuleLayout | None) = None,
@@ -244,6 +244,8 @@ obj CodeGenTarget {
         _exported_symbols: list[str] = field(default_factory=`list);
 
     has doc_ir: Doc { getter; setter(value: Doc); }
+    has client_manifest: ClientManifest { getter; setter(value: ClientManifest); }
+    has interop_manifest: InteropManifest { getter; setter(value: InteropManifest); }
 }
 
 obj CodeLocInfo {

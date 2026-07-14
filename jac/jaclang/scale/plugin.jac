@@ -6,8 +6,6 @@ import from jaclang.cli.console { console }
 import from jaclang.runtimelib.context { ExecutionContext }
 import from jaclang.runtimelib.server { JacAPIServer as JacServer }
 import from .config.config_loader { get_scale_config }
-import from .deploy.target.factory { DeploymentTargetFactory }
-import from .observability.factory { UtilityFactory }
 import from jaclang.runtimelib.server { UserManager }
 import from jaclang.runtimelib.storage { Storage }
 
@@ -15,21 +13,46 @@ import from jaclang.runtimelib.storage { Storage }
 # imported lazily inside the hook bodies below so that `import jaclang` -- which
 # now always loads this built-in plugin -- never pulls the serve runtime closure.
 # The deps arrive in the project .jac/venv via the capability registry.
-def _print_autodetect_banner(routes: dict[str, str]) {
+obj DeployFactories {
+    has utility: type,
+        target: type;
+}
+
+def _load_deploy_factories -> DeployFactories {
+    # Lazy import: DeploymentTargetFactory (deploy/target/*, kubernetes) and
+    # UtilityFactory (observability/*) pull in large subtrees that a local
+    # `jac start`/`jac serve` dev server never touches. Importing them at module
+    # scope forced those modules to compile on every server start.
+    import from .observability.factory { UtilityFactory }
+    import from .deploy.target.factory { DeploymentTargetFactory }
+    return DeployFactories(utility=UtilityFactory, target=DeploymentTargetFactory);
+}
+
+def _print_local_ms_banner(
+    routes: dict[str, str], explicit_routes: dict[str, str], ms_configured: bool
+) {
+    import from .runtime.discovery.route_policy { format_route_origin_lines }
     names = sorted(routes.keys());
     plural = "s" if len(names) != 1 else "";
+    label = "" if ms_configured else " (auto-detected)";
     console.print(
-        f"Microservice mode (auto-detected): {len(names)} service{plural} "
+        f"Microservice mode{label}: {len(names)} service{plural} "
         f"[{', '.join(names)}], running locally as subprocesses with no "
         f"Docker images.",
         style="cyan"
     );
-    pairs = ", ".join([f"{n} -> {routes[n]}" for n in names]);
-    console.print(f"  Default routes: {pairs}", style="muted");
-    console.print(
-        "  Routes are auto-derived; set [scale.microservices] in jac.toml to customize.",
-        style="muted"
-    );
+    for line in format_route_origin_lines(routes, explicit_routes) {
+        console.print(f"  {line}", style="muted");
+    }
+    # Only nudge toward [scale.microservices] when the section is genuinely
+    # absent from jac.toml (issue #7434: the hint used to print even when the
+    # config was set and honored, masking real config-loading failures).
+    if not ms_configured {
+        console.print(
+            "  Routes are auto-derived; set [scale.microservices] in jac.toml to customize.",
+            style="muted"
+        );
+    }
 }
 
 def _scale_runtime_active -> bool {
@@ -72,6 +95,7 @@ def scale_start(
     is_sv_sibling = os.environ.get("JAC_SV_SIBLING") == "1";
 
     enabled = ms_config.get("enabled", None);
+    explicit_routes = dict(ms_config.get("routes", {}));
     if (not is_sv_sibling) and (not scale) and (enabled is not False) {
         realizer = None;
         should_serve_ms = False;
@@ -81,9 +105,7 @@ def scale_start(
                     resolve_routes,
                     resolve_service_files
                 }
-                ms_config["routes"] = resolve_routes(
-                    filename, dict(ms_config.get("routes", {}))
-                );
+                ms_config["routes"] = resolve_routes(filename, explicit_routes);
                 ms_config["service_files"] = resolve_service_files(
                     filename, ms_config["routes"]
                 );
@@ -101,7 +123,11 @@ def scale_start(
         }
         if should_serve_ms and realizer is not None {
             if enabled is None {
-                _print_autodetect_banner(ms_config.get("routes", {}));
+                _print_local_ms_banner(
+                    ms_config.get("routes", {}),
+                    explicit_routes,
+                    scale_config.microservices_declared()
+                );
             }
             realizer.serve();
             return 0;
@@ -236,7 +262,8 @@ def deploy_destroy(
 
     scale_config = get_scale_config();
 
-    logger = UtilityFactory.create_logger('standard');
+    factories = _load_deploy_factories();
+    logger = factories.utility.create_logger('standard');
 
     if target in ('kubernetes', 'kubernetes-microservice') {
         target_config = scale_config.get_kubernetes_config();
@@ -264,7 +291,7 @@ def deploy_destroy(
         return 1;
     }
 
-    deployment_target = DeploymentTargetFactory.create(target, target_config, logger);
+    deployment_target = factories.target.create(target, target_config, logger);
     deployment_target.destroy(app_name, component);
 
     if component {
@@ -288,7 +315,8 @@ def deploy_status(file_path: str, target: str = "kubernetes") -> int {
 
     scale_config = get_scale_config();
 
-    logger = UtilityFactory.create_logger('standard');
+    factories = _load_deploy_factories();
+    logger = factories.utility.create_logger('standard');
 
     if target == 'kubernetes' {
         target_config = scale_config.get_kubernetes_config();
@@ -296,7 +324,7 @@ def deploy_status(file_path: str, target: str = "kubernetes") -> int {
         target_config = scale_config.get_section(target);
     }
 
-    deployment_target = DeploymentTargetFactory.create(target, target_config, logger);
+    deployment_target = factories.target.create(target, target_config, logger);
     app_name = target_config.get('app_name', 'jaseci');
 
     status_data = deployment_target.get_full_status(app_name);
@@ -394,7 +422,7 @@ def scale_cmd(
         console.print(
             "No microservices found: no routes in "
             "[scale.microservices.routes] and no "
-            "`sv import` / `to sv:` services detected in the "
+            "`sv import` / `sv { }` services detected in the "
             "current directory.",
             style="error"
         );

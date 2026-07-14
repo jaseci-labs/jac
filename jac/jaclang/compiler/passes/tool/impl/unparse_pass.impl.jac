@@ -104,7 +104,17 @@ impl UnparsePass.exit_module(nd: uni.Module) -> None {
 }
 
 impl UnparsePass.exit_sub_tag(nd: uni.SubTag) -> None {
-    nd.gen.jac = ": " + nd.tag.gen.jac;
+    prefix = "";
+    if nd.ownership == OwnershipKind.OWN {
+        prefix = "own ";
+    } elif nd.ownership == OwnershipKind.MUT_BORROW {
+        prefix = "&mut ";
+    } elif nd.ownership == OwnershipKind.BORROW {
+        prefix = "&";
+    } elif nd.ownership == OwnershipKind.VAL {
+        prefix = "val ";
+    }
+    nd.gen.jac = ": " + prefix + nd.tag.gen.jac;
 }
 
 impl UnparsePass.exit_type_param(nd: uni.TypeParam) -> None {
@@ -500,6 +510,11 @@ impl UnparsePass.exit_typed_ctx_block(nd: uni.TypedCtxBlock) -> None {
     nd.gen.jac = " ".join(parts);
 }
 
+impl UnparsePass.exit_region_stmt(nd: uni.RegionStmt) -> None {
+    body = " ".join([s.gen.jac for s in nd.body]);
+    nd.gen.jac = "region { " + body + " }";
+}
+
 impl UnparsePass.exit_if_stmt(nd: uni.IfStmt) -> None {
     body = " ".join([s.gen.jac for s in nd.body]);
     result = "if " + nd.condition.gen.jac + " { " + body + " }";
@@ -785,7 +800,11 @@ impl UnparsePass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
 }
 
 impl UnparsePass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
-    nd.gen.jac = nd.op.gen.jac + " " + nd.operand.gen.jac;
+    if is_mut_kind(nd.ownership) {
+        nd.gen.jac = nd.op.gen.jac + "mut " + nd.operand.gen.jac;
+    } else {
+        nd.gen.jac = nd.op.gen.jac + " " + nd.operand.gen.jac;
+    }
 }
 
 impl UnparsePass.exit_if_else_expr(nd: uni.IfElseExpr) -> None {

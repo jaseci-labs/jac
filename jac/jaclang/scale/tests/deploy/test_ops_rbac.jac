@@ -37,10 +37,10 @@ test "build_ops_rbac: read-only Role (no mutating verbs) bound to the SA" {
 
 test "build_ops_rbac: mutations append patch/delete verbs" {
     ro = build_ops_rbac("a", "n", "sa", False);
-    mut = build_ops_rbac("a", "n", "sa", True);
-    mverbs = _all_verbs(mut["role"]);
+    mut_rb = build_ops_rbac("a", "n", "sa", True);
+    mverbs = _all_verbs(mut_rb["role"]);
     assert "patch" in mverbs and "delete" in mverbs;
-    assert len(mut["role"]["rules"]) > len(ro["role"]["rules"]) , "mutation rules are appended";
+    assert len(mut_rb["role"]["rules"]) > len(ro["role"]["rules"]) , "mutation rules are appended";
 
     assert build_ops_rbac("a", "n", "", False)["role_binding"]["subjects"][0][
         "name"

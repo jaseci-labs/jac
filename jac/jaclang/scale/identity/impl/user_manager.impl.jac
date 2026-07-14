@@ -207,16 +207,72 @@ impl JacScaleUserManager.get_jwt_claims(token: str) -> dict | None {
 }
 
 impl JacScaleUserManager.validate_jwt_token(token: str) -> str | None {
+    user_id = self.validate_jwt_token_detail(token, check_existence=False)['user_id'];
+    return str(user_id) if user_id is not None else None;
+}
+
+impl JacScaleUserManager.validate_jwt_token_detail(
+    token: str | None, check_existence: bool = True
+) -> dict[str, any] {
+    if not token {
+        return {
+            'status': 'missing',
+            'user_id': None,
+            'exp': None,
+            'reason': 'No token provided'
+        };
+    }
     try {
-        decoded = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]);
-        if decoded.get('type') == 'api_key' {
-            return None;
-        }
-        return decoded.get('user_id') or None;
+        decoded = jwt.decode(
+            token, JWT_SECRET, algorithms=[JWT_ALGORITHM], options={"verify_exp": True}
+        );
+    } except jwt.ExpiredSignatureError {
+        return {
+            'status': 'expired',
+            'user_id': None,
+            'exp': None,
+            'reason': 'Token expired'
+        };
     } except Exception as e {
         logger.debug(f"Failed to validate JWT token: {str(e)}");
-        return None;
+        return {
+            'status': 'invalid',
+            'user_id': None,
+            'exp': None,
+            'reason': 'Token invalid'
+        };
     }
+    if decoded.get('type') == 'api_key' {
+        return {
+            'status': 'invalid',
+            'user_id': None,
+            'exp': decoded.get('exp'),
+            'reason': 'API key tokens are not valid user sessions'
+        };
+    }
+    user_id = decoded.get('user_id');
+    if not user_id {
+        return {
+            'status': 'invalid',
+            'user_id': None,
+            'exp': decoded.get('exp'),
+            'reason': 'Token has no user_id'
+        };
+    }
+    if check_existence and not self.user_exists(user_id) {
+        return {
+            'status': 'unknown_user',
+            'user_id': None,
+            'exp': decoded.get('exp'),
+            'reason': 'User associated with token no longer exists'
+        };
+    }
+    return {
+        'status': 'ok',
+        'user_id': user_id,
+        'exp': decoded.get('exp'),
+        'reason': None
+    };
 }
 
 impl JacScaleUserManager.refresh_jwt_token(token: str) -> str | None {
