@@ -579,6 +579,14 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " TypeScript declarations (or the matching @types/<package>), or relax"
          " the setting to \"warn\"."
      ),
+     E1121 = _err(
+         "E1121",
+         Category.TYPE,
+         "Cannot assign to '{name}': it is declared {kind}",
+         "A binding annotated with 'Final' (or a 'readonly' member of an imported"
+         " TypeScript interface) can only be set at its declaration, or in"
+         " 'init'/'postinit' when the declaration has no initializer."
+     ),
      E1301 = _err(
          "E1301",
          Category.SEMANTIC,

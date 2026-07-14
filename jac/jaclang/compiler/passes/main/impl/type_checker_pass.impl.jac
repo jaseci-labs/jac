@@ -182,6 +182,13 @@ impl TypeCheckPass.exit_binary_expr(self: TypeCheckPass, nd: uni.BinaryExpr) -> 
         return;
     }
     self.evaluator.get_type_of_expression(nd);
+    if (
+        isinstance(nd.op, uni.Token)
+        and nd.op.name == "WALRUS_EQ"
+        and isinstance(nd.left, uni.Name)
+    ) {
+        self._check_immutable_write(nd.left);
+    }
 }
 
 impl TypeCheckPass.exit_atom_trailer(self: TypeCheckPass, nd: uni.AtomTrailer) -> None {
@@ -191,11 +198,87 @@ impl TypeCheckPass.exit_atom_trailer(self: TypeCheckPass, nd: uni.AtomTrailer) -
     self.evaluator.get_type_of_expression(nd);
 }
 
+impl TypeCheckPass._check_immutable_write(
+    self: TypeCheckPass, target: uni.Expr
+) -> None {
+    if isinstance(target, (uni.TupleVal, uni.ListVal)) {
+        for v in target.values {
+            self._check_immutable_write(v);
+        }
+        return;
+    }
+    if isinstance(target, uni.AtomTrailer)
+    and target.is_attr
+    and isinstance(target.right, uni.Name) {
+        if target.right.sym is None {
+            self.evaluator.get_type_of_expression(target);
+        }
+        attr_sym = target.right.sym;
+        if attr_sym is None {
+            return;
+        }
+        self.evaluator.get_type_of_symbol(attr_sym);
+        if attr_sym.immutability == ImmutabilityKind.NONE {
+            return;
+        }
+        decl_node = attr_sym.decl.name_of;
+        if (
+            isinstance(decl_node, uni.HasVar)
+            and decl_node.value is None
+            and self._in_owner_initializer(target)
+        ) {
+            return;
+        }
+        self._emit_immutable_write(attr_sym, target, target.right.value);
+        return;
+    }
+    if isinstance(target, uni.Name) and target.sym {
+        sym = target.sym;
+        self.evaluator.get_type_of_symbol(sym);
+        if sym.immutability != ImmutabilityKind.NONE
+        and sym.decl.name_of is not target {
+            self._emit_immutable_write(sym, target, target.value);
+        }
+    }
+}
+
+impl TypeCheckPass._emit_immutable_write(
+    self: TypeCheckPass, sym: uni.Symbol, site: uni.UniNode, name: str
+) -> None {
+    kind = "read-only" if sym.immutability == ImmutabilityKind.READONLY else "Final";
+    decl = sym.decl;
+    related = [(f"'{name}' declared {kind} here", decl)] if decl is not None else None;
+    self.emit(E1121, node_override=site, name=name, kind=kind, related=related);
+}
+
+impl TypeCheckPass._in_owner_initializer(
+    self: TypeCheckPass, target: uni.AtomTrailer
+) -> bool {
+    base = target.target;
+    if not (isinstance(base, uni.Name) and base.value == 'self') {
+        return False;
+    }
+    meth_name = '';
+    ability = target.find_parent_of_type(uni.Ability);
+    if ability is not None {
+        meth_name = ability.sym_name;
+    } else {
+        impl_node = target.find_parent_of_type(uni.ImplDef);
+        if impl_node is not None and isinstance(impl_node.decl_link, uni.Ability) {
+            meth_name = impl_node.decl_link.sym_name;
+        }
+    }
+    return meth_name in ('init', 'postinit');
+}
+
 impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> None {
     import from jaclang.compiler.type_system { types }
 
     if nd.is_enum_stmt {
         return;
+    }
+    for write_target in nd.target {
+        self._check_immutable_write(write_target);
     }
     if ((len(nd.target) == 1) and (nd.value is not None)) {
         target = nd.target[0];
@@ -1071,6 +1154,7 @@ impl TypeCheckPass.exit_in_for_stmt(self: TypeCheckPass, nd: uni.InForStmt) -> N
 
     if isinstance(nd.target, uni.Name) {
         self.evaluator.get_type_of_expression(nd.target);
+        self._check_immutable_write(nd.target);
     } elif isinstance(nd.target, (uni.TupleVal, uni.ListVal)) {
         self._eval_unpacking_names(nd.target);
     }
@@ -1249,6 +1333,7 @@ impl TypeCheckPass.exit_yield_expr(self: TypeCheckPass, nd: uni.YieldExpr) -> No
 
 impl TypeCheckPass.exit_delete_stmt(self: TypeCheckPass, nd: uni.DeleteStmt) -> None {
     self.evaluator.get_type_of_expression(nd.target);
+    self._check_immutable_write(nd.target);
 }
 
 impl TypeCheckPass.exit_visit_stmt(self: TypeCheckPass, nd: uni.VisitStmt) -> None {

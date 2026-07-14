@@ -360,7 +360,10 @@ impl TypeEvaluator._ts_synth_class_types(
                     );
                 }
             }
-            self._install_synth_member(scope, synth_src, mname, member_type);
+            is_readonly = all(m.readonly and not m.is_method for m in group);
+            self._install_synth_member(
+                scope, synth_src, mname, member_type, readonly=is_readonly
+            );
         }
         if decl.call_sig is not None {
             self._install_synth_member(
@@ -395,7 +398,11 @@ impl TypeEvaluator._ts_synth_class_types(
 }
 
 impl TypeEvaluator._install_synth_member(
-    scope: uni.UniScopeNode, synth_src: uni.Source, mname: str, member_type: TypeBase
+    scope: uni.UniScopeNode,
+    synth_src: uni.Source,
+    mname: str,
+    member_type: TypeBase,
+    readonly: bool = False
 ) -> None {
     field_node = uni.Name(
         orig_src=synth_src,
@@ -409,9 +416,13 @@ impl TypeEvaluator._install_synth_member(
         pos_end=0,
     );
     field_node.type = member_type;
-    scope.names_in_scope[mname] = uni.Symbol(
+    member_sym = uni.Symbol(
         defn=field_node, access=SymbolAccess.PUBLIC, parent_tab=scope
     );
+    member_sym.immutability = (
+        ImmutabilityKind.READONLY if readonly else ImmutabilityKind.NONE
+    );
+    scope.names_in_scope[mname] = member_sym;
 }
 
 impl TypeEvaluator._synthesize_ts_decl_class(

@@ -5,6 +5,7 @@ import from typing { cast }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant {
     TOKEN_MAP,
+    ImmutabilityKind,
     SymbolType,
     Tokens as Tok,
     EdgeDir,
@@ -247,7 +248,8 @@ obj TypeEvaluator {
         scope: uni.UniScopeNode,
         synth_src: uni.Source,
         mname: str,
-        member_type: TypeBase
+        member_type: TypeBase,
+        readonly: bool = False
     ) -> None;
 
     def _ts_synth_class_types(
@@ -327,6 +329,10 @@ obj TypeEvaluator {
     ) -> bool;
 
     def _get_type_of_symbol(symbol: uni.Symbol) -> TypeBase;
+    def _apply_final_qualifier(
+        annotation_type: TypeBase, symbol: (uni.Symbol | None)
+    ) -> (TypeBase | None);
+
     def _get_enum_member_type_for_decl(
         node_: uni.Name
     ) -> (types.EnumMemberType | None);

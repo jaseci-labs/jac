@@ -965,7 +965,7 @@ impl JirReader._read_scope_overlay(
 
 impl JirReader._read_symbol(data: (bytes | memoryview), pos: int) -> tuple {
     import from jaclang.jac0core.unitree { Symbol, NameAtom }
-    import from jaclang.jac0core.constant { SymbolAccess }
+    import from jaclang.jac0core.constant { ImmutabilityKind, SymbolAccess }
 
     (defn_count, pos) = _read_varint(data, pos);
     defn_ids = [];
@@ -1012,6 +1012,7 @@ impl JirReader._read_symbol(data: (bytes | memoryview), pos: int) -> tuple {
     sym.access = access;
     sym.parent_tab = None;
     sym.semstr = '';
+    sym.immutability = ImmutabilityKind.NONE;
 
     for d in defn_nodes {
         if isinstance(d, NameAtom) {

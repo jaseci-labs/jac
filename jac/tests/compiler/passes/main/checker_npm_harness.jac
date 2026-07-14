@@ -166,6 +166,7 @@ def make_iface_npm_project(proj_dir: Path) -> Path {
             ),
             "dist/index.d.ts": (
                 "export interface Config {\n"
+                "    readonly label: string;\n"
                 "    theme: string;\n"
                 "    retries: number;\n"
                 "    debug?: boolean;\n"

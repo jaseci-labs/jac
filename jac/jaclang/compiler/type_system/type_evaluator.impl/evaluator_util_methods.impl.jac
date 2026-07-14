@@ -62,7 +62,18 @@ impl TypeEvaluator._build_field_params(
             if has_var.type_tag {
                 var_type_expr = has_var.type_tag.tag;
                 type_cls = self.get_type_of_expression(var_type_expr);
-                param_type = self._convert_to_instance(type_cls);
+                stripped = self._apply_final_qualifier(type_cls, has_var.name.sym);
+                if stripped is None {
+                    if has_var.value is not None {
+                        param_type = self._convert_to_instance(
+                            self.get_type_of_expression(has_var.value)
+                        );
+                    } else {
+                        param_type = types.AnyType();
+                    }
+                } else {
+                    param_type = self._convert_to_instance(stripped);
+                }
             }
             param_map[has_var.name.value] = types.Parameter(
                 name=has_var.name.value,
@@ -406,6 +417,17 @@ impl TypeEvaluator._get_getattr_return_type(
 }
 
 impl TypeEvaluator._convert_to_instance(jtype: TypeBase) -> TypeBase {
+    if (
+        self.prefetch is not None
+        and self.prefetch.final_class is not None
+        and isinstance(jtype, types.ClassType)
+        and jtype.shared == self.prefetch.final_class.shared
+    ) {
+        if jtype.private.type_args {
+            return self._convert_to_instance(jtype.private.type_args[0]);
+        }
+        return types.UnknownType();
+    }
     return type_utils.convert_to_instance(jtype);
 }
 

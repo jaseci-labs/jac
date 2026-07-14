@@ -1,6 +1,6 @@
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
-import from jaclang.jac0core.constant { Tokens as Tok }
+import from jaclang.jac0core.constant { ImmutabilityKind, Tokens as Tok }
 import from jaclang.jac0core.diagnostics {
     DiagnosticInfo,
     E1001,
@@ -27,6 +27,7 @@ import from jaclang.jac0core.diagnostics {
     E1116,
     E1117,
     E1119,
+    E1121,
     W1036,
     W1037,
     W1052,
@@ -94,6 +95,12 @@ class TypeCheckPass(UniPass) {
     ) -> None;
 
     def _check_explicit_any(self: TypeCheckPass, ann_node: uni.UniNode) -> None;
+    def _check_immutable_write(self: TypeCheckPass, target: uni.Expr) -> None;
+    def _emit_immutable_write(
+        self: TypeCheckPass, sym: uni.Symbol, site: uni.UniNode, name: str
+    ) -> None;
+
+    def _in_owner_initializer(self: TypeCheckPass, target: uni.AtomTrailer) -> bool;
     def _check_walker_reports_shape(
         self: TypeCheckPass, nd: uni.HasVar, declared_type: object
     ) -> None;
