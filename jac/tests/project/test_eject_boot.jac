@@ -34,8 +34,7 @@ def _write_bootable_project(src: Path) {
         'def:pub shout(word: str) -> str {\n' + '    return word.upper();\n' + '}\n'
     );
     (src / "server.sv.jac").write_text(
-        'import from lib.helpers { shout }\n\n' +
-        'walker:pub Greet {\n' + '    has name: str,\n' + '        reports: list[str] = [];\n' + '    can g with Root entry {\n' + '        report f"Hello, {self.name}!";\n' + '    }\n' + '}\n\n' + 'walker:pub Loud {\n' + '    has name: str,\n' + '        reports: list[str] = [];\n' + '    can g with Root entry {\n' + '        report shout(self.name);\n' + '    }\n' + '}\n\n' + 'walker Secret {\n' + '    has reports: list[str] = [];\n' + '    can g with Root entry {\n' + '        report "secret";\n' + '    }\n' + '}\n\n' + 'def:pub ping(word: str) -> str {\n' + '    return f"pong:{word}";\n' + '}\n'
+        'import from lib.helpers { shout }\n\n' + 'walker:pub Greet {\n' + '    has name: str,\n' + '        reports: list[str] = [];\n' + '    can g with Root entry {\n' + '        report f"Hello, {self.name}!";\n' + '    }\n' + '}\n\n' + 'walker:pub Loud {\n' + '    has name: str,\n' + '        reports: list[str] = [];\n' + '    can g with Root entry {\n' + '        report shout(self.name);\n' + '    }\n' + '}\n\n' + 'walker Secret {\n' + '    has reports: list[str] = [];\n' + '    can g with Root entry {\n' + '        report "secret";\n' + '    }\n' + '}\n\n' + 'def:pub ping(word: str) -> str {\n' + '    return f"pong:{word}";\n' + '}\n'
     );
 }
 
@@ -258,7 +257,7 @@ test "harness observes the ejected app even when a stale submodule is cached" {
         # only the top-level `lib` would leave a stale `lib.helpers` for the fresh
         # package to bind to.
         decoy = types.ModuleType("lib.helpers");
-        decoy.shout = (lambda (word: str) -> str { return "STALE"; });
+        decoy.shout = lambda (word: str) -> str { return "STALE"; };
         sys.modules["lib.helpers"] = decoy;
         try {
             with _EjectedApp(src=src) as client {
