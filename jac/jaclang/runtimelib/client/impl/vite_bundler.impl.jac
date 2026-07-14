@@ -619,7 +619,10 @@ function jacErrorReporter() {{
             loc += ")";
           }} catch(e) {{}}
         }}
-        console.error("Client error: " + data.type + ": " + data.message + loc);
+        // Timestamped: the server log is append-only, so an un-timestamped error
+        // is indistinguishable from a live one once it has been fixed. Readers
+        // (and agents) need this to tell a stale line from a current failure.
+        console.error("[" + new Date(now).toISOString() + "] Client error: " + data.type + ": " + data.message + loc);
         if (data.phase === "load") {{
           try {{ reportClientLoad(data); }} catch (e) {{}}
           server.ws.send({{
