@@ -134,7 +134,7 @@ jobs:
             exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "summary=jaclang $VERSION" >> "$GITHUB_OUTPUT"
+          echo "summary=jac $VERSION" >> "$GITHUB_OUTPUT"
           echo "Resolved release version: $VERSION"
 
   # Human approval gate (release-approval environment required reviewers).
@@ -195,7 +195,7 @@ jobs:
             echo "Tag ${VTAG} already exists; leaving it in place."
           else
             echo "Tagging ${VTAG} at ${GITHUB_SHA}"
-            git tag --annotate --message="jaclang ${VERSION}" "$VTAG" "$GITHUB_SHA"
+            git tag --annotate --message="jac ${VERSION}" "$VTAG" "$GITHUB_SHA"
             git push origin "refs/tags/${VTAG}"
           fi
 
@@ -214,7 +214,7 @@ jobs:
           VTAG="v${VERSION}"
 
           {
-            echo "## jaclang ${VERSION} (native \`jac\` binary)"
+            echo "## jac ${VERSION} (native \`jac\` binary)"
             echo ""
             echo "Install: \`curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash\`"
           } > release_notes.md

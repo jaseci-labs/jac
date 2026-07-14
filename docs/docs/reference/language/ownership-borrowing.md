@@ -2,7 +2,7 @@
 
 Jac has an opt-in ownership and borrow-checking surface: `own` marks a local or parameter as the unique owner of a value, `&`/`&mut` take a shared or mutable borrow of an owned value, and `OwnershipCheckPass` statically verifies that owned values aren't used after they move and that borrows never outlive or conflict with their owner. Unannotated bindings are completely unaffected -- the checker only tracks names it sees tagged `own`, `val`, `linear`, or `borrow` (`&`/`&mut`), plus allocations inside a `region` block.
 
-This is strictly diagnostics-only: running the checker can change diagnostics, never generated code. It writes no fact that any backend reads. The native (`nacompile`/JIT) backend still elides reference-count traffic for move assignments, but it proves that itself with a separate, unconditional [`RcElisionProofPass`](native-pathway.md#reference-count-elision) that never consults the checker -- so the elision is identical whether or not the ownership diagnostics ran (`nacompile` compiles with `type_check=False` and skips them entirely).
+The checker is one of the compiler's required analyses on the native pathway: it always runs there, its error-severity findings (E13xx) block native codegen, and a clean check is what makes the annotations trustworthy facts for lowering. Whether diagnostics are *displayed* is a compile-request property that never changes generated code -- builds with and without display are bit-identical. Reference-count move elision is proven by the core `RcFactsPass` (a backward-liveness proof on the compiler's shared dataflow framework, stamped as `Assignment.na_move_lowerable`), which serves annotated and unannotated code alike. See the [Ownership Fact Schema](ownership-checker-spec.md) for the full facts contract.
 
 ## Declaring an owner
 
@@ -192,10 +192,10 @@ with entry {
 
 ## What `&x` compiles to
 
-On every backend the ownership annotations are compile-time-only. On the Python backend, `&x` and `&mut x` are **erased**: the expression compiles to exactly `x`, the same object reference an unannotated binding would produce. There is no runtime borrow object, no copy, and no indirection -- the annotation exists solely for `OwnershipCheckPass` to check. (Before the borrow-checker work, a prefix `&x` lowered to the archetype-lookup call `jobj(id=x)`; that legacy meaning is gone -- call `jobj(id=...)` explicitly if you want an id lookup.) The native backend likewise erases borrows; its reference-count optimizations are proven independently by [`RcElisionProofPass`](native-pathway.md#reference-count-elision) and never read the checker's output.
+On every backend the ownership annotations are compile-time-only. On the Python backend, `&x` and `&mut x` are **erased**: the expression compiles to exactly `x`, the same object reference an unannotated binding would produce. There is no runtime borrow object, no copy, and no indirection -- the annotation exists solely for `OwnershipCheckPass` to check. (Before the borrow-checker work, a prefix `&x` lowered to the archetype-lookup call `jobj(id=x)`; that legacy meaning is gone -- call `jobj(id=...)` explicitly if you want an id lookup.) The native backend likewise erases borrows; its reference-count optimizations consume the core-stamped move-elision and param-rebinding facts (`RcFactsPass`), computed once on the shared dataflow framework.
 
 ## See also
 
-- [Ownership Checker Specification](ownership-checker-spec.md) -- the authoritative statement of what each `E13xx` code guarantees, the checker's symbol-level granularity, and the diagnostics-only contract.
+- [Ownership Checker Specification](ownership-checker-spec.md) -- the authoritative statement of what each `E13xx` code guarantees, the checker's symbol-level granularity, and the facts contract backends consume.
 - [Errors and Warnings](../diagnostics.md#ownership-borrow-errors) -- the full `E1301`-`E1309` code table.
 - [Native Compilation Reference](native-pathway.md#reference-count-elision) -- how the native backend proves reference-count elision independently of this checker.

@@ -702,6 +702,16 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.SEMANTIC,
          "'@staticmethod' is not supported in '{kind}' definitions. Use the 'static' keyword instead (e.g., 'static def method_name')."
      ),
+     W2029 = _warn(
+         "W2029",
+         Category.SEMANTIC,
+         "'@{decorator}' is not recommended in '{kind}' definitions. Use native property syntax 'has {name}: {type_name} {{ getter; ... }}' instead.",
+         help="Declare the property with an accessor block: 'has {name}: {type_name} "
+         "{{ getter {{ ... }} setter(value: {type_name}) {{ ... }} }}'. Backing storage "
+         "is a separate 'has _{name}: {type_name} = ...;' field. Run "
+         "'jac check --lint --fix' to rewrite it automatically. A Python-compat "
+         "'class' is exempt from this rule."
+     ),
      E2008 = _err(
          "E2008", Category.SEMANTIC, "Invalid target for context update: {target}"
      ),
@@ -1261,6 +1271,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.CODEGEN,
          "Native union trigger members {members} disagree on the layout of field '{field}'",
          help="A tuple/union trigger like `with (A, B) entry` lowers field access on `here`/`visitor` through a single shared layout, so every member must place the common field at the same offset and type. Reorder the `has` declarations so the shared fields line up, or split the trigger into separate abilities per archetype."
+     ),
+     E5092 = _err(
+         "E5092",
+         Category.CODEGEN,
+         "Native lowering failed for {kind} '{name}'",
+         help="The construct is within the native capability set, but this specific shape (its types, values, or runtime bindings) could not be lowered by NaIRGenPass. Adjust the shape, add type annotations, or move the code to a non-native context. Statically-known unsupported constructs are reported as E5090 by the capability check instead."
      ),
      E5080 = _err(
          "E5080",

@@ -212,7 +212,9 @@ def _fetch_verified_asset(
 glob OFFICIAL_IMAGE: str = "jaseci/jaclang";
 
 
-def resolve_pod_base_image(project_dir: str, configured: str) -> str {
+def resolve_pod_base_image(
+    project_dir: str, configured: str, probe: bool = True
+) -> str {
     # Auto-select the official base image to match the pod binary channel:
     # dev -> jaseci/jaclang:dev, stable -> jaseci/jaclang:latest. The image
     # ships the runtime pre-extracted and the serve closure pre-installed, so
@@ -230,6 +232,12 @@ def resolve_pod_base_image(project_dir: str, configured: str) -> str {
     }
     tag = "dev" if channel == Channel.DEV else "latest";
     image = f"{OFFICIAL_IMAGE}:{tag}";
+    # probe=False is the --dry-run path: it must not touch the network, so
+    # report the image a connected deploy would select instead of confirming
+    # the tag against the registry (issue #7431).
+    if not probe {
+        return image;
+    }
     # The tag may not be published yet (or the registry is unreachable from
     # this driver); fall back rather than shipping manifests that cannot pull.
     try {

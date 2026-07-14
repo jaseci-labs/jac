@@ -291,12 +291,11 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     b.ret_void();
     self.rc_retain_fn = retain_fn;
 
-    release_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr]);
-    release_fn = ir.Function(
-        self.llvm_module, release_fnty, name="__rc_release_simple"
-    );
+    release_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr, ir.IntType(1)]);
+    release_fn = ir.Function(self.llvm_module, release_fnty, name="__rc_release_impl");
     release_fn.linkage = "private";
     release_fn.args[0].name = "ptr";
+    release_fn.args[1].name = "may_cycle";
     entry_bb = release_fn.append_basic_block("entry");
     check_bb = release_fn.append_basic_block("check_sentinel");
     do_bb = release_fn.append_basic_block("do_release");
@@ -364,13 +363,26 @@ impl NaIRGenPass._emit_rc_helpers -> None {
         _cy_cyc_flag = b.load(self.rc_cycles_enabled_gv, name="cy.cyc.flag");
         _cy_skip = b.or_(
             b.or_(
-                b.icmp_unsigned("!=", _cy_dis_flag, ir.Constant(i8, 0), name="cy.dis"),
-                b.icmp_unsigned(
-                    "!=", _cy_coll_flag, ir.Constant(i8, 0), name="cy.coll"
+                b.or_(
+                    b.icmp_unsigned(
+                        "!=", _cy_dis_flag, ir.Constant(i8, 0), name="cy.dis"
+                    ),
+                    b.icmp_unsigned(
+                        "!=", _cy_coll_flag, ir.Constant(i8, 0), name="cy.coll"
+                    ),
+                    name="cy.skip.gc"
                 ),
-                name="cy.skip.gc"
+                b.icmp_unsigned(
+                    "==", _cy_cyc_flag, ir.Constant(i8, 0), name="cy.cyc.off"
+                ),
+                name="cy.skip.flags"
             ),
-            b.icmp_unsigned("==", _cy_cyc_flag, ir.Constant(i8, 0), name="cy.cyc.off"),
+            b.icmp_unsigned(
+                "==",
+                release_fn.args[1],
+                ir.Constant(ir.IntType(1), 0),
+                name="cy.acyclic"
+            ),
             name="cy.skip"
         );
         color_check_bb = release_fn.append_basic_block("color_check");
@@ -437,7 +449,16 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     );
     b = ir.IRBuilder(done_bb);
     b.ret_void();
-    self.rc_release_simple_fn = release_fn;
+    self.rc_release_impl_fn = release_fn;
+    _pub_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr]);
+    _pub_fn = ir.Function(self.llvm_module, _pub_fnty, name="__rc_release_simple");
+    _pub_fn.linkage = "private";
+    _pub_fn.args[0].name = "ptr";
+    _pub_bb = _pub_fn.append_basic_block("entry");
+    _pub_b = ir.IRBuilder(_pub_bb);
+    _pub_b.call(release_fn, [_pub_fn.args[0], ir.Constant(ir.IntType(1), 1)]);
+    _pub_b.ret_void();
+    self.rc_release_simple_fn = _pub_fn;
 }
 
 impl NaIRGenPass._rc_call_with_ctx(
@@ -597,7 +618,29 @@ impl NaIRGenPass._emit_rc_release_simple(
 impl NaIRGenPass._emit_rc_release_typed(
     val: ir.Value, op: str = "", loc: str = ""
 ) -> None {
+    _tn = self._struct_ptr_pointee_name(val);
+    if (
+        _tn is not None
+        and self._arch_is_acyclic(_tn)
+        and self.rc_release_impl_fn is not None
+        and isinstance(val.type, ir.PointerType)
+    ) {
+        _rt_i8 = self.builder.bitcast(
+            val, ir.IntType(8).as_pointer(), name="rel.acyc.i8"
+        );
+        self.builder.call(
+            self.rc_release_impl_fn, [_rt_i8, ir.Constant(ir.IntType(1), 0)]
+        );
+        self.rc_releases_emitted += 1;
+        return;
+    }
     self._emit_rc_release_simple(val, op=op, loc=loc);
+}
+
+impl NaIRGenPass._arch_is_acyclic(arch_name: str) -> bool {
+    import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
+    lay = get_layout_registry(self.ir_in, self.prog).get_layout(arch_name);
+    return lay is not None and lay.is_acyclic;
 }
 
 impl NaIRGenPass._emit_scope_cleanup(
