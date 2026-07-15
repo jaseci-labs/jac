@@ -826,9 +826,14 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             _is_foreign
             and self._is_bytes_value(arg)
             and i < len(func.args)
-            and func.args[i].type == _i8ptr
+            and (func.args[i].type == _i8ptr or self._is_bytes_type(func.args[i].type))
         ) {
-            coerced.append(self._bytes_data_ptr(arg));
+            _data_ptr = self._bytes_data_ptr(arg);
+            coerced.append(
+                _data_ptr
+                    if func.args[i].type == _i8ptr
+                    else self._coerce_type(_data_ptr, func.args[i].type)
+            );
             release_args.append(arg);
         } elif i < len(func.args) {
             _c = self._coerce_type(arg, func.args[i].type);
