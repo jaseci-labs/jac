@@ -8,17 +8,18 @@
 //! self-alias the classifier reads `-> D` as an unbridgeable free generic and the
 //! hasher ends up with NO constructor at all.
 //!
-//! These tests pin the two shapes named in the plan: `new() -> D` must become the
-//! `-> Self` constructor, and `finalize(self) -> Array<u8, OutputSize<D>>` must
-//! stay an honest bytes-lane skip (proving the `D` inside `OutputSize<D>` is not
-//! mis-substituted into a phantom Self return that would emit an unsound
-//! `self.0.finalize()` off a shared handle).
+//! These tests pin the shapes named in the plan: `new() -> D` must become the
+//! `-> Self` constructor, and — since 1.2.2 landed the byte lane —
+//! `finalize(self) -> Array<u8, OutputSize<D>>` must bridge as a consuming-`self`
+//! bytes method (`self.0.clone().finalize().to_vec()`), proving the `D` buried in
+//! `OutputSize<D>` is read as a byte digest, not mis-substituted into a phantom
+//! Self return.
 
 use std::path::PathBuf;
 
 use rustdoc_types::Crate;
 
-use crate::{classify, emit, types::BridgeReturn};
+use crate::{classify, emit, types::{BridgeReturn, ScalarType}};
 
 fn load(fixture: &str) -> Crate {
     let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -78,33 +79,82 @@ fn blanket_new_becomes_self_constructor() {
     );
 }
 
-/// `finalize(self) -> Array<u8, OutputSize<D>>` must stay a recorded skip — the
-/// consuming `self` + digest-output bytes return belong to later lanes (1.1.5 /
-/// 1.2.2). The `D` buried in `OutputSize<D>` must NOT be mis-read as a Self return.
+/// `finalize(self) -> Array<u8, OutputSize<D>>` bridges (1.2.2): a consuming-`self`
+/// method returning a byte digest. The `D` buried in `OutputSize<D>` is read as a
+/// byte return, and the by-value `self` is cloned out of the shared handle.
 #[test]
-fn finalize_stays_an_honest_skip() {
+fn finalize_bridges_as_consuming_bytes() {
     let spec = classify(&load("sha2-0.11.0"));
 
-    // Never emitted as a method on any hasher (an emitted `self.0.finalize()` would
-    // move out of a shared borrow and fail to compile).
     for ty in &spec.types {
+        if !HASHERS.contains(&ty.name.as_str()) {
+            continue;
+        }
+        let finalize = ty
+            .methods
+            .iter()
+            .find(|m| m.exposed() == "finalize")
+            .unwrap_or_else(|| panic!("{}::finalize must bridge under 1.2.2", ty.name));
         assert!(
-            !ty.methods.iter().any(|m| m.exposed() == "finalize"),
-            "{}::finalize must not be emitted (consuming self / bytes lane)",
-            ty.name
+            matches!(finalize.ret, BridgeReturn::Bytes),
+            "{}::finalize must return bytes, got {:?}",
+            ty.name,
+            finalize.ret
         );
         assert!(
-            ty.ctor.as_ref().map(|c| c.name.as_str()) != Some("finalize"),
-            "{}::finalize must not be mistaken for a constructor",
+            finalize.consumes_self && !finalize.self_mut,
+            "{}::finalize consumes self by value (clone-out lowering)",
             ty.name
         );
     }
 
-    // Recorded as a visible skip, not silently dropped.
+    // The old 1.1.2 "consumes self by value" skip is gone. A `Sha256::finalize`
+    // skip DOES remain — but for the unrelated `DynDigest::finalize(self: Box<D>)
+    // -> Box<[u8]>` variant (reason "Box"), deduped behind the bridged
+    // `Digest::finalize`; never for consuming self.
+    let bad = spec
+        .skips
+        .iter()
+        .filter(|s| s.item == "Sha256::finalize")
+        .find(|s| format!("{:?}", s.reason).contains("consumes self"));
     assert!(
-        spec.skips.iter().any(|s| s.item == "Sha256::finalize"),
-        "Sha256::finalize should be a recorded skip"
+        bad.is_none(),
+        "Sha256::finalize must not be skipped for consuming self under 1.2.2: {bad:?}"
     );
+}
+
+/// The sha2 acceptance surface (1.2.2): `update(&mut self, impl AsRef<[u8]>)`
+/// bridges as a `&mut self` method taking a `&[u8]` bytes param and returning void.
+#[test]
+fn update_bridges_as_mut_self_bytes_sink() {
+    let spec = classify(&load("sha2-0.11.0"));
+
+    for ty in &spec.types {
+        if !HASHERS.contains(&ty.name.as_str()) {
+            continue;
+        }
+        let update = ty
+            .methods
+            .iter()
+            .find(|m| m.exposed() == "update")
+            .unwrap_or_else(|| panic!("{}::update must bridge under 1.2.2", ty.name));
+        assert!(
+            update.self_mut && !update.consumes_self,
+            "{}::update is a &mut self method",
+            ty.name
+        );
+        assert!(
+            matches!(update.ret, BridgeReturn::Void),
+            "{}::update returns void, got {:?}",
+            ty.name,
+            update.ret
+        );
+        assert!(
+            update.params.iter().any(|p| p.ty == ScalarType::Bytes),
+            "{}::update must take a bytes param",
+            ty.name
+        );
+    }
 }
 
 /// End-to-end through codegen: the emitted module has the trait `use` and a real
@@ -121,5 +171,21 @@ fn emitted_source_has_new_and_trait_use() {
     assert!(
         src.contains("Self(sha2::Sha256::new())"),
         "Sha256 constructor body missing:\n{src}"
+    );
+    // 1.2.2 byte lane: `update` is `&mut self` with a `&[u8]` sink; `finalize`
+    // clones the value out of the shared handle and returns owned `Vec<u8>`.
+    assert!(
+        src.contains("pub fn update(&mut self, data: &[u8])"),
+        "Sha256::update must emit a &mut self / &[u8] signature:\n{src}"
+    );
+    // Flattened off `Digest`, so the call is UFCS (disambiguating `Digest` from the
+    // also-in-scope `DynDigest`): the consuming receiver is cloned out by value.
+    assert!(
+        src.contains("Digest::finalize(self.0.clone()).to_vec()"),
+        "Sha256::finalize must clone out of the handle and return Vec<u8>:\n{src}"
+    );
+    assert!(
+        src.contains("Digest::update(&mut self.0, data)"),
+        "Sha256::update must call through UFCS with a &mut receiver:\n{src}"
     );
 }

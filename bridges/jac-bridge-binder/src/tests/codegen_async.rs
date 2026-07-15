@@ -24,6 +24,8 @@ fn async_method(name: &str, params: Vec<BridgeParam>, ret: BridgeReturn) -> Brid
         is_async: true,
         ret_ownership: Ownership::Owned,
         via_trait: None,
+        self_mut: false,
+        consumes_self: false,
     }
 }
 
@@ -38,6 +40,8 @@ fn sync_method(name: &str, params: Vec<BridgeParam>, ret: BridgeReturn) -> Bridg
         is_async: false,
         ret_ownership: Ownership::Owned,
         via_trait: None,
+        self_mut: false,
+        consumes_self: false,
     }
 }
 

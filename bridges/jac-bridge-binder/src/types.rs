@@ -261,6 +261,17 @@ pub struct BridgeFn {
     /// wrapper reader. Also breaks the ctor tie: an inherent (`None`) `-> Self`
     /// associated fn beats a trait-flattened one for THE constructor slot.
     pub via_trait: Option<String>,
+    /// Set (1.2.2 bytes lane) when the source method takes `&mut self` — the
+    /// emitted wrapper is `pub fn f(&mut self, …)` and the macro routes it
+    /// through the handle's reentrancy busy-latch. `false` for a `&self` method,
+    /// a consuming-`self` method (see [`Self::consumes_self`]), or a ctor.
+    pub self_mut: bool,
+    /// Set (1.2.2 bytes lane) when the source method takes `self` BY VALUE
+    /// (`Digest::finalize(self)`). The value lives behind the shared handle, so
+    /// the body clones it out first (`self.0.clone().finalize()`); only produced
+    /// when the newtype's inner type is `Clone` (verified in the classifier), so
+    /// the emitted clone always compiles. Mutually exclusive with `self_mut`.
+    pub consumes_self: bool,
 }
 
 /// The receiver expression a method body delegates through.
@@ -337,6 +348,13 @@ pub enum BridgeReturn {
     /// A `Vec<V>` return marshaled as a real Jac `list[V]`. The string is the full
     /// Rust type (e.g. `Vec<String>`); V is one of bool/int/str.
     List(String),
+    /// A byte-string return (1.2.2): `Vec<u8>`, or a digest output
+    /// (`Array<u8, _>` / `GenericArray<u8, _>` / `Output<Self>`). Carried as an
+    /// owned `JacBuf` tagged `TAG_BYTES` and decoded as Jac `bytes` (never utf-8
+    /// validated, length-explicit so embedded NULs survive). Codegen emits
+    /// `-> Vec<u8>` and appends `.to_vec()`, which turns a `GenericArray`/slice
+    /// into an owned `Vec<u8>` and is a no-op-shaped clone on a `Vec<u8>` source.
+    Bytes,
 }
 
 /// Scalar parameter types the v1 ABI can actually carry at the boundary.
@@ -355,6 +373,11 @@ pub enum ScalarType {
     Int(String),
     /// An unsigned-integer param; the string is the concrete Rust type (`u32`, …).
     Uint(String),
+    /// A byte-string param (1.2.2): `&[u8]` or `impl AsRef<[u8]>`. Crosses the
+    /// boundary as a `(ptr, len)` slot tagged `TAG_BYTES` with NO utf-8 check;
+    /// the wrapper re-declares it as `&[u8]` (which satisfies an `AsRef<[u8]>`
+    /// bound), so `self.0.update(data)` compiles for both source spellings.
+    Bytes,
 }
 
 /// A public item the classifier could not bridge, with a machine-readable reason.

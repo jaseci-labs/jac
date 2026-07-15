@@ -384,6 +384,9 @@ fn scalar_ty(t: &ScalarType) -> String {
         ScalarType::Bool => "bool".into(),
         ScalarType::Callback => "JacCallback".into(),
         ScalarType::Int(rust) | ScalarType::Uint(rust) => rust.clone(),
+        // 1.2.2: a byte string re-declared as `&[u8]`, which satisfies an
+        // `AsRef<[u8]>` bound (sha2's `update`), so `self.0.update(data)` compiles.
+        ScalarType::Bytes => "&[u8]".into(),
     }
 }
 
@@ -395,9 +398,13 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
     // Signature param list.
     let mut sig_parts: Vec<String> = Vec::new();
     if !is_ctor {
-        // A cursor/drain pull method mutates the iterator it owns.
+        // A cursor/drain pull method mutates the iterator it owns; a 1.2.2
+        // `&mut self` source method (`Digest::update`) mutates the handle in place
+        // (the macro routes it through the reentrancy busy-latch). A consuming
+        // (`self`) method keeps a `&self` shim and clones the value out below.
         sig_parts.push(match f.recv {
             Recv::IterNext | Recv::DrainNext => "&mut self".into(),
+            _ if f.self_mut => "&mut self".into(),
             _ => "&self".into(),
         });
     }
@@ -429,23 +436,50 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
     // For async source APIs, append `.await` to the inner call so the macro
     // sees an `async fn` and emits a blocking C shim for it.
     let aw = if f.is_async { ".await" } else { "" };
+    // A consuming-`self` method (`Digest::finalize(self)`) can't move out of the
+    // shared handle, so it clones the value first: `self.0.clone().finalize()`.
+    // Gated on the inner type being `Clone` in the classifier, so this compiles.
+    let recv_expr = if f.consumes_self {
+        format!("{recv}.clone()")
+    } else {
+        recv.to_string()
+    };
+    // A method flattened off a trait (`via_trait`) is called through UFCS
+    // (`Digest::update(&mut self.0, data)`) rather than method syntax
+    // (`self.0.update(data)`). Two flattened traits can expose the same method name
+    // (sha2 brings both `Digest` and `DynDigest` into scope, each with
+    // `update`/`finalize`/`reset`), which makes `self.0.update(..)` ambiguous
+    // (E0034); naming the trait disambiguates. The receiver is borrowed to match
+    // the source receiver: `&mut self.0` for a `&mut self` method, `self.0.clone()`
+    // (by value) for a consuming method, `&self.0` otherwise.
+    let via_trait_short = f.via_trait.as_deref().map(|p| p.rsplit("::").next().unwrap_or(p));
+    let ufcs_recv = if f.consumes_self {
+        format!("{recv}.clone()")
+    } else if f.self_mut {
+        format!("&mut {recv}")
+    } else {
+        format!("&{recv}")
+    };
     // Build the base call expression (before any post-call transforms).
     let base_call = |r: &str| -> String {
         if is_ctor {
             format!("{inner}::{fname}({args_str}){aw}")
+        } else if let Some(tr) = via_trait_short {
+            let sep = if args_str.is_empty() { "" } else { ", " };
+            format!("{tr}::{fname}({ufcs_recv}{sep}{args_str}){aw}")
         } else {
             format!("{r}.{fname}({args_str}){aw}")
         }
     };
 
     let (ret_ann, body): (String, String) = match &f.ret {
-        BridgeReturn::Void => (String::new(), base_call(recv)),
-        BridgeReturn::Bool => (" -> bool".into(), base_call(recv)),
+        BridgeReturn::Void => (String::new(), base_call(&recv_expr)),
+        BridgeReturn::Bool => (" -> bool".into(), base_call(&recv_expr)),
         BridgeReturn::Str => {
             // Bridge macro expects `String` (not `&str`) so convert via to_string().
             (
                 " -> String".into(),
-                format!("{}.to_string()", base_call(recv)),
+                format!("{}.to_string()", base_call(&recv_expr)),
             )
         }
         BridgeReturn::Int(rust)
@@ -455,21 +489,25 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
             // Integer / HashMap<String,V> / Vec<V> returns cross verbatim — the
             // macro tags the width (TAG_INT/TAG_UINT) and marshals the container
             // into a real Jac dict/list. The wrapper just forwards the value.
-            (format!(" -> {rust}"), base_call(recv))
+            (format!(" -> {rust}"), base_call(&recv_expr))
         }
+        // 1.2.2: a byte-string return crosses as an owned `Vec<u8>` (TAG_BYTES).
+        // `.to_vec()` turns a digest's `GenericArray`/`[u8]` into an owned Vec and
+        // is a shape-preserving clone on a `Vec<u8>` source.
+        BridgeReturn::Bytes => (
+            " -> Vec<u8>".into(),
+            format!("{}.to_vec()", base_call(&recv_expr)),
+        ),
         BridgeReturn::OwnSelf => {
-            let inner_call = base_call(recv);
-            let call = if is_ctor {
-                format!("Self({inner_call})")
-            } else {
-                format!("Self({inner_call})")
-            };
+            // `base_call` already spells the ctor (`inner::new()`) vs method
+            // (`self.0.f()`) form; both wrap in `Self(..)`.
+            let call = format!("Self({})", base_call(&recv_expr));
             (" -> Self".into(), call)
         }
         BridgeReturn::OwnSelfResult => {
             let call = format!(
                 "{}.map(Self).map_err(|e| e.to_string())",
-                base_call(recv)
+                base_call(&recv_expr)
             );
             (" -> Result<Self, String>".into(), call)
         }

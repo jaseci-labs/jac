@@ -834,8 +834,9 @@ these first; the adversarial suite already contains skip-gated tests waiting on 
       test (compiles the generated crate under `-D warnings`, checks the ctor
       shims) - CI already runs `-- --ignored`. sha2 corpus floor re-ratcheted 0→12
       (6 `new` ctors + 6 `output_size`) with rationale. Remaining sha2 surface
-      (update/finalize/digest) still needs 1.2.2 bytes lane + a consuming-`self`
-      clone-out arm.
+      (update/finalize) landed in 1.2.2 (the bytes lane + `&mut self` + consuming-
+      `self` clone-out lifted the floor 12 -> 42); one-shot `digest` awaits a
+      `FN_STATIC` lane (see 1.2.2 STATUS).
 - [ ] 1.1.3 Per-type `seen_names` dedup, inherent-first then traits in
       deterministic order; losers → `Skip("name collision with <winner>")`.
 - [ ] 1.1.4 `types.rs`: `via_trait: Option<String>` on `BridgeFn`.
@@ -856,12 +857,33 @@ these first; the adversarial suite already contains skip-gated tests waiting on 
       shim arms + `_blob.jac` + `_marshal.jac` F64 slot + na (f64 native) +
       ctypes (`c_double`) + `test_abi_drift.jac`. Conformance: an f64 echo fn in
       `jac-bridge-scalar`, both runtimes.
-- [ ] 1.2.2 `TAG_BYTES`: `(ptr, len)` param + JacBuf return; macro arms for
+- [~] 1.2.2 `TAG_BYTES`: `(ptr, len)` param + JacBuf return; macro arms for
       `&[u8]` and `impl AsRef<[u8]>` params, `Vec<u8>` and digest-output
       (`Array<u8, _>` / `Output<Self>`) returns; na uses `__jac_bytes_from_raw` +
       explicit-len bytes params (never strlen); ctypes uses
       `(c_char_p, c_uint32)`. Conformance: sha2 `update`+`digest` against known
       SHA-256 vectors on BOTH runtimes -- this is the sha2 acceptance test.
+      STATUS: wire + macro + CPython landed in the TAG_BYTES vertical (byte-
+      identical, the `jac-bridge-scalar` fixture). The BINDER half is now done:
+      `classify_param_type` reads `&[u8]` / `impl AsRef<[u8]>` as `ScalarType::Bytes`;
+      `classify_return` reads `Vec<u8>` and `Array<u8, _>` / `GenericArray<u8, _>` as
+      `BridgeReturn::Bytes` (intercepted before the `Vec<V>` list arm); the two
+      receiver shapes the digest surface needs are lifted -- `&mut self` methods
+      emit `pub fn f(&mut self, …)` (routed through the macro's reentrancy latch)
+      and by-value `self` (`finalize`) is cloned out of the shared handle
+      (`Digest::finalize(self.0.clone()).to_vec()`), Clone-gated in the classifier.
+      Flattened-trait methods now emit UFCS (`Digest::update(&mut self.0, data)`) so
+      the co-`use`d `Digest`/`DynDigest` don't make the call ambiguous (E0034). sha2
+      floor re-ratcheted 12 -> 42 (new+update+finalize+finalize_reset+reset across 6
+      hashers); the generated crate compiles clean under `-D warnings` with
+      `update`/`finalize`/`finalize_reset` exported (`sha2_bridge_compiles_clean`).
+      OPEN: (a) na SKIPS the whole lane on the two proven na gaps (bytes param
+      struct-ptr vs `*const u8`; bytes method-return typed as bare i64 at the call
+      site); (b) the one-shot associated `digest(data) -> Array` stays a skip -- a
+      no-receiver fn is `FN_CTOR` in the macro (a `Self` return), so a static method
+      returning bytes needs a distinct `FN_STATIC` lane. Hash-equivalence via
+      new+update+finalize is unaffected; the CPython runtime SHA-256-vector
+      conformance test (CI matrix) closes the acceptance, na half deferred.
 - [ ] 1.2.3 `-> String` return arm in `classify_return` (JacBuf machinery
       exists; no new tag).
 - [ ] 1.2.4 Ref-lane generalization in the binder: emit `TAG_REF|idx` for

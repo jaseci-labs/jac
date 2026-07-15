@@ -208,7 +208,23 @@ fn sha2_bridge_compiles_clean() {
         "jac_sha2_Sha256_drop",
         "jac_sha2_Sha512_new",
         "jac_bridge_init_sha2",
+        // 1.2.2 byte lane: the SHA-256 compute surface reaches the C ABI.
+        "jac_sha2_Sha256_update",         // &mut self, &[u8] sink
+        "jac_sha2_Sha256_finalize",       // consuming self, Vec<u8> digest
+        "jac_sha2_Sha256_finalize_reset", // &mut self, Vec<u8> digest
     ] {
         assert!(syms.contains(want), "missing exported symbol {want}");
     }
+    // The byte-lane bodies compiled: `update` takes a slice, `finalize` clones the
+    // handle out and returns owned bytes. (Runtime hash-equivalence against known
+    // SHA-256 vectors is the CPython conformance test in the CI matrix; na is gated
+    // on the two proven na byte-lane gaps.)
+    assert!(
+        lib_src.contains("Digest::update(&mut self.0, data)"),
+        "update must sink bytes through a &mut receiver\n{lib_src}"
+    );
+    assert!(
+        lib_src.contains("Digest::finalize(self.0.clone()).to_vec()"),
+        "finalize must clone the handle out and return owned bytes\n{lib_src}"
+    );
 }

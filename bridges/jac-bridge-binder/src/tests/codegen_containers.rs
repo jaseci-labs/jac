@@ -21,6 +21,8 @@ fn method(name: &str, params: Vec<BridgeParam>, ret: BridgeReturn) -> BridgeFn {
         is_async: false,
         ret_ownership: Ownership::Owned,
         via_trait: None,
+        self_mut: false,
+        consumes_self: false,
     }
 }
 

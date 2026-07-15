@@ -470,6 +470,36 @@ impl<'a> Ctx<'a> {
         })
     }
 
+    /// Whether the bridged type implements `Clone` (1.2.2). A consuming-`self`
+    /// method (`Digest::finalize(self)`) is lowered as `self.0.clone().finalize()`,
+    /// which only compiles when the newtype's inner value is `Clone`; a non-`Clone`
+    /// consuming method stays a visible skip instead of a broken move-out-of-borrow.
+    /// Scans the type's own impl list for a `core::clone::Clone` (or a derived
+    /// `Clone`) impl, mirroring [`Self::implements_error_trait`].
+    fn type_is_clone(&self, bt: &BridgeType) -> bool {
+        let Some(item) = self.doc.index.get(&Id(bt.item_id)) else {
+            return false;
+        };
+        let impls = match &item.inner {
+            ItemEnum::Struct(s) => &s.impls,
+            ItemEnum::Enum(e) => &e.impls,
+            _ => return false,
+        };
+        impls.iter().any(|impl_id| {
+            let Some(impl_item) = self.item(impl_id) else {
+                return false;
+            };
+            let ItemEnum::Impl(impl_block) = &impl_item.inner else {
+                return false;
+            };
+            impl_block
+                .trait_
+                .as_ref()
+                .map(|t| rp_name(&t.path) == "Clone")
+                .unwrap_or(false)
+        })
+    }
+
     /// Whether a trait reference resolves to `core`/`std` `::error::Error`.
     fn is_std_error_path(&self, tr: &rustdoc_types::Path) -> bool {
         // Prefer the canonical path from rustdoc's `paths` index (precise).
@@ -713,31 +743,21 @@ impl<'a> Ctx<'a> {
         match self.classify_fn(&item_path, f, bt, self_aliases) {
             Ok(mut bridge_fn) => {
                 bridge_fn.via_trait = via_trait.map(str::to_string);
-                // The emitted wrapper method delegates through the newtype behind a
-                // shared `&self` (`self.0.<m>()`), so two receiver shapes can't be
-                // lowered as-is and are recorded as VISIBLE skips rather than
-                // mis-compiled emits (both surfaced by flattening `Digest` onto the
-                // sha2 hashers). Ctors have no `self` param, so they never trip this.
-                //   * BY-VALUE `self` (`Digest::finalize(self)`): `self.0.finalize()`
-                //     moves out of a borrow. Sound lowering is a Clone-gated
-                //     `self.0.clone().finalize()`, deferred to the sha2 byte lane
-                //     (1.2.2) that makes such returns bridgeable at all.
-                //   * `&mut self` (`Digest::reset(&mut self)`): can't borrow `self.0`
-                //     mutably through `&self`. Emitting `&mut self` on a shared handle
-                //     is a separate lane (the cursor pull methods already do it for
-                //     synthesized wrappers); deferred for direct methods.
-                let self_recv = f.sig.inputs.iter().find(|(n, _)| n == "self").map(|(_, t)| t);
-                let bad_recv = match self_recv {
-                    Some(Type::Generic(g)) if g == "Self" => Some("consumes self by value"),
-                    Some(Type::BorrowedRef { is_mutable: true, .. }) => {
-                        Some("requires &mut self (mutable handle method)")
-                    }
-                    _ => None,
-                };
-                if let Some(reason) = bad_recv {
+                // 1.2.2 lifted the two receiver shapes the byte lane needs:
+                //   * `&mut self` (`Digest::update`/`reset`) emits a `&mut self`
+                //     wrapper (`bridge_fn.self_mut`), routed through the macro's
+                //     reentrancy busy-latch.
+                //   * BY-VALUE `self` (`Digest::finalize(self)`) is cloned out of the
+                //     shared handle (`self.0.clone().finalize()`, `consumes_self`) —
+                //     sound only when the newtype's inner type is `Clone`. A
+                //     consuming method on a non-`Clone` type stays a VISIBLE skip
+                //     rather than a mis-compiled move out of a borrow.
+                if bridge_fn.consumes_self && !self.type_is_clone(bt) {
                     self.skips.push(Skip {
                         item: item_path,
-                        reason: SkipReason::UnsupportedType(reason.into()),
+                        reason: SkipReason::UnsupportedType(
+                            "consumes self by value (inner type is not Clone)".into(),
+                        ),
                     });
                     return;
                 }
@@ -895,6 +915,14 @@ impl<'a> Ctx<'a> {
 
         let ret = self.classify_return(&f.sig.output, bt, self_aliases)?;
 
+        // 1.2.2: the receiver's mutability/consumption drives codegen. `&mut self`
+        // emits a mutable wrapper (routed through the macro's busy-latch);
+        // by-value `self` is cloned out of the shared handle. The
+        // consumes-self-but-not-Clone case is rejected by the caller's guard.
+        let self_recv = f.sig.inputs.iter().find(|(n, _)| n == "self").map(|(_, t)| t);
+        let self_mut = matches!(self_recv, Some(Type::BorrowedRef { is_mutable: true, .. }));
+        let consumes_self = matches!(self_recv, Some(t) if is_value_self(t, self_aliases));
+
         Ok(BridgeFn {
             name: path.rsplit("::").next().unwrap_or(path).to_string(),
             export_name: None,
@@ -905,6 +933,8 @@ impl<'a> Ctx<'a> {
             is_async: f.header.is_async,
             ret_ownership: Ownership::Owned,
             via_trait: None,
+            self_mut,
+            consumes_self,
         })
     }
 
@@ -927,6 +957,10 @@ impl<'a> Ctx<'a> {
                 type_, lifetime, ..
             } => match type_.as_ref() {
                 Type::Primitive(p) if p == "str" => Ok(ScalarType::Str),
+                // 1.2.2: `&[u8]` crosses as a (ptr, len) TAG_BYTES slot. A
+                // lifetime-bearing `&'a [u8]` is fine — the slice is copied at the
+                // boundary, so no borrow outlives the call.
+                _ if is_u8_slice(type_) => Ok(ScalarType::Bytes),
                 // 1.1.2: `&Self` may also spell as `&D` inside a flattened blanket
                 // impl; treat every self-alias the same as `Self`.
                 Type::Generic(g) if g == "Self" || self_aliases.contains(&g.as_str()) => {
@@ -941,6 +975,10 @@ impl<'a> Ctx<'a> {
                 }
             },
             Type::Generic(_) => Err(SkipReason::Generic),
+            // 1.2.2: `impl AsRef<[u8]>` (sha2's `update`/`digest` byte sink) is a
+            // bytes param; `&[u8]` satisfies the bound, so the wrapper re-declares
+            // it as `&[u8]`. Any other `impl Trait` stays a Closure skip.
+            Type::ImplTrait(bounds) if impl_is_asref_u8(bounds) => Ok(ScalarType::Bytes),
             Type::ImplTrait(_) => Err(SkipReason::Closure),
             _ => Err(SkipReason::UnsupportedType(format!("{ty:?}"))),
         }
@@ -975,7 +1013,21 @@ impl<'a> Ctx<'a> {
                     return classify_map_return(rp);
                 }
                 if rp_name(&rp.path) == "Vec" {
+                    // 1.2.2: `Vec<u8>` is a byte string (a digest / raw buffer), not
+                    // a `list[int]`. Intercepted before the generic `Vec<V>` list
+                    // arm, mirroring the macro's own `Vec<u8>`-before-`Vec<V>` order.
+                    if first_type_arg_is_u8(rp) {
+                        return Ok(BridgeReturn::Bytes);
+                    }
                     return classify_vec_return(rp);
+                }
+                // 1.2.2: a digest output — `Array<u8, _>` / `GenericArray<u8, _>`
+                // (sha2's `finalize`/`finalize_reset` return `Array<u8,
+                // OutputSize<D>>`). The const-generic length is irrelevant at the
+                // boundary; the bytes cross length-explicit as a `Vec<u8>`.
+                if matches!(rp_name(&rp.path), "Array" | "GenericArray") && first_type_arg_is_u8(rp)
+                {
+                    return Ok(BridgeReturn::Bytes);
                 }
                 // A `-> Self` return reads as the type's own path. For a
                 // monomorphized type that path is still the ORIGINAL generic name
@@ -1106,6 +1158,8 @@ impl<'a> Ctx<'a> {
             is_async: false,
             ret_ownership: Ownership::Owned,
             via_trait: None,
+            self_mut: false,
+            consumes_self: false,
         };
         let pending = PendingWrapper {
             wrapper_name,
@@ -1158,6 +1212,8 @@ impl<'a> Ctx<'a> {
             is_async: false,
             ret_ownership: Ownership::Owned,
             via_trait: None,
+            self_mut: false,
+            consumes_self: false,
         };
         let pending = PendingWrapper {
             wrapper_name,
@@ -1252,6 +1308,8 @@ impl<'a> Ctx<'a> {
                     is_async: false,
                     ret_ownership: Ownership::Owned,
                     via_trait: None,
+                    self_mut: false,
+                    consumes_self: false,
                 };
                 let kind = WrapperKind::Drain {
                     params: params.clone(),
@@ -1282,6 +1340,8 @@ impl<'a> Ctx<'a> {
                     is_async: false,
                     ret_ownership: Ownership::Owned,
                     via_trait: None,
+                    self_mut: false,
+                    consumes_self: false,
                 };
                 // Pend the item wrapper (an owning wrapper, built inline by `next`;
                 // root None so it merges with any root producer like `find`).
@@ -1313,6 +1373,8 @@ impl<'a> Ctx<'a> {
             is_async: false,
             ret_ownership: Ownership::Owned,
             via_trait: None,
+            self_mut: false,
+            consumes_self: false,
         };
         // The cursor/drain wrapper itself: its only reader is the synthesized `next`.
         let mut pendings = vec![PendingWrapper {
@@ -1390,6 +1452,8 @@ impl<'a> Ctx<'a> {
             is_async: false,
             ret_ownership: Ownership::Owned,
             via_trait: None,
+            self_mut: false,
+            consumes_self: false,
         };
         let producer = BridgeFn {
             name: method_name.to_string(),
@@ -1401,6 +1465,8 @@ impl<'a> Ctx<'a> {
             is_async: false,
             ret_ownership: Ownership::Owned,
             via_trait: None,
+            self_mut: false,
+            consumes_self: false,
         };
         let pending = PendingWrapper {
             wrapper_name: wrapper_name.clone(),
@@ -1503,6 +1569,8 @@ impl<'a> Ctx<'a> {
             is_async: false,
             ret_ownership: Ownership::Owned,
             via_trait: None,
+            self_mut: false,
+            consumes_self: false,
         };
         Some((producer, vec![]))
     }
@@ -1736,6 +1804,8 @@ impl<'a> Ctx<'a> {
                         is_async: false,
                         ret_ownership: Ownership::Owned,
                         via_trait: None,
+                        self_mut: false,
+                        consumes_self: false,
                     }),
                     // A reader whose return is `Option<Borrowed<'h>>` isn't a dead
                     // skip — it's a NESTED producer of another owning wrapper, so
@@ -1889,6 +1959,35 @@ fn vec_first_type_arg(rp: &rustdoc_types::Path) -> Option<&Type> {
         rustdoc_types::GenericArg::Type(t) => Some(t),
         _ => None,
     })
+}
+
+/// `[u8]` — a slice of bytes (the payload of a `&[u8]` param or an `AsRef<[u8]>`
+/// bound). 1.2.2 bytes lane.
+fn is_u8_slice(ty: &Type) -> bool {
+    matches!(ty, Type::Slice(inner) if matches!(inner.as_ref(), Type::Primitive(p) if p == "u8"))
+}
+
+/// The first angle-bracketed type arg of `rp` is the primitive `u8` — used to tell
+/// a `Vec<u8>` / `Array<u8, _>` byte string from a `Vec<i64>` list. 1.2.2.
+fn first_type_arg_is_u8(rp: &rustdoc_types::Path) -> bool {
+    matches!(vec_first_type_arg(rp), Some(Type::Primitive(p)) if p == "u8")
+}
+
+/// `impl AsRef<[u8]>` — the single-bound byte-sink spelling of sha2's
+/// `update`/`digest` data param. Exactly one trait bound, `AsRef`, over `[u8]`.
+/// 1.2.2.
+fn impl_is_asref_u8(bounds: &[rustdoc_types::GenericBound]) -> bool {
+    let [rustdoc_types::GenericBound::TraitBound { trait_, .. }] = bounds else {
+        return false;
+    };
+    rp_name(&trait_.path) == "AsRef"
+        && angle_type_args(trait_).iter().any(|t| is_u8_slice(t))
+}
+
+/// A by-value `self` receiver (`Digest::finalize(self)`): the bare `Self` generic,
+/// or a blanket-impl self-alias (`D`) standing in for it. 1.2.2 consuming lane.
+fn is_value_self(ty: &Type, self_aliases: &[&str]) -> bool {
+    matches!(ty, Type::Generic(g) if g == "Self" || self_aliases.contains(&g.as_str()))
 }
 
 /// The last `::`-separated segment of a rustdoc path string (`std::collections::

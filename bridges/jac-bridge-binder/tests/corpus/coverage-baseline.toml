@@ -101,9 +101,17 @@ dropped = 4
 # "additional constructor" skips instead of silently letting the last-walked one
 # clobber the ctor. `bridged` is unchanged (still one ctor per type); the 17 newly
 # visible skips are unbridged surface that was previously invisible.
+#
+# The 1.2.2 `&mut self` relaxation (landed for sha2's `update`) is general: a `&mut
+# self` method with an all-bridgeable signature now emits `pub fn f(&mut self, …)`
+# routed through the macro's reentrancy busy-latch, instead of being a receiver
+# skip. That lifted chrono 33 -> 61 (its in-place `&mut self` mutators). `total`
+# 198 -> 266: the many still-unbridgeable `&mut self` methods (unsupported param or
+# return types) are now each individually considered and recorded as visible skips
+# rather than hidden behind one receiver-shape skip — more honest, not a regression.
 [chrono]
-bridged = 33
-total = 198
+bridged = 61
+total = 266
 dropped = 4
 
 [uuid]
@@ -116,9 +124,17 @@ total = 6
 # and — with 1.1.2's blanket-generic self-alias substitution — `Digest::new() -> D`
 # recognised as a `-> Self` constructor on each. That is 6 ctors + 6 methods = 12
 # bridged (up from the earlier stale `0`; the crate has always exposed structs).
-# The remaining surface (update/finalize/digest) needs the bytes lane (1.2.2) and a
-# consuming-`self` clone-out arm, tracked separately. Total 186, no whole-type drops.
+# The 1.2.2 BYTE LANE then lifted sha2 12 -> 42. Each hasher gains the SHA-256
+# compute surface: `update(&mut self, impl AsRef<[u8]>)` (a `&mut self` method with a
+# `&[u8]` TAG_BYTES sink), `finalize(self) -> Array<u8, _>` (a consuming-`self`
+# method cloned out of the shared handle, returning a `Vec<u8>` digest),
+# `finalize_reset(&mut self) -> Array<u8, _>`, and `reset(&mut self)`. Across the 6
+# hashers that is ~5 new methods each (+30). The one-shot `digest(data) -> Array`
+# stays a skip: it is a no-receiver associated fn, which the macro ABI treats as a
+# constructor (a `Self` return), so a static method returning bytes needs a distinct
+# FN_STATIC lane (future). Hash-equivalence via new+update+finalize is unaffected.
+# `total` unchanged (186): every gain flips a skip to bridged.
 [sha2]
-bridged = 12
+bridged = 42
 total = 186
 dropped = 0
