@@ -107,20 +107,6 @@ def build_bootstrap_init_container(
 ) -> dict[str, any] {
     commands = build_runtime_install_commands(k8s_config);
     commands.append(f'cd {APP_MOUNT_PATH}');
-    # npm deps exist only to BUILD the client. Service pods never build it;
-    # the gateway only builds when the bundle ships no prebuilt dist. Strip
-    # the npm tables from this pod's own copy of jac.toml so `jac install`
-    # skips the 500+ package closure whenever no build can happen.
-    strip_npm = (
-        "awk 'BEGIN{skip=0} /^\\[dependencies\\.npm(\\]|\\.)/{skip=1;next} "
-        "/^\\[/{skip=0} !skip' jac.toml > /tmp/jac.toml.nonpm "
-        "&& cat /tmp/jac.toml.nonpm > jac.toml"
-    );
-    if not is_gateway {
-        commands.append(strip_npm);
-    } else {
-        commands.append(f'if [ -f .jac/client/dist/index.html ]; then {strip_npm}; fi');
-    }
     # Point the pip cache at the shared RWX bundle PVC: the first pod warms it,
     # every later pod (and every redeploy) downloads ~nothing. pip only - bun's
     # cache is thousands of tiny files, pathological on EFS/NFS; it stays on
@@ -142,7 +128,18 @@ def build_bootstrap_init_container(
     # target is the runtime site, which on the official base image is a
     # container-local layer, so installs there never reach the main container.
     commands.append(f'export PIP_PREFIX="{APP_MOUNT_PATH}/.jac/venv"');
-    commands.append("jac install");
+    # npm deps exist only to BUILD the client; --no-npm also skips the client
+    # machinery's base closure, which a jac.toml table-strip misses on
+    # client-kind projects. Service pods never build; the gateway only builds
+    # when the bundle ships no prebuilt dist.
+    if not is_gateway {
+        commands.append("jac install --no-npm");
+    } else {
+        commands.append(
+            "if [ -f .jac/client/dist/index.html ]; then jac install --no-npm; "
+            "else jac install; fi"
+        );
+    }
     script = ' && '.join(commands);
     container: dict[str, any] = {
         "name": "jac-bootstrap",

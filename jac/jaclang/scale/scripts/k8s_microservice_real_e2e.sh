@@ -290,8 +290,10 @@ echo "=== gateway npm closure skipped when the dist shipped ==="
 GW_POD=$(kubectl get pods -n "${NAMESPACE}" -l app=gateway -o name | head -1)
 if kubectl exec -n "${NAMESPACE}" "${GW_POD#pod/}" -c gateway -- \
         test -f /app/.jac/client/dist/index.html 2>/dev/null; then
+    # the "Installing npm dependencies" banner prints even under --no-npm;
+    # a "bun install" invocation only appears when the closure really installs
     if kubectl logs -n "${NAMESPACE}" "${GW_POD}" -c jac-bootstrap 2>/dev/null \
-            | grep -q "Installing npm dependencies"; then
+            | grep -q "bun install v"; then
         echo "FAIL: bundle shipped a prebuilt dist but the gateway still installed the npm closure"
         exit 1
     fi
