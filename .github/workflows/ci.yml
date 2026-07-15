@@ -352,23 +352,6 @@ jobs:
         run: |
           jac gen-cli-dispatch --verify
 
-      - name: Diagnose command_dispatch.jac drift (temporary)
-        if: failure()
-        run: |
-          set +e
-          jac gen-cli-dispatch >/tmp/regen_dispatch.log 2>&1
-          cat /tmp/regen_dispatch.log
-          # The binary writes to jaclang.__file__'s bundled site copy, not the
-          # checkout, so diff the checkout against that regenerated site file.
-          BUNDLED=$(grep -oE 'Generated [^ ]+command_dispatch\.jac' /tmp/regen_dispatch.log | awk '{print $2}')
-          echo "bundled site file: ${BUNDLED:-<not found>}"
-          echo "=== DIFF: binary-regenerated vs checkout committed ==="
-          if [ -n "$BUNDLED" ] && [ -f "$BUNDLED" ]; then
-            diff -u jac/jaclang/cli/command_dispatch.jac "$BUNDLED" || true
-            echo "bytes committed=$(wc -c < jac/jaclang/cli/command_dispatch.jac) regenerated=$(wc -c < "$BUNDLED")"
-          fi
-          exit 0
-
       - name: Run jac check (using .jacignore)
         run: |
           set -euo pipefail
