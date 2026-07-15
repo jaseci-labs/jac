@@ -6,11 +6,19 @@ for the Phase S plumbing that 1.2.4 rides on.
 
 ## Step 0 -- Reconcile tag numbering (do first, ~10 min, unblocks 1.2.x)
 
-- [ ] **0.1** Audit live consumed scalar tags: `BOOL=1, INT=2, UINT=3, STR=4, FN=5`
+- [x] **0.1** Audit live consumed scalar tags: `BOOL=1, INT=2, UINT=3, STR=4, FN=5`
       (INT/UINT/MAP/LIST landed in M6.1/M6.2 *after* the plan was written).
-- [ ] **0.2** Assign `TAG_F64 = 6`, `TAG_BYTES = 7` (next free). Plan's `TAG_WIDE = 6`
-      is now stale -- record that `TAG_WIDE` must move to the next free slot for Phase 2.
-- [ ] **0.3** Update `test_abi_drift.jac` in lockstep so the drift test tracks the new numbers.
+      CONFIRMED against `jac-bridge-schema/src/lib.rs` 2026-07-14: scalars 1--5 used;
+      `TAG_MAP_BIT=0x2000_0000`, `TAG_LIST_BIT=0x1000_0000` are high bits (Phase S
+      added `TAG_SHARED_BIT=0x0800_0000`, `TAG_BORROW_BIT=0x0400_0000`). Low slots
+      6/7/8 are free.
+- [x] **0.2** Assigned `TAG_F64 = 6`, `TAG_BYTES = 7` (next free). Plan's `TAG_WIDE = 6`
+      was stale -- `TAG_WIDE` moves to the next free slot `= 8` for Phase 2.
+      Reconciled in `FFI-LANES-PLAN.md` (2.1) and `TEST-MAP.md` (2-abi-frozen).
+- [x] **0.3** `test_abi_drift.jac` needs no change YET -- it pins only the constants that
+      exist today (1--5 + high bits). `TAG_F64`/`TAG_BYTES` constants land with their
+      verticals (1.2.1/1.2.2); the drift-test `pairs` list is extended THERE, in lockstep
+      with the schema addition. (Recorded so the "update in lockstep" step isn't lost.)
 
 ## Track A -- Trait flattening (sha2 is the driver)  [critical path: 1.1.1 → 1.1.2 → 1.1.5]
 

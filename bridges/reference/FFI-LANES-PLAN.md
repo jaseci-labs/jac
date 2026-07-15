@@ -297,8 +297,10 @@ cross-process; every flattened method or its skip visible in the coverage report
 
 All mechanics from investigation (S).
 
-**2.1 ABI delta (final v1 addition, then hard freeze):** `TAG_WIDE: u32 = 6` in
-`jac-bridge-schema/src/lib.rs` + mirror in `_blob.jac` + `test_abi_drift.jac`
+**2.1 ABI delta (final v1 addition, then hard freeze):** `TAG_WIDE: u32 = 8` in
+`jac-bridge-schema/src/lib.rs` (slots 6/7 were taken by `TAG_F64`/`TAG_BYTES`
+in Phase 1 -- see Step 0 reconciliation in `PHASE-1-TASKS.md`; the plan's
+original `TAG_WIDE = 6` is stale) + mirror in `_blob.jac` + `test_abi_drift.jac`
 update. Param wire shape: `(payload_ptr, payload_len: u32)`. Return wire shape:
 existing JacBuf out-slot + `free_buf` (allocator discipline unchanged,
 `vec_to_jacbuf` at lib.rs:669 reused as-is). Option/Result/nesting live INSIDE the
@@ -858,7 +860,8 @@ these first; the adversarial suite already contains skip-gated tests waiting on 
 
 ### Phase 2 -- Wide lane
 
-- [ ] 2.1 `TAG_WIDE = 6`: schema + `_blob.jac` + `test_abi_drift.jac`. Param
+- [ ] 2.1 `TAG_WIDE = 8`: schema + `_blob.jac` + `test_abi_drift.jac` (6/7 are
+      `TAG_F64`/`TAG_BYTES`). Param
       wire = `(payload_ptr, payload_len: u32)`; return wire = JacBuf out-slot.
 - [ ] 2.2 `jac_bridge::Wide<T>` newtype + macro arm: param decode via
       `rmp_serde::from_slice` (map_err → status 1 + error handle), return via

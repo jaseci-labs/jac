@@ -70,7 +70,7 @@ return measured ≤2× a memcpy floor. ABI v1 frozen for good."
 | 2-fuzz | same payload identical through rmp-serde, ctypes decoder, na decoder | `na/wide_fuzz_conformance.jac` + a tiny Rust encoder bin | **NEW** | skip | green | Blocked on 2.5/2.6; risk-register mitigation for msgpack decode bugs. |
 | 2-perf-scalar | scalar signatures show no wide-lane calls (per-value lane rule) | `na/test_lane_selection.jac` (generated-source / IR inspection: scalar param beside a Wide param stays TAG-lane) | **NEW** | skip | green | Blocked on lane resolution (2.8). Uses the same `JAC_DUMP_IR` inspection idiom as adversarial test 0.1.2. |
 | 2-perf-bulk | 10k Vec<f64> return ≤ 2× memcpy floor | `na/wide_perf_bulk.jac` (timed, generous ceiling) | **NEW** | skip | green | Blocked on `TAG_F64`/Vec return + wide lane. Catches pathological regressions only. |
-| 2-abi-frozen | ABI v1 frozen for good | `na/test_abi_drift.jac` (asserts `TAG_WIDE=6` is the final addition) | EXISTS (extended) | n/a | green | Final ABI constant asserted; any later need = payload evolution inside TAG_WIDE. |
+| 2-abi-frozen | ABI v1 frozen for good | `na/test_abi_drift.jac` (asserts `TAG_WIDE=8` is the final addition; 6/7 are `TAG_F64`/`TAG_BYTES`) | EXISTS (extended) | n/a | green | Final ABI constant asserted; any later need = payload evolution inside TAG_WIDE. |
 
 ## Phase 3 spike gate (task 3.0, GO/NO-GO)
 
