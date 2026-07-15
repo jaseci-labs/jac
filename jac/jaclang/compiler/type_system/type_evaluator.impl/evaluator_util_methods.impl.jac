@@ -971,6 +971,9 @@ impl TypeEvaluator._collect_typevars_from_base(
 impl TypeEvaluator.emit_diag(
     diag: DiagnosticInfo, nd: uni.UniNode, **kwargs: object
 ) -> None {
+    if self._flow_loop_pending {
+        return;
+    }
     if self._pass is not None {
         self._pass.emit(diag, node_override=nd, **kwargs);
     }

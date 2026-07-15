@@ -121,6 +121,9 @@ impl CoalesceBBPass._node_label(nd: uni.UniNode) -> str {
     if isinstance(nd, uni.IterForStmt) {
         return 'for ' + nd.iter.unparse() + nd.condition.unparse() + nd.count_by.unparse();
     }
+    if isinstance(nd, uni.LoopExitNode) {
+        return 'loop-exit';
+    }
 
     if isinstance(nd, uni.MatchStmt) {
         return 'match ' + nd.target.unparse();
@@ -199,7 +202,7 @@ impl CoalesceBBPass._node_label(nd: uni.UniNode) -> str {
 
 impl CoalesceBBPass.enter_node(nd: uni.UniNode) -> None {
     is_cfg_node = (
-        isinstance(nd, (uni.CodeBlockStmt, uni.Archetype))
+        isinstance(nd, (uni.CodeBlockStmt, uni.Archetype, uni.LoopExitNode))
         and not isinstance(nd, uni.Semi)
         and not _is_structural_child(nd)
     );
@@ -306,6 +309,9 @@ impl CFGBuildPass._link_sequential(body: Sequence[uni.CodeBlockStmt]) -> None {
                     self.link_bbs(prev, next);
                 }
             }
+        } elif isinstance(prev, (uni.WhileStmt, uni.InForStmt, uni.IterForStmt))
+        and self._loop_exit(prev) is not None {
+            self._connect_tails(prev, next);
         } elif has_bool_sc {
             self._connect_tails(prev, next);
         } else {
@@ -638,10 +644,12 @@ impl CFGBuildPass.exit_while_stmt(nd: uni.WhileStmt) -> None {
     true_target: (uni.UniCFGNode | None) = nd.body[0] if nd.body else None;
 
     false_target: (uni.UniCFGNode | None) = None;
+    post_loop_target: (uni.UniCFGNode | None) = None;
     if nd.else_body and isinstance(nd.else_body, uni.ElseStmt) and nd.else_body.body {
         false_target = nd.else_body.body[0];
     } elif nd.parent {
-        false_target = self._find_next_cfg_stmt_after(nd.parent, nd);
+        post_loop_target = self._find_next_cfg_stmt_after(nd.parent, nd);
+        false_target = self._make_loop_exit(nd);
     }
 
     unwrapped = _unwrap_parens(nd.condition);
@@ -665,6 +673,13 @@ impl CFGBuildPass.exit_while_stmt(nd: uni.WhileStmt) -> None {
     }
 
     self._link_body_tails_to_header(nd);
+
+    if post_loop_target is not None {
+        j = self._loop_exit(nd);
+        if j is not None {
+            self.link_bbs(j, post_loop_target);
+        }
+    }
 }
 
 impl CFGBuildPass.exit_forever_stmt(nd: uni.ForeverStmt) -> None {
@@ -688,24 +703,59 @@ impl CFGBuildPass._link_body_tails_to_header(
     for stmt in nd.body {
         self._connect_tails(stmt, nd);
     }
+
+    j = self._loop_exit(nd);
+    if j is not None {
+        self.link_bbs(nd, j);
+    }
 }
 
+impl CFGBuildPass._make_loop_exit(
+    nd: uni.WhileStmt | uni.InForStmt | uni.IterForStmt
+) -> uni.LoopExitNode {
+    j = uni.LoopExitNode(loop=nd);
+    nd.add_kids_right([j], pos_update=False, parent_update=True);
+    return j;
+}
+
+impl CFGBuildPass._loop_exit(nd: uni.UniCFGNode) -> (uni.LoopExitNode | None) {
+    for k in nd.kid {
+        if isinstance(k, uni.LoopExitNode) {
+            return k;
+        }
+    }
+    return None;
+}
+
+
 impl CFGBuildPass.exit_in_for_stmt(nd: uni.InForStmt) -> None {
+    has_else = (
+        nd.else_body and isinstance(nd.else_body, uni.ElseStmt) and nd.else_body.body
+    );
+    if not has_else {
+        self._make_loop_exit(nd);
+    }
     self._link_body_tails_to_header(nd);
     if nd.body {
         self.link_bbs(nd, nd.body[0]);
     }
-    if nd.else_body and isinstance(nd.else_body, uni.ElseStmt) and nd.else_body.body {
+    if has_else {
         self.link_bbs(nd, nd.else_body.body[0]);
     }
 }
 
 impl CFGBuildPass.exit_iter_for_stmt(nd: uni.IterForStmt) -> None {
+    has_else = (
+        nd.else_body and isinstance(nd.else_body, uni.ElseStmt) and nd.else_body.body
+    );
+    if not has_else {
+        self._make_loop_exit(nd);
+    }
     self._link_body_tails_to_header(nd);
     if nd.body {
         self.link_bbs(nd, nd.body[0]);
     }
-    if nd.else_body and isinstance(nd.else_body, uni.ElseStmt) and nd.else_body.body {
+    if has_else {
         self.link_bbs(nd, nd.else_body.body[0]);
     }
 }

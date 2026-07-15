@@ -15,6 +15,11 @@ obj CFGBuildPass(UniPass) {
         nd: uni.WhileStmt | uni.ForeverStmt | uni.InForStmt | uni.IterForStmt
     ) -> None;
 
+    def _make_loop_exit(
+        nd: uni.WhileStmt | uni.InForStmt | uni.IterForStmt
+    ) -> uni.LoopExitNode;
+
+    def _loop_exit(nd: uni.UniCFGNode) -> (uni.LoopExitNode | None);
     def _is_terminal(nd: uni.UniNode) -> bool;
     def _find_parent_of_types(
         nd: uni.UniNode, types: tuple[type[uni.UniCFGNode], ...]

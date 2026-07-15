@@ -1681,6 +1681,14 @@ glob NODE_SPECS: tuple = (
                  FieldDesc(name="with_from", kind=2)
              )
          ),
+         NodeSpec(
+             type_idx=150,
+             class_name="LoopExitNode",
+             is_scope=False,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(FieldDesc(name="loop", kind=4), )
+         ),
 
      ),
      NAME_TO_IDX: dict[str, int] = {
@@ -1834,6 +1842,7 @@ glob NODE_SPECS: tuple = (
          "WhileStmt": 147,
          "WithStmt": 148,
          "YieldExpr": 149,
+         "LoopExitNode": 150,
 
      },
      IDX_TO_SPEC: dict[int, NodeSpec] = {spec.type_idx: spec for spec in NODE_SPECS};

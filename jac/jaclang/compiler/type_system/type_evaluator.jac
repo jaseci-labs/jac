@@ -178,6 +178,10 @@ obj TypeEvaluator {
         _pass: object | None = None,
         builtins_module: uni.Module | None = None,
         _flow_node_type_cache: dict[tuple, types.TypeBase | None] = {},
+        _flow_incomplete_cache: dict[tuple, types.TypeBase | None] = {},
+        _flow_loop_pending: dict[tuple, types.TypeBase | None] = {},
+        _flow_pending_reads: int = 0,
+        _loop_write_cache: dict[tuple, bool] = {},
         _flow_pending_symbols: set[int] by postinit,
         _flow_pending_keys: set[str] by postinit,
         _module_type_cache: dict[str, types.ModuleType] = {},
@@ -561,6 +565,22 @@ obj TypeEvaluator {
         target: NarrowingTarget, flow_node: uni.UniCFGNode, visited: set
     ) -> TypeBase | None;
 
+    def _merge_flow_preds(
+        target: NarrowingTarget,
+        flow_node: uni.UniCFGNode,
+        visited: set,
+        skip_backedges: bool
+    ) -> TypeBase | None;
+
+    def _loop_header_fixed_point(
+        target: NarrowingTarget, flow_node: uni.UniCFGNode, visited: set
+    ) -> TypeBase | None;
+
+    def _loop_writes_target(
+        target: NarrowingTarget, flow_node: uni.UniCFGNode
+    ) -> bool;
+
+    def _types_equal(a: TypeBase | None, b: TypeBase | None) -> bool;
     def _classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str;
     def _find_predicate_for(
         target: NarrowingTarget, condition: uni.Expr

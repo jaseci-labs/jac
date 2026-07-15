@@ -408,13 +408,9 @@ def collect_assigned_symbols(nd: uni.UniNode) -> set[str] {
             symbols.update(collect_assignment_target_keys(target));
         }
     } elif isinstance(nd, uni.InForStmt) {
-        if isinstance(nd.target, uni.Name) {
-            symbols.add(nd.target.value);
-        }
+        symbols.update(collect_assignment_target_keys(nd.target));
     } elif isinstance(nd, uni.AssignCompr) {
-        if isinstance(nd.target, uni.Name) {
-            symbols.add(nd.target.value);
-        }
+        symbols.update(collect_assignment_target_keys(nd.target));
     }
     return symbols;
 }

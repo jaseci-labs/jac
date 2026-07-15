@@ -34,6 +34,7 @@ Bug index:
   #STARGUARD-1 - version-guarded names re-exported via `from M import *` (e.g. Buffer) fail to resolve
   #BYTES-1 - Byte-string literals (b"...") typed as str instead of bytes
   #EVOLVING-NONE - `x = None` then reassign inside `if` lost the new type post-branch
+  #6722 - var assigned in a loop body lost its writes after the loop (no post-loop join CFG node)
   #LITWIDEN - literal initializers not widened for mutable vars/attrs/container elements
   #INCLUDE-MEMBER-1 - member access on `include`d (absorb) symbols resolved to
                       Unknown when the included submodule imported back from its
@@ -1022,6 +1023,63 @@ test "bug_evolving_none_narrowing" {
     );
 }
 
+# Bug #6722: a variable assigned inside a `for`/`while` body must reflect those
+# writes after the loop. Jac collapsed the loop header and post-loop join into
+# one CFG node, so the post-loop read resolved through the header (which drops
+# body back-edges) and saw only the pre-loop type — a false E1002 on the guarded
+# return. A dedicated post-loop join node now unions the entry and body types.
+test "bug_loop_exit_widen" {
+    program = compile_and_check("checker_bug_loop_exit_widen.jac");
+    assert program.errors_had == [] , (
+        "Bug #6722: a variable reassigned in a `for`/`while`/iter-for body must "
+        "widen to union(entry, body-writes) after the loop so an `is not None` "
+        "guard narrows it (covers nested loops, scope-soundness, and `+=`). "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# Bug #6723: in-loop narrowing is resolved as a fixed point (iterate the body
+# until narrowed types stabilize), matching Python/Pyright. Covers the monotone
+# recurrence `cur = cur.next` under a compound condition, a guard-narrowed
+# variable that is only read inside the loop (must stay narrowed, not widen), and
+# independent recurrences across sibling/nested loops.
+test "bug_loop_fixed_point" {
+    program = compile_and_check("checker_bug_loop_fixed_point.jac");
+    assert program.errors_had == [] , (
+        "Bug #6723: in-loop reads must resolve to the loop fixed point - a "
+        "monotone recurrence stays narrowed, and a variable only read in a loop "
+        "keeps the narrowing an enclosing guard established. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# Bug #6723 (soundness): the fixed point evaluates the loop body speculatively,
+# so those evaluations must not cache their result or the real check pass would
+# hit the cache and never re-emit a genuine error. `cur.step(999)` sits on the
+# back-edge (it reassigns cur), so it is evaluated speculatively; its argument
+# error must still surface.
+test "bug_loop_speculative_diag_not_swallowed" {
+    program = compile_and_check("checker_bug_loop_speculative_diag.jac");
+    assert len(program.errors_had) == 1 , (
+        "Bug #6723: a real type error inside a loop body must not be swallowed by "
+        "the fixed-point's speculative evaluation. Expected the argument-count "
+        f"error on `cur.step(999)`, got: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# Bug #6723 (non-convergence tradeoff): a loop whose narrowed type never
+# stabilizes (`x = [x]`) must terminate at the pass cap and fall back to the
+# declared type - the widest, always-sound result - not a half-converged guess or
+# an infinite loop. This pins that behavior so a future change to the cap logic
+# can't silently regress it into a spurious error or a hang.
+test "bug_loop_nonconvergent_terminates_sound" {
+    program = compile_and_check("checker_bug_loop_nonconvergent.jac");
+    assert program.errors_had == [] , (
+        "Bug #6723: a type-growing loop that never reaches a fixed point must fall "
+        "back to the declared type and type-check cleanly. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
 # Bug #LITWIDEN: literal types inferred from a literal initializer were not
 # widened for mutable variables and container elements, so `row = ["."] * 3;
 # row[0] = "B";` failed with E1001 (Cannot assign Literal["B"] to Literal["."]).

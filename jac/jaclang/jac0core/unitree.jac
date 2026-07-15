@@ -238,6 +238,14 @@ obj ConditionalNode(UniCFGNode) {
     def postinit -> None;
 }
 
+obj LoopExitNode(UniCFGNode) {
+    has loop: UniCFGNode;
+
+    def postinit -> None;
+    def resolve_tok_range -> tuple[(Token, Token)];
+    def unparse -> str;
+}
+
 obj Expr(UniNode) {
     has _type_sym_tab: (UniScopeNode | None) by postinit,
         type: (TypeBase | None) by postinit,

@@ -3167,7 +3167,9 @@ impl TypeEvaluator.get_type_of_expression(
             self.emit_diag(W1051, node_);
         }
     }
-    node_.type = result;
+    if not self._flow_loop_pending {
+        node_.type = result;
+    }
 
     if isinstance(result, (types.UnionType, types.ClassType)) {
         if narrowed := self.get_narrowed_type_for_expr(node_, result, node_) {
@@ -3635,8 +3637,21 @@ impl TypeEvaluator._get_type_from_flow_node(
     if cache_key in self._flow_node_type_cache {
         return self._flow_node_type_cache[cache_key];
     }
+
+    if cache_key in self._flow_loop_pending {
+        self._flow_pending_reads += 1;
+        return self._flow_loop_pending[cache_key];
+    }
+
+    if self._flow_loop_pending and cache_key in self._flow_incomplete_cache {
+        self._flow_pending_reads += 1;
+        return self._flow_incomplete_cache[cache_key];
+    }
     flow_node_id = id(flow_node);
     if flow_node_id in visited {
+        if self._flow_loop_pending {
+            self._flow_pending_reads += 1;
+        }
         return None;
     }
 
@@ -3653,6 +3668,41 @@ impl TypeEvaluator._get_type_from_flow_node(
 
     is_loop_header: bool = isinstance(
         flow_node, (uni.InForStmt, uni.IterForStmt, uni.WhileStmt, uni.ForeverStmt)
+    );
+
+    pr_before = self._flow_pending_reads;
+    result: TypeBase | None = None;
+    if is_loop_header {
+        result = self._loop_header_fixed_point(target, flow_node, visited);
+        if len(self._flow_loop_pending) == 0 {
+            self._flow_node_type_cache[cache_key] = result;
+            self._flow_pending_reads = pr_before;
+            self._flow_incomplete_cache.clear();
+        } else {
+            self._flow_incomplete_cache[cache_key] = result;
+        }
+    } else {
+        result = self._merge_flow_preds(target, flow_node, visited, False);
+        if self._flow_pending_reads == pr_before {
+            self._flow_node_type_cache[cache_key] = result;
+        } else {
+            self._flow_incomplete_cache[cache_key] = result;
+        }
+    }
+    visited.discard(flow_node_id);
+    return result;
+}
+
+impl TypeEvaluator._merge_flow_preds(
+    target: NarrowingTarget,
+    flow_node: uni.UniCFGNode,
+    visited: set,
+    skip_backedges: bool
+) -> TypeBase | None {
+    import from jaclang.compiler.type_system.type_evaluator { NarrowingTarget }
+    key = target.key;
+    is_loop_header: bool = isinstance(
+        flow_node, (uni.InForStmt, uni.IterForStmt, uni.WhileStmt)
     );
     incoming_types: list[TypeBase] = [];
     has_unnarrowed_pred: bool = False;
@@ -3677,7 +3727,9 @@ impl TypeEvaluator._get_type_from_flow_node(
                 ancestor = pred.find_parent_of_type(uni.WhileStmt);
             }
             if ancestor is flow_node {
-                continue;
+                if skip_backedges or key not in pred.affected_symbols {
+                    continue;
+                }
             }
         }
 
@@ -3888,9 +3940,75 @@ impl TypeEvaluator._get_type_from_flow_node(
     } else {
         result = self._union_narrowed_types(incoming_types);
     }
-    self._flow_node_type_cache[cache_key] = result;
-    visited.discard(flow_node_id);
+
     return result;
+}
+
+impl TypeEvaluator._loop_header_fixed_point(
+    target: NarrowingTarget, flow_node: uni.UniCFGNode, visited: set
+) -> TypeBase | None {
+    cache_key = (id(flow_node), id(target.symbol))
+        if target.symbol is not None
+        else (id(flow_node), target.key);
+    seed = self._merge_flow_preds(target, flow_node, visited, True);
+
+    if not self._loop_writes_target(target, flow_node) {
+        return seed;
+    }
+    self._flow_loop_pending[cache_key] = seed;
+    best = seed;
+    converged = False;
+    max_convergence_passes = 6;
+    for _pass in range(max_convergence_passes) {
+        self._flow_incomplete_cache.clear();
+        result = self._merge_flow_preds(target, flow_node, visited, False);
+        if self._types_equal(result, best) {
+            converged = True;
+            break;
+        }
+        best = result;
+        self._flow_loop_pending[cache_key] = best;
+    }
+    self._flow_loop_pending.pop(cache_key, None);
+
+    return best if converged else None;
+}
+
+impl TypeEvaluator._loop_writes_target(
+    target: NarrowingTarget, flow_node: uni.UniCFGNode
+) -> bool {
+    import from jaclang.compiler.symbol_utils { collect_assigned_symbols }
+    key = target.key;
+    cache_key = (id(flow_node), key);
+    if cache_key in self._loop_write_cache {
+        return self._loop_write_cache[cache_key];
+    }
+    body = flow_node?.body;
+    stack: list = list(body) if body else [];
+    result = False;
+    while stack {
+        nd = stack.pop();
+        if isinstance(nd, (uni.Ability, uni.Archetype, uni.LambdaExpr)) {
+            continue;
+        }
+        if key in collect_assigned_symbols(nd) {
+            result = True;
+            break;
+        }
+        stack.extend(nd.kid);
+    }
+    self._loop_write_cache[cache_key] = result;
+    return result;
+}
+
+impl TypeEvaluator._types_equal(a: TypeBase | None, b: TypeBase | None) -> bool {
+    if a is None and b is None {
+        return True;
+    }
+    if a is None or b is None {
+        return False;
+    }
+    return self.assign_type(a, b) and self.assign_type(b, a);
 }
 
 impl TypeEvaluator._classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str {

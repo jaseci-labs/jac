@@ -103,6 +103,21 @@ def generate -> str {
         }
     }
 
+    append_last: list = ["LoopExitNode"];
+    kept: list = [
+        entry
+        for entry in all_classes
+        if entry[0] not in append_last
+    ];
+    for pinned_name in append_last {
+        for entry in all_classes {
+            if entry[0] == pinned_name {
+                kept.append(entry);
+            }
+        }
+    }
+    all_classes = kept;
+
     scope_set: set = {
         n
         for (n, c) in all_classes

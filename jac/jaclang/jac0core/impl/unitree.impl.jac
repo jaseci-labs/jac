@@ -292,7 +292,14 @@ impl UniNode.unparse -> str {
     if self.gen.jac {
         return self.gen.jac;
     }
-    return ' '.join([i.unparse() for i in self.kid]);
+    parts: list = [];
+    for i in self.kid {
+        piece = i.unparse();
+        if piece {
+            parts.append(piece);
+        }
+    }
+    return ' '.join(parts);
 }
 
 
@@ -741,6 +748,28 @@ impl ConditionalNode.postinit -> None {
     UniCFGNode.postinit(self);
 }
 
+impl LoopExitNode.postinit -> None {
+    UniNode.postinit(self);
+    UniCFGNode.postinit(self);
+}
+
+impl LoopExitNode.resolve_tok_range -> tuple[(Token, Token)] {
+    loop = self?.loop;
+    if loop is not None {
+        try {
+            return (loop.loc.first_tok, loop.loc.last_tok);
+        } except Exception {
+            ;
+        }
+    }
+    tok = self.gen_token(Tok.EOF);
+    return (tok, tok);
+}
+
+impl LoopExitNode.unparse -> str {
+    return "";
+}
+
 impl CfgExpr.postinit -> None {
     UniNode.postinit(self);
     Expr.postinit(self);
@@ -761,7 +790,8 @@ impl UniCFGNode.get_head -> UniCFGNode {
                 WhileStmt,
                 ForeverStmt,
                 ConditionalNode,
-                InnerCompr
+                InnerCompr,
+                LoopExitNode
             )
         )
         and not isinstance(
@@ -772,7 +802,8 @@ impl UniCFGNode.get_head -> UniCFGNode {
                 WhileStmt,
                 ForeverStmt,
                 ConditionalNode,
-                InnerCompr
+                InnerCompr,
+                LoopExitNode
             )
         )
         and nd.bb_in[0].bb_out
@@ -796,7 +827,8 @@ impl UniCFGNode.get_tail -> UniCFGNode {
                 WhileStmt,
                 ForeverStmt,
                 ConditionalNode,
-                InnerCompr
+                InnerCompr,
+                LoopExitNode
             )
         )
         and not isinstance(
@@ -807,7 +839,8 @@ impl UniCFGNode.get_tail -> UniCFGNode {
                 WhileStmt,
                 ForeverStmt,
                 ConditionalNode,
-                InnerCompr
+                InnerCompr,
+                LoopExitNode
             )
         )
         and nd.bb_out[0].bb_in
