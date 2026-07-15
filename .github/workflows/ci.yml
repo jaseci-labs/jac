@@ -356,15 +356,17 @@ jobs:
         if: failure()
         run: |
           set +e
-          cp jac/jaclang/cli/command_dispatch.jac /tmp/committed_dispatch.jac
           jac gen-cli-dispatch >/tmp/regen_dispatch.log 2>&1
           cat /tmp/regen_dispatch.log
-          echo "=== DIFF: regenerated (binary) vs committed ==="
-          diff -u /tmp/committed_dispatch.jac jac/jaclang/cli/command_dispatch.jac || true
-          echo "=== command count: committed vs regenerated ==="
-          echo "committed:   $(grep -c "if name ==" /tmp/committed_dispatch.jac)"
-          echo "regenerated: $(grep -c "if name ==" jac/jaclang/cli/command_dispatch.jac)"
-          git checkout -- jac/jaclang/cli/command_dispatch.jac
+          # The binary writes to jaclang.__file__'s bundled site copy, not the
+          # checkout, so diff the checkout against that regenerated site file.
+          BUNDLED=$(grep -oE 'Generated [^ ]+command_dispatch\.jac' /tmp/regen_dispatch.log | awk '{print $2}')
+          echo "bundled site file: ${BUNDLED:-<not found>}"
+          echo "=== DIFF: binary-regenerated vs checkout committed ==="
+          if [ -n "$BUNDLED" ] && [ -f "$BUNDLED" ]; then
+            diff -u jac/jaclang/cli/command_dispatch.jac "$BUNDLED" || true
+            echo "bytes committed=$(wc -c < jac/jaclang/cli/command_dispatch.jac) regenerated=$(wc -c < "$BUNDLED")"
+          fi
           exit 0
 
       - name: Run jac check (using .jacignore)
