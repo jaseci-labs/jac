@@ -175,6 +175,10 @@ def printgraph(
 def restspec(**specs: object) -> Callable[..., Any]: ...
 def schedule(**kwargs: object) -> Callable[..., Any]: ...
 
+_ManagedT = TypeVar("_ManagedT")
+
+def managed(x: _ManagedT) -> _ManagedT: ...
+
 # Returns a sentinel object that the JSX flattener turns into raw HTML
 # (`dangerouslySetInnerHTML` on jac-client, `innerHTML` on bare-serve).
 # Use only with content you trust -- the name is the security review hint.

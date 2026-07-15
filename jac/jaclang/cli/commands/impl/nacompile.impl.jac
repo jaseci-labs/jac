@@ -4,6 +4,22 @@ import sys;
 import from jaclang.cli.console { console }
 
 
+def _scan_rc_machinery(llvm_ir_str: str) -> tuple[list[str], list[str]] {
+    import re;
+    syms: set = set();
+    for m in re.finditer(r"__rc_[A-Za-z0-9_]*", llvm_ir_str) {
+        syms.add(m.group(0));
+    }
+    probes: list[str] = [];
+    for probe in ["JAC_NO_GC", "JAC_GC_CYCLES"] {
+        if probe in llvm_ir_str {
+            probes.append(probe);
+        }
+    }
+    return (sorted(syms), probes);
+}
+
+
 def _inject_entry_elf(llvm_ir_str: str, triple: str = "") -> str {
     has_jac_argc = "__jac_argc" in llvm_ir_str;
     globals_ir = ""
@@ -134,10 +150,21 @@ impl nacompile(
     target: str = "",
     shared: bool = False,
     debug: bool = False,
-    gc: str = "cycles"
+    gc: str = "",
+    assert_no_rc: bool = False,
+    enforce_nogc: bool = False
 ) -> int {
     import from jaclang.jac0core.ext_registry { is_jac, is_native_module, base_stem }
+    import from jaclang.project { get_config }
 
+    _gc_cfg = None;
+    _cfg = get_config();
+    if _cfg {
+        _gc_cfg = _cfg.gc;
+    }
+    if not gc {
+        gc = _gc_cfg.default if _gc_cfg else "cycles";
+    }
     if gc not in ("cycles", "rc", "none") {
         console.error(f"Invalid --gc mode '{gc}' (expected: cycles, rc, none)");
         return 1;
@@ -227,7 +254,14 @@ impl nacompile(
             prog._auto_promote_target = os.path.abspath(filename);
         }
 
-        options = CompileOptions(aot_mode=True, type_check=False, na_gc_mode=gc);
+        options = CompileOptions(
+            aot_mode=True,
+            type_check=False,
+            na_gc_mode=gc,
+            nogc_cli_target=(base_stem(filename) if enforce_nogc else ""),
+            nogc_enforce_modules=(_gc_cfg.enforce.modules if _gc_cfg else []),
+            nogc_grandfathered=(_gc_cfg.enforce.grandfathered if _gc_cfg else [])
+        );
         ir_module = prog.compile(file_path=os.path.abspath(filename), options=options);
     } except Exception as e {
         console.error(f"Jac compilation failed: {e}");
@@ -313,6 +347,27 @@ impl nacompile(
     }
 
     llvm_ir_str = str(ir_module.gen.llvm_ir);
+
+    if assert_no_rc {
+        (_rc_syms, _rc_probes) = _scan_rc_machinery(llvm_ir_str);
+        if _rc_syms or _rc_probes {
+            _parts: list[str] = [];
+            if _rc_syms {
+                _parts.append("RC/collector symbols: " + ", ".join(_rc_syms));
+            }
+            if _rc_probes {
+                _parts.append("entry-point env probes: " + ", ".join(_rc_probes));
+            }
+            console.error(
+                "assert-no-rc: emitted IR contains " + "; ".join(_parts) + "\n  (module has managed heap types or RC-emitting code;" + " see rc-stats coverage)"
+            );
+            return 1;
+        }
+        console.print(
+            "  assert-no-rc ok: 0 __rc_* symbols · 0 trace fns"
+            " · no roots buffer · no entry-point env probes"
+        );
+    }
 
     if not shared and "jac_entry" not in llvm_ir_str {
         console.error(

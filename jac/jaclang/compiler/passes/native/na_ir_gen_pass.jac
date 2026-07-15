@@ -184,6 +184,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         _native_builtin_emitter: (object | None) = None,
         _primitive_method_name_cache: (dict[str, set[str]] | None) = None,
         _rc_debug_codegen: bool = False,
+        rc_helpers_emitted: bool = False,
         rc_alloc_fn: (ir.Function | None) = None,
         rc_retain_fn: (ir.Function | None) = None,
         rc_release_simple_fn: (ir.Function | None) = None,
@@ -215,6 +216,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
         rc_ops_elided: int = 0,
         struct_trace_fns: dict[str, ir.Function] = {},
         struct_release_fns: dict[str, ir.Function] = {},
+        struct_drop_fns: dict[str, ir.Function] = {},
+        container_drop_fns: dict[str, ir.Function] = {},
+        struct_drop_hooks: dict[str, ir.Function] = {},
+        nogc_stack_vars: set[str] = set(),
         list_release_fns: dict[str, ir.Function] = {},
         dict_release_fns: dict[str, ir.Function] = {},
         set_release_fns: dict[str, ir.Function] = {},
@@ -722,6 +727,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _get_or_register_exc_type(exc_name: str) -> int;
     def _get_exc_descendants(type_name: str) -> list[str];
     def _codegen_raise(nd: uni.RaiseStmt) -> None;
+    def _raise_has_frame_handler(nd: uni.RaiseStmt) -> bool;
     def _codegen_try(nd: uni.TryStmt) -> None;
     def _get_file_struct_type -> ir.Type;
     def _get_binary_file_struct_type -> ir.Type;
@@ -894,6 +900,13 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _emit_rc_release_simple(ptr: ir.Value, op: str = "", loc: str = "") -> None;
     def _emit_rc_release_typed(val: ir.Value, op: str = "", loc: str = "") -> None;
     def _arch_is_acyclic(arch_name: str) -> bool;
+    def _nogc_osp_skip(val: ir.Value) -> bool;
+    def _nogc_headerless -> bool;
+    def _arch_is_osp_name(arch_name: str) -> bool;
+    def _emit_struct_drop_fn(type_name: str) -> (ir.Function | None);
+    def _emit_container_drop_fn(cont_name: str) -> (ir.Function | None);
+    def _nogc_emit_drop(val: ir.Value, op: str = "", loc: str = "") -> bool;
+    def _nogc_free_scratch(val: ir.Value, op: str) -> None;
     def _emit_last_use_releases(stmt: uni.UniNode) -> None;
     def _stack_alloc_target_ok(nd: uni.UniNode) -> bool;
     def _emit_set_type_tag(b: ir.IRBuilder, ptr_i8: ir.Value, type_name: str) -> None;

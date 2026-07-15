@@ -107,17 +107,6 @@ def build_bootstrap_init_container(
 ) -> dict[str, any] {
     commands = build_runtime_install_commands(k8s_config);
     commands.append(f'cd {APP_MOUNT_PATH}');
-    if not is_gateway {
-        # npm deps exist only to build the client, which only the gateway
-        # serves - service pods were installing 500+ packages for nothing
-        # (~1 min/pod, #7179). Strip the npm tables from this pod's own copy
-        # of jac.toml so `jac install` skips them.
-        commands.append(
-            "awk 'BEGIN{skip=0} /^\\[dependencies\\.npm(\\]|\\.)/{skip=1;next} "
-            "/^\\[/{skip=0} !skip' jac.toml > /tmp/jac.toml.nonpm "
-            "&& cat /tmp/jac.toml.nonpm > jac.toml"
-        );
-    }
     # Point the pip cache at the shared RWX bundle PVC: the first pod warms it,
     # every later pod (and every redeploy) downloads ~nothing. pip only - bun's
     # cache is thousands of tiny files, pathological on EFS/NFS; it stays on
@@ -139,6 +128,21 @@ def build_bootstrap_init_container(
     # target is the runtime site, which on the official base image is a
     # container-local layer, so installs there never reach the main container.
     commands.append(f'export PIP_PREFIX="{APP_MOUNT_PATH}/.jac/venv"');
+    # npm deps exist only to BUILD the client; JAC_CLIENT_SKIP_NPM_INSTALL
+    # (the `jac create --skip` knob) skips the whole closure, including the
+    # client machinery's base install that a jac.toml table-strip misses on
+    # client-kind projects. Service pods never build; the gateway only builds
+    # when the bundle ships no prebuilt dist.
+    if not is_gateway {
+        commands.append("export JAC_CLIENT_SKIP_NPM_INSTALL=1");
+    } else {
+        commands.append(
+            'if [ -f .jac/client/dist/index.html ]; then echo "[jac-scale] '
+            'prebuilt client dist found; skipping the npm closure"; '
+            "export JAC_CLIENT_SKIP_NPM_INSTALL=1; else echo \"[jac-scale] no "
+            'prebuilt client dist; full install"; fi'
+        );
+    }
     commands.append("jac install");
     script = ' && '.join(commands);
     container: dict[str, any] = {

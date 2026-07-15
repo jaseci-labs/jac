@@ -473,6 +473,37 @@ impl JacAutoLintPass.can_convert_to_glob(assignment: uni.Assignment) -> bool {
     return True;
 }
 
+impl JacAutoLintPass.names_unsafe_to_globalize(module: uni.Module) -> set[str] {
+    counts: dict[str, int] = {};
+    for stmt in module.body {
+        target_lists: list = [];
+        if isinstance(stmt, uni.GlobalVars) {
+            for assign in stmt.assignments {
+                target_lists.append(assign.target);
+            }
+        } elif isinstance(stmt, uni.ModuleCode) and stmt.name is None {
+            for inner_stmt in stmt.body {
+                if isinstance(inner_stmt, uni.Assignment)
+                and self.can_convert_to_glob(inner_stmt) {
+                    target_lists.append(inner_stmt.target);
+                }
+            }
+        }
+        for targets in target_lists {
+            for target in targets {
+                if isinstance(target, uni.Name) {
+                    counts[target.value] = counts.get(target.value, 0) + 1;
+                }
+            }
+        }
+    }
+    return {
+        name
+        for (name, count) in counts.items()
+        if count > 1
+    };
+}
+
 impl JacAutoLintPass.enter_module(nd: uni.Module) -> None {
     if not self.lint_enabled or self.report_only {
         return;
@@ -481,6 +512,7 @@ impl JacAutoLintPass.enter_module(nd: uni.Module) -> None {
     if self.main_module is None {
         self.main_module = module;
     }
+    unsafe_globalize = self.names_unsafe_to_globalize(module);
     new_body: list[uni.UniNode] = [];
     for stmt in module.body {
         if self._is_future_annotations_import(stmt)
@@ -494,7 +526,10 @@ impl JacAutoLintPass.enter_module(nd: uni.Module) -> None {
                 extracted_stmt: uni.UniNode | None = None;
 
                 if isinstance(inner_stmt, uni.Assignment)
-                and self.can_convert_to_glob(inner_stmt) {
+                and self.can_convert_to_glob(inner_stmt)
+                and not any(
+                    target.value in unsafe_globalize for target in inner_stmt.target
+                ) {
                     extracted_stmt = self.create_glob_from_assignment(inner_stmt);
                 } elif self.is_module_level_construct(inner_stmt) {
                     extracted_stmt = inner_stmt;
