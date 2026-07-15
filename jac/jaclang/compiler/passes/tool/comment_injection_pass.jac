@@ -40,7 +40,10 @@ obj CommentStore {
 }
 
 obj CommentInjectionPass(Transform[uni.Module, uni.Module]) {
-    has _token_cache: dict by postinit;
+    has _token_cache: dict by postinit,
+        _process_cache: dict by postinit,
+        _redundant_lines_cache: dict by postinit,
+        _span_cache: dict by postinit;
 
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;

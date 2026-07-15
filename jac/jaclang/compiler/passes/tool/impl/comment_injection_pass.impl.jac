@@ -1,9 +1,18 @@
 impl CommentInjectionPass.postinit -> None {
     self._token_cache = {};
+    self._process_cache = {};
+    self._redundant_lines_cache = {};
+    self._span_cache = {};
     super.postinit();
 }
 
 impl CommentInjectionPass._remove_redundant_lines(nd: doc.DocType) -> doc.DocType {
+    cache_key = id(nd);
+    cached = self._redundant_lines_cache.get(cache_key);
+    if cached is not None {
+        return cached;
+    }
+    result: doc.DocType;
     if isinstance(nd, doc.Concat) {
         new_parts = [];
         i = 0;
@@ -88,27 +97,30 @@ impl CommentInjectionPass._remove_redundant_lines(nd: doc.DocType) -> doc.DocTyp
             new_parts.append(processed_part);
             i += 1;
         }
-        return doc.Concat(new_parts, ast_node=nd.ast_node);
+        result = doc.Concat(new_parts, ast_node=nd.ast_node);
     } elif isinstance(nd, doc.Group) {
-        return doc.Group(
+        result = doc.Group(
             self._remove_redundant_lines(nd.contents),
             nd.break_contiguous,
             nd.id,
             ast_node=nd.ast_node
         );
     } elif isinstance(nd, doc.Indent) {
-        return doc.Indent(
+        result = doc.Indent(
             self._remove_redundant_lines(nd.contents), ast_node=nd.ast_node
         );
     } elif isinstance(nd, doc.IfBreak) {
-        return doc.IfBreak(
+        result = doc.IfBreak(
             self._remove_redundant_lines(nd.break_contents),
             self._remove_redundant_lines(nd.flat_contents)
         );
     } elif isinstance(nd, doc.Align) {
-        return doc.Align(self._remove_redundant_lines(nd.contents), nd.n);
+        result = doc.Align(self._remove_redundant_lines(nd.contents), nd.n);
+    } else {
+        result = nd;
     }
-    return nd;
+    self._redundant_lines_cache[cache_key] = result;
+    return result;
 }
 
 impl CommentInjectionPass._remove_trailing_line_from_inline_comment(
@@ -613,13 +625,9 @@ impl CommentInjectionPass._handle_body_comments(
             continue;
         }
         part_line: (int | None) = None;
-        tokens = [
-            t
-            for t in self._get_tokens(part)
-            if t.loc and t.loc.first_line > 0
-        ];
-        if tokens {
-            part_line = min(t.loc.first_line for t in tokens);
+        (part_start, _part_end) = self._doc_line_span(part);
+        if part_start {
+            part_line = part_start;
         }
         if (part_line and (body_idx < len(body))) {
             while (body_idx < len(body)) {
@@ -817,18 +825,26 @@ impl CommentInjectionPass._inject_into_parts(
 impl CommentInjectionPass._doc_line_span(
     nd: doc.DocType
 ) -> tuple[(int | None), (int | None)] {
+    cache_key = id(nd);
+    cached = self._span_cache.get(cache_key);
+    if cached is not None {
+        return cached;
+    }
     tokens = [
         t
         for t in self._get_tokens(nd)
         if t.loc and t.loc.first_line > 0
     ];
     if not tokens {
-        return (None, None);
+        result = (None, None);
+    } else {
+        result = (
+            min(t.loc.first_line for t in tokens),
+            max(t.loc.last_line for t in tokens)
+        );
     }
-    return (
-        min(t.loc.first_line for t in tokens),
-        max(t.loc.last_line for t in tokens)
-    );
+    self._span_cache[cache_key] = result;
+    return result;
 }
 
 impl CommentInjectionPass._get_tokens(nd: doc.DocType) -> list[uni.Token] {
@@ -848,9 +864,7 @@ impl CommentInjectionPass._get_tokens(nd: doc.DocType) -> list[uni.Token] {
         }
         result = tokens;
     } elif isinstance(nd, doc.IfBreak) {
-        result = self._get_tokens(nd.break_contents) + self._get_tokens(
-            nd.flat_contents
-        );
+        result = self._get_tokens(nd.break_contents);
     } else {
         result = [];
     }
@@ -889,6 +903,12 @@ impl CommentInjectionPass._find_delimiters(
 }
 
 impl CommentInjectionPass._process(ctx: uni.UniNode, nd: doc.DocType) -> doc.DocType {
+    cache_key = id(nd);
+    cached = self._process_cache.get(cache_key);
+    if cached is not None {
+        return cached;
+    }
+    result: doc.DocType;
     if isinstance(nd, doc.Concat) {
         ctx = nd.ast_node or ctx;
         processed_parts = self._inject_into_parts(nd.parts, ctx);
@@ -919,10 +939,10 @@ impl CommentInjectionPass._process(ctx: uni.UniNode, nd: doc.DocType) -> doc.Doc
             );
         }
         processed_parts = self._fix_empty_region_spacing(processed_parts);
-        return doc.Concat(processed_parts, ast_node=ctx);
+        result = doc.Concat(processed_parts, ast_node=ctx);
     } elif isinstance(nd, doc.Group) {
         ctx = nd.ast_node or ctx;
-        return doc.Group(
+        result = doc.Group(
             self._process(ctx, nd.contents), nd.break_contiguous, nd.id, ast_node=ctx
         );
     } elif isinstance(nd, doc.Indent) {
@@ -939,24 +959,32 @@ impl CommentInjectionPass._process(ctx: uni.UniNode, nd: doc.DocType) -> doc.Doc
             )
         );
         if has_body {
-            return self._handle_body_comments(ctx, nd);
+            result = self._handle_body_comments(ctx, nd);
+        } else {
+            result = doc.Indent(self._process(ctx, nd.contents), ast_node=ctx);
         }
-        return doc.Indent(self._process(ctx, nd.contents), ast_node=ctx);
     } elif isinstance(nd, doc.IfBreak) {
-        return doc.IfBreak(
+        result = doc.IfBreak(
             self._process(ctx, nd.break_contents), self._process(ctx, nd.flat_contents)
         );
     } elif isinstance(nd, doc.Align) {
         if (isinstance(ctx, uni.GlobalVars) and len(ctx.assignments) > 1) {
-            return self._handle_body_comments(ctx, nd);
+            result = self._handle_body_comments(ctx, nd);
+        } else {
+            result = doc.Align(self._process(ctx, nd.contents), nd.n);
         }
-        return doc.Align(self._process(ctx, nd.contents), nd.n);
+    } else {
+        result = nd;
     }
-    return nd;
+    self._process_cache[cache_key] = result;
+    return result;
 }
 
 impl CommentInjectionPass.transform(ir_in: uni.Module) -> uni.Module {
     self._token_cache = {};
+    self._process_cache = {};
+    self._redundant_lines_cache = {};
+    self._span_cache = {};
     self._comments: (CommentStore | None) = None;
     if isinstance(ir_in, uni.Module) {
         self._comments = CommentStore.from_module(ir_in);
