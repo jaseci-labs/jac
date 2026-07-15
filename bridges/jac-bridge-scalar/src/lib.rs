@@ -92,6 +92,35 @@ mod bridge_impl {
             (self.0 * n) as f64 / 4.0
         }
 
+        /// Byte-string return (`Vec<u8>` → Jac `bytes`, TAG_BYTES): a 5-byte blob
+        /// derived from the seed with embedded NULs at positions 0 and 3. Proves
+        /// the loader reads exactly `len` bytes (never `strlen`, which would stop
+        /// at the first NUL and return an empty/truncated blob). na + CPython.
+        pub fn seed_bytes(&self) -> Vec<u8> {
+            vec![0x00, 0x01, self.0 as u8, 0x00, 0xff]
+        }
+
+        /// Byte-slice param + byte-string return (`&[u8]` in, `Vec<u8>` out): XORs
+        /// each input byte with the seed's low byte. Proves an `&[u8]` crosses as
+        /// (ptr, len) with no UTF-8 validation and that embedded NULs survive both
+        /// ways. CPython bridges this fully; na SKIPS it (na can't lower a `bytes`
+        /// arg to the shim's `*const u8` — the bytes-param gap, mirroring f64-param).
+        pub fn xor(&self, data: &[u8]) -> Vec<u8> {
+            let k = self.0 as u8;
+            data.iter().map(|b| b ^ k).collect()
+        }
+
+        /// Nullable byte-string return (`Option<Vec<u8>>`): `Some` of a NUL-bearing
+        /// blob when `want`, else `None` signalled in-band by a null `JacBuf.ptr`
+        /// (same channel as `Option<String>`). na + CPython.
+        pub fn maybe_bytes(&self, want: bool) -> Option<Vec<u8>> {
+            if want {
+                Some(vec![0x00, self.0 as u8, 0x00])
+            } else {
+                None
+            }
+        }
+
         /// Fallible integer return: `Err` on divide-by-zero, else the quotient.
         /// (Param is `divisor`, not `by`: `by` is a Jac keyword, and the na
         /// loader emits the Rust param name verbatim as a Jac identifier.)

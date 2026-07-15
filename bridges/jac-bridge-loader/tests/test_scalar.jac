@@ -112,6 +112,42 @@ test "pi round-trips under bit reinterpretation" {
     }
 }
 
+# -- byte-string return (TAG_BYTES), embedded NULs -----------------------------
+test "seed_bytes returns the full blob including embedded NULs" {
+    with _Calc(0x41) as c {
+        b = c.seed_bytes();
+        assert isinstance(b, bytes);
+        # 5 bytes with NULs at 0 and 3 — a strlen decode would return b"" or
+        # b"\x01" (stopping at the first NUL). The explicit len must win.
+        assert b == b"\x00\x01\x41\x00\xff";
+        assert len(b) == 5;
+    }
+}
+
+# -- byte-slice param + byte-string return -------------------------------------
+test "xor round-trips a NUL-bearing blob both ways" {
+    with _Calc(0xff) as c {
+        # Input carries embedded NULs; &[u8] must cross by (ptr,len), not strlen.
+        src = b"\x00\xff\x00\x10";
+        out = c.xor(src);
+        assert out == b"\xff\x00\xff\xef";
+        assert len(out) == 4;
+    }
+    with _Calc(0) as c {
+        # XOR with 0 is the identity — proves the bytes survive unmodified.
+        assert c.xor(b"\x00\x01\x02\x00") == b"\x00\x01\x02\x00";
+        assert c.xor(b"") == b"";
+    }
+}
+
+# -- nullable byte-string return (Option<Vec<u8>>) -----------------------------
+test "maybe_bytes signals Some/None in-band" {
+    with _Calc(0x7f) as c {
+        assert c.maybe_bytes(True) == b"\x00\x7f\x00";
+        assert c.maybe_bytes(False) is None;
+    }
+}
+
 # -- fallible integer return ---------------------------------------------------
 test "checked_div returns the quotient" {
     with _Calc(20) as c {

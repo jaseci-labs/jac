@@ -33,6 +33,16 @@ pub const TAG_FN: u32 = 5;
 /// round-trips through the wider slot exactly.  The loader reconstructs the
 /// double with `f64::from_bits`.  Param and return.  Additive to ABI v1.
 pub const TAG_F64: u32 = 6;
+/// An owned byte string (`Vec<u8>` return, `&[u8]` param).  Crosses the boundary
+/// with the SAME wire shape as [`TAG_STR`] — `(ptr, len)` as a param, an owned
+/// `JacBuf { ptr, len, cap }` as a return — but is decoded on the loader side as
+/// raw bytes, **never** UTF-8 and **never** by `strlen`: the explicit `len`
+/// carries embedded NULs faithfully (msgpack / hash digests / any binary blob).
+/// The loader materializes it as a Jac `bytes` rather than a `str`.  Param and
+/// return; `Option<Vec<u8>>` signals `None` in-band with a null `JacBuf.ptr` on an
+/// OK status, exactly like `Option<String>`.  Additive to ABI v1 — old blobs never
+/// set it (append-only evolution rule, D2).
+pub const TAG_BYTES: u32 = 7;
 /// Sentinel meaning "no type" (absent self_type / throws / void return).
 pub const TAG_VOID: u32 = 0xFFFF_FFFF;
 /// OR'd with a type index to produce a type-reference tag.

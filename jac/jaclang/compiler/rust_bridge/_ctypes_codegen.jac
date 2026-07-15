@@ -55,7 +55,10 @@ def _ret_bridgeable(s: Slot) -> bool {
         return False;
     }
 
-    if s.is_opt and s.kind != SlotKind.Str and s.kind != SlotKind.OpaqueRef {
+    if s.is_opt
+    and s.kind != SlotKind.Str
+    and s.kind != SlotKind.Bytes
+    and s.kind != SlotKind.OpaqueRef {
         return False;
     }
     return True;
@@ -229,7 +232,7 @@ def _wire(lib: CDLL, fd: FnDesc) -> object {
 
     for p in fd.params {
         s = classify(p.tag);
-        if s.kind == SlotKind.Str {
+        if s.kind == SlotKind.Str or s.kind == SlotKind.Bytes {
             args.extend([c_char_p, c_uint32]);
         } elif s.kind == SlotKind.Bool {
             args.append(c_uint8);
@@ -254,7 +257,7 @@ def _wire(lib: CDLL, fd: FnDesc) -> object {
         args.append(POINTER(_JacBuf));
     } elif ret.kind == SlotKind.Bool {
         args.append(POINTER(c_uint8));
-    } elif ret.kind == SlotKind.Str {
+    } elif ret.kind == SlotKind.Str or ret.kind == SlotKind.Bytes {
         args.append(POINTER(_JacBuf));
     } elif ret.kind != SlotKind.Void {
         args.append(POINTER(c_uint64));
@@ -360,7 +363,7 @@ def _call(
     for (i, p) in enumerate(fd.params) {
         v = py_args[i];
         s = classify(p.tag);
-        if s.kind == SlotKind.Str {
+        if s.kind == SlotKind.Str or s.kind == SlotKind.Bytes {
             (enc, n) = _encode(v);
             c_args.extend([enc, c_uint32(n)]);
         } elif s.kind == SlotKind.Bool {
@@ -394,7 +397,7 @@ def _call(
         c_args.append(byref(out_buf));
     } elif ret.kind == SlotKind.Bool {
         c_args.append(byref(out_b));
-    } elif ret.kind == SlotKind.Str {
+    } elif ret.kind == SlotKind.Str or ret.kind == SlotKind.Bytes {
         c_args.append(byref(out_buf));
     } elif ret.kind != SlotKind.Void {
         c_args.append(byref(out_h));
@@ -442,6 +445,15 @@ def _call(
         raw = string_at(out_buf.ptr, out_buf.len);
         rt.free_buf(out_buf);
         return raw.decode("utf-8", errors="replace");
+    }
+    if ret.kind == SlotKind.Bytes {
+        if ret.is_opt and out_buf.ptr == 0 {
+            return None;
+        }
+
+        raw = string_at(out_buf.ptr, out_buf.len);
+        rt.free_buf(out_buf);
+        return raw;
     }
     if ret.kind == SlotKind.Int {
         v = out_h.value;

@@ -28,6 +28,8 @@ import from jaclang.compiler.rust_bridge._blob {
     TAG_UINT,
     TAG_STR,
     TAG_FN,
+    TAG_F64,
+    TAG_BYTES,
     TAG_REF_BIT,
     TAG_OPT_BIT,
     TAG_MAP_BIT,
@@ -60,6 +62,9 @@ glob _STEMS: list[str] = [
          0x00000003: "uint",
          0x00000004: "str",
          0x00000005: "fn",
+         0x00000006: "f64",
+         0x00000007: "bytes",
+         0x40000007: "bytes",
          0x10000001: "list",
          0x10000002: "list",
          0x10000003: "list",
@@ -87,7 +92,11 @@ glob _STEMS: list[str] = [
          "libjac_bridge_reentrant.so": (7, 0, 8),
          "libjac_bridge_regex.so": (2, 0, 3),
          "libjac_bridge_regex_v2.so": (2, 0, 3),
-         "libjac_bridge_scalar.so": (8, 0, 9)
+         # scalar carries the f64 (TAG_F64) and bytes (TAG_BYTES) exemplars: na
+         # bridges 10 methods and skips 5 -- add_f64 / echo_f32 (f64 param) and
+         # seed_bytes / xor / maybe_bytes (the whole bytes lane) -- of 16 fns (the
+         # 16th being the na-only #[jac_error] `message` drop).
+         "libjac_bridge_scalar.so": (10, 5, 16)
      };
 
 
@@ -145,6 +154,12 @@ def classify(tag: int) -> str {
     }
     if base == TAG_FN {
         return "fn";
+    }
+    if base == TAG_F64 {
+        return "f64";
+    }
+    if base == TAG_BYTES {
+        return "bytes";
     }
     return "UNKNOWN";
 }
@@ -206,10 +221,22 @@ test "classify(tag) is stable for every tag observed across all bridges" {
 
 
 test "the set of categories is exactly the frozen SlotKind set" {
-    # After the refactor, classify must still partition tags into precisely these
-    # 8 kinds (plus the unexercised 'void'); a new or removed kind fails here.
+    # classify must partition tags into precisely these kinds (plus the unexercised
+    # 'void'); a new or removed kind fails here. The scalar exemplar added "f64"
+    # (TAG_F64) and "bytes" (TAG_BYTES) to the original 8.
     cats = set(_EXPECTED_TAG_CATEGORY.values());
-    assert cats == {"bool", "int", "uint", "str", "fn", "list", "map", "ref"};
+    assert cats == {
+        "bool",
+        "int",
+        "uint",
+        "str",
+        "fn",
+        "list",
+        "map",
+        "ref",
+        "f64",
+        "bytes"
+    };
 }
 
 

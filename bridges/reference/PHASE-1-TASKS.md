@@ -62,9 +62,30 @@ for the Phase S plumbing that 1.2.4 rides on.
       the wrapper boundary, before any marshaling): na SKIPS f64-param methods with a
       reason (M6.2 skip-on-gap discipline); CPython bridges them fully. Flip on when na
       fixes float-arg passing. na float returns are fine.
-- [ ] **1.2.2** `TAG_BYTES` `(ptr, len)` full vertical. ⚠ **NEVER strlen** -- msgpack/binary
-      carries NULs (see memory `NA len strlen binary guard`). This is the sha2 acceptance carrier
-      **and** the Phase-2 wide-lane carrier -- get it right once. *sha2 gate.*
+- [x] **1.2.2** `TAG_BYTES = 7` `(ptr, len)` vertical DONE on the wire + CPython; na-gated
+      BOTH directions. schema (`TAG_BYTES = 7`, append-only after `TAG_F64`) + macro
+      (`Tag::Bytes`; `&[u8]` param → (ptr,len) slice with NO utf-8; `Vec<u8>` return →
+      owned `JacBuf` via `vec_to_jacbuf`, intercepted BEFORE the generic `Vec<V>` list
+      arm so a digest is `bytes` not `list[int]`; `Option<Vec<u8>>` in-band None) +
+      `_blob.jac`/`_marshal.jac` (`SlotKind.Bytes`) + CPython ctypes loader (full
+      param/return/opt; return reads EXACTLY `JacBuf.len` via `string_at`, **never
+      strlen** -- see memory `NA len strlen binary guard`) + `test_abi_drift` + scalar
+      fixture (`seed_bytes`/`xor`/`maybe_bytes`, embedded-NUL blobs) + `test_scalar.jac`
+      (CPython byte-identity incl. leading/interior NULs) + `test_slot_parity` golden
+      (also repaired the **f64** `0x6` rows the 1.2.1 landing left stale). CPython
+      byte-identical.
+      ⚠ **na SKIPS the entire bytes lane** (skip-on-gap, mirroring f64-param), two
+      independent na gaps found + proven in isolation: (a) a na `bytes` value lowers to
+      a `{i64 len, data}` STRUCT pointer, but the shim arg is `*const u8` (raw data) --
+      na only coerces bytes→data-ptr for a *foreign* call typed `i8*`, so a bytes ARG
+      would hand the header through; (b) na types a `-> bytes` method call as a bare
+      i64 at the CALL SITE (return pointer as int, NOT a `bytes` object) -- `len`/`==`/
+      subscript all misbehave (two calls with identical content compare unequal =
+      address, not content), reproducible on a plain non-bridge class, distinct from
+      na's working str-return path. Flip na on when na fixes both. *sha2 gate: the
+      TAG_BYTES CARRIER is done, but the exit-gate "hash-equivalence conformance ON na"
+      is BLOCKED by gap (b) until na types bytes method-returns -- CPython hashing is
+      unblocked. Still also needs 1.1.2 (self-alias) + an honest sha2 fixture.*
 - [ ] **1.2.3** `-> String` return arm in `classify.rs` (JacBuf already exists).
 - [ ] **1.2.5** tuple-struct candidates in `classify_type` -- the entire uuid fix (+8). *uuid gate.*
 

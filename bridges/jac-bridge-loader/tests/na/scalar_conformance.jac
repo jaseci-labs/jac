@@ -207,3 +207,48 @@ test "na skips f64-param methods, keeps f64-return methods" {
     assert "def add_f64(" not in src;
     assert "def echo_f32(" not in src;
 }
+
+
+# Byte-string (TAG_BYTES) lane. The full param+return+Option<bytes> vertical is
+# bridged and byte-identical on the CPYTHON loader (proven in test_scalar.jac,
+# including embedded NULs -- a `Vec<u8>` return carries an explicit length that
+# survives leading/interior NULs a strlen decode would truncate).
+#
+# na SKIPS the entire bytes lane (both directions), so there is no na<->CPython
+# bytes conformance -- na does not emit these methods at all. Two independent na
+# gaps make bytes unbridgeable today; each mirrors the f64 skip-on-gap discipline:
+#
+#   * bytes PARAM: a na `bytes` value lowers to a `{i64 len, data}` STRUCT pointer,
+#     but the bridge shim declares the arg as `*const u8` (a raw DATA pointer). na
+#     only coerces a bytes value to its data pointer for a *foreign* call whose arg
+#     is typed `i8*`; the shim arg is typed `bytes`, so na would hand the struct
+#     pointer straight through and the Rust side would read the na header as data.
+#   * bytes RETURN: na types a method call whose declared return is `bytes` as a
+#     bare i64 at the CALL SITE (the return pointer as an integer), NOT a `bytes`
+#     object -- so `len`/`==`/subscript on the result all misbehave (two calls
+#     returning identical content compare unequal: address, not content). This is
+#     a general na method-return gap, reproducible on a plain non-bridge class, and
+#     distinct from na's working str-return path (owning_conformance `.as_str()`).
+#     Emitting such a method would silently yield an unusable value, so it is a
+#     visible skip, not a broken bridge.
+#
+# Flip na on -- and add na<->CPython bytes conformance here -- when na (a) coerces
+# a `bytes` arg to its data pointer at the shim boundary and (b) types a `-> bytes`
+# method call as a bytes object at the call site.
+#
+# Proven on the synthesized source shape so it runs without the LLVM shim.
+test "na skips the whole bytes lane (param and return)" {
+    if not SO.is_file() {
+        return;
+    }
+    src = synthesize_source(SO);
+    # Every bytes-touching method is skipped: `xor` (&[u8] param + Vec<u8> return),
+    # `seed_bytes` (Vec<u8> return), `maybe_bytes` (Option<Vec<u8>> return).
+    assert "def xor(" not in src;
+    assert "def seed_bytes(" not in src;
+    assert "def maybe_bytes(" not in src;
+    # Sanity: non-bytes scalar methods on the same type ARE still bridged, so the
+    # skips above are bytes-specific and not a wholesale failure to synthesize.
+    assert "def seed(" in src;
+    assert "def echo_u64(" in src;
+}

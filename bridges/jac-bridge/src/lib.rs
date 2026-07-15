@@ -16,7 +16,7 @@ enum TypeKind { Opaque, Error }
 struct TypeDef { name: Ident, kind: TypeKind }
 
 #[derive(Clone, PartialEq, Eq)]
-enum Tag { Bool, Int, Uint, F64, Str, Void, Ref(usize), Opt(Box<Tag>), Callback, Map(Box<Tag>), List(Box<Tag>) }
+enum Tag { Bool, Int, Uint, F64, Str, Bytes, Void, Ref(usize), Opt(Box<Tag>), Callback, Map(Box<Tag>), List(Box<Tag>) }
 
 impl Tag {
     fn as_u32(&self) -> u32 {
@@ -26,6 +26,7 @@ impl Tag {
             Tag::Uint     => schema::TAG_UINT,
             Tag::F64      => schema::TAG_F64,
             Tag::Str      => schema::TAG_STR,
+            Tag::Bytes    => schema::TAG_BYTES,
             Tag::Void     => schema::TAG_VOID,
             Tag::Ref(i)   => schema::TAG_REF_BIT | (*i as u32),
             Tag::Opt(inner) => schema::TAG_OPT_BIT | inner.as_u32(),
@@ -441,6 +442,14 @@ fn ty_to_tag(ty: &Type, types: &[TypeDef]) -> Result<(Tag, bool), Error> {
             if let Type::Path(tp) = &*tr.elem {
                 if tp.path.is_ident("str") { return Ok((Tag::Str, true)); }
             }
+            // `&[u8]` — a byte slice param crosses (ptr, len) exactly like `&str`
+            // (the `true` flags the wide boundary shape), but decodes as raw bytes
+            // with no UTF-8 validation. The sha2 `update(&mut self, &[u8])` carrier.
+            if let Type::Slice(ts) = &*tr.elem {
+                if let Type::Path(tp) = &*ts.elem {
+                    if tp.path.is_ident("u8") { return Ok((Tag::Bytes, true)); }
+                }
+            }
             let (tag, _) = ty_to_tag(&tr.elem, types)?;
             Ok((tag, false))
         }
@@ -592,6 +601,16 @@ fn ret_tag(ty: &Type, types: &[TypeDef], self_i: usize) -> Result<Tag, Error> {
                  values are bridgeable")),
         }
     }
+    // `Vec<u8>` is a byte string, NOT a list[int]: it marshals as Jac `bytes`
+    // (TAG_BYTES) so a hash digest / binary blob crosses intact (explicit length,
+    // embedded NULs preserved). Checked before the generic `Vec<V>` list arm below,
+    // which would otherwise lower it to `List(Uint)`. This is the sha2 `finalize`
+    // carrier.
+    if let Some(elem_ty) = extract_vec(ty) {
+        if let Type::Path(tp) = elem_ty {
+            if tp.path.is_ident("u8") { return Ok(Tag::Bytes); }
+        }
+    }
     // Vec<V> marshals as a real Jac list[V]. Checked before the generic Path arms
     // so the `Vec` ident is not mistaken for an opaque type reference.
     if let Some(elem_ty) = extract_vec(ty) {
@@ -611,13 +630,13 @@ fn ret_tag(ty: &Type, types: &[TypeDef], self_i: usize) -> Result<Tag, Error> {
                 "Option must have a single concrete type argument"))?;
             let inner = ret_tag(inner_ty, types, self_i)?;
             match inner {
-                // Only Ref (null handle) and Str (null JacBuf.ptr) have an in-band
-                // None channel. Option<bool>/Option<int>/Option<Option<_>> would
-                // need a separate presence flag — not in the v1 ABI.
-                Tag::Ref(_) | Tag::Str => Ok(Tag::Opt(Box::new(inner))),
+                // Only Ref (null handle), Str, and Bytes (null JacBuf.ptr) have an
+                // in-band None channel. Option<bool>/Option<int>/Option<Option<_>>
+                // would need a separate presence flag — not in the v1 ABI.
+                Tag::Ref(_) | Tag::Str | Tag::Bytes => Ok(Tag::Opt(Box::new(inner))),
                 _ => Err(Error::new(ty.span(),
-                    "unsupported Option return: only Option<&OpaqueType> and \
-                     Option<String> can signal None in-band")),
+                    "unsupported Option return: only Option<&OpaqueType>, \
+                     Option<String>, and Option<Vec<u8>> can signal None in-band")),
             }
         }
         Type::Path(tp) if tp.path.segments.len() == 1 => {
@@ -1261,15 +1280,27 @@ fn gen_fn_shim(f: &FnDef, types: &[TypeDef], mod_ident: &Ident, rt: &Ident, _has
     for p in &f.params {
         let pn = format_ident!("{}", p.name);
         if p.is_str_ref {
+            // A wide (ptr, len) boundary param: `&str` OR `&[u8]`. Both cross the
+            // same two C slots; only the decode differs — a byte slice is handed
+            // through raw (NO UTF-8 validation, NO strlen — the explicit `len`
+            // carries embedded NULs), a `&str` is UTF-8 checked.
             let ptr_n = format_ident!("{}_ptr", p.name);
             let len_n = format_ident!("{}_len", p.name);
             c_params.push(quote! { #ptr_n: *const u8 });
             c_params.push(quote! { #len_n: u32 });
-            decode.push(quote! {
-                let #pn = ::std::str::from_utf8(
-                    unsafe { ::std::slice::from_raw_parts(#ptr_n, #len_n as usize) }
-                ).map_err(|e| format!("UTF-8: {e}"))?;
-            });
+            if p.tag == Tag::Bytes {
+                decode.push(quote! {
+                    let #pn = unsafe {
+                        ::std::slice::from_raw_parts(#ptr_n, #len_n as usize)
+                    };
+                });
+            } else {
+                decode.push(quote! {
+                    let #pn = ::std::str::from_utf8(
+                        unsafe { ::std::slice::from_raw_parts(#ptr_n, #len_n as usize) }
+                    ).map_err(|e| format!("UTF-8: {e}"))?;
+                });
+            }
         } else {
             match &p.tag {
                 Tag::Bool => {
@@ -1486,6 +1517,15 @@ fn out_param_tokens(ret: &Tag, rt: &Ident) -> (TS2, TS2, TS2) {
             quote! { *out_buf = #rt::string_to_jacbuf(val); },
             quote! { *out_buf = #rt::JacBuf { ptr: ::std::ptr::null_mut(), len: 0, cap: 0 }; },
         ),
+        // A `Vec<u8>` return crosses as an owned JacBuf — the SAME wire shape as a
+        // String return — carrying the explicit length so the loader reads exactly
+        // `len` bytes (never strlen; embedded NULs survive). `val` is the owned
+        // `Vec<u8>`; `vec_to_jacbuf` hands its buffer to the loader to free.
+        Tag::Bytes => (
+            quote! { out_buf: *mut #rt::JacBuf, },
+            quote! { *out_buf = #rt::vec_to_jacbuf(val); },
+            quote! { *out_buf = #rt::JacBuf { ptr: ::std::ptr::null_mut(), len: 0, cap: 0 }; },
+        ),
         Tag::Ref(_) => (
             quote! { out_handle: *mut u64, },
             quote! { *out_handle = ::std::boxed::Box::into_raw(
@@ -1520,8 +1560,21 @@ fn out_param_tokens(ret: &Tag, rt: &Ident) -> (TS2, TS2, TS2) {
                 },
                 quote! { *out_buf = #rt::JacBuf { ptr: ::std::ptr::null_mut(), len: 0, cap: 0 }; },
             ),
-            // ret_tag guarantees Opt only wraps Ref or Str.
-            _ => unreachable!("Tag::Opt wraps only Ref or Str"),
+            // Option<Vec<u8>>: a null JacBuf.ptr signals None in-band, same channel
+            // as Option<String>; Some crosses as the owned byte buffer.
+            Tag::Bytes => (
+                quote! { out_buf: *mut #rt::JacBuf, },
+                quote! {
+                    *out_buf = match val {
+                        ::std::option::Option::Some(v) => #rt::vec_to_jacbuf(v),
+                        ::std::option::Option::None =>
+                            #rt::JacBuf { ptr: ::std::ptr::null_mut(), len: 0, cap: 0 },
+                    };
+                },
+                quote! { *out_buf = #rt::JacBuf { ptr: ::std::ptr::null_mut(), len: 0, cap: 0 }; },
+            ),
+            // ret_tag guarantees Opt only wraps Ref, Str, or Bytes.
+            _ => unreachable!("Tag::Opt wraps only Ref, Str, or Bytes"),
         },
         // HashMap<String, V> → one owned JacBuf holding the whole map serialized
         // little-endian: [u32 count] then per entry [u32 key_len][key bytes][value].
