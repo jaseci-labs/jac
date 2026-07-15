@@ -34,6 +34,7 @@ Bug index:
   #STARGUARD-1 - version-guarded names re-exported via `from M import *` (e.g. Buffer) fail to resolve
   #BYTES-1 - Byte-string literals (b"...") typed as str instead of bytes
   #EVOLVING-NONE - `x = None` then reassign inside `if` lost the new type post-branch
+  #FORLOOP - var assigned in a loop body lost its writes after the loop (no post-loop join CFG node)
   #LITWIDEN - literal initializers not widened for mutable vars/attrs/container elements
   #INCLUDE-MEMBER-1 - member access on `include`d (absorb) symbols resolved to
                       Unknown when the included submodule imported back from its
@@ -1022,6 +1023,15 @@ test "bug_evolving_none_narrowing" {
     );
 }
 
+test "bug_loop_exit_widen" {
+    program = compile_and_check("checker_bug_loop_exit_widen.jac");
+    assert program.errors_had == [] , (
+        "Bug #FORLOOP: a variable reassigned in a `for`/`while`/iter-for body must "
+        "widen to union(entry, body-writes) after the loop so an `is not None` "
+        "guard narrows it (covers nested loops, scope-soundness, and `+=`). "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
 # Bug #LITWIDEN: literal types inferred from a literal initializer were not
 # widened for mutable variables and container elements, so `row = ["."] * 3;
 # row[0] = "B";` failed with E1001 (Cannot assign Literal["B"] to Literal["."]).

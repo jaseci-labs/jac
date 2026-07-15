@@ -741,6 +741,24 @@ impl ConditionalNode.postinit -> None {
     UniCFGNode.postinit(self);
 }
 
+impl LoopExitNode.postinit -> None {
+    UniNode.postinit(self);
+    UniCFGNode.postinit(self);
+}
+
+impl LoopExitNode.resolve_tok_range -> tuple[(Token, Token)] {
+    loop = self?.loop;
+    if loop is not None {
+        try {
+            return (loop.loc.first_tok, loop.loc.last_tok);
+        } except Exception {
+            ;
+        }
+    }
+    tok = self.gen_token(Tok.EOF);
+    return (tok, tok);
+}
+
 impl CfgExpr.postinit -> None {
     UniNode.postinit(self);
     Expr.postinit(self);
@@ -761,7 +779,8 @@ impl UniCFGNode.get_head -> UniCFGNode {
                 WhileStmt,
                 ForeverStmt,
                 ConditionalNode,
-                InnerCompr
+                InnerCompr,
+                LoopExitNode
             )
         )
         and not isinstance(
@@ -772,7 +791,8 @@ impl UniCFGNode.get_head -> UniCFGNode {
                 WhileStmt,
                 ForeverStmt,
                 ConditionalNode,
-                InnerCompr
+                InnerCompr,
+                LoopExitNode
             )
         )
         and nd.bb_in[0].bb_out
@@ -796,7 +816,8 @@ impl UniCFGNode.get_tail -> UniCFGNode {
                 WhileStmt,
                 ForeverStmt,
                 ConditionalNode,
-                InnerCompr
+                InnerCompr,
+                LoopExitNode
             )
         )
         and not isinstance(
@@ -807,7 +828,8 @@ impl UniCFGNode.get_tail -> UniCFGNode {
                 WhileStmt,
                 ForeverStmt,
                 ConditionalNode,
-                InnerCompr
+                InnerCompr,
+                LoopExitNode
             )
         )
         and nd.bb_out[0].bb_in

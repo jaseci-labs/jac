@@ -3888,9 +3888,86 @@ impl TypeEvaluator._get_type_from_flow_node(
     } else {
         result = self._union_narrowed_types(incoming_types);
     }
+
+    if isinstance(flow_node, uni.LoopExitNode) {
+        result = self._loop_exit_narrowed_type(flow_node.loop, target, result);
+    }
     self._flow_node_type_cache[cache_key] = result;
     visited.discard(flow_node_id);
     return result;
+}
+
+impl TypeEvaluator._loop_exit_narrowed_type(
+    loop_node: uni.UniNode, target: NarrowingTarget, entry_type: TypeBase | None
+) -> TypeBase | None {
+    import from ast { Store as _Store }
+    if target.symbol is None {
+        return None;
+    }
+    body_types: list[TypeBase] = [];
+    for name_atom in target.symbol.defn + target.symbol.uses {
+        if name_atom.py_ctx_func is not _Store {
+            continue;
+        }
+        if not self._is_within(name_atom, loop_node) {
+            continue;
+        }
+        assign = name_atom.find_parent_of_type(uni.Assignment);
+        narrowed: TypeBase | None = None;
+        if assign is not None and assign.value and assign.aug_op is None {
+            for t in assign.target {
+                if isinstance(t, uni.Name) and self._is_within(name_atom, t) {
+                    narrowed = self._assignment_narrowed_type(
+                        self.get_type_of_expression(assign.value), target.declared_type
+                    );
+                    break;
+                }
+            }
+        }
+        if narrowed is None {
+            return None;
+        }
+        body_types.append(narrowed);
+    }
+    if len(body_types) == 0 {
+        return entry_type;
+    }
+    if entry_type is None {
+        return None;
+    }
+    body_types.append(entry_type);
+    return body_types[0]
+        if len(body_types) == 1
+        else self._union_narrowed_types(body_types);
+}
+
+impl TypeEvaluator._is_within(child: uni.UniNode, ancestor: uni.UniNode) -> bool {
+    cur: uni.UniNode | None = child;
+    while cur is not None {
+        if cur is ancestor {
+            return True;
+        }
+        cur = cur.parent;
+    }
+    return False;
+}
+
+impl TypeEvaluator._assignment_narrowed_type(
+    value_type: TypeBase | None, declared_type: TypeBase
+) -> TypeBase | None {
+    if value_type is None or isinstance(value_type, types.UnknownType) {
+        return None;
+    }
+    if self.is_none_type(declared_type) {
+        return value_type;
+    }
+    if (
+        self.assign_type(value_type, declared_type)
+        and not self.assign_type(declared_type, value_type)
+    ) {
+        return value_type;
+    }
+    return None;
 }
 
 impl TypeEvaluator._classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str {
