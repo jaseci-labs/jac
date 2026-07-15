@@ -25,8 +25,9 @@ test "gateway skips the npm closure only when the bundle ships a prebuilt dist" 
     );
     # dist shipped -> no build can happen -> closure skipped; dist absent ->
     # plain install so the on-boot client build fallback still works
-    assert (
-        "if [ -f .jac/client/dist/index.html ]; then jac install --no-npm; "
-        "else jac install; fi"
-    ) in gw;
+    guard = gw.index("if [ -f .jac/client/dist/index.html ]");
+    skip_at = gw.index("jac install --no-npm");
+    full = gw.index("else");
+    assert guard < skip_at and skip_at < full;
+    assert "jac install; fi" in gw;
 }
