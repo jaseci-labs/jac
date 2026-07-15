@@ -453,7 +453,12 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _osp_generic_edge -> (ir.Value | None);
     def _spawn_operand_name(nd: uni.UniNode) -> (str | None);
     def _is_walker_arch(name: str) -> bool;
-    def _codegen_instantiation(nd: (uni.FuncCall | uni.Name)) -> (ir.Value | None);
+    def _codegen_instantiation(
+        nd: (uni.FuncCall | uni.Name),
+        type_name_override: (str | None) = None,
+        call_init: bool = True
+    ) -> (ir.Value | None);
+
     def _codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None);
     def _emit_obj_str(val: ir.Value) -> (ir.Value | None);
     def _emit_default_obj_repr(val: ir.Value, type_name: str) -> ir.Value;

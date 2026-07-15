@@ -1,0 +1,5 @@
+error: #[jac(shared)] is retired: an unconditional retain-on-adopt leaks a fresh handle box.  Return `&Self` for a co-owned (self-identity) handle — the loader RC-pins it behind a runtime `rh == self` guard that proves the alias instead of trusting the annotation
+  --> tests/ui/shared_retired.rs:18:15
+   |
+18 |         #[jac(shared)]
+   |               ^^^^^^

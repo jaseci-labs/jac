@@ -767,6 +767,20 @@ these first; the adversarial suite already contains skip-gated tests waiting on 
       `_method_body` ref gate loosened from `adoptable` to `opaque`, ref-returns
       emit `T._adopt(rh)` for ctor-bearing targets. Both loaders now expose e.g.
       `Cell::alias`. Guard: `test_render_ctor_return.jac` Test1 (survival) green.
+      NATIVE-LOWERING RESIDUAL (now closed): the emitted `_adopt` shell rendered
+      but did not nacompile -- NaIRGenPass could not lower `T.__new__(T)` (nor the
+      external-local field writes on its result), so a ctor-bearing method-return
+      demoted to Python-only at real compile time. NaIRGenPass now lowers
+      `T.__new__(T)` to a bare zero-filled alloc (vtable + type-tag wired, no init
+      call) and the shell's `adopted.field = ...` stores lower normally. Guards:
+      unit `jac/tests/compiler/passes/native/test_native_obj_new_adopt.jac` (JIT,
+      4 tests) + end-to-end reference crate `jac-bridge-adopt`
+      (`Counter::snapshot(&self) -> Snapshot`, `Snapshot` ctor-bearing) driven
+      through a real `.so` by `na/adopt_conformance.jac` (3 tests). Negative
+      proof: reverting the fix regresses the conformance to `E5090 ... method
+      'Counter.snapshot' ... demoting to Python-only`. So a ctor-bearing
+      self-identity / adoptable type is no longer forced to be factory-minted to
+      run on na.
 
 **0.6 CI**
 

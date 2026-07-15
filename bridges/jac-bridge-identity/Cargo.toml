@@ -1,0 +1,19 @@
+# Self-identity reference crate (Phase 1.2.4). The identity analog of
+# jac-bridge-view: the ONLY crate whose bridge returns `&Self` from a `&self`
+# method (`Node::alias`), so the self-identity lane of the handle-ownership
+# contract is exercised end-to-end against genuine values instead of a hand-built
+# descriptor fixture. A `&Self` return IS the receiver's own handle box, so the
+# shim writes the receiver handle straight back (no fresh Box::into_raw); the na
+# loader's runtime `rh == self.__handle` guard then fires and RC-pins the shared
+# box, so two wrappers over one box each close exactly once (rc 2 -> 1 -> 0).
+[package]
+name = "jac-bridge-identity"
+version = "0.1.0"
+edition = "2021"
+description = "Self-identity reference crate: a &Self return that lowers to the receiver's own handle and is RC-pinned by the loader's rh == self guard, for the ownership-contract conformance gate"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+jac-bridge = { path = "../jac-bridge" }

@@ -11,10 +11,17 @@
 #     receiver's OWN box. The loader retains only when `rh == self.__handle`,
 #     guarded at runtime, so a fresh-box return (the common case) is untouched.
 #
-# No producer emits either today (the `#[bridge]` macro boxes every return
-# fresh), so this is inert plumbing -- these tests pin the EMITTED na source so
-# the retain path is sound the moment Phase 1.2.4 produces such a return. The
-# ctypes loader mirrors the same logic at runtime in `_ctypes_codegen._call`.
+# Phase 1.2.4 landed the self-identity producer: `jac-bridge-identity`'s
+# `Node::alias(&self) -> &Self` lowers to the receiver's own handle, so the
+# `rh == self.__handle` guard fires on GENUINE values -- driven end-to-end by
+# `shared_identity_conformance.jac` (nacompiled + run). These fixture tests keep
+# their narrower job: pinning the EMITTED na source for both retain shapes from a
+# hand-built descriptor, including the `shared` (TAG_SHARED_BIT) branch. `shared`
+# is now RETIRED as a producer -- the `#[bridge]` macro and the binder overlay
+# both reject it (an unconditional retain on a fresh box leaks) -- but the ABI bit
+# stays reserved (append-only) and the loader still honors it, so this fixture
+# remains the pin for that reserved branch. The ctypes loader mirrors the same
+# logic at runtime in `_ctypes_codegen._call`.
 # ===========================================================================
 import from jaclang.compiler.rust_bridge._blob {
     BridgeMeta,

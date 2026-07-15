@@ -9,6 +9,8 @@ members = [
     "jac-bridge-owning3",
     "jac-bridge-reentrant",
     "jac-bridge-view",
+    "jac-bridge-identity",
+    "jac-bridge-adopt",
     "jac-bridge-scalar",
     "jac-bridge-map",
     "jac-bridge-list",

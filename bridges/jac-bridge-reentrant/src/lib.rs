@@ -28,15 +28,20 @@
 //! a `usize`.
 //!
 //! ABI NOTE (why the alias view is a distinct type, not `-> Self`).  The obvious
-//! spelling is `Cell::alias(&self) -> Self`.  It compiles and works through the
-//! CPython loader, but the *na* loader silently SKIPS it: because `Cell` has a
-//! constructor (`new`), the synthesized na wrapper would need two same-arity
-//! `init` overloads — the real `init(v: int)` and the adopt-ctor `init(raw: int)`
-//! — which na cannot express (see `_synth.jac`, "na adopt-ctor signature clash").
-//! A method may only return an opaque wrapper of a type that has NO constructor
-//! (an "adoptable" type).  So the alias view is its own constructor-less type
-//! `CellAlias`; it is reachable ONLY via `Cell::alias`, and shares `Cell`'s
-//! `Arc`.  Two Jac wrappers, one refcounted object — the 0.0.2 shape, now sound.
+//! spelling is `Cell::alias(&self) -> Self`.  Because `Cell` has a constructor
+//! (`new`), the real `init(v: int)` occupies the wrapper's ctor slot, so the
+//! adopt path cannot reuse `init(raw)`; the synth loader instead emits a static
+//! shell `_adopt(raw) { a = Cell.__new__(Cell); a.__handle = raw; ... }` that
+//! bypasses the Rust ctor.  That shell renders and binds on both loaders, and na
+//! now lowers `T.__new__(T)` + the external-local field writes it needs, so the
+//! `-> Self`/ctor-bearing spelling IS na-runnable today -- exercised end-to-end
+//! by the `jac-bridge-adopt` crate (`Counter::snapshot -> Snapshot`) via
+//! `na/adopt_conformance.jac`, with the compiler-unit guard
+//! `test_native_obj_new_adopt.jac`.  We nonetheless keep the alias view as its
+//! own constructor-less type `CellAlias`: it is reachable ONLY via `Cell::alias`,
+//! shares `Cell`'s `Arc`, and documents the "adoptable opaque type" shape
+//! distinctly.  Two Jac wrappers, one refcounted object — the 0.0.2 shape, now
+//! sound.
 
 #![allow(clippy::missing_safety_doc)]
 

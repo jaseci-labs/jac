@@ -36,14 +36,17 @@
 #   plan (0.5.6) documents as "compiles + works through the CPython loader but
 #   vanishes on na".
 #
-# HONESTY STATUS: a parallel Phase-0.5 track already downgraded the *silent*
-# drop to a recorded Skip-with-reason (the minimum fix; verified below — the
-# method IS present in `nm.skips`). The RESIDUAL, still-red bug this file pins is
-# the surface-parity loss: the method must SURVIVE on na (the plan's preferred
-# fix — "give the adopt-ctor a distinct arity/name so both survive"). The first
-# test asserts survival and is RED today; the eventual _synth.jac fix flips it
-# green. The second test is a regression guard on the minimum honesty (drop is
-# recorded, never silent).
+# STATUS (RESOLVED): the surface-parity loss is fixed by the plan's PREFERRED
+# fix — `_synth.jac` emits a distinct-name static adoption factory
+# `static def _adopt(raw) -> T { a = T.__new__(T); a.__handle = raw; ... }`, so
+# the ctor-bearing method-return SURVIVES on na (Test1, green). The native
+# residual — the emitted `_adopt` shell did not nacompile because NaIRGenPass
+# could not lower `T.__new__(T)` — is now also closed; that lowering is guarded
+# by jac/tests/compiler/passes/native/test_native_obj_new_adopt.jac (compiler
+# unit, JIT) and driven through a real .so by adopt_conformance.jac (the
+# `jac-bridge-adopt` crate: `Counter::snapshot -> Snapshot`). Test2 below
+# stays as a regression guard on the minimum honesty (a drop, if it ever
+# reappears, must be a recorded Skip, never silent).
 # ===========================================================================
 import from jaclang.compiler.rust_bridge._blob {
     BridgeMeta,
@@ -132,14 +135,12 @@ test "adopt-ctor method survives on the na surface (parity with CPython loader)"
     assert "def get(" in nm.source;
 
     # The CPython ctypes loader binds `alias` (_ctypes_codegen.jac:450-453,
-    # 518-519). The na generator MUST reach the same surface.
-    #
-    # RED TODAY: `alias` is dropped from the na surface by the adopt-ctor guard
-    # in _synth.jac (_method_body ref-return, :363-365 -> classification Skip +
-    # continue, :507-521). This assertion FAILS until 0.5.6's preferred fix
-    # (distinct-arity adopt-ctor init) lets both the real ctor and the returned
-    # wrapper survive.
+    # 518-519). The na generator reaches the same surface: the ctor-bearing
+    # method-return is emitted via the static `_adopt` factory, which na now
+    # lowers natively (test_native_obj_new_adopt.jac).
     assert "def alias(" in nm.source;
+    # And it must route through the adopt shell, not a bare `Cell(rh)` ctor call.
+    assert "_adopt(" in nm.source;
 }
 
 

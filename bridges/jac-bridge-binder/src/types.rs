@@ -192,21 +192,27 @@ pub enum TypeKind {
 ///   * `Owned`    — the wrapper owns the returned object; `close()` drops it.
 ///     Correct for a FRESH object (`NaiveDate::and_time -> NaiveDateTime`) and
 ///     for every owning wrapper the M4 rules synthesize.
-///   * `Shared`   — the return is one reference on an RC'd inner; adopting it
-///     `retain`s, `close()` decrefs, the inner frees at rc==0.
+///   * `Shared`   — RETIRED (Phase 1.2.4). It asked the loader to `retain` on
+///     adopt unconditionally, but the macro boxes every return fresh (rc = 1), so
+///     a retained-but-single-owner box leaks (its one close drops rc 2→1, never
+///     0). The only alias the toolchain can PROVE is a `&self -> &Self` return
+///     (self-identity), RC-pinned behind the loader's runtime `rh == self` guard.
+///     No classifier path emits it and the overlay rejects `ownership = "shared"`;
+///     the variant survives only to keep `TAG_SHARED_BIT` reserved (append-only).
 ///   * `Borrowed` — a live, RC-pinned view into the receiver's interior; minting
 ///     it `retain`s the owner so the view can never dangle.
 ///
 /// The classifier defaults every handle return to `Owned` (see
 /// `classify_return`) because rustdoc cannot prove an honest crate's return is
-/// anything else; `shared`/`borrowed` are forced by an overlay
-/// `[fn."T::m"] ownership = "…"` key. The binder never infers a non-`Owned`
+/// anything else; `borrowed` is forced by an overlay
+/// `[fn."T::m"] ownership = "borrowed"` key. The binder never infers a non-`Owned`
 /// class today — a Rust-level-unsound double-own is the crate author's bug and is
 /// handled by skip-with-reason, not silently defended.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum Ownership {
     #[default]
     Owned,
+    /// Retired — see the type docs. Kept to reserve the ABI bit; never constructed.
     Shared,
     Borrowed,
 }

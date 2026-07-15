@@ -242,12 +242,27 @@ pub fn apply_overlay(spec: &mut BridgeSpec, overlay: &Overlay) -> Result<(), Str
         // skips. `owned` is the default and is accepted as an explicit no-op.
         let forced_ownership = match f.ownership.as_deref() {
             None | Some("owned") => None,
-            Some("shared") => Some(Ownership::Shared),
+            // `shared` is RETIRED (Phase 1.2.4): a shared handle asked the loader
+            // to `retain` on adopt unconditionally, but the macro boxes every
+            // return fresh (rc = 1), so a retained-but-single-owner box leaks (its
+            // one close drops rc 2→1, never 0). The only alias the toolchain can
+            // PROVE is a `&self -> &Self` return, RC-pinned behind the loader's
+            // runtime `rh == self` guard. So a co-owned handle is expressed by the
+            // crate returning `&Self`, never forced through an overlay key.
+            Some("shared") => {
+                return Err(format!(
+                    "overlay: [fn.\"{key}\"] ownership = \"shared\" is retired — an \
+                     unconditional retain-on-adopt leaks a fresh handle box. Have the \
+                     crate method return `&Self` for a co-owned (self-identity) handle; \
+                     the loader RC-pins it behind a runtime `rh == self` guard that \
+                     proves the alias instead of trusting the overlay"
+                ));
+            }
             Some("borrowed") => Some(Ownership::Borrowed),
             Some(other) => {
                 return Err(format!(
                     "overlay: [fn.\"{key}\"] ownership = \"{other}\" is not a known class — \
-                     expected \"owned\", \"shared\", or \"borrowed\""
+                     expected \"owned\" or \"borrowed\""
                 ));
             }
         };

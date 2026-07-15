@@ -520,7 +520,13 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
     // which is what keeps `coverage-baseline.toml` and the golden fixtures pinned.
     let own_attr = match f.ret_ownership {
         Ownership::Owned => String::new(),
-        Ownership::Shared => "        #[jac(shared)]\n".into(),
+        // `Shared` is retired: no classifier path produces it and the overlay
+        // rejects `ownership = "shared"` (Phase 1.2.4), so it can never reach
+        // codegen. The variant survives only to keep the ABI bit reserved.
+        Ownership::Shared => unreachable!(
+            "Ownership::Shared is retired — the overlay rejects `shared`; a co-owned \
+             handle is a `&Self` return, not a stamped attribute"
+        ),
         Ownership::Borrowed => "        #[jac(borrowed)]\n".into(),
     };
     Some(format!(

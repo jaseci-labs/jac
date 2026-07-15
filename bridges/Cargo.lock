@@ -57,6 +57,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "jac-bridge-adopt"
+version = "0.1.0"
+dependencies = [
+ "jac-bridge",
+]
+
+[[package]]
 name = "jac-bridge-async"
 version = "0.1.0"
 dependencies = [
@@ -72,6 +79,13 @@ dependencies = [
  "serde",
  "serde_json",
  "toml 0.8.23",
+]
+
+[[package]]
+name = "jac-bridge-identity"
+version = "0.1.0"
+dependencies = [
+ "jac-bridge",
 ]
 
 [[package]]

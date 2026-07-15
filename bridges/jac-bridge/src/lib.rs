@@ -58,8 +58,14 @@ struct Param {
 /// Ownership class of an opaque-handle return (Phase S, Track B).  Rides the
 /// `Ref` return tag as append-only high bits; the default (`Owned`) is the frozen
 /// v1 behaviour and emits no bit, so every existing bridge stays byte-identical.
+///
+/// `Shared` is RETIRED as a producer (Phase 1.2.4) — no macro path constructs it
+/// (see [`parse_ownership`]).  The variant and `TAG_SHARED_BIT` stay defined so the
+/// ABI bit remains reserved/frozen (append-only) and the loader's shared branch is
+/// still pinned by the `test_shared_identity_retain` loader fixture; a co-owned
+/// handle is now produced only by a `&Self` return (self-identity), never a bit.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Ownership { Owned, Shared, Borrowed }
+enum Ownership { Owned, #[allow(dead_code)] Shared, Borrowed }
 
 impl Ownership {
     /// Tag bits OR'd into the `Ref` return tag.  `Owned` = 0 (byte-identical v1).
@@ -84,6 +90,13 @@ struct FnDef {
     rust_ident:    Ident,
     impl_type_i:   usize,
     ret_is_result: bool,
+    // Phase 1.2.4 (self-identity): the method returns `&Self` (or `&OwnType`), so
+    // the return IS the receiver's own handle box, not a fresh one.  The shim
+    // writes `handle` straight back (no `Box::into_raw`), and the na loader's
+    // runtime `rh == self.__handle` guard fires and RC-pins the shared box.  This
+    // is the ONLY sound producer of a retain-on-adopt handle: the alias is proven
+    // at runtime, never trusted from an annotation (why `#[jac(shared)]` is gone).
+    ret_is_self_borrow: bool,
     self_is_mut:   bool,
     is_auto:       bool,        // auto-generated error_message shim
     is_async:      bool,        // async fn — shim blocks via module-owned Tokio runtime
@@ -258,6 +271,7 @@ fn analyze(
             rust_ident:    Ident::new("__auto", Span::call_site()),
             impl_type_i:   err_i,
             ret_is_result: false,
+            ret_is_self_borrow: false,
             self_is_mut:   false,
             is_auto:       true,
             is_async:      false,
@@ -296,8 +310,8 @@ fn analyze_fn(
         .map(|a| analyze_param(a, types))
         .collect::<Result<_, _>>()?;
 
-    let (ret, throws, ret_is_result) =
-        analyze_ret(&f.sig.output, types, type_i, error_idx)?;
+    let (ret, throws, ret_is_result, ret_is_self_borrow) =
+        analyze_ret(&f.sig.output, types, type_i, has_self, error_idx)?;
 
     let ownership = parse_ownership(&f.attrs)?;
     // The ownership contract only governs opaque-handle returns, and `borrowed`
@@ -307,8 +321,14 @@ fn analyze_fn(
     if ownership != Ownership::Owned {
         if !matches!(ret, Tag::Ref(_) | Tag::Opt(_)) {
             return Err(Error::new(f.sig.output.span(),
-                "#[jac(shared)]/#[jac(borrowed)] applies only to a method returning \
+                "#[jac(borrowed)] applies only to a method returning \
                  an opaque handle (a crate type or Option<crate type>)"));
+        }
+        if ret_is_self_borrow {
+            return Err(Error::new(f.sig.output.span(),
+                "#[jac(borrowed)] does not apply to a `&Self` return — a self-identity \
+                 handle is already RC-pinned by the loader's `rh == self` guard; drop \
+                 the attribute (a `&Self` return needs no ownership annotation)"));
         }
         if ownership == Ownership::Borrowed && !has_self {
             return Err(Error::new(f.sig.ident.span(),
@@ -329,27 +349,42 @@ fn analyze_fn(
         params, ret, ownership, throws,
         rust_ident: f.sig.ident.clone(),
         impl_type_i: type_i,
-        ret_is_result, self_is_mut,
+        ret_is_result, ret_is_self_borrow, self_is_mut,
         is_auto: false,
         is_async: f.sig.asyncness.is_some(),
     })
 }
 
-/// Read a method's ownership class from a `#[jac(shared)]` / `#[jac(borrowed)]`
-/// helper attribute.  Absent (or `#[jac(owned)]`) is the default `Owned`.  The
-/// attribute is stripped from the re-emitted source by [`strip_bridge_attrs`].
+/// Read a method's ownership class from a `#[jac(borrowed)]` helper attribute.
+/// Absent (or `#[jac(owned)]`) is the default `Owned`.  The attribute is stripped
+/// from the re-emitted source by [`strip_bridge_attrs`].
+///
+/// `#[jac(shared)]` is REJECTED (Phase 1.2.4).  A shared handle asks the loader to
+/// `retain(rh)` unconditionally on adopt, but the macro boxes every return fresh
+/// (rc = 1); a fresh box that is retained but held by a single wrapper leaks (its
+/// one close drops rc 2→1, never 0).  The retain was sound only if `rh` were an
+/// EXISTING box some other live wrapper also holds — an aliasing fact nothing
+/// checks, so the annotation was leak-by-construction.  The one alias the macro
+/// can PROVE is `&self -> &Self`: return the receiver's own box, which the loader
+/// RC-pins behind a runtime `rh == self.__handle` guard.  So a co-owned handle is
+/// expressed by returning `&Self`, never asserted with `#[jac(shared)]`.
 fn parse_ownership(attrs: &[Attribute]) -> Result<Ownership, Error> {
     for a in attrs {
         if !a.path().is_ident("jac") { continue }
         let mut cls = None;
         a.parse_nested_meta(|m| {
             if m.path.is_ident("owned")    { cls = Some(Ownership::Owned);    Ok(()) }
-            else if m.path.is_ident("shared")   { cls = Some(Ownership::Shared);   Ok(()) }
             else if m.path.is_ident("borrowed") { cls = Some(Ownership::Borrowed); Ok(()) }
-            else { Err(m.error("unknown #[jac(...)] key: expected owned, shared, or borrowed")) }
+            else if m.path.is_ident("shared") {
+                Err(m.error("#[jac(shared)] is retired: an unconditional retain-on-adopt \
+                    leaks a fresh handle box.  Return `&Self` for a co-owned (self-identity) \
+                    handle — the loader RC-pins it behind a runtime `rh == self` guard that \
+                    proves the alias instead of trusting the annotation"))
+            }
+            else { Err(m.error("unknown #[jac(...)] key: expected owned or borrowed")) }
         })?;
         return cls.ok_or_else(|| Error::new(a.span(),
-            "#[jac(...)] requires a class: #[jac(owned)], #[jac(shared)], or #[jac(borrowed)]"));
+            "#[jac(...)] requires a class: #[jac(owned)] or #[jac(borrowed)]"));
     }
     Ok(Ownership::Owned)
 }
@@ -423,11 +458,22 @@ fn analyze_ret(
     ret: &ReturnType,
     types: &[TypeDef],
     self_i: usize,
+    has_self: bool,
     error_idx: Option<usize>,
-) -> Result<(Tag, Option<usize>, bool), Error> {
+) -> Result<(Tag, Option<usize>, bool, bool), Error> {
     let ReturnType::Type(_, ty) = ret else {
-        return Ok((Tag::Void, None, false));
+        return Ok((Tag::Void, None, false, false));
     };
+    // A `&self` method returning `&Self` (or `&OwnType`) is a self-identity handle:
+    // the return IS the receiver's box, so it lowers to the receiver's own handle
+    // integer rather than a fresh `Box::into_raw`.  Checked before `extract_result`
+    // — a reference return is never a `Result`, and `ret_tag` still rejects every
+    // other reference (only `&str` is a value; `&T` to a foreign type would be a
+    // type-confused drop).  It carries the plain `Ref(self_i)` tag (no bit): the
+    // loader keys the retain on `ret_index == self_type`, guarded at runtime.
+    if is_self_borrow_ret(ty, self_i, has_self, types) {
+        return Ok((Tag::Ref(self_i), None, false, true));
+    }
     if let Some((ok_ty, _)) = extract_result(ty) {
         let ok_tag = ret_tag(ok_ty, types, self_i)?;
         if error_idx.is_none() {
@@ -435,10 +481,21 @@ fn analyze_ret(
                 "function returns Result but the bridge module has no #[jac_error] type; \
                  add a #[jac_error] struct so callers can retrieve the error message"));
         }
-        return Ok((ok_tag, error_idx, true));
+        return Ok((ok_tag, error_idx, true, false));
     }
     let tag = ret_tag(ty, types, self_i)?;
-    Ok((tag, None, false))
+    Ok((tag, None, false, false))
+}
+
+/// True when `ty` is `&Self` or `&OwnType` on a `&self` method — a self-identity
+/// return.  The borrowed reference has the receiver's lifetime, so it IS the
+/// receiver's own handle box; the shim writes the receiver handle straight back.
+fn is_self_borrow_ret(ty: &Type, self_i: usize, has_self: bool, types: &[TypeDef]) -> bool {
+    if !has_self { return false; }
+    let Type::Reference(tr) = ty else { return false; };
+    let Type::Path(tp) = &*tr.elem else { return false; };
+    if tp.path.is_ident("Self") { return true; }
+    tp.path.segments.len() == 1 && tp.path.segments[0].ident == types[self_i].name
 }
 
 fn extract_result(ty: &Type) -> Option<(&Type, &Type)> {
@@ -1281,8 +1338,21 @@ fn gen_fn_shim(f: &FnDef, types: &[TypeDef], mod_ident: &Ident, rt: &Ident, _has
         raw_call
     };
 
-    // Closure body — always yields Result<X, String>
-    let closure_body: TS2 = if f.ret_is_result {
+    // Closure body — always yields Result<X, String>.  A self-identity return is
+    // special: the method hands back a `&Self` borrow of the receiver, which is
+    // NOT a value we box — it IS the receiver's existing handle.  So we call the
+    // method (honouring any side effects), discard the borrow, and yield the
+    // receiver's own `handle` integer.  The na loader adopts it and its runtime
+    // `rh == self.__handle` guard fires, retaining the shared box (rc+1) so the
+    // two wrappers over one box each close exactly once.
+    let closure_body: TS2 = if f.ret_is_self_borrow {
+        quote! {
+            #self_stmt
+            #(#decode)*
+            let _ = #call_expr;
+            ::std::result::Result::<u64, String>::Ok(handle)
+        }
+    } else if f.ret_is_result {
         quote! {
             #self_stmt
             #(#decode)*
@@ -1296,8 +1366,18 @@ fn gen_fn_shim(f: &FnDef, types: &[TypeDef], mod_ident: &Ident, rt: &Ident, _has
         }
     };
 
-    // Out-param tokens
-    let (extra_out, ok_write, zero_out) = out_param_tokens(&f.ret, rt);
+    // Out-param tokens.  A self-identity return crosses as the receiver's own
+    // handle integer (`val` is already that `u64`) — written straight through, no
+    // fresh `Box::into_raw`, so both wrappers share one box.
+    let (extra_out, ok_write, zero_out) = if f.ret_is_self_borrow {
+        (
+            quote! { out_handle: *mut u64, },
+            quote! { *out_handle = val; },
+            quote! { *out_handle = 0; },
+        )
+    } else {
+        out_param_tokens(&f.ret, rt)
+    };
     let panic_msg = format!("panic in {sym_str}");
 
     quote! {

@@ -401,15 +401,17 @@ fn ownership_borrowed_stamps_jac_attribute() {
 }
 
 #[test]
-fn ownership_shared_stamps_jac_attribute() {
+fn ownership_shared_is_rejected() {
+    // `shared` is retired (Phase 1.2.4): an unconditional retain-on-adopt leaks a
+    // fresh handle box, so the overlay refuses the class rather than stamp a
+    // leak-by-construction attribute. A co-owned handle is a `&Self` return, which
+    // the loader RC-pins behind a runtime `rh == self` guard.
     let mut spec = classify(&load_regex_doc());
     let overlay = parse_overlay("[fn.\"Regex::find\"]\nownership = \"shared\"\n").unwrap();
-    apply_overlay(&mut spec, &overlay).unwrap();
-
-    let src = emit(&spec);
+    let err = apply_overlay(&mut spec, &overlay).unwrap_err();
     assert!(
-        method_prelude(&src, "find").contains("#[jac(shared)]"),
-        "shared attr missing on `find`\n{src}"
+        err.contains("retired") && err.contains("&Self"),
+        "shared overlay must be rejected with a &Self pointer, got:\n{err}"
     );
 }
 
@@ -447,7 +449,7 @@ fn ownership_unknown_class_is_rejected() {
 fn ownership_with_skip_is_rejected() {
     let mut spec = classify(&load_regex_doc());
     let overlay =
-        parse_overlay("[fn.\"Regex::find\"]\nownership = \"shared\"\nskip = true\n").unwrap();
+        parse_overlay("[fn.\"Regex::find\"]\nownership = \"borrowed\"\nskip = true\n").unwrap();
     let err = apply_overlay(&mut spec, &overlay).unwrap_err();
     assert!(err.contains("exclusive"), "err should explain exclusivity: {err}");
 }
