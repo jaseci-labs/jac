@@ -6,7 +6,7 @@ import from pathlib { Path }
 
 glob FORMAT_CACHE_SCHEMA_VERSION: str = "v1",
      _ENTRY_MARKER: bytes = b"JFMTCLEAN\n",
-     _FORMATTER_PIPELINE_MODULES: tuple = (
+     _FORMATTER_PIPELINE_MODULES: tuple[str, ...] = (
          "jaclang.compiler.passes.tool.jac_formatter_pass",
          "jaclang.compiler.passes.tool.jac_auto_lint_pass",
          "jaclang.compiler.passes.tool.doc_ir_gen_pass",
@@ -60,9 +60,9 @@ def config_fingerprint(config: any, lintfix: bool) -> str {
     if lintfix {
         parts.append("check=" + _stable_dump(config?.check));
     }
-    plugins = config?.plugin_dependencies or {};
-    if plugins {
-        items = sorted([f"{kv[0]}={kv[1]}" for kv in plugins.items()]);
+    raw_plugins = config?.plugin_dependencies;
+    if isinstance(raw_plugins, dict) and raw_plugins {
+        items = sorted([f"{kv[0]}={kv[1]}" for kv in raw_plugins.items()]);
         parts.append("plugins=" + "|".join(items));
     }
     return hashlib.sha256("\n".join(parts).encode()).hexdigest();
