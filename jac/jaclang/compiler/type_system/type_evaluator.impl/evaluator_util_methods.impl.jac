@@ -1361,6 +1361,12 @@ impl TypeEvaluator._is_fstring_all_literal(fstring: uni.FString) -> bool {
 impl TypeEvaluator._create_special_builtin_type(
     name: str, base_class: types.ClassType
 ) -> types.ClassType {
+    if base_class.shared._derived_special_types is not None {
+        cached = base_class.shared._derived_special_types.get(name);
+        if cached is not None {
+            return cached;
+        }
+    }
     shared = types.ClassType.ClassDetailsShared(
         class_name=name,
         symbol_table=base_class.shared.symbol_table,
@@ -1371,6 +1377,10 @@ impl TypeEvaluator._create_special_builtin_type(
     special_type = types.ClassType(_shared=shared, flags=base_class.flags);
 
     special_type.shared.mro = [special_type] + base_class.shared.mro;
+    if base_class.shared._derived_special_types is None {
+        base_class.shared._derived_special_types = {};
+    }
+    base_class.shared._derived_special_types[name] = special_type;
     return special_type;
 }
 

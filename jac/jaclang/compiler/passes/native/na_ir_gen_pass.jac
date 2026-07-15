@@ -184,6 +184,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         _native_builtin_emitter: (object | None) = None,
         _primitive_method_name_cache: (dict[str, set[str]] | None) = None,
         _rc_debug_codegen: bool = False,
+        rc_helpers_emitted: bool = False,
         rc_alloc_fn: (ir.Function | None) = None,
         rc_retain_fn: (ir.Function | None) = None,
         rc_release_simple_fn: (ir.Function | None) = None,
