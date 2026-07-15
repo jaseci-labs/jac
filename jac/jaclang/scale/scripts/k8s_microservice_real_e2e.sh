@@ -330,6 +330,46 @@ for prefix in ${ROUTES}; do
 done
 
 _t "routing OK"
+echo "=== verify HPA OOM guardrails (cpu+memory metrics, behavior rate limits) ==="
+# The heredoc feeds python's stdin, so the HPA JSON must travel via a file.
+HPA_JSON="$(mktemp)"
+kubectl get hpa -n "${NAMESPACE}" -l managed=jac-scale -o json > "${HPA_JSON}"
+python3 - "${HPA_JSON}" <<'PYEOF'
+import json
+import sys
+
+with open(sys.argv[1]) as f:
+    items = json.load(f).get("items", [])
+if not items:
+    sys.exit("FAIL: no managed HPAs found in namespace")
+for hpa in items:
+    name = hpa["metadata"]["name"]
+    spec = hpa["spec"]
+    metric_names = sorted(
+        m["resource"]["name"]
+        for m in spec.get("metrics", [])
+        if m.get("type") == "Resource"
+    )
+    if metric_names != ["cpu", "memory"]:
+        sys.exit(f"FAIL: {name} metrics={metric_names}, expected cpu+memory")
+    behavior = spec.get("behavior") or {}
+    up = behavior.get("scaleUp") or {}
+    down = behavior.get("scaleDown") or {}
+    if not up.get("policies") or up.get("stabilizationWindowSeconds") is None:
+        sys.exit(f"FAIL: {name} missing scaleUp guardrails: {behavior}")
+    if not down.get("policies") or not down.get("stabilizationWindowSeconds"):
+        sys.exit(f"FAIL: {name} missing scaleDown guardrails: {behavior}")
+    print(
+        f"  {name}: metrics={metric_names}, "
+        f"scaleUp<={up['policies'][0]['value']} pods/{up['policies'][0]['periodSeconds']}s "
+        f"(stab {up['stabilizationWindowSeconds']}s), "
+        f"scaleDown stab {down['stabilizationWindowSeconds']}s"
+    )
+print(f"  {len(items)} HPA(s) verified")
+PYEOF
+rm -f "${HPA_JSON}"
+
+_t "HPA guardrails OK"
 echo "=== M-14.a: verify observability stack (logs.enabled) ==="
 # When [scale.microservices.logs].enabled = true (the fixture
 # default) the microservice target also calls MonitoringDeployer, which
