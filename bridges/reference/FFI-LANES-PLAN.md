@@ -1019,11 +1019,24 @@ these first; the adversarial suite already contains skip-gated tests waiting on 
       `tests::overlay_regex::type_wide_*` (force/deny + exclusivity, +4). Serde
       fixture provenance in `tests/fixtures/serde/README.md`; the `gen-fixtures.sh`
       feature column is 2.4.
-- [ ] 2.4 Feature plumbing: per-crate feature column in `gen-fixtures.sh`
-      (`chrono@0.4.45:serde`, `uuid@1.23.4:serde` -- NOT --all-features);
-      regenerate those two fixtures; `[crate] features = [...]` in the overlay
-      format; thread features through `_build_core.jac` (rustdoc + cargo build)
-      and into the registry artifact manifest (features = artifact identity).
+- [x] 2.4 Feature plumbing. STATUS: DONE (2.4a/b/c). (a) `gen-fixtures.sh`
+      `crate@version:features` column (NOT --all-features) routes featured
+      fixtures to a feature-named subdir (`serde/`) the corpus glob skips; CRATES
+      synced to on-disk versions; uuid serde fixture regenerated through the new
+      path. (b) `[crate] features = [...]` overlay table (`CrateOverlay`,
+      deny_unknown_fields, `Overlay::features()`); binder records but does not act
+      on it. (c) `BridgeSpec.crate_features` (from overlay) → `emit_cargo_toml`
+      pins the source-crate dep WITH features (bare `= "=x"` stays byte-identical
+      when empty); binder `--features a,b` CLI flag is the channel for
+      build-on-miss (rustdoc JSON has no overlay beside it); `run_build_pipeline`
+      /`build_bridge` take a features list, enabled via `cargo add --features`
+      (activates the optional dep so `cargo rustdoc -p crate` documents its impls;
+      NOT re-passed to rustdoc -- `-p crate` resolves `--features` against the
+      root package) and handed to the binder; `RegistryArtifact.features` records
+      features as part of artifact identity. Tests: overlay parse/default/
+      unknown-key/spec-unchanged (+4), emit_cargo_toml bare-vs-inline (+2).
+      Follow-up: feature-aware LOCAL cache path + find needs import-site feature
+      intent -- deferred (out of 2.4 scope).
 - [ ] 2.5 na msgpack codec: shared runtime `.na.jac` module (decoder ~150 lines:
       lead-byte dispatch + fixed-literal `struct.unpack(">…")` reads → dict/list/
       str/int/float/bool/None; encoder for the same subset; bounded recursion
