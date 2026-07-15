@@ -4,6 +4,7 @@ import from jaclang.compiler.rust_bridge._blob {
     TAG_FN,
     TAG_INT,
     TAG_UINT,
+    TAG_F64,
     TAG_STR,
     TAG_VOID,
     tag_base,
@@ -29,6 +30,7 @@ enum SlotKind {
     Bool,
     Int,
     Uint,
+    F64,
     Void,
     OpaqueRef,
     Callback,
@@ -63,6 +65,9 @@ def classify_scalar(tag: int) -> Slot {
     }
     if base == TAG_UINT {
         return Slot(kind=SlotKind.Uint, is_opt=opt);
+    }
+    if base == TAG_F64 {
+        return Slot(kind=SlotKind.F64, is_opt=opt);
     }
     return Slot(kind=SlotKind.Unbridgeable, is_opt=opt);
 }
@@ -108,6 +113,9 @@ def classify(tag: int) -> Slot {
     }
     if base == TAG_UINT {
         return Slot(kind=SlotKind.Uint, is_opt=opt);
+    }
+    if base == TAG_F64 {
+        return Slot(kind=SlotKind.F64, is_opt=opt);
     }
     if base == TAG_FN {
         return Slot(kind=SlotKind.Callback, is_opt=opt);

@@ -235,6 +235,7 @@ def _wire(lib: CDLL, fd: FnDesc) -> object {
             args.append(c_uint8);
         } elif s.kind == SlotKind.Int
         or s.kind == SlotKind.Uint
+        or s.kind == SlotKind.F64
         or s.kind == SlotKind.OpaqueRef
         or s.kind == SlotKind.Callback {
             args.append(c_uint64);
@@ -366,6 +367,9 @@ def _call(
             c_args.append(c_uint8(int(bool(v))));
         } elif s.kind == SlotKind.Int or s.kind == SlotKind.Uint {
             c_args.append(c_uint64(int(v) & 0xFFFFFFFFFFFFFFFF));
+        } elif s.kind == SlotKind.F64 {
+            (bits, ) = struct.unpack("<Q", struct.pack("<d", float(v)));
+            c_args.append(c_uint64(bits));
         } elif s.kind == SlotKind.Callback {
             cb = _make_trampoline(v, rt);
             rec = _JacCallback(cast(cb, c_void_p), None);
@@ -445,6 +449,10 @@ def _call(
     }
     if ret.kind == SlotKind.Uint {
         return out_h.value;
+    }
+    if ret.kind == SlotKind.F64 {
+        (d, ) = struct.unpack("<d", struct.pack("<Q", out_h.value));
+        return d;
     }
 
     h = out_h.value;

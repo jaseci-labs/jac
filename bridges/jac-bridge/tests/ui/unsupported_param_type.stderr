@@ -1,5 +1,5 @@
-error: unsupported bridge type: `f64`
+error: unsupported bridge type: `char`
  --> tests/ui/unsupported_param_type.rs:9:30
   |
-9 |         pub fn bad(&self, x: f64) -> bool {
-  |                              ^^^
+9 |         pub fn bad(&self, x: char) -> bool {
+  |                              ^^^^

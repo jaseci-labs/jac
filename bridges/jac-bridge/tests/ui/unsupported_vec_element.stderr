@@ -1,4 +1,4 @@
-error: unsupported return type: `f64`
+error: unsupported Vec element type: only bool, integer, and String elements are bridgeable
   --> tests/ui/unsupported_vec_element.rs:10:34
    |
 10 |         pub fn bad(&self) -> Vec<f64> {

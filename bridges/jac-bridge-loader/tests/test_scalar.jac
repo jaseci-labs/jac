@@ -84,6 +84,34 @@ test "echo_u64 round-trips full range" {
     }
 }
 
+# -- float param + float return (TAG_F64) --------------------------------------
+test "add_f64 crosses a double each way bit-for-bit" {
+    with _Calc(10) as c {
+        assert c.add_f64(0.5) == 10.5;
+        assert c.add_f64(-2.25) == 7.75;
+        # A value with a long binary expansion — only survives under bit
+        # reinterpretation; a numeric truncation would corrupt it.
+        import math;
+        assert c.add_f64(math.pi) == 10.0 + math.pi;
+    }
+}
+
+test "echo_f32 widens to the slot and returns exactly" {
+    with _Calc(0) as c {
+        assert c.echo_f32(0.0) == 0.0;
+        # 0.5 is exactly representable in both f32 and f64.
+        assert c.echo_f32(0.5) == 0.5;
+        assert c.echo_f32(-1.25) == -1.25;
+    }
+}
+
+test "pi round-trips under bit reinterpretation" {
+    with _Calc(0) as c {
+        import math;
+        assert c.pi() == math.pi;
+    }
+}
+
 # -- fallible integer return ---------------------------------------------------
 test "checked_div returns the quotient" {
     with _Calc(20) as c {

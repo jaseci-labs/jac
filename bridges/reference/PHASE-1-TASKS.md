@@ -22,26 +22,46 @@ for the Phase S plumbing that 1.2.4 rides on.
 
 ## Track A -- Trait flattening (sha2 is the driver)  [critical path: 1.1.1 → 1.1.2 → 1.1.5]
 
-- [ ] **1.1.1** `trait_disposition` in `classify.rs` (~120 lines, replaces the wholesale
-      `if impl_block.trait_.is_some() { continue }` at `classify.rs:478`).
-      NOISE set + local vs external/blanket classification + **denominator policy**.
-      ⚠ External/blanket provided-defaults are unresolvable (names only) -- they must leave
-      **both** numerator and denominator, or Iterator's ~80 defaults corrupt the coverage %.
-      *Blocks 1.1.3–1.1.6.*
-- [ ] **1.1.2** self-alias substitution: thread `self_aliases: &[&str]` through the 4 rescue rules.
-      ⚠ blanket-generic mis-substitution (sha2 `D` / `OutputSize<D>`) -- needs a hash-equivalence test.
-      *Blocks 1.2.2 acceptance.*
-- [ ] **1.1.3** per-type `seen_names` first-wins dedup (18 cross-trait collisions in sha2 alone).
-- [ ] **1.1.4** add `via_trait: Option<String>` to `BridgeFn` (`types.rs`). *Blocks 1.1.5.*
-- [ ] **1.1.5** codegen: emit `use <trait_path>;` + **add trait-crate dep to generated Cargo.toml**
-      (`digest`, not just `sha2`, derived from the `via_trait` path root) + consuming-`self`
-      clone-out gated on Clone-impl detection. Caught by the `-D warnings` roundtrip. *Exit-gate work.*
-- [ ] **1.1.6** re-ratchet `coverage-baseline.toml` (two-sided ratchet) + determinism check.
+- [x] **1.1.1** DONE (commit d41f30b5d). `is_noise_trait` + D1 three-way disposition
+      replaced the wholesale `continue`; `NOISE_TRAITS` central list; semantic-trait
+      methods flattened as inherent (two-pass: inherent before trait); unresolvable
+      provided-defaults counted in `BridgeSpec::inherited_excluded` and EXCLUDED from
+      `total()`/`pct()` (surfaced in `report()`). chrono 33→57, sha2 0→6, regex 31
+      (byte-identical).
+- [ ] **1.1.2** self-alias substitution -- STILL OPEN. `-> Self` trait methods render as
+      `Type::Generic("Self")` and currently skip; substituting `Self`→concrete type
+      rescues `with_year`/… and the sha2 blanket (`D`/`OutputSize<D>`). Needs a
+      hash-equivalence test. *Blocks 1.2.2 acceptance.*
+- [x] **1.1.3** DONE (d41f30b5d). Per-type `seen_names` first-wins dedup; a collision is
+      a visible "duplicate method name" skip, never a duplicate `pub fn`.
+- [x] **1.1.4** DONE (d41f30b5d). `via_trait: Option<String>` on `BridgeFn`.
+- [x] **1.1.5** DONE (d41f30b5d) with a BETTER dep story than planned: emit
+      `use <module>::<Trait>;` through the bridged crate's OWN re-export
+      (`sha2::Digest`), which binds the exact trait version the crate uses -- so NO
+      extra Cargo dep and no `"*"` version skew (a `digest = "*"` can resolve a
+      different major than `sha2` impls). Consuming-`self` clone-out is NOT done: such
+      methods (and `&mut self`, and associated non-ctor fns) are VISIBLE SKIPS for now
+      (guards added), since their byte returns need 1.2.2 anyway.
+- [ ] **1.1.6** re-ratchet -- DEFERRED until numbers are compile-honest. Floors left
+      unchanged (gate green; bridged only rose). Blockers found by compiling the
+      generated crates for real: the **sha2-0.11.0 fixture is STALE** vs crates.io
+      (`Digest::output_size` renders `&self` but the real fn is associated/0-arg → the
+      6 sha2 "bridged" don't compile); chrono full-compile hits the pre-existing
+      `>1 #[jac_error]` macro limit + a non-public `Parsed` type. Regen fixtures +
+      clear those before ratcheting. chrono's flattened Datelike/Timelike accessors
+      DID compile against real chrono (approach validated).
 
 ## Track B -- Small lanes (∥ with Track A)
 
-- [ ] **1.2.1** `TAG_F64` full vertical: schema → macro → `_blob.jac` → `_marshal.jac` → na →
-      ctypes → drift test. (native na, straightforward -- warm-up vertical.)
+- [x] **1.2.1** `TAG_F64` full vertical DONE. schema (`TAG_F64 = 6`) + macro (`Tag::F64`,
+      `float_tag_for`, bit-reinterpret via `to_bits`/`from_bits`, `f32` widened first --
+      NEVER a numeric `as u64`) + `_blob.jac` + `_marshal.jac` (`SlotKind.F64`) + ctypes
+      loader (full param+return) + `_synth.jac` na + drift test + scalar fixture/
+      conformance. CPython byte-identical; na↔CPython RETURN conformance MATCH.
+      ⚠ **na float-PARAM miscompile** (proven: na LLVM corrupts an `f: float` param at
+      the wrapper boundary, before any marshaling): na SKIPS f64-param methods with a
+      reason (M6.2 skip-on-gap discipline); CPython bridges them fully. Flip on when na
+      fixes float-arg passing. na float returns are fine.
 - [ ] **1.2.2** `TAG_BYTES` `(ptr, len)` full vertical. ⚠ **NEVER strlen** -- msgpack/binary
       carries NULs (see memory `NA len strlen binary guard`). This is the sha2 acceptance carrier
       **and** the Phase-2 wide-lane carrier -- get it right once. *sha2 gate.*

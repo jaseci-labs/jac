@@ -26,6 +26,13 @@ pub const TAG_STR: u32 = 4;
 /// `fn(*const u8, u32, *mut JacBuf, *mut u64) -> i32` (match text in, replacement
 /// out-slot, error out).  Param-only — never a return tag.  Additive to ABI v1.
 pub const TAG_FN: u32 = 5;
+/// A 64-bit IEEE-754 float scalar (`f32`, `f64`).  Crosses the boundary as a
+/// single 64-bit slot carrying the value's **bit pattern** (`f64::to_bits`), not
+/// a numeric cast — a numeric `as u64` would truncate the double to an integer.
+/// An `f32` is value-preservingly widened to `f64` first, so a narrow float
+/// round-trips through the wider slot exactly.  The loader reconstructs the
+/// double with `f64::from_bits`.  Param and return.  Additive to ABI v1.
+pub const TAG_F64: u32 = 6;
 /// Sentinel meaning "no type" (absent self_type / throws / void return).
 pub const TAG_VOID: u32 = 0xFFFF_FFFF;
 /// OR'd with a type index to produce a type-reference tag.

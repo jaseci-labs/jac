@@ -16,7 +16,7 @@ enum TypeKind { Opaque, Error }
 struct TypeDef { name: Ident, kind: TypeKind }
 
 #[derive(Clone, PartialEq, Eq)]
-enum Tag { Bool, Int, Uint, Str, Void, Ref(usize), Opt(Box<Tag>), Callback, Map(Box<Tag>), List(Box<Tag>) }
+enum Tag { Bool, Int, Uint, F64, Str, Void, Ref(usize), Opt(Box<Tag>), Callback, Map(Box<Tag>), List(Box<Tag>) }
 
 impl Tag {
     fn as_u32(&self) -> u32 {
@@ -24,6 +24,7 @@ impl Tag {
             Tag::Bool     => schema::TAG_BOOL,
             Tag::Int      => schema::TAG_INT,
             Tag::Uint     => schema::TAG_UINT,
+            Tag::F64      => schema::TAG_F64,
             Tag::Str      => schema::TAG_STR,
             Tag::Void     => schema::TAG_VOID,
             Tag::Ref(i)   => schema::TAG_REF_BIT | (*i as u32),
@@ -46,6 +47,16 @@ fn int_tag_for(name: &str) -> Option<Tag> {
     }
 }
 
+/// Map a Rust float type name to its boundary tag, if it is one.  Both widths
+/// cross as a single 64-bit slot carrying the `f64` bit pattern (an `f32` is
+/// widened to `f64` first), so only [`TAG_F64`](schema::TAG_F64) is needed.
+fn float_tag_for(name: &str) -> Option<Tag> {
+    match name {
+        "f32" | "f64" => Some(Tag::F64),
+        _ => None,
+    }
+}
+
 struct Param {
     name:       String,
     tag:        Tag,
@@ -53,6 +64,9 @@ struct Param {
     /// For an integer param, the concrete Rust type (`u32`, `i64`, …) the u64
     /// boundary slot must be cast back to before the call.  `None` otherwise.
     int_ty:     Option<String>,
+    /// For a float param, the concrete Rust type (`f32`, `f64`) the reconstructed
+    /// `f64` must be narrowed to before the call.  `None` otherwise.
+    float_ty:   Option<String>,
 }
 
 /// Ownership class of an opaque-handle return (Phase S, Track B).  Rides the
@@ -402,7 +416,11 @@ fn analyze_param(arg: &FnArg, types: &[TypeDef]) -> Result<Param, Error> {
         Tag::Int | Tag::Uint => simple_ident(&pt.ty),
         _ => None,
     };
-    Ok(Param { name, tag, is_str_ref, int_ty })
+    let float_ty = match &tag {
+        Tag::F64 => simple_ident(&pt.ty),
+        _ => None,
+    };
+    Ok(Param { name, tag, is_str_ref, int_ty, float_ty })
 }
 
 /// The trailing path identifier of a plain (possibly `&`-referenced) type, e.g.
@@ -439,6 +457,8 @@ fn ty_to_tag(ty: &Type, types: &[TypeDef]) -> Result<(Tag, bool), Error> {
                 "JacCallback" => Ok((Tag::Callback, false)),
                 _ => {
                     if let Some(tag) = int_tag_for(&id_str) {
+                        Ok((tag, false))
+                    } else if let Some(tag) = float_tag_for(&id_str) {
                         Ok((tag, false))
                     } else if let Some(i) = types.iter().position(|t| &t.name == id) {
                         Ok((Tag::Ref(i), false))
@@ -609,6 +629,8 @@ fn ret_tag(ty: &Type, types: &[TypeDef], self_i: usize) -> Result<Tag, Error> {
                 "Self"   => Ok(Tag::Ref(self_i)),
                 _ => {
                     if let Some(tag) = int_tag_for(&id_str) {
+                        Ok(tag)
+                    } else if let Some(tag) = float_tag_for(&id_str) {
                         Ok(tag)
                     } else {
                         types.iter().position(|t| &t.name == id)
@@ -1264,6 +1286,18 @@ fn gen_fn_shim(f: &FnDef, types: &[TypeDef], mod_ident: &Ident, rt: &Ident, _has
                     c_params.push(quote! { #pn: u64 });
                     decode.push(quote! { let #pn = #pn as #ity; });
                 }
+                Tag::F64 => {
+                    // Crosses as a u64 slot carrying the f64 bit pattern (never a
+                    // numeric cast — that would truncate). Reconstruct the double
+                    // with from_bits, then narrow to the concrete float type the
+                    // call expects (`as f32` is a value-preserving narrowing; for
+                    // f64 it is the identity).
+                    let fty = format_ident!(
+                        "{}", p.float_ty.as_deref().unwrap_or("f64")
+                    );
+                    c_params.push(quote! { #pn: u64 });
+                    decode.push(quote! { let #pn = f64::from_bits(#pn) as #fty; });
+                }
                 Tag::Callback => {
                     // A C function pointer crosses as a u64; wrap it so the
                     // bridge fn calls it with a `&str` and gets a `String` back.
@@ -1436,6 +1470,16 @@ fn out_param_tokens(ret: &Tag, rt: &Ident) -> (TS2, TS2, TS2) {
             quote! { out_int: *mut u64, },
             quote! { *out_int = val as u64; },
             quote! { *out_int = 0; },
+        ),
+        // A float crosses through a single u64 out-slot as its IEEE-754 bit
+        // pattern. `val as f64` value-preservingly widens an f32 (and is the
+        // identity for f64); `.to_bits()` reinterprets — NEVER `val as u64`,
+        // which would truncate the double to an integer. The loader reads the
+        // slot back with `from_bits`.
+        Tag::F64 => (
+            quote! { out_f64: *mut u64, },
+            quote! { *out_f64 = (val as f64).to_bits(); },
+            quote! { *out_f64 = 0; },
         ),
         Tag::Str => (
             quote! { out_buf: *mut #rt::JacBuf, },

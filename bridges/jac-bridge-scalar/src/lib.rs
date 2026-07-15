@@ -66,6 +66,32 @@ mod bridge_impl {
             u64::MAX
         }
 
+        /// Float param + float return (`f64`): adds a double to the seed and
+        /// returns the sum, proving an `f64` crosses each way as its exact bit
+        /// pattern (not a numeric truncation).
+        pub fn add_f64(&self, x: f64) -> f64 {
+            self.0 as f64 + x
+        }
+
+        /// Narrow float round-trip (`f32`): echoes the value, proving an `f32`
+        /// widens to the `f64` slot and comes back bit-for-bit.
+        pub fn echo_f32(&self, x: f32) -> f32 {
+            x
+        }
+
+        /// A float constant that only round-trips exactly under bit
+        /// reinterpretation — a numeric `as u64` cast would corrupt it.
+        pub fn pi(&self) -> f64 {
+            std::f64::consts::PI
+        }
+
+        /// Float return from an integer param (`i64` in, `f64` out): the seed
+        /// scaled by `n`, divided by 4 so the result is fractional. Proves the
+        /// f64 return path independent of the f64 param path (which na skips).
+        pub fn scaled(&self, n: i64) -> f64 {
+            (self.0 * n) as f64 / 4.0
+        }
+
         /// Fallible integer return: `Err` on divide-by-zero, else the quotient.
         /// (Param is `divisor`, not `by`: `by` is a Jac keyword, and the na
         /// loader emits the Rust param name verbatim as a Jac identifier.)

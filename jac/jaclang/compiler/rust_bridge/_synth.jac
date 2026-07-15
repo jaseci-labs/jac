@@ -10,6 +10,7 @@ import from jaclang.compiler.rust_bridge._blob {
     TAG_FN,
     TAG_INT,
     TAG_UINT,
+    TAG_F64,
     TAG_STR,
     TAG_VOID,
     tag_base,
@@ -336,6 +337,7 @@ class _Synth {
             } elif ps == SlotKind.Bool
             or ps == SlotKind.Int
             or ps == SlotKind.Uint
+            or ps == SlotKind.F64
             or ps == SlotKind.OpaqueRef
             or ps == SlotKind.Callback {
                 params.append(f"{pn}: int");
@@ -354,6 +356,8 @@ class _Synth {
             params.append("out_buf: bytes");
         } elif rs.kind == SlotKind.Int or rs.kind == SlotKind.Uint {
             params.append("out_int: bytes");
+        } elif rs.kind == SlotKind.F64 {
+            params.append("out_f64: bytes");
         } elif rs.kind != SlotKind.Void {
             return None;
         }
@@ -506,6 +510,9 @@ class _Synth {
         and not rs.is_opt {
             body_lines.append('        out_int = struct.pack("<Q", 0);');
             call.append("out_int");
+        } elif rs.kind == SlotKind.F64 and not rs.is_opt {
+            body_lines.append('        out_f64 = struct.pack("<Q", 0);');
+            call.append("out_f64");
         } elif rs.is_opt {
             return None;
         } elif rs.kind != SlotKind.Void {
@@ -573,6 +580,11 @@ class _Synth {
             body_lines.append("        return iv;");
         } elif rs.kind == SlotKind.Uint {
             body_lines.append('        return struct.unpack("<Q", out_int)[0];');
+        } elif rs.kind == SlotKind.F64 {
+            body_lines.append('        fb = struct.unpack("<Q", out_f64)[0];');
+            body_lines.append(
+                '        return struct.unpack("<d", struct.pack("<Q", fb))[0];'
+            );
         }
         return body_lines;
     }
@@ -588,6 +600,8 @@ class _Synth {
                 call.append(f"({pn} and 1 or 0)");
             } elif pk == SlotKind.Int or pk == SlotKind.Uint {
                 call.append(pn);
+            } elif pk == SlotKind.F64 {
+                return None;
             } elif pk == SlotKind.OpaqueRef {
                 call.append(f"{pn}.__handle");
             } elif pk == SlotKind.Callback {
@@ -895,6 +909,9 @@ class _Synth {
         if p.tag == TAG_BOOL {
             return f"{pn}: bool";
         }
+        if tag_base(p.tag) == TAG_F64 {
+            return f"{pn}: float";
+        }
         if tag_is_ref(p.tag) {
             return f"{pn}: {self.opaque.get(tag_ref_index(p.tag), 'object')}";
         }
@@ -935,6 +952,9 @@ class _Synth {
         }
         if fd.ret == TAG_INT or fd.ret == TAG_UINT {
             return " -> int";
+        }
+        if fd.ret == TAG_F64 {
+            return " -> float";
         }
         if tag_base(fd.ret) == TAG_STR {
             return " -> str | None" if tag_is_opt(fd.ret) else " -> str";

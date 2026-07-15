@@ -1,5 +1,5 @@
-error: unsupported return type: `f64`
+error: unsupported return type: `char`
  --> tests/ui/unsupported_return_type.rs:9:30
   |
-9 |         pub fn bad(&self) -> f64 {
-  |                              ^^^
+9 |         pub fn bad(&self) -> char {
+  |                              ^^^^
