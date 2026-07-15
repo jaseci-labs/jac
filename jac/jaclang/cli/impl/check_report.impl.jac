@@ -1,6 +1,9 @@
 def print_guide_hint(alert: any) -> None {
     import from jaclang.cli.console { console }
     import from jaclang.cli.guide_store { guide_for_diagnostic }
+    if isinstance(alert, str) {
+        return;
+    }
     info = alert.code;
     if info is None {
         return;
@@ -32,7 +35,7 @@ impl print_failures(failed_results: list, nowarn: bool = False) -> None {
     for r in failed_results {
         console.print(separator(r['path'], char='_'));
         for e in r['errors'] {
-            console.error(e.pretty_print());
+            console.error(e if isinstance(e, str) else e.pretty_print());
             print_guide_hint(e);
         }
         if not nowarn and r['warnings'] {

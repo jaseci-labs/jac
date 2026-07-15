@@ -34,6 +34,23 @@ impl check(
     if isinstance(paths, str) {
         paths = [paths];
     }
+    # Warn once (per invocation) when type checking is requested but the
+    # vendored typeshed stdlib stubs are absent: inference and the
+    # ownership/type checks that depend on it are silently skipped in that
+    # case, so the user otherwise sees no hint that checks were dropped.
+    # See issue #7471.
+    if not parse_only {
+        import from jaclang.jac0core.compiler { typeshed_stubs_available }
+        if not typeshed_stubs_available() {
+            console.warning(
+                "type stubs unavailable -- the vendored typeshed stdlib is "
+                "missing (builtins.pyi not found), so inference and the "
+                "ownership/type checks that depend on it are skipped. Fetch "
+                "them by running `zig build` (or extract the tarball pinned "
+                "in jaclang/vendor/typeshed/PIN) and re-run."
+            );
+        }
+    }
     start_time = time();
     ignore_list = _normalize_ignore_patterns(ignore or []);
     (suppressed_codes, unknown_codes) = resolve_diagnostic_tokens(
@@ -144,7 +161,10 @@ impl check(
             );
         } except Exception as e {
             console.error(f"Error checking '{file_path}': {e}");
-            return (False, 1, 0, [], []);
+            # Surface the failure as a counted error so the summary reports
+            # "1 error" instead of the contradictory "0 errors, 0 warnings"
+            # for a file that nonetheless failed. See issue #7471.
+            return (False, 1, 0, [f"{file_path}: {e}"], []);
         } finally {
             prog.release_compile_closure();
         }

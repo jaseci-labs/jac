@@ -828,6 +828,34 @@ impl JacCompiler.compile(
                 _check_passes = [_CfgPass] + _check_passes;
             } except ImportError { }
         }
+        # Drop passes whose declared REQUIRES cannot be satisfied by the
+        # analyses that have (or will) run for this module, iterating to a
+        # fixed point so a dropped provider also drops its dependents. This
+        # restores graceful degradation when the vendored typeshed stdlib
+        # stubs are absent: type inference is skipped (see get_inference_sched
+        # / typeshed_stubs_available), so passes like OwnershipCheckPass that
+        # declare REQUIRES ('inference',) are omitted rather than triggering a
+        # fatal, misleading "scheduling error". See issue #7471.
+        _available = set(_mod_analyses);
+        _kept: list = [];
+        _progress = True;
+        while _progress {
+            _progress = False;
+            for _p in _check_passes {
+                if _p in _kept {
+                    continue;
+                }
+                _reqs = getattr(_p, 'REQUIRES', ()) or ();
+                if all(_r in _available for _r in _reqs) {
+                    _kept.append(_p);
+                    for _prov in (getattr(_p, 'PROVIDES', ()) or ()) {
+                        _available.add(_prov);
+                    }
+                    _progress = True;
+                }
+            }
+        }
+        _check_passes = _kept;
         self.run_schedule(
             mod=mod_targ,
             target_program=actual_program,
