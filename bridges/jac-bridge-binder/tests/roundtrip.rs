@@ -139,3 +139,76 @@ fn regex_bridge_compiles_clean() {
         assert!(syms.contains(want), "missing exported symbol {want}");
     }
 }
+
+/// sha2 closes the Track A loop (1.1.2 + 1.1.5): its hashers get their `new`
+/// constructor from a blanket `impl<D> Digest for D` whose signatures spell `Self`
+/// as the generic `D` (`Digest::new() -> D`). The self-alias substitution must turn
+/// that into a real `-> Self` ctor, and the flattened trait's `use` must resolve
+/// (`Digest`/`DynDigest` route through sha2's `pub use digest;` re-export). The only
+/// airtight proof of both is the generated crate compiling warning-clean against the
+/// real sha2 + digest crates and exporting the ctor shims.
+#[test]
+#[ignore = "compiles a full crate; run with --ignored (CI does)"]
+fn sha2_bridge_compiles_clean() {
+    let doc_path = fixture("sha2-0.11.0.json");
+    let doc: rustdoc_types::Crate =
+        serde_json::from_str(&std::fs::read_to_string(&doc_path).expect("read fixture"))
+            .expect("parse fixture");
+
+    let spec = jac_bridge_binder::classify(&doc);
+    let lib_src = jac_bridge_binder::emit(&spec);
+
+    // The blanket-generic `Digest::new() -> D` became a real `-> Self` ctor, brought
+    // into scope through sha2's re-export of the (external) digest crate.
+    assert!(
+        lib_src.contains("Self(sha2::Sha256::new())"),
+        "Sha256 constructor (self-alias `D` → Self) missing\n{lib_src}"
+    );
+    assert!(
+        lib_src.contains("use sha2::digest::Digest;"),
+        "flattened Digest must be `use`d via the module's digest re-export\n{lib_src}"
+    );
+
+    let jac_bridge = manifest_dir().join("../jac-bridge");
+    let cargo_src = jac_bridge_binder::emit_cargo_toml(&spec, &jac_bridge.to_string_lossy());
+
+    let out = manifest_dir().join("../target/binder-roundtrip/sha2");
+    let _ = std::fs::remove_dir_all(&out);
+    std::fs::create_dir_all(out.join("src")).expect("mkdir");
+    std::fs::write(out.join("src/lib.rs"), &lib_src).expect("write lib.rs");
+    let cargo_src = format!("{cargo_src}\n[workspace]\n");
+    std::fs::write(out.join("Cargo.toml"), &cargo_src).expect("write Cargo.toml");
+
+    let output = Command::new(env!("CARGO"))
+        .current_dir(&out)
+        .args(["build", "--release"])
+        // -D warnings: no separate `digest` dep is added (the trait resolves through
+        // sha2's own re-export), so an unsatisfied trait would surface as an error.
+        .env("RUSTFLAGS", "-D warnings")
+        .output()
+        .expect("run cargo build");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "generated sha2 bridge failed to compile:\n{stderr}\n\n--- lib.rs ---\n{lib_src}"
+    );
+
+    let so = out.join("target/release/libjac_bridge_sha2.so");
+    assert!(so.exists(), "cdylib not produced at {}", so.display());
+    let nm = Command::new("nm")
+        .args(["-D"])
+        .arg(&so)
+        .output()
+        .expect("nm");
+    let syms = String::from_utf8_lossy(&nm.stdout);
+    for want in [
+        "jac_sha2_Sha256_new",         // self-alias constructor
+        "jac_sha2_Sha256_output_size", // flattened DynDigest method
+        "jac_sha2_Sha256_drop",
+        "jac_sha2_Sha512_new",
+        "jac_bridge_init_sha2",
+    ] {
+        assert!(syms.contains(want), "missing exported symbol {want}");
+    }
+}

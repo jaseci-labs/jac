@@ -809,11 +809,33 @@ these first; the adversarial suite already contains skip-gated tests waiting on 
       from the in-index trait def; external/blanket traits → concrete/blanket
       items only, provided-defaults excluded from numerator AND denominator
       (document why: their signatures are unresolvable -- names only).
-- [ ] 1.1.2 Self-alias substitution: `self_aliases: &[&str]` (type name + blanket
+- [x] 1.1.2 Self-alias substitution: `self_aliases: &[&str]` (type name + blanket
       generic param, e.g. `D`) threaded through `classify_fn`,
-      `classify_param_type`, `classify_return`, `returns_self`, and the four
-      rescue rules. Test on sha2's `new() -> D` and
+      `classify_param_type`, `classify_return`, `classify_result_return`,
+      `returns_self`, and the four rescue rules. Test on sha2's `new() -> D` and
       `finalize(self) -> Array<u8, OutputSize<D>>` shapes.
+      DONE: the blanket `impl<D> Digest for D` materialized on each hasher has
+      `blanket_impl.generic == "D"` and returns `-> D` where `Self` is meant. The
+      per-impl alias set (type name + `blanket_impl` generic) is built in
+      `classify_impl` and threaded down. `Digest::new() -> D` now classifies as a
+      `-> Self` constructor on all 6 hashers; `finalize(self) -> Array<u8,
+      OutputSize<D>>` stays an honest `Array` skip (the `D` inside `OutputSize<D>`
+      is not mis-substituted, and the by-value `Self` RECEIVER - spelled literally
+      as `Self`, not `D` - is still caught by the consuming-`self` guard, so nothing
+      unsound is emitted). Guards: `src/tests/self_alias.rs` (3 unit tests).
+      RIDER (surfaced by making the sha2 crate worth compiling): `trait_use_path`
+      emitted `use sha2::DynDigest;`, but `DynDigest` is NOT re-exported at the
+      sha2 root (only `Digest` is), so the generated crate never actually compiled.
+      Fixed by routing EXTERNAL traits (defining crate ≠ bridged module) through the
+      module's re-export of that crate - `sha2::digest::DynDigest` /
+      `sha2::digest::Digest` (sha2 does `pub use digest;`); LOCAL traits (chrono's
+      `Datelike`) keep the root path. Still no extra Cargo dep, still exact-version
+      pinned. Proven by a new `#[ignore]`d `sha2_bridge_compiles_clean` roundtrip
+      test (compiles the generated crate under `-D warnings`, checks the ctor
+      shims) - CI already runs `-- --ignored`. sha2 corpus floor re-ratcheted 0→12
+      (6 `new` ctors + 6 `output_size`) with rationale. Remaining sha2 surface
+      (update/finalize/digest) still needs 1.2.2 bytes lane + a consuming-`self`
+      clone-out arm.
 - [ ] 1.1.3 Per-type `seen_names` dedup, inherent-first then traits in
       deterministic order; losers → `Skip("name collision with <winner>")`.
 - [ ] 1.1.4 `types.rs`: `via_trait: Option<String>` on `BridgeFn`.

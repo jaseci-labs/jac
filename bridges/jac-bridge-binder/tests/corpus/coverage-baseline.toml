@@ -110,8 +110,15 @@ dropped = 4
 bridged = 0
 total = 6
 
-# sha2's hashers are `CoreWrapper` type aliases behind the `Digest` trait, so
-# classify finds no plain structs. A real gap, honestly recorded as zero.
+# sha2's hashers ARE plain structs (`Sha256`, `Sha512`, …), and their public API
+# comes from a blanket `impl<D> Digest for D` plus `DynDigest`. Track A flattening
+# surfaces that surface: `DynDigest::output_size(&self)` on each of the 6 hashers,
+# and — with 1.1.2's blanket-generic self-alias substitution — `Digest::new() -> D`
+# recognised as a `-> Self` constructor on each. That is 6 ctors + 6 methods = 12
+# bridged (up from the earlier stale `0`; the crate has always exposed structs).
+# The remaining surface (update/finalize/digest) needs the bytes lane (1.2.2) and a
+# consuming-`self` clone-out arm, tracked separately. Total 186, no whole-type drops.
 [sha2]
-bridged = 0
-total = 0
+bridged = 12
+total = 186
+dropped = 0

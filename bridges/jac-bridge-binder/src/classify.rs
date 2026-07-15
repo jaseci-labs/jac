@@ -487,19 +487,35 @@ impl<'a> Ctx<'a> {
 
     // ── Phase 2: classify impl methods ────────────────────────────────────────
 
-    /// The trait's use-path for the generated `use`, spelled through the BRIDGED
-    /// MODULE's own re-export — `sha2::Digest`, `chrono::Datelike` — NOT the trait's
-    /// defining crate. A crate whose public types expose a trait's methods
-    /// re-exports that trait at its root by convention (`sha2` does
-    /// `pub use digest::{self, Digest}`; `chrono` re-exports `Datelike`), so this
-    /// path always resolves AND — critically — binds to the EXACT trait version the
-    /// bridged crate itself uses. Naming the defining crate directly (`digest`)
-    /// would need a separate dependency whose version we can't pin from rustdoc; a
-    /// `"*"` there can resolve to a DIFFERENT major than the one `sha2` impls,
-    /// leaving `self.0.output_size()` unsatisfied. Going through the module avoids
-    /// the extra dep and the skew entirely.
+    /// The trait's use-path for the generated `use`, always spelled through the
+    /// BRIDGED MODULE (never the trait's defining crate directly) so the `use`
+    /// binds the EXACT trait version the bridged crate uses — naming `digest`
+    /// directly would need a separate dependency whose version we can't pin from
+    /// rustdoc, and a `"*"` there can resolve to a different major than the one
+    /// `sha2` impls, leaving `self.0.output_size()` unsatisfied. Two module-relative
+    /// shapes, chosen by where the trait is DEFINED:
+    ///   * LOCAL trait (defined in the bridged crate): re-exported at the module
+    ///     root by convention — `chrono::Datelike`.
+    ///   * EXTERNAL trait (`sha2` exposes `digest`'s `Digest`/`DynDigest`): NOT
+    ///     guaranteed at the root — `DynDigest` lives at `sha2::digest::DynDigest`,
+    ///     not `sha2::DynDigest`. A facade crate re-exports the whole defining crate
+    ///     (`sha2` does `pub use digest;`), so route through that re-export:
+    ///     `sha2::digest::DynDigest`. `Digest` (root-re-exported) also resolves this
+    ///     way (`sha2::digest::Digest`), so external traits use one uniform shape.
     fn trait_use_path(&self, tr: &rustdoc_types::Path) -> String {
-        format!("{}::{}", self.module_name, self.trait_simple_name(tr))
+        let simple = self.trait_simple_name(tr);
+        // path[0] in the rustdoc summary is the DEFINING crate name.
+        if let Some(defining_crate) = self
+            .doc
+            .paths
+            .get(&tr.id)
+            .and_then(|s| s.path.first())
+        {
+            if defining_crate != &self.module_name {
+                return format!("{}::{}::{}", self.module_name, defining_crate, simple);
+            }
+        }
+        format!("{}::{}", self.module_name, simple)
     }
 
     /// The trait's simple (final-segment) name, for the NOISE policy match.
@@ -522,6 +538,9 @@ impl<'a> Ctx<'a> {
     }
 
     fn classify_impl(&mut self, bt: &mut BridgeType) {
+        // Owned copy of the type name so self-alias slices can reference it while
+        // `bt` is borrowed mutably by `classify_impl_method`.
+        let type_name = bt.name.clone();
         // Use the stored item ID directly — avoids re-resolving by name which
         // could pick the wrong variant when multiple modules re-export the same name.
         let impl_ids: Vec<Id> = self
@@ -562,11 +581,14 @@ impl<'a> Ctx<'a> {
             if impl_block.trait_.is_some() {
                 continue;
             }
+            // Inherent impls have only one self-alias: the type's own name.
+            let self_aliases: [&str; 1] = [type_name.as_str()];
             for method_id in impl_block.items.clone() {
                 self.classify_impl_method(
                     &method_id,
                     bt,
                     None,
+                    &self_aliases,
                     &mut ctor_candidates,
                     &mut seen_names,
                 );
@@ -595,11 +617,25 @@ impl<'a> Ctx<'a> {
                 continue;
             }
             let via = self.trait_use_path(tr);
+            // 1.1.2: a blanket `impl<D> Trait for D` rustdoc-materialized onto this
+            // type keeps its generic param (`D`) in method signatures where `Self`
+            // is meant. Add that param as a self-alias for this impl's methods so
+            // `Digest::new() -> D` reads as a `-> Self` constructor. `blanket_impl`
+            // holds the blanket type (`Type::Generic("D")`) when present.
+            let blanket_generic = impl_block.blanket_impl.as_ref().and_then(|t| match t {
+                Type::Generic(g) => Some(g.clone()),
+                _ => None,
+            });
+            let mut self_aliases: Vec<&str> = vec![type_name.as_str()];
+            if let Some(g) = &blanket_generic {
+                self_aliases.push(g.as_str());
+            }
             for method_id in impl_block.items.clone() {
                 self.classify_impl_method(
                     &method_id,
                     bt,
                     Some(&via),
+                    &self_aliases,
                     &mut ctor_candidates,
                     &mut seen_names,
                 );
@@ -638,12 +674,16 @@ impl<'a> Ctx<'a> {
     /// trait impl (Track A) — stamped on the emitted `BridgeFn` so codegen brings
     /// the trait into scope for the `self.0.<method>()` call. `seen_names` enforces
     /// first-wins dedup (1.1.3) across the whole type; a name already claimed
-    /// becomes a visible skip instead of a duplicate `pub fn`.
+    /// becomes a visible skip instead of a duplicate `pub fn`. `self_aliases` (1.1.2)
+    /// are the names that read as `Self` in this impl's signatures — the type name
+    /// plus, for a flattened blanket `impl<D> Trait for D`, the blanket param `D`.
+    #[allow(clippy::too_many_arguments)]
     fn classify_impl_method(
         &mut self,
         method_id: &Id,
         bt: &mut BridgeType,
         via_trait: Option<&str>,
+        self_aliases: &[&str],
         ctor_candidates: &mut Vec<(String, BridgeFn)>,
         seen_names: &mut std::collections::HashSet<String>,
     ) {
@@ -666,11 +706,11 @@ impl<'a> Ctx<'a> {
         // forces the method off the bridge (`skip`) or pins it to exactly one rule,
         // bypassing the usual or-else ordering.
         if let Some(kind) = self.treat_as_for(&bt.name, &method_name) {
-            self.apply_treat_as(kind, method_id.0, &method_name, &item_path, f, bt);
+            self.apply_treat_as(kind, method_id.0, &method_name, &item_path, f, bt, self_aliases);
             return;
         }
 
-        match self.classify_fn(&item_path, f, bt) {
+        match self.classify_fn(&item_path, f, bt, self_aliases) {
             Ok(mut bridge_fn) => {
                 bridge_fn.via_trait = via_trait.map(str::to_string);
                 // The emitted wrapper method delegates through the newtype behind a
@@ -756,10 +796,10 @@ impl<'a> Ctx<'a> {
                 // cursor or a Vec-as-drain. Either rescues what would otherwise be a
                 // lifetime-borrow / cursor skip.
                 match self
-                    .try_owning_wrapper(&method_name, f, bt)
-                    .or_else(|| self.try_cursor_wrapper(&method_name, f, bt))
-                    .or_else(|| self.try_vec_drain(method_id.0, &method_name, f, bt))
-                    .or_else(|| self.try_callback_wrapper(&method_name, f, bt))
+                    .try_owning_wrapper(&method_name, f, bt, self_aliases)
+                    .or_else(|| self.try_cursor_wrapper(&method_name, f, bt, self_aliases))
+                    .or_else(|| self.try_vec_drain(method_id.0, &method_name, f, bt, self_aliases))
+                    .or_else(|| self.try_callback_wrapper(&method_name, f, bt, self_aliases))
                 {
                     Some((producer, pendings)) => {
                         if seen_names.insert(producer.exposed().to_string()) {
@@ -792,6 +832,7 @@ impl<'a> Ctx<'a> {
     /// would pick. A pinned rule whose preconditions the method doesn't meet
     /// becomes an honest skip (never a silent drop). Unknown `treat_as` values are
     /// rejected earlier by [`crate::apply_overlay`], so they don't reach here.
+    #[allow(clippy::too_many_arguments)]
     fn apply_treat_as(
         &mut self,
         kind: &str,
@@ -800,6 +841,7 @@ impl<'a> Ctx<'a> {
         item_path: &str,
         f: &rustdoc_types::Function,
         bt: &mut BridgeType,
+        self_aliases: &[&str],
     ) {
         if kind == "skip" {
             self.skips.push(Skip {
@@ -812,10 +854,10 @@ impl<'a> Ctx<'a> {
         // `"cursor"` covers in-crate iterators (both cursors and &str-drains);
         // `"drain"` covers direct `Vec`/slice-of-string returns.
         let forced = match kind {
-            "owning" => self.try_owning_wrapper(method_name, f, bt),
-            "cursor" => self.try_cursor_wrapper(method_name, f, bt),
-            "drain" => self.try_vec_drain(method_id, method_name, f, bt),
-            "callback" => self.try_callback_wrapper(method_name, f, bt),
+            "owning" => self.try_owning_wrapper(method_name, f, bt, self_aliases),
+            "cursor" => self.try_cursor_wrapper(method_name, f, bt, self_aliases),
+            "drain" => self.try_vec_drain(method_id, method_name, f, bt, self_aliases),
+            "callback" => self.try_callback_wrapper(method_name, f, bt, self_aliases),
             _ => None,
         };
         match forced {
@@ -835,6 +877,7 @@ impl<'a> Ctx<'a> {
         path: &str,
         f: &rustdoc_types::Function,
         bt: &BridgeType,
+        self_aliases: &[&str],
     ) -> Result<BridgeFn, SkipReason> {
         let mut params = vec![];
 
@@ -843,14 +886,14 @@ impl<'a> Ctx<'a> {
             if pname == "self" {
                 continue;
             }
-            let scalar = self.classify_param_type(pty)?;
+            let scalar = self.classify_param_type(pty, self_aliases)?;
             params.push(BridgeParam {
                 name: pname.clone(),
                 ty: scalar,
             });
         }
 
-        let ret = self.classify_return(&f.sig.output, bt)?;
+        let ret = self.classify_return(&f.sig.output, bt, self_aliases)?;
 
         Ok(BridgeFn {
             name: path.rsplit("::").next().unwrap_or(path).to_string(),
@@ -865,7 +908,11 @@ impl<'a> Ctx<'a> {
         })
     }
 
-    fn classify_param_type(&self, ty: &Type) -> Result<ScalarType, SkipReason> {
+    fn classify_param_type(
+        &self,
+        ty: &Type,
+        self_aliases: &[&str],
+    ) -> Result<ScalarType, SkipReason> {
         match ty {
             Type::Primitive(p) => match p.as_str() {
                 "bool" => Ok(ScalarType::Bool),
@@ -880,7 +927,9 @@ impl<'a> Ctx<'a> {
                 type_, lifetime, ..
             } => match type_.as_ref() {
                 Type::Primitive(p) if p == "str" => Ok(ScalarType::Str),
-                Type::Generic(g) if g == "Self" => {
+                // 1.1.2: `&Self` may also spell as `&D` inside a flattened blanket
+                // impl; treat every self-alias the same as `Self`.
+                Type::Generic(g) if g == "Self" || self_aliases.contains(&g.as_str()) => {
                     Err(SkipReason::UnsupportedType("&Self receiver".into()))
                 }
                 _ => {
@@ -901,6 +950,7 @@ impl<'a> Ctx<'a> {
         &self,
         output: &Option<Type>,
         bt: &BridgeType,
+        self_aliases: &[&str],
     ) -> Result<BridgeReturn, SkipReason> {
         let Some(ty) = output else {
             return Ok(BridgeReturn::Void);
@@ -930,11 +980,11 @@ impl<'a> Ctx<'a> {
                 // A `-> Self` return reads as the type's own path. For a
                 // monomorphized type that path is still the ORIGINAL generic name
                 // (`Date`), not the mono name (`DateUtc`) — match on origin.
-                if returns_self(bt, rp) {
+                if returns_self(bt, rp, self_aliases) {
                     return Ok(BridgeReturn::OwnSelf);
                 }
                 if rp.path == "Result" {
-                    return self.classify_result_return(rp, bt);
+                    return self.classify_result_return(rp, bt, self_aliases);
                 }
                 if has_lifetime_args(rp) || inner_has_lifetime(rp, self.doc) {
                     return Err(SkipReason::LifetimeBorrow);
@@ -948,6 +998,10 @@ impl<'a> Ctx<'a> {
                 Type::Primitive(p) if p == "str" => Ok(BridgeReturn::Str),
                 _ => Err(SkipReason::LifetimeBorrow),
             },
+            // 1.1.2: a bare `-> D` inside a flattened blanket impl is a `-> Self`
+            // return (sha2's `Digest::new() -> D`). Any other free generic stays a
+            // Generic skip.
+            Type::Generic(g) if self_aliases.contains(&g.as_str()) => Ok(BridgeReturn::OwnSelf),
             Type::Generic(_) => Err(SkipReason::Generic),
             Type::ImplTrait(_) => Err(SkipReason::Cursor),
             _ => Err(SkipReason::UnsupportedType(format!("{ty:?}"))),
@@ -958,6 +1012,7 @@ impl<'a> Ctx<'a> {
         &self,
         rp: &rustdoc_types::Path,
         bt: &BridgeType,
+        self_aliases: &[&str],
     ) -> Result<BridgeReturn, SkipReason> {
         let Some(args) = &rp.args else {
             return Err(SkipReason::Generic);
@@ -973,7 +1028,11 @@ impl<'a> Ctx<'a> {
             }
         });
         match ok_ty {
-            Some(Type::ResolvedPath(ok_rp)) if returns_self(bt, ok_rp) => {
+            Some(Type::ResolvedPath(ok_rp)) if returns_self(bt, ok_rp, self_aliases) => {
+                Ok(BridgeReturn::OwnSelfResult)
+            }
+            // 1.1.2: `Result<D, E>` in a flattened blanket impl is `Result<Self, E>`.
+            Some(Type::Generic(g)) if self_aliases.contains(&g.as_str()) => {
                 Ok(BridgeReturn::OwnSelfResult)
             }
             _ => Err(SkipReason::UnsupportedType(format!("{args:?}"))),
@@ -996,6 +1055,7 @@ impl<'a> Ctx<'a> {
         method_name: &str,
         f: &rustdoc_types::Function,
         bt: &BridgeType,
+        self_aliases: &[&str],
     ) -> Option<(BridgeFn, Vec<PendingWrapper>)> {
         // Must be a method (has a receiver), not a constructor.
         if !f.sig.inputs.iter().any(|(n, _)| n == "self") {
@@ -1009,7 +1069,7 @@ impl<'a> Ctx<'a> {
             if pname == "self" {
                 continue;
             }
-            match self.classify_param_type(pty) {
+            match self.classify_param_type(pty, self_aliases) {
                 Ok(scalar) => params.push(BridgeParam {
                     name: pname.clone(),
                     ty: scalar,
@@ -1139,6 +1199,7 @@ impl<'a> Ctx<'a> {
         method_name: &str,
         f: &rustdoc_types::Function,
         bt: &BridgeType,
+        self_aliases: &[&str],
     ) -> Option<(BridgeFn, Vec<PendingWrapper>)> {
         if !f.sig.inputs.iter().any(|(n, _)| n == "self") {
             return None;
@@ -1149,7 +1210,7 @@ impl<'a> Ctx<'a> {
             if pname == "self" {
                 continue;
             }
-            match self.classify_param_type(pty) {
+            match self.classify_param_type(pty, self_aliases) {
                 Ok(scalar) => params.push(BridgeParam {
                     name: pname.clone(),
                     ty: scalar,
@@ -1292,6 +1353,7 @@ impl<'a> Ctx<'a> {
         method_name: &str,
         f: &rustdoc_types::Function,
         bt: &BridgeType,
+        self_aliases: &[&str],
     ) -> Option<(BridgeFn, Vec<PendingWrapper>)> {
         // Must be a method (borrows the owner) — an associated fn has no owner to
         // call the producer through.
@@ -1304,7 +1366,7 @@ impl<'a> Ctx<'a> {
             if pname == "self" {
                 continue;
             }
-            match self.classify_param_type(pty) {
+            match self.classify_param_type(pty, self_aliases) {
                 Ok(scalar) => params.push(BridgeParam {
                     name: pname.clone(),
                     ty: scalar,
@@ -1371,6 +1433,10 @@ impl<'a> Ctx<'a> {
         method_name: &str,
         f: &rustdoc_types::Function,
         bt: &BridgeType,
+        // The callback rescue inspects param types structurally (haystack `&str` +
+        // Replacer generic) rather than via `classify_param_type`, so self-aliases
+        // don't participate; kept for a uniform rescue-rule signature.
+        _self_aliases: &[&str],
     ) -> Option<(BridgeFn, Vec<PendingWrapper>)> {
         if !f.sig.inputs.iter().any(|(n, _)| n == "self") {
             return None;
@@ -1638,7 +1704,9 @@ impl<'a> Ctx<'a> {
                     if pname == "self" {
                         continue;
                     }
-                    match self.classify_param_type(pty) {
+                    // Wrapper readers are classified against the WRAPPER type, not
+                    // the flattened origin, so no self-aliases apply here.
+                    match self.classify_param_type(pty, &[]) {
                         Ok(scalar) => params.push(BridgeParam {
                             name: pname.clone(),
                             ty: scalar,
@@ -1742,9 +1810,12 @@ impl<'a> Ctx<'a> {
 /// arg is the same instantiation when it is the bare generic param (`Tz`, the
 /// method preserves the caller's instantiation) or resolves to the pinned
 /// concrete type (`Utc`, compared by leaf segment).
-fn returns_self(bt: &BridgeType, rp: &rustdoc_types::Path) -> bool {
+fn returns_self(bt: &BridgeType, rp: &rustdoc_types::Path, self_aliases: &[&str]) -> bool {
     let Some(m) = &bt.mono else {
-        return rp.path == bt.name;
+        // 1.1.2: a `-> Self` return reads either as the type's own path or, inside a
+        // blanket `impl<D> Trait for D` flattened onto this type, as the blanket's
+        // generic param (`D`) — both are self-aliases.
+        return rp.path == bt.name || self_aliases.contains(&rp.path.as_str());
     };
     if rp.path != m.origin_name {
         return false;
