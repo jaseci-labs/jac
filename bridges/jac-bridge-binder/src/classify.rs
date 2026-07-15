@@ -240,6 +240,7 @@ pub fn classify_with_overlay(doc: &Crate, overlay: Option<&Overlay>) -> BridgeSp
     BridgeSpec {
         module_name,
         crate_version,
+        crate_features: overlay.map(|o| o.features().to_vec()).unwrap_or_default(),
         types,
         skips: ctx.skips,
         dropped: ctx.dropped,

@@ -97,6 +97,7 @@ fn empty_surface_is_full_coverage() {
     let spec = BridgeSpec {
         module_name: "empty".into(),
         crate_version: "0.1.0".into(),
+        crate_features: vec![],
         types: vec![],
         skips: vec![],
         dropped: vec![],

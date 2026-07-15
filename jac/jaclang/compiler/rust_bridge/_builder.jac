@@ -20,7 +20,9 @@ def workspace_root -> Path | None {
 }
 
 
-def build_bridge(crate: str, version: str = "*", workspace: object = None) -> Path {
+def build_bridge(
+    crate: str, version: str = "*", workspace: object = None, features: object = None
+) -> Path {
     if not toolchain_available() {
         raise RuntimeError(
             "Building a Rust bridge requires the Rust toolchain (cargo + rustup). "
@@ -45,7 +47,7 @@ def build_bridge(crate: str, version: str = "*", workspace: object = None) -> Pa
     }
     import from jaclang.compiler.rust_bridge._build_core { run_build_pipeline }
     import from jaclang.compiler.rust_bridge._finder { built_lib_candidates }
-    (exact, gen, work) = run_build_pipeline(crate, version, ws);
+    (exact, gen, work) = run_build_pipeline(crate, version, ws, features);
     try {
         rel = gen / "target" / "release";
         built: Path | None = None;

@@ -16,6 +16,24 @@ pub fn emit_cargo_toml(spec: &BridgeSpec, jac_bridge_path: &str) -> String {
     } else {
         ""
     };
+    // Source-crate dependency line. Features from the overlay `[crate] features`
+    // (2.4) MUST land here or the optional serde impls the wide lane depends on
+    // are compiled out of the bridge, even though rustdoc documented them. A
+    // bare `= "=x"` stays bare so default-feature bridges are byte-identical.
+    let crate_dep = if spec.crate_features.is_empty() {
+        format!("{} = \"={}\"", spec.module_name, spec.crate_version)
+    } else {
+        let feats = spec
+            .crate_features
+            .iter()
+            .map(|f| format!("\"{f}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(
+            "{} = {{ version = \"={}\", features = [{}] }}",
+            spec.module_name, spec.crate_version, feats
+        )
+    };
     // Track A (1.1.5) needs NO extra dependency: a flattened trait is `use`d through
     // the bridged crate's own re-export (`sha2::Digest`), so the crate already in
     // `[dependencies]` supplies it at the exact version it uses. See
@@ -33,11 +51,12 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 jac-bridge = {{ path = "{jac_bridge_path}" }}
-{module} = "={crate_version}"
+{crate_dep}
 {tokio_dep}"#,
         module = spec.module_name,
         crate_version = spec.crate_version,
         jac_bridge_path = jac_bridge_path,
+        crate_dep = crate_dep,
         tokio_dep = tokio_dep,
     )
 }

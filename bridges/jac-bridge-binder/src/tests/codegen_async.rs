@@ -91,6 +91,7 @@ fn async_spec() -> BridgeSpec {
     BridgeSpec {
         module_name: "mylib".into(),
         crate_version: "0.1.0".into(),
+        crate_features: vec![],
         types: vec![calc],
         skips: vec![],
         dropped: vec![],
@@ -211,5 +212,38 @@ fn emit_cargo_toml_no_tokio_for_sync_spec() {
     assert!(
         !toml.contains("tokio"),
         "Cargo.toml must NOT include tokio when no async fns exist\n{toml}"
+    );
+}
+
+#[test]
+fn emit_cargo_toml_bare_crate_dep_without_features() {
+    // Default-feature build: the source-crate dep stays a bare `= "=x"` so
+    // existing bridges are byte-identical.
+    let toml = emit_cargo_toml(&async_spec(), "../jac-bridge");
+    let module = &async_spec().module_name;
+    assert!(
+        toml.contains(&format!("{module} = \"=")),
+        "no-feature spec must emit a bare crate dep\n{toml}"
+    );
+    assert!(
+        !toml.contains(&format!("{module} = {{")),
+        "no-feature spec must NOT emit an inline table\n{toml}"
+    );
+}
+
+#[test]
+fn emit_cargo_toml_crate_features_land_on_source_dep() {
+    // Overlay `[crate] features` must reach the source-crate dependency, else
+    // the optional serde impls the wide lane needs compile out of the bridge.
+    let mut spec = async_spec();
+    spec.crate_features = vec!["serde".into(), "clock".into()];
+    let module = spec.module_name.clone();
+    let toml = emit_cargo_toml(&spec, "../jac-bridge");
+    assert!(
+        toml.contains(&format!(
+            "{module} = {{ version = \"={}\", features = [\"serde\", \"clock\"] }}",
+            spec.crate_version
+        )),
+        "crate features must land on the source dep as an inline table\n{toml}"
     );
 }

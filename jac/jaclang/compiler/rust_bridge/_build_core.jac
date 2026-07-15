@@ -74,16 +74,21 @@ def target_triple -> str {
 }
 
 
-def run_build_pipeline(crate: str, version: str, ws: Path) -> tuple[str, Path, Path] {
+def run_build_pipeline(
+    crate: str, version: str, ws: Path, features: object = None
+) -> tuple[str, Path, Path] {
     import from jaclang.compiler.rust_bridge._finder { crate_lib_stem }
     stem = crate_lib_stem(crate);
+
+    feats: list = list(features) if features else [];
+    feat_args: list = ["--features", ",".join(feats)] if feats else [];
     jac_bridge_path = (ws / "jac-bridge").resolve();
     work = Path(tempfile.mkdtemp(prefix="jac-bridge-build-"));
     proj = work / "fetch";
     proj.mkdir(parents=True, exist_ok=True);
     run_cmd(["cargo", "init", "--lib", "--quiet", "--name", "bridgefetch"], cwd=proj);
     add_spec = crate if version in ("", "*") else f"{crate}@{version}";
-    run_cmd(["cargo", "add", "--quiet", add_spec], cwd=proj);
+    run_cmd(["cargo", "add", "--quiet", add_spec] + feat_args, cwd=proj);
     exact = resolved_crate_version(proj, crate);
     run_cmd(
         [
@@ -106,8 +111,16 @@ def run_build_pipeline(crate: str, version: str, ws: Path) -> tuple[str, Path, P
     }
     gen = work / "gen";
     gen.mkdir(parents=True, exist_ok=True);
+
+    binder_feat_args: list = ["--features", ",".join(feats)] if feats else [];
     run_cmd(
-        binder_cmd(ws) + [doc_json, "--out", gen, "--jac-bridge", jac_bridge_path],
+        binder_cmd(ws) + [
+            doc_json,
+            "--out",
+            gen,
+            "--jac-bridge",
+            jac_bridge_path
+        ] + binder_feat_args,
         cwd=ws
     );
     run_cmd(

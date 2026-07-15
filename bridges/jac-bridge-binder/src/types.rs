@@ -6,6 +6,12 @@
 pub struct BridgeSpec {
     pub module_name: String,
     pub crate_version: String,
+    /// Cargo features enabled for the bridged crate, sourced from the overlay
+    /// `[crate] features` (2.4). Emitted onto the source-crate dependency in the
+    /// generated `Cargo.toml` so optional impls (serde and other wide-lane
+    /// surface) actually compile into the bridge; also the identity a build /
+    /// registry artifact is keyed by. Empty is the default-feature build.
+    pub crate_features: Vec<String>,
     pub types: Vec<BridgeType>,
     pub skips: Vec<Skip>,
     /// Whole public types the classifier dropped before it could even reach their

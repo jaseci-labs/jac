@@ -15,7 +15,8 @@ import from jaclang.compiler.rust_bridge._finder {
 obj RegistryArtifact {
     has version: str,
         url: str,
-        sha256: str;
+        sha256: str,
+        features: list = [];
 }
 
 
@@ -86,7 +87,10 @@ def resolve_entry(
     best = sorted(candidates, key=_ver_key, reverse=True)[0];
     artifact = versions[best][triple];
     return RegistryArtifact(
-        version=best, url=artifact.get("url") or "", sha256=artifact.get("sha256") or ""
+        version=best,
+        url=artifact.get("url") or "",
+        sha256=artifact.get("sha256") or "",
+        features=artifact.get("features") or []
     );
 }
 

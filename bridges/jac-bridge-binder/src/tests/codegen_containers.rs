@@ -69,6 +69,7 @@ fn spec() -> BridgeSpec {
     BridgeSpec {
         module_name: "demo".into(),
         crate_version: "0.1.0".into(),
+        crate_features: vec![],
         types: vec![store],
         skips: vec![],
         dropped: vec![],
