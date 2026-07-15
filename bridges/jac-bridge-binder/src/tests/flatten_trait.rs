@@ -11,8 +11,8 @@ use rustdoc_types::Crate;
 use crate::{classify, coverage, emit, types::BridgeReturn};
 
 fn load(fixture: &str) -> Crate {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join(format!("tests/fixtures/{fixture}.json"));
+    let p =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("tests/fixtures/{fixture}.json"));
     let data = std::fs::read_to_string(&p).unwrap_or_else(|_| panic!("read {fixture}"));
     serde_json::from_str(&data).unwrap_or_else(|e| panic!("parse {fixture}: {e}"))
 }
@@ -33,10 +33,7 @@ fn datelike_methods_are_flattened_onto_naivedate_with_via_trait() {
         .iter()
         .find(|m| m.name == "year")
         .expect("Datelike::year flattened onto NaiveDate");
-    assert!(
-        matches!(year.ret, BridgeReturn::Int(_)),
-        "year returns i32"
-    );
+    assert!(matches!(year.ret, BridgeReturn::Int(_)), "year returns i32");
     assert_eq!(
         year.via_trait.as_deref(),
         Some("chrono::Datelike"),
@@ -59,7 +56,10 @@ fn noise_trait_methods_are_not_flattened() {
     for bt in &spec.types {
         for m in &bt.methods {
             assert!(
-                !matches!(m.name.as_str(), "clone" | "eq" | "ne" | "cmp" | "hash" | "fmt"),
+                !matches!(
+                    m.name.as_str(),
+                    "clone" | "eq" | "ne" | "cmp" | "hash" | "fmt"
+                ),
                 "{}::{} is a NOISE-trait method and must not be flattened",
                 bt.name,
                 m.name
@@ -81,7 +81,10 @@ fn inherent_ctor_beats_a_flattened_trait_ctor() {
         .find(|t| t.name == "Regex")
         .expect("Regex is bridged");
     let ctor = re.ctor.as_ref().expect("Regex has a constructor");
-    assert_eq!(ctor.name, "new", "inherent `new` wins over flattened `from_str`");
+    assert_eq!(
+        ctor.name, "new",
+        "inherent `new` wins over flattened `from_str`"
+    );
     assert!(
         ctor.via_trait.is_none(),
         "the winning ctor is the inherent one"
@@ -106,8 +109,12 @@ fn inherent_ctor_beats_a_flattened_trait_ctor() {
 fn flattening_lifts_chrono_coverage_without_regressing_regex() {
     // regex is inherent-heavy: flattening leaves its bridged count byte-identical
     // (the sole semantic trait on a bridged type, FromStr, demotes to a skip).
+    // 1.2.5 (tuple-struct admission) lifted the count 31 -> 39: `SetMatches` and
+    // `CaptureLocations` are single-field private tuple structs now bridged as
+    // opaque handles, and `RegexSet::matches -> SetMatches` crosses as a ref-lane
+    // handle rather than a skip.
     let regex = coverage(&classify(&load("regex-1.12.4")));
-    assert_eq!(regex.bridged, 31, "regex bridged unchanged by flattening");
+    assert_eq!(regex.bridged, 39, "regex bridged unchanged by flattening");
 
     // chrono is trait-heavy (Datelike/Timelike): flattening lifts it well past the
     // pre-Track-A floor of 33.

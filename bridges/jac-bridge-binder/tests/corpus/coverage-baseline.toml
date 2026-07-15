@@ -59,10 +59,20 @@
 # Captures, the iterator/cursor structs, …) are now counted as one unit each of
 # hidden surface instead of being invisible. bridged is unchanged — those types
 # were never emitted; they are only now honestly tallied.
+#
+# The 1.2.5 TUPLE-STRUCT admission then lifted regex 31 -> 39. Single-field private
+# tuple structs (`SetMatches([...])`, `CaptureLocations([...])`) are the newtype-
+# with-opaque-inner pattern and now bridge as opaque handles, and `RegexSet::matches
+# -> SetMatches` crosses as a 1.2.4 ref-lane handle instead of a skip. `dropped`
+# 7 -> 10: three more single-field tuple structs are lifetime-bearing cursors
+# (`SetMatchesIter`, …) that now reach — and are honestly caught by — the lifetime
+# guard, tallied as hidden surface rather than silently absent. `total` 84 -> 95
+# folds the newly-considered surface in. Generated crate still compiles under
+# `-D warnings` (roundtrip test).
 [regex]
-bridged = 31
-total = 84
-dropped = 7
+bridged = 39
+total = 95
+dropped = 10
 
 # `total` 7 -> 11 and `dropped` 4: base64's four generic engine/config structs are
 # now tallied as hidden surface rather than silently absent.
@@ -125,9 +135,37 @@ bridged = 105
 total = 266
 dropped = 4
 
+# uuid was 0 bridged: `Uuid` is a single-field private tuple struct
+# (`pub struct Uuid([u8; 16])`), which `classify_type` only admitted as a Plain
+# struct with stripped fields — so the whole crate fell through to nothing.
+#
+# The 1.2.5 TUPLE-STRUCT admission lifted uuid 0 -> 13 (past the Phase 1 exit floor
+# of 8). `Uuid` now bridges as an opaque handle: a `from_slice` constructor plus 7
+# methods (`is_nil`, `is_max`, `get_version_num`, and the `hyphenated`/`simple`/
+# `urn`/`braced` format-handle conversions, which cross via the 1.2.4 ref lane).
+# The format wrappers (`Simple`, `Braced`, `Hyphenated`, `Urn`) and `NonNilUuid`
+# are themselves tuple structs now admitted, each exposing an `into_uuid`/`get`
+# ref-return (+5). The generated crate compiles under `-D warnings` (roundtrip).
+#
+# Path resolution: `Uuid`'s format wrappers live in the PUBLIC `uuid::fmt` module
+# (wrapped as `uuid::fmt::Simple`), while `NonNilUuid`/`Timestamp` live in PRIVATE
+# modules re-exported at the crate root (wrapped as `uuid::NonNilUuid` via the
+# root re-export). `classify_type` resolves the shortest compiling path, never the
+# raw `doc.paths` canonical one (which traverses the private module).
+#
+# `dropped` 0 -> 1: `ThreadLocalContext<C>` is a single-field tuple struct now
+# admitted, then dropped as an unpinned generic (no monomorphize overlay) — honest
+# hidden surface. Still-skipped: `parse_str`/`try_parse`/`nil`/`max` and the other
+# `-> Self` associated fns are recorded as "additional constructor" skips (the ABI
+# has ONE ctor per type; exposing the rest needs the deferred FN_STATIC lane, same
+# gap as sha2's one-shot `digest`), and `get_timestamp -> Option<Timestamp>` is a
+# skip because `Timestamp`'s whole API is closures/unsupported types, leaving it a
+# dead-opaque type codegen drops. u128 ctors (`from_u128`) stay out (no msgpack
+# u128). `total` 6 -> 96 folds the crate's now-considered surface in.
 [uuid]
-bridged = 0
-total = 6
+bridged = 13
+total = 96
+dropped = 1
 
 # sha2's hashers ARE plain structs (`Sha256`, `Sha512`, …), and their public API
 # comes from a blanket `impl<D> Digest for D` plus `DynDigest`. Track A flattening

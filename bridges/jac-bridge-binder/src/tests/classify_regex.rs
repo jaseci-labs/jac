@@ -262,17 +262,33 @@ fn iterators_rescued_as_cursors_and_drains() {
     }
 
     // Honest limits still hold: an iterator with NO &str input to own can't be a
-    // cursor under this rule (Captures::iter iterates an already-owned Captures),
-    // and a non-iterator collection return (RegexSet::matches -> SetMatches) stays
-    // a precise skip rather than a silent drop.
+    // cursor under this rule (Captures::iter iterates an already-owned Captures).
     assert!(
         spec.skips.iter().any(|s| s.item == "Captures::iter"),
         "Captures::iter (no &str param) should remain a recorded skip"
     );
-    assert!(
-        spec.skips.iter().any(|s| s.item == "RegexSet::matches"),
-        "RegexSet::matches (SetMatches, not an iterator) should remain a skip"
+    // RegexSet::matches -> SetMatches is NOT an iterator, so it is not a cursor —
+    // but since 1.2.5 admitted `SetMatches` (a single-field private tuple struct)
+    // as an opaque handle, the return crosses as a cross-type owned handle (the
+    // 1.2.4 ref lane) instead of a skip. It is a proper bridge, not a silent drop.
+    let matches = regex_type_matches(&spec);
+    assert_eq!(
+        matches.ret,
+        BridgeReturn::Ref("SetMatches".into()),
+        "RegexSet::matches returns the SetMatches handle"
     );
+}
+
+/// The `RegexSet::matches` method, for the cross-type-handle assertion above.
+fn regex_type_matches(spec: &crate::types::BridgeSpec) -> &crate::types::BridgeFn {
+    spec.types
+        .iter()
+        .find(|t| t.name == "RegexSet")
+        .expect("RegexSet bridged")
+        .methods
+        .iter()
+        .find(|m| m.name == "matches")
+        .expect("RegexSet::matches bridged")
 }
 
 #[test]

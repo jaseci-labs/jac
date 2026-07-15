@@ -913,9 +913,32 @@ these first; the adversarial suite already contains skip-gated tests waiting on 
       roundtrip -- an unrelated multi-`#[jac_error]` limitation rejects the module,
       and it newly bridges some deprecated methods (`and_hms`) that trip `-D warnings`
       (the binder does not filter `#[deprecated]` items -- separate hygiene item).
-- [ ] 1.2.5 Tuple-struct candidates in `classify_type` (single-field, bridgeable
+- [x] 1.2.5 Tuple-struct candidates in `classify_type` (single-field, bridgeable
       inner or opaque): unlocks uuid. Conformance: `Uuid::parse_str` +
       `is_nil` round-trip.
+      STATUS: DONE. `classify_type` now admits a single-field tuple struct whose
+      inner field is private (`Tuple([None])`, the newtype-with-opaque-inner shape)
+      as an opaque handle, mirroring the Plain `has_stripped_fields` gate. uuid
+      0 -> 13 bridged (past the ≥8 floor): `Uuid` gets a `from_slice` ctor + 7
+      methods (`is_nil`/`is_max`/`get_version_num` + the `hyphenated`/`simple`/
+      `urn`/`braced` format-handle conversions), and the format wrappers +
+      `NonNilUuid` bridge with `into_uuid`/`get` ref-returns. Generated crate
+      compiles clean under `-D warnings` (`uuid_bridge_compiles_clean` roundtrip).
+      Two latent bugs the unlock surfaced were fixed alongside: (a) `inner_path`
+      hard-coded the flat `crate::Type` -- a submodule type (`uuid::fmt::Simple`)
+      needs its qualified path, and a PRIVATE-module type (`uuid::non_nil::NonNilUuid`)
+      its crate-root re-export; `accessible_type_path` now resolves the shortest
+      COMPILING path (named root re-export > root/glob-reexported > public submodule),
+      never the raw `doc.paths` canonical path; (b) a `Ref`/`OptRef` return can name
+      a type that classifies to nothing (`get_timestamp -> Option<Timestamp>`;
+      `Timestamp`'s API is all closures/unsupported) and codegen drops such a
+      dead-opaque type -- a new fixpoint `reconcile_ref_returns` demotes the dangling
+      return to a skip. regex also gained +8 (its `SetMatches`/`CaptureLocations`
+      tuple structs; `RegexSet::matches` now a ref-lane handle). NOTE: `parse_str`
+      and the other extra `-> Self` assoc fns stay "additional constructor" skips --
+      the ABI has ONE ctor per type; exposing the rest needs the deferred FN_STATIC
+      lane (same gap as sha2's one-shot `digest`). The `is_nil` round-trip works via
+      the winning ctor; the literal `parse_str`-as-ctor round-trip is FN_STATIC-gated.
 
 **1.3 Exit gate**
 

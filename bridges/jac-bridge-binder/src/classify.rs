@@ -27,29 +27,91 @@ use crate::types::{
 /// still noise-shaped). Everything NOT here is SEMANTIC and gets flattened.
 const NOISE_TRAITS: &[&str] = &[
     // formatting / debug
-    "Debug", "Display", "Binary", "Octal", "LowerHex", "UpperHex", "LowerExp", "UpperExp",
-    "Pointer", "Write",
+    "Debug",
+    "Display",
+    "Binary",
+    "Octal",
+    "LowerHex",
+    "UpperHex",
+    "LowerExp",
+    "UpperExp",
+    "Pointer",
+    "Write",
     // clone / copy / default / drop / ownership markers
-    "Clone", "CloneToUninit", "Copy", "Default", "Drop", "ToOwned",
+    "Clone",
+    "CloneToUninit",
+    "Copy",
+    "Default",
+    "Drop",
+    "ToOwned",
     // conversions (mechanical, not crate semantics)
-    "From", "Into", "TryFrom", "TryInto", "AsRef", "AsMut", "Borrow", "BorrowMut", "ToString",
+    "From",
+    "Into",
+    "TryFrom",
+    "TryInto",
+    "AsRef",
+    "AsMut",
+    "Borrow",
+    "BorrowMut",
+    "ToString",
     // equality / ordering / hashing
-    "PartialEq", "Eq", "StructuralPartialEq", "PartialOrd", "Ord", "Hash",
+    "PartialEq",
+    "Eq",
+    "StructuralPartialEq",
+    "PartialOrd",
+    "Ord",
+    "Hash",
     // auto / marker traits
-    "Send", "Sync", "Unpin", "Sized", "Any", "Freeze", "RefUnwindSafe", "UnwindSafe",
-    "UnsafeUnpin", "Error",
+    "Send",
+    "Sync",
+    "Unpin",
+    "Sized",
+    "Any",
+    "Freeze",
+    "RefUnwindSafe",
+    "UnwindSafe",
+    "UnsafeUnpin",
+    "Error",
     // serde
-    "Serialize", "Deserialize",
+    "Serialize",
+    "Deserialize",
     // deref / index (transparent access, not API)
-    "Deref", "DerefMut", "Index", "IndexMut",
+    "Deref",
+    "DerefMut",
+    "Index",
+    "IndexMut",
     // iteration (blanket-default heavy — ~80 provided defaults on Iterator alone)
-    "Iterator", "IntoIterator", "DoubleEndedIterator", "ExactSizeIterator", "FusedIterator",
+    "Iterator",
+    "IntoIterator",
+    "DoubleEndedIterator",
+    "ExactSizeIterator",
+    "FusedIterator",
     // operators (std::ops)
-    "Add", "Sub", "Mul", "Div", "Rem", "Neg", "Not",
-    "BitAnd", "BitOr", "BitXor", "Shl", "Shr",
-    "AddAssign", "SubAssign", "MulAssign", "DivAssign", "RemAssign",
-    "BitAndAssign", "BitOrAssign", "BitXorAssign", "ShlAssign", "ShrAssign",
-    "Fn", "FnMut", "FnOnce",
+    "Add",
+    "Sub",
+    "Mul",
+    "Div",
+    "Rem",
+    "Neg",
+    "Not",
+    "BitAnd",
+    "BitOr",
+    "BitXor",
+    "Shl",
+    "Shr",
+    "AddAssign",
+    "SubAssign",
+    "MulAssign",
+    "DivAssign",
+    "RemAssign",
+    "BitAndAssign",
+    "BitOrAssign",
+    "BitXorAssign",
+    "ShlAssign",
+    "ShrAssign",
+    "Fn",
+    "FnMut",
+    "FnOnce",
 ];
 
 /// Classify a crate's public API with no overlay hints. Equivalent to
@@ -78,6 +140,8 @@ pub fn classify_with_overlay(doc: &Crate, overlay: Option<&Overlay>) -> BridgeSp
         pending_wrappers: vec![],
         inherited_excluded: 0,
         ref_type_names: HashSet::new(),
+        root_reexports: collect_root_reexports(doc),
+        root_glob_modules: collect_root_glob_modules(doc, &module_name),
     };
 
     let mut types = ctx.find_types();
@@ -94,6 +158,17 @@ pub fn classify_with_overlay(doc: &Crate, overlay: Option<&Overlay>) -> BridgeSp
     for bt in &mut types {
         ctx.classify_impl(bt);
     }
+
+    // A cross-type handle return (`Ref`/`OptRef`, 1.2.4) may name a type that —
+    // after its own methods are classified — has NO bridgeable surface: no ctor,
+    // no method, no injected source (uuid's `Uuid::get_timestamp -> Option<Timestamp>`,
+    // where `Timestamp`'s whole API is closures/unsupported types). codegen drops
+    // such a dead-opaque type, so a surviving return to it would reference an
+    // undeclared wrapper and the macro rejects the crate. `ref_type_names` is built
+    // optimistically before classification and can't foresee this, so reconcile now:
+    // demote any return to a would-be-dropped type into an honest skip, iterating to
+    // a fixpoint (removing a type's last method can make IT dead in turn).
+    reconcile_ref_returns(&mut types, &mut ctx.skips);
 
     // Materialize synthesized owning wrappers (M4 Phase B v1). The same wrapper
     // can be requested by several producers — a ROOT producer (`Regex::find`) and
@@ -140,6 +215,126 @@ pub fn classify_with_overlay(doc: &Crate, overlay: Option<&Overlay>) -> BridgeSp
         skips: ctx.skips,
         dropped: ctx.dropped,
         inherited_excluded: ctx.inherited_excluded,
+    }
+}
+
+/// Map each item id to the name it is `pub use`-re-exported under in the crate
+/// ROOT module (`pub use non_nil::NonNilUuid;` → `129 → "NonNilUuid"`). Only the
+/// root is scanned: it is the overwhelmingly common re-export site and gives the
+/// shortest public path (`crate::Name`), which is guaranteed to compile even when
+/// the definition module is private. Glob and primitive (`id: None`) re-exports
+/// are ignored.
+fn collect_root_reexports(doc: &Crate) -> HashMap<u32, String> {
+    let mut map = HashMap::new();
+    let Some(root) = doc.index.get(&doc.root) else {
+        return map;
+    };
+    let ItemEnum::Module(m) = &root.inner else {
+        return map;
+    };
+    for item_id in &m.items {
+        if let Some(item) = doc.index.get(item_id) {
+            if let ItemEnum::Use(u) = &item.inner {
+                if !u.is_glob {
+                    if let Some(target) = &u.id {
+                        map.entry(target.0).or_insert_with(|| u.name.clone());
+                    }
+                }
+            }
+        }
+    }
+    map
+}
+
+/// The module paths the crate root re-exports with a glob (`pub use
+/// crate::regex::string::*;`). Returned as crate-root-stripped `::`-joined strings
+/// (`"regex::string"`) so they can be compared against a type's `module_path`. A
+/// type in such a module is reachable at the crate root under its own name.
+fn collect_root_glob_modules(doc: &Crate, module_name: &str) -> HashSet<String> {
+    let mut set = HashSet::new();
+    let Some(root) = doc.index.get(&doc.root) else {
+        return set;
+    };
+    let ItemEnum::Module(m) = &root.inner else {
+        return set;
+    };
+    for item_id in &m.items {
+        if let Some(item) = doc.index.get(item_id) {
+            if let ItemEnum::Use(u) = &item.inner {
+                if u.is_glob {
+                    // `source` is the module path with a `crate::` prefix (own-crate
+                    // re-export) or a `<crate>::` prefix (external). Strip just the
+                    // crate root — NOT `crate::<module_name>::`, since a crate often
+                    // has a submodule sharing its own name (`crate::regex::string`
+                    // in the `regex` crate) — so the remainder lines up with a
+                    // type's crate-relative `module_path` (`["regex","string"]`).
+                    let rel = u
+                        .source
+                        .strip_prefix("crate::")
+                        .or_else(|| u.source.strip_prefix(&format!("{module_name}::")))
+                        .unwrap_or(&u.source);
+                    set.insert(rel.to_string());
+                }
+            }
+        }
+    }
+    set
+}
+
+/// The bridged type a `Ref`/`OptRef` return points at, if any. Other returns
+/// (scalars, `Self`, bytes, synthesized wrappers — which always carry readers)
+/// never dangle, so they are `None` here.
+fn ref_return_target(ret: &BridgeReturn) -> Option<&str> {
+    match ret {
+        BridgeReturn::Ref(n) | BridgeReturn::OptRef(n) => Some(n.as_str()),
+        _ => None,
+    }
+}
+
+/// Mirror of codegen's dead-opaque test: an opaque type with no constructor, no
+/// method, and no injected source is never emitted (codegen skips it to stay
+/// warning-clean), so it must not be a live `Ref`/`OptRef` target. Kept in sync
+/// with `codegen::is_dead_opaque`.
+fn is_dead_opaque_ty(t: &BridgeType) -> bool {
+    t.kind == TypeKind::Opaque
+        && t.ctor.is_none()
+        && t.methods.is_empty()
+        && t.injected_source.is_empty()
+}
+
+/// Demote every `Ref`/`OptRef` method return that names a type codegen will drop
+/// (dead-opaque) into a skip, so the emitted source never references an undeclared
+/// wrapper. Iterated to a fixpoint: stripping a type's last surviving method can
+/// itself make that type dead, invalidating a return elsewhere.
+fn reconcile_ref_returns(types: &mut [BridgeType], skips: &mut Vec<Skip>) {
+    loop {
+        let live: HashSet<String> = types
+            .iter()
+            .filter(|t| !is_dead_opaque_ty(t))
+            .map(|t| t.name.clone())
+            .collect();
+        let mut changed = false;
+        for bt in types.iter_mut() {
+            let mut kept = Vec::with_capacity(bt.methods.len());
+            for m in std::mem::take(&mut bt.methods) {
+                match ref_return_target(&m.ret) {
+                    Some(target) if !live.contains(target) => {
+                        skips.push(Skip {
+                            item: format!("{}::{}", bt.name, m.name),
+                            reason: SkipReason::UnsupportedType(format!(
+                                "cross-type return to unbridged type ({target})"
+                            )),
+                        });
+                        changed = true;
+                    }
+                    _ => kept.push(m),
+                }
+            }
+            bt.methods = kept;
+        }
+        if !changed {
+            break;
+        }
     }
 }
 
@@ -207,6 +402,19 @@ struct Ctx<'a> {
     /// instantiation check `returns_self` does, deferred with the rest of the mono
     /// surface.
     ref_type_names: HashSet<String>,
+    /// Item id → the name it is `pub use`-re-exported under at the crate root.
+    /// A type defined in a PRIVATE module (`uuid::non_nil::NonNilUuid`) is only
+    /// reachable through its root re-export (`uuid::NonNilUuid`); the canonical
+    /// path from `doc.paths` traverses the private module and won't compile. When
+    /// present, this shortest public path wins over the canonical one.
+    root_reexports: HashMap<u32, String>,
+    /// Module paths (crate-root and glob stripped, `"regex::string"`) that the
+    /// crate root re-exports with a glob (`pub use crate::regex::string::*;`).
+    /// Every pub item in such a module is reachable at the crate root under its
+    /// own name, so a type whose defining module is glob-re-exported keeps the
+    /// flat `crate::Type` path even though its canonical path is deeper
+    /// (`regex::regex::string::Regex`).
+    root_glob_modules: HashSet<String>,
 }
 
 impl<'a> Ctx<'a> {
@@ -285,16 +493,62 @@ impl<'a> Ctx<'a> {
         out
     }
 
+    /// The path a generated newtype should wrap, resolved to the SHORTEST path
+    /// that actually compiles (never the raw `doc.paths` canonical path, which can
+    /// traverse private modules). In priority order:
+    ///   1. a named crate-root re-export (`pub use non_nil::NonNilUuid;`) — the only
+    ///      valid path when the defining module is private;
+    ///   2. a crate-root definition or a glob-re-exported module — flat `crate::Type`;
+    ///   3. otherwise the (public) defining submodule, `crate::mod::Type`
+    ///      (`uuid::fmt::Simple`).
+    fn accessible_type_path(&self, item_id: u32, module_path: &[String], name: &str) -> String {
+        if let Some(alias) = self.root_reexports.get(&item_id) {
+            return format!("{}::{}", self.module_name, alias);
+        }
+        if module_path.is_empty() || self.root_glob_modules.contains(&module_path.join("::")) {
+            return format!("{}::{}", self.module_name, name);
+        }
+        format!("{}::{}::{}", self.module_name, module_path.join("::"), name)
+    }
+
     fn classify_type(&mut self, item: &'a Item, module_path: Vec<String>) -> Vec<BridgeType> {
         let Some(name) = item.name.clone() else {
             return vec![];
         };
-        let inner_path = format!("{}::{}", self.module_name, name);
+        // The newtype wraps the type at its CANONICAL path. A type defined in a
+        // submodule (`uuid::fmt::Simple`, `uuid::non_nil::NonNilUuid`) is NOT
+        // reachable as `crate::Type` unless separately re-exported, so fold the
+        // module segments (`find_types` already stripped the crate root and type
+        // name) into the path — else the generated `pub struct S(pub uuid::S);`
+        // names a nonexistent path. Crate-root, root-re-exported, and
+        // glob-re-exported types keep the flat `crate::Type`; only a type reachable
+        // ONLY through its (public) defining submodule (`uuid::fmt::Simple`) gets
+        // the qualified path.
         let item_id = item.id.0;
+        let inner_path = self.accessible_type_path(item_id, &module_path, &name);
 
         match &item.inner {
             ItemEnum::Struct(s) => {
-                let has_hidden = matches!(&s.kind, StructKind::Plain { has_stripped_fields, .. } if *has_stripped_fields);
+                // A struct is an opaque handle only if it has private/hidden state
+                // — a caller can't construct it field-by-field, so it must cross as
+                // a boxed newtype driven through methods. A struct with only public
+                // fields is transparent data (a wide-lane serde candidate), not a
+                // handle, so it's left for that lane.
+                //
+                //  - Plain `{ .. }` structs: the `has_stripped_fields` flag.
+                //  - Tuple structs: a stripped field renders as `None` in the field
+                //    list (rustdoc emits private/hidden positions as `None` to keep
+                //    order). A single-field tuple with a private inner is the newtype
+                //    pattern — `uuid::Uuid([u8; 16])` renders as `Tuple([None])` —
+                //    and is the entire uuid fix.
+                let has_hidden = match &s.kind {
+                    StructKind::Plain {
+                        has_stripped_fields,
+                        ..
+                    } => *has_stripped_fields,
+                    StructKind::Tuple(fields) => fields.len() == 1 && fields[0].is_none(),
+                    StructKind::Unit => false,
+                };
                 if !has_hidden {
                     return vec![];
                 }
@@ -420,7 +674,11 @@ impl<'a> Ctx<'a> {
                 BridgeType {
                     name: format!("{name}{}", to_camel(leaf)),
                     kind: TypeKind::Opaque,
-                    inner_path: format!("{}::{}<{}>", self.module_name, name, c),
+                    inner_path: format!(
+                        "{}<{}>",
+                        self.accessible_type_path(item_id, module_path, name),
+                        c
+                    ),
                     module_path: module_path.to_vec(),
                     item_id,
                     ctor: None,
@@ -554,12 +812,7 @@ impl<'a> Ctx<'a> {
     fn trait_use_path(&self, tr: &rustdoc_types::Path) -> String {
         let simple = self.trait_simple_name(tr);
         // path[0] in the rustdoc summary is the DEFINING crate name.
-        if let Some(defining_crate) = self
-            .doc
-            .paths
-            .get(&tr.id)
-            .and_then(|s| s.path.first())
-        {
+        if let Some(defining_crate) = self.doc.paths.get(&tr.id).and_then(|s| s.path.first()) {
             if defining_crate != &self.module_name {
                 return format!("{}::{}::{}", self.module_name, defining_crate, simple);
             }
@@ -615,8 +868,7 @@ impl<'a> Ctx<'a> {
         // wins a name collision, and cross-trait duplicates (18 in sha2 alone) are
         // recorded as visible skips instead of emitted twice — two `pub fn`s of the
         // same name is a duplicate-definition error under `-D warnings`.
-        let mut seen_names: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
+        let mut seen_names: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         // Pass 1 — inherent impls (`impl T { … }`): every item is a real inherent
         // method, no trait provenance.
@@ -755,7 +1007,15 @@ impl<'a> Ctx<'a> {
         // forces the method off the bridge (`skip`) or pins it to exactly one rule,
         // bypassing the usual or-else ordering.
         if let Some(kind) = self.treat_as_for(&bt.name, &method_name) {
-            self.apply_treat_as(kind, method_id.0, &method_name, &item_path, f, bt, self_aliases);
+            self.apply_treat_as(
+                kind,
+                method_id.0,
+                &method_name,
+                &item_path,
+                f,
+                bt,
+                self_aliases,
+            );
             return;
         }
 
@@ -854,7 +1114,10 @@ impl<'a> Ctx<'a> {
                             });
                         }
                     }
-                    None => self.skips.push(Skip { item: item_path, reason }),
+                    None => self.skips.push(Skip {
+                        item: item_path,
+                        reason,
+                    }),
                 }
             }
         }
@@ -938,8 +1201,19 @@ impl<'a> Ctx<'a> {
         // emits a mutable wrapper (routed through the macro's busy-latch);
         // by-value `self` is cloned out of the shared handle. The
         // consumes-self-but-not-Clone case is rejected by the caller's guard.
-        let self_recv = f.sig.inputs.iter().find(|(n, _)| n == "self").map(|(_, t)| t);
-        let self_mut = matches!(self_recv, Some(Type::BorrowedRef { is_mutable: true, .. }));
+        let self_recv = f
+            .sig
+            .inputs
+            .iter()
+            .find(|(n, _)| n == "self")
+            .map(|(_, t)| t);
+        let self_mut = matches!(
+            self_recv,
+            Some(Type::BorrowedRef {
+                is_mutable: true,
+                ..
+            })
+        );
         let consumes_self = matches!(self_recv, Some(t) if is_value_self(t, self_aliases));
 
         Ok(BridgeFn {
@@ -2048,8 +2322,7 @@ fn impl_is_asref_u8(bounds: &[rustdoc_types::GenericBound]) -> bool {
     let [rustdoc_types::GenericBound::TraitBound { trait_, .. }] = bounds else {
         return false;
     };
-    rp_name(&trait_.path) == "AsRef"
-        && angle_type_args(trait_).iter().any(|t| is_u8_slice(t))
+    rp_name(&trait_.path) == "AsRef" && angle_type_args(trait_).iter().any(|t| is_u8_slice(t))
 }
 
 /// A by-value `self` receiver (`Digest::finalize(self)`): the bare `Self` generic,

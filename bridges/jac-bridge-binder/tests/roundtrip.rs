@@ -45,10 +45,9 @@ fn regex_bridge_compiles_clean() {
     // binder-emitted `#[jac(borrowed)]` attribute is macro-legal and the generated
     // crate still compiles warning-clean with the ownership bit in play — S.2.3's
     // "generated crate compiles under -D warnings" gate for the ownership path.
-    let own_overlay = jac_bridge_binder::parse_overlay(
-        "[fn.\"Regex::find\"]\nownership = \"borrowed\"\n",
-    )
-    .expect("parse ownership overlay");
+    let own_overlay =
+        jac_bridge_binder::parse_overlay("[fn.\"Regex::find\"]\nownership = \"borrowed\"\n")
+            .expect("parse ownership overlay");
     jac_bridge_binder::apply_overlay(&mut spec, &own_overlay).expect("apply ownership overlay");
 
     let jac_bridge = manifest_dir().join("../jac-bridge");
@@ -94,7 +93,9 @@ fn regex_bridge_compiles_clean() {
     // Ownership overlay took effect: `find` carries the borrowed attribute (which
     // the macro consumed to set the return tag's borrow bit — its presence in the
     // source plus a clean compile is the proof the attribute is macro-legal).
-    let find_pos = lib_src.find("pub fn find(&self,").expect("find method missing");
+    let find_pos = lib_src
+        .find("pub fn find(&self,")
+        .expect("find method missing");
     assert!(
         lib_src[..find_pos].trim_end().ends_with("#[jac(borrowed)]"),
         "borrowed attribute must sit immediately above `pub fn find`\n{lib_src}"
@@ -227,4 +228,81 @@ fn sha2_bridge_compiles_clean() {
         lib_src.contains("Digest::finalize(self.0.clone()).to_vec()"),
         "finalize must clone the handle out and return owned bytes\n{lib_src}"
     );
+}
+
+/// uuid closes the 1.2.5 loop (single-field tuple-struct admission). `uuid::Uuid`
+/// and its format-handle siblings are `pub struct T([..])` newtypes with a private
+/// inner — the shape `classify_type` now admits as an opaque handle. The airtight
+/// proof is the generated crate compiling warning-clean against real uuid, which
+/// also exercises: submodule path resolution (`uuid::fmt::Simple`, a PUBLIC module),
+/// private-module root re-exports (`uuid::NonNilUuid`, whose `non_nil` module is
+/// private), the 1.2.4 ref lane between the handles, and the dead-opaque reconcile
+/// (`Uuid::get_timestamp` demoted so no undeclared `Timestamp` wrapper is referenced).
+#[test]
+#[ignore = "compiles a full crate; run with --ignored (CI does)"]
+fn uuid_bridge_compiles_clean() {
+    let doc_path = fixture("uuid-1.23.4.json");
+    let doc: rustdoc_types::Crate =
+        serde_json::from_str(&std::fs::read_to_string(&doc_path).expect("read fixture"))
+            .expect("parse fixture");
+
+    let spec = jac_bridge_binder::classify(&doc);
+    let lib_src = jac_bridge_binder::emit(&spec);
+
+    // Path resolution: a public-submodule wrap, a private-module root-reexport wrap.
+    assert!(
+        lib_src.contains("pub struct Simple(pub uuid::fmt::Simple);"),
+        "Simple must wrap its public submodule path\n{lib_src}"
+    );
+    assert!(
+        lib_src.contains("pub struct NonNilUuid(pub uuid::NonNilUuid);"),
+        "NonNilUuid must wrap its crate-root re-export path\n{lib_src}"
+    );
+    // The dead-opaque reconcile removed the only reference to Timestamp.
+    assert!(
+        !lib_src.contains("Timestamp"),
+        "no dropped-Timestamp reference may survive\n{lib_src}"
+    );
+
+    let jac_bridge = manifest_dir().join("../jac-bridge");
+    let cargo_src = jac_bridge_binder::emit_cargo_toml(&spec, &jac_bridge.to_string_lossy());
+
+    let out = manifest_dir().join("../target/binder-roundtrip/uuid");
+    let _ = std::fs::remove_dir_all(&out);
+    std::fs::create_dir_all(out.join("src")).expect("mkdir");
+    std::fs::write(out.join("src/lib.rs"), &lib_src).expect("write lib.rs");
+    let cargo_src = format!("{cargo_src}\n[workspace]\n");
+    std::fs::write(out.join("Cargo.toml"), &cargo_src).expect("write Cargo.toml");
+
+    let output = Command::new(env!("CARGO"))
+        .current_dir(&out)
+        .args(["build", "--release"])
+        .env("RUSTFLAGS", "-D warnings")
+        .output()
+        .expect("run cargo build");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "generated uuid bridge failed to compile:\n{stderr}\n\n--- lib.rs ---\n{lib_src}"
+    );
+
+    let so = out.join("target/release/libjac_bridge_uuid.so");
+    assert!(so.exists(), "cdylib not produced at {}", so.display());
+    let nm = Command::new("nm")
+        .args(["-D"])
+        .arg(&so)
+        .output()
+        .expect("nm");
+    let syms = String::from_utf8_lossy(&nm.stdout);
+    for want in [
+        "jac_uuid_Uuid_is_nil", // the plan's conformance predicate
+        "jac_uuid_Uuid_is_max",
+        "jac_uuid_Uuid_drop",        // Uuid is an opaque handle
+        "jac_uuid_Simple_into_uuid", // ref-lane handle conversion
+        "jac_uuid_NonNilUuid_get",   // private-module type, root-reexport path
+        "jac_bridge_init_uuid",
+    ] {
+        assert!(syms.contains(want), "missing exported symbol {want}");
+    }
 }
