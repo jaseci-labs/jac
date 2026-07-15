@@ -17,7 +17,7 @@ impl CommandExecutor.execute(
         return_code = 1;
 
         console.error(f"Error executing '{spec.name}': {e}");
-        if sys?.exc_info {
+        if sys?.exc_info() {
             traceback.print_exc();
         }
     }

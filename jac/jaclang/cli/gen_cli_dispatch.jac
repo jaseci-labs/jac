@@ -75,7 +75,7 @@ def generate -> str {
             lines.append(inline);
         } elif len(inner_inline) <= 100 {
             lines.append(f"        return _norm_exit(");
-            lines.append(inner_inline + ")");
+            lines.append(inner_inline);
             lines.append("        );");
         } else {
             lines.append(f"        return _norm_exit(");

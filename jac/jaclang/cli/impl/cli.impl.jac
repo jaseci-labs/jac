@@ -393,7 +393,7 @@ def _try_fast_path(raw_argv: list) -> int | None {
         rc = dispatch_command("run", args_dict);
     } except Exception as e {
         console.error(f"Error executing 'run': {e}");
-        if sys?.exc_info {
+        if sys?.exc_info() {
             traceback.print_exc();
         }
         return 1;
