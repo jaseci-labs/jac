@@ -43,6 +43,22 @@ pub const TAG_F64: u32 = 6;
 /// OK status, exactly like `Option<String>`.  Additive to ABI v1 — old blobs never
 /// set it (append-only evolution rule, D2).
 pub const TAG_BYTES: u32 = 7;
+/// A `serde::Serialize` / `Deserialize` Rust value crossing the boundary as a
+/// self-describing **MessagePack** document (`rmp_serde`).  This is the "wide"
+/// lane (Phase 2): instead of a hand-written marshaling arm per shape, ANY
+/// serde type — structs, enums, nested/optional fields, `chrono`-with-serde,
+/// third-party types deriving serde — rides the ONE msgpack carrier.  Wire
+/// shape is identical to [`TAG_BYTES`]: `(ptr, len)` as a param, an owned
+/// `JacBuf { ptr, len, cap }` as a return; the payload bytes are a MessagePack
+/// blob rather than a raw digest.  The loader does NOT hand back a `bytes` —
+/// it *decodes* the msgpack into a native Jac value (dict / list / scalar,
+/// and later a synthesized typed object, Phase 2.6) on both the na and CPython
+/// loaders.  Param and return; `Option<T>` signals `None` in-band with a null
+/// `JacBuf.ptr` on an OK status, exactly like [`TAG_STR`] / [`TAG_BYTES`].
+/// This is the LAST additive scalar tag of ABI v1 — with it the v1 scalar tag
+/// space (1..=8) is frozen; any further wire evolution bumps [`ABI_VERSION`].
+/// Additive to ABI v1 — old blobs never set it (append-only evolution rule, D2).
+pub const TAG_WIDE: u32 = 8;
 /// Sentinel meaning "no type" (absent self_type / throws / void return).
 pub const TAG_VOID: u32 = 0xFFFF_FFFF;
 /// OR'd with a type index to produce a type-reference tag.
