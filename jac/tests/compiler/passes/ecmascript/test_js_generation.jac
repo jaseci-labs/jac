@@ -2497,23 +2497,28 @@ test "builtin functions lower to runtime helpers without type-check (#7480)" {
     prog = JacProgram();
     ir = prog.compile(file_path=fixture_path, no_cgen=True, type_check=False);
     _fatal = _fatal_compile_errors(prog);
-    assert not _fatal , (
-        f"Compilation errors: {[str(e) for e in _fatal]}"
-    );
+    assert not _fatal , (f"Compilation errors: {[str(e) for e in _fatal]}");
     _ensure_js_generated(ir, prog);
     js_code = ir.gen.js;
 
     fn_starts = [
-        js_code.find("function " + fn)
-        for fn in ["summarize", "numeric", "combined"]
+        js_code.find("function " + fn) for fn in ["summarize", "numeric", "combined"]
     ];
     assert all([idx >= 0 for idx in fn_starts]) , (
         "compiled user functions must be present"
     );
     user_js = js_code[min(fn_starts):];
     for name in [
-        "sorted", "len", "sum", "min", "max", "abs", "round", "enumerate",
-        "zip", "range"
+        "sorted",
+        "len",
+        "sum",
+        "min",
+        "max",
+        "abs",
+        "round",
+        "enumerate",
+        "zip",
+        "range"
     ] {
         assert re.search(r"(?<![.\w])" + name + r"\s*\(", user_js) is None , (
             "builtin function `" + name + "` lowered to a bare, undefined "
