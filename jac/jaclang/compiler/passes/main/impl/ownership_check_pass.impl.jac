@@ -27,11 +27,13 @@ impl OwnershipCheckPass.transform(ir_in: uni.Module) -> uni.Module {
 
     self._build_index(ir_in);
     self._stamp_ownership();
+    self._nogc_setup();
     if not self.owned_decl
     and not self.borrow_meta
     and not self.val_decl
     and not self._has_region_blocks()
-    and not self.idx_concurrent {
+    and not self.idx_concurrent
+    and self.nogc_prov is None {
         return ir_in;
     }
 
@@ -51,6 +53,7 @@ impl OwnershipCheckPass.transform(ir_in: uni.Module) -> uni.Module {
     self._emit_region_escape_diagnostics();
     self._emit_sendability_diagnostics();
     self._emit_marker_diagnostics();
+    self._emit_enforcement_diagnostics();
     return ir_in;
 }
 
@@ -314,6 +317,28 @@ impl OwnershipCheckPass._call_move_gen(nd: uni.UniCFGNode) -> set[SymId] {
     gen: set[SymId] = set();
     for call in nd.get_all_sub_nodes(uni.FuncCall) {
         if self._cfg_owner(call) is not nd {
+            continue;
+        }
+        if isinstance(call.target, uni.Name)
+        and call.target.sym_name in (
+            "len",
+            "print",
+            "range",
+            "isinstance",
+            "next",
+            "abs",
+            "min",
+            "max",
+            "sum",
+            "sorted",
+            "repr",
+            "format",
+            "chr",
+            "ord",
+            "hex",
+            "oct",
+            "bin"
+        ) {
             continue;
         }
         for param in self._call_params(call) {

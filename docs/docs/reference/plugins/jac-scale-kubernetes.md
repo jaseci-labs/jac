@@ -422,7 +422,7 @@ The `"keda"` engine creates a `ScaledObject` custom resource instead of an HPA. 
 |-----|---------|-------------|
 | `type` | (required) | KEDA trigger type (e.g. `"prometheus"`, `"redis"`, `"rabbitmq"`, `"kafka"`, `"http"`). See the [KEDA trigger catalogue](https://keda.sh/docs/latest/scalers/). |
 | `metadata` | `{}` | Dict of trigger-specific key/value pairs. All values are coerced to strings before being sent to KEDA. |
-| `name` | `null` | Name for this trigger. Required when using `auth.secret_refs`; used as the `TriggerAuthentication` resource name. |
+| `name` | `null` | Optional label for this trigger in KEDA. When using `auth.secret_refs`, set a unique `name` per trigger; it is included in the hash that generates the `TriggerAuthentication` resource name (e.g. `order-service-daa02e20-ta`), making each resource identifiable in the cluster. Without it, trigger position in the spec is used instead, which shifts if triggers are reordered. |
 | `auth.secret_refs` | `{}` | KEDA `TriggerAuthentication` bindings. Each key is a KEDA parameter name; the value is a table with `name` (Kubernetes Secret name) and `key` (key within that Secret). |
 
 **To configure in `jac.toml`:**

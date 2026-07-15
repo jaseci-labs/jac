@@ -205,6 +205,14 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             return self._emit_print(nd);
         }
 
+        if func_name == "managed" {
+            params_l = nd.params or [];
+            if params_l {
+                return self._codegen_expr(params_l[0]);
+            }
+            return None;
+        }
+
         if func_name == "__float_bits" {
             params_l = nd.params or [];
             if params_l {

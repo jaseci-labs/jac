@@ -52,13 +52,26 @@ obj OwnershipCheckPass(Transform[uni.Module, uni.Module]) {
         idx_returns: list[uni.ReturnStmt] = [],
         idx_concurrent: list[uni.ConcurrentExpr] = [],
         name_uses_by_sym: dict[SymId, list[uni.Name]] = {},
-        val_decl: dict[SymId, uni.Name] = {};
+        val_decl: dict[SymId, uni.Name] = {},
+        nogc_prov: (str | None) = None;
 
     static has PROVIDES: tuple = ('ownership', ),
         REQUIRES: tuple = ('cfg', 'inference');
 
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;
+    def _nogc_setup -> None;
+    def _nogc_resolve_provenance -> (str | None);
+    def _nogc_infer_locals -> None;
+    def _nogc_tag_shape(tag: uni.SubTag | None) -> str;
+    def _nogc_local_shape(nm: uni.Name) -> str;
+    def _nogc_local_shape_expr_heap(expr: uni.Expr | None) -> bool;
+    def _nogc_expr_type_is_heap(expr: uni.Expr | None) -> bool;
+    def _nogc_is_container_expr(expr: uni.Expr | None) -> bool;
+    def _nogc_container_grow_method(call: uni.FuncCall) -> (str | None);
+    def _nogc_module_enforced(mod_name: str) -> bool;
+    def _nogc_check_call(call: uni.FuncCall, prov: str) -> None;
+    def _emit_enforcement_diagnostics -> None;
     def _build_index(tree: uni.UniNode) -> None;
     def _stamp_ownership -> None;
     def _has_region_blocks -> bool;

@@ -707,6 +707,19 @@ impl JacCompiler.compile(
     } else {
         actual_program = self._resolve_program(file_path, target_program);
     }
+
+    _prev_opts = actual_program._compile_options;
+    if _prev_opts is not None
+    and not (
+        options.nogc_enforce_all
+        or options.nogc_cli_target
+        or options.nogc_enforce_modules
+    ) {
+        options.nogc_enforce_all = _prev_opts.nogc_enforce_all;
+        options.nogc_cli_target = _prev_opts.nogc_cli_target;
+        options.nogc_enforce_modules = _prev_opts.nogc_enforce_modules;
+        options.nogc_grandfathered = _prev_opts.nogc_grandfathered;
+    }
     actual_program._compile_options = options;
     keep_str = use_str or read_file_with_encoding(file_path);
     had_parse_errors = len(actual_program.errors_had);
