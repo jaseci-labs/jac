@@ -1936,13 +1936,20 @@ Compile a `.na.jac` file to a standalone native ELF executable. No external comp
 > **Project-level vs. file-level.** For a whole-project native build, use [`jac build --as native`](#jac-build) (or `--as binary`), which runs the type-check gate first. `jac nacompile` remains the file-level tool for compiling an individual `.na.jac` file, building `--shared` C-ABI libraries, and cross-compiling with `--target wasm32`.
 
 ```bash
-jac nacompile filename [-o OUTPUT]
+jac nacompile filename [-o OUTPUT] [--gc MODE] [--enforce-nogc] [--assert-no-rc] [--shared] [-t TARGET] [-g] [--scrub]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `filename` | Path to the `.na.jac` file (must have `with entry {}` block) | *required* |
+| `filename` | Path to the `.jac` or `.na.jac` file (must have `with entry {}` block) | *required* |
 | `-o, --output` | Output binary path | filename without `.na.jac` |
+| `-t, --target` | Code target: native host, or `wasm32` for a browser `.wasm` module | host |
+| `--shared` | Build a C-ABI shared library (`.so`/`.dylib`/`.dll`) exporting `:pub` symbols instead of an executable | `False` |
+| `-g, --debug` | Emit DWARF debug info + symbol table so the binary is debuggable with gdb/lldb | `False` |
+| `--scrub` | Scrub build: wipe cached IR and recompile everything from scratch | `False` |
+| `--gc` | Memory-management runtime to emit: `cycles` (refcounting + cycle collector), `rc` (refcounting only, no collector code), or `none` (no refcounting call sites) | `jac.toml [gc]` default, else `cycles` |
+| `--enforce-nogc` | Enforce zero-RC ownership coverage (`E1401`-`E1406` hard errors) on the compiled module, regardless of `jac.toml [gc.enforce]` patterns | `False` |
+| `--assert-no-rc` | Fail the build if the emitted IR contains any RC/collector machinery: `__rc_*` helpers, trace functions, roots-buffer globals, or entry-point GC env probes | `False` |
 
 The file must contain a `with entry { }` block (which defines the `jac_entry()` function). Files with Python/server dependencies (`native_imports`) cannot be compiled to standalone binaries.
 
@@ -1953,7 +1960,7 @@ The file must contain a `with entry { }` block (which defines the `jac_entry()` 
 3. Emits native object code via llvmlite's `emit_object()`
 4. Links into an ELF executable via the built-in pure-Python ELF linker
 
-The resulting binary dynamically links against `libc.so.6`. Memory management uses a self-contained reference counting scheme -- no external garbage collector (libgc) is required.
+The resulting binary dynamically links against `libc.so.6`. Memory management uses a self-contained reference counting scheme -- no external garbage collector (libgc) is required -- and `--gc` selects how much of that machinery is emitted, down to `--gc none` with statically inserted frees for [ownership-checked](../language/ownership-borrowing.md) modules. See [Memory Management](../language/native-pathway.md#memory-management) in the native pathway reference.
 
 **Examples:**
 
@@ -1963,6 +1970,10 @@ jac nacompile chess.na.jac
 
 # Compile with custom output name
 jac nacompile chess.na.jac -o mychess
+
+# Compile an ownership-covered module and prove the artifact
+# contains no RC/collector machinery
+jac nacompile service.na.jac --gc none --enforce-nogc --assert-no-rc
 
 # Run the binary
 ./mychess

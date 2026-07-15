@@ -213,7 +213,7 @@ obj Res {
 
 `drop` fires under every native gc mode, at the same program point for a uniquely-owned value:
 
-- **Enforced headerless modules** (`--enforce-nogc --gc none`): the compiler calls the hook from the statically inserted `__drop_<T>` at each drop point.
+- **[Enforced headerless modules](native-pathway.md#zero-rc-ownership-compilation)** (`--enforce-nogc --gc none`): the compiler calls the hook from the statically inserted `__drop_<T>` at each drop point.
 - **Managed modes** (`rc` and the default `cycles`): the hook is invoked by the object's reference-count destructor when the last reference dies. For an unaliased local that is the same point the headerless build drops at, so program output is identical across modes.
 
 **Timing is last use, not scope end.** Drops are scheduled by liveness (NLL-style eager drop): a binding's value is destroyed after the statement containing its last use, which can be earlier than the end of the enclosing block. This is observable through `drop`:
@@ -233,6 +233,10 @@ Two caveats:
 
 The Python backend does not invoke `def drop` automatically yet -- rely on it only in native modules.
 
+## Zero-RC native builds
+
+On the native backend, full ownership coverage is what lets the memory-management runtime disappear from the artifact entirely. A **nogc-enforced** module (`jac nacompile --enforce-nogc`, or `jac.toml [gc.enforce]` patterns) must keep every heap-typed contract position -- parameter, return type, `has` field -- in the owned world, with violations reported as hard [`E1401`-`E1406`](../diagnostics.md#zero-rc-enforcement-errors) errors that block codegen. Compiled with `--gc none`, such a module gets **headerless owned codegen**: allocations and frees at statically determined points (a bare `malloc` at construction, a direct `__drop_<T>` call after last use), no reference counting, and no collector -- and `jac nacompile --assert-no-rc` fails the build if the emitted IR contains any RC/collector machinery, making the absence checkable in the binary. Heap values leave an enforced module only through the explicit `managed(...)` membrane builtin. The full model -- gc modes, the enforcement contract, and the `rc-stats` coverage report -- lives in [Zero-RC ownership compilation](native-pathway.md#zero-rc-ownership-compilation).
+
 ## What `&x` compiles to
 
 On every backend the ownership annotations are compile-time-only. On the Python backend, `&x` and `&mut x` are **erased**: the expression compiles to exactly `x`, the same object reference an unannotated binding would produce. There is no runtime borrow object, no copy, and no indirection -- the annotation exists solely for `OwnershipCheckPass` to check. (Before the borrow-checker work, a prefix `&x` lowered to the archetype-lookup call `jobj(id=x)`; that legacy meaning is gone -- call `jobj(id=...)` explicitly if you want an id lookup.) The native backend likewise erases borrows; its reference-count optimizations consume the core-stamped move-elision and param-rebinding facts (`RcFactsPass`), computed once on the shared dataflow framework.
@@ -241,4 +245,4 @@ On every backend the ownership annotations are compile-time-only. On the Python 
 
 - [Ownership Checker Specification](ownership-checker-spec.md) -- the authoritative statement of what each `E13xx` code guarantees, the checker's symbol-level granularity, and the facts contract backends consume.
 - [Errors and Warnings](../diagnostics.md#ownership-borrow-errors) -- the full `E1301`-`E1309` code table (`E1305` is reserved for the planned `linear` marker and not yet registered).
-- [Native Compilation Reference](native-pathway.md#reference-count-elision) -- how the native backend proves reference-count elision independently of this checker.
+- [Native Compilation Reference](native-pathway.md#memory-management) -- the emit-time `--gc` modes, zero-RC ownership compilation, and how the native backend proves [reference-count elision](native-pathway.md#reference-count-elision) independently of this checker.

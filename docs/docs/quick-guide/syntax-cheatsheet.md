@@ -1234,6 +1234,47 @@ with entry {
 
 
 # ============================================================
+# Ownership & Borrowing (opt-in)
+# ============================================================
+# `own` marks a unique owner; assigning it elsewhere or passing it
+# to a call MOVES the value (use-after-move is a compile error).
+# `&`/`&mut` take a shared/mutable borrow; `val` is deep-immutable.
+# Unannotated bindings are untouched -- the checker only tracks
+# what you tag. On native, full coverage enables zero-RC builds
+# (jac nacompile --gc none --enforce-nogc --assert-no-rc).
+
+obj Buffer { has n: int = 0; }
+
+def use_buf(x: Buffer) -> None {}
+
+with entry {
+    a: own Buffer = Buffer();   # unique owner
+    v: &Buffer = &a;            # shared borrow (owner is read-only while live)
+    use_buf(v);
+    m: val Buffer = Buffer();   # deep-immutable: no writes through `m`, ever
+    b = a;                      # moves out of `a`; reading `a` again is E1301
+}
+
+# `region { }` = arena scope: everything allocated inside is freed
+# together at the closing brace; references must not escape it.
+def scratch() -> None {
+    region {
+        tmp = Buffer();   # reclaimed with the whole arena at `}`
+    }
+}
+
+# `def drop` runs exactly once when the object is destroyed, at its
+# owner's last use (native backend; Python does not call it yet).
+obj Res {
+    has fd: int = 0;
+
+    def drop {
+        print("closing", self.fd);
+    }
+}
+
+
+# ============================================================
 # FULL-STACK DEVELOPMENT (Codespaces)
 # ============================================================
 # Jac code can target different execution environments:
