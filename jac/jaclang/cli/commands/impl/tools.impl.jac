@@ -298,10 +298,16 @@ impl gen_jir_registry(verify: bool = False) -> int {
             ) as cfg {
                 cfg.write("[check.lint]\nselect = [\"all\"]\n");
             }
+            _jir_fmt_env = os.environ.copy();
+            _jir_pp = os.environ.get('PYTHONPATH', '');
+            if _jir_pp {
+                _jir_fmt_env['PYTHONPATH'] = os.path.abspath(_jir_pp);
+            }
             subprocess.run(
                 [sys.executable, '-m', 'jaclang', 'fmt', '--lintfix', tmp_path],
                 capture_output=True,
-                cwd=fmt_dir
+                cwd=fmt_dir,
+                env=_jir_fmt_env
             );
             content = Path(tmp_path).read_text(encoding="utf-8");
         }
@@ -359,10 +365,16 @@ impl gen_cli_dispatch(verify: bool = False) -> int {
             ) as cfg {
                 cfg.write("[check.lint]\nselect = [\"all\"]\n");
             }
+            _fmt_env = os.environ.copy();
+            _pp = os.environ.get('PYTHONPATH', '');
+            if _pp {
+                _fmt_env['PYTHONPATH'] = os.path.abspath(_pp);
+            }
             subprocess.run(
                 [sys.executable, '-m', 'jaclang', 'fmt', '--lintfix', tmp_path],
                 capture_output=True,
-                cwd=fmt_dir
+                cwd=fmt_dir,
+                env=_fmt_env
             );
             content = Path(tmp_path).read_text(encoding="utf-8");
         }

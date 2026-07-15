@@ -98,9 +98,7 @@ def dispatch_command(name: str, args: dict) -> int | None {
     if name == 'completions' {
         import from jaclang.cli.commands.tools { completions }
         return _norm_exit(
-            completions(
-                shell=args.get("shell", 'bash'), install=args.get("install", False)
-            )
+            completions(shell=args.get("shell", 'bash'), install=args.get("install", False)))
         );
     }
     if name == 'config' {
@@ -262,9 +260,7 @@ def dispatch_command(name: str, args: dict) -> int | None {
     }
     if name == 'model' {
         import from jaclang.byllm.cli { model }
-        return _norm_exit(
-            model(action=args.get("action", 'list'), alias=args.get("alias", ''))
-        );
+        return _norm_exit(model(action=args.get("action", 'list'), alias=args.get("alias", '')));
     }
     if name == 'nacompile' {
         import from jaclang.cli.commands.nacompile { nacompile }
@@ -353,9 +349,7 @@ def dispatch_command(name: str, args: dict) -> int | None {
     }
     if name == 'setup' {
         import from jaclang.runtimelib.client.cli { setup }
-        return _norm_exit(
-            setup(target=args["target"], platform=args.get("platform", None))
-        );
+        return _norm_exit(setup(target=args["target"], platform=args.get("platform", None)));
     }
     if name == 'start' {
         import from jaclang.cli.commands.execution { start }

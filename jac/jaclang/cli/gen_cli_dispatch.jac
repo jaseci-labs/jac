@@ -69,7 +69,24 @@ def generate -> str {
         joined = ", ".join(call_args);
         lines.append(f"    if name == {repr(cname)} {{");
         lines.append(f"        import from {module} {{ {func} }}");
-        lines.append(f"        return _norm_exit({func}({joined}));");
+        inline = f"        return _norm_exit({func}({joined}));";
+        inner_inline = f"            {func}({joined})";
+        if len(inline) <= 100 {
+            lines.append(inline);
+        } elif len(inner_inline) <= 100 {
+            lines.append(f"        return _norm_exit(");
+            lines.append(inner_inline + ")");
+            lines.append("        );");
+        } else {
+            lines.append(f"        return _norm_exit(");
+            lines.append(f"            {func}(");
+            for (j, ca) in enumerate(call_args) {
+                comma = ',' if j < len(call_args) - 1 else '';
+                lines.append(f"                {ca}{comma}");
+            }
+            lines.append(f"            )");
+            lines.append(f"        );");
+        }
         lines.append('    }');
     }
 
