@@ -807,7 +807,7 @@ Compiling with `JAC_RC_STATS=1` prints a per-module line to stderr reporting the
 rc-stats [mod.na.jac] gc=cycles retains=1 releases=10 elided=3 coverage=21.4%
 ```
 
-A module with zero emitted retains and releases is tagged ` rc-free` at the end of the line -- the same condition `--assert-no-rc` checks structurally in the IR.
+A module with zero emitted retains and releases is tagged `rc-free` at the end of the line -- the same condition `--assert-no-rc` checks structurally in the IR.
 
 ### Reserved `__rc_*` runtime hooks
 
