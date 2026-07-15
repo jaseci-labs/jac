@@ -66,6 +66,9 @@ obj OwnershipCheckPass(Transform[uni.Module, uni.Module]) {
     def _nogc_tag_shape(tag: uni.SubTag | None) -> str;
     def _nogc_local_shape(nm: uni.Name) -> str;
     def _nogc_local_shape_expr_heap(expr: uni.Expr | None) -> bool;
+    def _nogc_expr_type_is_heap(expr: uni.Expr | None) -> bool;
+    def _nogc_is_container_expr(expr: uni.Expr | None) -> bool;
+    def _nogc_container_grow_method(call: uni.FuncCall) -> (str | None);
     def _nogc_module_enforced(mod_name: str) -> bool;
     def _nogc_check_call(call: uni.FuncCall, prov: str) -> None;
     def _emit_enforcement_diagnostics -> None;
