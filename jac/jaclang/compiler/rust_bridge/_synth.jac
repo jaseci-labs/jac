@@ -4,6 +4,7 @@ import from jaclang.compiler.rust_bridge._blob {
     ParamDesc,
     FN_CTOR,
     FN_METHOD,
+    FN_STATIC,
     KIND_ERROR,
     KIND_OPAQUE,
     TAG_BOOL,
@@ -692,6 +693,16 @@ class _Synth {
                 }
                 methods_of[fd.self_type].append(fd);
                 shim_fds.append(fd);
+            } elif fd.kind == FN_STATIC {
+                owner = self.opaque[fd.self_type]
+                    if fd.self_type in self.opaque
+                    else "?";
+                self.skips.append(
+                    Skip(
+                        item=f"{owner}.{fd.name}",
+                        reason="static associated fn not bridged on na (FN_STATIC; CPython-only)"
+                    )
+                );
             } elif fd.self_type != TAG_VOID
             and fd.self_type < len(m.types)
             and m.types[fd.self_type].kind == KIND_ERROR {

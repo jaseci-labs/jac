@@ -23,6 +23,7 @@ fn method(name: &str, params: Vec<BridgeParam>, ret: BridgeReturn) -> BridgeFn {
         via_trait: None,
         self_mut: false,
         consumes_self: false,
+        is_static: false,
     }
 }
 

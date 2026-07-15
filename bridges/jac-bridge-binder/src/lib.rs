@@ -18,6 +18,7 @@ mod tests {
     mod coverage_regex;
     mod ctor_dedup;
     mod flatten_trait;
+    mod fn_static;
     mod monomorphize_chrono;
     mod overlay_regex;
     mod ref_lane;

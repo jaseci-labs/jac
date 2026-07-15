@@ -92,3 +92,10 @@ pub const KIND_ERROR: u8 = 3;
 // FnKind values (u8, byte 24 of each FnDesc)
 pub const FN_CTOR: u8 = 0;
 pub const FN_METHOD: u8 = 1;
+/// A no-receiver associated function that is NOT THE constructor: an extra
+/// `-> Self` factory (`Uuid::nil`/`parse_str`) or a non-`Self` static
+/// (`Sha256::digest(data) -> Output`). Crosses with NO handle param (like a
+/// ctor) but is dispatched by name and its return marshaled by its own tag; the
+/// loader exposes it as a static method on the owning type. `self_type` carries
+/// the OWNING type index (for loader placement), never a receiver.
+pub const FN_STATIC: u8 = 2;

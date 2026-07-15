@@ -1,0 +1,5 @@
+error: #[jac(assoc)] marks a no-receiver associated function; this fn has a `self` receiver
+  --> tests/ui/assoc_with_receiver.rs:18:16
+   |
+18 |         pub fn other(&self) -> bool {
+   |                ^^^^^

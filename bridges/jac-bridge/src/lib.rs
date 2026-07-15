@@ -318,7 +318,22 @@ fn analyze_fn(
         Some(FnArg::Receiver(r)) => (true, r.mutability.is_some()),
         _ => (false, false),
     };
-    let kind: u8 = if !has_self { schema::FN_CTOR } else { schema::FN_METHOD };
+    // `#[jac(assoc)]` marks a no-receiver fn as a STATIC (an extra factory or a
+    // non-`Self` associated fn) rather than THE constructor.  A receiver + assoc
+    // is a contradiction the binder never emits, but reject it defensively so a
+    // hand-written bridge can't silently mislabel a method.
+    let is_assoc = parse_is_assoc(&f.attrs)?;
+    if is_assoc && has_self {
+        return Err(Error::new(f.sig.ident.span(),
+            "#[jac(assoc)] marks a no-receiver associated function; this fn has a `self` receiver"));
+    }
+    let kind: u8 = if has_self {
+        schema::FN_METHOD
+    } else if is_assoc {
+        schema::FN_STATIC
+    } else {
+        schema::FN_CTOR
+    };
 
     let params: Vec<Param> = f.sig.inputs.iter()
         .filter(|a| !matches!(a, FnArg::Receiver(_)))
@@ -360,7 +375,10 @@ fn analyze_fn(
 
     Ok(FnDef {
         jac_name: name, c_sym, kind,
-        self_idx: if has_self { Some(type_i) } else { None },
+        // A method's `self_idx` is its receiver type; a STATIC carries the OWNING
+        // type index (so the loader can place it on that type) even though it
+        // takes no handle; a ctor carries none (its type is read off the return).
+        self_idx: if has_self || is_assoc { Some(type_i) } else { None },
         params, ret, ownership, throws,
         rust_ident: f.sig.ident.clone(),
         impl_type_i: type_i,
@@ -384,24 +402,47 @@ fn analyze_fn(
 /// RC-pins behind a runtime `rh == self.__handle` guard.  So a co-owned handle is
 /// expressed by returning `&Self`, never asserted with `#[jac(shared)]`.
 fn parse_ownership(attrs: &[Attribute]) -> Result<Ownership, Error> {
+    Ok(parse_jac_attr(attrs)?.0)
+}
+
+/// True when the method carries `#[jac(assoc)]` — a no-receiver associated
+/// function the binder emits as a STATIC (an extra `-> Self` factory or a
+/// non-`Self` static like `Sha256::digest`), distinct from THE constructor.
+fn parse_is_assoc(attrs: &[Attribute]) -> Result<bool, Error> {
+    Ok(parse_jac_attr(attrs)?.1)
+}
+
+/// Parse the per-method `#[jac(...)]` helper attribute into `(ownership,
+/// is_assoc)`.  Recognised keys: `owned`/`borrowed` (ownership class) and `assoc`
+/// (mark a no-receiver fn as a static).  `assoc` alone is valid — a static is
+/// always `Owned`, so it needs no ownership key.  `shared` is retired.
+fn parse_jac_attr(attrs: &[Attribute]) -> Result<(Ownership, bool), Error> {
+    let mut ownership = Ownership::Owned;
+    let mut is_assoc = false;
     for a in attrs {
         if !a.path().is_ident("jac") { continue }
         let mut cls = None;
+        let mut saw_assoc = false;
         a.parse_nested_meta(|m| {
             if m.path.is_ident("owned")    { cls = Some(Ownership::Owned);    Ok(()) }
             else if m.path.is_ident("borrowed") { cls = Some(Ownership::Borrowed); Ok(()) }
+            else if m.path.is_ident("assoc") { saw_assoc = true; Ok(()) }
             else if m.path.is_ident("shared") {
                 Err(m.error("#[jac(shared)] is retired: an unconditional retain-on-adopt \
                     leaks a fresh handle box.  Return `&Self` for a co-owned (self-identity) \
                     handle — the loader RC-pins it behind a runtime `rh == self` guard that \
                     proves the alias instead of trusting the annotation"))
             }
-            else { Err(m.error("unknown #[jac(...)] key: expected owned or borrowed")) }
+            else { Err(m.error("unknown #[jac(...)] key: expected owned, borrowed, or assoc")) }
         })?;
-        return cls.ok_or_else(|| Error::new(a.span(),
-            "#[jac(...)] requires a class: #[jac(owned)] or #[jac(borrowed)]"));
+        if saw_assoc { is_assoc = true; }
+        if let Some(c) = cls { ownership = c; }
+        else if !saw_assoc {
+            return Err(Error::new(a.span(),
+                "#[jac(...)] requires a key: #[jac(owned)], #[jac(borrowed)], or #[jac(assoc)]"));
+        }
     }
-    Ok(Ownership::Owned)
+    Ok((ownership, is_assoc))
 }
 
 fn analyze_param(arg: &FnArg, types: &[TypeDef]) -> Result<Param, Error> {
@@ -1387,11 +1428,12 @@ fn gen_fn_shim(f: &FnDef, types: &[TypeDef], mod_ident: &Ident, rt: &Ident, _has
         quote! {}
     };
 
-    // Call expression
-    let raw_call: TS2 = if f.kind == schema::FN_CTOR {
-        quote! { #tpath :: #fn_id ( #(#call_args),* ) }
-    } else {
+    // Call expression.  A ctor and a STATIC both call through the associated-fn
+    // form `Type::fn(args)` (no receiver); only a method delegates to `self_`.
+    let raw_call: TS2 = if f.kind == schema::FN_METHOD {
         quote! { self_ . #fn_id ( #(#call_args),* ) }
+    } else {
+        quote! { #tpath :: #fn_id ( #(#call_args),* ) }
     };
 
     // For async fns, block on the future using the module-owned Tokio runtime.

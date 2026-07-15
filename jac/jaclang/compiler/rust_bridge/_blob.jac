@@ -19,7 +19,8 @@ glob MAGIC = b"JACBRDG1",
      KIND_OPAQUE = 0,
      KIND_ERROR = 3,
      FN_CTOR = 0,
-     FN_METHOD = 1;
+     FN_METHOD = 1,
+     FN_STATIC = 2;
 
 
 def abi_mismatch_error(crate: str, path: object, found: int) -> ImportError {

@@ -1,4 +1,4 @@
-error: unknown #[jac(...)] key: expected owned or borrowed
+error: unknown #[jac(...)] key: expected owned, borrowed, or assoc
   --> tests/ui/unknown_jac_key.rs:16:15
    |
 16 |         #[jac(bogus)]

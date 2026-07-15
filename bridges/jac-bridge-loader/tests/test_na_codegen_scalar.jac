@@ -72,3 +72,20 @@ test "integer methods are not skipped" {
     # every method + ctor bridged
     assert res.bridged >= 8;
 }
+
+
+test "FN_STATIC associated fns are honestly skipped on na (gated)" {
+    res = render_na_source(_META, _NAME);
+    items = {s.item for s in res.skips};
+    # The statics (`#[jac(assoc)]`) are CPython-only; na records them as skips so
+    # coverage never silently drops the surface, and never emits them as callables.
+    for name in ["Calc.from_sum", "Calc.answer", "Calc.parse"] {
+        assert name in items , f"{name} must be a na skip: {items}";
+    }
+    reasons = {s.reason for s in res.skips};
+    assert any(["FN_STATIC" in r for r in reasons]);
+    # And the generated na source defines no static method for them.
+    src = res.source;
+    assert "def from_sum(" not in src;
+    assert "def answer(" not in src;
+}

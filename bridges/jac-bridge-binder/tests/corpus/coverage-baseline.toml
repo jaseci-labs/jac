@@ -76,9 +76,11 @@ dropped = 10
 
 # `total` 7 -> 11 and `dropped` 4: base64's four generic engine/config structs are
 # now tallied as hidden surface rather than silently absent.
+# 1.3 FN_STATIC lifted base64 1 -> 2 (total 11 -> 13): an extra `-> Self` engine
+# factory admitted as a static rather than an additional-constructor skip.
 [base64]
-bridged = 1
-total = 11
+bridged = 2
+total = 13
 dropped = 4
 
 # chrono dropped from a *wrong* 11/264 to a correct 7/192 (M4 Phase B monomorphize):
@@ -130,9 +132,19 @@ dropped = 4
 # from the ref target set (their return path reads as the generic origin), and a
 # bridged-type PARAM by value (`and_time(NaiveTime)`) is a separate handle-arg lane,
 # so those stay skips. `total` unchanged (266).
+# 1.3 FN_STATIC lifted chrono 105 -> 145 (total 266 -> 287): chrono is dense with
+# no-receiver factory functions — `NaiveDate::from_ymd`/`from_yo`, `NaiveTime::
+# from_hms*`, `NaiveDateTime::from_timestamp*`, `TimeDelta::hours`/`weeks`/…,
+# `FixedOffset::east`/`west` — all extra `-> Self`/`-> Option<Self>` associated fns
+# the single ctor slot couldn't hold. They are now static methods (+40) instead of
+# "additional constructor" skips. All are INHERENT (no trait `use` needed) and use
+# the proven OwnSelf/OptRef/Ref/Int arms. `total` +21 as newly-considered assoc
+# surface folds in. (chrono's own full bridge compile is blocked by a pre-existing,
+# unrelated multi-`#[jac_error]` limitation, so it has no roundtrip test; the static
+# shapes are compile-proven by the uuid + sha2 roundtrips.)
 [chrono]
-bridged = 105
-total = 266
+bridged = 145
+total = 287
 dropped = 4
 
 # uuid was 0 bridged: `Uuid` is a single-field private tuple struct
@@ -162,8 +174,13 @@ dropped = 4
 # skip because `Timestamp`'s whole API is closures/unsupported types, leaving it a
 # dead-opaque type codegen drops. u128 ctors (`from_u128`) stay out (no msgpack
 # u128). `total` 6 -> 96 folds the crate's now-considered surface in.
+# 1.3 FN_STATIC lifted uuid 13 -> 17: the extra `-> Self` factories the single ctor
+# slot couldn't hold — `parse_str`/`try_parse`/`try_parse_ascii`/`from_slice_le`,
+# all fallible `-> Result<Self, _>` — are now admitted as static methods rather than
+# "additional constructor" skips (+4). uuid's infallible `nil`/`max` stay dropped
+# (const-generic "generic" skips, a different gap). `total` unchanged (96).
 [uuid]
-bridged = 13
+bridged = 17
 total = 96
 dropped = 1
 
@@ -183,7 +200,16 @@ dropped = 1
 # constructor (a `Self` return), so a static method returning bytes needs a distinct
 # FN_STATIC lane (future). Hash-equivalence via new+update+finalize is unaffected.
 # `total` unchanged (186): every gain flips a skip to bridged.
+# 1.3 FN_STATIC lifted sha2 42 -> 54: each hasher gains two static associated fns
+# — the one-shot `digest(data) -> Output` (a no-receiver bytes-returning fn, +6)
+# and `new_with_prefix(data) -> Self` (an extra `-> Self` factory the single ctor
+# slot couldn't hold, +6). `output_size()` also becomes a static but nets 0 (the
+# &self `DynDigest::output_size` already claimed the name; first-wins dedup).
+# `total` unchanged (186): each gain flips a skip to bridged. The na loader GATES
+# statics (CPython-only). sha2 still does NOT clear the ≥60 exit floor: the rest
+# needs a SEPARATE `Box<[u8]>` bytes-return arm for `DynDigest::finalize`/
+# `finalize_reset` (12 "unsupported type: Box" skips), which FN_STATIC doesn't touch.
 [sha2]
-bridged = 42
+bridged = 54
 total = 186
 dropped = 0

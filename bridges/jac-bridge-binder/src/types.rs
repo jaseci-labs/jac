@@ -272,6 +272,16 @@ pub struct BridgeFn {
     /// when the newtype's inner type is `Clone` (verified in the classifier), so
     /// the emitted clone always compiles. Mutually exclusive with `self_mut`.
     pub consumes_self: bool,
+    /// Set (1.3 FN_STATIC lane) when this is a no-receiver ASSOCIATED function
+    /// that is NOT THE constructor: an extra `-> Self` factory the ctor slot
+    /// couldn't hold (`Uuid::nil`/`parse_str`) or a non-`Self` static
+    /// (`Sha256::digest(data) -> Vec<u8>`, `output_size() -> usize`). It lives in
+    /// `methods` (so it is emitted inside the impl) but codegen omits the `&self`
+    /// receiver and calls through the associated form `Type::fn(args)`, and stamps
+    /// `#[jac(assoc)]` so the macro tags it `FN_STATIC` (crosses with no handle,
+    /// exposed as a static method on the owning type). `false` for an ordinary
+    /// method, ctor, or synthesized wrapper reader.
+    pub is_static: bool,
 }
 
 /// The receiver expression a method body delegates through.

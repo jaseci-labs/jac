@@ -121,6 +121,34 @@ mod bridge_impl {
             }
         }
 
+        /// FN_STATIC (1.3), additional `-> Self` factory: a no-receiver
+        /// associated fn stamped `#[jac(assoc)]` so the macro tags it FN_STATIC
+        /// (crosses with NO handle) and the loader exposes it as a static method
+        /// `Calc.from_sum(a, b)`. Distinct from `new` (THE ctor / `init`).
+        #[jac(assoc)]
+        pub fn from_sum(a: i64, b: i64) -> Self {
+            Self(a.wrapping_add(b))
+        }
+
+        /// FN_STATIC, non-`Self` scalar: a no-receiver, no-param associated fn
+        /// returning a plain integer — proves a static dispatches with no handle
+        /// and marshals its own return tag (`Calc.answer() -> 42`).
+        #[jac(assoc)]
+        pub fn answer() -> i64 {
+            42
+        }
+
+        /// FN_STATIC, fallible `-> Self` (the `uuid::parse_str` shape): parses a
+        /// decimal seed, raising the bridge's error on bad input. Proves a static
+        /// carries `throws` and constructs a handle on the ok path.
+        #[jac(assoc)]
+        pub fn parse(text: &str) -> Result<Self, String> {
+            text.trim()
+                .parse::<i64>()
+                .map(Self)
+                .map_err(|e| format!("parse: {e}"))
+        }
+
         /// Fallible integer return: `Err` on divide-by-zero, else the quotient.
         /// (Param is `divisor`, not `by`: `by` is a Jac keyword, and the na
         /// loader emits the Rust param name verbatim as a Jac identifier.)

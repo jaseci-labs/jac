@@ -395,9 +395,14 @@ fn scalar_ty(t: &ScalarType) -> String {
 /// `classify` only admits params `ScalarType` can represent (`&str`, `bool`);
 /// anything else is already a recorded skip, so this always emits.
 fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
+    // A STATIC (1.3) has no receiver, exactly like a ctor — it calls through the
+    // associated form `Type::fn(args)` — but lives in `methods` and is stamped
+    // `#[jac(assoc)]` so the macro tags it FN_STATIC rather than FN_CTOR.
+    let no_recv = is_ctor || f.is_static;
+
     // Signature param list.
     let mut sig_parts: Vec<String> = Vec::new();
-    if !is_ctor {
+    if !no_recv {
         // A cursor/drain pull method mutates the iterator it owns; a 1.2.2
         // `&mut self` source method (`Digest::update`) mutates the handle in place
         // (the macro routes it through the reentrancy busy-latch). A consuming
@@ -464,6 +469,16 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
     let base_call = |r: &str| -> String {
         if is_ctor {
             format!("{inner}::{fname}({args_str}){aw}")
+        } else if f.is_static {
+            // A static calls through the associated form. When flattened off a
+            // trait (`Sha256::digest` via `Digest`), fully-qualify it as
+            // `<Inner as Trait>::fname` so an overlapping same-named item on a
+            // sibling trait in scope (sha2 brings both `Digest` and `DynDigest`)
+            // can't make the call ambiguous (E0034).
+            match via_trait_short {
+                Some(tr) => format!("<{inner} as {tr}>::{fname}({args_str}){aw}"),
+                None => format!("{inner}::{fname}({args_str}){aw}"),
+            }
         } else if let Some(tr) = via_trait_short {
             let sep = if args_str.is_empty() { "" } else { ", " };
             format!("{tr}::{fname}({ufcs_recv}{sep}{args_str}){aw}")
@@ -612,8 +627,16 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
         ),
         Ownership::Borrowed => "        #[jac(borrowed)]\n".into(),
     };
+    // 1.3: a static is stamped `#[jac(assoc)]` so the macro tags it FN_STATIC
+    // (a no-receiver fn dispatched by name with no handle). Statics are always
+    // `Owned`, so `assoc` never coexists with `borrowed`.
+    let assoc_attr = if f.is_static {
+        "        #[jac(assoc)]\n"
+    } else {
+        ""
+    };
     Some(format!(
-        "{own_attr}        pub {async_kw}fn {}({}){} {{\n            {}\n        }}",
+        "{assoc_attr}{own_attr}        pub {async_kw}fn {}({}){} {{\n            {}\n        }}",
         exposed, params_str, ret_ann, body
     ))
 }

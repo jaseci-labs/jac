@@ -168,3 +168,40 @@ test "checked_div by zero raises the bridge error" {
         assert raised;
     }
 }
+
+# -- FN_STATIC associated fns (1.3) --------------------------------------------
+# The loader exposes a no-receiver `#[jac(assoc)]` fn as a @staticmethod on the
+# type: called with NO handle, its return marshaled by its own tag.
+test "from_sum is a static factory returning a fresh handle" {
+    with _Calc.from_sum(30, 12) as c {
+        assert c.seed() == 42;
+    }
+}
+
+test "from_sum handle is independent of any receiver" {
+    # Called off the class, not an instance; wraps a to_int overflow-safely.
+    with _Calc.from_sum(9223372036854775807, 1) as c {
+        assert c.seed() == -9223372036854775808;
+    }
+}
+
+test "answer is a no-param scalar static" {
+    assert _Calc.answer() == 42;
+}
+
+test "parse is a fallible static constructing on the ok path" {
+    with _Calc.parse("  -17 ") as c {
+        assert c.seed() == -17;
+    }
+}
+
+test "parse raises the bridge error on bad input" {
+    raised = False;
+    try {
+        _Calc.parse("not-an-int");
+    } except _ScalarError as e {
+        raised = True;
+        assert "parse" in str(e);
+    }
+    assert raised;
+}

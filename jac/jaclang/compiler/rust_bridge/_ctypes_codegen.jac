@@ -29,6 +29,7 @@ import from jaclang.compiler.rust_bridge._blob {
     KIND_ERROR,
     FN_CTOR,
     FN_METHOD,
+    FN_STATIC,
     tag_is_opt,
     tag_is_ref,
     tag_is_borrowed,
@@ -517,6 +518,17 @@ def _bind_method(
 }
 
 
+def _bind_static(
+    type_name: str, fd_: FnDesc, c_fn_: object, rt: _Runtime, classes: dict[int, type]
+) -> object {
+    def static_method(*args: object) -> object {
+        return _call(c_fn_, fd_, rt, None, args, classes);
+    }
+    static_method.__name__ = fd_.name;
+    return staticmethod(static_method);
+}
+
+
 def _make_class(
     td: TypeDesc, meta: BridgeMeta, lib: CDLL, rt: _Runtime, classes: dict[int, type]
 ) -> type {
@@ -526,6 +538,7 @@ def _make_class(
 
     ctor_fd = None;
     method_fds = [];
+    static_fds = [];
     for fd in meta.fns {
         if fd.kind == FN_CTOR
         and tag_is_ref(fd.ret)
@@ -536,6 +549,8 @@ def _make_class(
         and fd.self_type == td.index
         and fd.name != "message" {
             method_fds.append(fd);
+        } elif fd.kind == FN_STATIC and fd.self_type == td.index {
+            static_fds.append(fd);
         }
     }
 
@@ -551,6 +566,14 @@ def _make_class(
     for fd in method_fds {
         try {
             method_c.append((fd, _wire(lib, fd)));
+        } except BridgeSkip {
+            continue;
+        }
+    }
+    static_c = [];
+    for fd in static_fds {
+        try {
+            static_c.append((fd, _wire(lib, fd)));
         } except BridgeSkip {
             continue;
         }
@@ -625,6 +648,12 @@ def _make_class(
 
     for (fd, c_fn) in method_c {
         cls_dict[fd.name] = _bind_method(td.name, fd, c_fn, rt, classes);
+    }
+
+    for (fd, c_fn) in static_c {
+        if fd.name not in cls_dict {
+            cls_dict[fd.name] = _bind_static(td.name, fd, c_fn, rt, classes);
+        }
     }
 
     return type(td.name, (), cls_dict);

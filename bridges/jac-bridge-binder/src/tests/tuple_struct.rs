@@ -104,19 +104,28 @@ fn private_module_type_uses_root_reexport_path() {
 }
 
 /// The single-ctor ABI: `Uuid` has many `-> Self` associated fns (`parse_str`,
-/// `try_parse`, `from_slice_le`, …) but only ONE wins the constructor slot. The
-/// losers are recorded as honest "additional constructor" skips, not silently
-/// dropped — exposing them all needs the deferred FN_STATIC lane (the same gap
-/// sha2's one-shot `digest` hit).
+/// `try_parse`, `from_slice_le`, …) but only ONE wins the constructor slot
+/// (`init`). The losers are admitted as STATIC factories (1.3 FN_STATIC) —
+/// `is_static` methods exposed on the type — rather than dropped or skipped, so
+/// `Uuid::parse_str` bridges as `Uuid.parse_str(s)`.
 #[test]
-fn extra_self_constructors_are_visible_skips() {
+fn extra_self_constructors_become_statics() {
     let spec = classify(&load("uuid-1.23.4"));
+    let uuid = ty(&spec, "Uuid");
+    let parse_str = uuid
+        .methods
+        .iter()
+        .find(|m| m.name == "parse_str")
+        .expect("Uuid::parse_str must be admitted as a static factory");
     assert!(
-        spec.skips.iter().any(|s| {
-            s.item == "Uuid::parse_str"
-                && format!("{:?}", s.reason).contains("additional constructor")
-        }),
-        "Uuid::parse_str must be a visible additional-constructor skip"
+        parse_str.is_static,
+        "Uuid::parse_str must be marked `is_static`, not an instance method"
+    );
+    // It must NOT also be THE ctor (the ctor slot holds exactly one winner).
+    assert_ne!(
+        uuid.ctor.as_ref().map(|c| c.name.as_str()),
+        Some("parse_str"),
+        "parse_str is a loser of the ctor race, admitted as a static"
     );
 }
 

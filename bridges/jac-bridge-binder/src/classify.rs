@@ -291,6 +291,30 @@ fn ref_return_target(ret: &BridgeReturn) -> Option<&str> {
     }
 }
 
+/// True when a trait-flattened STATIC (1.3) can't be emitted because its trait's
+/// public `use` path is unrecoverable. `trait_use_path` resolves an external
+/// trait as `{module}::{defining_crate}::{Trait}`, which is correct when the
+/// bridged crate re-exports its dependency (sha2 re-exports `digest` as
+/// `sha2::digest`), but WRONG for a std trait (`FromStr`) — `core`/`alloc`/`std`
+/// are never re-exported under the bridged crate, and rustdoc's canonical path
+/// (`core::str::traits::FromStr`) traverses a private module, so no reliable
+/// public path exists. A static needs its trait in scope for the
+/// `<Inner as Trait>::fn` call, so an unusable path means an honest skip rather
+/// than an unresolved-import in the generated crate. (An ordinary trait-flattened
+/// *method* uses UFCS through the same path and would share this hazard, but no
+/// std semantic trait's methods currently reach codegen; statics are the first to
+/// surface it, via `-> Self` factories like `Regex::from_str`.)
+fn static_trait_path_unusable(via_trait: &Option<String>) -> bool {
+    let Some(path) = via_trait else {
+        return false;
+    };
+    let segs: Vec<&str> = path.split("::").collect();
+    // In-crate trait: `{module}::{Trait}` (2 segments) — always usable.
+    // External:        `{module}::{defining_crate}::{Trait}` — usable unless the
+    // defining crate is the std family, which the module never re-exports.
+    segs.len() >= 3 && matches!(segs[1], "core" | "alloc" | "std")
+}
+
 /// Mirror of codegen's dead-opaque test: an opaque type with no constructor, no
 /// method, and no injected source is never emitted (codegen skips it to stay
 /// warning-clean), so it must not be a live `Ref`/`OptRef` target. Kept in sync
@@ -958,14 +982,40 @@ impl<'a> Ctx<'a> {
         let mut candidates = ctor_candidates.into_iter();
         if let Some((_, winner)) = candidates.next() {
             bt.ctor = Some(winner);
-            for (item_path, extra) in candidates {
-                self.skips.push(Skip {
-                    item: item_path,
-                    reason: SkipReason::UnsupportedType(format!(
-                        "additional constructor ({})",
-                        extra.name
-                    )),
-                });
+            for (item_path, mut extra) in candidates {
+                // 1.3 FN_STATIC: the ctor slot holds exactly one ctor (the wrapper's
+                // `init`); every OTHER `-> Self` factory (`Uuid::nil`/`max`/
+                // `parse_str`, `Sha256::new_with_prefix`) becomes a STATIC — the same
+                // associated-fn codegen, exposed as a static method on the type
+                // rather than as `init`. None of these are mono (a mono ctor is
+                // skipped before it reaches `ctor_candidates`), so the associated
+                // call form always compiles. Dedup against methods already claimed.
+                if static_trait_path_unusable(&extra.via_trait) {
+                    // A `-> Self` factory flattened off a std/core trait
+                    // (`FromStr::from_str`): its `<Inner as Trait>::from_str` call
+                    // needs the trait `use`d, but the trait's PUBLIC path isn't
+                    // recoverable from rustdoc's canonical (private-module) path, so
+                    // `trait_use_path` can't form a compiling `use`. Honest skip
+                    // rather than an unresolved-import in the generated crate.
+                    self.skips.push(Skip {
+                        item: item_path,
+                        reason: SkipReason::UnsupportedType(
+                            "additional constructor via a std/core trait (no reliable public use path)"
+                                .into(),
+                        ),
+                    });
+                } else if seen_names.insert(extra.exposed().to_string()) {
+                    extra.is_static = true;
+                    bt.methods.push(extra);
+                } else {
+                    self.skips.push(Skip {
+                        item: item_path,
+                        reason: SkipReason::UnsupportedType(format!(
+                            "duplicate method name ({})",
+                            extra.exposed()
+                        )),
+                    });
+                }
             }
         }
     }
@@ -1045,19 +1095,45 @@ impl<'a> Ctx<'a> {
                     bridge_fn.ret,
                     BridgeReturn::OwnSelf | BridgeReturn::OwnSelfResult
                 ) && !has_self;
-                // An associated fn with NO receiver that isn't a constructor
+                // An associated fn with NO receiver that isn't THE constructor
                 // (returns something other than `Self`, e.g. `Digest::output_size()
-                // -> usize`) can't be emitted as an instance method `self.0.f()`, and
-                // the bridge ABI has no static non-ctor method. Honest skip rather
-                // than a mis-compiled `self.0.output_size()` (no such method exists on
-                // the value). Flattening `Digest` first surfaced this class.
+                // -> usize`, or `Sha256::digest(data) -> Output`). 1.3 admits it as
+                // a STATIC: codegen emits the associated form `Type::fn(args)` (no
+                // receiver) and stamps `#[jac(assoc)]` so the macro tags it
+                // FN_STATIC — no handle in, dispatched by name. A mono type's inner
+                // path carries a turbofish-less type arg (`Date<Utc>::f()` is
+                // invalid syntax), so a static on it stays a skip, exactly as a
+                // ctor on a mono type does.
                 if !is_ctor && !has_self {
-                    self.skips.push(Skip {
-                        item: item_path,
-                        reason: SkipReason::UnsupportedType(
-                            "associated fn (no receiver, not a constructor)".into(),
-                        ),
-                    });
+                    if bt.mono.is_some() {
+                        self.skips.push(Skip {
+                            item: item_path,
+                            reason: SkipReason::UnsupportedType(
+                                "associated fn on monomorphized type".into(),
+                            ),
+                        });
+                    } else if static_trait_path_unusable(&bridge_fn.via_trait) {
+                        self.skips.push(Skip {
+                            item: item_path,
+                            reason: SkipReason::UnsupportedType(
+                                "associated fn via a std/core trait (no reliable public use path)"
+                                    .into(),
+                            ),
+                        });
+                    } else if seen_names.insert(bridge_fn.exposed().to_string()) {
+                        bridge_fn.is_static = true;
+                        bt.methods.push(bridge_fn);
+                    } else {
+                        // 1.1.3 dedup: a same-named method/static already claimed the
+                        // exposed name; a second `pub fn` would not compile.
+                        self.skips.push(Skip {
+                            item: item_path,
+                            reason: SkipReason::UnsupportedType(format!(
+                                "duplicate method name ({})",
+                                bridge_fn.exposed()
+                            )),
+                        });
+                    }
                     return;
                 }
                 // A ctor's body calls `inner::method(..)`, but a mono type's inner
@@ -1228,6 +1304,7 @@ impl<'a> Ctx<'a> {
             via_trait: None,
             self_mut,
             consumes_self,
+            is_static: false,
         })
     }
 
@@ -1510,6 +1587,7 @@ impl<'a> Ctx<'a> {
             via_trait: None,
             self_mut: false,
             consumes_self: false,
+            is_static: false,
         };
         let pending = PendingWrapper {
             wrapper_name,
@@ -1564,6 +1642,7 @@ impl<'a> Ctx<'a> {
             via_trait: None,
             self_mut: false,
             consumes_self: false,
+            is_static: false,
         };
         let pending = PendingWrapper {
             wrapper_name,
@@ -1660,6 +1739,7 @@ impl<'a> Ctx<'a> {
                     via_trait: None,
                     self_mut: false,
                     consumes_self: false,
+                    is_static: false,
                 };
                 let kind = WrapperKind::Drain {
                     params: params.clone(),
@@ -1692,6 +1772,7 @@ impl<'a> Ctx<'a> {
                     via_trait: None,
                     self_mut: false,
                     consumes_self: false,
+                    is_static: false,
                 };
                 // Pend the item wrapper (an owning wrapper, built inline by `next`;
                 // root None so it merges with any root producer like `find`).
@@ -1725,6 +1806,7 @@ impl<'a> Ctx<'a> {
             via_trait: None,
             self_mut: false,
             consumes_self: false,
+            is_static: false,
         };
         // The cursor/drain wrapper itself: its only reader is the synthesized `next`.
         let mut pendings = vec![PendingWrapper {
@@ -1804,6 +1886,7 @@ impl<'a> Ctx<'a> {
             via_trait: None,
             self_mut: false,
             consumes_self: false,
+            is_static: false,
         };
         let producer = BridgeFn {
             name: method_name.to_string(),
@@ -1817,6 +1900,7 @@ impl<'a> Ctx<'a> {
             via_trait: None,
             self_mut: false,
             consumes_self: false,
+            is_static: false,
         };
         let pending = PendingWrapper {
             wrapper_name: wrapper_name.clone(),
@@ -1921,6 +2005,7 @@ impl<'a> Ctx<'a> {
             via_trait: None,
             self_mut: false,
             consumes_self: false,
+            is_static: false,
         };
         Some((producer, vec![]))
     }
@@ -2156,6 +2241,7 @@ impl<'a> Ctx<'a> {
                         via_trait: None,
                         self_mut: false,
                         consumes_self: false,
+                        is_static: false,
                     }),
                     // A reader whose return is `Option<Borrowed<'h>>` isn't a dead
                     // skip — it's a NESTED producer of another owning wrapper, so

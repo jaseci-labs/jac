@@ -92,11 +92,13 @@ glob _STEMS: list[str] = [
          "libjac_bridge_reentrant.so": (7, 0, 8),
          "libjac_bridge_regex.so": (2, 0, 3),
          "libjac_bridge_regex_v2.so": (2, 0, 3),
-         # scalar carries the f64 (TAG_F64) and bytes (TAG_BYTES) exemplars: na
-         # bridges 10 methods and skips 5 -- add_f64 / echo_f32 (f64 param) and
-         # seed_bytes / xor / maybe_bytes (the whole bytes lane) -- of 16 fns (the
-         # 16th being the na-only #[jac_error] `message` drop).
-         "libjac_bridge_scalar.so": (10, 5, 16)
+         # scalar carries the f64 (TAG_F64), bytes (TAG_BYTES) and FN_STATIC
+         # exemplars: na bridges 10 methods and skips 8 -- add_f64 / echo_f32 (f64
+         # param), seed_bytes / xor / maybe_bytes (the bytes lane), and the three
+         # `#[jac(assoc)]` statics from_sum / answer / parse (na GATES FN_STATIC;
+         # CPython-only) -- of 19 fns (the last being the na-only #[jac_error]
+         # `message` drop). na_only invariant holds: 19 - 10 - 8 = 1.
+         "libjac_bridge_scalar.so": (10, 8, 19)
      };
 
 
