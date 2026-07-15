@@ -24,6 +24,10 @@ pub struct Coverage {
     /// generics, const generics, lifetime-bearing structs). Each counts as one
     /// unit of unbridged surface so hiding a type can't inflate the ratio.
     pub dropped: usize,
+    /// Unresolvable trait-provided defaults (D1) — EXCLUDED from `total()`/`pct()`.
+    /// Reported for auditability ("+N inherited defaults not considered") but kept
+    /// out of the ratio so the metric stays comparable across crates.
+    pub inherited_excluded: usize,
 }
 
 impl Coverage {
@@ -56,6 +60,7 @@ pub fn coverage(spec: &BridgeSpec) -> Coverage {
         bridged,
         skipped: spec.skips.len(),
         dropped: spec.dropped.len(),
+        inherited_excluded: spec.inherited_excluded,
     }
 }
 
@@ -84,6 +89,14 @@ pub fn report(spec: &BridgeSpec) -> String {
         cov.bridged,
         cov.total(),
     );
+    // Unresolvable trait-provided defaults are excluded from the ratio (D1); make
+    // the exclusion auditable rather than silent.
+    if cov.inherited_excluded > 0 {
+        out.push_str(&format!(
+            " +{} inherited defaults not considered",
+            cov.inherited_excluded
+        ));
+    }
     if spec.skips.is_empty() && spec.dropped.is_empty() {
         out.push(';');
         return out;

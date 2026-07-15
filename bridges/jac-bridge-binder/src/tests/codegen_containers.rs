@@ -20,6 +20,7 @@ fn method(name: &str, params: Vec<BridgeParam>, ret: BridgeReturn) -> BridgeFn {
         recv: Recv::Field0,
         is_async: false,
         ret_ownership: Ownership::Owned,
+        via_trait: None,
     }
 }
 
@@ -66,6 +67,7 @@ fn spec() -> BridgeSpec {
         types: vec![store],
         skips: vec![],
         dropped: vec![],
+        inherited_excluded: 0,
     }
 }
 

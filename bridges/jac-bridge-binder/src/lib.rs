@@ -17,6 +17,7 @@ mod tests {
     mod codegen_containers;
     mod codegen_regex;
     mod coverage_regex;
+    mod flatten_trait;
     mod monomorphize_chrono;
     mod overlay_regex;
 }

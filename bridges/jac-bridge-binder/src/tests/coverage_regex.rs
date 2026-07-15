@@ -100,6 +100,7 @@ fn empty_surface_is_full_coverage() {
         types: vec![],
         skips: vec![],
         dropped: vec![],
+        inherited_excluded: 0,
     };
     assert_eq!(coverage(&spec).pct(), 100);
 }

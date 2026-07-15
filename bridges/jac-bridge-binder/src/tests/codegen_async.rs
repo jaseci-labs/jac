@@ -23,6 +23,7 @@ fn async_method(name: &str, params: Vec<BridgeParam>, ret: BridgeReturn) -> Brid
         recv: Recv::Field0,
         is_async: true,
         ret_ownership: Ownership::Owned,
+        via_trait: None,
     }
 }
 
@@ -36,6 +37,7 @@ fn sync_method(name: &str, params: Vec<BridgeParam>, ret: BridgeReturn) -> Bridg
         recv: Recv::Field0,
         is_async: false,
         ret_ownership: Ownership::Owned,
+        via_trait: None,
     }
 }
 
@@ -84,6 +86,7 @@ fn async_spec() -> BridgeSpec {
         types: vec![calc],
         skips: vec![],
         dropped: vec![],
+        inherited_excluded: 0,
     }
 }
 

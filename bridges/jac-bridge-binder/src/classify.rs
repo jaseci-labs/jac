@@ -15,6 +15,43 @@ use crate::types::{
     SkipReason, TypeKind, WrapperKind,
 };
 
+/// Traits whose methods are binder NOISE (D1): protocol / marker / formatting /
+/// derive-shaped traits that carry no semantic crate API. Flattening them would
+/// corrupt the coverage metric with derive-and-blanket boilerplate and pull in
+/// method names (`clone`, `eq`, `fmt`, `next`) that are not the crate's surface.
+///
+/// This is ONE central, versioned policy list — never a per-crate overlay knob,
+/// so the metric stays comparable across crates and the ratchet stays ungameable
+/// (D1). Matched on the trait's SIMPLE (final path segment) name, so a crate-local
+/// trait that happens to share a std name is treated the same (acceptably rare and
+/// still noise-shaped). Everything NOT here is SEMANTIC and gets flattened.
+const NOISE_TRAITS: &[&str] = &[
+    // formatting / debug
+    "Debug", "Display", "Binary", "Octal", "LowerHex", "UpperHex", "LowerExp", "UpperExp",
+    "Pointer", "Write",
+    // clone / copy / default / drop / ownership markers
+    "Clone", "CloneToUninit", "Copy", "Default", "Drop", "ToOwned",
+    // conversions (mechanical, not crate semantics)
+    "From", "Into", "TryFrom", "TryInto", "AsRef", "AsMut", "Borrow", "BorrowMut", "ToString",
+    // equality / ordering / hashing
+    "PartialEq", "Eq", "StructuralPartialEq", "PartialOrd", "Ord", "Hash",
+    // auto / marker traits
+    "Send", "Sync", "Unpin", "Sized", "Any", "Freeze", "RefUnwindSafe", "UnwindSafe",
+    "UnsafeUnpin", "Error",
+    // serde
+    "Serialize", "Deserialize",
+    // deref / index (transparent access, not API)
+    "Deref", "DerefMut", "Index", "IndexMut",
+    // iteration (blanket-default heavy — ~80 provided defaults on Iterator alone)
+    "Iterator", "IntoIterator", "DoubleEndedIterator", "ExactSizeIterator", "FusedIterator",
+    // operators (std::ops)
+    "Add", "Sub", "Mul", "Div", "Rem", "Neg", "Not",
+    "BitAnd", "BitOr", "BitXor", "Shl", "Shr",
+    "AddAssign", "SubAssign", "MulAssign", "DivAssign", "RemAssign",
+    "BitAndAssign", "BitOrAssign", "BitXorAssign", "ShlAssign", "ShrAssign",
+    "Fn", "FnMut", "FnOnce",
+];
+
 /// Classify a crate's public API with no overlay hints. Equivalent to
 /// [`classify_with_overlay`] with `None`.
 pub fn classify(doc: &Crate) -> BridgeSpec {
@@ -39,6 +76,7 @@ pub fn classify_with_overlay(doc: &Crate, overlay: Option<&Overlay>) -> BridgeSp
         skips: vec![],
         dropped: vec![],
         pending_wrappers: vec![],
+        inherited_excluded: 0,
     };
 
     let mut types = ctx.find_types();
@@ -90,6 +128,7 @@ pub fn classify_with_overlay(doc: &Crate, overlay: Option<&Overlay>) -> BridgeSp
         types,
         skips: ctx.skips,
         dropped: ctx.dropped,
+        inherited_excluded: ctx.inherited_excluded,
     }
 }
 
@@ -146,6 +185,9 @@ struct Ctx<'a> {
     /// Whole types dropped before method classification — see [`BridgeSpec::dropped`].
     dropped: Vec<DroppedType>,
     pending_wrappers: Vec<PendingWrapper>,
+    /// Unresolvable trait-provided defaults excluded from the denominator (D1).
+    /// See [`BridgeSpec::inherited_excluded`].
+    inherited_excluded: usize,
 }
 
 impl<'a> Ctx<'a> {
@@ -445,6 +487,40 @@ impl<'a> Ctx<'a> {
 
     // ── Phase 2: classify impl methods ────────────────────────────────────────
 
+    /// The trait's use-path for the generated `use`, spelled through the BRIDGED
+    /// MODULE's own re-export — `sha2::Digest`, `chrono::Datelike` — NOT the trait's
+    /// defining crate. A crate whose public types expose a trait's methods
+    /// re-exports that trait at its root by convention (`sha2` does
+    /// `pub use digest::{self, Digest}`; `chrono` re-exports `Datelike`), so this
+    /// path always resolves AND — critically — binds to the EXACT trait version the
+    /// bridged crate itself uses. Naming the defining crate directly (`digest`)
+    /// would need a separate dependency whose version we can't pin from rustdoc; a
+    /// `"*"` there can resolve to a DIFFERENT major than the one `sha2` impls,
+    /// leaving `self.0.output_size()` unsatisfied. Going through the module avoids
+    /// the extra dep and the skew entirely.
+    fn trait_use_path(&self, tr: &rustdoc_types::Path) -> String {
+        format!("{}::{}", self.module_name, self.trait_simple_name(tr))
+    }
+
+    /// The trait's simple (final-segment) name, for the NOISE policy match.
+    fn trait_simple_name(&self, tr: &rustdoc_types::Path) -> String {
+        if let Some(summary) = self.doc.paths.get(&tr.id) {
+            if let Some(last) = summary.path.last() {
+                return last.clone();
+            }
+        }
+        tr.path.rsplit("::").next().unwrap_or(&tr.path).to_string()
+    }
+
+    /// D1 disposition: is this trait binder NOISE (a marker/protocol/derive trait
+    /// whose methods carry no semantic crate API)? `true` → the impl is ignored
+    /// wholesale (as before Track A). `false` → a SEMANTIC trait whose concretely
+    /// provided methods are flattened onto the type as inherent methods, and whose
+    /// unresolvable provided-defaults are excluded from the denominator (D1).
+    fn is_noise_trait(&self, tr: &rustdoc_types::Path) -> bool {
+        NOISE_TRAITS.contains(&self.trait_simple_name(tr).as_str())
+    }
+
     fn classify_impl(&mut self, bt: &mut BridgeType) {
         // Use the stored item ID directly — avoids re-resolving by name which
         // could pick the wrong variant when multiple modules re-export the same name.
@@ -466,100 +542,82 @@ impl<'a> Ctx<'a> {
         // `(item_path, bridge_fn)`.
         let mut ctor_candidates: Vec<(String, BridgeFn)> = vec![];
 
-        for impl_id in impl_ids {
-            let Some(impl_item) = self.item(&impl_id) else {
+        // 1.1.3: first-wins method dedup across the WHOLE type. Inherent impls are
+        // classified before flattened trait impls, so an inherent method always
+        // wins a name collision, and cross-trait duplicates (18 in sha2 alone) are
+        // recorded as visible skips instead of emitted twice — two `pub fn`s of the
+        // same name is a duplicate-definition error under `-D warnings`.
+        let mut seen_names: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+
+        // Pass 1 — inherent impls (`impl T { … }`): every item is a real inherent
+        // method, no trait provenance.
+        for impl_id in &impl_ids {
+            let Some(impl_item) = self.item(impl_id) else {
                 continue;
             };
             let ItemEnum::Impl(impl_block) = &impl_item.inner else {
                 continue;
             };
-
-            // Skip trait impls (Display, Debug, Clone, …).
             if impl_block.trait_.is_some() {
                 continue;
             }
-
-            for method_id in &impl_block.items {
-                let Some(method) = self.item(method_id) else {
-                    continue;
-                };
-                let ItemEnum::Function(f) = &method.inner else {
-                    continue;
-                };
-                if matches!(
-                    method.visibility,
-                    rustdoc_types::Visibility::Crate | rustdoc_types::Visibility::Restricted { .. }
-                ) {
-                    continue;
-                }
-                let method_name = method.name.clone().unwrap_or_default();
-                let item_path = format!("{}::{}", bt.name, method_name);
-
-                // An overlay `treat_as` on this method overrides auto-detection:
-                // it either forces the method off the bridge (`skip`) or pins it
-                // to exactly one rule, bypassing the usual or-else ordering.
-                if let Some(kind) = self.treat_as_for(&bt.name, &method_name) {
-                    self.apply_treat_as(kind, method_id.0, &method_name, &item_path, f, bt);
-                    continue;
-                }
-
-                match self.classify_fn(&item_path, f, bt) {
-                    Ok(bridge_fn) => {
-                        let is_ctor = matches!(
-                            bridge_fn.ret,
-                            BridgeReturn::OwnSelf | BridgeReturn::OwnSelfResult
-                        ) && !f.sig.inputs.iter().any(|(n, _)| n == "self");
-                        // A ctor's body calls `inner::method(..)`, but a mono type's
-                        // inner path carries a turbofish-less type arg
-                        // (`chrono::Date<chrono::Utc>::new()` is invalid syntax), so
-                        // ctors on monomorphized types are recorded as skips instead.
-                        if is_ctor && bt.mono.is_some() {
-                            self.skips.push(Skip {
-                                item: item_path,
-                                reason: SkipReason::UnsupportedType(
-                                    "constructor on monomorphized type".into(),
-                                ),
-                            });
-                        } else if is_ctor {
-                            ctor_candidates.push((item_path, bridge_fn));
-                        } else {
-                            bt.methods.push(bridge_fn);
-                        }
-                    }
-                    Err(reason) => {
-                        // Before recording the skip, try the owning-wrapper rules:
-                        // a `fn(&self, &str) -> Option<Borrowed<'_>>` whose borrowed
-                        // type has a readable surface becomes a producer + wrapper;
-                        // failing that, a `fn(&self, &str) -> Iter<'_>` (an in-crate
-                        // iterator) becomes a cursor or a Vec-as-drain. Either rescues
-                        // what would otherwise be a lifetime-borrow / cursor skip.
-                        match self
-                            .try_owning_wrapper(&method_name, f, bt)
-                            .or_else(|| self.try_cursor_wrapper(&method_name, f, bt))
-                            .or_else(|| self.try_vec_drain(method_id.0, &method_name, f, bt))
-                            .or_else(|| self.try_callback_wrapper(&method_name, f, bt))
-                        {
-                            Some((producer, pendings)) => {
-                                bt.methods.push(producer);
-                                self.pending_wrappers.extend(pendings);
-                            }
-                            None => self.skips.push(Skip {
-                                item: item_path,
-                                reason,
-                            }),
-                        }
-                    }
-                }
+            for method_id in impl_block.items.clone() {
+                self.classify_impl_method(
+                    &method_id,
+                    bt,
+                    None,
+                    &mut ctor_candidates,
+                    &mut seen_names,
+                );
             }
         }
 
-        // Resolve the collected `-> Self` associated fns (0.3.1). Sort by name so
-        // the winner is deterministic across rustdoc index orderings, promote the
-        // first to the constructor, and record the rest as honest skips rather than
-        // dropping them silently. Uses `UnsupportedType` (the plan's `Skip("additional
-        // constructor")` string form) so the change stays confined to classify.rs —
-        // no new `SkipReason` variant is required.
-        ctor_candidates.sort_by(|a, b| a.1.name.cmp(&b.1.name));
+        // Pass 2 — trait impls, three-way disposition (D1, Track A 1.1.1). NOISE
+        // traits (Debug/Clone/Iterator/operators/…) are ignored wholesale as
+        // before; a SEMANTIC trait's concretely-provided methods are FLATTENED onto
+        // the type as inherent methods (carrying `via_trait` so codegen emits the
+        // `use`); its provided-defaults not overridden in this impl are name-only
+        // here (resolving them needs the trait definition + `Self` substitution,
+        // task 1.1.2) so they are EXCLUDED from the denominator (D1) — neither
+        // bridged nor a skip — keeping the ratio comparable across crates.
+        for impl_id in &impl_ids {
+            let Some(impl_item) = self.item(impl_id) else {
+                continue;
+            };
+            let ItemEnum::Impl(impl_block) = &impl_item.inner else {
+                continue;
+            };
+            let Some(tr) = &impl_block.trait_ else {
+                continue;
+            };
+            if self.is_noise_trait(tr) {
+                continue;
+            }
+            let via = self.trait_use_path(tr);
+            for method_id in impl_block.items.clone() {
+                self.classify_impl_method(
+                    &method_id,
+                    bt,
+                    Some(&via),
+                    &mut ctor_candidates,
+                    &mut seen_names,
+                );
+            }
+            self.inherited_excluded += impl_block.provided_trait_methods.len();
+        }
+
+        // Resolve the collected `-> Self` associated fns (0.3.1 + 1.1.3). An
+        // INHERENT ctor (`via_trait: None`) beats a trait-flattened one — a type's
+        // own `Regex::new` wins THE constructor slot over a flattened
+        // `FromStr::from_str` — and ties break by name, so the winner is
+        // deterministic across rustdoc index orderings. Losers are recorded as
+        // honest "additional constructor" skips rather than silently dropped. Uses
+        // `UnsupportedType` (the plan's `Skip("additional constructor")` string
+        // form) so no new `SkipReason` variant is required.
+        ctor_candidates.sort_by(|a, b| {
+            (a.1.via_trait.is_some(), &a.1.name).cmp(&(b.1.via_trait.is_some(), &b.1.name))
+        });
         let mut candidates = ctor_candidates.into_iter();
         if let Some((_, winner)) = candidates.next() {
             bt.ctor = Some(winner);
@@ -571,6 +629,154 @@ impl<'a> Ctx<'a> {
                         extra.name
                     )),
                 });
+            }
+        }
+    }
+
+    /// Classify one impl method (inherent or trait-flattened) onto `bt`.
+    /// `via_trait` is the flattened trait's full path — `Some` only for a SEMANTIC
+    /// trait impl (Track A) — stamped on the emitted `BridgeFn` so codegen brings
+    /// the trait into scope for the `self.0.<method>()` call. `seen_names` enforces
+    /// first-wins dedup (1.1.3) across the whole type; a name already claimed
+    /// becomes a visible skip instead of a duplicate `pub fn`.
+    fn classify_impl_method(
+        &mut self,
+        method_id: &Id,
+        bt: &mut BridgeType,
+        via_trait: Option<&str>,
+        ctor_candidates: &mut Vec<(String, BridgeFn)>,
+        seen_names: &mut std::collections::HashSet<String>,
+    ) {
+        let Some(method) = self.item(method_id) else {
+            return;
+        };
+        let ItemEnum::Function(f) = &method.inner else {
+            return;
+        };
+        if matches!(
+            method.visibility,
+            rustdoc_types::Visibility::Crate | rustdoc_types::Visibility::Restricted { .. }
+        ) {
+            return;
+        }
+        let method_name = method.name.clone().unwrap_or_default();
+        let item_path = format!("{}::{}", bt.name, method_name);
+
+        // An overlay `treat_as` on this method overrides auto-detection: it either
+        // forces the method off the bridge (`skip`) or pins it to exactly one rule,
+        // bypassing the usual or-else ordering.
+        if let Some(kind) = self.treat_as_for(&bt.name, &method_name) {
+            self.apply_treat_as(kind, method_id.0, &method_name, &item_path, f, bt);
+            return;
+        }
+
+        match self.classify_fn(&item_path, f, bt) {
+            Ok(mut bridge_fn) => {
+                bridge_fn.via_trait = via_trait.map(str::to_string);
+                // The emitted wrapper method delegates through the newtype behind a
+                // shared `&self` (`self.0.<m>()`), so two receiver shapes can't be
+                // lowered as-is and are recorded as VISIBLE skips rather than
+                // mis-compiled emits (both surfaced by flattening `Digest` onto the
+                // sha2 hashers). Ctors have no `self` param, so they never trip this.
+                //   * BY-VALUE `self` (`Digest::finalize(self)`): `self.0.finalize()`
+                //     moves out of a borrow. Sound lowering is a Clone-gated
+                //     `self.0.clone().finalize()`, deferred to the sha2 byte lane
+                //     (1.2.2) that makes such returns bridgeable at all.
+                //   * `&mut self` (`Digest::reset(&mut self)`): can't borrow `self.0`
+                //     mutably through `&self`. Emitting `&mut self` on a shared handle
+                //     is a separate lane (the cursor pull methods already do it for
+                //     synthesized wrappers); deferred for direct methods.
+                let self_recv = f.sig.inputs.iter().find(|(n, _)| n == "self").map(|(_, t)| t);
+                let bad_recv = match self_recv {
+                    Some(Type::Generic(g)) if g == "Self" => Some("consumes self by value"),
+                    Some(Type::BorrowedRef { is_mutable: true, .. }) => {
+                        Some("requires &mut self (mutable handle method)")
+                    }
+                    _ => None,
+                };
+                if let Some(reason) = bad_recv {
+                    self.skips.push(Skip {
+                        item: item_path,
+                        reason: SkipReason::UnsupportedType(reason.into()),
+                    });
+                    return;
+                }
+                let has_self = f.sig.inputs.iter().any(|(n, _)| n == "self");
+                let is_ctor = matches!(
+                    bridge_fn.ret,
+                    BridgeReturn::OwnSelf | BridgeReturn::OwnSelfResult
+                ) && !has_self;
+                // An associated fn with NO receiver that isn't a constructor
+                // (returns something other than `Self`, e.g. `Digest::output_size()
+                // -> usize`) can't be emitted as an instance method `self.0.f()`, and
+                // the bridge ABI has no static non-ctor method. Honest skip rather
+                // than a mis-compiled `self.0.output_size()` (no such method exists on
+                // the value). Flattening `Digest` first surfaced this class.
+                if !is_ctor && !has_self {
+                    self.skips.push(Skip {
+                        item: item_path,
+                        reason: SkipReason::UnsupportedType(
+                            "associated fn (no receiver, not a constructor)".into(),
+                        ),
+                    });
+                    return;
+                }
+                // A ctor's body calls `inner::method(..)`, but a mono type's inner
+                // path carries a turbofish-less type arg (`chrono::Date<chrono::Utc>
+                // ::new()` is invalid syntax), so ctors on monomorphized types are
+                // recorded as skips instead.
+                if is_ctor && bt.mono.is_some() {
+                    self.skips.push(Skip {
+                        item: item_path,
+                        reason: SkipReason::UnsupportedType(
+                            "constructor on monomorphized type".into(),
+                        ),
+                    });
+                } else if is_ctor {
+                    ctor_candidates.push((item_path, bridge_fn));
+                } else if seen_names.insert(bridge_fn.exposed().to_string()) {
+                    bt.methods.push(bridge_fn);
+                } else {
+                    // 1.1.3: an earlier inherent method (or trait) already claimed
+                    // this name; the duplicate is a visible skip, never emitted.
+                    self.skips.push(Skip {
+                        item: item_path,
+                        reason: SkipReason::UnsupportedType(format!(
+                            "duplicate method name ({})",
+                            bridge_fn.exposed()
+                        )),
+                    });
+                }
+            }
+            Err(reason) => {
+                // Before recording the skip, try the owning-wrapper rules: a
+                // `fn(&self, &str) -> Option<Borrowed<'_>>` whose borrowed type has
+                // a readable surface becomes a producer + wrapper; failing that, a
+                // `fn(&self, &str) -> Iter<'_>` (an in-crate iterator) becomes a
+                // cursor or a Vec-as-drain. Either rescues what would otherwise be a
+                // lifetime-borrow / cursor skip.
+                match self
+                    .try_owning_wrapper(&method_name, f, bt)
+                    .or_else(|| self.try_cursor_wrapper(&method_name, f, bt))
+                    .or_else(|| self.try_vec_drain(method_id.0, &method_name, f, bt))
+                    .or_else(|| self.try_callback_wrapper(&method_name, f, bt))
+                {
+                    Some((producer, pendings)) => {
+                        if seen_names.insert(producer.exposed().to_string()) {
+                            bt.methods.push(producer);
+                            self.pending_wrappers.extend(pendings);
+                        } else {
+                            self.skips.push(Skip {
+                                item: item_path,
+                                reason: SkipReason::UnsupportedType(format!(
+                                    "duplicate method name ({})",
+                                    producer.exposed()
+                                )),
+                            });
+                        }
+                    }
+                    None => self.skips.push(Skip { item: item_path, reason }),
+                }
             }
         }
     }
@@ -655,6 +861,7 @@ impl<'a> Ctx<'a> {
             recv: Recv::Field0,
             is_async: f.header.is_async,
             ret_ownership: Ownership::Owned,
+            via_trait: None,
         })
     }
 
@@ -838,6 +1045,7 @@ impl<'a> Ctx<'a> {
             recv: Recv::Field0,
             is_async: false,
             ret_ownership: Ownership::Owned,
+            via_trait: None,
         };
         let pending = PendingWrapper {
             wrapper_name,
@@ -889,6 +1097,7 @@ impl<'a> Ctx<'a> {
             recv: Recv::Inner,
             is_async: false,
             ret_ownership: Ownership::Owned,
+            via_trait: None,
         };
         let pending = PendingWrapper {
             wrapper_name,
@@ -981,6 +1190,7 @@ impl<'a> Ctx<'a> {
                     recv: Recv::DrainNext,
                     is_async: false,
                     ret_ownership: Ownership::Owned,
+                    via_trait: None,
                 };
                 let kind = WrapperKind::Drain {
                     params: params.clone(),
@@ -1010,6 +1220,7 @@ impl<'a> Ctx<'a> {
                     recv: Recv::IterNext,
                     is_async: false,
                     ret_ownership: Ownership::Owned,
+                    via_trait: None,
                 };
                 // Pend the item wrapper (an owning wrapper, built inline by `next`;
                 // root None so it merges with any root producer like `find`).
@@ -1040,6 +1251,7 @@ impl<'a> Ctx<'a> {
             recv: Recv::Field0,
             is_async: false,
             ret_ownership: Ownership::Owned,
+            via_trait: None,
         };
         // The cursor/drain wrapper itself: its only reader is the synthesized `next`.
         let mut pendings = vec![PendingWrapper {
@@ -1115,6 +1327,7 @@ impl<'a> Ctx<'a> {
             recv: Recv::DrainNext,
             is_async: false,
             ret_ownership: Ownership::Owned,
+            via_trait: None,
         };
         let producer = BridgeFn {
             name: method_name.to_string(),
@@ -1125,6 +1338,7 @@ impl<'a> Ctx<'a> {
             recv: Recv::Field0,
             is_async: false,
             ret_ownership: Ownership::Owned,
+            via_trait: None,
         };
         let pending = PendingWrapper {
             wrapper_name: wrapper_name.clone(),
@@ -1222,6 +1436,7 @@ impl<'a> Ctx<'a> {
             recv: Recv::Field0,
             is_async: false,
             ret_ownership: Ownership::Owned,
+            via_trait: None,
         };
         Some((producer, vec![]))
     }
@@ -1452,6 +1667,7 @@ impl<'a> Ctx<'a> {
                         recv: Recv::Inner,
                         is_async: false,
                         ret_ownership: Ownership::Owned,
+                        via_trait: None,
                     }),
                     // A reader whose return is `Option<Borrowed<'h>>` isn't a dead
                     // skip — it's a NESTED producer of another owning wrapper, so

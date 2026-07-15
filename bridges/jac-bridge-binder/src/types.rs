@@ -13,6 +13,16 @@ pub struct BridgeSpec {
     /// pin it. Kept distinct from `skips` (which are per-method) so coverage counts
     /// hidden surface honestly: dropping a type must not silently raise the ratio.
     pub dropped: Vec<DroppedType>,
+    /// Trait-provided default methods (Track A, D1) that classify deliberately did
+    /// NOT enumerate because they are unresolvable — name-only entries in an impl's
+    /// `provided_trait_methods` whose trait definition isn't in the rustdoc index
+    /// (std `Iterator`'s ~80 blanket defaults, blanket provided-defaults from a
+    /// non-dep crate). They are neither bridged nor a `Skip`; counted here and
+    /// EXCLUDED from the coverage denominator so the metric stays comparable across
+    /// crates (a crate implementing `Iterator` must not have its ratio wrecked by
+    /// 80 defaults nothing can reach). Surfaced as "+N inherited defaults not
+    /// considered" in the report — auditable, but out of `total()`/`pct()`.
+    pub inherited_excluded: usize,
 }
 
 /// A public type removed wholesale during classify (not a per-method skip). Each
@@ -242,6 +252,15 @@ pub struct BridgeFn {
     /// output; `Shared`/`Borrowed` make codegen stamp `#[jac(shared|borrowed)]`
     /// which the macro turns into the return tag's ownership bit.
     pub ret_ownership: Ownership,
+    /// Set (Track A, 1.1.4) when this fn was FLATTENED off a semantic trait impl
+    /// (`impl Datelike for NaiveDate` → `year`/`month`/…). The string is the full
+    /// trait path (`chrono::Datelike`, `digest::Digest`) so codegen can emit
+    /// `use <trait_path>;` (the method call `self.0.year()` needs the trait in
+    /// scope) and add the trait's crate as a dep when its root differs from the
+    /// bridged module. `None` for an ordinary inherent method or a synthesized
+    /// wrapper reader. Also breaks the ctor tie: an inherent (`None`) `-> Self`
+    /// associated fn beats a trait-flattened one for THE constructor slot.
+    pub via_trait: Option<String>,
 }
 
 /// The receiver expression a method body delegates through.
