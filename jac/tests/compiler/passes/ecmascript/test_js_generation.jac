@@ -2415,6 +2415,77 @@ test "isinstance/issubclass against builtin types, user class, and tuples (#6458
     assert_balanced_syntax(js_code, "isinstance_builtin.cl.jac");
 }
 
+test "builtin type used as a value lowers to a callable (#7454)" {
+    # Regression for jaseci-labs/jaseci#7454. A builtin type in value position
+    # (`map(int, xs)`, `key=int`, `f = int`, an element of a list) lowered to a
+    # bare JS string tag, so calling it threw `TypeError: "int" is not a
+    # function` in the browser -- only direct calls (`int(x)`) were coerced.
+    js_code = compile_fixture_to_js("builtin_type_as_value.cl.jac", FIXTURES);
+
+    # Scope the string-tag assertions to the compiled user code: the injected
+    # _jac runtime legitimately carries the type names as strings (the
+    # `__jac_type__` tags isinstance compares against).
+    fn_idx = js_code.find("function parse_all");
+    assert fn_idx >= 0 , "compiled function parse_all must be present";
+    user_js = js_code[fn_idx:];
+    for tag in ["\"int\"", "\"str\"", "\"bool\""] {
+        assert tag not in user_js , (
+            "builtin type lowered to the bare string " + tag + ", which throws "
+            "when called; user code:\n" + user_js
+        );
+    }
+    # The direct-call path must stay inline (no runtime round-trip).
+    assert "Math.trunc(Number(x))" in user_js , (
+        "direct `int(x)` must still coerce inline:\n" + user_js
+    );
+
+    wrapper = (
+        js_code + "\nconsole.log(JSON.stringify({" + "  parse_all: parse_all([\"1\", \"2\", \"3\"])," + "  keep_truthy: keep_truthy([0, 1, \"\", \"a\", 2])," + "  sort_numerically: sort_numerically([\"10\", \"9\", \"2\"])," + "  alias_call: alias_call(\"42\")," + "  coerce_all: coerce_all(5)," + "  direct_call: direct_call(\"7\")," + "  classify: [classify(true), classify(3), classify(\"x\"), classify(1.5)]," + "  subclass: subclass_probe()" + "}));\n"
+    );
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", wrapper],
+        capture_output=True,
+        text=True,
+        timeout=30
+    );
+    assert result.returncode == 0 , (
+        "builtin-type-as-value codegen crashed in Node:\n"
+        f"stderr={result.stderr!r}\njs:\n{js_code}"
+    );
+    got = json.loads(result.stdout.strip());
+
+    # `map`/`filter` must keep Python's one-argument call contract: JS passes
+    # (value, index, array), so a leaked index would land in `int`'s `base`
+    # parameter and turn ["1", "2", "3"] into [1, NaN, NaN].
+    assert got["parse_all"] == [1, 2, 3] , (
+        f"map(int, xs) mismatch: {got['parse_all']}\njs:\n{js_code}"
+    );
+    assert got["keep_truthy"] == [1, "a", 2] , (
+        f"filter(bool, xs) mismatch: {got['keep_truthy']}\njs:\n{js_code}"
+    );
+    assert got["sort_numerically"] == ["2", "9", "10"] , (
+        f"sorted(key=int) mismatch: {got['sort_numerically']}\njs:\n{js_code}"
+    );
+    assert got["alias_call"] == 42 , (
+        f"alias `f = int; f(x)` mismatch: {got['alias_call']}\njs:\n{js_code}"
+    );
+    assert got["coerce_all"] == ["5", 5, True] , (
+        f"builtin types out of a list mismatch: {got['coerce_all']}\njs:\n{js_code}"
+    );
+    assert got["direct_call"] == 7 , (
+        f"direct int(x) mismatch: {got['direct_call']}\njs:\n{js_code}"
+    );
+    # Classinfo position keeps working (guards the #6458 contract).
+    assert got["classify"] == ["kind:bool", "kind:int", "kind:seq", "kind:other"] , (
+        f"isinstance mismatch: {got['classify']}\njs:\n{js_code}"
+    );
+    assert got["subclass"] == [True, False] , (
+        f"issubclass mismatch: {got['subclass']}\njs:\n{js_code}"
+    );
+
+    assert_balanced_syntax(js_code, "builtin_type_as_value.cl.jac");
+}
+
 test "getattr default with or/and emits parenthesized nullish coalescing (#6562)" {
     fixture = "dict_get_nullish_or_precedence.cl.jac";
     js_code = compile_fixture_to_js(fixture, FIXTURES);

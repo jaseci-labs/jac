@@ -196,6 +196,11 @@ obj NpmProvider(EcosystemProvider) {
         if not deps {
             return True;
         }
+
+        import os;
+        if os.environ.get("JAC_CLIENT_SKIP_NPM_INSTALL") {
+            return True;
+        }
         if config.project_root is None {
             raise RuntimeError("No project root found");
         }

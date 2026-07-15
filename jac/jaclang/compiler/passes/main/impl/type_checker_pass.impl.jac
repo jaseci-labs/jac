@@ -20,6 +20,10 @@ impl TypeCheckPass.exit_name(self: TypeCheckPass, nd: uni.Name) -> None {
         if isinstance(nd.parent, uni.SubTag) {
             return;
         }
+
+        if isinstance(nd.parent, uni.ModulePath) {
+            return;
+        }
         if isinstance(nd.parent, uni.JsxElementName) {
             return;
         }
@@ -823,7 +827,11 @@ impl TypeCheckPass.before_pass(self: TypeCheckPass) -> None {
     self._insert_builtin_symbols();
     self.evaluator._narrowing_cache = {};
 
-    emit_full = (not self.inference_only) or bool(self.ir_in?._type_check_requested);
+    _opts = self.prog?._compile_options;
+    _tc_requested = bool(_opts?.type_check);
+    _emit_intent = (_opts is None) or bool(_opts.emit_diagnostics);
+
+    emit_full = (not self.inference_only) or _tc_requested;
     if not emit_full {
         import from jaclang.jac0core.ext_registry { is_native_module }
         mod = self.ir_in;
@@ -848,7 +856,7 @@ impl TypeCheckPass.before_pass(self: TypeCheckPass) -> None {
         emit_full = is_native_mod;
     }
 
-    if self.inference_only and self.ir_in?._inference_quiet {
+    if self.inference_only and not _emit_intent {
         emit_full = False;
     }
     self._emit_diagnostics = emit_full;

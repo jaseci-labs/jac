@@ -72,6 +72,7 @@ obj UniNode {
     def get_all_sub_nodes[T](typ: type[T]) -> list[T];
     def find_parent_of_type[T](typ: type[T]) -> (T | None);
     def parent_of_type[T](typ: type[T]) -> T;
+    def codespace -> CodeContext;
     def in_client_context -> bool;
     def in_native_context -> bool;
     def to_dict -> dict[(str, str)];
@@ -88,7 +89,10 @@ obj Symbol {
         parent_tab: (UniScopeNode | None) by postinit,
         imported: bool by postinit,
         semstr: str by postinit,
-        ownership: OwnershipKind = OwnershipKind.NONE;
+        ownership: OwnershipKind = OwnershipKind.NONE,
+        param_rebound: bool = False,
+        na_escapes: bool = False,
+        na_stack_ok: bool = False;
 
     def init(
         defn: NameAtom,
@@ -340,6 +344,7 @@ obj Module(AstDocNode, UniScopeNode) {
 
     def format -> str;
     def unparse(requires_format: bool = True) -> str;
+    def declares_codespace(ctx: CodeContext, path_hint: str = '') -> bool;
     static def make_stub(
         inject_name: (str | None) = None, inject_src: (Source | None) = None
     ) -> Module {

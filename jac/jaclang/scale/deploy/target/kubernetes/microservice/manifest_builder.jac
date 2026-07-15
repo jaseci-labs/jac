@@ -3,7 +3,10 @@ import from jaclang.scale.models.deploy_context { DeployContext }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
-import from jaclang.scale.deploy.autoscale.autoscaler { DEFAULT_CPU_UTILIZATION_TARGET }
+import from jaclang.scale.deploy.autoscale.autoscaler {
+    DEFAULT_CPU_UTILIZATION_TARGET,
+    DEFAULT_MEMORY_UTILIZATION_TARGET
+}
 
 
 glob GATEWAY_NAME: str = "__gateway__",
@@ -27,7 +30,10 @@ obj MicroserviceManifestBuilder {
         project_dir: str = "",
         _bundle_object_key: str = "",
         _toolchain_object_key: str = "",
-        microservices_config: dict[str, any] = {};
+        microservices_config: dict[str, any] = {},
+        # --dry-run: render manifests from config alone -- no client build, no
+        # binary/console download, no cluster reads (issue #7431).
+        dry_run: bool = False;
 
     def _ms_cfg -> dict[str, any] {
         if self.microservices_config {
@@ -55,7 +61,8 @@ obj MicroserviceManifestBuilder {
             k8s_safe_name(self.k8s_config.app_name),
             self.k8s_config.namespace,
             proj,
-            provisioned_database=("mongo" if self.k8s_config.mongodb_enabled else "")
+            provisioned_database=("mongo" if self.k8s_config.mongodb_enabled else ""),
+            dry_run=self.dry_run
         );
         injector: PvcInjector = selection[0];
         self._toolchain_object_key = str(selection[1]);
@@ -73,6 +80,14 @@ obj MicroserviceManifestBuilder {
         }
         entry_abs = os.path.join(project_dir, client_entry);
         if not os.path.isfile(entry_abs) {
+            return;
+        }
+        if self.dry_run {
+            # The bundle only affects what ships to the gateway pod, never the
+            # manifests, so a dry run can skip the build outright (issue #7431).
+            console.print(
+                f"dry-run: skipped the host client bundle build ({client_entry})."
+            );
             return;
         }
         dist = os.path.join(project_dir, ".jac", "client", "dist");
@@ -650,6 +665,9 @@ obj MicroserviceManifestBuilder {
             "min": int(hpa.get("min", 1)),
             "max": int(hpa.get("max", 3)),
             "cpu_target": int(hpa.get("cpu_target", DEFAULT_CPU_UTILIZATION_TARGET)),
+            "memory_target": int(
+                hpa.get("memory_target", DEFAULT_MEMORY_UTILIZATION_TARGET)
+            ),
             "triggers": raw_triggers
         };
     }

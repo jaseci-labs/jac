@@ -27,11 +27,13 @@ impl OwnershipCheckPass.transform(ir_in: uni.Module) -> uni.Module {
 
     self._build_index(ir_in);
     self._stamp_ownership();
+    self._nogc_setup();
     if not self.owned_decl
     and not self.borrow_meta
     and not self.val_decl
     and not self._has_region_blocks()
-    and not self.idx_concurrent {
+    and not self.idx_concurrent
+    and self.nogc_prov is None {
         return ir_in;
     }
 
@@ -51,6 +53,7 @@ impl OwnershipCheckPass.transform(ir_in: uni.Module) -> uni.Module {
     self._emit_region_escape_diagnostics();
     self._emit_sendability_diagnostics();
     self._emit_marker_diagnostics();
+    self._emit_enforcement_diagnostics();
     return ir_in;
 }
 
@@ -158,13 +161,13 @@ impl OwnershipCheckPass._stamp_ownership -> None {
 
     for nd in self.idx_assignments {
         own_target = self._is_own_decl(nd);
-        if own_target is not None {
+        if own_target is not None and own_target.sym is not None {
             sid = self._name_sym_id(own_target);
             own_target.sym.ownership = OwnershipKind.OWN;
             self.owned_decl[sid] = own_target;
         }
         borrow_target = self._is_borrow_decl(nd);
-        if borrow_target is not None {
+        if borrow_target is not None and borrow_target.sym is not None {
             sid = self._name_sym_id(borrow_target);
             is_mut = nd.type_tag.ownership == OwnershipKind.MUT_BORROW
                 if nd.type_tag
@@ -217,15 +220,17 @@ impl OwnershipCheckPass._stamp_ownership -> None {
     }
 
     for nd in self.idx_assignments {
-        target = self._borrow_target(nd);
+        borrow_target = self._borrow_target(nd);
         owner = self._borrow_source_owner(nd);
-        if target is not None and owner is not None {
-            borrow_id = self._name_sym_id(target);
+        if borrow_target is not None
+        and borrow_target.sym is not None
+        and owner is not None {
+            borrow_id = self._name_sym_id(borrow_target);
             owner_id = self._name_sym_id(owner);
             self.borrow_meta[borrow_id] = BorrowMeta(
-                name=target.sym_name,
+                name=borrow_target.sym_name,
                 owner=owner_id,
-                is_mut=is_mut_kind(target.sym.ownership)
+                is_mut=is_mut_kind(borrow_target.sym.ownership)
                 or (
                     is_mut_kind(nd.value.ownership)
                         if isinstance(nd.value, uni.UnaryExpr)
@@ -314,6 +319,28 @@ impl OwnershipCheckPass._call_move_gen(nd: uni.UniCFGNode) -> set[SymId] {
         if self._cfg_owner(call) is not nd {
             continue;
         }
+        if isinstance(call.target, uni.Name)
+        and call.target.sym_name in (
+            "len",
+            "print",
+            "range",
+            "isinstance",
+            "next",
+            "abs",
+            "min",
+            "max",
+            "sum",
+            "sorted",
+            "repr",
+            "format",
+            "chr",
+            "ord",
+            "hex",
+            "oct",
+            "bin"
+        ) {
+            continue;
+        }
         for param in self._call_params(call) {
             arg: uni.Expr | None = None;
             if isinstance(param, uni.KWPair) {
@@ -385,54 +412,13 @@ impl OwnershipCheckPass._transfer(
 impl OwnershipCheckPass._solve_forward_dataflow(
     cfg_nodes: list[uni.UniCFGNode], transfer: DataflowTransfer
 ) -> dict[int, set[SymId]] {
-    state: dict[int, set[SymId]] = {};
-    for n in cfg_nodes {
-        state[id(n)] = set();
-    }
-    worklist = list(cfg_nodes);
-    while worklist {
-        n = worklist.pop();
-        new_state: set[SymId] = set();
-        for pred in n.bb_in {
-            for x in transfer(pred, state.get(id(pred), set())) {
-                new_state.add(x);
-            }
-        }
-        if new_state != state.get(id(n), set()) {
-            state[id(n)] = new_state;
-            for nb in n.bb_out {
-                worklist.append(nb);
-            }
-        }
-    }
-    return state;
+    return dataflow.solve_forward(cfg_nodes, transfer);
 }
 
 impl OwnershipCheckPass._solve_backward_dataflow(
     cfg_nodes: list[uni.UniCFGNode], transfer: DataflowTransfer
 ) -> dict[int, set[SymId]] {
-    state: dict[int, set[SymId]] = {};
-    for n in cfg_nodes {
-        state[id(n)] = set();
-    }
-    worklist = list(cfg_nodes);
-    while worklist {
-        n = worklist.pop();
-        joined: set[SymId] = set();
-        for succ in n.bb_out {
-            for x in state.get(id(succ), set()) {
-                joined.add(x);
-            }
-        }
-        new_state = transfer(n, joined);
-        if new_state != state.get(id(n), set()) {
-            state[id(n)] = new_state;
-            for nb in n.bb_in {
-                worklist.append(nb);
-            }
-        }
-    }
-    return state;
+    return dataflow.solve_backward(cfg_nodes, transfer);
 }
 
 impl OwnershipCheckPass._run_dataflow(cfg_nodes: list[uni.UniCFGNode]) -> None {

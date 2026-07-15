@@ -490,7 +490,7 @@ impl ProcessTools.run_jac_cli(subcommand: str, path: str) -> str {
     }
 }
 
-sem ProcessTools.run_command = "Run a shell command in the project directory and return its combined output. Use this to scaffold a new project (`jac create --kind web-app <name>`), install dependencies (`jac install`), run a file (`jac run <file>`), run tests, or any other shell task. `jac create --kind <kind>` kinds: cli (default), web-app, service, native-binary, py-package, and more (run `jac create --list_jacpacks` for the full list).";
+sem ProcessTools.run_command = "Run a shell command in the project directory and return its combined output. Use this to scaffold a new project (`jac create --kind web-app <name>`), install dependencies (`jac install`), run a file (`jac run <file>`), run tests, or any other shell task. `jac create --kind <kind>` kinds: cli (default), web-app, service, native-binary, py-package, and more (run `jac create --list` for the full list).";
 sem ProcessTools.run_command.command = "The shell command to run.";
 impl ProcessTools.run_command(command: str) -> str {
     stripped = command.strip();
