@@ -1615,7 +1615,7 @@ jac purge
 Run the whole-program **type-check gate** (fail-closed; reuses [`jac check`](#jac-check)), then emit **one** artifact. By default `jac build` produces a `.jab` -- a single self-describing sealed app bundle. Use `--as` to select a different projection. `jac build` is now the single front door that the former `jac bundle` (wheel/npm), `jac eject` (source), and project-level `jac nacompile` (native/binary) folded into.
 
 ```bash
-jac build [-h] [--as {jab,sealed,binary,wheel,npm,source,native}] [-o OUTPUT] [-n] [-c]
+jac build [-h] [--as {jab,sealed,binary,wheel,npm,source,native}] [-o OUTPUT] [-n] [-c] [-f]
           [--client {web,pwa,static,mobile,desktop,cef,react-native}] [-p PLATFORM] [filename]
 ```
 
@@ -1626,6 +1626,7 @@ jac build [-h] [--as {jab,sealed,binary,wheel,npm,source,native}] [-o OUTPUT] [-
 | `-o, --output` | Output directory | `dist` |
 | `-n, --no_typecheck` | Skip the type-check gate | `False` |
 | `-c, --check_only` | Run the gate only; emit nothing | `False` |
+| `-f, --fat` | Vendor the Python dependency closure into the bundle (`jab` / `binary` only) so it materializes offline | `False` |
 | `--client` | Build a client shell (`web`, `pwa`, `static`, `mobile`, `desktop`, `cef`, `react-native`) | None |
 | `-p, --platform` | Platform selector for `--client` builds | Current platform |
 
@@ -1649,6 +1650,17 @@ jac build [-h] [--as {jab,sealed,binary,wheel,npm,source,native}] [-o OUTPUT] [-
 
 - `--as binary` packages **any** app (walkers, Python imports, a full web client) into one executable by appending the sealed `.jab` onto a copy of the running `jac` launcher. The file carries the full runtime and boots through the same path as `jac run app.jab`, with zero live compilation. Because it embeds the runtime, the artifact is large but complete: hand it to a machine with no Jac, Python, or Node installed. The entry point resolves the same way `jac run` does (a `main.jac` or the `[project]` entry-point in `jac.toml`); an entry-less package is rejected at build time.
 - `--as native` AOT-compiles the restricted `na` subset through LLVM into a **small, dependency-free** binary (no walkers, no async, no Python imports). Reach for it when your program fits the [native pathway](../language/native-pathway.md) and you want the smallest possible artifact.
+
+**Fat jab: vendoring the Python dependency closure (`--fat`).** A plain `.jab` bundles the sealed app, client dist, and native binaries, but its *Python* dependencies are only declared; they are pip-installed on the target at run or deploy time, so running a jab still assumes the target can reach PyPI. `jac build --fat` (on the `jab` and `binary` projections) resolves the app's runtime Python closure and packs the wheels into the bundle under `_vendor/wheels/`, the same way a Spring Boot fat jar nests every dependency jar:
+
+```bash
+jac build --fat                 # fat .jab in dist/
+jac build --as binary --fat     # fully offline-capable executable
+```
+
+- **Offline materialize.** When [`jac run app.jab`](#jac-run) / [`jac start app.jab`](#jac-start) (or a `--fat` binary) materializes the bundle, the vendored wheels install offline into a cache-scoped site directory that goes on `sys.path`, so the app imports its dependencies with **no PyPI access**. The install runs once per bundle and is skipped on subsequent runs.
+- **Content-addressed for free.** The wheels ride inside the tarball as a sibling of the sealed image, so the jab's existing sha256 content addressing covers them: bump a dependency, get a new digest, get a fresh cache directory, with no stale-dependency aliasing.
+- **What is vendored.** The closure is exactly what [`jac install`](#jac-install) would install: your declared dependencies plus the capability dependencies derived from `jac.toml` intents. Wheels are resolved for the build host by default (like a `.jir`, the bundle is version-locked to the building runtime). Vendoring honors pip's environment (`PIP_INDEX_URL`, `PIP_FIND_LINKS`, `PIP_NO_INDEX`), and fails the build if a dependency has no installable wheel rather than shipping a bundle that cannot materialize. Git dependencies are not vendored and still install normally. The build summary prints the vendored wheel count and total size.
 
 **Building a wheel (publish to PyPI):**
 
