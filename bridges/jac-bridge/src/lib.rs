@@ -16,7 +16,7 @@ enum TypeKind { Opaque, Error }
 struct TypeDef { name: Ident, kind: TypeKind }
 
 #[derive(Clone, PartialEq, Eq)]
-enum Tag { Bool, Int, Uint, F64, Str, Bytes, Void, Ref(usize), Opt(Box<Tag>), Callback, Map(Box<Tag>), List(Box<Tag>) }
+enum Tag { Bool, Int, Uint, F64, Str, Bytes, Void, Ref(usize), Opt(Box<Tag>), Callback, Map(Box<Tag>), List(Box<Tag>), Wide }
 
 impl Tag {
     fn as_u32(&self) -> u32 {
@@ -33,6 +33,11 @@ impl Tag {
             Tag::Callback => schema::TAG_FN,
             Tag::Map(value) => schema::TAG_MAP_BIT | value.as_u32(),
             Tag::List(elem) => schema::TAG_LIST_BIT | elem.as_u32(),
+            // The serde wide lane: any `Serialize`/`Deserialize` type crosses as a
+            // self-describing MessagePack payload behind ONE tag. Composition
+            // (Option/nesting/records) lives INSIDE the payload, so `Wide` carries
+            // no inner tag — the type model is maintained by serde, not by us.
+            Tag::Wide       => schema::TAG_WIDE,
         }
     }
 }
@@ -187,6 +192,20 @@ fn expand(module_name: String, input: ItemMod) -> Result<TS2, Error> {
         cleaned.insert(0, quote! {
             #[allow(unused_imports)]
             use super::#rt::JacCallback;
+        });
+    }
+
+    // The serde wide lane: the binder writes `Wide<T>` in the re-emitted wrapper
+    // signatures, so the newtype must be in scope inside the module.  It lives in
+    // the sibling rt module; inject the `use` only when a wide value is present so
+    // wide-free bridges stay byte-identical (mirrors the JacCallback import above).
+    let has_wide = fns.iter().any(|f|
+        f.ret == Tag::Wide || f.params.iter().any(|p| p.tag == Tag::Wide));
+    if has_wide {
+        let rt = format_ident!("__jac_bridge_{module_name}_rt");
+        cleaned.insert(0, quote! {
+            #[allow(unused_imports)]
+            use super::#rt::Wide;
         });
     }
 
@@ -478,6 +497,13 @@ fn simple_ident(ty: &Type) -> Option<String> {
 }
 
 fn ty_to_tag(ty: &Type, types: &[TypeDef]) -> Result<(Tag, bool), Error> {
+    // The serde wide lane: `Wide<T>` crosses as a MessagePack payload on the same
+    // (ptr, len) two-slot boundary as `&str`/`&[u8]`, but the second field of the
+    // returned pair is `false` — the wide arm in the param codegen owns the two
+    // C slots explicitly, so it is NOT flagged as a str/bytes wide-boundary param.
+    if is_wide_marker(ty) {
+        return Ok((Tag::Wide, false));
+    }
     match ty {
         Type::Reference(tr) => {
             if let Type::Path(tp) = &*tr.elem {
@@ -609,6 +635,22 @@ fn extract_vec(ty: &Type) -> Option<&Type> {
     if tys.len() == 1 { Some(tys[0]) } else { None }
 }
 
+/// True when `ty` is the serde wide-lane marker `Wide<T>` (last path segment
+/// `Wide` with exactly one type argument). The binder wraps a value type in this
+/// newtype in generated source to route it through the MessagePack lane; the macro
+/// classifies it as [`Tag::Wide`] and marshals the inner `T` via serde. The inner
+/// type is never read here — `rmp_serde` decode/encode infer `T` from the wrapper
+/// fn's own signature at the call site — so this only reports presence.
+fn is_wide_marker(ty: &Type) -> bool {
+    let Type::Path(tp) = ty else { return false };
+    let Some(seg) = tp.path.segments.last() else { return false };
+    if seg.ident != "Wide" { return false; }
+    let PathArguments::AngleBracketed(args) = &seg.arguments else { return false };
+    args.args.iter()
+        .filter(|a| matches!(a, GenericArgument::Type(_)))
+        .count() == 1
+}
+
 /// The single type argument of an `Option<T>` path, if `ty` is one.
 fn option_inner(ty: &Type) -> Option<&Type> {
     let Type::Path(tp) = ty else { return None };
@@ -622,6 +664,12 @@ fn option_inner(ty: &Type) -> Option<&Type> {
 }
 
 fn ret_tag(ty: &Type, types: &[TypeDef], self_i: usize) -> Result<Tag, Error> {
+    // The serde wide lane: `Wide<T>` returns as an owned JacBuf holding the
+    // MessagePack image of `T`. Checked first — a `Wide<..>` path must never be
+    // mistaken for an opaque type reference by the generic Path arms below.
+    if is_wide_marker(ty) {
+        return Ok(Tag::Wide);
+    }
     // HashMap<String, V> marshals as a real Jac dict[str, V] (str keys in v1).
     // Checked before the generic Path arms so the `HashMap` ident is not mistaken
     // for an opaque type reference.
@@ -873,10 +921,51 @@ fn gen_shims(module_name: &str, types: &[TypeDef], fns: &[FnDef], mod_ident: &Id
         quote! {}
     };
 
+    // The serde wide lane's runtime, emitted into `#rt` only when a `Wide<T>`
+    // value is present so wide-free bridges stay byte-identical and pull in no
+    // `serde`/`rmp_serde` dependency. `Wide<T>` is the newtype the binder writes in
+    // generated source; `#[serde(transparent)]` makes it (de)serialize exactly as
+    // its inner `T`, so the payload is `T`'s own MessagePack image (no wrapper
+    // envelope). The codec helpers are generic over the whole target so `T` is
+    // inferred from the wrapper fn's signature at each call site.
+    let has_wide = fns.iter().any(|f|
+        f.ret == Tag::Wide || f.params.iter().any(|p| p.tag == Tag::Wide));
+    let wide_helpers: TS2 = if has_wide {
+        quote! {
+            #[derive(::serde::Serialize, ::serde::Deserialize)]
+            #[serde(transparent)]
+            pub struct Wide<T>(pub T);
+
+            // Decode a MessagePack payload into the target `Wide<T>`. A malformed
+            // payload becomes a `String` error the shim surfaces as status 1 — the
+            // wide param decode uses `?` on the closure's `Result<_, String>`.
+            pub fn wide_decode<'a, W: ::serde::Deserialize<'a>>(bytes: &'a [u8])
+                -> ::std::result::Result<W, String>
+            {
+                ::rmp_serde::from_slice(bytes)
+                    .map_err(|e| format!("jac bridge: msgpack decode: {e}"))
+            }
+
+            // Encode a `Wide<T>` return to an owned JacBuf (structs as name→value
+            // maps via `to_vec_named`). Runs on the shim's OK path after the call
+            // succeeded; an encode failure is pathological for a cleanly-derived
+            // `Serialize` type, so it panics into the status-2 path — the same
+            // discipline as `string_to_jacbuf`/`vec_to_jacbuf`'s u32 boundary asserts.
+            pub fn wide_encode<W: ::serde::Serialize>(v: &W) -> JacBuf {
+                let bytes = ::rmp_serde::to_vec_named(v)
+                    .expect("jac bridge: msgpack encode");
+                vec_to_jacbuf(bytes)
+            }
+        }
+    } else {
+        quote! {}
+    };
+
     let mut items: Vec<TS2> = vec![quote! {
         #[allow(non_snake_case, dead_code, clippy::all)]
         mod #rt {
             #async_rt_helper
+            #wide_helpers
             #[repr(C)]
             pub struct JacBuf { pub ptr: *mut u8, pub len: u32, pub cap: u32 }
 
@@ -1370,6 +1459,24 @@ fn gen_fn_shim(f: &FnDef, types: &[TypeDef], mod_ident: &Ident, rt: &Ident, _has
                     c_params.push(quote! { #pn: u64 });
                     decode.push(quote! { let #pn = f64::from_bits(#pn) as #fty; });
                 }
+                Tag::Wide => {
+                    // The serde wide lane: a `Wide<T>` param crosses as a
+                    // (payload_ptr, payload_len) pair — the same two-slot boundary
+                    // as `&str`/`&[u8]` — carrying a MessagePack document. Decode it
+                    // back into the wrapper fn's `Wide<T>` inside the `catch_unwind`
+                    // closure; `T` is inferred from the call site. A malformed
+                    // payload maps to a `String` error → status 1 (the `?` on the
+                    // Result<_, String> closure), never a panic.
+                    let ptr_n = format_ident!("{}_ptr", p.name);
+                    let len_n = format_ident!("{}_len", p.name);
+                    c_params.push(quote! { #ptr_n: *const u8 });
+                    c_params.push(quote! { #len_n: u32 });
+                    decode.push(quote! {
+                        let #pn = #rt::wide_decode(
+                            unsafe { ::std::slice::from_raw_parts(#ptr_n, #len_n as usize) }
+                        )?;
+                    });
+                }
                 Tag::Callback => {
                     // A C function pointer crosses as a u64; wrap it so the
                     // bridge fn calls it with a `&str` and gets a `String` back.
@@ -1698,6 +1805,16 @@ fn out_param_tokens(ret: &Tag, rt: &Ident) -> (TS2, TS2, TS2) {
                 quote! { *out_buf = #rt::JacBuf { ptr: ::std::ptr::null_mut(), len: 0, cap: 0 }; },
             )
         }
+        // The serde wide lane: a `Wide<T>` return crosses as one owned JacBuf
+        // holding the MessagePack image of `T` — the SAME wire shape and allocator
+        // discipline as a `Vec<u8>`/String return. `wide_encode` serializes `val`
+        // (a `Wide<T>`, serde-transparent over `T`) and hands the buffer to the
+        // loader to free via the module's free-buf shim.
+        Tag::Wide => (
+            quote! { out_buf: *mut #rt::JacBuf, },
+            quote! { *out_buf = #rt::wide_encode(&val); },
+            quote! { *out_buf = #rt::JacBuf { ptr: ::std::ptr::null_mut(), len: 0, cap: 0 }; },
+        ),
         // Callback is a param-only tag; `ret_tag` never produces it as a return.
         Tag::Callback => unreachable!("Tag::Callback is param-only, never a return"),
     }

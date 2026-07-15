@@ -976,14 +976,26 @@ these first; the adversarial suite already contains skip-gated tests waiting on 
 
 ### Phase 2 -- Wide lane
 
-- [ ] 2.1 `TAG_WIDE = 8`: schema + `_blob.jac` + `test_abi_drift.jac` (6/7 are
+- [x] 2.1 `TAG_WIDE = 8`: schema + `_blob.jac` + `test_abi_drift.jac` (6/7 are
       `TAG_F64`/`TAG_BYTES`). Param
       wire = `(payload_ptr, payload_len: u32)`; return wire = JacBuf out-slot.
-- [ ] 2.2 `jac_bridge::Wide<T>` newtype + macro arm: param decode via
-      `rmp_serde::from_slice` (map_err → status 1 + error handle), return via
-      `rmp_serde::to_vec_named` → `vec_to_jacbuf`. Deps: `rmp`, `rmp-serde` in
-      generated crates + `jac-bridge` runtime. trybuild case: `Wide<T>` where T
-      lacks the impls → spanned error.
+- [x] 2.2 `Wide<T>` newtype + macro arm. STATUS: DONE. `Tag::Wide` added to the
+      macro (`is_wide_marker` recognizes `Wide<T>` in both param and return
+      position). Param arm: crosses as `(ptr, len)`, decoded by `#rt::wide_decode`
+      (`rmp_serde::from_slice`) inside the `catch_unwind` closure -- a malformed
+      payload maps to a `String` via `?` → status 1 + error handle. Return arm:
+      `#rt::wide_encode` (`rmp_serde::to_vec_named`) → `vec_to_jacbuf` out-slot.
+      `Wide<T>` is a `#[serde(transparent)]` newtype emitted into the `#rt` module
+      (gated on `has_wide`, like the async runtime) so wide-free bridges stay
+      byte-identical and pull in no `serde`/`rmp_serde` dep; a `use super::#rt::Wide`
+      is injected into the re-emitted module (mirrors the `JacCallback` import).
+      Tests: `tests/wide.rs` (end-to-end round-trip through the shim with a
+      NUL-containing string field + a scalar param wedged beside the wide one to
+      pin per-value lane selection; plus the malformed-payload → status-1 path with
+      the decode error message), `tests/ui/wide_missing_serde.rs` (trybuild: a
+      `Wide<T>` whose `T: !Serialize` → spanned trait-bound error). Deps `rmp`,
+      `rmp-serde`, `serde` land in generated crates via `emit_cargo_toml` (2.4);
+      added as `jac-bridge` dev-deps here for the runtime test.
 - [ ] 2.3 Binder serde detection (`classify.rs`, pattern of
       `implements_error_trait` :381-445): both `serde::` and `serde_core::`
       roots; `automatically_derived` attr captured per impl; structural
