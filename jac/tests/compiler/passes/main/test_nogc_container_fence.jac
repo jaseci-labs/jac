@@ -3,9 +3,9 @@
 Under `--enforce-nogc --gc none`, owned containers of heap elements are not yet
 supported (element-drop monomorphization is deferred). Before this fence the
 OwnershipCheckPass only rejected list *literals* of heap elements, so heap
-elements that entered a container any other way — `append`/`add`/`insert`, an
+elements that entered a container any other way (`append`/`add`/`insert`, an
 index-assigned dict/set value, a dict/set literal, or a freshly-built (owned)
-string — slipped through to headerless codegen and either leaked (the container
+string) slipped through to headerless codegen and either leaked (the container
 drop helper frees only the backing array, never the entries) or left a dangling
 pointer. These tests pin that every such write is now fenced, while the fully
 supported shapes (scalar containers, string *literals*, and a same-named method
