@@ -96,6 +96,30 @@ trap 'cleanup "$?"' EXIT
 _T0=$(date +%s)
 _t() { echo "[TIMING +$(( $(date +%s) - _T0 ))s] $1"; }
 
+# Polls a resource's status.conditions[type=Ready].status, per the HTTP
+# Add-on's own "Autoscale an App" verify step (kubectl get <kind> <name> and
+# check the READY column) -- done here as a jsonpath poll instead so the
+# script can fail fast on the actual condition rather than timing out later
+# on an interceptor request that can never succeed.
+wait_for_ready() {
+    kind="$1"
+    name="$2"
+    elapsed=0
+    while [ "${elapsed}" -lt "${READY_TIMEOUT}" ]; do
+        status=$(kubectl get "${kind}" "${name}" -n "${NAMESPACE}" \
+            -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "")
+        if [ "${status}" = "True" ]; then
+            echo "  ${kind}/${name} Ready"
+            return 0
+        fi
+        sleep 2
+        elapsed=$(( elapsed + 2 ))
+    done
+    echo "FAIL: ${kind}/${name} did not report Ready within ${READY_TIMEOUT}s (last status: '${status}')" >&2
+    kubectl get "${kind}" "${name}" -n "${NAMESPACE}" -o yaml >&2 || true
+    return 1
+}
+
 _t "fixture apply start"
 echo "=== apply zero-replica Deployment + Service fixture ==="
 kubectl apply -f "${FIXTURE_DIR}/fixture.yaml"
@@ -118,6 +142,17 @@ _t "apply_http_activation (patch path)"
 echo "=== re-apply: both resources already exist, so this exercises the get-then-patch branch against the real API server (required behavior: idempotent create-or-patch) ==="
 if ! (cd "${REPO_ROOT}/jac" && jac run "${DRIVER}" apply); then
     echo "FAIL: second apply_http_activation call (patch path) errored" >&2
+    dump_state
+    exit 1
+fi
+
+_t "wait for InterceptorRoute + ScaledObject Ready"
+echo "=== confirm InterceptorRoute and ScaledObject reconciled to Ready ==="
+if ! wait_for_ready interceptorroute "${DEPLOYMENT}-http-route"; then
+    dump_state
+    exit 1
+fi
+if ! wait_for_ready scaledobject "${DEPLOYMENT}-http-scaledobject"; then
     dump_state
     exit 1
 fi
