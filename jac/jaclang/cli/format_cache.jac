@@ -159,7 +159,7 @@ obj FormatCache {
     has cache_dir: (Path | str | None),
         enabled: bool = True,
         formatter_stamp: str = "",
-        cache_root: (Path | None) by postinit;
+        cache_root: (Path | None) = None;
 
     def postinit {
         if bool(self.enabled) and self.cache_dir is not None {
