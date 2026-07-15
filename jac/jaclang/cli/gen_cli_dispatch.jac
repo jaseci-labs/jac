@@ -1,6 +1,7 @@
 import inspect;
+import from jaclang.cli.registry { CommandRegistry }
 
-def _populate_registry -> object {
+def _populate_registry -> CommandRegistry {
     import from jaclang.cli.registry { get_registry, register_feature_commands }
     import jaclang.cli.commands;
 
@@ -8,7 +9,7 @@ def _populate_registry -> object {
     return get_registry();
 }
 
-def _arg_expr(pname: str, param: object) -> str {
+def _arg_expr(pname: str, param: inspect.Parameter) -> str {
     if param.default is inspect.Parameter.empty {
         return f'args["{pname}"]';
     }
