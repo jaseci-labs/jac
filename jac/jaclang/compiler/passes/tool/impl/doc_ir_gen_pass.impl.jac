@@ -1165,7 +1165,7 @@ impl DocIRGenPass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
     parts: list[doc.DocType] = [];
     for i in nd.kid {
         if (
-            (isinstance(i, uni.Token) and (i.value in ['-', '~', '+', '*']))
+            (isinstance(i, uni.Token) and (i.value in ['-', '~', '+', '*', '&']))
             or isinstance(i, uni.Expr)
         ) {
             parts.append(i.gen.doc_ir);

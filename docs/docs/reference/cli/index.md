@@ -255,7 +255,10 @@ jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a A
 | `--host` | Mobile dev (`--client mobile --dev`) optional live-reload host/IP override | `""` |
 | `--platform` | Mobile start/dev platform selector for `--client mobile` (`auto`, `android`, `ios`) | `auto` |
 | `--scale` | Deploy to Kubernetes (built-in scale subsystem) | `False` |
-| `-b, --build` | Build Docker image before deploy (with `--scale`) | `False` |
+| `--target` | Deployment target (with `--scale`) | `kubernetes` |
+| `--enable-tls` | Enable HTTPS via Let's Encrypt (with `--scale`) | `False` |
+| `--dry-run` | Print the manifests that would be applied; change nothing (with `--scale`) | `False` |
+| `--show-yaml` | With `--dry-run`: dump the raw YAML stream | `False` |
 
 **Examples:**
 
@@ -284,8 +287,8 @@ jac start main.jac --client mobile --dev --host 192.168.1.25
 # Deploy to Kubernetes (built-in scale subsystem)
 jac start --scale
 
-# Build and deploy to Kubernetes
-jac start --scale --build
+# Preview the manifests without touching the cluster
+jac start --scale --dry-run
 ```
 
 > **Note**:
@@ -335,7 +338,7 @@ jac create [-h] [-f] [-k KIND] [-u USE] [-l] [name]
 | `-f, --force` | Overwrite existing project | `False` |
 | `-k, --kind` | Project kind: cli, cli-native, native-binary, native-lib, service, service-mesh, py-package, js-package, web-app, web-static, desktop, mobile | `cli` |
 | `-u, --use` | Custom template: file path or URL to a `.jacpack`, or a named variant (e.g. `jac-shadcn`) | `default` |
-| `-l, --list_jacpacks` | List available project kinds and named variants | `False` |
+| `-l, --list` | List available project kinds and named variants | `False` |
 | `--pack DIR` | Bundle a template directory into a distributable `.jacpack` file (absorbs `jac jacpack pack`) | None |
 | `--pack_output F` | Output path for the bundled `.jacpack` (with `--pack`) | `<name>.jacpack` |
 
@@ -366,7 +369,7 @@ jac create myapp --use ./my-template/
 jac create myapp --use https://example.com/template.jacpack
 
 # List available project kinds and named variants
-jac create --list_jacpacks
+jac create --list
 
 # Force overwrite existing
 jac create myapp --force
@@ -1224,8 +1227,8 @@ jac config list -o toml
 Deploy to Kubernetes using the built-in `scale` subsystem. See the [`jac start`](#jac-start) command above for full options.
 
 ```bash
-jac start --scale           # Deploy without building
-jac start --scale --build   # Build and deploy
+jac start --scale             # Deploy
+jac start --scale --dry-run   # Print the manifests; change nothing
 ```
 
 ---
@@ -1268,8 +1271,8 @@ jac scale <action> [name|file] [--target TARGET] [--component COMPONENT]
 
   Service URLs
   ────────────────────────────────────────────
-  Application:  http://localhost:30001
-  Grafana:      http://localhost:30003
+  Application:  http://localhost:30080
+  Grafana:      http://localhost:30080/grafana
 ```
 
 **Status indicators:**
@@ -1704,14 +1707,14 @@ jac build --client mobile -p android
 
 ### jac jacpack
 
-Template packing has folded into [`jac create`](#jac-create). Bundle a template directory into a distributable `.jacpack` with **`jac create --pack <dir>`** (`--pack_output F` for a custom path), and list available templates/kinds with **`jac create --list_jacpacks`**. The `.jacpack` concept below is unchanged.
+Template packing has folded into [`jac create`](#jac-create). Bundle a template directory into a distributable `.jacpack` with **`jac create --pack <dir>`** (`--pack_output F` for a custom path), and list available kinds/named variants with **`jac create --list`**. The `.jacpack` concept below is unchanged.
 
 ```bash
 # Bundle a template directory into a .jacpack (formerly `jac jacpack pack`)
 jac create --pack <dir> [--pack_output out.jacpack]
 
 # List available project kinds and named variants (formerly `jac jacpack list`)
-jac create --list_jacpacks
+jac create --list
 ```
 
 **Template Directory Structure:**
@@ -1752,8 +1755,8 @@ root_gitignore_entries = [".jac/"]
 **Examples:**
 
 ```bash
-# List available templates / project kinds
-jac create --list_jacpacks
+# List available project kinds and named variants
+jac create --list
 
 # Bundle a template directory
 jac create --pack ./my-template

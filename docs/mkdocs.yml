@@ -105,6 +105,7 @@ nav:
           - Errors & Warnings: "reference/diagnostics.md"
           - Code Organization: "reference/code-organization.md"
           - Testing: "reference/testing.md"
+          - nothing to see here: "reference/ninja.md"
 
   - Community:
       - Contributing: "community/contributing.md"

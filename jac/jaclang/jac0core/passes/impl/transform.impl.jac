@@ -133,13 +133,15 @@ impl Transform.emit(
         return False;
     }
 
+    loc = loc.snapshot();
+
     msg = diag.format_message(**kwargs);
     resolved_help = help_text if help_text is not None else diag.format_help(**kwargs);
 
     related_locs: list[tuple[str, CodeLocInfo]] = [];
     if related {
         for (label, node) in related {
-            related_locs.append((label, node.loc));
+            related_locs.append((label, node.loc.snapshot()));
         }
     }
     alrt = Alert(

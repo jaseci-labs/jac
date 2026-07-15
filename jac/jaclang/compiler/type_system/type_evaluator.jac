@@ -261,6 +261,10 @@ obj TypeEvaluator {
     def _type_from_union_annotation_arg(val: uni.Expr) -> TypeBase;
     def get_type_of_module(node_: uni.ModulePath) -> types.TypeBase;
     def get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeBase;
+    def _resolve_submodule_attr(
+        base_type: types.ModuleType, attr_name: str
+    ) -> (types.ModuleType | None);
+
     def _resolve_star_import_symbol(
         mod: uni.Module, name: str, visited: set[int] | None = None
     ) -> uni.Symbol | None;
@@ -315,6 +319,7 @@ obj TypeEvaluator {
     ) -> bool;
 
     def _is_ability_classmethod(node_: uni.Ability) -> bool;
+    def _is_ability_staticmethod(node_: uni.Ability) -> bool;
     def _classify_property_symbol(symbol: uni.Symbol) -> type_utils.PropertyWriteKind;
     def get_getter_type_from_property(symbol: uni.Symbol) -> (TypeBase | None);
     def get_property_write_type(symbol: uni.Symbol) -> type_utils.PropertyWriteResult;

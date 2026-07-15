@@ -177,46 +177,77 @@ impl UniNode.parent_of_type(typ: type[T]) -> T {
     }
 }
 
-impl UniNode.in_client_context -> bool {
-    import from jaclang.jac0core.ext_registry { is_client_module }
+impl UniNode.codespace -> CodeContext {
+    import from jaclang.jac0core.ext_registry { is_client_module, is_native_module }
     nd: (UniNode | None) = self.parent;
     while (nd is not None) {
         if isinstance(nd, ServerBlock) {
-            return False;
+            return CodeContext.SERVER;
         }
         if isinstance(nd, ClientBlock) {
-            return True;
+            return CodeContext.CLIENT;
+        }
+        if isinstance(nd, NativeBlock) {
+            return CodeContext.NATIVE;
         }
         if isinstance(nd, Ability) {
             context = nd.code_context;
             if (context == CodeContext.CLIENT) {
-                return True;
+                return CodeContext.CLIENT;
+            }
+            if (context == CodeContext.NATIVE) {
+                return CodeContext.NATIVE;
             }
         }
         if isinstance(nd, Module) {
-            return (nd.loc is not None and is_client_module(nd.loc.mod_path));
+            mp = nd.loc.mod_path if nd.loc is not None else '';
+            if mp and is_native_module(mp) {
+                return CodeContext.NATIVE;
+            }
+            if mp and is_client_module(mp) {
+                return CodeContext.CLIENT;
+            }
+            return CodeContext.SERVER;
         }
         nd = nd.parent;
     }
-    return False;
+    return CodeContext.SERVER;
+}
+
+impl UniNode.in_client_context -> bool {
+    return self.codespace() == CodeContext.CLIENT;
 }
 
 impl UniNode.in_native_context -> bool {
-    nd: (UniNode | None) = self.parent;
-    while (nd is not None) {
-        if isinstance(nd, (ServerBlock, ClientBlock)) {
-            return False;
-        }
-        if isinstance(nd, NativeBlock) {
-            return True;
-        }
-        if isinstance(nd, Ability) {
-            context = nd.code_context;
-            if (context == CodeContext.NATIVE) {
+    return self.codespace() == CodeContext.NATIVE;
+}
+
+impl Module.declares_codespace(ctx: CodeContext, path_hint: str = '') -> bool {
+    import from jaclang.jac0core.ext_registry { is_client_module, is_native_module }
+    mp = self.loc.mod_path
+        if (self.loc is not None and self.loc.mod_path)
+        else path_hint;
+    if ctx == CodeContext.NATIVE and bool(mp) and is_native_module(mp) {
+        return True;
+    }
+    if ctx == CodeContext.CLIENT and bool(mp) and is_client_module(mp) {
+        return True;
+    }
+    if self.body {
+        for _stmt in self.body {
+            if ctx == CodeContext.NATIVE and isinstance(_stmt, NativeBlock) {
+                return True;
+            }
+            if ctx == CodeContext.CLIENT and isinstance(_stmt, ClientBlock) {
+                return True;
+            }
+
+            if ctx != CodeContext.SERVER
+            and isinstance(_stmt, ContextAwareNode)
+            and _stmt.code_context == ctx {
                 return True;
             }
         }
-        nd = nd.parent;
     }
     return False;
 }
