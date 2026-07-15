@@ -203,11 +203,13 @@ def open_det_tar(buf: io.BytesIO) -> tuple[tarfile.TarFile, any] {
 }
 
 
-def _precompile_app(base: Path, pod_binary: bytes) -> Path {
+def _precompile_app(
+    base: Path, pod_binary: bytes, extra_dirs: (set[str] | None) = None
+) -> Path {
     # Seal the app's modules with the pod binary into _precompiled/MANIFEST.json
     # so the deploy artifact is a valid .jab. The seal is mandatory: an
     # incomplete seal raises rather than shipping a cold-compile fallback.
-    xtra = _config_excludes(base);
+    xtra = _config_excludes(base) if extra_dirs is None else extra_dirs;
     stage_root = Path(tempfile.mkdtemp(prefix="jac-app-precompile-"));
     stage = stage_root / "app";
     try {
@@ -266,7 +268,7 @@ def pack_jab(project_dir: str, provisioned_database: str, pod_binary: bytes) -> 
     }
     base = Path(project_dir).resolve();
     xtra = _config_excludes(base);
-    staged = _precompile_app(base, pod_binary);
+    staged = _precompile_app(base, pod_binary, xtra);
     # staged is <stage_root>/app; the whole mkdtemp tree must be removed even if
     # a tar.add below raises, or a full project copy leaks in /tmp on every
     # failed deploy (accumulates on a retrying deploy driver).

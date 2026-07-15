@@ -1738,7 +1738,7 @@ def _make_sealed_image(
         } except ValueError { }
     }
 
-    seal_excludes = config.build.exclude or [];
+    seal_excludes = config.build.exclude;
 
     def copy_ignore(d: str, items: list) -> list {
         skipped = _seal_copy_ignore(d, items, seal_excludes);
