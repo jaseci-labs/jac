@@ -13,7 +13,7 @@
 - [Supported Language Features](#supported-language-features) - What works in native code
 - [C Library Interop](#c-library-interop) - Calling C functions from Jac
 - [Platform Support](#platform-support-currently) - Supported OS and architecture targets
-- [Memory Management](#memory-management) - Reference counting model
+- [Memory Management](#memory-management) - GC modes and ownership-checked zero-RC builds
 - [Debugging](#debugging) - Tools for inspecting native compilation
 - [Roadmap Items](#roadmap-items-current-limitations) - Features not yet available in native code
 - [Examples](#examples) - Complete native programs
@@ -49,7 +49,7 @@ Native compilation is ideal for:
 | **C interop (in)** | `import from libname` (logical) or `import from "path"` (explicit) |
 | **C interop (out)** | `jac nacompile --shared` exports `:pub` symbols as a `.so`/`.dylib`/`.dll` |
 | **Std library** | `import math` / `time` / `sys` / `os` / `random` (Python-congruent subset) |
-| **Memory model** | Automatic reference counting |
+| **Memory model** | Emit-time `--gc` modes: `cycles` (RC + cycle collector, default), `rc`, `none`; ownership-checked zero-RC builds via `--enforce-nogc` + `--assert-no-rc` |
 | **Testing** | `test "description" { }` blocks compile native and run via `jac test` |
 
 ---
@@ -771,10 +771,43 @@ The platform and architecture are auto-detected at compile time. The correct bin
 
 ## Memory Management
 
-Native Jac uses **automatic reference counting** for memory management. Heap-allocated values (objects, strings, lists, dicts, sets) carry a reference count that is incremented on copy and decremented when a reference goes out of scope. Memory is freed when the count reaches zero.
+Native Jac manages heap values (objects, strings, lists, dicts, sets) with **automatic reference counting** by default -- and how much memory-management machinery ends up in the artifact is an emit-time choice. `jac nacompile --gc <mode>` selects the runtime the backend emits (the default comes from [`jac.toml [gc]`](../config/index.md#gc), else `cycles`):
 
-!!! warning "Current Status"
-    Deep release of nested structures is currently disabled to prevent use-after-free in complex ownership scenarios. This means certain long-running native programs may leak memory. Programs with bounded allocation are unaffected. Proper ownership tracking is a planned improvement.
+| Mode | What is emitted |
+|------|-----------------|
+| `cycles` (default) | Reference counting plus the Bacon-Rajan cycle collector (trace functions, roots buffer). Automatic cycle collection is switched on at runtime by setting `JAC_GC_CYCLES` in the environment; `__rc_collect_cycles()` triggers a collection explicitly. |
+| `rc` | Plain reference counting. No collector functions, trace functions, roots buffer, or `JAC_GC_CYCLES` entry probe are emitted; objects that die as members of a reference cycle are never reclaimed. |
+| `none` | No retain/release call sites at all -- the compile-time analogue of the `JAC_NO_GC` runtime switch. Without ownership coverage, heap memory is never reclaimed; in a nogc-enforced module (below), frees are inserted statically instead. |
+
+Under the managed modes (`cycles`, `rc`) a heap value carries a reference count that is incremented on copy and decremented when a reference goes out of scope; the value is freed when its count reaches zero, and its destructor releases field and element references in turn. A [`def drop` hook](ownership-borrowing.md#the-drop-hook) is invoked from the reference-count destructor -- for a uniquely-owned value at the same last-use point a zero-RC build drops at, so program output is identical across gc modes. Setting `JAC_NO_GC` in the environment disables reclamation in a managed-mode binary at runtime (memory is then never freed; useful for isolating memory-management bugs).
+
+### Zero-RC ownership compilation
+
+For a module written against the [ownership and borrow-checking surface](ownership-borrowing.md), memory management compiles to what Rust would emit: an allocation at construction, a free at a statically determined drop point, and **no reference counting or collector in the binary at all** -- and the absence of that machinery is checkable in the artifact. Three pieces turn this into a compile-time contract rather than a best-effort optimization:
+
+- **nogc enforcement** (`jac nacompile --enforce-nogc`, or per-module patterns in [`jac.toml [gc.enforce]`](../config/index.md#gc)). In an enforced module, every heap-typed contract position -- parameter, return type, `has` field -- must live in the owned world (`own`, `&`, `&mut`, `imm`); locals infer ownership from a fresh right-hand side. Anything the contract cannot prove is a hard error ([`E1401`-`E1406`](../diagnostics.md#zero-rc-enforcement-errors)) that blocks codegen.
+- **Headerless owned codegen** (under `--gc none`). Owned payloads are bare `malloc` allocations with no reference-count header, and each free is a direct call to the statically inserted `__drop_<T>` at the value's drop point -- after its last use, NLL-style (see [drop timing](ownership-borrowing.md#the-drop-hook)). User `def drop` hooks run from that same static call.
+- **`--assert-no-rc`** proves the result: it scans the emitted IR and fails the build if any RC/collector machinery is present -- `__rc_*` helpers, trace functions, roots-buffer globals, or entry-point GC env probes. A build that passes is observably RC-free.
+
+```bash
+jac nacompile service.na.jac --gc none --enforce-nogc --assert-no-rc
+```
+
+Notes on the enforced world:
+
+- **The `managed()` membrane.** In an enforced module compiled under a managed gc mode, a heap value may cross out to unenforced (reference-counted) code only through the explicit `managed(x)` builtin at the boundary -- an implicit crossing is `E1403`, and sealing an owned value into managed storage is `E1402`. Under `--gc none` the artifact has no reference-counted side to cross into, so `managed()` of a heap value is itself rejected (`E1406`). Scalars and `imm` values cross freely everywhere, and on the Python backend `managed()` is the identity function.
+- **Unhandled exceptions abort.** In a nogc-enforced module, a `raise` with no local handler prints a diagnostic line and calls `abort()` rather than unwinding -- unwinding would require the managed runtime.
+- **Grandfathering.** `[gc.enforce] grandfathered` patterns exempt matching modules from enforcement so a codebase can adopt the contract incrementally.
+
+### RC coverage stats
+
+Compiling with `JAC_RC_STATS=1` prints a per-module line to stderr reporting the retain/release call sites emitted versus the reference-count operations elided by move-lowering:
+
+```text
+rc-stats [mod.na.jac] gc=cycles retains=1 releases=10 elided=3 coverage=21.4%
+```
+
+A module with zero emitted retains and releases is tagged `rc-free` at the end of the line -- the same condition `--assert-no-rc` checks structurally in the IR.
 
 ### Reserved `__rc_*` runtime hooks
 
