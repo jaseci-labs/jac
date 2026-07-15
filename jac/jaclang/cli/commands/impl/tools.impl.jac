@@ -338,9 +338,10 @@ impl gen_jir_registry(verify: bool = False) -> int {
 
 impl gen_cli_dispatch(verify: bool = False) -> int {
     import from jaclang.cli.gen_cli_dispatch { generate }
-    import from jaclang.jac0core.program { JacProgram }
     import from pathlib { Path }
     import tempfile;
+    import subprocess;
+    import sys;
     import os;
     import jaclang;
 
@@ -359,10 +360,23 @@ impl gen_cli_dispatch(verify: bool = False) -> int {
             with open(tmp_path, 'w', encoding='utf-8') as tmp {
                 tmp.write(content);
             }
-            prog = JacProgram.jac_file_formatter(tmp_path, auto_lint=True);
-            if not prog.errors_had and prog.mod.main.gen.jac {
-                content = prog.mod.main.gen.jac;
+            with open(
+                os.path.join(fmt_dir, "jac.toml"), 'w', encoding='utf-8'
+            ) as cfg {
+                cfg.write("[check.lint]\nselect = [\"all\"]\n");
             }
+            _fmt_env = os.environ.copy();
+            _pp = os.environ.get('PYTHONPATH', '');
+            if _pp {
+                _fmt_env['PYTHONPATH'] = os.path.abspath(_pp);
+            }
+            subprocess.run(
+                [sys.executable, '-m', 'jaclang', 'fmt', '--lintfix', tmp_path],
+                capture_output=True,
+                cwd=fmt_dir,
+                env=_fmt_env
+            );
+            content = Path(tmp_path).read_text(encoding="utf-8");
         }
     } except Exception {
         ;

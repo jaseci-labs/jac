@@ -276,7 +276,9 @@ def dispatch_command(name: str, args: dict) -> int | None {
                 target=args.get("target", ''),
                 shared=args.get("shared", False),
                 debug=args.get("debug", False),
-                gc=args.get("gc", 'cycles')
+                gc=args.get("gc", ''),
+                assert_no_rc=args.get("assert_no_rc", False),
+                enforce_nogc=args.get("enforce_nogc", False)
             )
         );
     }
