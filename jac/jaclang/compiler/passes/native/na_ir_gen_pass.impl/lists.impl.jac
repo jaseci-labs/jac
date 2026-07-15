@@ -16,13 +16,16 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
     i64 = ir.IntType(64);
     i32 = ir.IntType(32);
 
-    _rel_fn_name = f"__rc_release_list_{elem_type_name}";
-    _rel_fnty = ir.FunctionType(ir.VoidType(), [list_ptr_type]);
-    try {
-        _rel_fn_decl = self.llvm_module.get_global(_rel_fn_name);
-    } except KeyError {
-        _rel_fn_decl = ir.Function(self.llvm_module, _rel_fnty, name=_rel_fn_name);
-        _rel_fn_decl.linkage = "private";
+    _rel_fn_decl = None;
+    if not self._nogc_headerless() {
+        _rel_fn_name = f"__rc_release_list_{elem_type_name}";
+        _rel_fnty = ir.FunctionType(ir.VoidType(), [list_ptr_type]);
+        try {
+            _rel_fn_decl = self.llvm_module.get_global(_rel_fn_name);
+        } except KeyError {
+            _rel_fn_decl = ir.Function(self.llvm_module, _rel_fnty, name=_rel_fn_name);
+            _rel_fn_decl.linkage = "private";
+        }
     }
 
     new_fn = self._emit_container_new_fn(
@@ -63,7 +66,7 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
     cur_data = b.load(data_p_s, name="data");
     slot = b.gep(cur_data, [cur_len], name="slot");
 
-    if isinstance(elem_type, ir.PointerType) {
+    if isinstance(elem_type, ir.PointerType) and not self._nogc_headerless() {
         if self.rc_retain_fn is None {
             self._emit_rc_helpers();
         }
@@ -97,7 +100,7 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
     d2 = b.load(dp2, name="data");
     ep2 = b.gep(d2, [set_fn.args[1]], name="elem.ptr");
 
-    if isinstance(elem_type, ir.PointerType) {
+    if isinstance(elem_type, ir.PointerType) and not self._nogc_headerless() {
         if self.rc_retain_fn is None {
             self._emit_rc_helpers();
         }
@@ -115,10 +118,14 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
 
     len_fn = self._emit_container_len_fn(f"__list_len_{elem_type_name}", list_ptr_type);
 
-    release_fn = self._emit_container_release_fn(
-        f"__rc_release_list_{elem_type_name}", list_ptr_type, [(2, elem_type)]
-    );
-    self.list_release_fns[elem_type_name] = release_fn;
+    if self._nogc_headerless() {
+        self._emit_container_drop_fn(f"List.{elem_type_name}");
+    } else {
+        release_fn = self._emit_container_release_fn(
+            f"__rc_release_list_{elem_type_name}", list_ptr_type, [(2, elem_type)]
+        );
+        self.list_release_fns[elem_type_name] = release_fn;
+    }
 
     self.list_helpers[elem_type_name] = {
         "new": new_fn,

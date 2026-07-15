@@ -481,4 +481,4 @@ def clean(
 
 def jacpack(action: str = "", path: str = "", output: str = "") -> int;
 
-def bundle(output: str = "dist", target: str = "wheel") -> int;
+def bundle(output: str = "dist", target: str = "wheel", fat: bool = False) -> int;

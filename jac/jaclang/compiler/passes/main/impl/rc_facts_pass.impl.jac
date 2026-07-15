@@ -280,7 +280,7 @@ impl RcFactsPass._is_alias_value(nm: uni.Name) -> bool {
     if p.type_tag is not None
     and (
         is_borrow_kind(p.type_tag.ownership)
-        or p.type_tag.ownership == OwnershipKind.VAL
+        or p.type_tag.ownership == OwnershipKind.IMM
     ) {
         return False;
     }

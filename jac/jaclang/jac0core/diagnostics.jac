@@ -633,18 +633,75 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E1308",
          Category.SEMANTIC,
          "'{name}' is not sendable across a concurrency boundary",
-         help="Only a deep-immutable `val` value or a moved `own` value may cross a"
+         help="Only a deep-immutable `imm` value or a moved `own` value may cross a"
          " `flow`/`wait`/`thread_run` boundary — those are the only payloads that are"
          " statically race-free. A live `&`/`&mut` borrow or a shared managed value may"
-         " not be sent; move it with `own`, or send a `val` snapshot instead."
+         " not be sent; move it with `own`, or send an `imm` snapshot instead."
      ),
      E1309 = _err(
          "E1309",
          Category.SEMANTIC,
-         "Cannot mutate '{name}' through a deep-immutable `val` binding",
-         help="'{name}' is a `val` value: it is transitively immutable, so it may never"
-         " be reassigned, have a field written, or be borrowed `&mut`. Take a `val` as"
+         "Cannot mutate '{name}' through a deep-immutable `imm` binding",
+         help="'{name}' is an `imm` value: it is transitively immutable, so it may never"
+         " be reassigned, have a field written, or be borrowed `&mut`. Take an `imm` as"
          " read-only, or use an `own`/managed binding if you need to mutate."
+     ),
+     E1401 = _err(
+         "E1401",
+         Category.SEMANTIC,
+         "Heap-typed {position} '{name}' has no ownership state in a nogc-enforced module ({provenance})",
+         help="Inside a nogc-enforced module every heap-typed contract position"
+         " (parameter, return, or `has` field) must be in the owned world: annotate"
+         " it `own`, `&`, `&mut`, or `imm`. Locals still infer ownership from a fresh"
+         " right-hand side; only contracts must be explicit.",
+         blocks_codegen=True
+     ),
+     E1402 = _err(
+         "E1402",
+         Category.SEMANTIC,
+         "Owned value '{name}' is sealed into managed storage inside a nogc-enforced module ({provenance})",
+         help="Storing an owned value into a managed or graph location re-enters the"
+         " reference-counted world, which a nogc-enforced module promises not to do."
+         " Keep the value owned, or copy it across the membrane explicitly with"
+         " `managed(...)` at the module boundary.",
+         blocks_codegen=True
+     ),
+     E1403 = _err(
+         "E1403",
+         Category.SEMANTIC,
+         "Heap value '{name}' crosses implicitly out of a nogc-enforced module ({provenance})",
+         help="Heap values may leave a nogc-enforced module only by an explicit copy:"
+         " wrap the argument in `managed(...)`, which reboxes it into a"
+         " reference-counted allocation on the managed side. Scalars and `imm` values"
+         " cross freely.",
+         blocks_codegen=True
+     ),
+     E1404 = _err(
+         "E1404",
+         Category.SEMANTIC,
+         "'{name}' is `any`-typed and could be heap-allocated in a nogc-enforced module ({provenance})",
+         help="If the static type cannot say heap-or-not, zero-RC coverage cannot be"
+         " enforced. Give '{name}' a concrete type, or confine `any` to scalar values"
+         " in enforced modules.",
+         blocks_codegen=True
+     ),
+     E1405 = _err(
+         "E1405",
+         Category.SEMANTIC,
+         "Closure capture of '{name}' escapes its scope in a nogc-enforced module ({provenance})",
+         help="An escaping closure keeps its captures alive past the enclosing scope,"
+         " which needs reference counting. Pass '{name}' as an explicit parameter, or"
+         " restructure so the closure does not outlive the scope.",
+         blocks_codegen=True
+     ),
+     E1406 = _err(
+         "E1406",
+         Category.SEMANTIC,
+         "'{name}' has retaining or aliasing semantics not supported in a nogc-enforced module ({provenance})",
+         help="This builtin or construct retains or aliases its heap arguments, which"
+         " the zero-RC contract cannot express yet. Use an owned-compatible"
+         " alternative, or move this code outside the enforced module.",
+         blocks_codegen=True
      ),
      W1050 = _warn("W1050", Category.TYPE, "Unknown intrinsic JSX element '<{tag}>'"),
      W1051 = _warn(
