@@ -50,6 +50,16 @@ obj NativeBuildConfig {
         dump_ir: str = "";
 }
 
+obj GcEnforceConfig {
+    has modules: list[str] = [],
+        grandfathered: list[str] = [];
+}
+
+obj GcConfig {
+    has default: str = "cycles",
+        enforce: GcEnforceConfig = GcEnforceConfig();
+}
+
 obj BuildConfig {
     has typecheck: bool = False,
         dir: str = ".jac",
@@ -155,6 +165,7 @@ obj JacConfig {
     has project: ProjectConfig = ProjectConfig(),
         run: RunConfig = RunConfig(),
         build: BuildConfig = BuildConfig(),
+        gc: GcConfig = GcConfig(),
         test: TestConfig = TestConfig(),
         serve: ServeConfig = ServeConfig(),
         format: FormatConfig = FormatConfig(),

@@ -42,6 +42,10 @@ impl NaIRGenPass._emit_trace_fn(arch_name: str) -> None {
     if arch_name in self.struct_trace_fns {
         return;
     }
+
+    if self._arch_is_acyclic(arch_name) {
+        return;
+    }
     struct_type = self.struct_types.get(arch_name);
     if struct_type is None {
         return;

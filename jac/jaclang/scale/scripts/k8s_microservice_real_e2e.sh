@@ -286,6 +286,25 @@ done
 
 _t "pods Ready"
 
+echo "=== gateway npm closure skipped when the dist shipped ==="
+GW_POD=$(kubectl get pods -n "${NAMESPACE}" -l app=gateway -o name | head -1)
+if kubectl exec -n "${NAMESPACE}" "${GW_POD#pod/}" -c gateway -- \
+        test -f /app/.jac/client/dist/index.html 2>/dev/null; then
+    # the "Installing npm dependencies" banner prints even under --no-npm;
+    # a "bun install" invocation only appears when the closure really installs
+    if kubectl logs -n "${NAMESPACE}" "${GW_POD}" -c jac-bootstrap 2>/dev/null \
+            | grep -q "bun install v"; then
+        echo "FAIL: bundle shipped a prebuilt dist but the gateway still installed the npm closure"
+        echo "--- debug: dist dir + bootstrap branch marker ---"
+        kubectl exec -n "${NAMESPACE}" "${GW_POD#pod/}" -c gateway -- ls -la /app/.jac/client/dist/ 2>&1 | head -6
+        kubectl logs -n "${NAMESPACE}" "${GW_POD}" -c jac-bootstrap 2>/dev/null | grep -E "jac-scale|bun install" | head -4
+        exit 1
+    fi
+    echo "  dist shipped and npm skipped OK"
+else
+    echo "  (no prebuilt dist in this run; the npm fallback path is in effect)"
+fi
+
 echo "=== first-boot compile stats (per pod) ==="
 for pod in $(kubectl get pods -n "${NAMESPACE}" -l managed=jac-scale -o name 2>/dev/null); do
     # `|| true` throughout: pods without a jac-bootstrap container (mongo,
@@ -330,6 +349,46 @@ for prefix in ${ROUTES}; do
 done
 
 _t "routing OK"
+echo "=== verify HPA OOM guardrails (cpu+memory metrics, behavior rate limits) ==="
+# The heredoc feeds python's stdin, so the HPA JSON must travel via a file.
+HPA_JSON="$(mktemp)"
+kubectl get hpa -n "${NAMESPACE}" -l managed=jac-scale -o json > "${HPA_JSON}"
+python3 - "${HPA_JSON}" <<'PYEOF'
+import json
+import sys
+
+with open(sys.argv[1]) as f:
+    items = json.load(f).get("items", [])
+if not items:
+    sys.exit("FAIL: no managed HPAs found in namespace")
+for hpa in items:
+    name = hpa["metadata"]["name"]
+    spec = hpa["spec"]
+    metric_names = sorted(
+        m["resource"]["name"]
+        for m in spec.get("metrics", [])
+        if m.get("type") == "Resource"
+    )
+    if metric_names != ["cpu", "memory"]:
+        sys.exit(f"FAIL: {name} metrics={metric_names}, expected cpu+memory")
+    behavior = spec.get("behavior") or {}
+    up = behavior.get("scaleUp") or {}
+    down = behavior.get("scaleDown") or {}
+    if not up.get("policies") or up.get("stabilizationWindowSeconds") is None:
+        sys.exit(f"FAIL: {name} missing scaleUp guardrails: {behavior}")
+    if not down.get("policies") or not down.get("stabilizationWindowSeconds"):
+        sys.exit(f"FAIL: {name} missing scaleDown guardrails: {behavior}")
+    print(
+        f"  {name}: metrics={metric_names}, "
+        f"scaleUp<={up['policies'][0]['value']} pods/{up['policies'][0]['periodSeconds']}s "
+        f"(stab {up['stabilizationWindowSeconds']}s), "
+        f"scaleDown stab {down['stabilizationWindowSeconds']}s"
+    )
+print(f"  {len(items)} HPA(s) verified")
+PYEOF
+rm -f "${HPA_JSON}"
+
+_t "HPA guardrails OK"
 echo "=== M-14.a: verify observability stack (logs.enabled) ==="
 # When [scale.microservices.logs].enabled = true (the fixture
 # default) the microservice target also calls MonitoringDeployer, which

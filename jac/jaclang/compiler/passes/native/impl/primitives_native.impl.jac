@@ -3073,7 +3073,7 @@ impl NativeListEmitter.emit_sort(
     ];
     if _unknown_kw {
         p.emit(
-            E5090,
+            E5092,
             node_override=_key_node or _rev_node,
             kind="sort keyword argument",
             name=", ".join(_unknown_kw)
@@ -3091,7 +3091,7 @@ impl NativeListEmitter.emit_sort(
             or len(_key_val.args) != 1
         ) {
             p.emit(
-                E5090,
+                E5092,
                 node_override=_key_node,
                 kind="sort key",
                 name="key= (only a capture-free single-parameter lambda works)"
@@ -5810,7 +5810,8 @@ impl NativeBuiltinEmitter.emit_bool(
             return b.zext(p._emit_bytes_truthy(arg_val), i64, name="bool.byresult");
         }
     }
-    return None;
+
+    return b.zext(p._to_bool(arg_val), i64, name="bool.result");
 }
 
 impl NativeBuiltinEmitter.emit_list(
