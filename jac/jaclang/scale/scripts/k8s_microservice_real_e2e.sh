@@ -286,6 +286,20 @@ done
 
 _t "pods Ready"
 
+echo "=== gateway npm closure skipped when the dist shipped ==="
+GW_POD=$(kubectl get pods -n "${NAMESPACE}" -l app=gateway -o name | head -1)
+if kubectl exec -n "${NAMESPACE}" "${GW_POD#pod/}" -c gateway -- \
+        test -f /app/.jac/client/dist/index.html 2>/dev/null; then
+    if kubectl logs -n "${NAMESPACE}" "${GW_POD}" -c jac-bootstrap 2>/dev/null \
+            | grep -q "Installing npm dependencies"; then
+        echo "FAIL: bundle shipped a prebuilt dist but the gateway still installed the npm closure"
+        exit 1
+    fi
+    echo "  dist shipped and npm skipped OK"
+else
+    echo "  (no prebuilt dist in this run; the npm fallback path is in effect)"
+fi
+
 echo "=== first-boot compile stats (per pod) ==="
 for pod in $(kubectl get pods -n "${NAMESPACE}" -l managed=jac-scale -o name 2>/dev/null); do
     # `|| true` throughout: pods without a jac-bootstrap container (mongo,
