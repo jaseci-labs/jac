@@ -352,6 +352,21 @@ jobs:
         run: |
           jac gen-cli-dispatch --verify
 
+      - name: Diagnose command_dispatch.jac drift (temporary)
+        if: failure()
+        run: |
+          set +e
+          cp jac/jaclang/cli/command_dispatch.jac /tmp/committed_dispatch.jac
+          jac gen-cli-dispatch >/tmp/regen_dispatch.log 2>&1
+          cat /tmp/regen_dispatch.log
+          echo "=== DIFF: regenerated (binary) vs committed ==="
+          diff -u /tmp/committed_dispatch.jac jac/jaclang/cli/command_dispatch.jac || true
+          echo "=== command count: committed vs regenerated ==="
+          echo "committed:   $(grep -c "if name ==" /tmp/committed_dispatch.jac)"
+          echo "regenerated: $(grep -c "if name ==" jac/jaclang/cli/command_dispatch.jac)"
+          git checkout -- jac/jaclang/cli/command_dispatch.jac
+          exit 0
+
       - name: Run jac check (using .jacignore)
         run: |
           set -euo pipefail
