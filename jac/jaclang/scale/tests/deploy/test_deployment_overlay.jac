@@ -111,7 +111,11 @@ test "overlay cannot detach identity or routing fields" {
         {
             "svc_a": {
                 "deployment_overlay": {
-                    "metadata": {"name": "hijacked", "namespace": "elsewhere"},
+                    "metadata": {
+                        "name": "hijacked",
+                        "namespace": "elsewhere",
+                        "labels": {"app": "other", "managed": "hijacked"}
+                    },
                     "spec": {
                         "selector": {"matchLabels": {"app": "other"}},
                         "template": {"metadata": {"labels": {"app": "other"}}}
@@ -123,6 +127,8 @@ test "overlay cannot detach identity or routing fields" {
     m = b._build_deployment_manifest("svc_a", {"containers": []});
     assert m["metadata"]["name"] == "svc-a-deployment";
     assert m["metadata"]["namespace"] == "t-ns";
+    assert m["metadata"]["labels"]["app"] == "svc-a";
+    assert m["metadata"]["labels"]["managed"] == "jac-scale";
     assert m["spec"]["selector"]["matchLabels"]["app"] == "svc-a";
     assert m["spec"]["template"]["metadata"]["labels"]["app"] == "svc-a";
     assert m["spec"]["template"]["metadata"]["labels"]["managed"] == "jac-scale";

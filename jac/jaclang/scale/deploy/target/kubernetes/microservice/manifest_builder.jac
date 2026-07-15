@@ -684,6 +684,9 @@ obj MicroserviceManifestBuilder {
             # and Service selectors; an overlay must not detach them.
             manifest["metadata"]["name"] = f"{k8s_name}-deployment";
             manifest["metadata"]["namespace"] = self.k8s_config.namespace;
+            meta_labels = manifest["metadata"].get("labels", {});
+            meta_labels.update(labels);
+            manifest["metadata"]["labels"] = meta_labels;
             manifest["spec"]["selector"] = {"matchLabels": {"app": k8s_name}};
             tmpl_labels = manifest["spec"]["template"]["metadata"].get("labels", {});
             tmpl_labels.update({"app": k8s_name, "managed": "jac-scale"});
