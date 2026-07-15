@@ -18,20 +18,31 @@ impl Model.postinit -> None {
     if self.model_name == MODEL_MOCK {
         self._mock_delegate = MockLLM(model_name=self.model_name, config=self.config);
     }
-    # When model_name starts with 'local:', delegate to in-process llama.cpp.
-    # LocalLLM lives alongside MockLLM in byllm.llm so both delegates share
-    # the same module and avoid a circular import via local_runtime.jac.
+    # When model_name starts with 'local:', route through the model daemon.
+    # `llama-server` speaks OpenAI-compatible HTTP on localhost, so a local
+    # model becomes an ordinary litellm model: base_url + api_key are set here
+    # and ctx_window / native-tool support are stamped from the manifest. This
+    # never downloads weights -- an un-pulled model raises with a `jac model
+    # pull` hint. Falls through to the real (litellm) block below.
     if self.model_name.startswith("local:") {
-        # Forward ctx_window so user overrides on the outer Model reach the
-        # compaction layer running inside the delegate.
-        self._local_delegate = LocalLLM(
-            model_name=self.model_name,
-            ctx_window=self.ctx_window,
-            config=self.config,
-            call_params=self.call_params
-        );
+        import from jaclang.byllm.serve.client { resolve_local_model }
+        import from jaclang.byllm.serve.manifest { parse_alias }
+        _alias = parse_alias(self.model_name);
+        _routing = resolve_local_model(_alias, self.ctx_window);
+        # Stamp ctx_window from the manifest so compaction keeps working (the
+        # old LocalLLM did this; without it _get_ctx_window falls through to 0).
+        self.ctx_window = int(_routing["ctx_window"]);
+        self.model_name = _routing["served_model"];   # openai/<alias>
+        if not self.api_key {
+            self.api_key = _routing["api_key"];
+        }
+        self.config = dict(self.config);
+        self.config["base_url"] = _routing["base_url"];
+        # Authoritative tool-support fact from the manifest (replaces the gemma
+        # substring heuristic for local models).
+        self.config.setdefault("native_tools", _routing["supports_native_tools"]);
     }
-    if not self._mock_delegate and not self._local_delegate {
+    if not self._mock_delegate {
         # Real (litellm-backed) model. Construction stays dependency-free so the
         # eagerly-resolved default model never forces litellm on mock/local/http
         # projects; the `llm` capability is required lazily at the actual call
@@ -98,8 +109,6 @@ impl Model.invoke(mt_run: MTRuntime) -> object {
     try {
         if self._mock_delegate {
             result = self._mock_delegate.invoke(mt_run);
-        } elif self._local_delegate {
-            result = self._local_delegate.invoke(mt_run);
         } else {
             result = super.invoke(mt_run);
         }
@@ -227,6 +236,10 @@ impl Model.model_call_no_stream(params: dict) -> dict {
             response = client.chat.completions.create(**params);
         } else {
             require_optional("litellm", "llm");
+            # api_base is popped out of params by the dispatcher; re-supply it to
+            # litellm only when configured (mirrors ModelPool). None -> cloud default.
+            _api_base = getattr(self, "api_base", None);
+            if _api_base { params["api_base"] = _api_base; }
             response = litellm.completion(api_key=self.api_key or None, **params);
         }
     } except Exception as e {
@@ -252,6 +265,8 @@ impl Model.model_call_with_stream(params: dict) {
             response = client.chat.completions.create(stream=True, **params);
         } else {
             require_optional("litellm", "llm");
+            _api_base = getattr(self, "api_base", None);
+            if _api_base { params["api_base"] = _api_base; }
             response = litellm.completion(
                 stream=True, api_key=self.api_key or None, **params
             );
@@ -307,6 +322,8 @@ impl Model.model_call_no_stream_async(params: dict) -> dict {
             response = await self._async_proxy_client.chat.completions.create(**params);
         } else {
             require_optional("litellm", "llm");
+            _api_base = getattr(self, "api_base", None);
+            if _api_base { params["api_base"] = _api_base; }
             response = await litellm.acompletion(
                 api_key=self.api_key or None, **params
             );
@@ -342,6 +359,8 @@ impl Model.model_call_with_stream_async(params: dict) {
             );
         } else {
             require_optional("litellm", "llm");
+            _api_base = getattr(self, "api_base", None);
+            if _api_base { params["api_base"] = _api_base; }
             response = await litellm.acompletion(
                 stream=True, api_key=self.api_key or None, **params
             );

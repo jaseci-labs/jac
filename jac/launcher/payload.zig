@@ -73,11 +73,14 @@ const BUN_BASE = "https://github.com/oven-sh/bun/releases/download";
 
 const MAX_PATH = Dir.max_path_bytes;
 
-const Cmd = enum { @"fetch-pbs", @"fetch-typeshed", @"fetch-llvm", @"fetch-bun", @"build-musl", @"build-wasm-libc", mkpayload, @"typeshed-sha" };
+const Cmd = enum { @"fetch-pbs", @"fetch-typeshed", @"fetch-llvm", @"fetch-bun", @"fetch-llama", @"build-musl", @"build-wasm-libc", mkpayload, @"typeshed-sha" };
 
 // The pinned LLVM release + per-platform slice table lives in llvm_release.zig
 // (shared with build.zig, so the fetch and the build can't drift).
 const llvm_release = @import("llvm_release.zig");
+
+// The pinned llama-server runner assets (shared with build.zig, same reason).
+const llama_release = @import("llama_release.zig");
 const LLVM_VER = llvm_release.LLVM_VER;
 const LlvmRelease = llvm_release.LlvmRelease;
 
@@ -132,6 +135,10 @@ pub fn main(init: std.process.Init) !void {
             if (n < 4) die("usage: payload fetch-bun <os-arch> <dest-dir>", .{});
             try fetchBun(io, gpa, a, argv[2], argv[3]);
         },
+        .@"fetch-llama" => {
+            if (n < 4) die("usage: payload fetch-llama <os-arch> <dest-dir>", .{});
+            try fetchLlama(io, gpa, a, argv[2], argv[3]);
+        },
         .@"build-musl" => {
             if (n < 5) die("usage: payload build-musl <os-arch> <dest-dir> <zig-exe>", .{});
             try buildMusl(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4]);
@@ -150,6 +157,7 @@ pub fn main(init: std.process.Init) !void {
             var shim_so: ?[]const u8 = null;
             var pyembed_so: ?[]const u8 = null;
             var bun_bin: ?[]const u8 = null;
+            var llama_dir: ?[]const u8 = null;
             var skip_precompile = false;
             var link_source: ?[]const u8 = null;
             var musl_dir: ?[]const u8 = null;
@@ -168,6 +176,8 @@ pub fn main(init: std.process.Init) !void {
                     pyembed_so = arg["--pyembed=".len..];
                 } else if (std.mem.startsWith(u8, arg, "--bun=")) {
                     bun_bin = arg["--bun=".len..];
+                } else if (std.mem.startsWith(u8, arg, "--llama=")) {
+                    llama_dir = arg["--llama=".len..];
                 } else if (std.mem.eql(u8, arg, "--skip-precompile")) {
                     skip_precompile = true;
                 } else if (std.mem.startsWith(u8, arg, "--link-source=")) {
@@ -188,7 +198,7 @@ pub fn main(init: std.process.Init) !void {
                     debug_src = true;
                 }
             }
-            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, pyembed_so, bun_bin, skip_precompile, link_source, musl_dir, wasm_libc_dir, precompiled_cache, nvim_dir, ninja_link, seal, debug_src);
+            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, pyembed_so, bun_bin, llama_dir, skip_precompile, link_source, musl_dir, wasm_libc_dir, precompiled_cache, nvim_dir, ninja_link, seal, debug_src);
         },
         .@"typeshed-sha" => {
             if (n < 3) die("usage: payload typeshed-sha <commit>", .{});
@@ -566,6 +576,61 @@ fn fetchBun(io: Io, gpa: Allocator, a: Allocator, osarch: []const u8, dest: []co
     log("fetch-bun: ready at {s} ({d} MiB)", .{ out_path, bun_bytes.len >> 20 });
 }
 
+// =============================================================== fetch-llama ===
+
+/// fetch-llama: download + sha256-verify + extract the bundled `llama-server`
+/// runner variants (CPU baseline + Vulkan on Linux) for `osarch` into
+/// `<dest>/<variant>/`. Idempotent per variant. llama.cpp publishes no SHASUMS
+/// file, so each asset is verified against the pinned sha256 in llama_release.zig
+/// (the trust anchor). Assets are multi-file `.tar.gz` (llama-server + its
+/// $ORIGIN-rpath'd .so siblings): extract with strip_components=1 so the binary
+/// and its libraries land flat and stay co-located after relocation. The exec
+/// bit is (re)applied at runtime by get_llama_server().
+fn fetchLlama(io: Io, gpa: Allocator, a: Allocator, osarch: []const u8, dest: []const u8) !void {
+    const variants = llama_release.llamaVariants(osarch);
+    if (variants.len == 0) {
+        // No pinned runner for this platform (e.g. macos-x86_64 / windows): leave
+        // an empty tree so --llama staging is a no-op and get_llama_server()
+        // reports the runner as unavailable at runtime.
+        log("fetch-llama: no bundled runner for '{s}' (skipping)", .{osarch});
+        try Dir.cwd().createDirPath(io, dest);
+        return;
+    }
+
+    for (variants) |v| {
+        const vdir = try std.fmt.allocPrint(a, "{s}/{s}", .{ dest, v.variant });
+        const bin_path = try std.fmt.allocPrint(a, "{s}/llama-server", .{vdir});
+        if (fileExists(io, bin_path)) {
+            log("fetch-llama: {s} already present at {s}", .{ v.variant, bin_path });
+            continue;
+        }
+
+        const url = try std.fmt.allocPrint(a, "{s}/{s}/{s}", .{ llama_release.LLAMA_BASE, llama_release.LLAMA_VER, v.asset });
+        log("fetch-llama: downloading {s}", .{v.asset});
+        const gz = try httpGetAlloc(io, gpa, url);
+        defer gpa.free(gz);
+
+        // Verify the compressed asset against the in-tree pin (no SHASUMS to fetch).
+        const actual = sha256Hex(gz);
+        if (!std.mem.eql(u8, &actual, v.sha256))
+            die("fetch-llama: checksum mismatch for {s}\n  expected {s}\n  actual   {s}", .{ v.asset, v.sha256, &actual });
+
+        const tar = try gzipDecompressAlloc(io, gpa, gz);
+        defer gpa.free(tar);
+
+        try Dir.cwd().createDirPath(io, vdir);
+        {
+            var vd = try Dir.cwd().openDir(io, vdir, .{});
+            defer vd.close(io);
+            var tar_reader = Io.Reader.fixed(tar);
+            std.tar.extract(io, vd, &tar_reader, .{ .mode_mode = .executable_bit_only, .strip_components = 1 }) catch |err|
+                die("fetch-llama: extract failed for {s}: {s}", .{ v.asset, @errorName(err) });
+        }
+        if (!fileExists(io, bin_path)) die("fetch-llama: extract produced no llama-server for variant {s}", .{v.variant});
+        log("fetch-llama: {s} ready at {s}", .{ v.variant, bin_path });
+    }
+}
+
 // =============================================================== build-musl ===
 
 /// Harvest a complete static-musl runtime (libc.a + libzigc.a + compiler-rt +
@@ -913,6 +978,10 @@ fn mkPayload(
     // there by absolute path -- contained in the jac ecosystem, never on PATH.
     // Null in linked-source / standalone packs (dev uses an on-demand copy).
     bun_bin: ?[]const u8,
+    // The fetch-llama output dir (contains cpu/ and, on Linux, vulkan/ runner
+    // trees) to bundle inside byllm at jaclang/byllm/_llama/. get_llama_server()
+    // resolves the variant there. Null in linked-source / standalone packs.
+    llama_dir: ?[]const u8,
     skip_precompile: bool,
     // Editable dev binary: an absolute path to the dir CONTAINING jaclang/. When
     // set, the compiler is NOT bundled -- the payload ships only CPython + the
@@ -1080,6 +1149,21 @@ fn mkPayload(
             try Dir.cwd().createDirPath(io, dst_dir);
             log("==> bundling contained bun runtime ({s})", .{bb});
             try Dir.cwd().copyFile(bb, Dir.cwd(), try std.fmt.allocPrint(a, "{s}/{s}", .{ dst_dir, bun_base }), io, .{});
+        }
+    }
+
+    // Contained llama-server runners (CPU + Vulkan): bundle the fetched _llama
+    // tree inside byllm at jaclang/byllm/_llama/<variant>/llama-server.
+    // get_llama_server() resolves it there; each runner's $ORIGIN runpath keeps
+    // its sibling .so files resolvable after relocation. skipJaclang drops any
+    // source-tree _llama, so this staged copy is the only one shipped.
+    if (link_source == null) {
+        if (llama_dir) |ld| {
+            const dst_dir = try std.fmt.allocPrint(a, "{s}/jaclang/byllm/_llama", .{site});
+            log("==> bundling contained llama-server runners ({s})", .{ld});
+            var lsrc = try Dir.cwd().openDir(io, ld, .{ .iterate = true });
+            defer lsrc.close(io);
+            try copyTree(io, gpa, a, lsrc, dst_dir, skipNothing);
         }
     }
 
@@ -1681,7 +1765,16 @@ fn skipJaclang(p: []const u8) bool {
         // The contained bun runtime is staged fresh via --bun, not copied from
         // any (gitignored) source-tree placement -- skip it here.
         std.mem.indexOf(u8, p, "client/_bun") != null or
+        // Same for the contained llama-server runners (staged fresh via --llama).
+        std.mem.indexOf(u8, p, "byllm/_llama") != null or
         std.mem.endsWith(u8, p, ".pyc");
+}
+
+/// copyTree skip predicate that copies everything (the fetch-llama tree is
+/// already exactly what we want to bundle).
+fn skipNothing(p: []const u8) bool {
+    _ = p;
+    return false;
 }
 
 /// macOS hygiene: AppleDouble (._*) sidecars break jaclang's .impl scanner.

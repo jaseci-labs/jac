@@ -20,13 +20,13 @@ sem Ingredient.cost = "Estimated cost in USD";
 def plan_shopping(recipe: str) -> list[Ingredient] by llm();
 ```
 
-Enable byLLM with the bundled local model -- **no API key, no account, no config**:
+Enable byLLM with the bundled local model -- **no API key, no account, no pip install** (the `llama-server` runner ships in the binary):
 
 ```bash
-jac install 'byllm[local]'
+jac model pull gemma-4-e4b
 ```
 
-That's the whole setup. With no key and no model configured, `by llm()` runs the bundled `local:gemma-4-e4b` model in-process (weights download on first call, ~5 GB; `local:gemma-4-e2b` is a ~2.5 GB alternative). When you want a hosted model, set a provider key and pick one in `jac.toml`:
+That's the whole setup. With no key and no model configured, `by llm()` runs the bundled `local:gemma-4-e4b` model via the `jac model serve` daemon (weights are ~5 GB; `local:gemma-4-e2b` is a ~2.5 GB alternative). When you want a hosted model, set a provider key and pick one in `jac.toml`:
 
 ```bash
 export ANTHROPIC_API_KEY="your-key-here"   # or OPENAI_API_KEY, GEMINI_API_KEY, ...

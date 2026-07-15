@@ -57,7 +57,12 @@ impl resolve_model_name(model_override: str = "") -> str {
         return toml_model;
     }
     agent.cfg.model_source = "default";
-    return "local:gemma-4-e4b";
+    try {
+        alias = _byllm_config().get_serve_config().get("default_alias", "gemma-4-e4b");
+    } except Exception {
+        alias = "gemma-4-e4b";
+    }
+    return f"local:{alias}";
 }
 
 impl build_model(model_override: str = "", n_ctx: int = 0) -> Model {
@@ -88,10 +93,9 @@ impl build_model(model_override: str = "", n_ctx: int = 0) -> Model {
             cfg["base_url"] = agent.cfg.base_url;
         }
     }
-    if n_ctx > 0 {
-        cfg["n_ctx"] = n_ctx;
-    }
-    return Model(model_name=name, config=cfg);
+    # --n_ctx sets the Model's ctx_window (the compaction threshold). The runner's
+    # own context size comes from [byllm.local].n_ctx via the daemon.
+    return Model(model_name=name, config=cfg, ctx_window=(n_ctx if n_ctx > 0 else 0));
 }
 
 impl _model_needs_key(name: str) -> tuple[bool, str] {

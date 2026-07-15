@@ -877,55 +877,52 @@ See the [MCP Server Reference](../mcp.md) for the full tool catalog and per-clie
 
 ---
 
-## Local Model Cache
+## Local Models
 
-The `jac model` command manages the on-disk cache of bundled local LLM weights used by byLLM's `local:<alias>` route. Weights live under `~/.cache/jac/models/<alias>/` (override with `JAC_MODELS_DIR`). See [Built-in Local Models](../plugins/byllm.md#built-in-local-models) in the byLLM reference for the full backend.
+The `jac model` command manages byLLM's `local:<alias>` models and the `jac model serve` daemon. Weights live under `~/.cache/jac/models/<alias>/` (override with `JAC_MODELS_DIR`); a CPU + Vulkan `llama-server` runner is bundled in the binary. See [Built-in Local Models](../plugins/byllm.md#built-in-local-models) in the byLLM reference for the full backend.
 
 ### jac model
 
-Manage byLLM local-model weights (Gemma 4, Qwen 3.5, …).
+Manage byLLM local models and the model daemon (Gemma 4, Qwen 3.5, …).
 
 ```bash
-jac model [-h] [action] [alias]
+jac model [-h] [action] [alias] [--serve_port N] [--daemon] [--prompt TEXT]
 ```
 
 | Action | Description |
 |--------|-------------|
-| `list` | Show bundled aliases and download status (default). |
-| `pull <alias>` | Download GGUF weights for an alias from HuggingFace. |
-| `rm <alias>` | Delete cached weights for an alias. Aliases: `remove`, `delete`. |
+| `list` | Show manifest aliases and download status (default). |
+| `show <alias>` | Print an alias's manifest entry + the launch args it would use. |
+| `pull <alias>` | Download GGUF weights for an alias (interactive consent). |
+| `rm <alias>` | Delete cached weights. Aliases: `remove`, `delete`. |
+| `run <alias>` | Pull-if-needed, start the daemon, and run `--prompt` (the `ollama run` analog). |
+| `serve` | Run the model daemon (Ctrl-C to stop). `--daemon` starts it detached. |
+| `stop` | Stop the running daemon (and every `llama-server` runner it supervises). |
+| `ps` | Show running `llama-server` runners. |
+| `refresh` | Fetch the remote model index from `[byllm.serve].manifest_url`. |
 
 | Argument | Description | Default |
 |----------|-------------|---------|
-| `action` | One of `list`, `pull`, `rm`. | `list` |
-| `alias` | Local-model alias (e.g. `gemma-4-e4b`). Required for `pull` / `rm`; omit for `list`. | `""` |
+| `action` | One of `list`, `show`, `pull`, `rm`, `run`, `serve`, `stop`, `ps`, `refresh`. | `list` |
+| `alias` | Local-model alias (e.g. `gemma-4-e4b`). Required for `show`/`pull`/`rm`/`run`. | `""` |
+| `--serve_port` | Daemon port for `serve` (`0` = auto). Not named `--port` on purpose. | `0` |
+| `--daemon` | For `serve`: start detached in the background. | `false` |
+| `--prompt` | For `run`: a prompt to send to the model. | `""` |
 
 **Examples:**
 
 ```bash
-# Show bundled aliases and which are cached locally
-jac model
-
-# Download Gemma 4 E4B weights (~5 GB) ahead of first use
-jac model pull gemma-4-e4b
-
-# Free disk by removing cached weights
-jac model rm gemma-4-e4b
+jac model                                   # manifest aliases + download status
+jac model show gemma-4-e4b                   # manifest entry + launch args
+jac model pull gemma-4-e4b                   # fetch weights (~5 GB) ahead of use
+jac model run gemma-4-e4b --prompt "hi"      # pull-if-needed, serve, complete
+jac model serve --daemon                     # start the daemon in the background
+jac model ps                                 # running runners
+jac model stop                               # stop the daemon + its runners
+jac model rm gemma-4-e4b                     # free disk
 ```
 
-**Sample output of `jac model`:**
-
-```text
-Local model cache: /home/you/.cache/jac/models
-
-  ALIAS                       SIZE STATUS       DESCRIPTION
-  ---------------------- --------- ------------ ----------------------------------------
-  gemma-4-e2b             ~2500 MB not cached   Google Gemma 4 E2B (smaller, faster)
-  gemma-4-e4b               4.6 GB downloaded   Google Gemma 4 E4B (instruction-tuned, Q4_K_M)
-  qwen3.5-4b              ~2800 MB not cached   Alibaba Qwen 3.5 4B (instruction-tuned, Q4_K_M)
-```
-
-> **Note:** In CI and other non-TTY contexts, the runtime will not prompt to download. Either `jac model pull <alias>` ahead of time, or set `BYLLM_AUTO_DOWNLOAD=1` (or `[byllm.local].auto_download = true` in `jac.toml`) to allow silent first-run downloads.
+> **Note:** The daemon never downloads. In CI and other non-TTY contexts, a `by llm()` on an un-pulled model errors with a `jac model pull` hint; run `jac model pull <alias>` ahead of time (or set `BYLLM_AUTO_DOWNLOAD=1` / `[byllm.local].auto_download = true` and use `jac model pull`/`run`).
 
 ---
 

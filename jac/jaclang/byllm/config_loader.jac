@@ -26,6 +26,7 @@ class JacByllmConfig(PluginConfigBase) {
     def get_system_prompt(self: JacByllmConfig) -> str;
     def get_compaction_config(self: JacByllmConfig) -> dict[str, any];
     def get_local_config(self: JacByllmConfig) -> dict[str, any];
+    def get_serve_config(self: JacByllmConfig) -> dict[str, any];
 }
 
 glob _byllm_config_instance: JacByllmConfig | None = None;

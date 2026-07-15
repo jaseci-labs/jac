@@ -76,7 +76,7 @@ glob CAPABILITY_SPECS: dict[str, dict[str, any]] = {
          "llm.local": {
              "context": "runtime",
              "requires": ["llm"],
-             "deps": {"llama-cpp-python": ">=0.2.90", "huggingface_hub": ">=0.24.0"}
+             "deps": {"huggingface_hub": ">=0.24.0"}
          },
          "llm.mcp": {
              "context": "runtime",

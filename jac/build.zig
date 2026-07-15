@@ -236,6 +236,14 @@ pub fn build(b: *std.Build) void {
         fetch_bun.has_side_effects = true;
         b.step("fetch-bun", "Place the pinned bun into the source tree (editable/dev + tests)")
             .dependOn(&fetch_bun.step);
+
+        // Same for the llama-server runners (CPU + Vulkan), placed into the
+        // source tree for the editable dev loop + tests.
+        const fetch_llama = b.addRunArtifact(tool);
+        fetch_llama.addArgs(&.{ "fetch-llama", host_osarch, b.pathFromRoot("jaclang/byllm/_llama") });
+        fetch_llama.has_side_effects = true;
+        b.step("fetch-llama", "Place the pinned llama-server runners into the source tree (editable/dev + tests)")
+            .dependOn(&fetch_llama.step);
     }
 
     // Standalone: harvest a static-musl runtime (libc.a + libzigc.a + compiler-rt
@@ -428,6 +436,25 @@ pub fn build(b: *std.Build) void {
             mk.step.dependOn(&fetch_bun.step);
         }
 
+        // Contained llama-server runners (CPU + Vulkan): same fetch-then-bundle
+        // pattern as bun. A LLAMA_VER/sha bump lands in llama_release.zig
+        // (tracked below via addFileInput), so it invalidates the cached payload.
+        // Only bundled where the platform has pinned runners (llamaVariants);
+        // the payload tool no-ops staging when --llama points at an empty tree.
+        if (link_dir == null) {
+            const llama_dir = b.pathFromRoot(b.fmt(".llama-build/{s}", .{osarch}));
+            const fetch_llama = b.addRunArtifact(tool);
+            fetch_llama.addArgs(&.{ "fetch-llama", osarch, llama_dir });
+            fetch_llama.has_side_effects = true;
+            mk.step.dependOn(&fetch_llama.step);
+            mk.addArg(b.fmt("--llama={s}", .{llama_dir}));
+        } else if (osArchString(b.graph.host.result)) |host_osarch| {
+            const fetch_llama = b.addRunArtifact(tool);
+            fetch_llama.addArgs(&.{ "fetch-llama", host_osarch, b.fmt("{s}/jaclang/byllm/_llama", .{link_dir.?}) });
+            fetch_llama.has_side_effects = true;
+            mk.step.dependOn(&fetch_llama.step);
+        }
+
         // Linux: harvest a static-musl runtime for the target from the bundled
         // Zig (payload tool's `build-musl`) and bundle it so the shipped binary
         // can fully static-link Linux executables against musl at nacompile time
@@ -482,6 +509,8 @@ pub fn build(b: *std.Build) void {
         mk.addFileInput(b.path("launcher/payload.zig"));
         // The slice pins (dirname/hash/size) moved here; a bump must repack.
         mk.addFileInput(b.path("launcher/llvm_release.zig"));
+        // The llama-server runner pins (tag/asset/sha256); a bump must repack.
+        mk.addFileInput(b.path("launcher/llama_release.zig"));
         break :payload out;
     };
 

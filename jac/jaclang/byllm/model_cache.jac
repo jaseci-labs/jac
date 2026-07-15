@@ -32,14 +32,21 @@ def _emit(msg: str) {
 
 """Resolve the on-disk cache directory for byllm-managed models.
 
-Honours $JAC_MODELS_DIR; otherwise uses ~/.cache/jac/models, mirroring
-the existing ~/.cache/jac/bytecode convention.
+Honours $JAC_MODELS_DIR (dev/test override), then [byllm.serve].models_dir
+from jac.toml, then ~/.cache/jac/models (mirroring ~/.cache/jac/bytecode).
 """
 def get_cache_dir -> Path {
     override = os.environ.get("JAC_MODELS_DIR");
     if override {
         return Path(override).expanduser();
     }
+    try {
+        import from jaclang.byllm.config_loader { get_byllm_config }
+        cfg_dir = str(get_byllm_config().get_serve_config().get("models_dir", ""));
+        if cfg_dir {
+            return Path(cfg_dir).expanduser();
+        }
+    } except Exception {}
     home = Path(os.path.expanduser("~"));
     return home / ".cache" / "jac" / "models";
 }
@@ -74,6 +81,11 @@ def _fmt_size(mb: int) -> str {
     return f"{mb} MB";
 }
 
+"""Human-readable weight source: the HF repo, or the direct URL."""
+def _source_str(spec: dict) -> str {
+    return str(spec.get("repo") or spec.get("url") or "?");
+}
+
 """Decide whether we may download without explicit user opt-in.
 
 Priority:
@@ -105,7 +117,7 @@ def _resolve_consent(alias: str, spec: dict, auto_download: bool) -> bool {
     target = alias_dir(alias);
     _emit(
         f"\n[byllm] Local model '{alias}' is not downloaded.\n"
-        f"        repo: {spec['repo']}\n"
+        f"        from: {_source_str(spec)}\n"
         f"        file: {spec['file']}\n"
         f"        size: ~{size}\n"
         f"        path: {target}\n"
@@ -126,17 +138,67 @@ def _resolve_consent(alias: str, spec: dict, auto_download: bool) -> bool {
     return False;
 }
 
-"""Run the actual HF download into the alias cache directory.
+"""Download the weight file into the alias cache directory.
 
-Uses huggingface_hub.hf_hub_download for resumable, hash-checked transfer.
+Two weight forms are supported:
+  * direct URL (`spec['url']`, optional `spec['sha256']`) -- fetched with the
+    stdlib (`urllib`), so no pip dependency; the sha256 is verified when given.
+  * HuggingFace (`spec['repo']`) -- via huggingface_hub for a resumable,
+    hash-checked transfer (an optional dependency).
 """
 def _download(alias: str, spec: dict) -> Path {
+    if spec.get("url") {
+        return _download_url(alias, spec);
+    }
+    return _download_hf(alias, spec);
+}
+
+"""Direct-URL download via the stdlib, with optional sha256 verification."""
+def _download_url(alias: str, spec: dict) -> Path {
+    import from urllib.request { urlopen, Request }
+    import hashlib;
+    target_dir = alias_dir(alias);
+    target_dir.mkdir(parents=True, exist_ok=True);
+    dest = gguf_path(alias, spec);
+    url = str(spec["url"]);
+    _logger.info(f"Downloading {url} -> {dest}");
+    _emit(
+        f"[byllm] Downloading {spec['file']} (~{_fmt_size(int(spec.get('size_mb', 0)))})...\n"
+    );
+    hasher = hashlib.sha256();
+    tmp = dest.with_suffix(dest.suffix + ".part");
+    req = Request(url, headers={"User-Agent": "jac-model-cache"});
+    with urlopen(req) as resp , open(tmp, "wb") as fh {
+        while True {
+            chunk = resp.read(1 << 20);
+            if not chunk {
+                break;
+            }
+            fh.write(chunk);
+            hasher.update(chunk);
+        }
+    }
+    expected = spec.get("sha256");
+    if expected and hasher.hexdigest() != str(expected).lower() {
+        tmp.unlink(missing_ok=True);
+        raise RuntimeError(
+            f"sha256 mismatch for '{alias}' ({spec['file']}): "
+            f"expected {expected}, got {hasher.hexdigest()}"
+        );
+    }
+    tmp.replace(dest);
+    return dest;
+}
+
+"""HuggingFace download via huggingface_hub (an optional dependency)."""
+def _download_hf(alias: str, spec: dict) -> Path {
     try {
         import from huggingface_hub { hf_hub_download }
     } except ImportError {
         raise ImportError(
-            "huggingface_hub is required to download local model weights. "
-            "Install with: pip install 'byllm[local]'"
+            "huggingface_hub is required to download this model's weights "
+            f"(alias '{alias}' uses a HuggingFace repo). Install it, or use a "
+            "manifest entry with a direct url+sha256 (dependency-free)."
         );
     }
     target_dir = alias_dir(alias);

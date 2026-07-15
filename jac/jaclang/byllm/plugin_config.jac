@@ -108,37 +108,89 @@ class JacByllmPluginConfig {
                 "local": {
                     "type": "dict",
                     "default": {},
-                    "description": "In-process local model runtime (llama.cpp via GGUF). Activated when default_model starts with 'local:' or when no API key is configured.",
+                    "description": "Launch flags for the local `llama-server` runner (mapped to llama-server CLI args by the model daemon). Runner lifecycle and routing live under [byllm.serve].",
                     "nested": {
                         "default_alias": {
                             "type": "string",
-                            "default": "gemma-4-e4b",
-                            "description": "Bundled local-model alias to use when default_model is unset and no provider API key is detected"
+                            "default": "",
+                            "description": "Deprecated: use [byllm.serve].default_alias. Honoured as a fallback for backward compatibility."
                         },
                         "n_ctx": {
                             "type": "int",
                             "default": 0,
-                            "description": "Override context window in tokens (0 = use the alias's bundled default)"
+                            "description": "Runner context window in tokens (llama-server -c; 0 = use the alias's manifest default)"
                         },
                         "n_gpu_layers": {
                             "type": "int",
                             "default": 0,
-                            "description": "Number of transformer layers to offload to GPU (0 = pure CPU; -1 = all layers; requires a CUDA/Metal-enabled llama-cpp-python build)"
+                            "description": "Transformer layers to offload to GPU (llama-server -ngl; 0 = pure CPU, -1 = all layers). Used with the bundled Vulkan/Metal runner or a fetched accelerated runner."
                         },
                         "n_threads": {
                             "type": "int",
                             "default": 0,
-                            "description": "CPU threads for inference (0 = let llama.cpp decide based on cores)"
+                            "description": "CPU threads for inference (llama-server -t; 0 = let llama-server decide based on cores)"
                         },
                         "verbose": {
                             "type": "bool",
                             "default": False,
-                            "description": "Enable llama.cpp verbose logging"
+                            "description": "Enable llama-server verbose logging (--verbose)"
                         },
                         "auto_download": {
                             "type": "bool",
                             "default": False,
                             "description": "Skip the first-run download prompt and pull weights silently. Equivalent to BYLLM_AUTO_DOWNLOAD=1."
+                        }
+                    }
+                },
+                "serve": {
+                    "type": "dict",
+                    "default": {},
+                    "description": "Local model daemon (`jac model serve`): supervises llama-server runners and exposes an OpenAI-compatible API on localhost. `local:<alias>` models route through it.",
+                    "nested": {
+                        "default_alias": {
+                            "type": "string",
+                            "default": "gemma-4-e4b",
+                            "description": "Local-model alias used when default_model is unset and no provider API key is detected"
+                        },
+                        "serve_port": {
+                            "type": "int",
+                            "default": 0,
+                            "description": "Daemon port on 127.0.0.1 (0 = auto-pick a free port and record it in the run directory). NOT named 'port' to avoid inheriting [serve].port."
+                        },
+                        "idle_ttl": {
+                            "type": "int",
+                            "default": 300,
+                            "description": "Seconds a loaded runner may stay idle before the daemon evicts it (keep-alive)"
+                        },
+                        "max_loaded": {
+                            "type": "int",
+                            "default": 1,
+                            "description": "Maximum concurrent runners; the least-recently-used runner is evicted beyond this"
+                        },
+                        "memory": {
+                            "type": "string",
+                            "default": "auto",
+                            "description": "Runner selection policy: 'auto' = use the bundled Vulkan/Metal runner + GPU offload when a GPU is detected; 'cpu' = force the CPU runner; 'gpu' = require a GPU (error if none); 'rocm'/'cuda' = opt into fetching a heavy accelerated runner on first use (falls back to the bundled runner if unavailable)"
+                        },
+                        "models_dir": {
+                            "type": "string",
+                            "default": "",
+                            "description": "Weight and index cache root (empty = ~/.cache/jac/models; the $JAC_MODELS_DIR env var overrides both)"
+                        },
+                        "manifest_url": {
+                            "type": "string",
+                            "default": "",
+                            "description": "Remote model-index URL, fetched only by an explicit `jac model refresh` (never at import)"
+                        },
+                        "llama_server_bin": {
+                            "type": "string",
+                            "default": "",
+                            "description": "Override path to the llama-server binary (empty = bundled runner, then PATH)"
+                        },
+                        "autostart": {
+                            "type": "bool",
+                            "default": True,
+                            "description": "Allow the daemon to lazily autostart on first use of a local: model"
                         }
                     }
                 },

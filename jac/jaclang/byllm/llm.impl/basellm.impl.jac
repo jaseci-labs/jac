@@ -1373,7 +1373,7 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     params = self.make_model_params(mt_run);
     # Call the LiteLLM API
     log_params = self.format_prompt(params);
-    self.api_base = params.pop("api_base", DEFAULT_BASE_URL);
+    self.api_base = params.pop("api_base", None);
     params.pop("api_key", None);
     attempt = 0;
     while True {
@@ -1474,7 +1474,7 @@ impl BaseLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None]
     # Call the LiteLLM API
     log_params = self.format_prompt(params);
     self.log_info(f"Calling LLM: {self.model_name} with params:\n{log_params}");
-    self.api_base = params.pop("api_base", DEFAULT_BASE_URL);
+    self.api_base = params.pop("api_base", None);
     params.pop("api_key", None);
     attempt = 0;
     usage_base = len(self._usage_history);
@@ -1524,7 +1524,7 @@ impl BaseLLM.dispatch_streaming_with_tools(
     self.log_info(
         f"Calling LLM (streaming): {self.model_name} with params:\n{log_params}"
     );
-    self.api_base = params.pop("api_base", DEFAULT_BASE_URL);
+    self.api_base = params.pop("api_base", None);
     params.pop("api_key", None);
     chunks: list = [];
     content_buf = "";
@@ -1630,7 +1630,7 @@ impl BaseLLM.dispatch_streaming_with_tools(
 impl BaseLLM.adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     params = self.make_model_params(mt_run);
     log_params = self.format_prompt(params);
-    self.api_base = params.pop("api_base", DEFAULT_BASE_URL);
+    self.api_base = params.pop("api_base", None);
     params.pop("api_key", None);
     attempt = 0;
     while True {
@@ -1688,7 +1688,7 @@ impl BaseLLM.adispatch_streaming(mt_run: MTRuntime) {
     params = self.make_model_params(mt_run);
     log_params = self.format_prompt(params);
     self.log_info(f"Calling LLM: {self.model_name} with params:\n{log_params}");
-    self.api_base = params.pop("api_base", DEFAULT_BASE_URL);
+    self.api_base = params.pop("api_base", None);
     params.pop("api_key", None);
     attempt = 0;
     usage_base = len(self._usage_history);

@@ -72,7 +72,7 @@ Method-level `by llm` automatically includes the object's `has` fields as contex
 | Anthropic | `claude-sonnet-4-6` | `ANTHROPIC_API_KEY` |
 | Google | `gemini/gemini-2.0-flash` | `GOOGLE_API_KEY` |
 | Ollama | `ollama/llama3:70b` | none - local daemon |
-| Built-in local | `local:gemma-4-e4b` | none - `jac install 'byllm[local]'`, then `jac model pull gemma-4-e4b` |
+| Built-in local | `local:gemma-4-e4b` | none - runner bundled; `jac model pull gemma-4-e4b`, served by `jac model serve` |
 
 Env vars take precedence over `api_key` in `jac.toml`; `BYLLM_DEFAULT_MODEL=...` overrides the project default for one shell. The glob name needn't be `llm` - any module-level glob holding a `Model` works: `glob fast = Model(model_name="gpt-4o-mini"); def quick_label(text: str) -> str by fast();`.
 
