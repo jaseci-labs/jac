@@ -178,11 +178,6 @@ def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
 }
 
 def typeshed_stubs_available -> bool {
-    # Vendored typeshed stdlib stubs are fetched at build time (see
-    # jaclang/vendor/typeshed/PIN). When absent, type inference cannot run, so
-    # any pass declaring REQUIRES ('inference',) -- e.g. OwnershipCheckPass --
-    # must be dropped from the type-check schedule instead of letting the pass
-    # scheduler raise a misleading "scheduling error". See issue #7471.
     stub_path = os.path.join(
         os.path.dirname(__file__), '..', 'vendor', 'typeshed', 'stdlib', 'builtins.pyi'
     );
