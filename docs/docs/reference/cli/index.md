@@ -1277,8 +1277,8 @@ jac scale <action> [name|file] [--target TARGET] [--component COMPONENT]
 
   Service URLs
   ────────────────────────────────────────────
-  Application:  http://localhost:30001
-  Grafana:      http://localhost:30003
+  Application:  http://localhost:30080
+  Grafana:      http://localhost:30080/grafana
 ```
 
 **Status indicators:**
