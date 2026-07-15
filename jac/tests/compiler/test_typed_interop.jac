@@ -453,7 +453,9 @@ test "gap: dict return type wraps values with __from_wire" {
     js = mod.gen.js;
     # get_single_metric returns Metric (single obj) — should wrap (control check)
     assert "Metric.__from_wire(" in js , "Single Metric return should be wrapped (control check)";
-    # get_metrics_map returns dict[str, Metric] — call site hydrates each value.
+    # get_metrics_map returns dict[str, Metric] — values should be hydrated
+    # Expected: Object.fromEntries(Object.entries(await ...).map(([k,v]) => [k, Metric.__from_wire(v)]))
+    # or similar pattern wrapping dict values
     assert "Metric.__from_wire" in js and "Object.entries(" in js , (
         "dict[str, Metric] return should hydrate values with Metric.__from_wire "
         "at the call site"

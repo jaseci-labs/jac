@@ -3476,7 +3476,7 @@ impl Parser.parse_server_block -> ServerBlock {
             if stmt is not None {
                 body.append(stmt);
                 kid.append(stmt);
-                if stmt?.code_context and stmt._source_context_token() is None {
+                if stmt?.code_context {
                     stmt.code_context = CodeContext.SERVER;
                 }
             }
@@ -3505,7 +3505,7 @@ impl Parser.parse_native_block -> NativeBlock {
                 body.append(stmt);
                 kid.append(stmt);
 
-                if stmt?.code_context and stmt._source_context_token() is None {
+                if stmt?.code_context {
                     stmt.code_context = CodeContext.NATIVE;
                 }
             }
