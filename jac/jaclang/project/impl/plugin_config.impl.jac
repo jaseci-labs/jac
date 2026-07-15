@@ -55,7 +55,7 @@ impl PluginConfigBase.get_jac_config -> JacConfig {
             config = JacConfig.load(self.config_file);
 
             import os;
-            profile = (os.environ.get("JAC_PROFILE") or "").strip();
+            profile: str = os.environ.get("JAC_PROFILE", "").strip();
             if not profile and config.environment.default_profile {
                 profile = config.environment.default_profile;
             }
