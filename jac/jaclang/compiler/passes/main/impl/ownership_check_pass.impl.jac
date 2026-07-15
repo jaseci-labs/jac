@@ -23,14 +23,14 @@ impl OwnershipCheckPass.transform(ir_in: uni.Module) -> uni.Module {
     self.idx_returns = [];
     self.idx_concurrent = [];
     self.name_uses_by_sym = {};
-    self.val_decl = {};
+    self.imm_decl = {};
 
     self._build_index(ir_in);
     self._stamp_ownership();
     self._nogc_setup();
     if not self.owned_decl
     and not self.borrow_meta
-    and not self.val_decl
+    and not self.imm_decl
     and not self._has_region_blocks()
     and not self.idx_concurrent
     and self.nogc_prov is None {
@@ -185,9 +185,9 @@ impl OwnershipCheckPass._stamp_ownership -> None {
             target = nd.target[0];
             if isinstance(target, uni.Name) and target.sym {
                 sid = self._name_sym_id(target);
-                if tag.ownership == OwnershipKind.VAL {
-                    target.sym.ownership = OwnershipKind.VAL;
-                    self.val_decl[sid] = target;
+                if tag.ownership == OwnershipKind.IMM {
+                    target.sym.ownership = OwnershipKind.IMM;
+                    self.imm_decl[sid] = target;
                 }
             }
         }
@@ -213,9 +213,9 @@ impl OwnershipCheckPass._stamp_ownership -> None {
         } elif tag.ownership == OwnershipKind.OWN {
             name.sym.ownership = OwnershipKind.OWN;
             self.owned_decl[sid] = name;
-        } elif tag.ownership == OwnershipKind.VAL {
-            name.sym.ownership = OwnershipKind.VAL;
-            self.val_decl[sid] = name;
+        } elif tag.ownership == OwnershipKind.IMM {
+            name.sym.ownership = OwnershipKind.IMM;
+            self.imm_decl[sid] = name;
         }
     }
 
