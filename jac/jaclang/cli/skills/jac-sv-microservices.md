@@ -67,6 +67,8 @@ Keyword args map to `has` fields; `isinstance(rg, Greet)` works. This is sv-to-s
 
 ## Boundary types
 
+Unlike `walker:pub` above, plain types (`obj`, `node`, `edge`) are never constructed by calling their `sv import`ed name directly, in either direction - they only ever arrive as already-hydrated data, from a function's return value or a walker's `reports`. Import them alongside the function/walker purely so their shape is available for typing that data.
+
 **Cross the wire:** `obj` types (recursively hydrated - list them in the `sv import` alongside the function/walker), `enum`s (by name), primitives, `list[T]`, `dict[K, V]`, `None`.
 **Streams cross live:** calling a provider's streaming endpoint (`-> Generator`) through the stub returns a LIVE generator - iterate and re-yield to forward frames unbuffered (the gateway pattern in `jac-sv-streaming`).
 **Don't:** node/edge anchors, closures, file/DB handles. Pass `jid(node)` strings and re-resolve with `jobj` on the other side.
