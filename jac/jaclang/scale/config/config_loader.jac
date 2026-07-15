@@ -1,5 +1,6 @@
 import from pathlib { Path }
 import from jaclang.project.plugin_config { PluginConfigBase }
+import logging;
 import from jaclang.scale.config.firebase_env {
     FIREBASE_AUTH_PROJECT_ID_ENV,
     FIRESTORE_PROJECT_ID_ENV,
@@ -30,11 +31,18 @@ class JacScaleConfig(PluginConfigBase) {
     def microservices_declared(self: JacScaleConfig) -> bool;
 }
 
-glob _scale_config_instance: JacScaleConfig | None = None;
+glob logger = logging.getLogger(__name__),
+     _scale_config_instance: JacScaleConfig | None = None;
 
 def _ws_positive(ws_config: dict, key: str, fallback: (int | float)) -> float;
 def get_scale_config(project_dir: Path | None = None) -> JacScaleConfig;
 def reset_scale_config -> None;
+
+"""Return a supported Redis eviction policy, falling back to allkeys-lru when invalid."""
+def normalize_redis_eviction_policy(policy: str) -> str;
+
+"""Clamp Redis eviction samples to the supported 1-10 range, defaulting to 5."""
+def normalize_redis_eviction_samples(samples: int | str) -> int;
 
 """Resolve the bcrypt work factor from env override or config, clamped to bcrypt's valid 4..31 range."""
 def resolve_password_hash_rounds(configured_rounds: int) -> int;

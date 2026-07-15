@@ -26,6 +26,7 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'redis_max_memory': '200mb',
             'redis_eviction_policy': 'allkeys-lru',
             'redis_eviction_samples': 5,
+            'redis_enforce_eviction': True,
             'redis_default_ttl': 3600,
             'redis_max_connections': 20,
             'redis_enable_keyspace_notifications': False,
@@ -225,6 +226,7 @@ impl JacScaleConfig.get_database_config(self: JacScaleConfig) -> dict[str, any] 
         'redis_max_memory': db_config.get('redis_max_memory', '200mb'),
         'redis_eviction_policy': db_config.get('redis_eviction_policy', 'allkeys-lru'),
         'redis_eviction_samples': int(db_config.get('redis_eviction_samples', 5)),
+        'redis_enforce_eviction': bool(db_config.get('redis_enforce_eviction', True)),
         'redis_default_ttl': int(db_config.get('redis_default_ttl', 3600)),
         'redis_max_connections': int(db_config.get('redis_max_connections', 20)),
         'redis_enable_keyspace_notifications': db_config.get(
@@ -324,6 +326,43 @@ impl sanitize_prometheus_namespace(name: str) -> str {
         sanitized = f"_{sanitized}";
     }
     return sanitized or 'jaclang_scale';
+}
+
+impl normalize_redis_eviction_policy(policy: str) -> str {
+    valid_policies = [
+        'allkeys-lru',
+        'volatile-lru',
+        'allkeys-lfu',
+        'volatile-lfu',
+        'allkeys-random',
+        'volatile-random',
+        'volatile-ttl',
+        'noeviction'
+    ];
+    if policy in valid_policies {
+        return policy;
+    }
+    logger.warning(
+        f"Invalid Redis eviction policy '{policy}'. Using default 'allkeys-lru'. "
+        f"Valid options: {', '.join(valid_policies)}"
+    );
+    return 'allkeys-lru';
+}
+
+impl normalize_redis_eviction_samples(samples: int | str) -> int {
+    try {
+        value = int(samples);
+    } except (ValueError, TypeError) {
+        logger.warning("Invalid Redis eviction samples value. Using default 5.");
+        return 5;
+    }
+    if value < 1 or value > 10 {
+        logger.warning(
+            f"Redis eviction samples {value} out of range [1-10]. Using default 5."
+        );
+        return 5;
+    }
+    return value;
 }
 
 impl JacScaleConfig.get_monitoring_config(self: JacScaleConfig) -> dict[str, any] {

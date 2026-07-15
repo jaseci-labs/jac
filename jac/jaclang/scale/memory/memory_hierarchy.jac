@@ -1,5 +1,6 @@
 import json;
 import logging;
+import time;
 import from collections.abc { Callable, Generator, Iterable }
 import from datetime { datetime, timezone }
 import from pickle { dumps, loads }
@@ -25,7 +26,11 @@ import from jaclang.runtimelib.query_plan { QueryPlan }
 import from jaclang.runtimelib.utils { storage_key, to_uuid }
 import from jaclang.runtimelib.serializer { Serializer }
 import from jaclang.runtimelib.typecache { get_field_types }
-import from jaclang.scale.config.config_loader { get_scale_config }
+import from jaclang.scale.config.config_loader {
+    get_scale_config,
+    normalize_redis_eviction_policy,
+    normalize_redis_eviction_samples
+}
 import from jaclang.scale.memory.l1_invalidation {
     DEFAULT_INVALIDATION_CHANNEL,
     build_message,
@@ -40,8 +45,119 @@ import from jaclang { JacRuntimeInterface as Jac }
 glob logger = logging.getLogger(__name__),
      _process_cache: dict[str, any] = {};
 
+glob DEFAULT_REDIS_TTL = 3600,
+     # Recheck interval so a Redis restart that drops runtime config is re-bounded.
+     REDIS_BOUND_RECHECK_SECONDS = 300;
+
 def _get_db_config -> dict {
     return get_scale_config().get_database_config();
+}
+
+"""Read a single redis CONFIG GET value, tolerating bytes and missing keys."""
+def _redis_config_value(client: any, name: str, fallback: str) -> str {
+    value = client.config_get(name).get(name, fallback);
+    if isinstance(value, bytes) {
+        value = value.decode();
+    }
+    return str(value or fallback);
+}
+
+"""True when the server evicts any key under memory pressure (allkeys-* policy)."""
+def _evicts_all_keys(maxmemory: int, policy: str) -> bool {
+    return maxmemory > 0 and policy.startswith('allkeys');
+}
+
+"""Best-effort apply configured maxmemory + policy; returns the effective values."""
+def _apply_redis_eviction(
+    client: any, db_config: dict, cur_max: int, cur_policy: str
+) -> tuple[int, str] {
+    max_memory = db_config.get('redis_max_memory', '200mb');
+    policy = normalize_redis_eviction_policy(
+        str(db_config.get('redis_eviction_policy', 'allkeys-lru'))
+    );
+    samples = normalize_redis_eviction_samples(
+        str(db_config.get('redis_eviction_samples', 5))
+    );
+    # Policy before cap so a partial failure never leaves a cap with noeviction.
+    try {
+        client.config_set('maxmemory-policy', policy);
+    } except Exception as e {
+        logger.debug(f"Could not set Redis eviction policy (managed instance?): {e}");
+        return (cur_max, cur_policy);
+    }
+    try {
+        client.config_set('maxmemory-samples', samples);
+    } except Exception as e {
+        logger.debug(f"Could not set Redis maxmemory-samples (managed instance?): {e}");
+    }
+    try {
+        client.config_set('maxmemory', max_memory);
+    } except Exception as e {
+        logger.debug(f"Could not set Redis maxmemory (managed instance?): {e}");
+    }
+    new_max = int(_redis_config_value(client, 'maxmemory', '0'));
+    new_policy = _redis_config_value(client, 'maxmemory-policy', 'noeviction');
+    if new_max > 0 and new_policy != 'noeviction' {
+        logger.info(
+            f"Applied Redis memory bound maxmemory={new_max}, policy={new_policy}."
+        );
+    }
+    return (new_max, new_policy);
+}
+
+"""Guarantee the connected Redis bounds its own memory; self-configure or warn, rechecked periodically."""
+def _ensure_redis_memory_bound(client: any) -> None {
+    now = time.monotonic();
+    last = cast(float, _process_cache.get('redis_bound_checked_at', 0.0));
+    if last and now - last < REDIS_BOUND_RECHECK_SECONDS {
+        return;
+    }
+    # Throttle set before the work so a transient failure is not retried per request.
+    _process_cache['redis_bound_checked_at'] = now;
+    try {
+        maxmemory = int(_redis_config_value(client, 'maxmemory', '0'));
+        policy = _redis_config_value(client, 'maxmemory-policy', 'noeviction');
+        db_config = _get_db_config();
+        bounded = maxmemory > 0 and policy != 'noeviction';
+        if not bounded and db_config.get('redis_enforce_eviction', True) {
+            (maxmemory, policy) = _apply_redis_eviction(
+                client, db_config, maxmemory, policy
+            );
+            bounded = maxmemory > 0 and policy != 'noeviction';
+        }
+        _process_cache['redis_evicts_all_keys'] = _evicts_all_keys(maxmemory, policy);
+        if not bounded {
+            logger.warning(
+                f"Redis has no memory bound (maxmemory={maxmemory}, policy={policy}); "
+                f"set maxmemory with an LRU policy or keep a positive redis_default_ttl."
+            );
+        }
+    } except Exception as e {
+        # Any Redis blip (CONFIG GET/SET, readback) degrades to unbounded so the
+        # availability check never raises and writes fall back to a safe TTL.
+        logger.debug(f"Redis memory-bound check failed, treating as unbounded: {e}");
+        _process_cache['redis_evicts_all_keys'] = False;
+    }
+}
+
+"""Resolve the write TTL; a zero TTL is only safe when the server evicts all keys."""
+def _resolve_write_ttl(db_config: dict) -> int {
+    ttl = int(db_config.get('redis_default_ttl', DEFAULT_REDIS_TTL));
+    if ttl > 0 {
+        return ttl;
+    }
+    if _process_cache.get('redis_evicts_all_keys', False) {
+        return 0;
+    }
+    if not _process_cache.get('redis_ttl_fallback_warned') {
+        _process_cache['redis_ttl_fallback_warned'] = True;
+        logger.warning(
+            f"redis_default_ttl=0 ignored: the server does not evict all keys "
+            f"(needs an allkeys-* policy); writing keys with fallback "
+            f"TTL={DEFAULT_REDIS_TTL}s so memory stays bounded."
+        );
+    }
+    return DEFAULT_REDIS_TTL;
 }
 
 obj RedisBackend(CacheMemory) {

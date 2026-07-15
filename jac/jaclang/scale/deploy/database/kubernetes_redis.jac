@@ -4,7 +4,11 @@ import from pathlib { Path }
 import from typing { Any }
 import from jaclang.scale.deploy.database.database_provider { DatabaseProvider }
 import from jaclang.scale.deploy.target.deployment_target { DeploymentTarget }
-import from jaclang.scale.config.config_loader { get_scale_config }
+import from jaclang.scale.config.config_loader {
+    get_scale_config,
+    normalize_redis_eviction_policy,
+    normalize_redis_eviction_samples
+}
 
 glob logger = logging.getLogger(__name__),
      REDIS_ACLFILE_DIR = '/etc/redis-acl',
@@ -60,48 +64,18 @@ obj KubernetesRedisProvider(DatabaseProvider) {
         db_config = scale_config.get_database_config();
 
         redis_max_memory = db_config.get('redis_max_memory', '200mb');
-        redis_eviction_policy = db_config.get('redis_eviction_policy', 'allkeys-lru');
-        redis_eviction_samples = db_config.get('redis_eviction_samples', 5);
+        redis_eviction_policy = normalize_redis_eviction_policy(
+            str(db_config.get('redis_eviction_policy', 'allkeys-lru'))
+        );
+        redis_eviction_samples = normalize_redis_eviction_samples(
+            str(db_config.get('redis_eviction_samples', 5))
+        );
         redis_default_ttl = db_config.get('redis_default_ttl', 0);
         redis_enable_keyspace_notifications = db_config.get(
             'redis_enable_keyspace_notifications', False
         );
 
-        valid_policies = [
-            'allkeys-lru',
-            'volatile-lru',
-            'allkeys-lfu',
-            'volatile-lfu',
-            'allkeys-random',
-            'volatile-random',
-            'volatile-ttl',
-            'noeviction'
-        ];
-        if redis_eviction_policy not in valid_policies {
-            logger.warning(
-                f"Invalid Redis eviction policy '{redis_eviction_policy}'. "
-                f"Using default 'allkeys-lru'. Valid options: {', '.join(
-                    valid_policies
-                )}"
-            );
-            redis_eviction_policy = 'allkeys-lru';
-        }
-
-        try {
-            samples = int(redis_eviction_samples);
-            if samples < 1 or samples > 10 {
-                logger.warning(
-                    f"Redis eviction samples {samples} out of range [1-10]. Using default 5."
-                );
-                redis_eviction_samples = 5;
-            } else {
-                redis_eviction_samples = samples;
-            }
-        } except (ValueError, TypeError) {
-            logger.warning(f"Invalid eviction samples value. Using default 5.");
-            redis_eviction_samples = 5;
-        }
-
+        # Validate TTL
         try {
             ttl = int(redis_default_ttl);
             if ttl < 0 {
