@@ -1,5 +1,6 @@
 import atexit;
 import os;
+import from typing { cast }
 import from pathlib { Path }
 import redis;
 import from pymongo { MongoClient }
@@ -89,6 +90,37 @@ def _make_scale_memory -> tuple {
 }
 
 
+"""Bind a fresh tiered mongo/redis memory to `ctx`, returning its backends."""
+def _bind_scale_memory(ctx: ExecutionContext, persist_root: bool) -> tuple {
+    (mem, mongo, redis_be) = _make_scale_memory();
+    ctx.mem = mem;
+    if persist_root {
+        # The context's root is created against the default memory, so register
+        # it with the tiered memory that actually commits or it is never saved.
+        mem.put(ctx.system_root);
+    }
+    JacRuntime.set_context(ctx);
+    return (mongo, redis_be);
+}
+
+
+def _seed_pushdown_graph {
+    for i in range(100) {
+        root ++> _PushdownLead(idx=i);
+    }
+    for i in range(20) {
+        root ++> _PushdownOther(idx=i);
+    }
+}
+
+
+def _close_ctx(ctx: (ExecutionContext | None)) {
+    if ctx is not None {
+        cast(ExecutionContext, ctx).close();
+    }
+}
+
+
 test "edge-ref slice bounds mongodb fetches" {
     _reset_dbs();
     orig_base = JacRuntime.get_base_path_dir();
@@ -97,26 +129,24 @@ test "edge-ref slice bounds mongodb fetches" {
     set_config(cfg);
     JacRuntime.set_base_path("/tmp/_pushdown_mongo");
 
+    ctx1: (ExecutionContext | None) = None;
+    ctx2: (ExecutionContext | None) = None;
     try {
-        (mem1, mongo1, redis1) = _make_scale_memory();
         ctx1 = ExecutionContext();
-        ctx1.mem = mem1;
-        JacRuntime.set_context(ctx1);
+        (mongo1, redis1) = _bind_scale_memory(ctx1, persist_root=True);
 
-        for i in range(100) {
-            root ++> _PushdownLead(idx=i);
-        }
-        for i in range(20) {
-            root ++> _PushdownOther(idx=i);
-        }
+        _seed_pushdown_graph();
         root_id = root.__jac__.id;
         ctx1.mem.commit();
         ctx1.close();
+        ctx1 = None;
 
-        (mem2, mongo2, redis2) = _make_scale_memory();
+        # Drop the L2 cache so the slice is served from mongo, making the fetch
+        # count reflect what the database is actually asked to load.
+        _shared["redis_client"].flushall();
+
         ctx2 = ExecutionContext();
-        ctx2.mem = mem2;
-        JacRuntime.set_context(ctx2);
+        (mongo2, redis2) = _bind_scale_memory(ctx2, persist_root=False);
 
         root_anchor = ctx2.mem.get(root_id);
         assert root_anchor is not None;
@@ -132,9 +162,9 @@ test "edge-ref slice bounds mongodb fetches" {
             f"Slice should bound MongoDB fetches; got {mongo2.fetch_count} "
             "items requested for [0:50]"
         );
-
-        ctx2.close();
     } finally {
+        _close_ctx(ctx2);
+        _close_ctx(ctx1);
         JacRuntime.set_base_path(orig_base);
         set_config(JacConfig());
     }
@@ -149,28 +179,22 @@ test "edge-ref slice bounds redis cache promotions" {
     set_config(cfg);
     JacRuntime.set_base_path("/tmp/_pushdown_redis");
 
+    ctx1: (ExecutionContext | None) = None;
+    ctx2: (ExecutionContext | None) = None;
     try {
-        (mem1, mongo1, redis1) = _make_scale_memory();
         ctx1 = ExecutionContext();
-        ctx1.mem = mem1;
-        JacRuntime.set_context(ctx1);
+        (mongo1, redis1) = _bind_scale_memory(ctx1, persist_root=True);
 
-        for i in range(100) {
-            root ++> _PushdownLead(idx=i);
-        }
-        for i in range(20) {
-            root ++> _PushdownOther(idx=i);
-        }
+        _seed_pushdown_graph();
         root_id = root.__jac__.id;
         ctx1.mem.commit();
         ctx1.close();
+        ctx1 = None;
 
         _shared["redis_client"].flushall();
 
-        (mem2, mongo2, redis2) = _make_scale_memory();
         ctx2 = ExecutionContext();
-        ctx2.mem = mem2;
-        JacRuntime.set_context(ctx2);
+        (mongo2, redis2) = _bind_scale_memory(ctx2, persist_root=False);
 
         root_anchor = ctx2.mem.get(root_id);
         assert root_anchor is not None;
@@ -185,9 +209,9 @@ test "edge-ref slice bounds redis cache promotions" {
             f"Slice should bound Redis cache promotions; got {redis2.put_count} "
             "puts for [0:50]"
         );
-
-        ctx2.close();
     } finally {
+        _close_ctx(ctx2);
+        _close_ctx(ctx1);
         JacRuntime.set_base_path(orig_base);
         set_config(JacConfig());
     }

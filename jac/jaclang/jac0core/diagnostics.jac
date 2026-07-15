@@ -646,6 +646,63 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " be reassigned, have a field written, or be borrowed `&mut`. Take a `val` as"
          " read-only, or use an `own`/managed binding if you need to mutate."
      ),
+     E1401 = _err(
+         "E1401",
+         Category.SEMANTIC,
+         "Heap-typed {position} '{name}' has no ownership state in a nogc-enforced module ({provenance})",
+         help="Inside a nogc-enforced module every heap-typed contract position"
+         " (parameter, return, or `has` field) must be in the owned world: annotate"
+         " it `own`, `&`, `&mut`, or `val`. Locals still infer ownership from a fresh"
+         " right-hand side; only contracts must be explicit.",
+         blocks_codegen=True
+     ),
+     E1402 = _err(
+         "E1402",
+         Category.SEMANTIC,
+         "Owned value '{name}' is sealed into managed storage inside a nogc-enforced module ({provenance})",
+         help="Storing an owned value into a managed or graph location re-enters the"
+         " reference-counted world, which a nogc-enforced module promises not to do."
+         " Keep the value owned, or copy it across the membrane explicitly with"
+         " `managed(...)` at the module boundary.",
+         blocks_codegen=True
+     ),
+     E1403 = _err(
+         "E1403",
+         Category.SEMANTIC,
+         "Heap value '{name}' crosses implicitly out of a nogc-enforced module ({provenance})",
+         help="Heap values may leave a nogc-enforced module only by an explicit copy:"
+         " wrap the argument in `managed(...)`, which reboxes it into a"
+         " reference-counted allocation on the managed side. Scalars and `val` values"
+         " cross freely.",
+         blocks_codegen=True
+     ),
+     E1404 = _err(
+         "E1404",
+         Category.SEMANTIC,
+         "'{name}' is `any`-typed and could be heap-allocated in a nogc-enforced module ({provenance})",
+         help="If the static type cannot say heap-or-not, zero-RC coverage cannot be"
+         " enforced. Give '{name}' a concrete type, or confine `any` to scalar values"
+         " in enforced modules.",
+         blocks_codegen=True
+     ),
+     E1405 = _err(
+         "E1405",
+         Category.SEMANTIC,
+         "Closure capture of '{name}' escapes its scope in a nogc-enforced module ({provenance})",
+         help="An escaping closure keeps its captures alive past the enclosing scope,"
+         " which needs reference counting. Pass '{name}' as an explicit parameter, or"
+         " restructure so the closure does not outlive the scope.",
+         blocks_codegen=True
+     ),
+     E1406 = _err(
+         "E1406",
+         Category.SEMANTIC,
+         "'{name}' has retaining or aliasing semantics not supported in a nogc-enforced module ({provenance})",
+         help="This builtin or construct retains or aliases its heap arguments, which"
+         " the zero-RC contract cannot express yet. Use an owned-compatible"
+         " alternative, or move this code outside the enforced module.",
+         blocks_codegen=True
+     ),
      W1050 = _warn("W1050", Category.TYPE, "Unknown intrinsic JSX element '<{tag}>'"),
      W1051 = _warn(
          "W1051",
@@ -1271,6 +1328,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.CODEGEN,
          "Native union trigger members {members} disagree on the layout of field '{field}'",
          help="A tuple/union trigger like `with (A, B) entry` lowers field access on `here`/`visitor` through a single shared layout, so every member must place the common field at the same offset and type. Reorder the `has` declarations so the shared fields line up, or split the trigger into separate abilities per archetype."
+     ),
+     E5092 = _err(
+         "E5092",
+         Category.CODEGEN,
+         "Native lowering failed for {kind} '{name}'",
+         help="The construct is within the native capability set, but this specific shape (its types, values, or runtime bindings) could not be lowered by NaIRGenPass. Adjust the shape, add type annotations, or move the code to a non-native context. Statically-known unsupported constructs are reported as E5090 by the capability check instead."
      ),
      E5080 = _err(
          "E5080",

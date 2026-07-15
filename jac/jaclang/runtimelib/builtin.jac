@@ -72,6 +72,8 @@ def new(cls: any, *args: any) -> any;
 
 def unsafe_html(html: any) -> dict;
 
+def managed(x: any) -> any;
+
 glob __all__ = [
          'printgraph',
          'jid',
@@ -99,5 +101,6 @@ glob __all__ = [
          'schema_alias',
          'schema_drop',
          'schema_upgrade',
-         'unsafe_html'
+         'unsafe_html',
+         'managed'
      ];

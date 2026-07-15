@@ -1,16 +1,17 @@
-"""Strict `Any` semantics in Jac modules.
+"""Uniform gradual `Any` semantics in Jac modules.
 
-In `.jac` files, `Any` can no longer be silently assigned to a declared
-non-Any type. The rule applies uniformly at every "destination has a
-declared type" site: annotated assignments, has-var initializers,
-function arguments, and return statements. Nested cases like
-`list[any] -> list[T]` are caught too — they recurse into the same
-element-level `Any -> T` check.
+`Any` is assignable to every type in every codespace (the standard
+mypy/pyright gradual-typing rule), so assigning an `any`-typed value to a
+declared non-Any destination is permitted at every "destination has a
+declared type" site: annotated assignments, has-var initializers, function
+arguments, and return statements, and it recurses into containers
+(`list[any] -> list[T]` is fine too).
 
-Inferred destinations (no annotation) keep PEP 484 semantics: `Any`
-flows through, so users always have an escape valve by simply not
-typing the local. Declaring the destination as `any` explicitly is
-also fine — that is the user opting in to permissive semantics.
+This replaced an earlier codespace-split policy that rejected `Any -> T`
+narrowing in server/client code while permitting it in native (which unboxes
+`any` through jacval). Splitting the verdict on identical code by codespace
+broke cross-backend congruence; declaring `any` is the opt-in to dynamism,
+and consuming it at a concrete type is now honored uniformly.
 """
 
 obj Task {
@@ -26,30 +27,30 @@ def needs_task(t: Task) {
 }
 
 with entry {
-    a = make_any();           # a: any (inferred destination — OK)
+    a = make_any();           # a: any (inferred destination)
 
-    # Inferred destination keeps PEP 484 — OK, no error.
+    # Inferred destination keeps PEP 484 — OK.
     x = a;
     print(x);
 
-    # Explicit `any` annotation — OK, no error.
+    # Explicit `any` annotation — OK.
     y: any = a;
     print(y);
 
-    # Top-level Any -> declared T: ERROR (1)
+    # Top-level Any -> declared T: OK (gradual).
     t: Task = a;
     print(t);
 
-    # Container nesting: list[any] -> list[Task]: ERROR (2)
+    # Container nesting: list[any] -> list[Task]: OK (gradual, recurses).
     xs: list[any] = [a];
     ts: list[Task] = xs;
     print(ts);
 
-    # Function arg: passing Any to a declared-typed parameter: ERROR (3)
+    # Function arg: passing Any to a declared-typed parameter: OK (gradual).
     needs_task(a);
 }
 
 def returns_task -> Task {
-    # Return Any from a function with a declared non-Any return type: ERROR (4)
+    # Return Any from a function with a declared non-Any return type: OK.
     return make_any();
 }

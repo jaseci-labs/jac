@@ -164,6 +164,38 @@ test "auto lint class entry not extracted" {
     assert "import from math { SupportsIndex }" in formatted;
 }
 
+test "auto lint reassigned entry var not globalized" {
+    input_path = auto_lint_fixture_path("reassigned_entry.jac");
+
+    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    formatted = prog.mod.main.gen.jac;
+
+    # A name bound exactly once is still extracted to its own glob.
+    assert "glob once = 5;" in formatted;
+
+    # `count` is reassigned, so promoting it would emit duplicate `glob count`
+    # declarations. It must stay a reassignment inside a with entry block.
+    assert "glob count" not in formatted;
+    assert "with entry" in formatted;
+    assert "count = 0;" in formatted;
+    assert "count = count + 1;" in formatted;
+}
+
+test "auto lint entry reassignment of existing glob not globalized" {
+    input_path = auto_lint_fixture_path("entry_reassigns_glob.jac");
+
+    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    formatted = prog.mod.main.gen.jac;
+
+    # `config` is already a module-level glob; the entry assignment is a
+    # reassignment and must not become a second `glob config` declaration.
+    assert "with entry" in formatted;
+    assert "config = 2;" in formatted;
+
+    # `fresh` is bound exactly once and is still extracted to its own glob.
+    assert "glob fresh = 10;" in formatted;
+}
+
 test "auto lint init postinit conversion" {
     input_path = auto_lint_fixture_path("init_conversion.jac");
 
@@ -699,7 +731,17 @@ test "signature mismatch fixed" {
     # signatures, so we format the .impl.jac annex directly.
     input_path = auto_lint_fixture_path(os.path.join("impl", "sig_mismatch.impl.jac"));
 
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    # Explicit config: the repo jac.toml excludes */tests/* from lint fixes
+    # (fixtures must keep their pre-transform syntax), so the transform under
+    # test needs a config whose exclude list is empty.
+    config = JacConfig();
+    config.check = CheckConfig(lint=LintConfig(select=["all"]));
+    set_config(config);
+    try {
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    } finally {
+        set_config(None);
+    }
 
     # Check the impl signatures were fixed by examining the AST nodes directly
     impl_mod = prog.mod.main;
@@ -751,7 +793,17 @@ test "nested class impl signature fixed" {
         os.path.join("impl", "nested_class_sig.impl.jac")
     );
 
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    # Explicit config: the repo jac.toml excludes */tests/* from lint fixes
+    # (fixtures must keep their pre-transform syntax), so the transform under
+    # test needs a config whose exclude list is empty.
+    config = JacConfig();
+    config.check = CheckConfig(lint=LintConfig(select=["all"]));
+    set_config(config);
+    try {
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    } finally {
+        set_config(None);
+    }
 
     impl_mod = prog.mod.main;
 
@@ -1378,8 +1430,18 @@ test "deslop rules are disabled under default select" {
 
 test "property-to-native folds '@x.getter' into the accessor block" {
     input_path = auto_lint_fixture_path("property_getter_decorator.jac");
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
+    # Explicit config: the repo jac.toml excludes */tests/* from lint fixes
+    # (fixtures must keep their pre-transform syntax), so the transform under
+    # test needs a config whose exclude list is empty.
+    config = JacConfig();
+    config.check = CheckConfig(lint=LintConfig(select=["all"]));
+    set_config(config);
+    try {
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+    } finally {
+        set_config(None);
+    }
 
     # The whole '@property'/'@val.getter'/'@val.setter' cluster collapses into one
     # native property, and '@val.getter' -- which supersedes the '@property' it
