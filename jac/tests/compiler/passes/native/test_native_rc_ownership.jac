@@ -47,6 +47,25 @@ def get_func(eng: object, name: str, restype: type | None, *argtypes: type) -> o
     return functype(addr);
 }
 
+"""Slice one function's textual IR out of the module dump."""
+def fn_ir(ir: uni.Module, name: str) -> str {
+    out: list[str] = [];
+    inside = False;
+    for ln in str(ir.gen.llvm_ir).split("\n") {
+        if not inside and ln.startswith("define") and (('@"' + name + '"') in ln) {
+            inside = True;
+        }
+        if inside {
+            out.append(ln);
+            if ln == "}" {
+                break;
+            }
+        }
+    }
+    assert out , f"No IR found for function '{name}'";
+    return "\n".join(out);
+}
+
 # --- Returning module globs must hand the caller a +1 reference (1d/1e) ---
 test "glob return: list cache survives a for-loop over the accessor call" {
     # `for c in cmd_defs()` releases the loop collection it owns; the callee
@@ -91,4 +110,31 @@ test "tuple unpack: early return of an unpack-bound local keeps the list" {
     early_ret = get_func(eng, "early_return_keeps_list", ctypes.c_int64);
     result = early_ret();
     assert result == 11 , f"Expected 11 (value and rejoin both ok), got {result}";
+}
+
+# --- Param names must stay per-function codegen state (issue #7466, 1/2) ---
+test "param shadow: other fn's param names add no retain-on-return" {
+    # `push(s, v)` is never called; its param `v` must not make `make_vec`'s
+    # `return v` path treat the fresh local as a borrowed param and retain it
+    # (rc=2 at the caller -> every returned Vec leaks).
+    (eng, ir) = compile_native("rc_param_shadow_return.na.jac");
+    body = fn_ir(ir, "make_vec");
+    n = body.count('call void @"__rc_retain"');
+    assert n == 0 , f"make_vec should return its owned local with no retain, found {n}";
+    sum_first = get_func(eng, "sum_first", ctypes.c_int64, ctypes.c_int64);
+    result = sum_first(3);
+    assert result == 3 , f"Expected 3 (0.5 * 2 per round), got {result}";
+}
+
+test "param shadow: loop-exit cleanup still releases same-named locals" {
+    # `use2(a: &Box, b: &Box)`'s param names match `churn`'s two fresh loop
+    # locals; the loop-exit (iter_end) cleanup must still release both or the
+    # final iteration's Boxes are never freed.
+    (eng, ir) = compile_native("rc_param_shadow_looptail.na.jac");
+    body = fn_ir(ir, "churn");
+    assert "iter.cleanup.a" in body , "loop-exit cleanup for local 'a' was suppressed";
+    assert "iter.cleanup.b" in body , "loop-exit cleanup for local 'b' was suppressed";
+    churn = get_func(eng, "churn", ctypes.c_int64, ctypes.c_int64);
+    result = churn(10);
+    assert result == 100 , f"Expected 100, got {result}";
 }
