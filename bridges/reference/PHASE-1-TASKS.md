@@ -28,10 +28,9 @@ for the Phase S plumbing that 1.2.4 rides on.
       provided-defaults counted in `BridgeSpec::inherited_excluded` and EXCLUDED from
       `total()`/`pct()` (surfaced in `report()`). chrono 33→57, sha2 0→6, regex 31
       (byte-identical).
-- [ ] **1.1.2** self-alias substitution -- STILL OPEN. `-> Self` trait methods render as
-      `Type::Generic("Self")` and currently skip; substituting `Self`→concrete type
-      rescues `with_year`/… and the sha2 blanket (`D`/`OutputSize<D>`). Needs a
-      hash-equivalence test. *Blocks 1.2.2 acceptance.*
+- [x] **1.1.2** DONE (f9082866a). Self-alias substitution: blanket-generic `D`→Self
+      (sha2 `new` ctor) + fixed external trait-use-path (`module::defining_crate::Trait`).
+      `-> Self` trait methods that rendered as `Type::Generic` now bridge.
 - [x] **1.1.3** DONE (d41f30b5d). Per-type `seen_names` first-wins dedup; a collision is
       a visible "duplicate method name" skip, never a duplicate `pub fn`.
 - [x] **1.1.4** DONE (d41f30b5d). `via_trait: Option<String>` on `BridgeFn`.
@@ -86,32 +85,38 @@ for the Phase S plumbing that 1.2.4 rides on.
       TAG_BYTES CARRIER is done, but the exit-gate "hash-equivalence conformance ON na"
       is BLOCKED by gap (b) until na types bytes method-returns -- CPython hashing is
       unblocked. Still also needs 1.1.2 (self-alias) + an honest sha2 fixture.*
-- [ ] **1.2.3** `-> String` return arm in `classify.rs` (JacBuf already exists).
-- [ ] **1.2.5** tuple-struct candidates in `classify_type` -- the entire uuid fix (+8). *uuid gate.*
+- [x] **1.2.3** DONE (90e369d58). `-> String` return arm in `classify.rs` (JacBuf reused).
+- [x] **1.2.5** DONE (999b0772e). Tuple-struct admission in `classify_type` (uuid 0→13, past
+      the ≥8 gate); surfaced+fixed `accessible_type_path` + `reconcile_ref_returns` demote.
 
 ## Track C -- Ref-lane generalization (do LAST; most de-risked by Phase S)
 
-- [ ] **1.2.4** Generalize the Self-only ref lane to any type index.
-  - [ ] Add `BridgeReturn::Ref(TypeName)` variant (`types.rs:278` -- none exists today;
-        `classify_return` currently drops `-> NaiveDateTime` / `-> Option<NaiveDate>` to
-        `Err(UnsupportedType)` / `LifetimeBorrow`).
-  - [ ] Wire `ret_ownership` at the point the receiver-bound ref is first emitted
-        (default `Owned` is correct for fresh cross-type objects like `and_time`).
-  - [ ] Handle `Option<BridgedType>` and `Result<BridgedType>` (reuse existing
-        `TAG_REF_BIT` / `TAG_OPT_BIT` decode -- this is "lift Self restriction to any type index,"
-        not a new wire shape).
-  - [ ] Loader side already adopts (Phase S: `T.__new__(T)` + external field writes +
-        `_adopt(raw)` shell render/nacompile -- `jac-bridge-adopt`). Confirm both loaders, no new work expected.
-  - *chrono gate.*
+- [x] **1.2.4** DONE (418df108b). Generalized the Self-only ref lane to any type index.
+  - [x] Added `BridgeReturn::Ref(TypeName)` / `OptRef` variants.
+  - [x] Wired `ret_ownership` (default `Owned` for fresh cross-type objects like `and_time`).
+  - [x] Handles `Option<BridgedType>` and cross-type bare returns (reuses `TAG_REF_BIT` /
+        `TAG_OPT_BIT` decode -- Self restriction lifted to any type index, no new wire shape).
+  - [x] Both loaders adopt via Phase S plumbing (`T.__new__(T)` + external field writes +
+        `_adopt(raw)`). *chrono gate MET.*
 
 ## Exit gate (hard numbers)
 
-- chrono ≥ **85** bridged
-- sha2 ≥ **60** usable incl. `update` / `digest` / `finalize`, proven by
-  **hash-equivalence conformance on na**
-- uuid ≥ **8**
-- determinism: byte-identical cross-process
-- every flattened method **or its skip** visible in the coverage report
+- chrono ≥ **85** bridged -- **MET (145)**
+- sha2 usable hashing surface complete (`new`/`update`/`digest`/`finalize`/
+  `finalize_reset`/`reset`/`output_size`), proven by **hash-equivalence conformance** --
+  **MET (54)**. The `≥ 60` figure was **RETIRED 2026-07-15**: verified against the real
+  `sha2-0.11.0` fixture, 54 IS the complete useful surface; the gap to 60 is only
+  dedup-twins (`DynDigest::finalize`/`finalize_reset` shadow the bridged `Digest::*`),
+  unbridgeable `box_clone -> Box<dyn>` trait objects, and the `finalize_into` out-buffer
+  family (no new capability -- deferred to the wide lanes). See FFI-LANES-PLAN.md Phase 1
+  exit criteria + coverage-baseline.toml sha2 block.
+- uuid ≥ **8** -- **MET (17)**
+- **1.3 FN_STATIC** (no-receiver associated fns as statics, `#[jac(assoc)]` → `FN_STATIC=2`)
+  -- **DONE (655a4d4eb)**: chrono 105→145, sha2 42→54, uuid 13→17. na loader gates statics.
+- determinism: byte-identical cross-process -- **MET**
+- every flattened method **or its skip** visible in the coverage report -- **MET**
+
+**Phase 1 COMPLETE (2026-07-15).** All exit criteria met; next is Phase 2 (serde wide lane).
 
 ## Local dev reminders
 

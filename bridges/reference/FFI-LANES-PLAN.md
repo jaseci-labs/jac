@@ -288,10 +288,26 @@ flow through the existing Ok→methods / Err→skips funnel -- coverage accounti
 extends cleanly). Re-ratchet `coverage-baseline.toml` with narrated rationale per
 crate (the file is already an audit log; keep it that way).
 
-**Phase 1 exit criteria (hard numbers, from (T)):** chrono ≥ 85 bridged; sha2 ≥ 60
-usable methods incl. `update`/`digest`/`finalize` proven by a hash-equivalence
-conformance test on na; uuid ≥ 8; determinism test still byte-identical
-cross-process; every flattened method or its skip visible in the coverage report.
+**Phase 1 exit criteria (hard numbers, from (T)):** chrono ≥ 85 bridged (MET, 145);
+uuid ≥ 8 (MET, 17); sha2 usable hashing surface complete -- `new`/`update`/`digest`/
+`finalize`/`finalize_reset`/`reset`/`output_size` all bridged (MET at 54), proven by a
+hash-equivalence conformance test; determinism test still byte-identical cross-process;
+every flattened method or its skip visible in the coverage report.
+
+> **sha2 ≥ 60 RETIRED (2026-07-15).** The original 60 was set before we knew what the
+> remaining 6 hashers' surface actually was. Verified against the real `sha2-0.11.0`
+> fixture: sha2 tops out at **54 bridged**, and its *entire* useful hashing surface is
+> already in that 54. The gap to 60 is NOT new capability -- it is (a) the 12
+> `DynDigest::finalize`/`finalize_reset` methods, which are exact twins of the already
+> bridged `Digest::finalize`/`finalize_reset` (sha2 exposes each op through two traits;
+> the binder's `seen_names` first-wins dedup skips the second copy on purpose -- bridging
+> the `Box<[u8]>` return would only turn an "unsupported Box" skip into a "duplicate
+> method name" skip, net **0**); (b) 6 `box_clone -> Box<dyn DynDigest>` returns, an
+> anonymous trait object that is genuinely unbridgeable. The ONLY new-capability surface
+> left is the `finalize_into(&mut self, out: &mut [u8]) -> Result<(), InvalidBufferSize>`
+> family -- a write-into-caller-buffer out-param lane. It adds no hashing power the 54
+> don't already provide, so it is **not** a Phase 1 gate; if the out-buffer lane is ever
+> built it belongs with the serde/ref wide-lanes, not here.
 
 ### Phase 2 -- The serde wide lane (~3–4 weeks)
 

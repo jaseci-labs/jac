@@ -206,9 +206,18 @@ dropped = 1
 # slot couldn't hold, +6). `output_size()` also becomes a static but nets 0 (the
 # &self `DynDigest::output_size` already claimed the name; first-wins dedup).
 # `total` unchanged (186): each gain flips a skip to bridged. The na loader GATES
-# statics (CPython-only). sha2 still does NOT clear the ≥60 exit floor: the rest
-# needs a SEPARATE `Box<[u8]>` bytes-return arm for `DynDigest::finalize`/
-# `finalize_reset` (12 "unsupported type: Box" skips), which FN_STATIC doesn't touch.
+# statics (CPython-only).
+# sha2 is COMPLETE at 54; the ≥60 floor was RETIRED (2026-07-15). Verified against
+# this fixture: the whole useful hashing surface (new/update/digest/finalize/
+# finalize_reset/reset/output_size) is already in the 54. The 18 remaining
+# "unsupported type: Box" skips add NO new capability: 12 (`DynDigest::finalize`/
+# `finalize_reset`) are exact twins of the already bridged `Digest::finalize`/
+# `finalize_reset` (dedup shadows them -- a `Box<[u8]>` return arm would only turn
+# them into "duplicate method name" skips, net 0), and 6 (`box_clone ->
+# Box<dyn DynDigest>`) return an anonymous trait object that is unbridgeable. The
+# only new-capability surface left is the `finalize_into(&mut self, out: &mut [u8])
+# -> Result<(), InvalidBufferSize>` write-into-buffer family -- deferred to the wide
+# lanes, not a Phase 1 gate.
 [sha2]
 bridged = 54
 total = 186
