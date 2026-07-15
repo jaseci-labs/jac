@@ -136,8 +136,10 @@ def build_bootstrap_init_container(
         commands.append("jac install --no-npm");
     } else {
         commands.append(
-            "if [ -f .jac/client/dist/index.html ]; then jac install --no-npm; "
-            "else jac install; fi"
+            'if [ -f .jac/client/dist/index.html ]; then echo "[jac-scale] '
+            'prebuilt client dist found; skipping the npm closure"; '
+            "jac install --no-npm; else echo \"[jac-scale] no prebuilt client "
+            'dist; full install"; jac install; fi'
         );
     }
     script = ' && '.join(commands);
