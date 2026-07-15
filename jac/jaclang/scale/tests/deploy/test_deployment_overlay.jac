@@ -132,7 +132,7 @@ test "no overlay leaves the manifest untouched" {
     b = _builder({"svc_a": {}});
     m = b._build_deployment_manifest("svc_a", {"containers": []});
     assert m["spec"]["strategy"]["rollingUpdate"]["maxSurge"] == 1;
-    assert "progressDeadlineSeconds" not in m["spec"];
+    assert "progressDeadlineSeconds" not in dict(m["spec"]);
 }
 
 test "JAC_PROFILE overlay file reaches the scale plugin config" {
@@ -157,6 +157,35 @@ test "JAC_PROFILE overlay file reaches the scale plugin config" {
             del os.environ["JAC_PROFILE"];
         } else {
             os.environ["JAC_PROFILE"] = old;
+        }
+    }
+}
+
+test "deprecated JAC_ENV still selects the profile for plugin configs" {
+    import tempfile;
+    tmp = tempfile.mkdtemp();
+    with open(os.path.join(tmp, "jac.toml"), "w") as f {
+        f.write(
+            '[project]\nname = "t"\nversion = "0.0.1"\nentry-point = "main.jac"\n\n' + '[scale.kubernetes]\nmin_replicas = 3\n'
+        );
+    }
+    with open(os.path.join(tmp, "jac.preview.toml"), "w") as f {
+        f.write('[scale.kubernetes]\nmin_replicas = 1\n');
+    }
+    old_profile = os.environ.pop("JAC_PROFILE", None);
+    old_env = os.environ.get("JAC_ENV");
+    os.environ["JAC_ENV"] = "preview";
+    try {
+        cfg = JacScaleConfig(project_dir=Path(tmp)).get_kubernetes_config();
+        assert cfg.get("min_replicas") == 1;
+    } finally {
+        if old_env is None {
+            del os.environ["JAC_ENV"];
+        } else {
+            os.environ["JAC_ENV"] = old_env;
+        }
+        if old_profile is not None {
+            os.environ["JAC_PROFILE"] = old_profile;
         }
     }
 }
