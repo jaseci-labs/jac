@@ -33,6 +33,12 @@
 //! `monomorphize` set, or a contradictory `treat_as` + `skip`/`rename` pairing is
 //! rejected with a precise reason — an overlay entry is a decision the author
 //! expects to take effect, never a silent no-op.
+//!
+//! `[crate] features = ["serde"]` (2.4) is the one crate-wide table: the cargo
+//! features to enable when documenting and building the bridge. Unlike the
+//! per-symbol tables it does not touch the bound interface; it steers the build
+//! (`_build_core.jac` rustdoc + cargo) and is part of the registry artifact
+//! identity. The binder records it but acts on an already-rendered rustdoc JSON.
 
 use std::collections::BTreeMap;
 
@@ -54,6 +60,18 @@ pub struct Overlay {
     /// Keyed by submodule name.
     #[serde(rename = "module", default)]
     pub modules: BTreeMap<String, ModuleOverlay>,
+    /// Crate-wide build inputs (`[crate]`). `crate` is a Rust keyword, so the
+    /// field is `krate`; the TOML key is `crate`.
+    #[serde(rename = "crate", default)]
+    pub krate: CrateOverlay,
+}
+
+impl Overlay {
+    /// Cargo features this overlay pins for the crate build (2.4). Empty when
+    /// no `[crate] features` is declared — the default-feature build.
+    pub fn features(&self) -> &[String] {
+        &self.krate.features
+    }
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -121,6 +139,28 @@ pub struct TypeOverlay {
 pub struct ModuleOverlay {
     #[serde(default)]
     pub skip: bool,
+}
+
+/// The `[crate]` table — crate-wide build inputs, not per-symbol decisions
+/// (2.4 feature plumbing). Distinct from `[fn]`/`[type]`/`[module]` because it
+/// steers how the crate is *documented and compiled* rather than how a bound
+/// symbol is treated.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CrateOverlay {
+    /// Cargo features to enable when rendering rustdoc JSON and building the
+    /// bridge for this crate (`features = ["serde"]`). Serde impls and other
+    /// wide-lane surface live behind optional dependency-features that are off
+    /// by default, so a default-feature build documents ZERO of them; this list
+    /// is the single source of truth threaded into the build-on-miss pipeline
+    /// (`_build_core.jac` rustdoc + cargo build) and into the registry artifact
+    /// manifest (features are part of the artifact identity — a bridge built
+    /// with different features is a different artifact). NOT `--all-features`:
+    /// mutually-exclusive features (e.g. chrono's rkyv size features) break the
+    /// build. The binder itself consumes an already-rendered rustdoc JSON, so it
+    /// only records this list; it does not act on it.
+    #[serde(default)]
+    pub features: Vec<String>,
 }
 
 /// Parse an overlay from a TOML string.

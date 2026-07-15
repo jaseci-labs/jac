@@ -606,3 +606,39 @@ fn type_wide_with_monomorphize_is_rejected() {
     let err = apply_overlay(&mut spec, &overlay).unwrap_err();
     assert!(err.contains("wide is not supported alongside monomorphize"), "{err}");
 }
+
+// ── [crate] features (2.4) ──────────────────────────────────────────────────────
+
+#[test]
+fn crate_features_parsed() {
+    let overlay = parse_overlay("[crate]\nfeatures = [\"serde\", \"clock\"]\n").unwrap();
+    assert_eq!(overlay.features(), &["serde", "clock"]);
+}
+
+#[test]
+fn crate_features_default_empty() {
+    // No `[crate]` table at all → no pinned features (default-feature build).
+    let overlay = parse_overlay("[type.\"Regex\"]\nwide = true\n").unwrap();
+    assert!(overlay.features().is_empty());
+    // An empty `[crate]` table is equally valid.
+    assert!(parse_overlay("[crate]\n").unwrap().features().is_empty());
+}
+
+#[test]
+fn crate_unknown_key_rejected() {
+    // deny_unknown_fields: a typo in the crate-wide table fails loud.
+    let err = parse_overlay("[crate]\nfeature = [\"serde\"]\n").unwrap_err();
+    assert!(err.to_string().contains("feature"), "{err}");
+}
+
+#[test]
+fn crate_features_do_not_alter_spec() {
+    // The binder records features but acts on already-rendered rustdoc; applying
+    // an overlay that only pins features must leave the bound interface untouched.
+    let doc = load_regex_doc();
+    let baseline = classify(&doc);
+    let overlay = parse_overlay("[crate]\nfeatures = [\"serde\"]\n").unwrap();
+    let mut spec = classify_with_overlay(&doc, Some(&overlay));
+    apply_overlay(&mut spec, &overlay).unwrap();
+    assert_eq!(spec.types.len(), baseline.types.len());
+}
