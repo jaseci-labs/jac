@@ -960,6 +960,21 @@ test "sv import duplicate kwarg is a compile error" {
     assert "name" in str(dup_errs[0]) and "greet" in str(dup_errs[0]);
 }
 
+test "issue 7221 sv import nested in cl block emits no dead import" {
+    # SERVER context of a nested `sv import`, emitting a dead client import.
+    js_code = compile_fixture_to_js(
+        "sv_import_cl_block_client.cl.jac", FIXTURES
+    );
+    assert "sv_import_cl_block_server" not in js_code , (
+        "nested sv import must not emit a client import of the server "
+        "module; got:\n" + js_code
+    );
+    assert '__jacSpawn("say_hi"' in js_code , (
+        "nested sv import must still lower the call to __jacSpawn; got:\n"
+        + js_code
+    );
+}
+
 test "cl.jac with impl.jac does not duplicate __jacCallFunction import" {
     # When a .cl.jac file has a separate .impl.jac file, both the main pass
     # and the child pass for the impl module may independently inject
