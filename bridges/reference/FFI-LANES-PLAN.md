@@ -884,8 +884,20 @@ these first; the adversarial suite already contains skip-gated tests waiting on 
       returning bytes needs a distinct `FN_STATIC` lane. Hash-equivalence via
       new+update+finalize is unaffected; the CPython runtime SHA-256-vector
       conformance test (CI matrix) closes the acceptance, na half deferred.
-- [ ] 1.2.3 `-> String` return arm in `classify_return` (JacBuf machinery
+- [x] 1.2.3 `-> String` return arm in `classify_return` (JacBuf machinery
       exists; no new tag).
+      STATUS: DONE. `classify_return` now maps an owned `String` return to the
+      existing `BridgeReturn::Str` lane (one arm, `rp.path == "String"`). Codegen
+      already normalizes `Str` to an owned `-> String` via `.to_string()` (a clone
+      on a `String` source, an allocation on `&str`), so the generated-source shape
+      and the compile path are IDENTICAL to the long-proven `&str` lane (regex
+      roundtrip's `OwnedMatch::as_str`) -- no new codegen, no new tag, no new compile
+      risk. Corpus coverage is unchanged: the 5 fixtures' `String` returns are all
+      Display's `to_string` (a NOISE trait, filtered) or live on `DateTime<Tz>`
+      (a dropped generic). `string_return.rs` pins `DateTime<Utc>` to reach
+      `to_rfc3339`/`to_rfc2822 -> String` and asserts the `Str` classification +
+      `-> String`/`.to_string()` emit shape. Result<String,E>/Option<String> stay
+      out of scope (no bare-String producer in the corpus needs them yet).
 - [~] 1.2.4 Ref-lane generalization in the binder: emit `TAG_REF|idx` for
       cross-type returns and `TAG_OPT_BIT|REF` for `Option<BridgedType>` /
       `ParseResult<BridgedType>`; loaders already decode these shapes for Self --

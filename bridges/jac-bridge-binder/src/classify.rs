@@ -1353,6 +1353,14 @@ impl<'a> Ctx<'a> {
                 {
                     return Ok(BridgeReturn::Bytes);
                 }
+                // 1.2.3: an owned `String` return crosses on the same JacBuf lane as
+                // a borrowed `&str` (no new tag). Codegen already normalizes the
+                // `Str` return to an owned `-> String` via `.to_string()`, which is a
+                // clone on a `String` source and an allocation on `&str` — both
+                // valid. `String` carries no lifetime, so it's a plain owned value.
+                if rp.path == "String" {
+                    return Ok(BridgeReturn::Str);
+                }
                 // A `-> Self` return reads as the type's own path. For a
                 // monomorphized type that path is still the ORIGINAL generic name
                 // (`Date`), not the mono name (`DateUtc`) — match on origin.
