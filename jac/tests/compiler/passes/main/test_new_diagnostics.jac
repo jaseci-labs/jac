@@ -716,6 +716,13 @@ test "W2058: None comparison with ==" {
     assert has_diagnostic_code(prog, "W2058", in_warnings=True);
 }
 
+test "W2029: python-style property decorators in an obj" {
+    (prog, _) = compile_and_check("semantic_W2029_property_decorators.jac");
+    # One per decorator: '@property', '@val.getter', '@val.setter', '@val.deleter'.
+    # The '@property' inside the Python-compat 'class' is exempt, like W2006/W2007.
+    assert count_diagnostic_code(prog, "W2029", in_warnings=True) == 4;
+}
+
 # --- Mutability / Assignment (INFRA-1) ---
 test "W2062: dead store" {
     pytest.skip("W2062 not yet implemented — needs INFRA-1");

@@ -34,7 +34,8 @@ import from jaclang.scale.deploy.autoscale.autoscaler {
     AutoscalerSpec,
     Trigger,
     TriggerAuth,
-    DEFAULT_CPU_UTILIZATION_TARGET
+    DEFAULT_CPU_UTILIZATION_TARGET,
+    DEFAULT_MEMORY_UTILIZATION_TARGET
 }
 import from jaclang.scale.deploy.target.kubernetes.monitoring { MonitoringDeployer }
 import from jaclang.scale.config.config_loader { get_scale_config }
@@ -556,10 +557,11 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     def generate_manifests(app_config: AppConfig) -> dict[str, any] {
         # Resolve here, not in deploy(): `jac scale plan` calls this directly,
         # and an unresolved '' python_image would render image-less manifests.
-        # Idempotent - a no-op once python_image is non-empty.
+        # Idempotent - a no-op once python_image is non-empty. A dry run skips
+        # the registry reachability probe: no network under --dry-run.
         import from jaclang.scale.injector.binary { resolve_pod_base_image }
         self.k8s_config.python_image = resolve_pod_base_image(
-            app_config.code_folder, self.k8s_config.python_image
+            app_config.code_folder, self.k8s_config.python_image, probe=not self.dry_run
         );
         builder = MicroserviceManifestBuilder(
             k8s_config=self.k8s_config,
@@ -568,7 +570,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             logger=self.logger,
             no_image=True,
             project_dir=app_config.code_folder,
-            microservices_config=self.microservices_config
+            microservices_config=self.microservices_config,
+            dry_run=self.dry_run
         );
         return builder.generate_manifests(app_config, self.k8s_config.python_image);
     }
@@ -723,6 +726,16 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                                 cfg.get("cpu_target", DEFAULT_CPU_UTILIZATION_TARGET)
                             )
                         }
+                    ),
+                    Trigger(
+                        type="memory",
+                        metadata={
+                            "averageUtilization": str(
+                                cfg.get(
+                                    "memory_target", DEFAULT_MEMORY_UTILIZATION_TARGET
+                                )
+                            )
+                        }
                     )
                 ];
             }
@@ -767,6 +780,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     polling_interval=self.k8s_config.autoscaler_polling_interval,
                     cooldown_period=self.k8s_config.autoscaler_cooldown,
                     initial_cooldown_period=self.k8s_config.autoscaler_initial_cooldown,
+                    scale_up_stabilization=self.k8s_config.autoscaler_scale_up_stabilization,
+                    scale_up_max_pods=self.k8s_config.autoscaler_scale_up_max_pods,
                     triggers=triggers
                 )
             );

@@ -90,14 +90,17 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
         or isinstance(nd, uni.InnerCompr)
         or isinstance(nd, uni.FormattedValue)
     ) { } else {
-        self.emit(E5090, node_override=nd, kind="expression", name=type(nd).__name__);
+        self.emit(E5092, node_override=nd, kind="expression", name=type(nd).__name__);
     }
 
     if _result is not None {
         _result.jac_loc = _jac_loc;
 
         if isinstance(_result.type, ir.PointerType) {
-            import from jaclang.compiler.ownership { Ownership, result_ownership }
+            import from jaclang.compiler.passes.main.rc_facts_pass {
+                Ownership,
+                result_ownership
+            }
             if result_ownership(nd) == Ownership.OWNED {
                 self._mark_owned(_result);
             }
@@ -113,7 +116,7 @@ impl NaIRGenPass._codegen_required(nd: (uni.UniNode | None)) -> (ir.Value | None
     _errs_before = len(self.errors_had);
     val = self._codegen_expr(nd);
     if val is None and len(self.errors_had) == _errs_before {
-        self.emit(E5090, node_override=nd, kind="expression", name=type(nd).__name__);
+        self.emit(E5092, node_override=nd, kind="expression", name=type(nd).__name__);
     }
     return val;
 }
@@ -177,6 +180,7 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
     entry_bb = anon_fn.append_basic_block("entry");
     self._builder = ir.IRBuilder(entry_bb);
     self.local_vars = {};
+    self.nogc_stack_vars = set();
 
     for (i, arg) in enumerate(anon_fn.args) {
         alloca = self._entry_alloca(arg.type, all_param_names[i]);
@@ -269,7 +273,7 @@ impl NaIRGenPass._codegen_pipe_fwd(nd: uni.BinaryExpr) -> (ir.Value | None) {
 impl NaIRGenPass._codegen_walrus(nd: uni.BinaryExpr) -> (ir.Value | None) {
     var_name = self._get_name(nd.left);
     if var_name is None {
-        self.emit(E5090, node_override=nd, kind="binary operator", name="WALRUS_EQ");
+        self.emit(E5092, node_override=nd, kind="binary operator", name="WALRUS_EQ");
         return None;
     }
     value = self._codegen_expr(nd.right);
@@ -362,7 +366,7 @@ impl NaIRGenPass._codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None) {
         (walker_name, walker_val, loc_val) = (right_name, right_val, left_val);
     } else {
         self.emit(
-            E5090,
+            E5092,
             node_override=nd,
             kind="binary operator",
             name="KW_SPAWN",
@@ -375,7 +379,7 @@ impl NaIRGenPass._codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None) {
     _xhelp = self._xmod_osp_help([_loc_name]);
     if _xhelp is not None {
         self.emit(
-            E5090,
+            E5092,
             node_override=nd,
             kind="binary operator",
             name="KW_SPAWN",
@@ -392,7 +396,7 @@ impl NaIRGenPass._codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None) {
         return self._codegen_kernel_spawn(walker_name, walker_val, loc_val);
     }
 
-    self.emit(E5090, node_override=nd, kind="binary operator", name="KW_SPAWN");
+    self.emit(E5092, node_override=nd, kind="binary operator", name="KW_SPAWN");
     return walker_val;
 }
 
@@ -870,7 +874,7 @@ impl NaIRGenPass._codegen_compare_chain(
         _name = _o.name if isinstance(_o, uni.Token) else str(_o);
         if _name not in _plain {
             self.emit(
-                E5090, node_override=nd, kind="chained comparison operator", name=_name
+                E5092, node_override=nd, kind="chained comparison operator", name=_name
             );
             return None;
         }
@@ -916,6 +920,10 @@ impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
     if operand is None {
         return None;
     }
+    import from jaclang.jac0core.constant { is_borrow_kind }
+    if is_borrow_kind(nd.ownership) {
+        return operand;
+    }
     op = nd.op.name if isinstance(nd.op, uni.Token) else str(nd.op);
     if op == Tok.MINUS {
         if isinstance(operand.type, ir.DoubleType) {
@@ -960,7 +968,8 @@ impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
             return self.builder.xor(operand, all_ones, name="bwnot");
         }
     } elif op == Tok.PLUS {
-        if operand.type == self.complex_struct_type.as_pointer() {
+        if isinstance(operand.type, (ir.IntType, ir.DoubleType, ir.FloatType))
+        or operand.type == self.complex_struct_type.as_pointer() {
             return operand;
         }
     }
@@ -1507,7 +1516,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
     }
 
     self.emit(
-        E5090,
+        E5092,
         node_override=nd,
         kind="attribute access" if nd.is_attr else "subscript/index access",
         name=(self._get_name(nd.right) or "<expr>")

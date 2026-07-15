@@ -1117,6 +1117,10 @@ fn mkPayload(
 
     try stageTree(io, gpa, a, pbs_py_dir, site, stage, musl_dir, wasm_libc_dir);
 
+    // Precompile the staged stdlib + site to HASH-based .pyc. Must run AFTER
+    // stageTree (compiles the copied tree that gets tarred) and BEFORE tarGzDir.
+    precompilePyc(io, a, py, stage);
+
     // ninja editor: the assembled nvim tree (runtime/ + ninja/) rides the
     // payload verbatim -- the launcher's `jac ninja` dispatch resolves it at
     // <rt>/nvim without booting Python.
@@ -1330,6 +1334,37 @@ fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site:
     // Vendored wasm32 libc bitcode, so an installed binary links libc into
     // na->wasm modules (in-module libc + jac_host1 import contract, #7048).
     if (wasm_libc_dir) |wd| try stageWasmLibc(io, a, wd, stage);
+}
+
+/// Compile the staged CPython stdlib + jaclang site to HASH-based `.pyc`
+/// (PEP 552 unchecked-hash). This is the cold-start fix.
+///
+/// Timestamp `.pyc` are worthless in our payload: the runtime materializer
+/// (runtime.zig) untars the payload into a fresh cache dir, and `std.tar` has
+/// no mtime field -- so every extracted `.py` gets a "now" timestamp that can
+/// never match a timestamp-`.pyc`'s embedded build-time mtime. The embedded
+/// interpreter runs with write_bytecode=0 (embed.zig), so on that mtime
+/// mismatch it discards the `.pyc` AND cannot cache a fresh one -- it re-parses
+/// the module from source on EVERY `jac` invocation. That is exactly why pbs's
+/// own shipped timestamp `.pyc` do nothing today; the hot stdlib chain (pdb,
+/// asyncio, logging, http.server, ...) is compiled cold every run.
+///
+/// Hash-based unchecked `.pyc` ignore mtime entirely -- the interpreter uses
+/// them as-is regardless of the source timestamp, so they survive materialize.
+/// `-f` overwrites pbs's dead timestamp `.pyc` in place with hash ones. The
+/// build never fails on this: compileall exits non-zero if any single module is
+/// uncompilable (a few stdlib corners are), which just means that module
+/// recompiles at runtime as before -- strictly no worse than today.
+fn precompilePyc(io: Io, a: Allocator, py: []const u8, stage: []const u8) void {
+    log("==> precompiling stdlib + site -> hash-based .pyc (survives materialize)", .{});
+    const stdlib = std.fmt.allocPrint(a, "{s}/python/lib/python{s}", .{ stage, py_ver }) catch return;
+    const site_dir = std.fmt.allocPrint(a, "{s}/site", .{stage}) catch return;
+    _ = runChild(io, &.{
+        py,       "-m",              "compileall",
+        "--invalidation-mode", "unchecked-hash",
+        "-q",     "-f",              "-j",
+        "0",      stdlib,            site_dir,
+    }, null, true);
 }
 
 /// The build host's `<os>-<arch>` key, matching the fetch-pbs osarch dir names

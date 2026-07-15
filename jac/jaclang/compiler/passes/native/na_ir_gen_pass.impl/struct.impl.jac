@@ -17,7 +17,7 @@ impl NaIRGenPass._emit_struct_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
     }
     if fmt is None {
         self.emit(
-            E5090, node_override=nd, kind="struct format", name="non-literal format"
+            E5092, node_override=nd, kind="struct format", name="non-literal format"
         );
         return None;
     }
@@ -82,7 +82,7 @@ impl NaIRGenPass._emit_struct_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
         i = i + 1;
     }
     if not parse_ok {
-        self.emit(E5090, node_override=nd, kind="struct format code", name=fmt);
+        self.emit(E5092, node_override=nd, kind="struct format code", name=fmt);
         return None;
     }
     i64 = ir.IntType(64);
@@ -117,7 +117,7 @@ impl NaIRGenPass._emit_struct_pack(
     );
     if len(params) - 1 != _expected {
         self.emit(
-            E5090,
+            E5092,
             node_override=nd,
             kind="struct.pack argument count",
             name=f"expected {_expected}, got {len(params) - 1}"
@@ -187,7 +187,7 @@ impl NaIRGenPass._emit_struct_unpack(
     data_val = self._codegen_expr(params[1]);
     if data_val is None or not self._is_bytes_value(data_val) {
         self.emit(
-            E5090,
+            E5092,
             node_override=nd,
             kind="struct.unpack buffer",
             name="non-bytes buffer"

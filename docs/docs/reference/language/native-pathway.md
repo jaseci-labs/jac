@@ -786,7 +786,7 @@ These hooks exist only in native code. On the Python backend they have no runtim
 
 A move assignment `b = a` would normally emit a defensive `__rc_retain` on the source so that both slots can be released independently. When the move is the *last* use of `a`, that retain is pure overhead: the reference can simply be handed to `b` and the source slot nulled, so `a`'s later cleanup release loads null and is a no-op and the object is freed exactly once.
 
-The native backend decides where this is safe with `RcElisionProofPass`, a small intraprocedural pass that runs unconditionally in the native codegen path -- *before* `NaIRGenPass` and independent of the [ownership & borrow checker](ownership-borrowing.md), which does not run under `nacompile` (`type_check=False`). The pass reads only the syntactic AST and the CFG; it consults no checker or symbol facts, so the elision is sound whether or not the ownership diagnostics ever ran.
+The elision is proven by the core `RcFactsPass` (`passes/main/rc_facts_pass.jac`), a small intraprocedural pass scheduled unconditionally in the native codegen path -- *before* `NaIRGenPass`. It runs a backward-liveness proof on the compiler's shared dataflow framework and stamps `Assignment.na_move_lowerable`, which the backend's reference-count lowering consumes. The proof reads the AST and the core CFG and serves annotated and unannotated code alike; because it always runs on the native path, the elision is identical whether or not ownership diagnostics were displayed.
 
 It is deliberately conservative -- it proves only the safe case and retains everywhere else. An assignment `b = a` is elided only when:
 

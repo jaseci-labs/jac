@@ -1,8 +1,8 @@
 # Ownership & Borrowing
 
-Jac has an opt-in ownership and borrow-checking surface: `own` marks a local or parameter as the unique owner of a value, `&`/`&mut` take a shared or mutable borrow of an owned value, and `OwnershipCheckPass` statically verifies that owned values aren't used after they move and that borrows never outlive or conflict with their owner. Unannotated bindings are completely unaffected -- the checker only tracks names it sees tagged `own`, `val`, `linear`, or `borrow` (`&`/`&mut`), plus allocations inside a `region` block.
+Jac has an opt-in ownership and borrow-checking surface: `own` marks a local or parameter as the unique owner of a value, `&`/`&mut` take a shared or mutable borrow of an owned value, and `OwnershipCheckPass` statically verifies that owned values aren't used after they move and that borrows never outlive or conflict with their owner. Unannotated bindings are completely unaffected -- the checker only tracks names it sees tagged `own`, `val`, or `borrow` (`&`/`&mut`), plus allocations inside a `region` block. (A `linear` must-use marker is planned but not yet implemented -- see below.)
 
-This is strictly diagnostics-only: running the checker can change diagnostics, never generated code. It writes no fact that any backend reads. The native (`nacompile`/JIT) backend still elides reference-count traffic for move assignments, but it proves that itself with a separate, unconditional [`RcElisionProofPass`](native-pathway.md#reference-count-elision) that never consults the checker -- so the elision is identical whether or not the ownership diagnostics ran (`nacompile` compiles with `type_check=False` and skips them entirely).
+The checker is one of the compiler's required analyses on the native pathway: it always runs there, its error-severity findings (E13xx) block native codegen, and a clean check is what makes the annotations trustworthy facts for lowering. Whether diagnostics are *displayed* is a compile-request property that never changes generated code -- builds with and without display are bit-identical. Reference-count move elision is proven by the core `RcFactsPass` (a backward-liveness proof on the compiler's shared dataflow framework, stamped as `Assignment.na_move_lowerable`), which serves annotated and unannotated code alike. See the [Ownership Fact Schema](ownership-checker-spec.md) for the full facts contract.
 
 ## Declaring an owner
 
@@ -36,7 +36,7 @@ with entry {
 }
 ```
 
-(If you *do* want dropping to be an error, use the [`linear` marker](#val-and-linear-markers) -- a `linear` binding must be consumed exactly once, and leaking it is [`E1305`](../diagnostics.md#ownership-borrow-errors).)
+(A planned [`linear` marker](#val-and-linear-markers) will make dropping an error -- a `linear` binding must be consumed exactly once, and leaking it will be `E1305`. `linear` is not yet implemented.)
 
 `own` also works on parameters (`def take(x: own Buffer) -> None`), and passing an owned local to a plain (non-`own`) parameter counts as a move.
 
@@ -143,7 +143,14 @@ with entry {
 }
 ```
 
-`linear` declares a **must-use** resource: it is move-checked exactly like `own`, but where `own` is affine (dropping is fine), a `linear` binding must be consumed -- moved to its final owner, passed on, or sealed into managed storage -- exactly once before its scope ends. Never consuming it is [`E1305`](../diagnostics.md#ownership-borrow-errors); consuming it twice is the usual use-after-move `E1301`:
+!!! warning "`linear` is planned, not implemented"
+    The `linear` marker described below **does not parse yet** -- there is no
+    `linear` keyword, no checker support, and `E1305` is a reserved code that
+    is not registered. It is tracked as a follow-up to the ownership-endgame
+    plan ([#7453](https://github.com/jaseci-labs/jac/issues/7453)); this
+    section documents the intended design.
+
+`linear` will declare a **must-use** resource: move-checked exactly like `own`, but where `own` is affine (dropping is fine), a `linear` binding must be consumed -- moved to its final owner, passed on, or sealed into managed storage -- exactly once before its scope ends. Never consuming it will be `E1305` (reserved); consuming it twice is the usual use-after-move `E1301`:
 
 <!-- jac-skip -->
 ```jac
@@ -176,7 +183,7 @@ To get a value out of a region, move it out with `own` before the block ends.
 
 ## Sendability across concurrency boundaries
 
-Only payloads that are statically race-free may cross a `flow`/`wait`/`thread_run` boundary: a deep-immutable `val` value, or an `own`/`linear` value that is *moved* into the boundary. Sending a live `&`/`&mut` borrow, or a `linear` binding without moving it, is [`E1308`](../diagnostics.md#ownership-borrow-errors):
+Only payloads that are statically race-free may cross a `flow`/`wait`/`thread_run` boundary: a deep-immutable `val` value, or an `own` value that is *moved* into the boundary (a planned `linear` value will cross the same way). Sending a live `&`/`&mut` borrow is [`E1308`](../diagnostics.md#ownership-borrow-errors):
 
 ```jac
 obj Buffer { has n: int = 0; }
@@ -190,12 +197,48 @@ with entry {
 }
 ```
 
+## The `drop` hook
+
+An archetype may declare a reserved ability named `drop` (undunderscored, like `postinit`). On the native backend it runs exactly once, when the object is destroyed, and before the object's own fields are torn down:
+
+```jac
+obj Res {
+    has tag: int = 0;
+
+    def drop {
+        print(self.tag);   # runs when this Res is destroyed
+    }
+}
+```
+
+`drop` fires under every native gc mode, at the same program point for a uniquely-owned value:
+
+- **Enforced headerless modules** (`--enforce-nogc --gc none`): the compiler calls the hook from the statically inserted `__drop_<T>` at each drop point.
+- **Managed modes** (`rc` and the default `cycles`): the hook is invoked by the object's reference-count destructor when the last reference dies. For an unaliased local that is the same point the headerless build drops at, so program output is identical across modes.
+
+**Timing is last use, not scope end.** Drops are scheduled by liveness (NLL-style eager drop): a binding's value is destroyed after the statement containing its last use, which can be earlier than the end of the enclosing block. This is observable through `drop`:
+
+```jac
+def run {
+    r: own Res = Res(tag=7);
+    print("alive");
+}
+# prints 7, then "alive" -- r's last use is its declaration
+```
+
+Two caveats:
+
+- Under `cycles`, objects that die as members of a reference cycle are destroyed by the collector; each member's `drop` still runs, but the order within the cycle is unspecified and sibling objects may already be gone -- don't traverse other heap objects from a cyclic `drop`.
+- There is no resurrection: `drop` must not store `self` anywhere; the object is freed as soon as the hook returns.
+
+The Python backend does not invoke `def drop` automatically yet -- rely on it only in native modules.
+
 ## What `&x` compiles to
 
-On every backend the ownership annotations are compile-time-only. On the Python backend, `&x` and `&mut x` are **erased**: the expression compiles to exactly `x`, the same object reference an unannotated binding would produce. There is no runtime borrow object, no copy, and no indirection -- the annotation exists solely for `OwnershipCheckPass` to check. (Before the borrow-checker work, a prefix `&x` lowered to the archetype-lookup call `jobj(id=x)`; that legacy meaning is gone -- call `jobj(id=...)` explicitly if you want an id lookup.) The native backend likewise erases borrows; its reference-count optimizations are proven independently by [`RcElisionProofPass`](native-pathway.md#reference-count-elision) and never read the checker's output.
+On every backend the ownership annotations are compile-time-only. On the Python backend, `&x` and `&mut x` are **erased**: the expression compiles to exactly `x`, the same object reference an unannotated binding would produce. There is no runtime borrow object, no copy, and no indirection -- the annotation exists solely for `OwnershipCheckPass` to check. (Before the borrow-checker work, a prefix `&x` lowered to the archetype-lookup call `jobj(id=x)`; that legacy meaning is gone -- call `jobj(id=...)` explicitly if you want an id lookup.) The native backend likewise erases borrows; its reference-count optimizations consume the core-stamped move-elision and param-rebinding facts (`RcFactsPass`), computed once on the shared dataflow framework.
 
 ## See also
 
-- [Ownership Checker Specification](ownership-checker-spec.md) -- the authoritative statement of what each `E13xx` code guarantees, the checker's symbol-level granularity, and the diagnostics-only contract.
-- [Errors and Warnings](../diagnostics.md#ownership-borrow-errors) -- the full `E1301`-`E1309` code table.
+- [Ownership Checker Specification](ownership-checker-spec.md) -- the authoritative statement of what each `E13xx` code guarantees, the checker's symbol-level granularity, and the facts contract backends consume.
+- [Errors and Warnings](../diagnostics.md#ownership-borrow-errors) -- the full `E1301`-`E1309` code table (`E1305` is reserved for the planned `linear` marker and not yet registered).
 - [Native Compilation Reference](native-pathway.md#reference-count-elision) -- how the native backend proves reference-count elision independently of this checker.
