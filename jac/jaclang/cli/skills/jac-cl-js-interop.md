@@ -23,7 +23,7 @@ promise = new(Promise, lambda (resolve: any, reject: any) {
 });
 ```
 
-**Never use `new()` for your own `obj`/`node`/`edge` types.** `new(Widget, id="1", name="x")` lowers to `Reflect.construct(Widget, ["1", "x"])` - positional args - but every Jac-generated archetype constructor takes a single `props` object (`constructor(props = {})`). The result: every field silently `null`/`undefined`, no error thrown. `new()` is for real JS/browser constructors only. To construct your own types, call them directly: `Widget(id="1", name="x")`.
+**Never use `new()` for your own `obj`/`node`/`edge` types.** `new(Widget, id="1", name="x")` lowers to `Reflect.construct(Widget, ["1", "x"])` - positional args - but every Jac-generated archetype constructor takes a single `props` object (`constructor(props = {})`). The result: every field silently `null`/`undefined`, no error thrown. `new()` is for real JS/browser constructors only. To construct a locally-defined (client-side) type, call it directly: `Widget(id="1", name="x")`. For `sv import`ed types, do not construct them at all - see `jac-fullstack-patterns`.
 
 ## `.call(None, ...)` - invoking stored callbacks
 
