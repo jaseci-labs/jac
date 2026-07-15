@@ -109,8 +109,19 @@ dropped = 4
 # 198 -> 266: the many still-unbridgeable `&mut self` methods (unsupported param or
 # return types) are now each individually considered and recorded as visible skips
 # rather than hidden behind one receiver-shape skip — more honest, not a regression.
+#
+# The 1.2.4 CROSS-TYPE / OPTIONAL handle lane then lifted chrono 61 -> 105 (past the
+# Phase 1 exit target of 85). A method returning a fresh owned instance of another
+# bridged type (`NaiveDateTime::date -> NaiveDate`, `NaiveDate::and_hms_opt ->
+# Option<NaiveDateTime>`) or `Option<Self>` (`with_year`, `with_month`, `succ_opt`,
+# `pred_opt`, ...) now bridges: the wrapper wraps the call in the target newtype and
+# the macro tags it TAG_REF|idx (already general). Unlocks the whole date <-> time
+# <-> datetime navigation surface. Mono types (Date<Tz>/DateTime<Tz>) are excluded
+# from the ref target set (their return path reads as the generic origin), and a
+# bridged-type PARAM by value (`and_time(NaiveTime)`) is a separate handle-arg lane,
+# so those stay skips. `total` unchanged (266).
 [chrono]
-bridged = 61
+bridged = 105
 total = 266
 dropped = 4
 

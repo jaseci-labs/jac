@@ -511,6 +511,19 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
             );
             (" -> Result<Self, String>".into(), call)
         }
+        // 1.2.4: a fresh owned instance of ANOTHER bridged type. Wrap the call in
+        // that type's newtype (`NaiveDateTime(self.0.and_hms(…))`); the macro tags
+        // the return `TAG_REF|idx` and the loader instantiates that type's wrapper.
+        BridgeReturn::Ref(name) => (
+            format!(" -> {name}"),
+            format!("{name}({})", base_call(&recv_expr)),
+        ),
+        // 1.2.4: `Option<BridgedType>` / `Option<Self>` — map the present case into
+        // the target newtype; `None` crosses in-band as a null handle.
+        BridgeReturn::OptRef(name) => (
+            format!(" -> Option<{name}>"),
+            format!("{}.map({name})", base_call(&recv_expr)),
+        ),
         BridgeReturn::OptWrapper(wrapper) => match f.recv {
             // Root producer (on a plain owner): delegate to the wrapper's `wrap`
             // ctor, which owns the input and erases the borrow.

@@ -4,7 +4,7 @@
 //! the v1 rule set can emit, plus a [`Skip`] list for items that need a later
 //! rule (lifetime erasure, cursors, closures) or an overlay.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use rustdoc_types::{Crate, Id, Item, ItemEnum, StructKind, Type};
 
@@ -77,9 +77,20 @@ pub fn classify_with_overlay(doc: &Crate, overlay: Option<&Overlay>) -> BridgeSp
         dropped: vec![],
         pending_wrappers: vec![],
         inherited_excluded: 0,
+        ref_type_names: HashSet::new(),
     };
 
     let mut types = ctx.find_types();
+    // 1.2.4: the set of non-mono opaque type names, so a method return naming
+    // another bridged type (`NaiveDate::and_hms -> NaiveDateTime`) classifies as a
+    // cross-type owned handle. Built before method classification (types are all
+    // known after `find_types`); mono types are excluded (their return path reads as
+    // the generic origin and needs the instantiation check `returns_self` does).
+    ctx.ref_type_names = types
+        .iter()
+        .filter(|t| t.mono.is_none() && t.kind == TypeKind::Opaque)
+        .map(|t| t.name.clone())
+        .collect();
     for bt in &mut types {
         ctx.classify_impl(bt);
     }
@@ -188,6 +199,14 @@ struct Ctx<'a> {
     /// Unresolvable trait-provided defaults excluded from the denominator (D1).
     /// See [`BridgeSpec::inherited_excluded`].
     inherited_excluded: usize,
+    /// Names of the NON-monomorphized opaque types that will be emitted (built from
+    /// `find_types()` before method classification). A return whose path names one
+    /// of these (and isn't the method's own `Self`) is a cross-type owned handle
+    /// (1.2.4, `BridgeReturn::Ref`/`OptRef`). Mono types are excluded: their return
+    /// path reads as the generic origin name (`Date`) and would need the same
+    /// instantiation check `returns_self` does, deferred with the rest of the mono
+    /// surface.
+    ref_type_names: HashSet<String>,
 }
 
 impl<'a> Ctx<'a> {
@@ -984,6 +1003,37 @@ impl<'a> Ctx<'a> {
         }
     }
 
+    /// 1.2.4: the target wrapper name for an `Option<…>` return whose inner is an
+    /// owned bridged handle. `Option<Self>` (Datelike `with_year`) → the own type;
+    /// `Option<BridgedType>` (`with_month -> Option<NaiveDate>`) → that type. `None`
+    /// for `Option<scalar>` / `Option<Borrowed<'_>>` / anything else, leaving it to
+    /// the wrapper-rescue path or a skip. A lifetime-bearing inner is rejected.
+    fn option_ref_target(
+        &self,
+        rp: &rustdoc_types::Path,
+        bt: &BridgeType,
+        self_aliases: &[&str],
+    ) -> Option<String> {
+        match vec_first_type_arg(rp)? {
+            Type::Generic(g) if g == "Self" || self_aliases.contains(&g.as_str()) => {
+                Some(bt.name.clone())
+            }
+            Type::ResolvedPath(inner) => {
+                if returns_self(bt, inner, self_aliases) {
+                    return Some(bt.name.clone());
+                }
+                if self.ref_type_names.contains(&inner.path)
+                    && !has_lifetime_args(inner)
+                    && !inner_has_lifetime(inner, self.doc)
+                {
+                    return Some(inner.path.clone());
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
     fn classify_return(
         &self,
         output: &Option<Type>,
@@ -1034,6 +1084,24 @@ impl<'a> Ctx<'a> {
                 // (`Date`), not the mono name (`DateUtc`) — match on origin.
                 if returns_self(bt, rp, self_aliases) {
                     return Ok(BridgeReturn::OwnSelf);
+                }
+                // 1.2.4: `Option<Self>` / `Option<BridgedType>` — a nullable owned
+                // handle (`with_year -> Option<Self>`, `with_month ->
+                // Option<NaiveDate>`). Checked before the wrapper-rescue path so a
+                // real bridged inner isn't mistaken for a borrowed view.
+                if rp_name(&rp.path) == "Option" {
+                    if let Some(target) = self.option_ref_target(rp, bt, self_aliases) {
+                        return Ok(BridgeReturn::OptRef(target));
+                    }
+                }
+                // 1.2.4: a bare cross-type return naming another bridged (non-mono)
+                // type is a fresh owned handle (`and_hms -> NaiveDateTime`). `Self`
+                // was already caught above, so this only fires for a DIFFERENT type.
+                if self.ref_type_names.contains(&rp.path) {
+                    if has_lifetime_args(rp) || inner_has_lifetime(rp, self.doc) {
+                        return Err(SkipReason::LifetimeBorrow);
+                    }
+                    return Ok(BridgeReturn::Ref(rp.path.clone()));
                 }
                 if rp.path == "Result" {
                     return self.classify_result_return(rp, bt, self_aliases);

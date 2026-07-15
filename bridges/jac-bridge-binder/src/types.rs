@@ -355,6 +355,20 @@ pub enum BridgeReturn {
     /// `-> Vec<u8>` and appends `.to_vec()`, which turns a `GenericArray`/slice
     /// into an owned `Vec<u8>` and is a no-op-shaped clone on a `Vec<u8>` source.
     Bytes,
+    /// A CROSS-TYPE owned handle return (1.2.4): the method returns a fresh owned
+    /// instance of ANOTHER bridged type (`NaiveDate::and_hms -> NaiveDateTime`). The
+    /// string is that type's wrapper name; codegen emits `-> {Name}` and wraps the
+    /// call in the newtype (`NaiveDateTime(self.0.and_hms(…))`). The macro tags it
+    /// `TAG_REF|idx` (idx = the target type's position in the spec, resolved at
+    /// macro-expansion time) exactly like `OwnSelf`, only for a non-`Self` index.
+    Ref(String),
+    /// `Option<BridgedType>` (1.2.4), including `Option<Self>`: a nullable owned
+    /// handle (`NaiveDate::with_year -> Option<Self>`, `with_month ->
+    /// Option<NaiveDate>`). Codegen emits `-> Option<{Name}>` and `.map({Name})`;
+    /// the macro carries `TAG_OPT_BIT | (TAG_REF|idx)`, signalling None in-band with
+    /// a null handle. The string is the target wrapper name (the own type for
+    /// `Option<Self>`).
+    OptRef(String),
 }
 
 /// Scalar parameter types the v1 ABI can actually carry at the boundary.

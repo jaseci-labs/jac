@@ -886,12 +886,33 @@ these first; the adversarial suite already contains skip-gated tests waiting on 
       conformance test (CI matrix) closes the acceptance, na half deferred.
 - [ ] 1.2.3 `-> String` return arm in `classify_return` (JacBuf machinery
       exists; no new tag).
-- [ ] 1.2.4 Ref-lane generalization in the binder: emit `TAG_REF|idx` for
+- [~] 1.2.4 Ref-lane generalization in the binder: emit `TAG_REF|idx` for
       cross-type returns and `TAG_OPT_BIT|REF` for `Option<BridgedType>` /
       `ParseResult<BridgedType>`; loaders already decode these shapes for Self --
       extend `_synth`/`_ctypes_codegen` decode to any type index (mostly lifting
       an artificial Self-only restriction). Conformance: chrono
       `NaiveDate::and_time -> NaiveDateTime` and `with_year -> Option<NaiveDate>`.
+      STATUS: BINDER done. New `BridgeReturn::Ref(name)` (a fresh owned instance of
+      another bridged type, `NaiveDateTime::date -> NaiveDate`) and `OptRef(name)`
+      (`Option<Self>` / `Option<BridgedType>`, `with_year`/`with_month`/`succ_opt`).
+      classify keeps a `ref_type_names` set (non-mono opaque types, built from
+      `find_types` before method classification); codegen wraps the call in the
+      target newtype (`NaiveDateTime(self.0.date())`, `....map(NaiveDate)`). LOADERS
+      NEEDED NO CHANGE: both already pick the wrapper class by `tag_ref_index` and
+      handle `Option`-of-ref None in-band; the residual Self-scoping is only the
+      retain accounting for self-identity/shared aliasing returns, and a cross-type
+      return here is fresh-owned (single drop via the ctor/`_adopt` path). MACRO was
+      already general (`ret_tag` maps any bridged name to `Ref(idx)`). chrono floor
+      61 -> 105 (past the 85 exit target); the ref-lane pattern compiles clean
+      against real chrono under `-D warnings` (standalone check). NOTE: the plan's
+      `and_time` example takes a bridged-type PARAM by value, a separate handle-arg
+      lane, so it stays a skip; `and_hms`/`date`/`time` give the identical cross-type
+      return shape without it. OPEN: (a) mono cross-type returns (`Date<Tz>`) need
+      the instantiation check `returns_self` does, deferred; (b) `Result<Bridged, E>`
+      returns not yet wired (only `Option`); (c) chrono has no whole-crate compile
+      roundtrip -- an unrelated multi-`#[jac_error]` limitation rejects the module,
+      and it newly bridges some deprecated methods (`and_hms`) that trip `-D warnings`
+      (the binder does not filter `#[deprecated]` items -- separate hygiene item).
 - [ ] 1.2.5 Tuple-struct candidates in `classify_type` (single-field, bridgeable
       inner or opaque): unlocks uuid. Conformance: `Uuid::parse_str` +
       `is_nil` round-trip.
