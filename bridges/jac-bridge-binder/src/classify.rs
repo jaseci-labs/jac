@@ -940,9 +940,6 @@ impl<'a> Ctx<'a> {
     /// structurally, recursing into type args and doing a real local-impl lookup
     /// only at a leaf that names a crate type. `dir` is the trait a leaf must
     /// implement — `Serialize` for a return value, `Deserialize` for a param.
-    // Wired into param/return classification by lane resolution (2.8); until then
-    // only the 2.3 unit tests exercise it.
-    #[allow(dead_code)]
     fn is_wide_serializable(&self, ty: &Type, dir: SerdeTrait) -> bool {
         match ty {
             // msgpack scalars: bool, all fixed-width ints/floats, char, str. `u128`/
@@ -1023,6 +1020,141 @@ impl<'a> Ctx<'a> {
             Type::ResolvedPath(k) if rp_name(&k.path) == "String"
         );
         key_is_string && self.is_wide_serializable(args[1], dir)
+    }
+
+    // ── serde wide lane resolution (2.8) ──────────────────────────────────────
+
+    /// The per-type overlay `[type."T"] wide = true|false` override (2.3) for the
+    /// named leaf of `ty`, if any. `Some(true)` forces the wide lane (even over an
+    /// opaque-handle classification), `Some(false)` forbids it, `None` = follow
+    /// structural detection. Only a LEAF type (a bare named type, transparently
+    /// through a borrow) maps to a single overlay type key; a container has no
+    /// single `[type]` entry and returns `None`.
+    fn wide_override_for(&self, ty: &Type) -> Option<bool> {
+        let rp = match ty {
+            Type::ResolvedPath(rp) => rp,
+            Type::BorrowedRef { type_, .. } => return self.wide_override_for(type_),
+            _ => return None,
+        };
+        self.overlay?.types.get(rp_name(&rp.path)).and_then(|t| t.wide)
+    }
+
+    /// Lane resolution for a value of type `ty` crossing in direction `dir`,
+    /// consulted only AFTER every scalar/handle lane has been ruled out (so the
+    /// handle-wins canonical rule holds by construction — an opaque-bridged type
+    /// has already classified as a handle before control reaches here). Returns the
+    /// inner Rust type spelling for the `Wide<…>` marker when the value should
+    /// cross the wide (msgpack) lane, else `None` (leaving the caller's original
+    /// skip in place). A `[type."T"] wide = false` overlay forbids the lane even
+    /// when detection admits it; `wide = true` is handled earlier by the caller (it
+    /// must override the handle lane, so it can't wait for this fallback).
+    fn wide_fallback(&self, ty: &Type, dir: SerdeTrait) -> Option<String> {
+        if self.wide_override_for(ty) == Some(false) {
+            return None;
+        }
+        // The structural whitelist ([`Self::is_wide_serializable`]) admits pure-std
+        // shapes (`Vec<f64>`, `(usize, usize)`) that are serializable in principle
+        // but carry no serde INTENT — auto-crossing every such signature wide would
+        // grab items that are honest skips today and destabilize the coverage
+        // baselines. So the DETECTION fallback additionally requires a genuine
+        // serde-attested named leaf; a shape with only std/primitive leaves stays a
+        // skip. (`[type."T"] wide = true` bypasses this — it is handled earlier.)
+        if self.is_wide_serializable(ty, dir) && self.wide_has_serde_leaf(ty, dir) {
+            self.render_wide_ty(ty)
+        } else {
+            None
+        }
+    }
+
+    /// True when `ty` contains at least one NAMED leaf that actually implements the
+    /// wanted serde trait (a `#[derive(Serialize)]`/manual-impl crate type) — the
+    /// serde-intent gate on the detection-driven wide lane. Std container/leaf names
+    /// (`String`, `Vec`, `Duration`, …) are transparent shells, not intent; only a
+    /// real user type at a leaf counts.
+    fn wide_has_serde_leaf(&self, ty: &Type, dir: SerdeTrait) -> bool {
+        match ty {
+            Type::BorrowedRef { type_, .. } => self.wide_has_serde_leaf(type_, dir),
+            Type::Tuple(elems) => elems.iter().any(|e| self.wide_has_serde_leaf(e, dir)),
+            Type::Slice(inner) => self.wide_has_serde_leaf(inner, dir),
+            Type::Array { type_, .. } => self.wide_has_serde_leaf(type_, dir),
+            Type::ResolvedPath(rp) => match rp_name(&rp.path) {
+                "String" | "Duration" => false,
+                "Vec" | "Option" | "Range" | "RangeInclusive" | "HashMap" | "BTreeMap" => {
+                    angle_type_args(rp)
+                        .iter()
+                        .any(|t| self.wide_has_serde_leaf(t, dir))
+                }
+                _ => {
+                    let info = self.serde_disposition(rp.id.0);
+                    match dir {
+                        SerdeTrait::Serialize => info.serialize,
+                        SerdeTrait::Deserialize => info.deserialize,
+                    }
+                }
+            },
+            _ => false,
+        }
+    }
+
+    /// Render `ty` as the Rust source the wrapper re-declares inside `Wide<…>`,
+    /// mirroring [`Self::is_wide_serializable`]'s whitelist. Non-prelude std types
+    /// are spelled fully-qualified (`std::collections::HashMap`, `std::time::
+    /// Duration`, `std::ops::Range`) so no extra `use` is needed; a local leaf is
+    /// spelled through its accessible crate path (the same path the newtype wraps).
+    /// `None` for a shape outside the whitelist — the caller then keeps its skip.
+    fn render_wide_ty(&self, ty: &Type) -> Option<String> {
+        match ty {
+            Type::Primitive(p) => Some(p.clone()),
+            Type::BorrowedRef { type_, .. } => self.render_wide_ty(type_),
+            Type::Slice(inner) => Some(format!("Vec<{}>", self.render_wide_ty(inner)?)),
+            Type::Array { type_, len, .. } => {
+                Some(format!("[{}; {}]", self.render_wide_ty(type_)?, len))
+            }
+            Type::Tuple(elems) => {
+                let parts: Option<Vec<String>> =
+                    elems.iter().map(|e| self.render_wide_ty(e)).collect();
+                Some(format!("({})", parts?.join(", ")))
+            }
+            Type::ResolvedPath(rp) => self.render_wide_path(rp),
+            _ => None,
+        }
+    }
+
+    /// The `ResolvedPath` arm of [`Self::render_wide_ty`].
+    fn render_wide_path(&self, rp: &rustdoc_types::Path) -> Option<String> {
+        let render_args = |sep: &str| -> Option<String> {
+            let parts: Option<Vec<String>> = angle_type_args(rp)
+                .iter()
+                .map(|t| self.render_wide_ty(t))
+                .collect();
+            Some(parts?.join(sep))
+        };
+        match rp_name(&rp.path) {
+            "String" => Some("String".into()),
+            "Vec" => Some(format!("Vec<{}>", render_args(", ")?)),
+            "Option" => Some(format!("Option<{}>", render_args(", ")?)),
+            "Range" => Some(format!("std::ops::Range<{}>", render_args(", ")?)),
+            "RangeInclusive" => Some(format!("std::ops::RangeInclusive<{}>", render_args(", ")?)),
+            "HashMap" => Some(format!("std::collections::HashMap<{}>", render_args(", ")?)),
+            "BTreeMap" => Some(format!("std::collections::BTreeMap<{}>", render_args(", ")?)),
+            "Duration" => Some("std::time::Duration".into()),
+            // A local leaf naming a crate type: spell it through the accessible
+            // crate path (`crate::Point`), the same path the newtype would wrap.
+            _ => self.wide_leaf_path(rp),
+        }
+    }
+
+    /// Accessible crate path for a local leaf named by `rp` (`chrono::NaiveDate`),
+    /// reusing the same submodule/re-export resolution the newtype wrapping uses.
+    /// `None` for an unindexed (external) leaf — its path can't be spelled and its
+    /// serde support was never proven, so it isn't a wide value.
+    fn wide_leaf_path(&self, rp: &rustdoc_types::Path) -> Option<String> {
+        let summary = self.doc.paths.get(&rp.id)?;
+        let segs = &summary.path;
+        let (name, module_path) = segs.split_last()?;
+        // Strip the crate-root segment; the middle segments are the type's module.
+        let module_path = module_path.split_first().map(|(_, m)| m).unwrap_or(&[]);
+        Some(self.accessible_type_path(rp.id.0, module_path, name))
     }
 
     // ── Phase 2: classify impl methods ────────────────────────────────────────
@@ -1522,6 +1654,16 @@ impl<'a> Ctx<'a> {
         ty: &Type,
         self_aliases: &[&str],
     ) -> Result<ScalarType, SkipReason> {
+        // 2.8: a `[type."T"] wide = true` overlay forces the wide lane even for a
+        // type that WOULD classify as an opaque handle — checked before the scalar
+        // arms so the override actually wins. Detection-driven wide is the fallback
+        // (after every scalar lane misses), keeping the handle-wins default. A param
+        // is DESERIALIZED on the Rust side.
+        if self.wide_override_for(ty) == Some(true) {
+            if let Some(inner) = self.render_wide_ty(ty) {
+                return Ok(ScalarType::Wide(inner));
+            }
+        }
         match ty {
             Type::Primitive(p) => match p.as_str() {
                 "bool" => Ok(ScalarType::Bool),
@@ -1559,7 +1701,13 @@ impl<'a> Ctx<'a> {
             // it as `&[u8]`. Any other `impl Trait` stays a Closure skip.
             Type::ImplTrait(bounds) if impl_is_asref_u8(bounds) => Ok(ScalarType::Bytes),
             Type::ImplTrait(_) => Err(SkipReason::Closure),
-            _ => Err(SkipReason::UnsupportedType(format!("{ty:?}"))),
+            // 2.8: no scalar/handle lane fits. A by-value `Deserialize` type (a
+            // local serde struct, or a whitelisted std shape like `Vec<f64>`)
+            // crosses the wide (msgpack) lane; anything else stays the skip below.
+            _ => match self.wide_fallback(ty, SerdeTrait::Deserialize) {
+                Some(inner) => Ok(ScalarType::Wide(inner)),
+                None => Err(SkipReason::UnsupportedType(format!("{ty:?}"))),
+            },
         }
     }
 
@@ -1603,6 +1751,15 @@ impl<'a> Ctx<'a> {
         let Some(ty) = output else {
             return Ok(BridgeReturn::Void);
         };
+
+        // 2.8: a `[type."T"] wide = true` overlay forces the wide lane over an
+        // opaque-handle return (checked before the handle arms so it wins). A
+        // return value is SERIALIZED on the Rust side.
+        if self.wide_override_for(ty) == Some(true) {
+            if let Some(inner) = self.render_wide_ty(ty) {
+                return Ok(BridgeReturn::Wide(inner));
+            }
+        }
 
         match ty {
             Type::Primitive(p) => match p.as_str() {
@@ -1677,6 +1834,11 @@ impl<'a> Ctx<'a> {
                 if has_lifetime_args(rp) || inner_has_lifetime(rp, self.doc) {
                     return Err(SkipReason::LifetimeBorrow);
                 }
+                // 2.8: no scalar/handle lane fit — a by-value `Serialize` type
+                // (a local serde struct rustdoc missed no lane for) crosses wide.
+                if let Some(inner) = self.wide_fallback(ty, SerdeTrait::Serialize) {
+                    return Ok(BridgeReturn::Wide(inner));
+                }
                 Err(SkipReason::UnsupportedType(rp.path.clone()))
             }
             Type::BorrowedRef {
@@ -1692,7 +1854,12 @@ impl<'a> Ctx<'a> {
             Type::Generic(g) if self_aliases.contains(&g.as_str()) => Ok(BridgeReturn::OwnSelf),
             Type::Generic(_) => Err(SkipReason::Generic),
             Type::ImplTrait(_) => Err(SkipReason::Cursor),
-            _ => Err(SkipReason::UnsupportedType(format!("{ty:?}"))),
+            // 2.8: a by-value tuple/array/slice return of wide values (`(f64, f64)`)
+            // crosses the wide lane; everything else stays an honest skip.
+            _ => match self.wide_fallback(ty, SerdeTrait::Serialize) {
+                Some(inner) => Ok(BridgeReturn::Wide(inner)),
+                None => Err(SkipReason::UnsupportedType(format!("{ty:?}"))),
+            },
         }
     }
 
@@ -2910,5 +3077,172 @@ mod serde_lane_tests {
             args: None,
         });
         assert!(!cx.is_wide_serializable(&days, SerdeTrait::Serialize));
+    }
+
+    // ── 2.8 lane resolution ───────────────────────────────────────────────────
+
+    /// A `ResolvedPath` leaf carrying the REAL index id of a fixture struct/enum,
+    /// so a leaf serde lookup and crate-path rendering both resolve.
+    fn leaf(doc: &Crate, name: &str) -> Type {
+        Type::ResolvedPath(rustdoc_types::Path {
+            path: name.into(),
+            id: Id(find_id(doc, name)),
+            args: None,
+        })
+    }
+
+    /// A throwaway owner type for `classify_return` — its own name never collides
+    /// with the value types under test, so `-> Self` / cross-ref arms don't fire.
+    fn owner_bt() -> BridgeType {
+        BridgeType {
+            name: "Owner".into(),
+            kind: TypeKind::Opaque,
+            inner_path: "chrono::Owner".into(),
+            module_path: vec![],
+            item_id: 0,
+            ctor: None,
+            methods: vec![],
+            injected_source: vec![],
+            wrapper: None,
+            mono: None,
+            serde: SerdeInfo::default(),
+            force_wide: None,
+        }
+    }
+
+    #[test]
+    fn wide_param_lane_beside_scalar_stays_tag() {
+        // The 2.8 acceptance: lane selection is PER-VALUE. A wide serde param and a
+        // scalar param, classified independently, each keep their own lane.
+        let doc = load_doc();
+        let cx = ctx(&doc);
+        // A local serde struct by value fits no scalar lane → the wide lane.
+        match cx.classify_param_type(&leaf(&doc, "NaiveDate"), &[]) {
+            Ok(ScalarType::Wide(inner)) => assert!(
+                inner.ends_with("NaiveDate"),
+                "wide inner path = {inner}"
+            ),
+            other => panic!("expected Wide, got {other:?}"),
+        }
+        // The scalar wedged beside it is untouched — still a plain int tag.
+        assert_eq!(
+            cx.classify_param_type(&prim("i64"), &[]).unwrap(),
+            ScalarType::Int("i64".into())
+        );
+        // A container carrying a serde leaf is wide, spelled with a fully-qualified
+        // std path (no extra `use` needed) around the leaf's crate path.
+        match cx.classify_param_type(
+            &path("HashMap", vec![path("String", vec![]), leaf(&doc, "NaiveDate")]),
+            &[],
+        ) {
+            Ok(ScalarType::Wide(inner)) => {
+                assert!(inner.starts_with("std::collections::HashMap<String, "));
+                assert!(inner.contains("NaiveDate"), "inner = {inner}");
+            }
+            other => panic!("expected Wide, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn wide_return_lane_and_render() {
+        let doc = load_doc();
+        let cx = ctx(&doc);
+        let bt = owner_bt();
+        // A local serde struct returned by value → wide, inner = its crate path.
+        match cx.classify_return(&Some(leaf(&doc, "NaiveDate")), &bt, &[]) {
+            Ok(BridgeReturn::Wide(inner)) => assert!(
+                inner.ends_with("NaiveDate"),
+                "wide inner path = {inner}"
+            ),
+            other => panic!("expected Wide, got {other:?}"),
+        }
+        // `Option<serde-leaf>` recurses and crosses wide (the handle-return arms
+        // rule it out first — Option<NaiveDate> is neither Self nor a ref type).
+        match cx.classify_return(&Some(path("Option", vec![leaf(&doc, "NaiveDate")])), &bt, &[]) {
+            Ok(BridgeReturn::Wide(inner)) => {
+                assert!(inner.starts_with("Option<") && inner.contains("NaiveDate"));
+            }
+            other => panic!("expected Wide, got {other:?}"),
+        }
+        // A non-serde local type stays an honest skip, never wide.
+        assert!(matches!(
+            cx.classify_return(&Some(leaf(&doc, "Days")), &bt, &[]),
+            Err(SkipReason::UnsupportedType(_))
+        ));
+    }
+
+    #[test]
+    fn pure_std_shape_has_no_serde_intent_stays_skip() {
+        // The serde-intent gate: a shape whose leaves are ALL std/primitive carries
+        // no serde intent, so it is NOT auto-crossed wide (keeping today's skips —
+        // and the coverage baselines — stable). Only a real serde leaf opts in.
+        let doc = load_doc();
+        let cx = ctx(&doc);
+        // `Vec<f64>` / a scalar tuple are structurally serializable but intent-free.
+        assert!(matches!(
+            cx.classify_param_type(&path("Vec", vec![prim("f64")]), &[]),
+            Err(SkipReason::UnsupportedType(_))
+        ));
+        let bt = owner_bt();
+        assert!(matches!(
+            cx.classify_return(&Some(Type::Tuple(vec![prim("f64"), prim("f64")])), &bt, &[]),
+            Err(SkipReason::UnsupportedType(_))
+        ));
+    }
+
+    #[test]
+    fn handle_wins_over_wide() {
+        // The canonical rule: a value whose type is opaque-bridged crosses as a
+        // HANDLE even when it is serde-serializable — the handle arm fires before
+        // the wide fallback. Model that by putting `NaiveDate` in `ref_type_names`.
+        let doc = load_doc();
+        let mut cx = ctx(&doc);
+        cx.ref_type_names.insert("NaiveDate".into());
+        let bt = owner_bt();
+        assert_eq!(
+            cx.classify_return(&Some(leaf(&doc, "NaiveDate")), &bt, &[]),
+            Ok(BridgeReturn::Ref("NaiveDate".into())),
+            "an opaque-bridged serde type crosses as a handle, not wide"
+        );
+    }
+
+    #[test]
+    fn overlay_wide_true_forces_over_handle() {
+        // `[type."T"] wide = true` overrides the handle-wins default: even a type
+        // that WOULD be an opaque handle crosses wide.
+        let doc = load_doc();
+        let ov = crate::overlay::parse_overlay("[type.\"NaiveDate\"]\nwide = true\n").unwrap();
+        let mut cx = ctx(&doc);
+        cx.overlay = Some(&ov);
+        cx.ref_type_names.insert("NaiveDate".into());
+        let bt = owner_bt();
+        match cx.classify_return(&Some(leaf(&doc, "NaiveDate")), &bt, &[]) {
+            Ok(BridgeReturn::Wide(inner)) => assert!(inner.ends_with("NaiveDate")),
+            other => panic!("wide=true should force Wide, got {other:?}"),
+        }
+        // ... and as a param.
+        assert!(matches!(
+            cx.classify_param_type(&leaf(&doc, "NaiveDate"), &[]),
+            Ok(ScalarType::Wide(_))
+        ));
+    }
+
+    #[test]
+    fn overlay_wide_false_forbids_lane() {
+        // `[type."T"] wide = false` forbids the lane even for a serde type the
+        // whitelist would admit — it falls through to an honest skip.
+        let doc = load_doc();
+        let ov = crate::overlay::parse_overlay("[type.\"NaiveDate\"]\nwide = false\n").unwrap();
+        let mut cx = ctx(&doc);
+        cx.overlay = Some(&ov);
+        let bt = owner_bt();
+        assert!(matches!(
+            cx.classify_return(&Some(leaf(&doc, "NaiveDate")), &bt, &[]),
+            Err(SkipReason::UnsupportedType(_))
+        ));
+        assert!(matches!(
+            cx.classify_param_type(&leaf(&doc, "NaiveDate"), &[]),
+            Err(SkipReason::UnsupportedType(_))
+        ));
     }
 }

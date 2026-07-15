@@ -1046,9 +1046,30 @@ these first; the adversarial suite already contains skip-gated tests waiting on 
 - [ ] 2.7 Differential fuzz test: generate value trees, encode with rmp-serde
       (a tiny Rust test bin), decode with BOTH Jac decoders, assert identical
       Jac values; plus round-trip through the encoders.
-- [ ] 2.8 Lane resolution in the binder: per-value rule (tag if fits, handle if
-      opaque-bridged, wide otherwise) + the handle-wins canonical rule; assert in
-      a unit test that a scalar param beside a Wide param stays TAG-lane.
+- [x] 2.8 Lane resolution in the binder. STATUS: DONE. `ScalarType::Wide(String)`
+      / `BridgeReturn::Wide(String)` (inner = the Rust type re-declared inside the
+      `Wide<…>` marker). Per-value rule wired by ORDERING: `classify_param_type` /
+      `classify_return` try every scalar+handle arm first, and only the leftover
+      `Err` points fall to `wide_fallback` -- so the handle-wins canonical rule holds
+      by construction (an opaque-bridged serde type has already returned `Ref`/
+      `OwnSelf` before the fallback). `wide_fallback` gates on BOTH the structural
+      `is_wide_serializable` whitelist AND a new `wide_has_serde_leaf` serde-INTENT
+      check: a pure-std shape (`Vec<f64>`, `(usize,usize)`) is serializable but
+      carries no serde intent, so it stays an honest skip -- this is what keeps the
+      regex/uuid/chrono coverage baselines stable (verified: roundtrip bridges still
+      compile byte-identical). `[type."T"] wide = true` is checked EARLY (before the
+      handle arms) so it overrides handle-wins; `wide = false` forbids the lane in
+      the fallback. `render_wide_ty` spells the inner type: prelude names bare
+      (`Vec`/`Option`/`String`), non-prelude std fully-qualified (`std::collections::
+      HashMap`, `std::time::Duration`, `std::ops::Range` -- no extra `use`), a local
+      leaf via the accessible crate path (`wide_leaf_path` reuses
+      `accessible_type_path`). Codegen: `scalar_ty` emits `Wide<{inner}>`; the body
+      unwraps a wide param's `.0` (new `call_args`, leaving the wrapper/replacer
+      `args_str` untouched) and wraps a wide return in `Wide(…)`. Tests:
+      `classify::serde_lane_tests::{wide_param_lane_beside_scalar_stays_tag,
+      wide_return_lane_and_render, pure_std_shape_has_no_serde_intent_stays_skip,
+      handle_wins_over_wide, overlay_wide_true_forces_over_handle,
+      overlay_wide_false_forbids_lane}` (+6) and `tests::wide_lane` codegen (+1).
 - [ ] 2.9 Typed obj synthesis: only `automatically_derived && !has_stripped_fields`
       → Jac `obj` with rustdoc field names; else dict/str per actual wire shape.
       Pin per-crate round-trip fixtures (chrono NaiveDate == ISO string, uuid ==

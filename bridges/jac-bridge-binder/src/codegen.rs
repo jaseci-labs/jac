@@ -406,6 +406,10 @@ fn scalar_ty(t: &ScalarType) -> String {
         // 1.2.2: a byte string re-declared as `&[u8]`, which satisfies an
         // `AsRef<[u8]>` bound (sha2's `update`), so `self.0.update(data)` compiles.
         ScalarType::Bytes => "&[u8]".into(),
+        // 2.8: a serde-wide param re-declared inside the `Wide<…>` marker (a
+        // serde-transparent newtype the macro imports from the rt module). The
+        // body unwraps `.0` before the inner call (see `call_args` in `emit_fn`).
+        ScalarType::Wide(inner) => format!("Wide<{inner}>"),
     }
 }
 
@@ -436,10 +440,24 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
         sig_parts.push(format!("{}: {}", p.name, scalar_ty(&p.ty)));
     }
     let params_str = sig_parts.join(", ");
+    // Forwarded param NAMES — used by the owning-wrapper / replacer arms, whose
+    // params are always `&str` (never wide), so no unwrap is needed.
     let args_str = f
         .params
         .iter()
         .map(|p| p.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    // 2.8: the inner-call argument list. A wide param arrives as `Wide<T>`, so the
+    // body passes its transparent `.0` to the source method; every other param
+    // forwards by name unchanged. Used inside `base_call`.
+    let call_args = f
+        .params
+        .iter()
+        .map(|p| match p.ty {
+            ScalarType::Wide(_) => format!("{}.0", p.name),
+            _ => p.name.clone(),
+        })
         .collect::<Vec<_>>()
         .join(", ");
 
@@ -484,10 +502,11 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
     } else {
         format!("&{recv}")
     };
-    // Build the base call expression (before any post-call transforms).
+    // Build the base call expression (before any post-call transforms). Uses
+    // `call_args` (wide params unwrapped to `.0`) as the inner argument list.
     let base_call = |r: &str| -> String {
         if is_ctor {
-            format!("{inner}::{fname}({args_str}){aw}")
+            format!("{inner}::{fname}({call_args}){aw}")
         } else if f.is_static {
             // A static calls through the associated form. When flattened off a
             // trait (`Sha256::digest` via `Digest`), fully-qualify it as
@@ -495,14 +514,14 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
             // sibling trait in scope (sha2 brings both `Digest` and `DynDigest`)
             // can't make the call ambiguous (E0034).
             match via_trait_short {
-                Some(tr) => format!("<{inner} as {tr}>::{fname}({args_str}){aw}"),
-                None => format!("{inner}::{fname}({args_str}){aw}"),
+                Some(tr) => format!("<{inner} as {tr}>::{fname}({call_args}){aw}"),
+                None => format!("{inner}::{fname}({call_args}){aw}"),
             }
         } else if let Some(tr) = via_trait_short {
-            let sep = if args_str.is_empty() { "" } else { ", " };
-            format!("{tr}::{fname}({ufcs_recv}{sep}{args_str}){aw}")
+            let sep = if call_args.is_empty() { "" } else { ", " };
+            format!("{tr}::{fname}({ufcs_recv}{sep}{call_args}){aw}")
         } else {
-            format!("{r}.{fname}({args_str}){aw}")
+            format!("{r}.{fname}({call_args}){aw}")
         }
     };
 
@@ -557,6 +576,13 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
         BridgeReturn::OptRef(name) => (
             format!(" -> Option<{name}>"),
             format!("{}.map({name})", base_call(&recv_expr)),
+        ),
+        // 2.8: a serde-wide return — wrap the value in the `Wide<…>` marker; the
+        // macro serializes it to a MessagePack `JacBuf` (TAG_WIDE). The inner type
+        // is spelled by the classifier (a local path or whitelisted std shape).
+        BridgeReturn::Wide(inner) => (
+            format!(" -> Wide<{inner}>"),
+            format!("Wide({})", base_call(&recv_expr)),
         ),
         BridgeReturn::OptWrapper(wrapper) => match f.recv {
             // Root producer (on a plain owner): delegate to the wrapper's `wrap`

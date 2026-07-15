@@ -423,6 +423,14 @@ pub enum BridgeReturn {
     /// a null handle. The string is the target wrapper name (the own type for
     /// `Option<Self>`).
     OptRef(String),
+    /// A serde-wide return (2.8): a by-value type that fits no scalar/handle lane
+    /// but is `Serialize`. Crosses `TAG_WIDE` as one owned `JacBuf` holding the
+    /// value's MessagePack image (`rmp_serde::to_vec_named`). The string is the
+    /// inner Rust type the wrapper re-declares inside `Wide<…>`; codegen emits
+    /// ` -> Wide<{inner}>` and wraps the call in `Wide(…)`. Chosen only after every
+    /// tag and opaque-handle lane is ruled out (handle-wins), unless a `[type."T"]
+    /// wide = true` overlay forces it.
+    Wide(String),
 }
 
 /// Scalar parameter types the v1 ABI can actually carry at the boundary.
@@ -446,6 +454,15 @@ pub enum ScalarType {
     /// the wrapper re-declares it as `&[u8]` (which satisfies an `AsRef<[u8]>`
     /// bound), so `self.0.update(data)` compiles for both source spellings.
     Bytes,
+    /// A serde-wide param (2.8): a by-value type that fits no scalar/handle lane
+    /// but is `Deserialize` (a local `#[derive(Deserialize)]` struct, or a
+    /// whitelisted std shape like `Vec<f64>`). Crosses `TAG_WIDE` as a MessagePack
+    /// payload decoded inside the shim. The string is the inner Rust type the
+    /// wrapper re-declares inside the `Wide<…>` marker (e.g. `crate::Point`,
+    /// `Vec<f64>`); codegen emits `name: Wide<{inner}>` and unwraps `name.0` at the
+    /// inner call. Lane selection is per-value: a scalar beside a wide param stays
+    /// its own tag (see [`crate::classify`] resolution + tests).
+    Wide(String),
 }
 
 /// A public item the classifier could not bridge, with a machine-readable reason.

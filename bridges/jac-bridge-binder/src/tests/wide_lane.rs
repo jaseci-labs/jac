@@ -1,0 +1,85 @@
+//! Codegen for the serde wide lane (2.8). No corpus fixture returns/takes a
+//! bare serde value (chrono's serde types are bridged as opaque handles, so
+//! handle-wins keeps them off the wide lane), so this drives `emit` from a
+//! hand-built spec and asserts the generated `Wide<…>` shape — the same shape
+//! the runtime test (`jac-bridge/tests/wide.rs`) proves crosses the ABI.
+
+use crate::codegen::emit;
+use crate::types::{
+    BridgeFn, BridgeParam, BridgeReturn, BridgeSpec, BridgeType, Ownership, Recv, ScalarType,
+    SerdeInfo, TypeKind,
+};
+
+fn method(name: &str, params: Vec<BridgeParam>, ret: BridgeReturn) -> BridgeFn {
+    BridgeFn {
+        name: name.into(),
+        export_name: None,
+        params,
+        ret,
+        throws: None,
+        recv: Recv::Field0,
+        is_async: false,
+        ret_ownership: Ownership::Owned,
+        via_trait: None,
+        self_mut: false,
+        consumes_self: false,
+        is_static: false,
+    }
+}
+
+/// A `Calc` handle whose `shift(Wide<Point>, i64) -> Wide<Point>` mirrors the
+/// runtime test: a wide param, a scalar wedged beside it, and a wide return.
+fn spec() -> BridgeSpec {
+    let calc = BridgeType {
+        name: "Calc".into(),
+        kind: TypeKind::Opaque,
+        inner_path: "demo::Calc".into(),
+        module_path: vec![],
+        item_id: 0,
+        ctor: Some(method("new", vec![], BridgeReturn::OwnSelf)),
+        methods: vec![method(
+            "shift",
+            vec![
+                BridgeParam {
+                    name: "p".into(),
+                    ty: ScalarType::Wide("demo::Point".into()),
+                },
+                BridgeParam {
+                    name: "dx".into(),
+                    ty: ScalarType::Int("i64".into()),
+                },
+            ],
+            BridgeReturn::Wide("demo::Point".into()),
+        )],
+        injected_source: vec![],
+        wrapper: None,
+        mono: None,
+        serde: SerdeInfo::default(),
+        force_wide: None,
+    };
+    BridgeSpec {
+        module_name: "demo".into(),
+        crate_version: "0.1.0".into(),
+        crate_features: vec![],
+        types: vec![calc],
+        skips: vec![],
+        dropped: vec![],
+        inherited_excluded: 0,
+    }
+}
+
+#[test]
+fn wide_param_and_return_emit_wide_marker() {
+    let src = emit(&spec());
+    // The wide param and return re-declare the inner type inside `Wide<…>`; the
+    // scalar wedged between them keeps its own `i64` tag (per-value lane selection).
+    assert!(
+        src.contains("pub fn shift(&self, p: Wide<demo::Point>, dx: i64) -> Wide<demo::Point> {"),
+        "wide signature\n{src}"
+    );
+    // The body unwraps the wide param's transparent `.0` and wraps the result.
+    assert!(
+        src.contains("Wide(self.0.shift(p.0, dx))"),
+        "wide body\n{src}"
+    );
+}

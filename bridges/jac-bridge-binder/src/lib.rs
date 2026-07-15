@@ -25,4 +25,5 @@ mod tests {
     mod self_alias;
     mod string_return;
     mod tuple_struct;
+    mod wide_lane;
 }
