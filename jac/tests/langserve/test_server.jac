@@ -513,6 +513,65 @@ test "test_completion_identifier_and_keywords" {
     }
 }
 
+test "test_completion_suppressed_in_string_and_comment" {
+    # Scope-fallback completions must not leak into string literals or comments,
+    # but must still work inside an f-string's interpolated expression.
+    import asyncio;
+    import tempfile;
+
+    setup_test();
+    try {
+        lsp = create_server();
+        with tempfile.TemporaryDirectory() as td {
+            path = os.path.join(td, "completion_text.jac");
+            uri = uris.from_fs_path(path);
+            with open(path, "w") as f {
+                f.write(
+                    """class Foo {
+    has bar: int;
+    def greet {
+        print("hello world");
+        # a comment here
+        s = f"val {name} end";
+    }
+}
+"""
+                );
+            }
+            lsp.type_check_file(uri);
+            # Inside the string literal -> no completions
+            in_string = asyncio.run(
+                lsp.get_completion(uri, lspt.Position(3, 18), completion_trigger=None)
+            );
+            assert len(in_string.items) == 0 , "expected no completions inside a string";
+            # Inside the line comment -> no completions
+            in_comment = asyncio.run(
+                lsp.get_completion(uri, lspt.Position(4, 14), completion_trigger=None)
+            );
+            assert len(in_comment.items) == 0 , "expected no completions inside a comment";
+            # Inside the f-string literal text -> no completions
+            in_fstring_text = asyncio.run(
+                lsp.get_completion(uri, lspt.Position(5, 15), completion_trigger=None)
+            );
+            assert len(in_fstring_text.items) == 0 , "expected no completions in f-string text";
+            # Inside the f-string interpolated expression -> completions still work
+            in_fstring_expr = asyncio.run(
+                lsp.get_completion(uri, lspt.Position(5, 20), completion_trigger=None)
+            );
+            expr_labels = [i.label for i in in_fstring_expr.items];
+            assert len(expr_labels) > 0 , "expected completions inside f-string expression";
+            assert "print" in expr_labels;
+            # Control: typing at a normal identifier position still completes
+            on_ident = asyncio.run(
+                lsp.get_completion(uri, lspt.Position(3, 9), completion_trigger=None)
+            );
+            assert len(on_ident.items) > 0 , "expected completions at a normal position";
+        }
+    } finally {
+        teardown_test();
+    }
+}
+
 test "test_go_to_reference" {
     setup_test();
     try {

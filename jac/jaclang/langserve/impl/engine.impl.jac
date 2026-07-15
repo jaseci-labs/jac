@@ -699,12 +699,75 @@ impl JacLangServer._flush_completion_state(file_uri: str) -> None {
     }
 }
 
+impl JacLangServer._position_in_string_or_comment(
+    file_uri: str, line: int, col: int
+) -> bool {
+    ln = line + 1;
+    co = col + 1;
+    try {
+        text_doc = self.workspace.get_text_document(file_uri);
+        result = tokenize_full(text_doc.source, uris.to_fs_path(file_uri));
+        tokens = result[0];
+        comments = result[1];
+        for t in tokens {
+            k = t.kind;
+            if not (
+                k == TokenKind.STRING
+                or k == TokenKind.F_TEXT_DQ
+                or k == TokenKind.F_TEXT_SQ
+                or k == TokenKind.F_TEXT_TDQ
+                or k == TokenKind.F_TEXT_TSQ
+            ) {
+                continue;
+            }
+            loc = t.loc;
+            if loc.line < ln < loc.end_line {
+                return True;
+            }
+            if ln < loc.line or ln > loc.end_line {
+                continue;
+            }
+            if ln == loc.line and co < loc.col_start {
+                continue;
+            }
+            if ln == loc.end_line and co >= loc.col_end {
+                continue;
+            }
+            return True;
+        }
+        for c in comments {
+            if c.line < ln < c.end_line {
+                return True;
+            }
+            if ln < c.line or ln > c.end_line {
+                continue;
+            }
+            if ln == c.line and co < c.col_start {
+                continue;
+            }
+            if ln == c.end_line and co >= c.col_end {
+                continue;
+            }
+            return True;
+        }
+        return False;
+    } except Exception {
+        return False;
+    }
+}
+
 impl JacLangServer.get_completion(
     file_uri: str, position: lspt.Position, completion_trigger: Optional[str]
 ) -> lspt.CompletionList {
     self.debug("Getting completion for " + file_uri + " at " + str(position));
     try {
         self._flush_completion_state(file_uri);
+        if self._position_in_string_or_comment(
+            file_uri, position.line, position.character
+        ) {
+            self.debug("completion suppressed (cursor in string or comment)");
+            return lspt.CompletionList(is_incomplete=False, items=[]);
+        }
         file_path = uris.to_fs_path(file_uri);
         look_col = position.character - 1 if position.character > 0 else 0;
         node_at_pos = self.get_node_at_position(file_path, position.line, look_col);
