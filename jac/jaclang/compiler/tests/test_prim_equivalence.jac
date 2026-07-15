@@ -340,6 +340,26 @@ test "native bare list flow inference" {
     );
 }
 
+test "native none any consume" {
+    run_with_both(
+        "native_any_stdlib_gaps.jac",
+        "none_consume_check_py",
+        "none_consume_check_cl",
+        "none_consume_check_na",
+        require=["na"]
+    );
+}
+
+test "native any alias retain" {
+    run_with_both(
+        "native_any_alias_retain.jac",
+        "alias_retain_py",
+        "alias_retain_cl",
+        "alias_retain_na",
+        require=["na"]
+    );
+}
+
 test "dict order" {
     run_with_both(
         "prim_dictorder.jac",

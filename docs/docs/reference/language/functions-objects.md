@@ -305,33 +305,39 @@ with entry {
 
 ### 7 Lambda Expressions
 
-```jac
-# Simple lambda (note spacing around type annotations)
-glob add = lambda a: int , b: int -> int : a + b;
+Lambda parameters are parenthesized and the body is always braced; a
+zero-parameter lambda may omit the parens entirely (`lambda { 42; }`). A body
+that is a single expression statement is the **implicit return**
+(`lambda (x: int) { x + 1; }` returns `x + 1`); a multi-statement body uses an
+explicit `return` (with no `return`, it returns `None`).
 
-# Lambda with block
-glob process = lambda x: int -> int {
+```jac
+# Simple lambda -- single expression statement is the implicit return
+glob add = lambda (a: int, b: int) -> int { a + b; };
+
+# Lambda with a multi-statement block (explicit return)
+glob process = lambda (x: int) -> int {
     result = x * 2;
     result += 1;
     return result;
 };
 
-# Lambda without parameters
-glob get_value = lambda : 42;
+# Lambda without parameters (parens optional when there are none)
+glob get_value = lambda { 42; };
 
 # Lambda with return type only
-glob get_default = lambda -> int : 100;
+glob get_default = lambda -> int { 100; };
 
 # Lambda with default parameters
-glob power = lambda x: int = 2 , y: int = 3 : x ** y;
+glob power = lambda (x: int = 2, y: int = 3) { x ** y; };
 
 # Using lambdas
 glob numbers = [1, 2, 3, 4, 5];
-glob squared = list(map(lambda x: int : x ** 2, numbers));
-glob evens = list(filter(lambda x: int : x % 2 == 0, numbers));
+glob squared = list(map(lambda (x: int) { x ** 2; }, numbers));
+glob evens = list(filter(lambda (x: int) { x % 2 == 0; }, numbers));
 
 # Lambda returning lambda (closure -- see callout below)
-glob make_adder = lambda x: int : (lambda y: int : x + y);
+glob make_adder = lambda (x: int) { lambda (y: int) { x + y; }; };
 glob add_five = make_adder(5);  # add_five(10) returns 15
 ```
 
@@ -339,7 +345,7 @@ glob add_five = make_adder(5);  # add_five(10) returns 15
     A lambda (or nested `def`) captures variables from its enclosing scope, producing a *closure*. Each call to the outer function creates a fresh binding, so independently configured callables don't share state:
 
     ```jac
-    glob make_adder = lambda x: int : (lambda y: int : x + y);
+    glob make_adder = lambda (x: int) { lambda (y: int) { x + y; }; };
 
     with entry {
         add_five = make_adder(5);
@@ -359,7 +365,7 @@ An *Immediately Invoked Function Expression* defines a function and calls it in 
 
 ```jac
 with entry {
-    result = (lambda x: int -> int : x * 2)(5);   # result = 10
+    result = (lambda (x: int) -> int { x * 2; })(5);   # result = 10
 }
 ```
 
@@ -381,7 +387,7 @@ with entry {
 ```jac
 with entry {
     adder = (def make_adder(x: int) {
-        return lambda y: int : x + y;
+        return lambda (y: int) { x + y; };
     })(10);
 
     print(adder(5));   # 15
@@ -397,7 +403,7 @@ obj Counter {
     def get -> int  { return self.count; }
 }
 
-glob make_counter = lambda start: int -> Counter : Counter(count=start);
+glob make_counter = lambda (start: int) -> Counter { Counter(count=start); };
 
 with entry {
     c = make_counter(10);
@@ -412,13 +418,13 @@ with entry {
 !!! tip "Coming from JavaScript?"
     | JS idiom | Jac equivalent |
     |---|---|
-    | `x => x + 1` | `lambda x: int : x + 1` |
-    | `() => ({a: 1})` | `lambda : {"a": 1}` |
+    | `x => x + 1` | `lambda (x: int) { x + 1; }` |
+    | `() => ({a: 1})` | `lambda { {"a": 1}; }` |
     | `(() => 42)()` | `(def () -> int { return 42; })()` |
-    | `x => y => x + y` | `lambda x: int : (lambda y: int : x + y)` |
+    | `x => y => x + y` | `lambda (x: int) { lambda (y: int) { x + y; }; }` |
     | anonymous `class { ... }` | not supported -- declare a named `obj` and return instances |
 
-    Jac lambdas require type annotations on parameters and a space before the body colon (`lambda x: int : x + 1`).
+    Jac lambdas require type annotations on parameters and a braced body; a bare trailing expression is the implicit return (`lambda (x: int) { x + 1; }`).
 
 ### 9 Decorators
 
@@ -428,7 +434,7 @@ def decorator(func: object) -> object {
 }
 
 def decorator_with_args(arg1: object, arg2: object) -> object {
-    return lambda func: object: func;
+    return lambda (func: object) { func; };
 }
 
 @decorator
@@ -476,7 +482,7 @@ The same tags mean *member encapsulation* on a `has`/`def` declared inside an ar
     with entry {
         print(greet("World"));
         print(add(3, 4));
-        print(apply(lambda x: int, y: int -> int { return x * y; }, 5, 6));
+        print(apply(lambda (x: int, y: int) -> int { return x * y; }, 5, 6));
     }
     ```
 

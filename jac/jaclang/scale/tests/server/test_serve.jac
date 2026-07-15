@@ -575,6 +575,32 @@ test "token refresh functionality" {
         new_payload = pyjwt.decode(new_token, secret, algorithms=[algorithm]);
 
         assert original_payload["user_id"] == new_payload["user_id"];
+        assert new_payload["sub"] == new_payload["user_id"];
+        assert original_payload["sub"] == original_payload["user_id"];
+        assert new_payload["preferred_username"] == username;
+
+        user_id = original_payload["user_id"];
+        legacy_payload = {
+            "user_id": user_id,
+            "exp": datetime.now(UTC) + timedelta(days=1),
+            "iat": datetime.now(UTC)
+        };
+        legacy_token = pyjwt.encode(legacy_payload, secret, algorithm=algorithm);
+        response = client.post("/user/refresh-token", json={"token": legacy_token});
+        assert response.status_code == 200;
+        refreshed = extract_data(response.json())["token"];
+        refreshed_payload = pyjwt.decode(refreshed, secret, algorithms=[algorithm]);
+        assert refreshed_payload["sub"] == user_id;
+
+        api_key_payload = {
+            "type": "api_key",
+            "sub": user_id,
+            "exp": datetime.now(UTC) + timedelta(days=1),
+            "iat": datetime.now(UTC)
+        };
+        api_key_token = pyjwt.encode(api_key_payload, secret, algorithm=algorithm);
+        response = client.post("/user/refresh-token", json={"token": api_key_token});
+        assert response.status_code == 401;
     } finally {
         client.close();
     }

@@ -171,7 +171,7 @@ test "cluster type detects aws by provider" {
         }
     }
 
-    with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda : FakeApi()) {
+    with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda { FakeApi(); }) {
         assert utils.cluster_type() == "aws";
     }
 }
@@ -213,9 +213,11 @@ test "check pods restarted selector and return values" {
     fake_v1.list_namespaced_pod.return_value = resp_clean;
 
     with unittest.mock.patch.object(utils.config, "load_kube_config") {
-        with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda : fake_v1 ) {
+        with unittest.mock.patch.object(
+            utils.client, "CoreV1Api", lambda { fake_v1; }
+        ) {
             with unittest.mock.patch.object(
-                utils.client, "AppsV1Api", lambda : fake_apps_v1
+                utils.client, "AppsV1Api", lambda { fake_apps_v1; }
             ) {
                 result_false = check_pods_restarted(namespace, app_name);
             }
@@ -248,9 +250,11 @@ test "check pods restarted selector and return values" {
     fake_v1.list_namespaced_pod.return_value = resp_restarted;
 
     with unittest.mock.patch.object(utils.config, "load_kube_config") {
-        with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda : fake_v1 ) {
+        with unittest.mock.patch.object(
+            utils.client, "CoreV1Api", lambda { fake_v1; }
+        ) {
             with unittest.mock.patch.object(
-                utils.client, "AppsV1Api", lambda : fake_apps_v1
+                utils.client, "AppsV1Api", lambda { fake_apps_v1; }
             ) {
                 result_true = check_pods_restarted(namespace, app_name);
             }
@@ -277,9 +281,11 @@ test "check pods restarted selector and return values" {
     fake_v1.list_namespaced_pod.return_value = resp_stabilised;
 
     with unittest.mock.patch.object(utils.config, "load_kube_config") {
-        with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda : fake_v1 ) {
+        with unittest.mock.patch.object(
+            utils.client, "CoreV1Api", lambda { fake_v1; }
+        ) {
             with unittest.mock.patch.object(
-                utils.client, "AppsV1Api", lambda : fake_apps_v1
+                utils.client, "AppsV1Api", lambda { fake_apps_v1; }
             ) {
                 result_stabilised = check_pods_restarted(namespace, app_name);
             }
@@ -335,9 +341,11 @@ test "check pods restarted ignores stale replicaset pod" {
     fake_v1.list_namespaced_pod.return_value = resp;
 
     with unittest.mock.patch.object(utils.config, "load_kube_config") {
-        with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda : fake_v1 ) {
+        with unittest.mock.patch.object(
+            utils.client, "CoreV1Api", lambda { fake_v1; }
+        ) {
             with unittest.mock.patch.object(
-                utils.client, "AppsV1Api", lambda : fake_apps_v1
+                utils.client, "AppsV1Api", lambda { fake_apps_v1; }
             ) {
                 result = check_pods_restarted(namespace, app_name);
             }
@@ -392,9 +400,11 @@ test "check pods restarted still detects a crash-looping StatefulSet pod with no
     fake_v1.list_namespaced_pod.return_value = resp;
 
     with unittest.mock.patch.object(utils.config, "load_kube_config") {
-        with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda : fake_v1 ) {
+        with unittest.mock.patch.object(
+            utils.client, "CoreV1Api", lambda { fake_v1; }
+        ) {
             with unittest.mock.patch.object(
-                utils.client, "AppsV1Api", lambda : fake_apps_v1
+                utils.client, "AppsV1Api", lambda { fake_apps_v1; }
             ) {
                 result = check_pods_restarted(namespace, app_name);
             }
@@ -432,9 +442,11 @@ test "check pods restarted falls back to broad selector when RS lookup fails" {
     fake_v1.list_namespaced_pod.return_value = resp_clean;
 
     with unittest.mock.patch.object(utils.config, "load_kube_config") {
-        with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda : fake_v1 ) {
+        with unittest.mock.patch.object(
+            utils.client, "CoreV1Api", lambda { fake_v1; }
+        ) {
             with unittest.mock.patch.object(
-                utils.client, "AppsV1Api", lambda : fake_apps_v1
+                utils.client, "AppsV1Api", lambda { fake_apps_v1; }
             ) {
                 result = check_pods_restarted(namespace, app_name);
             }
@@ -462,9 +474,11 @@ test "check pods restarted falls back to broad selector when RS lookup fails" {
     fake_v1.list_namespaced_pod.return_value = resp_crash;
 
     with unittest.mock.patch.object(utils.config, "load_kube_config") {
-        with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda : fake_v1 ) {
+        with unittest.mock.patch.object(
+            utils.client, "CoreV1Api", lambda { fake_v1; }
+        ) {
             with unittest.mock.patch.object(
-                utils.client, "AppsV1Api", lambda : fake_apps_v1
+                utils.client, "AppsV1Api", lambda { fake_apps_v1; }
             ) {
                 result_crash = check_pods_restarted(namespace, app_name);
             }

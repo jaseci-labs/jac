@@ -1001,6 +1001,24 @@ impl TypeEvaluator._is_ability_classmethod(node_: uni.Ability) -> bool {
     return False;
 }
 
+impl TypeEvaluator._is_ability_staticmethod(node_: uni.Ability) -> bool {
+    if node_.is_static {
+        return True;
+    }
+    if node_.decorators {
+        for decorator in node_.decorators {
+            decor_type = self.get_type_of_expression(decorator);
+            if (
+                isinstance(decor_type, types.ClassType)
+                and decor_type.is_builtin("staticmethod")
+            ) {
+                return True;
+            }
+        }
+    }
+    return False;
+}
+
 impl TypeEvaluator._classify_property_symbol(
     symbol: uni.Symbol
 ) -> type_utils.PropertyWriteKind {
@@ -1636,6 +1654,18 @@ impl TypeEvaluator._infer_lambda_block_return_type(
     none_type = self._convert_to_instance(self.get_none_type());
     return_types: list[TypeBase] = [];
     always_returns = self._collect_return_types(body, return_types);
+
+    non_semi = [
+        s
+        for s in body
+        if not isinstance(s, uni.Semi)
+    ];
+    if (len(non_semi) == 1 and isinstance(non_semi[0], uni.ExprStmt)) {
+        return_types.append(
+            self._convert_to_instance(self.get_type_of_expression(non_semi[0].expr))
+        );
+        always_returns = True;
+    }
 
     if not return_types {
         return none_type;
