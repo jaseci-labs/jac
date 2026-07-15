@@ -22,7 +22,8 @@
 //! plus `fn.treat_as` (reclassify a method or force it off — applied during
 //! `classify_with_overlay`), `type.treat_as` (force a type's `error`/`opaque`
 //! classification when neither the `impl std::error::Error` signal nor the
-//! `*Error` name heuristic gets it right), `monomorphize` (pin a generic
+//! `*Error` name heuristic gets it right), `type.wide` (force/forbid the wide
+//! msgpack lane, overriding serde detection — 2.3), `monomorphize` (pin a generic
 //! struct's concrete instantiations — also classify-time), and `[module."m"]
 //! skip` (drop a whole submodule by provenance). A `skip = true` may carry an
 //! optional `reason` string that surfaces verbatim in the coverage report (the
@@ -106,6 +107,13 @@ pub struct TypeOverlay {
     /// `"opaque"` bridges a `*Error`-named domain type as an ordinary resource.
     /// Exclusive with `skip` (a removed type has nothing to reclassify).
     pub treat_as: Option<String>,
+    /// Force or forbid the wide (msgpack) lane for this type, overriding serde
+    /// detection (2.3). `true` crosses the type as an encoded value even when
+    /// rustdoc showed no serde impl (a manual impl behind a `cfg`, or an external
+    /// type the structural whitelist misses); `false` keeps it an opaque handle
+    /// even though it is `Serialize`/`Deserialize`. Omit to follow detection.
+    /// Exclusive with `skip` (a removed type crosses nothing).
+    pub wide: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -167,6 +175,24 @@ pub fn apply_overlay(spec: &mut BridgeSpec, overlay: &Overlay) -> Result<(), Str
                 ));
             }
         }
+        // `wide` overrides the wide-lane decision; it is exclusive with `skip`
+        // (a removed type crosses nothing) and with `monomorphize` (whose concrete
+        // instantiations are separate types the `monomorphize` branch below
+        // `continue`s past, so a `wide` here would silently no-op — fail loud).
+        if t.wide.is_some() {
+            if t.skip {
+                return Err(format!(
+                    "overlay: [type.\"{name}\"] wide is exclusive with skip = true \
+                     — a removed type crosses nothing"
+                ));
+            }
+            if t.monomorphize.is_some() {
+                return Err(format!(
+                    "overlay: [type.\"{name}\"] wide is not supported alongside \
+                     monomorphize — set wide on each concrete `T<Suffix>` instead"
+                ));
+            }
+        }
         // `monomorphize` is honoured during classification (see
         // `classify_with_overlay`), which expands the generic struct into concrete
         // `T<Suffix>` types. Here we only validate it and move on — the original
@@ -196,6 +222,9 @@ pub fn apply_overlay(spec: &mut BridgeSpec, overlay: &Overlay) -> Result<(), Str
         }
         if let Some(src) = &t.inject {
             bt.injected_source.push(src.clone());
+        }
+        if let Some(w) = t.wide {
+            bt.force_wide = Some(w);
         }
     }
 

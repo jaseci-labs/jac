@@ -556,3 +556,53 @@ fn reason_with_treat_as_is_rejected() {
     let err = apply_overlay(&mut spec, &overlay).unwrap_err();
     assert!(err.contains("exclusive"), "err should explain exclusivity: {err}");
 }
+
+// ── [type."T"] wide (2.3) ───────────────────────────────────────────────────────
+
+#[test]
+fn type_wide_true_sets_force_wide() {
+    // `wide = true` overrides serde detection, forcing the type onto the wide lane
+    // (consumed by lane resolution, 2.8). regex is serde-free, so this is purely
+    // the override path.
+    let doc = load_regex_doc();
+    let overlay = parse_overlay("[type.\"Regex\"]\nwide = true\n").unwrap();
+    let mut spec = classify_with_overlay(&doc, Some(&overlay));
+    apply_overlay(&mut spec, &overlay).unwrap();
+    let regex = spec.types.iter().find(|t| t.name == "Regex").unwrap();
+    assert_eq!(regex.force_wide, Some(true));
+    // A type with no directive keeps `None` (follow detection).
+    assert!(spec
+        .types
+        .iter()
+        .filter(|t| t.name != "Regex")
+        .all(|t| t.force_wide.is_none()));
+}
+
+#[test]
+fn type_wide_false_is_honoured() {
+    let doc = load_regex_doc();
+    let overlay = parse_overlay("[type.\"Regex\"]\nwide = false\n").unwrap();
+    let mut spec = classify_with_overlay(&doc, Some(&overlay));
+    apply_overlay(&mut spec, &overlay).unwrap();
+    let regex = spec.types.iter().find(|t| t.name == "Regex").unwrap();
+    assert_eq!(regex.force_wide, Some(false));
+}
+
+#[test]
+fn type_wide_with_skip_is_rejected() {
+    let doc = load_regex_doc();
+    let overlay = parse_overlay("[type.\"Regex\"]\nwide = true\nskip = true\n").unwrap();
+    let mut spec = classify(&doc);
+    let err = apply_overlay(&mut spec, &overlay).unwrap_err();
+    assert!(err.contains("wide is exclusive with skip"), "{err}");
+}
+
+#[test]
+fn type_wide_with_monomorphize_is_rejected() {
+    let doc = load_regex_doc();
+    let overlay =
+        parse_overlay("[type.\"Regex\"]\nwide = true\nmonomorphize = [\"u8\"]\n").unwrap();
+    let mut spec = classify(&doc);
+    let err = apply_overlay(&mut spec, &overlay).unwrap_err();
+    assert!(err.contains("wide is not supported alongside monomorphize"), "{err}");
+}

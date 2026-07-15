@@ -6,14 +6,40 @@
 
 use std::collections::{HashMap, HashSet};
 
-use rustdoc_types::{Crate, Id, Item, ItemEnum, StructKind, Type};
+use rustdoc_types::{Attribute, Crate, Id, Item, ItemEnum, StructKind, Type};
 
 use crate::overlay::Overlay;
 use crate::types::{
     BridgeFn, BridgeParam, BridgeReturn, BridgeSpec, BridgeType, DrainCollect, DropReason,
-    DroppedType, MonoType, Ownership, OwningWrapper, Recv, RootProducer, ScalarType, Skip,
-    SkipReason, TypeKind, WrapperKind,
+    DroppedType, MonoType, Ownership, OwningWrapper, Recv, RootProducer, ScalarType, SerdeInfo,
+    Skip, SkipReason, TypeKind, WrapperKind,
 };
+
+/// Which serde trait a path check / whitelist-leaf lookup is after. A wide return
+/// value must be `Serialize` (Rust encodes it); a wide param must be `Deserialize`
+/// (Rust decodes it).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SerdeTrait {
+    Serialize,
+    Deserialize,
+}
+
+impl SerdeTrait {
+    /// Final path segment of the trait (`Serialize`/`Deserialize`).
+    fn leaf(self) -> &'static str {
+        match self {
+            SerdeTrait::Serialize => "Serialize",
+            SerdeTrait::Deserialize => "Deserialize",
+        }
+    }
+    /// The `serde`/`serde_core` submodule the trait lives in (`ser`/`de`).
+    fn module(self) -> &'static str {
+        match self {
+            SerdeTrait::Serialize => "ser",
+            SerdeTrait::Deserialize => "de",
+        }
+    }
+}
 
 /// Traits whose methods are binder NOISE (D1): protocol / marker / formatting /
 /// derive-shaped traits that carry no semantic crate API. Flattening them would
@@ -203,6 +229,9 @@ pub fn classify_with_overlay(doc: &Crate, overlay: Option<&Overlay>) -> BridgeSp
             injected_source: vec![],
             wrapper: Some(pw.wrapper),
             mono: None,
+            // A synthesized ouroboros wrapper is not a wire-crossable value.
+            serde: SerdeInfo::default(),
+            force_wide: None,
         });
     }
     sort_types(&mut types);
@@ -644,6 +673,8 @@ impl<'a> Ctx<'a> {
                     injected_source: vec![],
                     wrapper: None,
                     mono: None,
+                    serde: self.serde_disposition(item_id),
+                    force_wide: None,
                 }]
             }
             ItemEnum::Enum(_) if self.is_error_type(&name, item_id) => vec![BridgeType {
@@ -657,6 +688,8 @@ impl<'a> Ctx<'a> {
                 injected_source: vec![],
                 wrapper: None,
                 mono: None,
+                serde: self.serde_disposition(item_id),
+                force_wide: None,
             }],
             _ => vec![],
         }
@@ -714,6 +747,11 @@ impl<'a> Ctx<'a> {
                         generic_param: generic.clone(),
                         concrete: c.clone(),
                     }),
+                    // The generic origin's serde impl (`impl<Tz> Serialize for
+                    // DateTime<Tz>`) applies to each instantiation; item_id is
+                    // shared, so detect against it.
+                    serde: self.serde_disposition(item_id),
+                    force_wide: None,
                 }
             })
             .collect()
@@ -814,6 +852,176 @@ impl<'a> Ctx<'a> {
         // Fallback for an unindexed trait: accept only a fully-qualified display
         // path, never a bare `Error`, so a crate-local `Error` trait is not misread.
         matches!(tr.path.as_str(), "std::error::Error" | "core::error::Error")
+    }
+
+    // ── serde detection (2.3) ─────────────────────────────────────────────────
+
+    /// The serde-trait presence on the struct/enum with `item_id` — mirrors
+    /// [`Self::serde_disposition`]'s twin [`Self::implements_error_trait`]. Walks
+    /// the type's impl list once, unioning `Serialize`/`Deserialize` and noting
+    /// whether ANY of those impls is `#[automatically_derived]` (a `#[derive]`,
+    /// whose wire shape is the rustdoc field list — 2.9). A non-struct/enum item,
+    /// or one absent from the index, is all-false.
+    fn serde_disposition(&self, item_id: u32) -> SerdeInfo {
+        let Some(item) = self.doc.index.get(&Id(item_id)) else {
+            return SerdeInfo::default();
+        };
+        let impls = match &item.inner {
+            ItemEnum::Struct(s) => &s.impls,
+            ItemEnum::Enum(e) => &e.impls,
+            _ => return SerdeInfo::default(),
+        };
+        let mut info = SerdeInfo::default();
+        for impl_id in impls {
+            let Some(impl_item) = self.item(impl_id) else {
+                continue;
+            };
+            let ItemEnum::Impl(impl_block) = &impl_item.inner else {
+                continue;
+            };
+            let Some(tr) = impl_block.trait_.as_ref() else {
+                continue;
+            };
+            let is_ser = self.is_serde_trait_path(tr, SerdeTrait::Serialize);
+            let is_de = self.is_serde_trait_path(tr, SerdeTrait::Deserialize);
+            if !is_ser && !is_de {
+                continue;
+            }
+            info.serialize |= is_ser;
+            info.deserialize |= is_de;
+            if impl_item
+                .attrs
+                .iter()
+                .any(|a| matches!(a, Attribute::AutomaticallyDerived))
+            {
+                info.automatically_derived = true;
+            }
+        }
+        info
+    }
+
+    /// Whether a trait reference resolves to serde's `Serialize`/`Deserialize`.
+    ///
+    /// serde ≥ 1.0.220 split its trait/derive core into a `serde_core` crate, so
+    /// the CANONICAL path is now `serde_core::ser::Serialize` (`serde::Serialize`
+    /// is a re-export) — matching only the `serde::` root finds NOTHING on any
+    /// current crate. Both roots are accepted, checked against the precise
+    /// `paths` summary first (so a crate-local trait merely named `Serialize`
+    /// isn't mistaken for serde's), then a fully-qualified display-path fallback
+    /// for an unindexed trait — never a bare `Serialize`.
+    fn is_serde_trait_path(&self, tr: &rustdoc_types::Path, which: SerdeTrait) -> bool {
+        if let Some(summary) = self.doc.paths.get(&tr.id) {
+            let p = &summary.path;
+            return p.len() >= 3
+                && p[p.len() - 1] == which.leaf()
+                && p[p.len() - 2] == which.module()
+                && matches!(p.first().map(|s| s.as_str()), Some("serde" | "serde_core"));
+        }
+        // Fallback for an unindexed trait: accept only a fully-qualified display
+        // path (either root, either module spelling), never a bare name.
+        let m = which.module();
+        let leaf = which.leaf();
+        matches!(
+            tr.path.as_str(),
+            p if p == format!("serde::{m}::{leaf}")
+                || p == format!("serde_core::{m}::{leaf}")
+                || p == format!("serde::{leaf}")
+                || p == format!("serde_core::{leaf}")
+        )
+    }
+
+    /// The external-type structural whitelist for the wide (msgpack) lane (2.3).
+    ///
+    /// rustdoc only indexes the LOCAL crate's impls, so serde support on the
+    /// ubiquitous std / external types a data signature is built from (`String`,
+    /// `Vec<T>`, `Option<T>`, `HashMap<String, V>`, tuples, `Duration`, ranges)
+    /// can't be proven via [`Self::serde_disposition`]; they're admitted
+    /// structurally, recursing into type args and doing a real local-impl lookup
+    /// only at a leaf that names a crate type. `dir` is the trait a leaf must
+    /// implement — `Serialize` for a return value, `Deserialize` for a param.
+    // Wired into param/return classification by lane resolution (2.8); until then
+    // only the 2.3 unit tests exercise it.
+    #[allow(dead_code)]
+    fn is_wide_serializable(&self, ty: &Type, dir: SerdeTrait) -> bool {
+        match ty {
+            // msgpack scalars: bool, all fixed-width ints/floats, char, str. `u128`/
+            // `i128` are intentionally excluded — msgpack has no 128-bit integer.
+            Type::Primitive(p) => matches!(
+                p.as_str(),
+                "bool"
+                    | "char"
+                    | "str"
+                    | "u8"
+                    | "u16"
+                    | "u32"
+                    | "u64"
+                    | "usize"
+                    | "i8"
+                    | "i16"
+                    | "i32"
+                    | "i64"
+                    | "isize"
+                    | "f32"
+                    | "f64"
+            ),
+            // A borrow is transparent at the wire — `&T`/`&mut T` cross as `T`.
+            Type::BorrowedRef { type_, .. } => self.is_wide_serializable(type_, dir),
+            // A tuple / fixed array / slice is wide iff every element is.
+            Type::Tuple(elems) => elems.iter().all(|e| self.is_wide_serializable(e, dir)),
+            Type::Slice(inner) => self.is_wide_serializable(inner, dir),
+            Type::Array { type_, .. } => self.is_wide_serializable(type_, dir),
+            Type::ResolvedPath(rp) => self.is_wide_path(rp, dir),
+            _ => false,
+        }
+    }
+
+    /// The `ResolvedPath` arm of [`Self::is_wide_serializable`]: the container /
+    /// std whitelist by name (recursing into args), else a local-impl lookup on a
+    /// leaf type that names a crate type.
+    fn is_wide_path(&self, rp: &rustdoc_types::Path, dir: SerdeTrait) -> bool {
+        match rp_name(&rp.path) {
+            // A String (owned or the leaf of `std::string::String`) is wide.
+            "String" => true,
+            // Homogeneous containers: wide iff their element type args are.
+            "Vec" | "Option" | "Range" | "RangeInclusive" => self.wide_all_args(rp, dir),
+            // A map crosses wide only with a String key (msgpack map keys); the
+            // value type arg must itself be wide.
+            "HashMap" | "BTreeMap" => self.wide_map(rp, dir),
+            // `std::time::Duration` serializes structurally (secs+nanos) under
+            // serde — admit it without an impl lookup rustdoc can't do for std.
+            "Duration" => true,
+            // A leaf naming a LOCAL crate type: real impl lookup (external leaves
+            // aren't in the index, so `serde_disposition` is all-false — correct,
+            // the structural whitelist above didn't cover them).
+            _ => {
+                let info = self.serde_disposition(rp.id.0);
+                match dir {
+                    SerdeTrait::Serialize => info.serialize,
+                    SerdeTrait::Deserialize => info.deserialize,
+                }
+            }
+        }
+    }
+
+    /// Every angle-bracketed type arg of `rp` is wide (used for `Vec`/`Option`/
+    /// ranges). A path with no type args (e.g. a bare alias) is not admitted.
+    fn wide_all_args(&self, rp: &rustdoc_types::Path, dir: SerdeTrait) -> bool {
+        let args = angle_type_args(rp);
+        !args.is_empty() && args.iter().all(|t| self.is_wide_serializable(t, dir))
+    }
+
+    /// A `HashMap`/`BTreeMap` is wide iff its key is `String` and its value is
+    /// wide (msgpack map keys must be strings for a dict-shaped decode).
+    fn wide_map(&self, rp: &rustdoc_types::Path, dir: SerdeTrait) -> bool {
+        let args = angle_type_args(rp);
+        if args.len() != 2 {
+            return false;
+        }
+        let key_is_string = matches!(
+            &args[0],
+            Type::ResolvedPath(k) if rp_name(&k.path) == "String"
+        );
+        key_is_string && self.is_wide_serializable(args[1], dir)
     }
 
     // ── Phase 2: classify impl methods ────────────────────────────────────────
@@ -2541,4 +2749,165 @@ fn inner_has_lifetime(rp: &rustdoc_types::Path, doc: &Crate) -> bool {
             false
         }
     })
+}
+
+#[cfg(test)]
+mod serde_lane_tests {
+    //! 2.3 serde detection + wide-lane structural whitelist, exercised against the
+    //! serde-featured chrono fixture (`tests/fixtures/serde/`, kept out of the
+    //! corpus glob subdir so it doesn't demand a coverage baseline).
+    use super::*;
+
+    fn load_doc() -> Crate {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/serde/chrono-0.4.45-serde.json"
+        );
+        let data = std::fs::read_to_string(path).expect("read serde fixture");
+        serde_json::from_str(&data).expect("parse serde fixture")
+    }
+
+    fn ctx(doc: &Crate) -> Ctx<'_> {
+        let module_name = doc.index[&doc.root].name.clone().unwrap_or_default();
+        Ctx {
+            doc,
+            overlay: None,
+            module_name: module_name.clone(),
+            skips: vec![],
+            dropped: vec![],
+            pending_wrappers: vec![],
+            inherited_excluded: 0,
+            ref_type_names: HashSet::new(),
+            root_reexports: collect_root_reexports(doc),
+            root_glob_modules: collect_root_glob_modules(doc, &module_name),
+        }
+    }
+
+    /// The first struct/enum in the index named `name` — the type an
+    /// `is_wide_serializable` leaf lookup would resolve.
+    fn find_id(doc: &Crate, name: &str) -> u32 {
+        doc.index
+            .iter()
+            .find(|(_, it)| {
+                it.name.as_deref() == Some(name)
+                    && matches!(it.inner, ItemEnum::Struct(_) | ItemEnum::Enum(_))
+            })
+            .map(|(id, _)| id.0)
+            .unwrap_or_else(|| panic!("no struct/enum named {name}"))
+    }
+
+    fn prim(p: &str) -> Type {
+        Type::Primitive(p.into())
+    }
+
+    /// A `ResolvedPath` type `name<args...>` with a synthetic (unindexed) id — for
+    /// the container-whitelist branches, which dispatch on the path name, never the
+    /// id.
+    fn path(name: &str, args: Vec<Type>) -> Type {
+        let a = if args.is_empty() {
+            None
+        } else {
+            Some(Box::new(rustdoc_types::GenericArgs::AngleBracketed {
+                args: args.into_iter().map(rustdoc_types::GenericArg::Type).collect(),
+                constraints: vec![],
+            }))
+        };
+        Type::ResolvedPath(rustdoc_types::Path {
+            path: name.into(),
+            id: Id(u32::MAX),
+            args: a,
+        })
+    }
+
+    #[test]
+    fn serde_disposition_reads_serde_core_dual_root() {
+        // chrono's serde impls are MANUAL and canonically rooted at `serde_core`
+        // (the 1.0.220 core split) — a `serde::`-only matcher would find nothing.
+        let doc = load_doc();
+        let cx = ctx(&doc);
+        let nd = cx.serde_disposition(find_id(&doc, "NaiveDate"));
+        assert!(nd.serialize, "NaiveDate: Serialize via serde_core root");
+        assert!(nd.deserialize, "NaiveDate: Deserialize via serde_core root");
+        assert!(
+            !nd.automatically_derived,
+            "chrono's serde impls are hand-written, not derived"
+        );
+
+        // A struct with no serde impl reads clean.
+        let days = cx.serde_disposition(find_id(&doc, "Days"));
+        assert_eq!(days, SerdeInfo::default(), "Days has no serde impl");
+
+        // A non-struct/enum id is all-false, never a panic.
+        assert_eq!(cx.serde_disposition(u32::MAX), SerdeInfo::default());
+    }
+
+    #[test]
+    fn wide_whitelist_admits_msgpack_scalars_and_containers() {
+        let doc = load_doc();
+        let cx = ctx(&doc);
+        let ser = SerdeTrait::Serialize;
+
+        // Primitives that have a msgpack lead byte.
+        for p in ["bool", "char", "str", "u8", "u64", "i32", "f64", "usize"] {
+            assert!(cx.is_wide_serializable(&prim(p), ser), "{p} is wide");
+        }
+        // 128-bit ints have no msgpack representation.
+        assert!(!cx.is_wide_serializable(&prim("u128"), ser));
+        assert!(!cx.is_wide_serializable(&prim("i128"), ser));
+
+        // Std containers, recursing into element types.
+        assert!(cx.is_wide_serializable(&path("String", vec![]), ser));
+        assert!(cx.is_wide_serializable(&path("Vec", vec![prim("u64")]), ser));
+        assert!(cx.is_wide_serializable(&path("Option", vec![prim("f64")]), ser));
+        assert!(cx.is_wide_serializable(&path("Duration", vec![]), ser));
+
+        // A map is wide only with a String key; the value must be wide too.
+        let string_key = || path("String", vec![]);
+        assert!(cx.is_wide_serializable(
+            &path("HashMap", vec![string_key(), prim("u64")]),
+            ser
+        ));
+        assert!(!cx.is_wide_serializable(
+            &path("HashMap", vec![prim("u64"), prim("u64")]),
+            ser
+        ));
+
+        // Tuples: wide iff every element is.
+        assert!(cx.is_wide_serializable(
+            &Type::Tuple(vec![prim("u64"), prim("bool")]),
+            ser
+        ));
+        assert!(!cx.is_wide_serializable(
+            &Type::Tuple(vec![prim("u64"), prim("u128")]),
+            ser
+        ));
+
+        // A bare container with no args is not admitted (an alias, not a payload).
+        assert!(!cx.is_wide_serializable(&path("Vec", vec![]), ser));
+    }
+
+    #[test]
+    fn wide_whitelist_leaf_does_local_impl_lookup() {
+        // A leaf naming a LOCAL serde type is admitted via the impl lookup; an
+        // unknown external leaf (no index entry) is not.
+        let doc = load_doc();
+        let cx = ctx(&doc);
+        let nd_id = find_id(&doc, "NaiveDate");
+        let naive_date = Type::ResolvedPath(rustdoc_types::Path {
+            path: "NaiveDate".into(),
+            id: Id(nd_id),
+            args: None,
+        });
+        assert!(cx.is_wide_serializable(&naive_date, SerdeTrait::Serialize));
+        assert!(cx.is_wide_serializable(&naive_date, SerdeTrait::Deserialize));
+
+        // `Days` is local but has no serde impl → not wide.
+        let days_id = find_id(&doc, "Days");
+        let days = Type::ResolvedPath(rustdoc_types::Path {
+            path: "Days".into(),
+            id: Id(days_id),
+            args: None,
+        });
+        assert!(!cx.is_wide_serializable(&days, SerdeTrait::Serialize));
+    }
 }

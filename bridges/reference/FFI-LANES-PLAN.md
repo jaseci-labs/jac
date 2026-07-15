@@ -996,12 +996,29 @@ these first; the adversarial suite already contains skip-gated tests waiting on 
       `Wide<T>` whose `T: !Serialize` → spanned trait-bound error). Deps `rmp`,
       `rmp-serde`, `serde` land in generated crates via `emit_cargo_toml` (2.4);
       added as `jac-bridge` dev-deps here for the runtime test.
-- [ ] 2.3 Binder serde detection (`classify.rs`, pattern of
-      `implements_error_trait` :381-445): both `serde::` and `serde_core::`
-      roots; `automatically_derived` attr captured per impl; structural
-      whitelist for external types (primitives, String, Vec, HashMap<String,_>,
-      Option, tuples, Duration, Range/RangeInclusive) recursing with local-impl
-      lookup at leaves; overlay key to force/deny wide per type.
+- [x] 2.3 Binder serde detection. STATUS: DONE. `classify.rs`
+      `serde_disposition(item_id) -> SerdeInfo` (twin of `implements_error_trait`)
+      walks a type's impl list once, unioning `Serialize`/`Deserialize` and
+      noting whether ANY serde impl is `#[automatically_derived]`. `is_serde_trait_path`
+      accepts BOTH the `serde::` and `serde_core::` roots via the precise `paths`
+      summary (with a fully-qualified display-path fallback) -- verified against a
+      serde-featured chrono fixture whose canonical root is `serde_core::ser::
+      Serialize` (the >=1.0.220 core split; a `serde::`-only matcher finds NOTHING).
+      `SerdeInfo { serialize, deserialize, automatically_derived }` surfaced on
+      `BridgeType.serde` (default for synthesized wrappers; real disposition on
+      opaque/error/mono types). `is_wide_serializable(ty, dir)` structural
+      whitelist: msgpack scalars (128-bit ints excluded), `String`, `Vec`/`Option`/
+      `Range`/`RangeInclusive` (recurse args), `HashMap`/`BTreeMap` (String key +
+      wide value), `Duration`, tuples/slices/arrays; a LOCAL leaf does a real
+      `serde_disposition` impl lookup, an unindexed external leaf is false. Overlay
+      `[type."T"] wide = true|false` → `BridgeType.force_wide`, exclusive with
+      `skip`/`monomorphize` (fails loud). `is_wide_*` are `#[allow(dead_code)]`
+      until lane resolution (2.8) wires them into param/return classification.
+      Tests: `classify::serde_lane_tests` (dual-root detection, manual-impl =>
+      `!automatically_derived`, whitelist scalars/containers/leaf-lookup, +3),
+      `tests::overlay_regex::type_wide_*` (force/deny + exclusivity, +4). Serde
+      fixture provenance in `tests/fixtures/serde/README.md`; the `gen-fixtures.sh`
+      feature column is 2.4.
 - [ ] 2.4 Feature plumbing: per-crate feature column in `gen-fixtures.sh`
       (`chrono@0.4.45:serde`, `uuid@1.23.4:serde` -- NOT --all-features);
       regenerate those two fixtures; `[crate] features = [...]` in the overlay

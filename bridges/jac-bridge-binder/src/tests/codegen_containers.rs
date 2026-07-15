@@ -63,6 +63,8 @@ fn spec() -> BridgeSpec {
         injected_source: vec![],
         wrapper: None,
         mono: None,
+        serde: Default::default(),
+        force_wide: None,
     };
     BridgeSpec {
         module_name: "demo".into(),

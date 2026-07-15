@@ -49,6 +49,33 @@ pub enum DropReason {
     UnpinnedGeneric,
 }
 
+/// Serde-trait presence on a bridged type, detected from its impl list by
+/// [`crate::classify`] (2.3). Consumed by the wide (msgpack) lane: a value whose
+/// type is `Serialize`/`Deserialize` but has no scalar/handle lane can cross
+/// msgpack-encoded (2.8), and typed-obj synthesis (2.9) only trusts rustdoc field
+/// names when the impl is `#[automatically_derived]` — a hand-written impl (e.g.
+/// chrono serializes `NaiveDate` as an ISO-8601 string) has a wire shape rustdoc
+/// cannot see, so it must cross as its actual encoded value, never a field record.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SerdeInfo {
+    /// Implements `serde::Serialize` (canonically `serde_core::ser::Serialize`
+    /// since the serde ≥1.0.220 core split — both roots are accepted).
+    pub serialize: bool,
+    /// Implements `serde::Deserialize` (canonically `serde_core::de::Deserialize`).
+    pub deserialize: bool,
+    /// At least one of the serde impls is `#[automatically_derived]` — i.e. a
+    /// `#[derive(Serialize)]`, whose wire shape IS the rustdoc field list. `false`
+    /// for a manual impl.
+    pub automatically_derived: bool,
+}
+
+impl SerdeInfo {
+    /// The type can be produced by (returned as) a wide value — it serializes.
+    pub fn any(&self) -> bool {
+        self.serialize || self.deserialize
+    }
+}
+
 /// One bridgeable type — either an opaque resource or an error type.
 #[derive(Debug, Clone)]
 pub struct BridgeType {
@@ -82,6 +109,17 @@ pub struct BridgeType {
     /// concrete instantiation becomes its own opaque type (`DateUtc(pub
     /// chrono::Date<chrono::Utc>)`). `None` for a non-generic type.
     pub mono: Option<MonoType>,
+    /// Serde-trait presence detected on this type (2.3). Default (all-false) for a
+    /// synthesized owning wrapper or a monomorphization, which are not themselves
+    /// wide-lane candidates. Consumed by wide-lane selection (2.8).
+    pub serde: SerdeInfo,
+    /// Overlay override of the wide-lane decision for this type (`[type."T"]
+    /// wide = true|false`). `Some(true)` forces the type wide even when `serde`
+    /// detection was empty (a manual impl rustdoc missed, or an external type the
+    /// structural whitelist doesn't cover); `Some(false)` forbids it even when
+    /// serde says yes (keep it an opaque handle). `None` = follow detection. Set by
+    /// [`crate::apply_overlay`]; consumed by wide-lane selection (2.8).
+    pub force_wide: Option<bool>,
 }
 
 /// A pinned monomorphization of a generic struct (overlay `monomorphize`).
