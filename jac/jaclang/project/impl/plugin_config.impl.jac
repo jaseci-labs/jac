@@ -52,7 +52,15 @@ impl PluginConfigBase.load -> dict[str, any] {
 impl PluginConfigBase.get_jac_config -> JacConfig {
     if self._jac_config is None {
         if self.config_file.exists() {
-            self._jac_config = JacConfig.load(self.config_file);
+            config = JacConfig.load(self.config_file);
+
+            import os;
+            profile = (os.environ.get("JAC_PROFILE") or "").strip();
+            if not profile and config.environment.default_profile {
+                profile = config.environment.default_profile;
+            }
+            config.apply_profile_overlay(profile or None);
+            self._jac_config = config;
         } else {
             self._jac_config = JacConfig();
             self._jac_config.toml_path = self.config_file;

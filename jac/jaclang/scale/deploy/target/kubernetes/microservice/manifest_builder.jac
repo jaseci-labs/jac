@@ -21,6 +21,62 @@ def k8s_safe_name(svc_name: str) -> str {
 }
 
 
+def _is_named_list(items: list) -> bool {
+    if not items {
+        return False;
+    }
+    for item in items {
+        if not isinstance(item, dict) or "name" not in item {
+            return False;
+        }
+    }
+    return True;
+}
+
+
+def merge_manifest_overlay(base: any, overlay: any) -> any {
+    # Kubernetes-flavored merge: maps merge recursively; lists whose members
+    # all carry a "name" (containers, volumes, env, initContainers, mounts)
+    # merge by that name with unmatched overlay entries appended; any other
+    # value replaces.
+    if isinstance(base, dict) and isinstance(overlay, dict) {
+        merged = dict(base);
+        for (key, value) in overlay.items() {
+            merged[key] = merge_manifest_overlay(base.get(key), value)
+                if key in base
+                else value;
+        }
+        return merged;
+    }
+    if (
+        isinstance(base, list)
+        and isinstance(overlay, list)
+        and _is_named_list(base)
+        and _is_named_list(overlay)
+    ) {
+        overlay_by_name = {item["name"]: item for item in overlay};
+        merged_list: list = [];
+        for item in base {
+            item_name = item["name"];
+            if item_name in overlay_by_name {
+                merged_list.append(
+                    merge_manifest_overlay(item, overlay_by_name.pop(item_name))
+                );
+            } else {
+                merged_list.append(item);
+            }
+        }
+        for item in overlay {
+            if item["name"] in overlay_by_name {
+                merged_list.append(item);
+            }
+        }
+        return merged_list;
+    }
+    return overlay;
+}
+
+
 obj MicroserviceManifestBuilder {
     has k8s_config: KubernetesConfig,
         secrets: dict[str, str] = {},
@@ -603,7 +659,7 @@ obj MicroserviceManifestBuilder {
         };
         svc_cfg = self._service_config(svc_name);
         replicas: int = int(svc_cfg.get("replicas", 1));
-        return {
+        manifest: dict[str, any] = {
             "apiVersion": "apps/v1",
             "kind": "Deployment",
             "metadata": {
@@ -621,6 +677,19 @@ obj MicroserviceManifestBuilder {
                 "template": {"metadata": {"labels": labels}, "spec": pod_spec}
             }
         };
+        overlay = svc_cfg.get("deployment_overlay");
+        if isinstance(overlay, dict) and overlay {
+            manifest = merge_manifest_overlay(manifest, overlay);
+            # Identity and routing fields are load-bearing for apply/destroy
+            # and Service selectors; an overlay must not detach them.
+            manifest["metadata"]["name"] = f"{k8s_name}-deployment";
+            manifest["metadata"]["namespace"] = self.k8s_config.namespace;
+            manifest["spec"]["selector"] = {"matchLabels": {"app": k8s_name}};
+            tmpl_labels = manifest["spec"]["template"]["metadata"].get("labels", {});
+            tmpl_labels.update({"app": k8s_name, "managed": "jac-scale"});
+            manifest["spec"]["template"]["metadata"]["labels"] = tmpl_labels;
+        }
+        return manifest;
     }
 
     def _build_service_manifest(svc_name: str) -> dict[str, any] {
