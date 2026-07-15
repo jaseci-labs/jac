@@ -438,9 +438,11 @@ jac/jaclang/runtimelib/client/targets/react_native/dev.jac
 jac/jaclang/runtimelib/client/targets/react_native/scaffold.jac
 jac/jaclang/runtimelib/client/targets/react_native_target.jac
 jac/jaclang/runtimelib/client/targets/static_target.jac
+jac/jaclang/runtimelib/client_runtime_core.cl.jac
 jac/jaclang/runtimelib/client_surface.jac
 jac/jaclang/runtimelib/exceptions.jac
 jac/jaclang/runtimelib/impl/cl_test_runner.impl.jac
+jac/jaclang/runtimelib/impl/client_runtime_core.impl.jac
 jac/jaclang/runtimelib/impl/planner.impl.jac
 jac/jaclang/runtimelib/impl/pwa_runtime.impl.jac
 jac/jaclang/runtimelib/impl/resolver.impl.jac

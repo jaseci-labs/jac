@@ -49,7 +49,7 @@ glob registry = get_registry();
                 "pwa, mobile, desktop (desktop builds a native "
                 "webview app)."
             ),
-            choices=["web", "pwa", "mobile"],
+            choices=["web", "pwa", "mobile", "desktop"],
             short=""
         ),
         Arg.create(

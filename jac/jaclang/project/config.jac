@@ -50,6 +50,16 @@ obj NativeBuildConfig {
         dump_ir: str = "";
 }
 
+obj GcEnforceConfig {
+    has modules: list[str] = [],
+        grandfathered: list[str] = [];
+}
+
+obj GcConfig {
+    has default: str = "cycles",
+        enforce: GcEnforceConfig = GcEnforceConfig();
+}
+
 obj BuildConfig {
     has typecheck: bool = False,
         dir: str = ".jac",
@@ -155,6 +165,7 @@ obj JacConfig {
     has project: ProjectConfig = ProjectConfig(),
         run: RunConfig = RunConfig(),
         build: BuildConfig = BuildConfig(),
+        gc: GcConfig = GcConfig(),
         test: TestConfig = TestConfig(),
         serve: ServeConfig = ServeConfig(),
         format: FormatConfig = FormatConfig(),
@@ -207,6 +218,7 @@ obj JacConfig {
     def is_valid -> bool;
     def save -> None;
     def persist_doc(doc: dict[str, any]) -> None;
+    def _write_toml_text(text: str) -> None;
     def add_dependency(
         name: str, version: str, dev: bool = False, dep_type: str = "python"
     ) -> None;

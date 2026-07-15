@@ -90,11 +90,7 @@ def classify_call(nd: uni.FuncCall) -> CallKind {
     return CallKind.FUNCTION;
 }
 
-def ability_of_symbol(sym: (uni.Symbol | None)) -> (uni.Ability | None) {
-    if sym is None or not sym.defn {
-        return None;
-    }
-    defn_node = sym.defn[0];
+def _ability_of_defn(defn_node: uni.UniNode) -> (uni.Ability | None) {
     if isinstance(defn_node, uni.Ability) {
         return defn_node;
     }
@@ -102,6 +98,24 @@ def ability_of_symbol(sym: (uni.Symbol | None)) -> (uni.Ability | None) {
         return defn_node.parent;
     }
     return None;
+}
+
+def ability_of_symbol(sym: (uni.Symbol | None)) -> (uni.Ability | None) {
+    if sym is None or not sym.defn {
+        return None;
+    }
+    decl = _ability_of_defn(sym.defn[0]);
+
+    if decl is not None and str(decl.loc.mod_path).endswith(".pyi") {
+        for alt in sym.defn {
+            alt_decl = _ability_of_defn(alt);
+            if alt_decl is not None
+            and not str(alt_decl.loc.mod_path).endswith(".pyi") {
+                return alt_decl;
+            }
+        }
+    }
+    return decl;
 }
 
 def symbol_owner_archetype(sym: uni.Symbol) -> (uni.Archetype | None) {

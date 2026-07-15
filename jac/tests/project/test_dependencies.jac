@@ -1152,6 +1152,94 @@ test "install pkg with explicit version" {
     }
 }
 
+test "install honors declared version constraint" {
+    # `jac install bcrypt` with `bcrypt = ">=4.0.0,<5.0.0"` already declared
+    # must resolve WITHIN that constraint (pip gets the constrained spec, not a
+    # bare name) and must not rewrite the pin or destroy manifest comments.
+    reset_config();
+    import from jaclang.cli.commands { project as proj_cmds }
+    tmp = tempfile.mkdtemp(prefix="jac_test_");
+    try {
+        toml = '[project]\nname = "testproj"\nversion = "0.1.0"\n\n[dependencies]\n# bcrypt 5.x breaks stored hashes; do not bump.\nbcrypt = ">=4.0.0,<5.0.0"\n';
+        project_path = create_test_project(tmp, toml);
+        os.makedirs(os.path.join(project_path, ".jac", "venv"), exist_ok=True);
+        original_cwd = os.getcwd();
+        os.chdir(project_path);
+        reset_config();
+        try {
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
+                PythonProvider, "_run_project_pip"
+            ) as mock_pip, patch.object(
+                PythonProvider, "_snapshot_installed"
+            ) as mock_snap {
+                mock_snap.return_value = (False, set());
+                mock_pip.side_effect = [
+                    (0, "Successfully installed bcrypt-4.3.0", ""),
+                    (0, "Name: bcrypt\nVersion: 4.3.0", "")
+                ];
+                result = proj_cmds.install(packages=["bcrypt"]);
+            }
+            assert result == 0;
+            install_args = mock_pip.call_args_list[0].args[1];
+            assert "bcrypt>=4.0.0,<5.0.0" in install_args , (
+                f"pip must receive the declared constraint, got: {install_args}"
+            );
+            config = JacConfig.load(Path(project_path) / "jac.toml");
+            assert config.dependencies["bcrypt"] == ">=4.0.0,<5.0.0" , (
+                "an explicit manifest constraint must never be rewritten"
+            );
+            saved = (Path(project_path) / "jac.toml").read_text();
+            assert "# bcrypt 5.x breaks stored hashes; do not bump." in saved , (
+                "jac install must not destroy jac.toml comments"
+            );
+        } finally {
+            os.chdir(original_cwd);
+            reset_config();
+        }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "install explicit spec replaces declared pin" {
+    # An explicit constraint typed on the command line is an intentional
+    # change: it must win over (and replace) the declared pin.
+    reset_config();
+    import from jaclang.cli.commands { project as proj_cmds }
+    tmp = tempfile.mkdtemp(prefix="jac_test_");
+    try {
+        toml = '[project]\nname = "testproj"\nversion = "0.1.0"\n\n[dependencies]\nbcrypt = ">=4.0.0,<5.0.0"\n';
+        project_path = create_test_project(tmp, toml);
+        os.makedirs(os.path.join(project_path, ".jac", "venv"), exist_ok=True);
+        original_cwd = os.getcwd();
+        os.chdir(project_path);
+        reset_config();
+        try {
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
+                PythonProvider, "_run_project_pip"
+            ) as mock_pip, patch.object(
+                PythonProvider, "_snapshot_installed"
+            ) as mock_snap {
+                mock_snap.return_value = (False, set());
+                mock_pip.return_value = (0, "Successfully installed bcrypt-5.0.0", "");
+                result = proj_cmds.install(packages=["bcrypt~=5.0"]);
+            }
+            assert result == 0;
+            install_args = mock_pip.call_args_list[0].args[1];
+            assert "bcrypt~=5.0" in install_args;
+            config = JacConfig.load(Path(project_path) / "jac.toml");
+            assert config.dependencies["bcrypt"] == "~=5.0" , (
+                "an explicit CLI constraint must replace the declared pin"
+            );
+        } finally {
+            os.chdir(original_cwd);
+            reset_config();
+        }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
 test "update all deps" {
     reset_config();
     import from jaclang.cli.commands { project as proj_cmds }

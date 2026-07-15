@@ -858,7 +858,7 @@ Project ID vars (`FIREBASE_AUTH_PROJECT_ID`, `FIRESTORE_PROJECT_ID`, `JAC_STORAG
 
 ### Scale: Kubernetes
 
-Deployment settings (app name, namespace, node port, CPU/memory requests and limits, registry credentials) are configured in `jac.toml` under `[scale.kubernetes]` -- see the [Kubernetes reference](../plugins/jac-scale-kubernetes.md). At deploy time, jac-scale injects these variables into every pod:
+Deployment settings (app name, namespace, node port, CPU/memory requests and limits, health probes) are configured in `jac.toml` under `[scale.kubernetes]` -- see the [Kubernetes reference](../plugins/jac-scale-kubernetes.md). At deploy time, jac-scale injects these variables into every pod:
 
 | Variable | Description |
 |----------|-------------|
