@@ -91,7 +91,7 @@ def:pub useItems() -> dict {
 }
 ```
 
-In a real hook, replace the local `Item` declaration with `sv import from ..services.todo { Item, get_items, add_item }` (2 dots = up one folder from `hooks/` into `services/`) and call those in `async can with entry` / handlers. Consume as `data = useItems(); items = data["items"] or [];` - `[key]` access, not `.get()`. See `jac-fullstack-patterns`.
+In a real hook, replace the local `Item` declaration with `sv import from ..services.todo { Item, get_items, add_item }` (2 dots = up one folder from `hooks/` into `services/`) and call those in `async can with entry` / handlers. Consume as `data = useItems(); items = data["items"] or [];` - `[key]` access, not `.get()`. Note: `Item` is now import-for-typing only - construct instances via `add_item(...)`'s return value, not `Item(...)`. See `jac-fullstack-patterns`.
 
 ## Global state: createContext / useContext
 

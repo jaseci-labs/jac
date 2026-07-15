@@ -218,7 +218,7 @@ async def handle_add -> None {
 
 Plain `def handle(e: MouseEvent)` is sync -- `await` inside it emits invalid JS.
 
-- **Type `has` state with the imported `sv` types - `list[any]` loses the element type.** Store data from `sv import` calls in fields typed with the actual node/obj. Without it, attribute access in loops fails `E1032: Type is Unknown`.
+- **Type `has` state with the imported `sv` types - `list[any]` loses the element type.** Store data from `sv import` calls in fields typed with the actual node/obj. Without it, attribute access in loops fails `E1032: Type is Unknown`. Never construct a `sv import`ed type directly - see `jac-fullstack-patterns`.
 
 ```
 sv import from ..services.linkedin { Post };   # 2 dots: this file is at components/X.cl.jac; `..` walks up to project root, then into services/
