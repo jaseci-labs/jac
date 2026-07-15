@@ -408,7 +408,7 @@ global_stmt ::= "global" (NAME | KWESC_NAME) ("," (NAME | KWESC_NAME))* ";"
 
 nonlocal_stmt ::= "nonlocal" (NAME | KWESC_NAME) ("," (NAME | KWESC_NAME))* ";"
 
-ownership_prefix ::= "own" | NAME | "&" "mut"?
+ownership_prefix ::= "own" | "imm" | "&" "mut"?
 
 assignment_with_target ::=
     (":" ownership_prefix pipe)? (

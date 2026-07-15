@@ -4833,13 +4833,10 @@ impl Parser.parse_ownership_prefix(kids: list) -> OwnershipKind {
         own_tok = self.advance();
         kids.append(self.make_uni_token(own_tok));
         return OwnershipKind.OWN;
-    } elif self.check(TokenKind.NAME)
-    and self.current().value == "val"
-    and not self.check_peek(TokenKind.EQ)
-    and not self.check_peek(TokenKind.SEMI) {
-        val_tok = self.advance();
-        kids.append(self.make_uni_token(val_tok));
-        return OwnershipKind.VAL;
+    } elif self.check(TokenKind.KW_IMM) {
+        imm_tok = self.advance();
+        kids.append(self.make_uni_token(imm_tok));
+        return OwnershipKind.IMM;
     } elif self.check(TokenKind.BW_AND) {
         amp_tok = self.advance();
         kids.append(self.make_uni_token(amp_tok));

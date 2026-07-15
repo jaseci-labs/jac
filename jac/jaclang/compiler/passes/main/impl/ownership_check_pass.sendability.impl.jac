@@ -3,7 +3,7 @@ import from jaclang.jac0core.diagnostics { E1308 }
 impl OwnershipCheckPass._emit_sendability_diagnostics -> None {
     tracked = set(self.owned_decl);
     tracked.update(self.borrow_meta);
-    tracked.update(self.val_decl);
+    tracked.update(self.imm_decl);
     for nd in self.idx_assignments {
         for tgt in nd.target {
             if isinstance(tgt, uni.Name) and tgt.sym {
@@ -41,7 +41,7 @@ impl OwnershipCheckPass._emit_sendability_diagnostics -> None {
                 continue;
             }
             ownership = nm.sym.ownership;
-            if ownership == OwnershipKind.VAL {
+            if ownership == OwnershipKind.IMM {
                 continue;
             }
             if ownership == OwnershipKind.OWN and self._is_move_producing_use(nm) {

@@ -142,7 +142,7 @@ impl OwnershipCheckPass._nogc_infer_locals -> None {
         if _tgt.sym.storage == SymbolStorage.MODULE_GLOBAL {
             continue;
         }
-        if self._nogc_local_shape(_tgt) == "osp" {
+        if self._nogc_local_shape(_tgt) in ("osp", "scalar") {
             continue;
         }
         _sid = self._name_sym_id(_tgt);

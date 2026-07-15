@@ -18,7 +18,7 @@ code table is in
 ## The three ground rules
 
 **1. Opt-in.** The checker only reasons about bindings the programmer
-explicitly tagged -- `own`, `val`, `linear`, `borrow` / `&` / `&mut` -- plus
+explicitly tagged -- `own`, `imm`, `linear`, `borrow` / `&` / `&mut` -- plus
 allocations lexically inside a `region { ... }` block. An unannotated binding
 is invisible to every rule below; annotating one binding never changes what is
 reported about another module, function, or unannotated binding. A module with
@@ -67,8 +67,8 @@ always within the symbol-level, intraprocedural bounds above.
 | `E1305` | Every `linear` binding is consumed (moved to a final owner, passed on, or sealed into managed storage) at least once before its scope ends. Consuming it *twice* is `E1301`, so a clean function uses each `linear` binding exactly once. Plain `own` is affine -- never consuming it is *not* an error, and E1305 is only ever emitted for `linear`. |
 | `E1306` | No `&`/`&mut` value escapes the scope that created it: not returned (except the single-passthrough-parameter case), not stored into a field or subscript slot. Borrows are second-class; there are no lifetimes to solve because escape is banned outright. |
 | `E1307` | No reference rooted in a `region` block survives the block -- not returned (including indirectly through a call's return value), not stored outside, not handed to a concurrency boundary. The arena free at `}` therefore cannot create a dangling reference *to a region-local binding*. (Granularity caveat: the roots are region-local symbols; a reference laundered through managed storage is beyond symbol-level tracking.) |
-| `E1308` | Every value crossing a `flow`/`thread_run` send boundary is statically race-free at the binding level: a deep-immutable scalar (`int`/`float`/`bool`/`str`/`bytes`, sendable by value), a deep-immutable `val`, or an `own`/`linear` moved into the boundary. Live borrows and unconsumed `linear` bindings do not cross. `wait` is a receive, not a send: the payload crossed at `flow` time, so reading a handle in `wait` is not a boundary crossing. |
-| `E1309` | A `val` binding is never mutated *through that binding*: no reassignment, no field/subscript write through it, no `&mut` of it. (It is the binding that is deep-immutable; the checker cannot see writes through a separately-obtained managed alias.) |
+| `E1308` | Every value crossing a `flow`/`thread_run` send boundary is statically race-free at the binding level: a deep-immutable scalar (`int`/`float`/`bool`/`str`/`bytes`, sendable by value), a deep-immutable `imm`, or an `own`/`linear` moved into the boundary. Live borrows and unconsumed `linear` bindings do not cross. `wait` is a receive, not a send: the payload crossed at `flow` time, so reading a handle in `wait` is not a boundary crossing. |
+| `E1309` | An `imm` binding is never mutated *through that binding*: no reassignment, no field/subscript write through it, no `&mut` of it. (It is the binding that is deep-immutable; the checker cannot see writes through a separately-obtained managed alias.) |
 
 What none of the codes guarantee: memory safety of unannotated code, absence
 of aliasing through the managed graph, cross-function or cross-module

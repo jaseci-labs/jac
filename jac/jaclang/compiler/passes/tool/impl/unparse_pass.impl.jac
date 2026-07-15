@@ -111,8 +111,8 @@ impl UnparsePass.exit_sub_tag(nd: uni.SubTag) -> None {
         prefix = "&mut ";
     } elif nd.ownership == OwnershipKind.BORROW {
         prefix = "&";
-    } elif nd.ownership == OwnershipKind.VAL {
-        prefix = "val ";
+    } elif nd.ownership == OwnershipKind.IMM {
+        prefix = "imm ";
     }
     nd.gen.jac = ": " + prefix + nd.tag.gen.jac;
 }

@@ -52,7 +52,7 @@ obj OwnershipCheckPass(Transform[uni.Module, uni.Module]) {
         idx_returns: list[uni.ReturnStmt] = [],
         idx_concurrent: list[uni.ConcurrentExpr] = [],
         name_uses_by_sym: dict[SymId, list[uni.Name]] = {},
-        val_decl: dict[SymId, uni.Name] = {},
+        imm_decl: dict[SymId, uni.Name] = {},
         nogc_prov: (str | None) = None;
 
     static has PROVIDES: tuple = ('ownership', ),
@@ -79,7 +79,7 @@ obj OwnershipCheckPass(Transform[uni.Module, uni.Module]) {
     def _emit_sendability_diagnostics -> None;
     def _is_deep_immutable_scalar(nm: uni.Name) -> bool;
     def _emit_marker_diagnostics -> None;
-    def _emit_val_mutation(
+    def _emit_imm_mutation(
         sid: SymId, site: uni.UniNode, decl: uni.Name | None
     ) -> None;
 
