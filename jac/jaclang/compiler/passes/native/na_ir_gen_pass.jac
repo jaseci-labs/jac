@@ -913,6 +913,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _nogc_osp_skip(val: ir.Value) -> bool;
     def _nogc_headerless -> bool;
     def _arch_is_osp_name(arch_name: str) -> bool;
+    def _arch_is_walker_name(arch_name: str) -> bool;
     def _emit_struct_drop_fn(type_name: str) -> (ir.Function | None);
     def _emit_struct_drop_fields_fn(type_name: str) -> (ir.Function | None);
     def _emit_container_drop_fn(cont_name: str) -> (ir.Function | None);

@@ -131,3 +131,13 @@ test "arena: managed values cross an open safely" {
     result = mixed_managed(4);
     assert result == 6 , f"mixed_managed(4) == {result}, expected 6";
 }
+
+test "phase W: walkers reclaim -- spawn-heavy loop fires drop per walker" {
+    (eng, ir) = compile_native("walker_reclaim.na.jac");
+    run = get_func(eng, "run", ctypes.c_int64, ctypes.c_int64);
+    result = run(4);
+    assert result == 12 , f"run(4) == {result}, expected 12";
+    read_dropped = get_func(eng, "read_dropped", ctypes.c_int64);
+    n_dropped = read_dropped();
+    assert n_dropped == 4 , f"expected 4 reclaimed walkers, got {n_dropped}";
+}

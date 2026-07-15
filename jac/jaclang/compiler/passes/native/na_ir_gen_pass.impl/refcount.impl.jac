@@ -697,6 +697,12 @@ impl NaIRGenPass._arch_is_osp_name(arch_name: str) -> bool {
     return lay is not None and lay.is_osp;
 }
 
+impl NaIRGenPass._arch_is_walker_name(arch_name: str) -> bool {
+    import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
+    lay = get_layout_registry(self.ir_in, self.prog).get_layout(arch_name);
+    return lay is not None and lay.arch_type == "walker";
+}
+
 impl NaIRGenPass._nogc_headerless -> bool {
     return getattr(self.ir_in.gen, "nogc_enforced", False)
     and self._gc_mode() == "none";

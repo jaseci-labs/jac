@@ -994,7 +994,13 @@ impl NaIRGenPass._codegen_instantiation(
         _tt_val = stable_osp_tag(type_name);
         self.builder.store(ir.Constant(ir.IntType(64), _tt_val), _tt_slot);
 
-        self._osp_make_immortal(obj_ptr);
+        # Walkers are transient visitors, not topology: they stay ordinary
+        # managed objects (ARC + recycler) instead of RC_SENTINEL-immortal,
+        # so spawn-heavy workloads reclaim them (#7491 Phase W). Nodes and
+        # edges keep reachability-shaped liveness until regions cover them.
+        if not self._arch_is_walker_name(type_name) {
+            self._osp_make_immortal(obj_ptr);
+        }
     }
 
     _rep_idx = self.osp_reports_field.get(type_name);
