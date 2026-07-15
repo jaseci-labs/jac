@@ -199,8 +199,53 @@ impl EsastGenPass.exit_name(nd: uni.Name) -> None {
     nd.gen.es_ast = identifier;
 }
 
+impl EsastGenPass._in_type_slot(nd: uni.UniNode) -> bool {
+    child = nd;
+    parent = nd.parent;
+    while parent is not None {
+        if (
+            isinstance(parent, uni.SubTag)
+            or (isinstance(parent, uni.FuncSignature) and parent.return_type is child)
+            or (isinstance(parent, uni.CastExpr) and parent.cast_type is child)
+            or (isinstance(parent, uni.TypedCtxBlock) and parent.type_ctx is child)
+            or (isinstance(parent, uni.Except) and parent.ex_type is child)
+        ) {
+            return True;
+        }
+        child = parent;
+        parent = parent.parent;
+    }
+    return False;
+}
+
+impl EsastGenPass._is_call_target(nd: uni.UniNode) -> bool {
+    return isinstance(nd.parent, uni.FuncCall) and nd.parent.target is nd;
+}
+
 impl EsastGenPass.exit_builtin_type(nd: uni.BuiltinType) -> None {
     type_name = nd.sym_name;
+    self._ensure_emitters();
+    if (
+        not self._in_type_slot(nd)
+        and getattr(self._builtin_emitter, "emit_" + type_name, None) is not None
+    ) {
+        nd.gen.es_ast = self.sync_loc(
+            es.MemberExpression(
+                object=es.MemberExpression(
+                    object=es.Identifier(name='_jac'),
+                    property=es.Identifier(name='types'),
+                    computed=False
+                ),
+                property=es.Identifier(name=type_name),
+                computed=False
+            ),
+            jac_node=nd
+        );
+        if not self._is_call_target(nd) {
+            self.needs_jac_runtime = True;
+        }
+        return;
+    }
     tag = self.sync_loc(
         es.Literal(value=type_name, raw=json.dumps(type_name)), jac_node=nd
     );
@@ -1826,6 +1871,11 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
                 return;
             }
         }
+    }
+
+    if isinstance(nd.target, uni.BuiltinType)
+    and isinstance(callee, es.MemberExpression) {
+        self.needs_jac_runtime = True;
     }
 
     args_obj = self.sync_loc(es.ObjectExpression(properties=props), jac_node=nd);

@@ -82,15 +82,18 @@ impl NaIRGenPass._emit_dict_helpers(
     free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
     memcpy_fn = self._get_or_declare_extern("memcpy", i8_ptr, [i8_ptr, i8_ptr, i64]);
 
-    _rel_fn_name_d = f"__rc_release_dict_{dict_key.replace(':', '_')}";
-    _rel_fnty_d = ir.FunctionType(ir.VoidType(), [dict_ptr_type]);
-    try {
-        _rel_fn_decl_d = self.llvm_module.get_global(_rel_fn_name_d);
-    } except KeyError {
-        _rel_fn_decl_d = ir.Function(
-            self.llvm_module, _rel_fnty_d, name=_rel_fn_name_d
-        );
-        _rel_fn_decl_d.linkage = "private";
+    _rel_fn_decl_d = None;
+    if not self._nogc_headerless() {
+        _rel_fn_name_d = f"__rc_release_dict_{dict_key.replace(':', '_')}";
+        _rel_fnty_d = ir.FunctionType(ir.VoidType(), [dict_ptr_type]);
+        try {
+            _rel_fn_decl_d = self.llvm_module.get_global(_rel_fn_name_d);
+        } except KeyError {
+            _rel_fn_decl_d = ir.Function(
+                self.llvm_module, _rel_fnty_d, name=_rel_fn_name_d
+            );
+            _rel_fn_decl_d.linkage = "private";
+        }
     }
 
     new_fn = self._emit_container_new_fn(
@@ -167,10 +170,15 @@ impl NaIRGenPass._emit_dict_helpers(
     old_vals_i8 = b.bitcast(old_vals, i8_ptr, name="old.vals.i8");
     new_vals_i8 = b.bitcast(new_vals, i8_ptr, name="new.vals.i8");
     b.call(memcpy_fn, [new_vals_i8, old_vals_i8, old_vals_bytes]);
-    if self.rc_safe_free_fn is None {
-        self._emit_rc_helpers();
+    if self._nogc_headerless() {
+        _free_hl = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
+        b.call(_free_hl, [old_vals_i8]);
+    } else {
+        if self.rc_safe_free_fn is None {
+            self._emit_rc_helpers();
+        }
+        b.call(self.rc_safe_free_fn, [old_vals_i8]);
     }
-    b.call(self.rc_safe_free_fn, [old_vals_i8]);
     b.store(new_vals, vals_p2);
     b.branch(append_bb);
 
@@ -278,12 +286,19 @@ impl NaIRGenPass._emit_dict_helpers(
         f"__dict_get_val_{key_type_name}_{val_type_name}", dict_ptr_type, val_type, 3
     );
 
-    release_fn = self._emit_container_release_fn(
-        f"__rc_release_dict_{dict_key.replace(':', '_')}",
-        dict_ptr_type,
-        [(2, key_type), (3, val_type)]
-    );
-    self.dict_release_fns[dict_key] = release_fn;
+    if self._nogc_headerless() {
+        _dstruct_name = getattr(dict_ptr_type.pointee, "name", "");
+        if _dstruct_name {
+            self._emit_container_drop_fn(_dstruct_name);
+        }
+    } else {
+        release_fn = self._emit_container_release_fn(
+            f"__rc_release_dict_{dict_key.replace(':', '_')}",
+            dict_ptr_type,
+            [(2, key_type), (3, val_type)]
+        );
+        self.dict_release_fns[dict_key] = release_fn;
+    }
 
     self.dict_helpers[dict_key] = {
         "new": new_fn,

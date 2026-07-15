@@ -63,12 +63,6 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
 
     for arch in archetypes {
         arch_name = arch.name.value if arch.name else "unknown";
-        self._emit_struct_release_fn(arch_name);
-        self._emit_trace_fn(arch_name);
-    }
-
-    for arch in archetypes {
-        arch_name = arch.name.value if arch.name else "unknown";
         if arch.body is not None {
             for stmt in arch.body {
                 if isinstance(stmt, uni.Ability) {
@@ -109,6 +103,12 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
                 }
             }
         }
+    }
+
+    for arch in archetypes {
+        arch_name = arch.name.value if arch.name else "unknown";
+        self._emit_struct_release_fn(arch_name);
+        self._emit_trace_fn(arch_name);
     }
 
     for arch in archetypes {
@@ -839,8 +839,18 @@ impl NaIRGenPass._codegen_instantiation(
         and self._arch_is_acyclic(type_name)
         and not self._struct_has_ref_fields(type_name)
         and not self._arch_has_vtable(type_name)
+        and f"{type_name}.drop" not in self.func_symtab
     );
-    if _stack_ok {
+    _headerless = self._nogc_headerless() and not self._arch_is_osp_name(type_name);
+    if _stack_ok and _headerless {
+        obj_ptr = self._entry_alloca(struct_type, f"stk.{type_name}");
+        _tgt_asgn = nd.find_parent_of_type(uni.Assignment);
+        if _tgt_asgn is not None
+        and len(_tgt_asgn.target) == 1
+        and isinstance(_tgt_asgn.target[0], uni.Name) {
+            self.nogc_stack_vars.add(_tgt_asgn.target[0].sym_name);
+        }
+    } elif _stack_ok {
         _i8 = ir.IntType(8);
         _i32s = ir.IntType(32);
         _i64s = ir.IntType(64);
@@ -877,6 +887,18 @@ impl NaIRGenPass._codegen_instantiation(
         }
     } elif _vt_struct {
         obj_ptr = self._clib_alloc_vtable(type_name);
+    } elif _headerless {
+        null_ptr = ir.Constant(struct_ptr_type, None);
+        size_gep = self.builder.gep(
+            null_ptr, [ir.Constant(ir.IntType(32), 1)], name="sizeof.gep"
+        );
+        size = self.builder.ptrtoint(size_gep, ir.IntType(64), name="sizeof");
+        _malloc_fn = self._get_or_declare_extern(
+            "malloc", ir.IntType(8).as_pointer(), [ir.IntType(64)]
+        );
+        raw_ptr = self.builder.call(_malloc_fn, [size], name="raw.ptr");
+        obj_ptr = self.builder.bitcast(raw_ptr, struct_ptr_type, name="obj.ptr");
+        self._emit_struct_drop_fn(type_name);
     } else {
         null_ptr = ir.Constant(struct_ptr_type, None);
         size_gep = self.builder.gep(

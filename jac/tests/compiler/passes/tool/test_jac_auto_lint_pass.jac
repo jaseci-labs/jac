@@ -164,6 +164,38 @@ test "auto lint class entry not extracted" {
     assert "import from math { SupportsIndex }" in formatted;
 }
 
+test "auto lint reassigned entry var not globalized" {
+    input_path = auto_lint_fixture_path("reassigned_entry.jac");
+
+    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    formatted = prog.mod.main.gen.jac;
+
+    # A name bound exactly once is still extracted to its own glob.
+    assert "glob once = 5;" in formatted;
+
+    # `count` is reassigned, so promoting it would emit duplicate `glob count`
+    # declarations. It must stay a reassignment inside a with entry block.
+    assert "glob count" not in formatted;
+    assert "with entry" in formatted;
+    assert "count = 0;" in formatted;
+    assert "count = count + 1;" in formatted;
+}
+
+test "auto lint entry reassignment of existing glob not globalized" {
+    input_path = auto_lint_fixture_path("entry_reassigns_glob.jac");
+
+    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    formatted = prog.mod.main.gen.jac;
+
+    # `config` is already a module-level glob; the entry assignment is a
+    # reassignment and must not become a second `glob config` declaration.
+    assert "with entry" in formatted;
+    assert "config = 2;" in formatted;
+
+    # `fresh` is bound exactly once and is still extracted to its own glob.
+    assert "glob fresh = 10;" in formatted;
+}
+
 test "auto lint init postinit conversion" {
     input_path = auto_lint_fixture_path("init_conversion.jac");
 

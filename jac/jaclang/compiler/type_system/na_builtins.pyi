@@ -15,9 +15,20 @@ from __future__ import annotations
 
 from typing import Literal, Protocol, TypeVar, overload
 
-__all__ = ["File", "BinaryFile", "open", "Iterable", "Iterator", "iter", "next"]
+__all__ = [
+    "File",
+    "BinaryFile",
+    "open",
+    "Iterable",
+    "Iterator",
+    "iter",
+    "next",
+    "managed",
+]
 
 _T = TypeVar("_T")
+
+def managed(__x: _T) -> _T: ...
 
 class Iterable(Protocol[_T]):
     def __iter__(self) -> Iterator[_T]: ...
