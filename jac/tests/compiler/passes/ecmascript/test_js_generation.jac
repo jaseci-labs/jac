@@ -2487,10 +2487,12 @@ test "builtin type used as a value lowers to a callable (#7454)" {
 }
 
 test "builtin functions lower to runtime helpers without type-check (#7480)" {
-    # Type checking off (as the client bundler compiles imported modules) leaves
-    # call_kind unstamped; builtins must still lower to their _jac.builtin.*
-    # helpers rather than bare identifiers.
+    # An imported client module reaches the bundler uninferred (call_kind
+    # unstamped, as when compiled as a dependency). The bundler chokepoint must
+    # run the inference schedule before the backend so builtins lower to their
+    # _jac.builtin.* helpers rather than bare, undefined identifiers.
     import re;
+    import from jaclang.runtimelib.client_bundle { _ensure_js_generated }
     fixture_path = _resolve_fixture_path("builtin_func_untyped.cl.jac", FIXTURES);
     prog = JacProgram();
     ir = prog.compile(file_path=fixture_path, no_cgen=True, type_check=False);
@@ -2498,7 +2500,8 @@ test "builtin functions lower to runtime helpers without type-check (#7480)" {
     assert not _fatal , (
         f"Compilation errors: {[str(e) for e in _fatal]}"
     );
-    js_code = es_to_js(EsastGenPass(ir_in=ir, prog=prog).ir_out.gen.es_ast);
+    _ensure_js_generated(ir, prog);
+    js_code = ir.gen.js;
 
     fn_starts = [
         js_code.find("function " + fn)

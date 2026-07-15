@@ -1834,10 +1834,6 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
     self._ensure_emitters();
 
     _call_kind = nd.call_kind;
-    if _call_kind is None {
-        import from jaclang.compiler.symbol_utils { classify_call }
-        _call_kind = classify_call(nd).value;
-    }
     if _call_kind == "builtin" and isinstance(nd.target, uni.Name) {
         import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
         _builtin_name = nd.target.sym_name;
