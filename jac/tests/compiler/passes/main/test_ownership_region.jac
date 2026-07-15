@@ -53,3 +53,31 @@ test "E1307: a region-local passed through a call in a return escapes" {
         compile_fixture("region_escape_through_call.jac"), ["E1307"]
     );
 }
+
+# Laundering closure (#7491 R1 safety invariant): with a real arena, a bulk
+# free at the drop point turns any symbol-level blind spot into use-after-
+# free, so heap-typed region-locals handed to opaque callees are escapes.
+test "E1307: a region-local handed to an opaque call statement escapes" {
+    expect_ownership_codes(compile_fixture("region_escape_call_stmt.jac"), ["E1307"]);
+}
+
+test "E1307: a region-local appended to an outer container escapes" {
+    expect_ownership_codes(
+        compile_fixture("region_escape_append_outer.jac"), ["E1307"]
+    );
+}
+
+test "E1307: a region-local laundered through an aug-assign escapes" {
+    expect_ownership_codes(compile_fixture("region_escape_aug_store.jac"), ["E1307"]);
+}
+
+# Type-aware refinement: scalars copy by value at the boundary, and refs fed
+# to a constructor allocated under the same open stay region-internal
+# (decision #7), so neither is an escape.
+test "a scalar field read assigned out of a region is clean" {
+    expect_ownership_codes(compile_fixture("region_scalar_out_ok.jac"), []);
+}
+
+test "a region-local stored into a region-allocated object is clean" {
+    expect_ownership_codes(compile_fixture("region_internal_ctor_ok.jac"), []);
+}

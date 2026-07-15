@@ -74,6 +74,12 @@ impl NaIRGenPass._emit_last_use_releases(stmt: uni.UniNode) -> None {
         if not (isinstance(slot_ty, ir.PointerType) and slot_ty?.pointee) {
             continue;
         }
+        if name in self.region_handle_vars {
+            # A region handle's NLL last use IS its static drop point: run
+            # the dtor log and bulk-free here instead of an RC release.
+            self._emit_region_handle_drop(alloca, name);
+            continue;
+        }
         val = self.builder.load(alloca, name=f"lu.{name}");
         self._emit_rc_release_typed(val, op="last_use", loc="");
         self.builder.store(ir.Constant(slot_ty, None), alloca);
@@ -462,18 +468,41 @@ impl NaIRGenPass._codegen_open_stmt(nd: uni.OpenStmt) -> None {
         nd.body if isinstance(nd.body, (list, tuple)) else None
     );
 
+    self._emit_arena_helpers();
+    _i8p = ir.IntType(8).as_pointer();
     _anon_region = (
         isinstance(nd.target, uni.FuncCall)
         and isinstance(nd.target.target, uni.Name)
         and nd.target.target.sym_name == "Region"
     );
-    if not _anon_region {
-        self._codegen_expr(nd.target);
+    _synth: (str | None) = None;
+    if _anon_region {
+        # Anonymous open: the handle's whole extent is this block. Bind it
+        # to a synthetic local so early-return scope cleanup drops it too.
+        _arena = self.builder.call(self.region_new_fn, [], name="region.anon");
+        _synth = f".region.{self.region_anon_count}";
+        self.region_anon_count += 1;
+        _slot = self._entry_alloca(_i8p, _synth);
+        self.builder.store(_arena, _slot);
+        self.local_vars[_synth] = _slot;
+        self.region_handle_vars.add(_synth);
+    } else {
+        _arena = self._codegen_expr(nd.target);
+        if _arena is not None and _arena.type != _i8p {
+            _arena = self.builder.bitcast(_arena, _i8p, name="region.hdl");
+        }
+    }
+    _pushed = _arena is not None;
+    if _pushed {
+        self.region_stack.append(_arena);
     }
 
     _region_prebody = set(self.local_vars.keys());
     if isinstance(nd.body, (list, tuple)) {
         self._codegen_body(nd.body);
+    }
+    if _pushed {
+        self.region_stack.pop();
     }
     if not self.builder.block.is_terminated {
         _region_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.last_line
@@ -487,6 +516,9 @@ impl NaIRGenPass._codegen_open_stmt(nd: uni.OpenStmt) -> None {
             ],
             loc=_region_loc
         );
+        if _synth is not None {
+            self._emit_region_handle_drop(self.local_vars[_synth], _synth);
+        }
     }
 }
 
@@ -1210,10 +1242,24 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             coerced = self._coerce_type(value, alloca.type.pointee);
 
             _is_raw_int_ptr = getattr(coerced, 'opname', '') == 'inttoptr';
+            if (
+                isinstance(nd.value, uni.FuncCall)
+                and isinstance(nd.value.target, uni.Name)
+                and nd.value.target.sym_name == "Region"
+            ) {
+                self.region_handle_vars.add(var_name);
+            }
             if isinstance(alloca.type.pointee, ir.PointerType)
             and not is_inplace_set_op {
                 if _is_raw_int_ptr {
                     self.param_vars.add(var_name);
+                } elif var_name in self.region_handle_vars {
+                    self._emit_arena_helpers();
+                    _old_hdl = self.builder.load(alloca, name=f"{var_name}.old");
+                    _old_i8 = self.builder.bitcast(
+                        _old_hdl, ir.IntType(8).as_pointer(), name=f"{var_name}.old.i8"
+                    );
+                    self.builder.call(self.region_drop_fn, [_old_i8]);
                 } else {
                     if not self._is_owned(value)
                     and not self._can_native_move_lower(nd) {

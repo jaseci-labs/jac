@@ -899,6 +899,26 @@ impl NaIRGenPass._codegen_instantiation(
         raw_ptr = self.builder.call(_malloc_fn, [size], name="raw.ptr");
         obj_ptr = self.builder.bitcast(raw_ptr, struct_ptr_type, name="obj.ptr");
         self._emit_struct_drop_fn(type_name);
+    } elif self.region_stack and not self._arch_is_osp_name(type_name) {
+        # Allocation under an `in <handle> {}` open: bump-allocate into the
+        # region's arena with a sentinel-stamped header, so every existing
+        # retain/release on the object is an inert sentinel fast-path hit.
+        # No per-object dtor slot: reclaim is the dtor-log + bulk free at
+        # the handle's drop point.
+        null_ptr = ir.Constant(struct_ptr_type, None);
+        size_gep = self.builder.gep(
+            null_ptr, [ir.Constant(ir.IntType(32), 1)], name="sizeof.gep"
+        );
+        size = self.builder.ptrtoint(size_gep, ir.IntType(64), name="sizeof");
+        raw_ptr = self._region_alloc(size, name="region.obj");
+        obj_ptr = self.builder.bitcast(raw_ptr, struct_ptr_type, name="obj.ptr");
+        if self.rc_set_type_fn is not None {
+            _obj_i8_r = self.builder.bitcast(
+                obj_ptr, ir.IntType(8).as_pointer(), name="obj.i8.rtag"
+            );
+            self._emit_set_type_tag(self.builder, _obj_i8_r, type_name);
+        }
+        self._region_log_dtor_if_needed(raw_ptr, type_name);
     } else {
         null_ptr = ir.Constant(struct_ptr_type, None);
         size_gep = self.builder.gep(

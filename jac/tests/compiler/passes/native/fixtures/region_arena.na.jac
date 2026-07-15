@@ -8,7 +8,7 @@ def region_sum(n: int) -> int {
     while i < n {
         in Region() {
             b: own Box = Box(v=i);
-            total += b.v;
+            total = total + b.v;
         }
         i = i + 1;
     }

@@ -213,6 +213,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             return None;
         }
 
+        if func_name == "Region" {
+            self._emit_arena_helpers();
+            return self.builder.call(self.region_new_fn, [], name="region.new");
+        }
+
         if func_name == "__float_bits" {
             params_l = nd.params or [];
             if params_l {

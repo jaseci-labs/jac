@@ -181,6 +181,7 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
     self._builder = ir.IRBuilder(entry_bb);
     self.local_vars = {};
     self.nogc_stack_vars = set();
+    self.region_handle_vars = set();
 
     for (i, arg) in enumerate(anon_fn.args) {
         alloca = self._entry_alloca(arg.type, all_param_names[i]);

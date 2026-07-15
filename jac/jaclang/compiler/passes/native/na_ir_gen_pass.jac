@@ -219,6 +219,16 @@ obj NaIRGenPass(ModuleCodegenPass) {
         struct_drop_fns: dict[str, ir.Function] = {},
         container_drop_fns: dict[str, ir.Function] = {},
         struct_drop_hooks: dict[str, ir.Function] = {},
+        struct_drop_fields_fns: dict[str, ir.Function] = {},
+        arena_helpers_emitted: bool = False,
+        region_new_fn: (ir.Function | None) = None,
+        region_alloc_fn: (ir.Function | None) = None,
+        region_log_dtor_fn: (ir.Function | None) = None,
+        region_drop_fn: (ir.Function | None) = None,
+        region_stack: list = [],
+        region_handle_vars: set[str] = set(),
+        region_anon_count: int = 0,
+        rc_region_allocs: int = 0,
         nogc_stack_vars: set[str] = set(),
         list_release_fns: dict[str, ir.Function] = {},
         dict_release_fns: dict[str, ir.Function] = {},
@@ -904,7 +914,12 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _nogc_headerless -> bool;
     def _arch_is_osp_name(arch_name: str) -> bool;
     def _emit_struct_drop_fn(type_name: str) -> (ir.Function | None);
+    def _emit_struct_drop_fields_fn(type_name: str) -> (ir.Function | None);
     def _emit_container_drop_fn(cont_name: str) -> (ir.Function | None);
+    def _emit_arena_helpers -> None;
+    def _region_alloc(size: ir.Value, name: str = "region.alloc") -> ir.Value;
+    def _region_log_dtor_if_needed(obj_i8: ir.Value, type_name: str) -> None;
+    def _emit_region_handle_drop(alloca: object, var_name: str) -> None;
     def _nogc_emit_drop(val: ir.Value, op: str = "", loc: str = "") -> bool;
     def _nogc_free_scratch(val: ir.Value, op: str) -> None;
     def _emit_last_use_releases(stmt: uni.UniNode) -> None;
