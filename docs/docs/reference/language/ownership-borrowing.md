@@ -197,6 +197,42 @@ with entry {
 }
 ```
 
+## The `drop` hook
+
+An archetype may declare a reserved ability named `drop` (undunderscored, like `postinit`). On the native backend it runs exactly once, when the object is destroyed, and before the object's own fields are torn down:
+
+```jac
+obj Res {
+    has tag: int = 0;
+
+    def drop {
+        print(self.tag);   # runs when this Res is destroyed
+    }
+}
+```
+
+`drop` fires under every native gc mode, at the same program point for a uniquely-owned value:
+
+- **Enforced headerless modules** (`--enforce-nogc --gc none`): the compiler calls the hook from the statically inserted `__drop_<T>` at each drop point.
+- **Managed modes** (`rc` and the default `cycles`): the hook is invoked by the object's reference-count destructor when the last reference dies. For an unaliased local that is the same point the headerless build drops at, so program output is identical across modes.
+
+**Timing is last use, not scope end.** Drops are scheduled by liveness (NLL-style eager drop): a binding's value is destroyed after the statement containing its last use, which can be earlier than the end of the enclosing block. This is observable through `drop`:
+
+```jac
+def run {
+    r: own Res = Res(tag=7);
+    print("alive");
+}
+# prints 7, then "alive" -- r's last use is its declaration
+```
+
+Two caveats:
+
+- Under `cycles`, objects that die as members of a reference cycle are destroyed by the collector; each member's `drop` still runs, but the order within the cycle is unspecified and sibling objects may already be gone -- don't traverse other heap objects from a cyclic `drop`.
+- There is no resurrection: `drop` must not store `self` anywhere; the object is freed as soon as the hook returns.
+
+The Python backend does not invoke `def drop` automatically yet -- rely on it only in native modules.
+
 ## What `&x` compiles to
 
 On every backend the ownership annotations are compile-time-only. On the Python backend, `&x` and `&mut x` are **erased**: the expression compiles to exactly `x`, the same object reference an unannotated binding would produce. There is no runtime borrow object, no copy, and no indirection -- the annotation exists solely for `OwnershipCheckPass` to check. (Before the borrow-checker work, a prefix `&x` lowered to the archetype-lookup call `jobj(id=x)`; that legacy meaning is gone -- call `jobj(id=...)` explicitly if you want an id lookup.) The native backend likewise erases borrows; its reference-count optimizations consume the core-stamped move-elision and param-rebinding facts (`RcFactsPass`), computed once on the shared dataflow framework.
