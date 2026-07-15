@@ -7,7 +7,7 @@ import litellm;
 
 import jaclang.byllm.llm as _byllm_llm_mod;
 import from jaclang.byllm.lib { Model, ModelPool, MockLLM }
-import from jaclang.byllm.llm { BaseLLM, LocalLLM }
+import from jaclang.byllm.llm { BaseLLM }
 import from jaclang.byllm.types { MockToolCall, CompletionResult }
 import from jaclang.byllm.exceptions { CompactionNotEffectiveError, ConfigurationError }
 import from jaclang.byllm.config_loader { reset_byllm_config, get_byllm_config }
@@ -533,12 +533,13 @@ test "ModelPool ctx_window override beats min of members" {
 }
 
 
-# Spec n_ctx for "local:gemma-4-e4b" is 8192. With prompt_tokens=850, an
-# override of 1000 fires (85%); without, spec=8192 doesn't fire (10%).
-# So compaction firing means an override won.
-test "LocalLLM ctx_window propagation drives compaction end-to-end" {
+# A model not in litellm's registry resolves to ctx_window=0, which disables
+# compaction. With prompt_tokens=850, an override of 1000 fires (85%); with 0
+# (disabled) it must not. So compaction firing means an override won.
+test "ctx_window propagation drives compaction end-to-end" {
     reset_byllm_config();
     OVERRIDE = 1000;
+    UNKNOWN = "dummy/not-in-registry";   # -> _litellm_ctx_window() == 0
 
     def step_a -> str {
         return "stepped";
@@ -572,7 +573,7 @@ test "LocalLLM ctx_window propagation drives compaction end-to-end" {
                 }
             ],
             "usage": {"prompt_tokens": 850},
-            "model": "local:gemma-4-e4b"
+            "model": UNKNOWN
         };
         finish_resp: dict = {
             "choices": [
@@ -592,7 +593,7 @@ test "LocalLLM ctx_window propagation drives compaction end-to-end" {
                 }
             ],
             "usage": {},
-            "model": "local:gemma-4-e4b"
+            "model": UNKNOWN
         };
         call_count = [0];
         def fake(params: dict) -> dict {
@@ -603,11 +604,8 @@ test "LocalLLM ctx_window propagation drives compaction end-to-end" {
     }
 
     # Drive `by target(...)` with the given call_params; report whether
-    # compaction fired. patch_target is the LLM whose dispatch should be
-    # intercepted (same as target for LocalLLM, _local_delegate for Model).
-    def fires_compaction(
-        target: object, patch_target: object, ctx_window_in_call: int
-    ) -> bool {
+    # compaction fired.
+    def fires_compaction(target: object, ctx_window_in_call: int) -> bool {
         fired = [False];
         def hook(msgs: list, keep_recent: int) -> list {
             fired[0] = True;
@@ -619,9 +617,9 @@ test "LocalLLM ctx_window propagation drives compaction end-to-end" {
             threshold_ratio=0.80,
             on_compaction=hook
         );
-        with mock.patch.object(patch_target, "format_prompt", noop_format) {
+        with mock.patch.object(target, "format_prompt", noop_format) {
             with mock.patch.object(
-                patch_target, "model_call_no_stream", make_fake_dispatch()
+                target, "model_call_no_stream", make_fake_dispatch()
             ) {
                 task("test");
             }
@@ -629,24 +627,50 @@ test "LocalLLM ctx_window propagation drives compaction end-to-end" {
         return fired[0];
     }
 
-    # Baseline: no override anywhere - 850/8192 = 10% must NOT fire.
-    spec = LocalLLM(model_name="local:gemma-4-e4b");
-    assert not fires_compaction(spec, spec, 0) , "Baseline (no override) must not fire - test cannot discriminate otherwise";
+    # Baseline: ctx_window resolves to 0 (unknown model) -> compaction disabled.
+    baseline = Model(model_name=UNKNOWN);
+    assert not fires_compaction(baseline, 0) , "Baseline (ctx_window=0) must not fire - test cannot discriminate otherwise";
 
-    # config["n_ctx"] rung: same value the engine is built with.
-    cfg = LocalLLM(model_name="local:gemma-4-e4b", config={"n_ctx": OVERRIDE});
-    assert fires_compaction(cfg, cfg, 0) , "config['n_ctx'] override must reach compaction";
+    # self.ctx_window rung: stamped on the Model (what the manifest resolver does
+    # for local: models).
+    stamped = Model(model_name=UNKNOWN, ctx_window=OVERRIDE);
+    assert fires_compaction(stamped, 0) , "self.ctx_window must reach compaction";
 
-    # self.ctx_window rung.
-    own_llm = LocalLLM(model_name="local:gemma-4-e4b", ctx_window=OVERRIDE);
-    assert fires_compaction(own_llm, own_llm, 0) , "self.ctx_window override must reach compaction";
+    # call_params rung (highest priority): `by llm(ctx_window=...)`.
+    direct = Model(model_name=UNKNOWN);
+    assert fires_compaction(direct, OVERRIDE) , "by llm(ctx_window=...) must reach compaction";
+}
 
-    # call_params rung (highest priority).
-    direct = LocalLLM(model_name="local:gemma-4-e4b");
-    assert fires_compaction(direct, direct, OVERRIDE) , "by llm(ctx_window=...) must reach compaction";
 
-    # Model wrapper must forward ctx_window to _local_delegate.
-    m = Model(model_name="local:gemma-4-e4b", ctx_window=OVERRIDE);
-    assert m._local_delegate is not None;
-    assert fires_compaction(m, m._local_delegate, 0) , "Model('local:...', ctx_window=N) must forward to _local_delegate";
+# The old in-process LocalLLM used to read spec['n_ctx'] to keep compaction
+# alive; that job now belongs to the manifest resolver, which stamps ctx_window
+# (and native-tool support) onto the Model in postinit. Mock the daemon-backed
+# resolver so this stays a unit test.
+test "local: Model stamps ctx_window + native_tools from the manifest" {
+    reset_byllm_config();
+
+    def fake_resolve(alias: str, user_ctx_window: int = 0) -> dict {
+        return {
+            "served_model": f"openai/{alias}",
+            "base_url": "http://127.0.0.1:1/v1",
+            "api_key": "sk-local",
+            "ctx_window": user_ctx_window if user_ctx_window > 0 else 8192,
+            "supports_native_tools": False
+        };
+    }
+
+    with mock.patch(
+        "jaclang.byllm.serve.client.resolve_local_model", fake_resolve
+    ) {
+        # manifest ctx_window is stamped; model rewritten to openai/<alias>.
+        m = Model(model_name="local:gemma-4-e4b");
+        assert m.model_name == "openai/gemma-4-e4b" , "model_name -> openai/<alias>";
+        assert m.ctx_window == 8192 , "ctx_window stamped from manifest (not 0)";
+        assert m.supports_native_tools == False , "gemma native_tools from manifest, not name-sniff";
+        assert "127.0.0.1" in str(m.config.get("base_url")) , "base_url routes to daemon";
+
+        # user override wins over the manifest default.
+        m2 = Model(model_name="local:gemma-4-e4b", ctx_window=1000);
+        assert m2.ctx_window == 1000 , "user ctx_window override wins";
+    }
 }

@@ -208,7 +208,7 @@ with entry {
 }
 ```
 
-No prompt, no parsing, no API glue. The compiler constructs the prompt from your function's name, argument names, and types (plus optional `sem` annotations), and the return type is an enforced output schema. This is [Meaning-Typed Programming](https://arxiv.org/abs/2405.08965). Declare your model once in `jac.toml`, run `jac install byllm`, and use any [LiteLLM-compatible provider](https://docs.litellm.ai/docs/providers), or go fully local with `jac install 'byllm[local]'`. [Learn more →](https://docs.jaseci.org/reference/plugins/byllm/)
+No prompt, no parsing, no API glue. The compiler constructs the prompt from your function's name, argument names, and types (plus optional `sem` annotations), and the return type is an enforced output schema. This is [Meaning-Typed Programming](https://arxiv.org/abs/2405.08965). Declare your model once in `jac.toml`, run `jac install byllm`, and use any [LiteLLM-compatible provider](https://docs.litellm.ai/docs/providers), or go fully local with a bundled model — `jac model pull gemma-4-e4b`, no extra install. [Learn more →](https://docs.jaseci.org/reference/plugins/byllm/)
 
 ### Your data is a graph, and your API writes itself
 

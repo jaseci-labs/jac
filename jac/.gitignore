@@ -78,6 +78,12 @@ dist/
 .bun-build/
 jaclang/runtimelib/client/_bun/
 
+# Pinned llama-server runners (CPU + Vulkan) fetched per target by the
+# fetch-llama step of launcher/payload.zig and bundled into the payload
+# (never committed). See build.zig / launcher/llama_release.zig.
+.llama-build/
+jaclang/byllm/_llama/
+
 # Vendored typeshed stdlib stubs are fetched at the pinned commit by the
 # fetch-typeshed step of launcher/payload.zig, not committed -- only the PIN /
 # TARBALL_SHA256 / LICENSE / PROVENANCE.md beside the stubs are tracked.

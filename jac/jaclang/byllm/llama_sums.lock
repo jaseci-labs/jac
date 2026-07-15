@@ -1,0 +1,13 @@
+# Trust anchor for on-demand ACCELERATED llama-server runners.
+#
+# These variants are too large to bundle (hundreds of MB), so they are fetched
+# on first use behind this checked-in sha256 lock (the CEF pattern). The bundled
+# CPU + Vulkan runners cover the zero-config GPU path; this is the opt-in heavy
+# accelerator path (ROCm now; a native-CUDA build is a follow-up).
+#
+# Format: GNU sha256sum style (`<hex>  <asset>`) + a `# version:` directive.
+# Bump in lockstep with LLAMA_VERSION in byllm/llama_server.jac; re-pin each
+# sha256 from the GitHub releases API `digest` field and verify a download.
+#
+# version: b10019
+36a028bee8c5fb74b4a1d4aebe60046c67ce57f09ac0f3e951c021871f10fa8f  llama-b10019-bin-ubuntu-rocm-7.2-x64.tar.gz

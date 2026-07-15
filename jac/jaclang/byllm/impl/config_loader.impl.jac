@@ -45,12 +45,23 @@ impl JacByllmConfig.get_default_config(self: JacByllmConfig) -> dict[str, any] {
             'compaction_model': ''
         },
         'local': {
-            'default_alias': 'gemma-4-e4b',
+            'default_alias': '',
             'n_ctx': 0,
             'n_gpu_layers': 0,
             'n_threads': 0,
             'verbose': False,
             'auto_download': False
+        },
+        'serve': {
+            'default_alias': 'gemma-4-e4b',
+            'serve_port': 0,
+            'idle_ttl': 300,
+            'max_loaded': 1,
+            'memory': 'auto',
+            'models_dir': '',
+            'manifest_url': '',
+            'llama_server_bin': '',
+            'autostart': True
         }
     };
 }
@@ -183,17 +194,44 @@ impl JacByllmConfig.get_compaction_config(self: JacByllmConfig) -> dict[str, any
     };
 }
 
-"""Get local-runtime configuration from jac.toml."""
+"""Get local-runtime (llama-server launch flag) configuration from jac.toml."""
 impl JacByllmConfig.get_local_config(self: JacByllmConfig) -> dict[str, any] {
     config = self.load();
     local_cfg = config.get('local', {});
     return {
-        'default_alias': str(local_cfg.get('default_alias', 'gemma-4-e4b')),
+        'default_alias': str(local_cfg.get('default_alias', '')),
         'n_ctx': int(local_cfg.get('n_ctx', 0)),
         'n_gpu_layers': int(local_cfg.get('n_gpu_layers', 0)),
         'n_threads': int(local_cfg.get('n_threads', 0)),
         'verbose': bool(local_cfg.get('verbose', False)),
         'auto_download': bool(local_cfg.get('auto_download', False))
+    };
+}
+
+"""Get model-daemon (`jac model serve`) configuration from jac.toml.
+
+`default_alias` falls back to the deprecated [byllm.local].default_alias, then
+to 'gemma-4-e4b', so existing configs keep working.
+"""
+impl JacByllmConfig.get_serve_config(self: JacByllmConfig) -> dict[str, any] {
+    config = self.load();
+    serve_cfg = config.get('serve', {});
+    local_cfg = config.get('local', {});
+    alias = str(
+        serve_cfg.get('default_alias', '')
+        or local_cfg.get('default_alias', '')
+        or 'gemma-4-e4b'
+    );
+    return {
+        'default_alias': alias,
+        'serve_port': int(serve_cfg.get('serve_port', 0)),
+        'idle_ttl': int(serve_cfg.get('idle_ttl', 300)),
+        'max_loaded': int(serve_cfg.get('max_loaded', 1)),
+        'memory': str(serve_cfg.get('memory', 'auto')),
+        'models_dir': str(serve_cfg.get('models_dir', '')),
+        'manifest_url': str(serve_cfg.get('manifest_url', '')),
+        'llama_server_bin': str(serve_cfg.get('llama_server_bin', '')),
+        'autostart': bool(serve_cfg.get('autostart', True))
     };
 }
 

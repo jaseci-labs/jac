@@ -7,6 +7,33 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### byLLM local models: in-process `llama-cpp-python` replaced by the `jac model serve` daemon
+
+`local:<alias>` models no longer run in-process through `llama-cpp-python`. They
+are now served by a bundled `llama-server` runner supervised by a machine-wide
+`jac model serve` daemon that exposes an OpenAI-compatible API on `127.0.0.1`;
+`local:<alias>` rides the existing LiteLLM transport like any other endpoint.
+
+| Old | New |
+|---|---|
+| `jac install 'byllm[local]'` (compiled `llama-cpp-python`) | Nothing to install — a CPU + Vulkan `llama-server` is bundled in the binary |
+| First `by llm()` call auto-downloaded weights | The daemon **never** downloads; `jac run`/`by` on an un-pulled model errors with `Run: jac model pull <alias>` |
+| `[byllm.local].default_alias` | `[byllm.serve].default_alias` (the old key is still honored as a fallback) |
+| `[byllm.local]` = in-process llama.cpp knobs | `[byllm.local]` = `llama-server` launch flags (`n_ctx`→`-c`, `n_gpu_layers`→`-ngl`, …); daemon lifecycle lives under `[byllm.serve]` |
+| GPU needed a CUDA/Metal `llama-cpp-python` build | GPU works out of the box: macOS via Metal, Linux (NVIDIA/AMD/Intel) via the bundled Vulkan runner, auto-detected |
+
+New commands: `jac model serve`, `jac model stop`, `jac model run <alias>`,
+`jac model ps`, `jac model show <alias>`, `jac model refresh` (alongside the
+existing `list`/`pull`/`rm`).
+
+**Impact:** remove any `jac install 'byllm[local]'` step — it no longer exists.
+To use a local model, run `jac model pull <alias>` once (interactive consent), or
+`jac model run <alias>`. `local:*` streaming now works, and Ollama support is
+unchanged (`ollama/<model>` is a LiteLLM prefix). Rename `[byllm.local].default_alias`
+to `[byllm.serve].default_alias` when convenient.
+
+---
+
 ### `jac create --list_jacpacks` renamed to `jac create --list`
 
 The flag never listed jacpacks. A `.jacpack` is a distributable bundle you produce with `jac create --pack <dir>` and consume with `jac create --use <path|url>`; the flag instead lists the **project kinds** (used with `--kind`) and **named variants** (used with `--use <name>`) registered in the template registry. The name promised one thing and printed another, and its underscore spelling (`--list_jacpacks`, since `--list-jacpacks` was rejected) made it easy to get wrong.

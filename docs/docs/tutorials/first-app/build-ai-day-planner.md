@@ -24,13 +24,13 @@ The `jac --version` output shows the binary version. Check that the minimum is m
 |---------|----------------|
 | jaclang | 0.11.0 |
 
-**Local AI Model:** Parts 5+ use AI features. The tutorial defaults to a local model -- Google Gemma 4 E4B running in-process via `llama.cpp` -- so **no API key is required**. Install the local-model dependency once:
+**Local AI Model:** Parts 5+ use AI features. The tutorial defaults to a bundled local model -- Google Gemma 4 E4B, served by the `jac model serve` daemon -- so **no API key and no pip install are required** (the runner ships in the binary). Pull the weights once:
 
 ```bash
-jac install 'byllm[local]'
+jac model pull gemma-4-e4b
 ```
 
-The first AI call downloads ~5 GB of GGUF weights to your machine and caches them; subsequent runs are instant. If you'd rather use a cloud model (Anthropic Claude, Google Gemini, Ollama, etc.), see the "Use a cloud model instead" callout in [Part 5](#part-5-making-it-smart-with-ai).
+This downloads ~5 GB of GGUF weights to your machine and caches them; subsequent runs are instant. If you'd rather use a cloud model (Anthropic Claude, Google Gemini, Ollama, etc.), see the "Use a cloud model instead" callout in [Part 5](#part-5-making-it-smart-with-ai).
 
 The tutorial is split into seven parts. Each builds on the last:
 
@@ -1085,17 +1085,13 @@ Your day planner works, but it doesn't leverage AI yet. This part introduces one
 
 **Set Up the Model**
 
-Jac's AI features need an LLM to run. The tutorial defaults to a **local model** -- Google Gemma 4 E4B, running in-process via `llama.cpp` -- so there's no API key to manage and no per-call cost. Install the local-model dependency once:
-
-```bash
-jac install 'byllm[local]'
-```
-
-The first time you run an AI feature, byLLM prompts you (in an interactive terminal) to download the ~5 GB GGUF weights, caches them under `~/.cache/jac/models/`, and uses the cached copy from then on. If you'd rather pre-fetch the weights now -- useful in CI, Docker, or just to know the download is done -- run:
+Jac's AI features need an LLM to run. The tutorial defaults to a **bundled local model** -- Google Gemma 4 E4B, served by the `jac model serve` daemon -- so there's no API key to manage, no per-call cost, and no pip install. Pull the weights once (interactive consent, ~5 GB, cached under `~/.cache/jac/models/`):
 
 ```bash
 jac model pull gemma-4-e4b
 ```
+
+The daemon auto-starts on first use and never downloads on its own -- a `by llm()` on an un-pulled model errors with a `jac model pull` hint.
 
 **Configure the LLM**
 
@@ -1972,8 +1968,8 @@ jac start main.jac  # or: jac start
 !!! warning "Common issue"
     If adding a task silently fails (nothing happens), check the terminal running `jac start` for error messages. The most common culprits:
 
-    - `byllm[local]` not installed -- re-run `jac install 'byllm[local]'`
-    - Weights not downloaded yet in a non-interactive terminal -- run `jac model pull gemma-4-e4b` once, or set `BYLLM_AUTO_DOWNLOAD=1` and let `jac start` fetch them
+    - Weights not downloaded yet -- run `jac model pull gemma-4-e4b` once (the daemon never auto-downloads)
+    - The model daemon failed to start -- check `jac model ps`, or run `jac model serve` in a separate terminal to see its logs
     - If you switched to a cloud model, a missing or invalid API key causes a server error -- check the export
 
 Open [http://localhost:8000](http://localhost:8000). The app now has two columns. Try it:

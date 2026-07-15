@@ -510,16 +510,20 @@ See also [Scale Webhooks](../plugins/jac-scale-http.md#webhooks) and [Kubernetes
 
 ```toml
 [byllm.model]
-default_model = "local:gemma-4-e4b"   # in-process llama.cpp; no API key, no daemon
+default_model = "local:gemma-4-e4b"   # bundled llama-server runner; no API key, no pip install
 
-[byllm.local]
-default_alias  = "gemma-4-e4b"        # used when default_model is unset
-n_gpu_layers   = -1                   # -1 = offload all layers to GPU; 0 = CPU only
-n_ctx          = 0                    # 0 = use the alias's bundled default
-auto_download  = false                # true = skip the first-run TTY prompt
+[byllm.serve]                          # the `jac model serve` daemon
+default_alias = "gemma-4-e4b"          # used when default_model is unset
+memory        = "auto"                 # auto = use GPU (Vulkan/Metal) when detected; cpu; gpu
+idle_ttl      = 300                    # seconds before an idle runner is evicted
+
+[byllm.local]                          # llama-server launch flags
+n_gpu_layers  = -1                     # -1 = offload all layers to GPU (-ngl); 0 = CPU only
+n_ctx         = 0                      # 0 = use the alias's manifest default (-c)
+auto_download = false                  # true = skip the pull consent prompt
 ```
 
-Bundled aliases are downloaded as Q4_K_M GGUFs into `~/.cache/jac/models/<alias>/` on first use and managed via `jac model list/pull/rm`. See [Built-in Local Models](../plugins/byllm.md#built-in-local-models) for the full reference and [`jac model`](../cli/index.md#jac-model) for cache management.
+`local:<alias>` models are served by the `jac model serve` daemon (auto-started on first use) and cached under `~/.cache/jac/models/<alias>/`. Managed via `jac model list/pull/rm/show/run/serve/ps`. See [Built-in Local Models](../plugins/byllm.md#built-in-local-models) for the full reference and [`jac model`](../cli/index.md#jac-model) for the CLI.
 
 **Frontend Framework (jac-client):**
 
