@@ -166,3 +166,29 @@ test "import sys compiles under --gc rc (argv list is a heap container)" {
     addr = eng.get_function_address("argc_minus_one");
     assert addr != 0 , "argc_minus_one not emitted";
 }
+
+# --- def drop parity across gc modes (issue #7466, 4) ---
+"""Run the drop fixture and assert the hook fired once per destroyed Res."""
+def check_drop_parity(gc_mode: str | None) {
+    (eng, ir) = compile_native("rc_drop_hook.na.jac", gc_mode=gc_mode);
+    body = fn_ir(ir, "__rc_release_Res");
+    assert 'call' in body and 'Res.drop' in body , "managed release fn does not invoke the drop hook";
+    run_drops = get_func(eng, "run_drops", ctypes.c_int64);
+    drop_count = get_func(eng, "drop_count", ctypes.c_int64);
+    last_dropped = get_func(eng, "last_dropped", ctypes.c_int64);
+    before = drop_count();
+    total = run_drops();
+    assert total == 18 , f"Expected 18 (5+6+7), got {total}";
+    fired = drop_count() - before;
+    assert fired == 3 , f"drop should fire once per Res (3), fired {fired}";
+    last = last_dropped();
+    assert last == 7 , f"last drop should see tag=7, got {last}";
+}
+
+test "drop hook fires on rc release (--gc rc)" {
+    check_drop_parity("rc");
+}
+
+test "drop hook fires under the default cycles collector" {
+    check_drop_parity(None);
+}

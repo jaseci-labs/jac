@@ -998,6 +998,13 @@ impl NaIRGenPass._emit_struct_release_fn(arch_name: str) -> None {
     i8 = ir.IntType(8);
     (b, done_bb) = self._emit_rc_destructor_preamble(release_fn, struct_ptr_type);
 
+    _hook = self.struct_drop_hooks.get(arch_name)
+    or self.func_symtab.get(f"{arch_name}.drop");
+    if _hook is not None {
+        self.struct_drop_hooks[arch_name] = _hook;
+        b.call(_hook, [release_fn.args[0]]);
+    }
+
     _has_ref_fields = any(
         isinstance(_ft, ir.PointerType)
         and _fn not in opaque_fields
