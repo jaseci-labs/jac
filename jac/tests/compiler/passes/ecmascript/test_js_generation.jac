@@ -2486,6 +2486,61 @@ test "builtin type used as a value lowers to a callable (#7454)" {
     assert_balanced_syntax(js_code, "builtin_type_as_value.cl.jac");
 }
 
+test "builtin functions lower to runtime helpers without type-check (#7480)" {
+    # Type checking off (as the client bundler compiles imported modules) leaves
+    # call_kind unstamped; builtins must still lower to their _jac.builtin.*
+    # helpers rather than bare identifiers.
+    import re;
+    fixture_path = _resolve_fixture_path("builtin_func_untyped.cl.jac", FIXTURES);
+    prog = JacProgram();
+    ir = prog.compile(file_path=fixture_path, no_cgen=True, type_check=False);
+    _fatal = _fatal_compile_errors(prog);
+    assert not _fatal , (
+        f"Compilation errors: {[str(e) for e in _fatal]}"
+    );
+    js_code = es_to_js(EsastGenPass(ir_in=ir, prog=prog).ir_out.gen.es_ast);
+
+    fn_idx = js_code.find("function summarize");
+    assert fn_idx >= 0 , "compiled function summarize must be present";
+    user_js = js_code[fn_idx:];
+    for name in [
+        "sorted", "len", "sum", "min", "max", "abs", "round", "enumerate",
+        "zip", "range"
+    ] {
+        assert re.search(r"(?<![.\w])" + name + r"\s*\(", user_js) is None , (
+            "builtin function `" + name + "` lowered to a bare, undefined "
+            "identifier (ReferenceError at runtime); user code:\n" + user_js
+        );
+    }
+
+    wrapper = (
+        js_code + "\nconsole.log(JSON.stringify({" + "  summarize: summarize([3, 1, 2])," + "  numeric: numeric(5)," + "  zipped: combined([1, 2], [3, 4])[2]" + "}));\n"
+    );
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", wrapper],
+        capture_output=True,
+        text=True,
+        timeout=30
+    );
+    assert result.returncode == 0 , (
+        "builtin-function codegen crashed in Node:\n"
+        f"stderr={result.stderr!r}\njs:\n{js_code}"
+    );
+    got = json.loads(result.stdout.strip());
+    assert got["summarize"]["sorted"] == [1, 2, 3] , got["summarize"];
+    assert got["summarize"]["total"] == 6 , got["summarize"];
+    assert got["summarize"]["count"] == 3 , got["summarize"];
+    assert got["summarize"]["enumerated"] == [[0, 3], [1, 1], [2, 2]] , (
+        got["summarize"]
+    );
+    assert got["summarize"]["ranged"] == [0, 1, 2] , got["summarize"];
+    assert got["numeric"]["abs"] == 5 , got["numeric"];
+    assert got["numeric"]["round"] == 3.14 , got["numeric"];
+    assert got["zipped"] == [[1, 3], [2, 4]] , got["zipped"];
+
+    assert_balanced_syntax(js_code, "builtin_func_untyped.cl.jac");
+}
+
 test "getattr default with or/and emits parenthesized nullish coalescing (#6562)" {
     fixture = "dict_get_nullish_or_precedence.cl.jac";
     js_code = compile_fixture_to_js(fixture, FIXTURES);
