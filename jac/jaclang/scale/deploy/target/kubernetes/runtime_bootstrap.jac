@@ -128,20 +128,22 @@ def build_bootstrap_init_container(
     # target is the runtime site, which on the official base image is a
     # container-local layer, so installs there never reach the main container.
     commands.append(f'export PIP_PREFIX="{APP_MOUNT_PATH}/.jac/venv"');
-    # npm deps exist only to BUILD the client; --no-npm also skips the client
-    # machinery's base closure, which a jac.toml table-strip misses on
+    # npm deps exist only to BUILD the client; JAC_CLIENT_SKIP_NPM_INSTALL
+    # (the `jac create --skip` knob) skips the whole closure, including the
+    # client machinery's base install that a jac.toml table-strip misses on
     # client-kind projects. Service pods never build; the gateway only builds
     # when the bundle ships no prebuilt dist.
     if not is_gateway {
-        commands.append("jac install --no-npm");
+        commands.append("export JAC_CLIENT_SKIP_NPM_INSTALL=1");
     } else {
         commands.append(
             'if [ -f .jac/client/dist/index.html ]; then echo "[jac-scale] '
             'prebuilt client dist found; skipping the npm closure"; '
-            "jac install --no-npm; else echo \"[jac-scale] no prebuilt client "
-            'dist; full install"; jac install; fi'
+            "export JAC_CLIENT_SKIP_NPM_INSTALL=1; else echo \"[jac-scale] no "
+            'prebuilt client dist; full install"; fi'
         );
     }
+    commands.append("jac install");
     script = ' && '.join(commands);
     container: dict[str, any] = {
         "name": "jac-bootstrap",
