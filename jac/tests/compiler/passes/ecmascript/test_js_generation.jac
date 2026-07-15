@@ -961,17 +961,15 @@ test "sv import duplicate kwarg is a compile error" {
 }
 
 test "issue 7221 sv import nested in cl block emits no dead import" {
-    # SERVER context of a nested `sv import`, emitting a dead client import.
-    js_code = compile_fixture_to_js(
-        "sv_import_cl_block_client.cl.jac", FIXTURES
-    );
+    # Regression for #7221: a cl {} block clobbered a nested sv import's
+    # SERVER context, making it emit a dead client import of the server.
+    js_code = compile_fixture_to_js("sv_import_cl_block_client.cl.jac", FIXTURES);
     assert "sv_import_cl_block_server" not in js_code , (
         "nested sv import must not emit a client import of the server "
         "module; got:\n" + js_code
     );
     assert '__jacSpawn("say_hi"' in js_code , (
-        "nested sv import must still lower the call to __jacSpawn; got:\n"
-        + js_code
+        "nested sv import must still lower the call to __jacSpawn; got:\n" + js_code
     );
 }
 
