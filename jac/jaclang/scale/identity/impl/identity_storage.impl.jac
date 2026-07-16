@@ -125,19 +125,32 @@ impl IdentityStorage.ensure_user_by_id(user_id: str) -> str | None {
     Jac.commit(user_root);
     root_id = user_root.__jac__.id.hex;
     now = datetime.now(UTC).isoformat();
-    self._store_user(
-        {
-            'user_id': user_id,
-            'status': 'active',
-            'identities': [],
-            'credentials': [],
-            'root_id': root_id,
-            'role': 'user',
-            'profile': {},
-            'created_at': now,
-            'updated_at': now
+    try {
+        self._store_user(
+            {
+                'user_id': user_id,
+                'status': 'active',
+                'identities': [],
+                'credentials': [],
+                'root_id': root_id,
+                'role': 'user',
+                'profile': {},
+                'created_at': now,
+                'updated_at': now
+            }
+        );
+    } except Exception {
+        # Lost a concurrent first-access race for this user_id: another
+        # request inserted between our check and our insert. The winner's
+        # record is authoritative (mongo raises IdentityTakenError, sqlite a
+        # raw IntegrityError - both land here); our freshly-minted root
+        # becomes a single orphaned empty node. Anything else re-raises.
+        winner = self.get_user_by_id(user_id);
+        if winner {
+            return winner.get('root_id');
         }
-    );
+        raise;
+    }
     return root_id;
 }
 

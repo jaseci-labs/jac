@@ -83,8 +83,15 @@ impl LocalDeployer.status -> dict[str, dict] {
     for (name, svc_entry) in self.registry.entries.items() {
         is_running = name in pm.processes;
         if not is_running {
+            # Pidfile-recovered services also need the health probe on the
+            # recovered port to have answered: a crashed run's stale pidfile
+            # whose pid the OS recycled would otherwise read as running.
             pidfile_pid = _read_pidfile(name);
-            is_running = pidfile_pid is not None and _pid_alive(pidfile_pid);
+            is_running = (
+                pidfile_pid is not None
+                and _pid_alive(pidfile_pid)
+                and svc_entry.status == ServiceStatus.HEALTHY
+            );
         }
         proc = pm.processes.get(name);
         result[name] = {
