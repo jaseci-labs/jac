@@ -85,6 +85,8 @@ glob METHOD_TABLE: dict[str, MethodSemantics] = {
          "is_keyword_token": MethodSemantics(kind="lookahead", token_args=False),
          "at_end": MethodSemantics(kind="lookahead", token_args=False),
          "error": MethodSemantics(kind="ignore", token_args=False),
+         "emit_diag": MethodSemantics(kind="ignore", token_args=False),
+         "emit_warn": MethodSemantics(kind="ignore", token_args=False),
          "make_uni_token": MethodSemantics(kind="ignore", token_args=False),
          "make_name": MethodSemantics(kind="ignore", token_args=False),
          "make_special_name": MethodSemantics(kind="ignore", token_args=False),
@@ -117,11 +119,21 @@ obj ConditionResult {
 
 obj GrammarExtractPass(UniPass) {
     has rules: list = [],
-        target_class: str = "Parser";
+        target_class: str = "Parser",
+        diagnostics: list = [],
+        _parse_impls: list = [],
+        _rule_firsts: dict = {},
+        _current_rule: str = "";
 
     def before_pass -> None;
     def enter_impl_def(nd: uni.ImplDef) -> None;
     def after_pass -> None;
+    def _interpret_all -> list;
+    def _compute_rule_firsts(rules: list) -> dict;
+    def _tok_set_expr(tokens: list) -> GExpr | None;
+    def _collect_strict_diags(rule_name: str, stmts: list) -> None;
+    def _walk_strict(rule_name: str, nd: uni.UniNode) -> None;
+    def emit_diagnostics -> str;
     def format_ebnf(expr: GExpr) -> str;
     def simplify_expr(expr: GExpr) -> GExpr;
     def interpret_stmts(stmts: list) -> GExpr | None;

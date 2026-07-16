@@ -73,10 +73,10 @@ pipe_call ::= ("|>" | ":>") atomic_chain | atomic_chain
 
 atomic_chain ::=
     atom (
-        "." ("." | ".>" | "<.")? (NAME | KWESC_NAME)?
+        ("." | "?" | ".>" | "<.") ("." | ".>" | "<.")? (NAME | KWESC_NAME)?
         | "(" (filter_compr_inner | assign_compr_inner | call_args ")")
         | "[" filter_compr_bracket
-        | ("?" | "[") "?"? index_slice
+        | "?"? index_slice
     )*
 
 index_slice ::=
@@ -191,8 +191,8 @@ edge_op_ref ::=
     "-->"
     | "<--"
     | "<-->"
-    | "->:" ((NAME | KWESC_NAME) atom)? (":" (compare ("," compare)*)?)? ":->"
-    | "<-:" ((NAME | KWESC_NAME) atom)? (":" (compare ("," compare)*)?)? ":<-"
+    | "->:" atom? (":" (compare ("," compare)*)?)? ":->"
+    | "<-:" atom? (":" (compare ("," compare)*)?)? ":<-"
 
 dict_or_set ::=
     "}"
@@ -254,9 +254,9 @@ jsx_child ::=
 
 element_stmt ::=
     ";"
-    | "cl" (client_block | element_stmt)?
-    | "sv" (server_block | element_stmt)?
-    | "na" (native_block | element_stmt)?
+    | (client_block | element_stmt)?
+    | (server_block | element_stmt)?
+    | (native_block | element_stmt)?
     | type_alias
     | import_stmt
     | archetype
@@ -272,11 +272,11 @@ element_stmt ::=
 
 docstring_target ::=
     STRING (
-        "test" test
-        | "enum" enum
+        test
+        | enum
         | type_alias
         | global_var
-        | "impl" impl_def
+        | impl_def
         | module_code
         | ("cl" | "sv" | "na") element_stmt
     )?
@@ -430,7 +430,7 @@ assignment_with_target ::=
                   | ">>="
               ) (yield_stmt | expression)
           )?
-    ) ";" ";"?
+    ) ";"?
 
 import_stmt ::=
     ("include" | "import") "type"? ("from" from_path)? (
@@ -457,15 +457,12 @@ archetype ::=
 
 archetype_member ::=
     STRING? (
-        "@" ability
-        | "static" ("has" has_stmt | ability)
-        | "has" has_stmt
-        | "async" ability
+        ability
+        | has_stmt
         | ("def" | "can" | "override") ability
-        | "class" ability
         | ("obj" | "node" | "edge" | "walker" | "class") archetype
-        | "enum" enum
-        | "impl" impl_def
+        | enum
+        | impl_def
         | PYNLINE
         | "with" (("entry" | "exit") "{" code_block_stmts "}")?
         | NAME statement
@@ -511,11 +508,9 @@ global_var_assignment ::=
     (NAME | KWESC_NAME) (":" pipe)? ("=" expression ("=" expression)*)?
 
 impl_def ::=
-    ("@" atomic_chain)* "impl" impl_target_name ("." impl_target_name)* (
-        "(" (":" | "self" | ")")? func_signature (atomic_chain ("," atomic_chain)*)? ")"
-        | "with" expression
-        | func_signature
-    )? ("{" impl_enum_body code_block_stmts "}" | "by" expression ";" | ";")
+    ("@" atomic_chain)* "impl" impl_target_name ("." impl_target_name)*
+    (func_signature | (atomic_chain ("," atomic_chain)*)? ")" | "with" expression)?
+    ("{" (impl_enum_body | code_block_stmts) "}" | "by" expression ";" | ";")
 
 impl_target_name ::=
     NAME | KWESC_NAME | "init" | "postinit" | "entry" | "exit" | "default"
