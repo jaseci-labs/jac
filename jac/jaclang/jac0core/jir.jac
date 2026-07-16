@@ -157,11 +157,11 @@ def _related_files(source_path: str) -> list[tuple[str, str]] {
 }
 
 glob _client_kind_probe_active: bool = False,
-     _client_kind_cache: dict[str, tuple[str, str, float]] = {};
+     _client_kind_cache: dict[str, tuple[str, str, str]] = {};
 
-def _read_toml_mtime(proj_root: str) -> (float | None) {
+def _read_toml_fingerprint(proj_root: str) -> (str | None) {
     try {
-        return os.path.getmtime(os.path.join(proj_root, "jac.toml"));
+        return compute_content_sha256(os.path.join(proj_root, "jac.toml"));
     } except OSError {
         return None;
     }
@@ -169,7 +169,7 @@ def _read_toml_mtime(proj_root: str) -> (float | None) {
 
 def _evict_project_from_kind_cache(proj_root: str) {
     stale: list[str] = [];
-    for (src_path, (_kind, _root, _mt)) in _client_kind_cache.items() {
+    for (src_path, (_kind, _root, _fp)) in _client_kind_cache.items() {
         if _root == proj_root {
             stale.append(src_path);
         }
@@ -187,11 +187,13 @@ def _module_client_kind(source_path: str) -> str {
     global _client_kind_probe_active;
     entry = _client_kind_cache.get(source_path);
     if entry is not None {
-        (kind, proj_root, cached_mtime) = entry;
-        current_mtime = _read_toml_mtime(proj_root);
-        if current_mtime is not None and current_mtime == cached_mtime {
+        (kind, proj_root, cached_fp) = entry;
+        current_fp = _read_toml_fingerprint(proj_root);
+        if current_fp is not None and current_fp == cached_fp {
             return kind;
         }
+        import from jaclang.project.config { invalidate_config_for_root }
+        invalidate_config_for_root(proj_root);
         _evict_project_from_kind_cache(proj_root);
     }
     if _client_kind_probe_active {
@@ -201,9 +203,9 @@ def _module_client_kind(source_path: str) -> str {
     try {
         import from jaclang.project.client_kind { resolve_client_kind_context }
         (kind, proj_root) = resolve_client_kind_context(source_path);
-        toml_mtime = _read_toml_mtime(proj_root) if proj_root is not None else None;
-        if toml_mtime is not None {
-            _client_kind_cache[source_path] = (kind, proj_root, toml_mtime);
+        toml_fp = _read_toml_fingerprint(proj_root) if proj_root is not None else None;
+        if toml_fp is not None {
+            _client_kind_cache[source_path] = (kind, proj_root, toml_fp);
         }
         return kind;
     } except Exception {
