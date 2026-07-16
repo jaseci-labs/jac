@@ -72,7 +72,8 @@ def select_injector(
     blurbs = {
         Channel.LOCAL: "shipping the local jac binary",
         Channel.DEV: "downloading the rolling `dev` (main HEAD) jac binary",
-        Channel.STABLE: "downloading the latest published (stable) jac release"
+        Channel.STABLE: "downloading the latest published (stable) jac release",
+        Channel.EXPERIMENTAL: "downloading the `dev` jac binary to seal .jir (pods run the PR's experimental image)"
     };
     if dry_run {
         # A dry run must not prepare() the injector: that reads the cluster's

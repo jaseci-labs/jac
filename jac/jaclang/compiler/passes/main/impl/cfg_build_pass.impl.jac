@@ -879,7 +879,7 @@ impl CFGBuildPass.exit_typed_ctx_block(nd: uni.TypedCtxBlock) -> None {
     }
 }
 
-impl CFGBuildPass.exit_region_stmt(nd: uni.RegionStmt) -> None {
+impl CFGBuildPass.exit_open_stmt(nd: uni.OpenStmt) -> None {
     if nd.body {
         self.link_bbs(nd, nd.body[0]);
         self._link_sequential(nd.body);

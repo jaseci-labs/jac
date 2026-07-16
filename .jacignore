@@ -227,6 +227,7 @@ SSOPage.cl.jac
 UsersPage.cl.jac
 useStorage.cl.jac
 asset_processor.impl.jac
+arena.impl.jac
 base_ast_gen_pass.impl.jac
 bccache.jac
 calls.impl.jac
@@ -250,6 +251,7 @@ import_processor.jac
 interop_bridge.jac
 jaccomplete.impl.jac
 jaccomplete.jac
+jir_registry.jac
 jsx_processor.impl.jac
 lists.impl.jac
 mockllm.impl.jac

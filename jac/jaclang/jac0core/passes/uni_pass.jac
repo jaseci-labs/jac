@@ -319,6 +319,7 @@ obj UniPass(ModuleCodegenPass) {
     def enter_f_string(nd: uni.FString) -> None;
     def enter_filter_compr(nd: uni.FilterCompr) -> None;
     def enter_finally_stmt(nd: uni.FinallyStmt) -> None;
+    def enter_forever_stmt(nd: uni.ForeverStmt) -> None;
     def enter_formatted_value(nd: uni.FormattedValue) -> None;
     def enter_func_call(nd: uni.FuncCall) -> None;
     def enter_func_signature(nd: uni.FuncSignature) -> None;
@@ -369,10 +370,10 @@ obj UniPass(ModuleCodegenPass) {
     def enter_name(nd: uni.Name) -> None;
     def enter_native_block(nd: uni.NativeBlock) -> None;
     def enter_non_local_stmt(nd: uni.NonLocalStmt) -> None;
+    def enter_open_stmt(nd: uni.OpenStmt) -> None;
     def enter_param_var(nd: uni.ParamVar) -> None;
     def enter_py_inline_code(nd: uni.PyInlineCode) -> None;
     def enter_raise_stmt(nd: uni.RaiseStmt) -> None;
-    def enter_region_stmt(nd: uni.RegionStmt) -> None;
     def enter_report_stmt(nd: uni.ReportStmt) -> None;
     def enter_return_stmt(nd: uni.ReturnStmt) -> None;
     def enter_sem_def(nd: uni.SemDef) -> None;
@@ -438,6 +439,7 @@ obj UniPass(ModuleCodegenPass) {
     def exit_filter_compr(nd: uni.FilterCompr) -> None;
     def exit_finally_stmt(nd: uni.FinallyStmt) -> None;
     def exit_float(nd: uni.Float) -> None;
+    def exit_forever_stmt(nd: uni.ForeverStmt) -> None;
     def exit_formatted_value(nd: uni.FormattedValue) -> None;
     def exit_func_call(nd: uni.FuncCall) -> None;
     def exit_func_signature(nd: uni.FuncSignature) -> None;
@@ -490,10 +492,10 @@ obj UniPass(ModuleCodegenPass) {
     def exit_native_block(nd: uni.NativeBlock) -> None;
     def exit_non_local_stmt(nd: uni.NonLocalStmt) -> None;
     def exit_null(nd: uni.Null) -> None;
+    def exit_open_stmt(nd: uni.OpenStmt) -> None;
     def exit_param_var(nd: uni.ParamVar) -> None;
     def exit_py_inline_code(nd: uni.PyInlineCode) -> None;
     def exit_raise_stmt(nd: uni.RaiseStmt) -> None;
-    def exit_region_stmt(nd: uni.RegionStmt) -> None;
     def exit_report_stmt(nd: uni.ReportStmt) -> None;
     def exit_return_stmt(nd: uni.ReturnStmt) -> None;
     def exit_sem_def(nd: uni.SemDef) -> None;

@@ -839,6 +839,7 @@ impl NaIRGenPass._codegen_instantiation(
         and self._arch_is_acyclic(type_name)
         and not self._struct_has_ref_fields(type_name)
         and not self._arch_has_vtable(type_name)
+        and not self._arch_is_osp_name(type_name)
         and f"{type_name}.drop" not in self.func_symtab
     );
     _headerless = self._nogc_headerless() and not self._arch_is_osp_name(type_name);
@@ -899,6 +900,51 @@ impl NaIRGenPass._codegen_instantiation(
         raw_ptr = self.builder.call(_malloc_fn, [size], name="raw.ptr");
         obj_ptr = self.builder.bitcast(raw_ptr, struct_ptr_type, name="obj.ptr");
         self._emit_struct_drop_fn(type_name);
+    } elif self.region_stack and not self._arch_is_walker_name(type_name) {
+        null_ptr = ir.Constant(struct_ptr_type, None);
+        size_gep = self.builder.gep(
+            null_ptr, [ir.Constant(ir.IntType(32), 1)], name="sizeof.gep"
+        );
+        size = self.builder.ptrtoint(size_gep, ir.IntType(64), name="sizeof");
+        raw_ptr = self._region_alloc(size, name="region.obj");
+        obj_ptr = self.builder.bitcast(raw_ptr, struct_ptr_type, name="obj.ptr");
+        if self.rc_set_type_fn is not None {
+            _obj_i8_r = self.builder.bitcast(
+                obj_ptr, ir.IntType(8).as_pointer(), name="obj.i8.rtag"
+            );
+            self._emit_set_type_tag(self.builder, _obj_i8_r, type_name);
+        }
+        self._region_log_dtor_if_needed(raw_ptr, type_name);
+    } elif (
+        self._arch_is_osp_name(type_name)
+        and not self._arch_is_walker_name(type_name)
+        and "here" in self.local_vars
+    ) {
+        self._emit_arena_helpers();
+        null_ptr = ir.Constant(struct_ptr_type, None);
+        size_gep = self.builder.gep(
+            null_ptr, [ir.Constant(ir.IntType(32), 1)], name="sizeof.gep"
+        );
+        size = self.builder.ptrtoint(size_gep, ir.IntType(64), name="sizeof");
+        _i8p_g = ir.IntType(8).as_pointer();
+        _here_val = self.builder.load(self.local_vars["here"], name="growth.here");
+        _here_i8 = self.builder.bitcast(_here_val, _i8p_g, name="growth.here.i8");
+        _gdtor = self._emit_struct_drop_fields_fn(type_name);
+        _gdtor_i8 = (
+            self.builder.bitcast(_gdtor, _i8p_g, name="growth.dtor")
+                if _gdtor is not None
+                else ir.Constant(_i8p_g, None)
+        );
+        raw_ptr = self.builder.call(
+            self.osp_anchor_alloc_fn, [_here_i8, size, _gdtor_i8], name="growth.obj"
+        );
+        obj_ptr = self.builder.bitcast(raw_ptr, struct_ptr_type, name="obj.ptr");
+        if self.rc_set_type_fn is not None {
+            _obj_i8_g = self.builder.bitcast(
+                obj_ptr, ir.IntType(8).as_pointer(), name="obj.i8.gtag"
+            );
+            self._emit_set_type_tag(self.builder, _obj_i8_g, type_name);
+        }
     } else {
         null_ptr = ir.Constant(struct_ptr_type, None);
         size_gep = self.builder.gep(
@@ -974,7 +1020,9 @@ impl NaIRGenPass._codegen_instantiation(
         _tt_val = stable_osp_tag(type_name);
         self.builder.store(ir.Constant(ir.IntType(64), _tt_val), _tt_slot);
 
-        self._osp_make_immortal(obj_ptr);
+        if not self._arch_is_walker_name(type_name) {
+            self._osp_make_immortal(obj_ptr);
+        }
     }
 
     _rep_idx = self.osp_reports_field.get(type_name);

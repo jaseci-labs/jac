@@ -1296,6 +1296,14 @@ glob NODE_SPECS: tuple = (
          ),
          NodeSpec(
              type_idx=115,
+             class_name="OpenStmt",
+             is_scope=True,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(FieldDesc(name="target", kind=4), FieldDesc(name="body", kind=5))
+         ),
+         NodeSpec(
+             type_idx=116,
              class_name="ParamVar",
              is_scope=False,
              is_cfg=False,
@@ -1308,7 +1316,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=116,
+             type_idx=117,
              class_name="ProgramModule",
              is_scope=False,
              is_cfg=False,
@@ -1316,7 +1324,7 @@ glob NODE_SPECS: tuple = (
              fields=(FieldDesc(name="main_mod", kind=6), )
          ),
          NodeSpec(
-             type_idx=117,
+             type_idx=118,
              class_name="PyInlineCode",
              is_scope=False,
              is_cfg=True,
@@ -1328,7 +1336,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=118,
+             type_idx=119,
              class_name="PythonModuleAst",
              is_scope=False,
              is_cfg=False,
@@ -1336,7 +1344,7 @@ glob NODE_SPECS: tuple = (
              fields=(FieldDesc(name="ast", kind=10), FieldDesc(name="orig_src", kind=4))
          ),
          NodeSpec(
-             type_idx=119,
+             type_idx=120,
              class_name="RaiseStmt",
              is_scope=False,
              is_cfg=True,
@@ -1345,14 +1353,6 @@ glob NODE_SPECS: tuple = (
                  FieldDesc(name="cause", kind=6),
                  FieldDesc(name="from_target", kind=6)
              )
-         ),
-         NodeSpec(
-             type_idx=120,
-             class_name="RegionStmt",
-             is_scope=True,
-             is_cfg=True,
-             is_name_atom=False,
-             fields=(FieldDesc(name="body", kind=5), )
          ),
          NodeSpec(
              type_idx=121,
@@ -1799,12 +1799,12 @@ glob NODE_SPECS: tuple = (
          "NativeBlock": 112,
          "NonLocalStmt": 113,
          "Null": 114,
-         "ParamVar": 115,
-         "ProgramModule": 116,
-         "PyInlineCode": 117,
-         "PythonModuleAst": 118,
-         "RaiseStmt": 119,
-         "RegionStmt": 120,
+         "OpenStmt": 115,
+         "ParamVar": 116,
+         "ProgramModule": 117,
+         "PyInlineCode": 118,
+         "PythonModuleAst": 119,
+         "RaiseStmt": 120,
          "ReportStmt": 121,
          "ReturnStmt": 122,
          "SemDef": 123,
