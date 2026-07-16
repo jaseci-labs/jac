@@ -164,6 +164,13 @@ test "alt collapses bare choice into star twin" {
     assert fmt(simplify(expr)) == '","*';
 }
 
+test "opt hoist skips outer opt when a star choice exists" {
+    expr = GAlt(
+        choices=[GStar(inner=GTok(name="COMMA")), GOpt(inner=GTok(name="SEMI"))]
+    );
+    assert fmt(simplify(expr)) == '","* | ";"';
+}
+
 # ── Mini-parser fixture: behaviors of interpretation itself ──────────────
 glob MINI_PARSER_SRC = """
 import from jaclang.jac0core.parser.tokens { TokenKind }

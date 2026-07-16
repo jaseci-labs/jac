@@ -196,9 +196,13 @@ impl GrammarExtractPass.simplify_expr(expr: GExpr) -> GExpr {
         }
 
         has_opt = False;
+        has_star = False;
         for c in flat2 {
             if isinstance(c, GOpt) {
                 has_opt = True;
+            }
+            if isinstance(c, GStar) {
+                has_star = True;
             }
         }
         if has_opt and len(flat2) > 1 {
@@ -210,6 +214,9 @@ impl GrammarExtractPass.simplify_expr(expr: GExpr) -> GExpr {
                 } else {
                     hoisted.append(inner_c);
                 }
+            }
+            if has_star {
+                return GAlt(choices=hoisted);
             }
             return GOpt(inner=GAlt(choices=hoisted));
         }
@@ -484,7 +491,9 @@ impl GrammarExtractPass._stage_inline_aliases(rules: list) -> list {
             seen.add(target);
             target = mapping[target];
         }
-        resolved[alias] = target;
+        if target != alias {
+            resolved[alias] = target;
+        }
     }
     result: list = [];
     for rule in rules {
@@ -1133,10 +1142,18 @@ impl GrammarExtractPass.interpret_stmts(stmts: list) -> GExpr | None {
                     is_not_none = False;
                     if isinstance(tp_cond, uni.CompareExpr)
                     and tp_cond.ops is not None
-                    and len(tp_cond.ops) > 0 {
-                        for op in tp_cond.ops {
-                            if op?.value and "is" in op.value and "not" in op.value {
-                                is_not_none = True;
+                    and len(tp_cond.ops) > 0
+                    and tp_cond.rights is not None
+                    and len(tp_cond.rights) > 0 {
+                        tp_rhs = tp_cond.rights[0];
+                        if isinstance(tp_rhs, uni.CfgExpr) {
+                            tp_rhs = tp_rhs.expr;
+                        }
+                        if isinstance(tp_rhs, uni.Null) {
+                            for op in tp_cond.ops {
+                                if op?.value and op.value == "is not" {
+                                    is_not_none = True;
+                                }
                             }
                         }
                     }
