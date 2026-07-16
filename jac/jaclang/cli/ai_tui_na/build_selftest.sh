@@ -82,10 +82,15 @@ cp "$PLAT" tty_plat.na.jac
 cp tty/libc_tty_base.na.jac libc_tty.na.jac
 cp "$SHIM_SRC" "$SHIM"
 
+# Stage Phase 5 nested tui/ + components/ modules flat for nacompile.
+# shellcheck source=_stage_modules.sh
+source "$SCRIPT_DIR/_stage_modules.sh"
+stage_tui_modules
+
 mkdir -p bin
 OUT="bin/selftest_render"
 TMP="bin/.selftest_render.partial.$$"
-trap "rm -f tty_plat.na.jac libc_tty.na.jac '$SCRIPT_DIR/$SHIM' '$SCRIPT_DIR/$TMP'" EXIT
+trap "rm -f tty_plat.na.jac libc_tty.na.jac '$SCRIPT_DIR/$SHIM' '$SCRIPT_DIR/$TMP'; cleanup_staged_modules" EXIT
 
 # ── nacompile the selftest entry ─────────────────────────────────────────────
 echo "==> Compiling selftest_render (golden harness) ..."

@@ -173,7 +173,7 @@ obj AgentRuntime {
     has cfg: AgentConfig = AgentConfig(),
         ws: Workspace = Workspace(),
         ledger: Ledger | None = None,
-        active_session: AgentSession | None = None,
+        active_run: AgentRun | None = None,
         turn_wrote: bool = False,
         bus: AgentEventBus = AgentEventBus(),
         files: FileTools = FileTools(),
@@ -315,35 +315,35 @@ node PhaseState {
 
     def tools -> list;
     def directive -> str;
-    def step(visitor: AgentSession) -> dict;
-    def halt(visitor: AgentSession) -> bool;
+    def step(visitor: AgentRun) -> dict;
+    def halt(visitor: AgentRun) -> bool;
 }
 
 node Plan(PhaseState) {
     has desc: str = "Explore and decide the approach";
 
     override def directive -> str;
-    can run with AgentSession entry;
+    can run with AgentRun entry;
 }
 
 node Build(PhaseState) {
     has desc: str = "Write and edit the code";
 
     override def directive -> str;
-    can run with AgentSession entry;
+    can run with AgentRun entry;
 }
 
 node QA(PhaseState) {
     has desc: str = "Type-check, run, and verify";
 
     override def directive -> str;
-    can run with AgentSession entry;
+    can run with AgentRun entry;
 }
 
 node Done {
     has desc: str = "Objective built and verified";
 
-    can finish with AgentSession entry;
+    can finish with AgentRun entry;
 }
 
 glob TOOL_SPECS: list[ToolSpec] = [
@@ -477,7 +477,7 @@ with entry {
 def build_pipeline -> Plan;
 
 
-walker AgentSession {
+walker AgentRun {
     has objective: str,
         ledger: Ledger,
         stats: TurnStats,

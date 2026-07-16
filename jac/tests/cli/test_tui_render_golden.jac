@@ -44,6 +44,28 @@ def _shim_path(repo_root: Path) -> Path {
 }
 
 
+def _iter_na_sources(na_dir: Path) -> list {
+    # Top-level plus Phase 5 nested tui/ and components/ trees.
+    out = [];
+    for f in os.listdir(na_dir) {
+        if f.endswith(".na.jac") {
+            out.append(na_dir / f);
+        }
+    }
+    for sub in ("tui", "components") {
+        d = na_dir / sub;
+        if d.is_dir() {
+            for f in os.listdir(d) {
+                if f.endswith(".na.jac") {
+                    out.append(d / f);
+                }
+            }
+        }
+    }
+    return out;
+}
+
+
 def _binary_stale(na_dir: Path) -> bool {
     # Rebuild if the binary is missing or any closure source (.na.jac) is newer.
     # Over-rebuilding is safe (the test fails closed on a stale artifact); the
@@ -53,8 +75,8 @@ def _binary_stale(na_dir: Path) -> bool {
         return True;
     }
     bin_mtime = binary.stat().st_mtime;
-    for f in os.listdir(na_dir) {
-        if f.endswith(".na.jac") and (na_dir / f).stat().st_mtime > bin_mtime {
+    for path in _iter_na_sources(na_dir) {
+        if path.stat().st_mtime > bin_mtime {
             return True;
         }
     }

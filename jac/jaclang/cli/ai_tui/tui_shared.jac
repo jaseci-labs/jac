@@ -16,7 +16,12 @@ import from jaclang.cli.ai_tui.ipc_schema {
     CMD_RESET,
     CMD_QUIT,
     CMD_APPLY,
-    FRAME_SEP
+    FRAME_SEP,
+    RECEIPT_ACCEPTED,
+    RECEIPT_REJECTED_BUSY,
+    RECEIPT_REJECTED_EMPTY,
+    RECEIPT_REJECTED_ERROR,
+    RECEIPT_OK
 }
 
 def _debug_log(msg: str) -> None {
@@ -243,36 +248,49 @@ def _configure_ui_env(r: any) {
 }
 
 
-def _cmd_send(payload: str, stop_evt: any, proc: any) {
+def _cmd_send(payload: str, stop_evt: any, proc: any) -> str {
     import from jaclang.cli.ai_agent { ui_send }
     try {
-        _debug_log(f"ui_send({payload!r}) -> {ui_send(payload)}");
+        ok = ui_send(payload);
+        _debug_log(f"ui_send({payload!r}) -> {ok}");
+        if ok {
+            return RECEIPT_ACCEPTED;
+        }
+        if not payload.strip() {
+            return RECEIPT_REJECTED_EMPTY;
+        }
+        return RECEIPT_REJECTED_BUSY;
     } except Exception as e {
         _debug_log(f"ui_send({payload!r}) error: {e}");
+        return RECEIPT_REJECTED_ERROR + ":" + type(e).__name__;
     }
 }
 
-def _cmd_stop(payload: str, stop_evt: any, proc: any) {
+def _cmd_stop(payload: str, stop_evt: any, proc: any) -> str {
     import from jaclang.cli.ai_agent { ui_stop }
     try {
         ui_stop();
         _debug_log("ui_stop()");
+        return RECEIPT_OK;
     } except Exception as e {
         _debug_log(f"ui_stop error: {e}");
+        return RECEIPT_REJECTED_ERROR + ":" + type(e).__name__;
     }
 }
 
-def _cmd_reset(payload: str, stop_evt: any, proc: any) {
+def _cmd_reset(payload: str, stop_evt: any, proc: any) -> str {
     import from jaclang.cli.ai_agent { ui_reset }
     try {
         ui_reset();
         _debug_log("ui_reset()");
+        return RECEIPT_OK;
     } except Exception as e {
         _debug_log(f"ui_reset error: {e}");
+        return RECEIPT_REJECTED_ERROR + ":" + type(e).__name__;
     }
 }
 
-def _cmd_quit(payload: str, stop_evt: any, proc: any) {
+def _cmd_quit(payload: str, stop_evt: any, proc: any) -> str {
     import from jaclang.cli.ai_agent { ui_stop }
     stop_evt.set();
     try {
@@ -289,9 +307,10 @@ def _cmd_quit(payload: str, stop_evt: any, proc: any) {
             _debug_log(f"proc.terminate error: {e}");
         }
     }
+    return RECEIPT_OK;
 }
 
-def _cmd_apply(payload: str, stop_evt: any, proc: any) {
+def _cmd_apply(payload: str, stop_evt: any, proc: any) -> str {
     import from jaclang.cli.ai_agent { ui_apply_settings }
     settings: dict = {};
     for part in payload.split(",") {
@@ -311,8 +330,10 @@ def _cmd_apply(payload: str, stop_evt: any, proc: any) {
             temperature=str(settings.get("temperature", "")),
         );
         _debug_log(f"ui_apply_settings({settings}) -> {result}");
+        return RECEIPT_OK;
     } except Exception as e {
         _debug_log(f"ui_apply_settings({settings}) error: {e}");
+        return RECEIPT_REJECTED_ERROR + ":" + type(e).__name__;
     }
 }
 
@@ -325,7 +346,7 @@ glob _CMD_HANDLERS: dict = {
 
      };
 
-def _dispatch_cmd(line: str, stop_evt: any, proc: any) {
+def _dispatch_cmd(line: str, stop_evt: any, proc: any) -> str {
     colon = line.find(":");
     if colon > 0 {
         token = line[:colon];
@@ -336,8 +357,9 @@ def _dispatch_cmd(line: str, stop_evt: any, proc: any) {
     }
     handler = _CMD_HANDLERS.get(token);
     if handler is not None {
-        handler(payload, stop_evt, proc);
+        return handler(payload, stop_evt, proc);
     }
+    return RECEIPT_REJECTED_ERROR + ":unknown_cmd";
 }
 
 
@@ -425,28 +447,101 @@ obj EmbedHostResult {
 }
 
 
-def _embed_sources_newest_mtime(na_dir: str) -> float {
+glob _EMBED_MIN_TRAILER_BYTES: int = 2_000_000;
+
+
+def _embed_mtime(path: str, newest: float) -> float {
+    import os;
+
+    try {
+        m = os.path.getmtime(path);
+        if m > newest {
+            return m;
+        }
+    } except Exception { }
+    return newest;
+}
+
+
+def _embed_shim_path(cli_root: any) -> str {
+    import os;
+
+    return os.path.join(
+        str(cli_root),
+        "..",
+        "runtimelib",
+        "client",
+        "targets",
+        "desktop",
+        "native",
+        "libjacpyembed.so"
+    );
+}
+
+
+def _embed_inputs_newest_mtime(na_dir: str, cli_root: any) -> float {
     import os;
     import glob;
 
     newest: float = 0.0;
     pattern = os.path.join(na_dir, "**", "*.na.jac");
     for path in glob.glob(pattern, recursive=True) {
-        try {
-            m = os.path.getmtime(path);
-            if m > newest {
-                newest = m;
-            }
-        } except Exception { }
+        newest = _embed_mtime(path, newest);
     }
+    for name in ["build_embed.sh", "_stage_modules.sh"] {
+        newest = _embed_mtime(os.path.join(na_dir, name), newest);
+    }
+    newest = _embed_mtime(_embed_shim_path(cli_root), newest);
     return newest;
 }
 
 
-def _embed_host_fresh(artifact: str, newest_src: float, force: bool) -> bool {
+def _embed_host_bootable(artifact: str) -> bool {
+    import os;
+
+    try {
+        return os.path.getsize(artifact) >= _EMBED_MIN_TRAILER_BYTES;
+    } except Exception {
+        return False;
+    }
+}
+
+
+def _embed_build_stamp_path(bindir: str) -> str {
+    import os;
+
+    return os.path.join(bindir, ".embed_build_stamp");
+}
+
+
+def _read_embed_build_stamp(bindir: str) -> float {
+    import os;
+
+    path = _embed_build_stamp_path(bindir);
+    try {
+        with open(path, encoding="utf-8") as f {
+            raw = f.read().strip();
+        }
+        return float(raw);
+    } except Exception {
+        return 0.0;
+    }
+}
+
+
+def _embed_host_fresh(
+    artifact: str, bindir: str, newest_src: float, force: bool
+) -> bool {
     import os;
 
     if force or not os.path.exists(artifact) {
+        return False;
+    }
+    if not _embed_host_bootable(artifact) {
+        return False;
+    }
+    stamp = _read_embed_build_stamp(bindir);
+    if stamp + 0.001 < newest_src {
         return False;
     }
     try {
@@ -464,7 +559,8 @@ def _ensure_embed_host(cli_root: any) -> EmbedHostResult {
     import from jaclang.cli.console { console }
 
     na_dir = os.path.join(str(cli_root), "ai_tui_na");
-    artifact = os.path.join(na_dir, "bin", "jac-ai-tui");
+    bindir = os.path.join(na_dir, "bin");
+    artifact = os.path.join(bindir, "jac-ai-tui");
     source = os.path.join(na_dir, "host_embed.na.jac");
     build_sh = os.path.join(na_dir, "build_embed.sh");
     manual_hint = f"bash {build_sh}";
@@ -475,9 +571,9 @@ def _ensure_embed_host(cli_root: any) -> EmbedHostResult {
         "yes",
         "on"
     );
-    newest_src = _embed_sources_newest_mtime(na_dir);
+    newest_src = _embed_inputs_newest_mtime(na_dir, cli_root);
 
-    if _embed_host_fresh(artifact, newest_src, force) {
+    if _embed_host_fresh(artifact, bindir, newest_src, force) {
         return EmbedHostResult(ok=True, path=artifact);
     }
     if not os.path.isfile(source) or not os.path.isfile(build_sh) {
@@ -492,7 +588,6 @@ def _ensure_embed_host(cli_root: any) -> EmbedHostResult {
         );
     }
 
-    bindir = os.path.dirname(artifact);
     try {
         os.makedirs(bindir, exist_ok=True);
     } except Exception { }
@@ -512,7 +607,7 @@ def _ensure_embed_host(cli_root: any) -> EmbedHostResult {
             } except Exception { }
         }
 
-        if _embed_host_fresh(artifact, newest_src, force) {
+        if _embed_host_fresh(artifact, bindir, newest_src, force) {
             return EmbedHostResult(ok=True, path=artifact);
         }
 
@@ -578,6 +673,11 @@ def _ensure_embed_host(cli_root: any) -> EmbedHostResult {
                 hint=f"Run manually: {manual_hint}"
             );
         }
+        try {
+            with open(_embed_build_stamp_path(bindir), "w", encoding="utf-8") as f {
+                f.write(f"{newest_src}\n");
+            }
+        } except Exception { }
         return EmbedHostResult(ok=True, path=artifact);
     } finally {
         if lock_fd >= 0 {

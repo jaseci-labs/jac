@@ -1,6 +1,7 @@
 import from .editor { EditorState }
 import from .select_list { SelectList, SelectItem }
 import from .terminal { Rgb }
+import from .input_types { FocusTarget }
 import from .theme {
     TH_USER,
     TH_ANSWER,
@@ -91,7 +92,17 @@ def kind_style(kind: EventKind) -> KindStyle {
     }
 }
 
-enum TuiStatus { IDLE = 0, RUNNING = 1, UNKNOWN = 2 }
+enum TuiStatus { IDLE = 0, RUNNING = 1, STOPPING = 2, UNKNOWN = 3 }
+
+obj PendingSubmission {
+    has active: bool = False,
+        text: str = "";
+
+    def clear {
+        self.active = False;
+        self.text = "";
+    }
+}
 
 enum OverlayKind { PALETTE = 0, MODEL = 1, FILE = 2 }
 
@@ -233,7 +244,17 @@ obj TuiState {
         select_list: SelectList = SelectList(),
         files: list[str] = [],
         model_presets: list[str] = [],
-        ac: AcState = AcState();
+        ac: AcState = AcState(),
+        pending_submission: PendingSubmission = PendingSubmission(),
+        focus: FocusTarget = FocusTarget.EDITOR;
+
+    def status_blocks_prompt -> bool {
+        return self.status == TuiStatus.RUNNING or self.status == TuiStatus.STOPPING;
+    }
+
+    def set_focus(target: FocusTarget) {
+        self.focus = target;
+    }
 
     def mark_layout_dirty {
         self.dirty = True;
@@ -249,26 +270,7 @@ obj TuiState {
         self.ac.dismiss();
     }
 
-    def _adopt_pending_user(ev_id: int, text: str, node_name: str) -> bool {
-        for ev in self.events {
-            if ev.id == -1 and ev.kind == EventKind.USER and ev.text == text {
-                ev.id = ev_id;
-                if node_name {
-                    ev.node = node_name;
-                }
-                self.mark_layout_dirty();
-                return True;
-            }
-        }
-        return False;
-    }
-
     def upsert_event(ev_id: int, kind: EventKind, text: str, node_name: str) {
-        if kind == EventKind.USER and ev_id >= 0 {
-            if self._adopt_pending_user(ev_id, text, node_name) {
-                return;
-            }
-        }
         for ev in self.events {
             if ev.id == ev_id {
                 ev.text = text;

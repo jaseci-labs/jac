@@ -61,6 +61,9 @@ def parse_tui_status(s: str) -> TuiStatus {
     if s == "running" {
         return TuiStatus.RUNNING;
     }
+    if s == "stopping" {
+        return TuiStatus.STOPPING;
+    }
     return TuiStatus.UNKNOWN;
 }
 

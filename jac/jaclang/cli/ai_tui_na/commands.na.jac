@@ -1,7 +1,15 @@
-import from .state { TuiState, TuiStatus }
+import from .state { TuiState }
 import from .select_list { SelectItem }
 import from .ipc_schema { CMD_STOP, CMD_RESET, CMD_QUIT, CMD_APPLY }
 import from .runtime { TuiRuntime }
+import from .input_types {
+    Effect,
+    EffectKind,
+    effect_quit,
+    effect_stop,
+    effect_reset,
+    effect_apply
+}
 
 glob _SETTINGS_PREFIX: str = "/settings ";
 
@@ -28,47 +36,60 @@ obj CmdDef {
         palette_label: str = "";
 
     def execute(rt: TuiRuntime) -> CmdResult {
-        state = rt.state;
+        (result, effects) = self.execute_effects(rt.state);
+        for e in effects {
+            if e.kind == EffectKind.QUIT {
+                rt.cmd_queue.send(rt.state.ipc_fd, CMD_QUIT);
+            } elif e.kind == EffectKind.STOP {
+                rt.cmd_queue.send(rt.state.ipc_fd, CMD_STOP);
+            } elif e.kind == EffectKind.RESET {
+                rt.cmd_queue.send(rt.state.ipc_fd, CMD_RESET);
+            } elif e.kind == EffectKind.APPLY_SETTINGS {
+                rt.cmd_queue.send(rt.state.ipc_fd, CMD_APPLY + ":" + e.payload);
+            }
+        }
+        return result;
+    }
 
+    def execute_effects(state: TuiState) -> tuple[CmdResult, list[Effect]] {
+        effects: list[Effect] = [];
         if self.kind == CmdKind.OVERLAY {
             if self.value == "open_model" {
-                return CmdResult.OPEN_MODEL;
+                return (CmdResult.OPEN_MODEL, effects);
             }
             if self.value == "open_file" {
-                return CmdResult.OPEN_FILE;
+                return (CmdResult.OPEN_FILE, effects);
             }
-            return CmdResult.NONE;
+            return (CmdResult.NONE, effects);
         }
-
         if self.kind == CmdKind.SCROLL_BOTTOM {
             state.scroll_to_bottom();
-            return CmdResult.HANDLED;
+            return (CmdResult.HANDLED, effects);
         }
-
         if self.kind == CmdKind.SCROLL_TOP {
             state.viewport_top = 0;
             state.follow_tail = False;
             state.mark_layout_dirty();
-            return CmdResult.HANDLED;
+            return (CmdResult.HANDLED, effects);
         }
-
         if self.kind == CmdKind.IPC_RESET {
-            rt.cmd_queue.send(state.ipc_fd, self.ipc_name);
+            effects.append(effect_reset());
             state.reset_events();
             state.mark_layout_dirty();
-            return CmdResult.HANDLED;
+            return (CmdResult.HANDLED, effects);
         }
-
         if self.kind == CmdKind.IPC {
-            rt.cmd_queue.send(state.ipc_fd, self.ipc_name);
             if self.ipc_name == CMD_QUIT {
-                return CmdResult.QUIT;
+                effects.append(effect_quit());
+                return (CmdResult.QUIT, effects);
+            }
+            if self.ipc_name == CMD_STOP {
+                effects.append(effect_stop());
             }
             state.mark_layout_dirty();
-            return CmdResult.HANDLED;
+            return (CmdResult.HANDLED, effects);
         }
-
-        return CmdResult.NONE;
+        return (CmdResult.NONE, effects);
     }
 }
 
@@ -270,26 +291,52 @@ def command_dispatch(cmd: str, rt: TuiRuntime) -> CmdResult {
     return d.execute(rt);
 }
 
+def command_dispatch_effects(cmd: str, state: TuiState) -> tuple[CmdResult, list[Effect]] {
+    d = _find_def(cmd);
+    if d is None {
+        empty: list[Effect] = [];
+        return (CmdResult.NONE, empty);
+    }
+    return d.execute_effects(state);
+}
+
 def slash_submit(text: str, rt: TuiRuntime) -> CmdResult {
-    state = rt.state;
+    (result, effects) = slash_submit_effects(text, rt.state);
+    for e in effects {
+        if e.kind == EffectKind.QUIT {
+            rt.cmd_queue.send(rt.state.ipc_fd, CMD_QUIT);
+        } elif e.kind == EffectKind.STOP {
+            rt.cmd_queue.send(rt.state.ipc_fd, CMD_STOP);
+        } elif e.kind == EffectKind.RESET {
+            rt.cmd_queue.send(rt.state.ipc_fd, CMD_RESET);
+        } elif e.kind == EffectKind.APPLY_SETTINGS {
+            rt.cmd_queue.send(rt.state.ipc_fd, CMD_APPLY + ":" + e.payload);
+        }
+    }
+    return result;
+}
+
+def slash_submit_effects(text: str, state: TuiState) -> tuple[CmdResult, list[Effect]] {
     if text.startswith(_SETTINGS_PREFIX) {
         args = text.removeprefix(_SETTINGS_PREFIX).strip();
-
-        rt.cmd_queue.send(state.ipc_fd, CMD_APPLY + ":" + args);
-        return CmdResult.HANDLED;
+        return (CmdResult.HANDLED, [effect_apply(args)]);
     }
     value = _resolve_slash_line(text);
     if not value {
-        return CmdResult.NONE;
+        empty: list[Effect] = [];
+        return (CmdResult.NONE, empty);
     }
-    return command_dispatch(value, rt);
+    return command_dispatch_effects(value, state);
 }
 
 def apply_model(model: str, rt: TuiRuntime) {
-    state = rt.state;
+    apply_model_effects(model, rt.state);
+    rt.cmd_queue.send(rt.state.ipc_fd, CMD_APPLY + ":model=" + model);
+}
 
-    rt.cmd_queue.send(state.ipc_fd, CMD_APPLY + ":model=" + model);
+def apply_model_effects(model: str, state: TuiState) -> list[Effect] {
     state.mark_layout_dirty();
+    return [effect_apply("model=" + model)];
 }
 
 def palette_commands(state: TuiState) -> list[SelectItem] {
@@ -299,7 +346,7 @@ def palette_commands(state: TuiState) -> list[SelectItem] {
         if not d.palette {
             continue;
         }
-        if d.running_only and state.status != TuiStatus.RUNNING {
+        if d.running_only and not state.status_blocks_prompt() {
             continue;
         }
         items.append(

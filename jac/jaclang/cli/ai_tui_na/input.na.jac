@@ -1,299 +1,34 @@
-import from .state { TuiState, EventKind, TuiStatus, AcKind }
-import from .ipc_schema { CMD_SEND, CMD_STOP, CMD_RESET, CMD_QUIT }
-import from .runtime { TuiRuntime }
+# Input adapter — routes keys through the reducer; maps effects onto CmdQueue.
+
 import from .keys { Key, KeyKind }
-import from .autocomplete { ac_update, ac_apply }
-import from .overlay {
-    overlay_is_active,
-    overlay_handle_key,
-    overlay_open_palette,
-    overlay_open_model,
-    overlay_open_file
-}
-import from .commands { slash_submit, CmdResult }
+import from .runtime { TuiRuntime }
+import from .input_types { UiAction, UiActionKind, Effect, EffectKind }
+import from .reducer { reduce_input }
+import from .ipc_schema { CMD_SEND, CMD_STOP, CMD_RESET, CMD_QUIT, CMD_APPLY }
 
-glob _EDITOR_CHROME_COLS: int = 6,
-     _EDITOR_CHROME_ROWS: int = 6,
-     _INPUT_EDITOR_MAX_ROWS: int = 10,
-     _PAGE_CHROME_ROWS: int = 4,
-     _MOUSE_SCROLL_LINES: int = 3,
-     _MAX_INPUT_LEN: int = 4096;
-
-def _editor_width(state: TuiState) -> int {
-    return max(1, state.term_cols - _EDITOR_CHROME_COLS);
-}
-
-def _editor_max_rows(state: TuiState) -> int {
-    return max(1, min(_INPUT_EDITOR_MAX_ROWS, state.term_rows - _EDITOR_CHROME_ROWS));
-}
-
-def _sync_editor_view(state: TuiState) {
-    state.editor.update_scroll(_editor_width(state), _editor_max_rows(state));
-    state.mark_layout_dirty();
-}
-
-def _pending_continuation(state: TuiState) -> bool {
-    ed = state.editor;
-    if not ed.lines {
-        return False;
-    }
-    if ed.cursor_col <= 0 {
-        return False;
-    }
-    cur_line = ed.lines[ed.cursor_line];
-    return cur_line[ed.cursor_col - 1] == "\\";
-}
-
-def _handle_submit(rt: TuiRuntime) -> bool {
+def execute_effects(rt: TuiRuntime, effects: list[Effect]) {
     state = rt.state;
-    ed = state.editor;
-
-    if _pending_continuation(state) {
-        ed.backspace();
-        ed.newline();
-        state.mark_layout_dirty();
-        return False;
-    }
-
-    text = ed.submit();
-    state.mark_layout_dirty();
-    if not text {
-        return False;
-    }
-
-    result = slash_submit(text, rt);
-    if result == CmdResult.QUIT {
-        return True;
-    }
-    if result == CmdResult.OPEN_MODEL {
-        overlay_open_model(state);
-        return False;
-    }
-    if result == CmdResult.OPEN_FILE {
-        overlay_open_file(state);
-        return False;
-    }
-    if result == CmdResult.HANDLED {
-        return False;
-    }
-
-    if state.status == TuiStatus.RUNNING {
-        return False;
-    }
-
-    state.upsert_event(-1, EventKind.USER, text, "");
-    state.scroll_to_bottom();
-
-    rt.cmd_queue.send(state.ipc_fd, CMD_SEND + ":" + text);
-    return False;
-}
-
-def _handle_ac_key(k: Key, rt: TuiRuntime) -> bool {
-    state = rt.state;
-
-    if k.kind == KeyKind.TAB {
-        ac_apply(state);
-        _sync_editor_view(state);
-        return False;
-    }
-    did_nav = True;
-    if k.kind == KeyKind.ESCAPE {
-        state.ac.dismiss();
-    } elif k.kind == KeyKind.UP {
-        state.ac.nav_up();
-    } elif k.kind == KeyKind.DOWN {
-        state.ac.nav_down();
-    } else {
-        did_nav = False;
-    }
-    if did_nav {
-        state.mark_layout_dirty();
-        return False;
-    }
-    if k.kind == KeyKind.ENTER {
-        ac_kind = state.ac.kind;
-        ac_apply(state);
-        state.editor.update_scroll(_editor_width(state), _editor_max_rows(state));
-        if ac_kind == AcKind.SLASH {
-            return _handle_submit(rt);
+    for e in effects {
+        if e.kind == EffectKind.QUIT {
+            rt.cmd_queue.send(state.ipc_fd, CMD_QUIT);
+        } elif e.kind == EffectKind.STOP {
+            rt.cmd_queue.send(state.ipc_fd, CMD_STOP);
+        } elif e.kind == EffectKind.RESET {
+            rt.cmd_queue.send(state.ipc_fd, CMD_RESET);
+        } elif e.kind == EffectKind.SEND_PROMPT {
+            rt.cmd_queue.send(state.ipc_fd, CMD_SEND + ":" + e.payload);
+        } elif e.kind == EffectKind.APPLY_SETTINGS {
+            rt.cmd_queue.send(state.ipc_fd, CMD_APPLY + ":" + e.payload);
         }
-        return False;
     }
-
-    state.ac.dismiss();
-    return _handle_edit_key(k, rt);
-}
-
-def _handle_ctrl_key(k: Key, rt: TuiRuntime) -> bool {
-    state = rt.state;
-    ed = state.editor;
-
-    ch = chr(k.code);
-    if ch == "c" or ch == "q" {
-        rt.cmd_queue.send(state.ipc_fd, CMD_QUIT);
-        return True;
-    }
-    if ch == "g" {
-        rt.cmd_queue.send(state.ipc_fd, CMD_STOP);
-        state.mark_layout_dirty();
-        return False;
-    }
-    if ch == "r" {
-        rt.cmd_queue.send(state.ipc_fd, CMD_RESET);
-        state.reset_events();
-        state.mark_layout_dirty();
-        return False;
-    }
-    if ch == "o" {
-        overlay_open_palette(state, "");
-        return False;
-    }
-    did_edit = True;
-    if ch == "a" {
-        ed.move_line_start();
-    } elif ch == "e" {
-        ed.move_line_end();
-    } elif ch == "k" {
-        ed.delete_to_line_end();
-    } elif ch == "u" {
-        ed.delete_to_line_start();
-    } elif ch == "w" {
-        ed.delete_word_back();
-    } else {
-        did_edit = False;
-    }
-    if did_edit {
-        _sync_editor_view(state);
-    }
-    return False;
-}
-
-def _handle_movement_key(k: Key, rt: TuiRuntime) -> bool {
-    state = rt.state;
-    ed = state.editor;
-    ew = _editor_width(state);
-
-    if k.kind == KeyKind.UP {
-        if ed.is_on_first_vline(ew) {
-            navigated = ed.nav_history(-1);
-            if not navigated {
-                ed.move_line_start();
-            }
-        } else {
-            ed.move_up(ew);
-        }
-        _sync_editor_view(state);
-        return True;
-    }
-    if k.kind == KeyKind.DOWN {
-        if ed.is_on_last_vline(ew) {
-            navigated = ed.nav_history(1);
-            if not navigated {
-                ed.move_line_end();
-            }
-        } else {
-            ed.move_down(ew);
-        }
-        _sync_editor_view(state);
-        return True;
-    }
-    moved = True;
-    if k.kind == KeyKind.LEFT {
-        ed.move_left();
-    } elif k.kind == KeyKind.RIGHT {
-        ed.move_right();
-    } elif k.kind == KeyKind.HOME {
-        ed.move_line_start();
-    } elif k.kind == KeyKind.END {
-        ed.move_line_end();
-    } elif k.kind == KeyKind.WORD_LEFT {
-        ed.word_left();
-    } elif k.kind == KeyKind.WORD_RIGHT {
-        ed.word_right();
-    } else {
-        moved = False;
-    }
-    if moved {
-        _sync_editor_view(state);
-        return True;
-    }
-    if k.kind == KeyKind.PAGE_UP {
-        state.scroll_up(state.term_rows - _PAGE_CHROME_ROWS);
-        return True;
-    }
-    if k.kind == KeyKind.PAGE_DOWN {
-        state.scroll_down(state.term_rows - _PAGE_CHROME_ROWS);
-        return True;
-    }
-    return False;
-}
-
-def _handle_edit_key(k: Key, rt: TuiRuntime) -> bool {
-    state = rt.state;
-    ed = state.editor;
-
-    if k.kind == KeyKind.TAB {
-        ed_text = ed.get_text();
-        if ed_text.startswith("/") {
-            overlay_open_palette(state, ed_text[1:]);
-        }
-        return False;
-    }
-    if k.kind == KeyKind.SHIFT_ENTER {
-        ed.newline();
-        _sync_editor_view(state);
-        return False;
-    }
-    if k.kind == KeyKind.ENTER {
-        return _handle_submit(rt);
-    }
-    if k.kind == KeyKind.BACKSPACE {
-        ed.backspace();
-        _sync_editor_view(state);
-        ac_update(state);
-        return False;
-    }
-    if k.kind == KeyKind.MOUSE_SCROLL_UP {
-        state.scroll_up(_MOUSE_SCROLL_LINES);
-        return False;
-    }
-    if k.kind == KeyKind.MOUSE_SCROLL_DOWN {
-        state.scroll_down(_MOUSE_SCROLL_LINES);
-        return False;
-    }
-    if k.kind == KeyKind.DELETE {
-        ed.forward_delete();
-        _sync_editor_view(state);
-        return False;
-    }
-    if k.kind == KeyKind.CHAR {
-        if ed.text_len() >= _MAX_INPUT_LEN {
-            return False;
-        }
-        ed.insert(chr(k.code));
-        _sync_editor_view(state);
-        ac_update(state);
-        return False;
-    }
-    return False;
 }
 
 def handle_key(k: Key, rt: TuiRuntime) -> bool {
-    state = rt.state;
     if k.kind == KeyKind.UNKNOWN {
         return False;
     }
-    if overlay_is_active(state) {
-        return overlay_handle_key(k, rt);
-    }
-    if state.ac.active {
-        return _handle_ac_key(k, rt);
-    }
-    if k.kind == KeyKind.CTRL {
-        return _handle_ctrl_key(k, rt);
-    }
-    if _handle_movement_key(k, rt) {
-        return False;
-    }
-    return _handle_edit_key(k, rt);
+    action = UiAction(kind=UiActionKind.KEY, key=k);
+    res = reduce_input(rt.state, action);
+    execute_effects(rt, res.effects);
+    return res.quit;
 }

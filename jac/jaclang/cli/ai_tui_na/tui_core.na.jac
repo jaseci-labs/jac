@@ -1,19 +1,11 @@
 import os;
 
 import from .libc_tty { tty_update_size, tty_rows, tty_cols }
-import from .terminal {
-    term_enter_alt_screen,
-    term_leave_alt_screen,
-    term_hide_cursor,
-    term_show_cursor,
-    term_enable_mouse,
-    term_disable_mouse
-}
 import from .state { TuiState }
 import from .overlay { overlay_build_modal, overlay_composite, overlay_is_active }
-
-import from .diff { DiffEngine }
 import from .runtime { TuiRuntime }
+import from .process_terminal { ProcessTerminal }
+import from .frame_renderer { FrameRenderer }
 
 def tui_sync_size(state: TuiState) {
     tty_update_size();
@@ -50,18 +42,18 @@ def tui_populate_state(
 }
 
 def tui_enter_screen(state: TuiState) {
-    term_enter_alt_screen(state.render_fd);
-    term_hide_cursor(state.render_fd);
-    term_enable_mouse(state.render_fd);
-
+    term = ProcessTerminal();
+    term.bind_fd(state.render_fd);
+    term.enter_screen();
     tui_sync_size(state);
     state.mark_layout_dirty();
 }
 
 def tui_leave_screen(state: TuiState) {
-    term_disable_mouse(state.render_fd);
-    term_show_cursor(state.render_fd);
-    term_leave_alt_screen(state.render_fd);
+    term = ProcessTerminal();
+    term.bind_fd(state.render_fd);
+    term.mark_entered();
+    term.leave_screen();
 }
 
 def tui_render_once(rt: TuiRuntime) -> bool {
@@ -69,8 +61,11 @@ def tui_render_once(rt: TuiRuntime) -> bool {
     if not state.dirty {
         return False;
     }
+    fr = FrameRenderer();
+    fr.bind_diff(rt.diff);
+    fr.bind_paint_buf(rt.paint_buf);
     if state.overlay_full_redraw {
-        rt.diff.invalidate();
+        fr.invalidate();
         state.overlay_full_redraw = False;
     }
     lines = rt.screen.render(state, state.term_cols, state.term_rows);
@@ -78,7 +73,7 @@ def tui_render_once(rt: TuiRuntime) -> bool {
         modal = overlay_build_modal(state, state.term_cols, state.term_rows);
         lines = overlay_composite(lines, modal, state.term_cols, state.term_rows);
     }
-    rt.diff.paint(lines, state.term_cols, state.render_fd, rt.paint_buf);
+    fr.paint(lines, state.term_cols, state.render_fd);
     state.dirty = False;
     return True;
 }

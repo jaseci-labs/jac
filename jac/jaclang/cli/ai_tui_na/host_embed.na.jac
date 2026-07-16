@@ -1,34 +1,25 @@
 import os;
 
 import from .libc_tty { tty_open, tty_close }
-import from .state { TuiState }
-import from .select_list { SelectList, SelectItem }
-import from .diff { DiffEngine }
-import from .terminal_image { term_hyperlink, image_rows }
 import from .tui_loop { tui_loop_once }
 import from .tui_core { tui_populate_state, tui_enter_screen, tui_leave_screen }
 import from .runtime { TuiRuntime }
+import from .embed_models { AgentRequest }
+import from .embed_runtime { EmbedRuntime }
+import from .embed_session_client { EmbedSessionClient }
 
-import from jacpyembed {
-    def jac_engine_boot -> i32;  def jpy_Py_Finalize -> None;  def jpy_PyRun_SimpleString(
-        cmd: str
-    ) -> i32;  def jpy_PyImport_AddModule(name: str) -> int;  def jpy_PyModule_GetDict(
-        module: int
-    ) -> int;  def jpy_PyRun_String(s: str, start: i32, g: int, l: int) -> int;  def jpy_Py_DecRef(
-        pyobj: int
-    ) -> None;
-}
+# Phase 4: CPython imports live only in embed_runtime.na.jac.
+# Phase 5: input goes through reducer; InteractiveApp available for injected-key tests.
 
-glob PY_EVAL: i32 = 258,
-     _BOOTSTRAP_PY: str = (
-         "from jaclang.cli.ai_tui.embed_agent import "
-         "setup as _agent_setup, poll as _agent_poll, "
-         "send as _agent_send, stop as _agent_stop\n"
-     );
 
 def _env_or_empty(name: str) -> str {
     v = os.getenv(name);
     return v if v is not None else "";
+}
+
+def _bind_runtime(rt: TuiRuntime, embed: EmbedRuntime, session: EmbedSessionClient) {
+    rt.embed = embed;
+    rt.session = session;
 }
 
 def _run_embed -> None {
@@ -36,49 +27,62 @@ def _run_embed -> None {
     files_s: str = _env_or_empty("JAC_AI_UI_FILES");
     presets_s: str = _env_or_empty("JAC_AI_UI_MODEL_PRESETS");
 
-    engine_rc: i32 = jac_engine_boot();
-    if engine_rc != 0 {
+    embed = EmbedRuntime();
+    boot = embed.boot();
+    if not boot.ok {
         return;
     }
 
-    bootstrap_rc: i32 = jpy_PyRun_SimpleString(_BOOTSTRAP_PY);
-    main_mod: int = jpy_PyImport_AddModule("__main__");
-    main_dict: int = jpy_PyModule_GetDict(main_mod);
-    setup_rc: i32 = 0;
-    if bootstrap_rc == 0 {
-        setup_rc = jpy_PyRun_SimpleString("_agent_setup()");
+    bind = embed.bind();
+    if not bind.ok {
+        embed.force_finalize_unsafe();
+        return;
     }
-    if bootstrap_rc != 0 or setup_rc != 0 {
-        jpy_Py_Finalize();
+
+    session = EmbedSessionClient(runtime=embed);
+    start = session.start(
+        AgentRequest(
+            cwd=_env_or_empty("PWD"),
+            stub=False,
+            model_name=_env_or_empty("JAC_AI_UI_MODEL")
+        )
+    );
+    if not start.ok {
+        # start() is a side-effecting transaction. If the managed call executed
+        # and then failed (decode error or ok=false), session.start() has already
+        # performed bounded dispose and set worker safety from runtime-confirmed
+        # quiescence. When the managed call never executed, workers_safe stays
+        # False. Either way: do NOT override with an unconditional
+        # mark_workers_safe(True) — that finalized over a live _legacy_feed
+        # thread (the Phase 4 hang). Gate finalization on quiescence, not start.ok.
+        embed.finalize_if_safe();
         return;
     }
 
     rt = TuiRuntime();
+    _bind_runtime(rt, embed, session);
     state = rt.state;
     rt.cmd_queue.clear();
     state.ipc_fd = -1;
     tty_fd: int = tty_open();
     if tty_fd < 0 {
-        jpy_PyRun_SimpleString("_agent_stop()");
-        jpy_Py_Finalize();
+        disp = session.dispose(reason="tty_open_failed", deadline_ms=1000);
+        embed.mark_workers_safe(not disp.timed_out);
+        embed.finalize_if_safe();
         return;
     }
     state.render_fd = tty_fd;
     tui_populate_state(state, proj_s, files_s, presets_s);
     tui_enter_screen(state);
 
-    poll_fn: int = jpy_PyRun_String("_agent_poll", PY_EVAL, main_dict, main_dict);
-    send_fn: int = jpy_PyRun_String("_agent_send", PY_EVAL, main_dict, main_dict);
-    rt.transport.bind_py(main_dict, poll_fn, send_fn);
-
     try {
         while tui_loop_once(rt) { }
     } finally {
-        jpy_PyRun_SimpleString("_agent_stop()");
-        rt.transport.close_py();
         tui_leave_screen(state);
         tty_close();
-        jpy_Py_Finalize();
+        disp2 = session.dispose(reason="quit", deadline_ms=2000);
+        embed.mark_workers_safe(not disp2.timed_out);
+        embed.finalize_if_safe();
     }
 }
 

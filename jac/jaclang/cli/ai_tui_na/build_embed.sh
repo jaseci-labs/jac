@@ -129,6 +129,11 @@ cp "$PLAT" tty_plat.na.jac
 cp tty/libc_tty_base.na.jac libc_tty.na.jac
 cp "$SHIM_SRC" "$SHIM"
 
+# Stage Phase 5 nested tui/ + components/ modules flat for nacompile.
+# shellcheck source=_stage_modules.sh
+source "$SCRIPT_DIR/_stage_modules.sh"
+stage_tui_modules
+
 mkdir -p bin
 
 # Build into a temp path and atomically rename into place only on success, so a
@@ -136,7 +141,7 @@ mkdir -p bin
 # reader booting against a live writer). The trap sweeps the temp on any exit.
 OUT="bin/jac-ai-tui"
 TMP="bin/.jac-ai-tui.partial.$$"
-trap "rm -f tty_plat.na.jac libc_tty.na.jac '$SCRIPT_DIR/$SHIM' '$SCRIPT_DIR/$TMP'" EXIT
+trap "rm -f tty_plat.na.jac libc_tty.na.jac '$SCRIPT_DIR/$SHIM' '$SCRIPT_DIR/$TMP'; cleanup_staged_modules" EXIT
 
 # ── 1. nacompile the embed host ───────────────────────────────────────────────
 echo "==> Compiling jac-ai-tui (embed host) ..."
@@ -178,6 +183,35 @@ print(f"   appended {len(suffix)} bytes ([payload]={payload_len} + [trailer]={tl
 PYEOF
 
 mv -f "$TMP" "$OUT"
+# Record input freshness so `jac ai tui` can reject stale/corrupt artifacts.
+python3 - "$SCRIPT_DIR" "$SCRIPT_DIR/bin" <<'PYEOF'
+import glob, os, sys
+na_dir, bindir = sys.argv[1], sys.argv[2]
+newest = 0.0
+for pattern in (os.path.join(na_dir, "**", "*.na.jac"),):
+    for path in glob.glob(pattern, recursive=True):
+        try:
+            newest = max(newest, os.path.getmtime(path))
+        except OSError:
+            pass
+for name in ("build_embed.sh", "_stage_modules.sh"):
+    p = os.path.join(na_dir, name)
+    try:
+        newest = max(newest, os.path.getmtime(p))
+    except OSError:
+        pass
+repo_root = os.path.normpath(os.path.join(na_dir, "..", "..", "..", ".."))
+shim = os.path.join(
+    repo_root, "jac", "jaclang", "runtimelib", "client", "targets",
+    "desktop", "native", "libjacpyembed.so",
+)
+try:
+    newest = max(newest, os.path.getmtime(shim))
+except OSError:
+    pass
+with open(os.path.join(bindir, ".embed_build_stamp"), "w", encoding="utf-8") as f:
+    f.write(f"{newest}\n")
+PYEOF
 echo "==> Done. Self-hosting TUI binary: $SCRIPT_DIR/$OUT"
 echo "    Boot test (stub agent, no byllm): ./bin/jac-ai-tui"
 echo "    Real agent: set JAC_AI_TUI_BYLLM_SRC + JAC_AI_TUI_DEPS, then ./bin/jac-ai-tui"

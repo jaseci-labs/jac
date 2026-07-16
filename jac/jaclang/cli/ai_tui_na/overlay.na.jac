@@ -3,13 +3,9 @@ import from .keys { Key }
 import from .commands {
     palette_commands,
     model_items,
-    file_items,
-    command_dispatch,
-    apply_model,
-    CmdResult
+    file_items
 }
-import from .runtime { TuiRuntime }
-import from .select_list { SelectItem, SelectAction }
+import from .select_list { SelectItem }
 import from .width { visible_width, ansi_trunc, ansi_pad }
 import from .terminal { ANSI_RESET, term_spaces, term_dashes }
 import from .theme { TH_SGR_BORDER, TH_SGR_BORDER_DIM, TH_SGR_TITLE }
@@ -70,53 +66,9 @@ def overlay_close(state: TuiState) {
     state.dirty = True;
 }
 
-def overlay_handle_key(k: Key, rt: TuiRuntime) -> bool {
-    state = rt.state;
-    if not state.overlay_stack.is_active() {
-        return False;
-    }
-    sl = state.select_list;
-    action = sl.handle_key(k);
-    if action == SelectAction.CANCEL {
-        overlay_close(state);
-        return False;
-    }
-    if action == SelectAction.CHANGED {
-        state.dirty = True;
-        return False;
-    }
-    if action == SelectAction.SELECT {
-        item = sl.current();
-        if item is None {
-            return False;
-        }
-        kind = state.overlay_stack.active_spec().role;
-
-        if kind == OverlayKind.MODEL {
-            apply_model(item.value, rt);
-            overlay_close(state);
-            return False;
-        }
-
-        if kind == OverlayKind.FILE {
-            state.editor.insert_text(f"@{item.value} ");
-            overlay_close(state);
-            return False;
-        }
-
-        result = command_dispatch(item.value, rt);
-        if result == CmdResult.OPEN_MODEL {
-            overlay_open_model(state);
-            return False;
-        }
-        if result == CmdResult.OPEN_FILE {
-            overlay_open_file(state);
-            return False;
-        }
-        should_quit = result == CmdResult.QUIT;
-        overlay_close(state);
-        return should_quit;
-    }
+# Key handling for overlays lives in reducer.reduce_input (Phase 5).
+# overlay_handle_key retained as a no-op shim for older call sites.
+def overlay_handle_key(k: Key, state: TuiState) -> bool {
     return False;
 }
 

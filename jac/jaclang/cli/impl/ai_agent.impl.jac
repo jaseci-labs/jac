@@ -1810,8 +1810,8 @@ sem AgentRuntime.note = "Record a short note that stays visible to every later p
 sem AgentRuntime.note.text = "The note to remember.";
 
 impl AgentRuntime.note(text: str) -> str {
-    if agent.active_session is not None {
-        agent.active_session.ledger.remember(text);
+    if agent.active_run is not None {
+        agent.active_run.ledger.remember(text);
         agent.bus.publish_ledger();
         return f"noted: {text}";
     }
@@ -1832,8 +1832,8 @@ impl PhaseState.directive -> str {
     return f"Carry out the {type(self).__name__} state now.";
 }
 
-impl PhaseState.step(visitor: AgentSession) -> dict {
-    agent.active_session = visitor;
+impl PhaseState.step(visitor: AgentRun) -> dict {
+    agent.active_run = visitor;
     label = type(self).__name__;
     console.print(f"\n  ● {label}", style="bold blue");
 
@@ -1864,7 +1864,7 @@ impl PhaseState.step(visitor: AgentSession) -> dict {
     return result;
 }
 
-impl PhaseState.halt(visitor: AgentSession) -> bool {
+impl PhaseState.halt(visitor: AgentRun) -> bool {
     if agent.bus.cancel_requested {
         return True;
     }
@@ -1910,7 +1910,7 @@ impl QA.directive -> str {
 
 sem run_phase.directive = "A short instruction kicking off the current phase.";
 
-impl Plan.run with AgentSession entry {
+impl Plan.run with AgentRun entry {
     if agent.bus.cancel_requested {
         return;
     }
@@ -1940,7 +1940,7 @@ impl Plan.run with AgentSession entry {
     }
 }
 
-impl Build.run with AgentSession entry {
+impl Build.run with AgentRun entry {
     if agent.bus.cancel_requested {
         return;
     }
@@ -1974,7 +1974,7 @@ impl Build.run with AgentSession entry {
     }
 }
 
-impl QA.run with AgentSession entry {
+impl QA.run with AgentRun entry {
     if agent.bus.cancel_requested {
         return;
     }
@@ -2068,7 +2068,7 @@ impl build_pipeline -> Plan {
     return plan;
 }
 
-impl AgentSession.begin{
+impl AgentRun.begin{
     visit build_pipeline();
 }
 
@@ -2081,9 +2081,7 @@ impl run_turn(message: str) {
         agent.ledger = ledger;
     }
     started = time.time();
-    session = AgentSession(
-        objective=message, ledger=ledger, stats=TurnStats()
-    ) spawn root;
+    session = AgentRun(objective=message, ledger=ledger, stats=TurnStats()) spawn root;
     if agent.cfg.show_stats {
         st = session.stats;
         agent.view.print_stats(

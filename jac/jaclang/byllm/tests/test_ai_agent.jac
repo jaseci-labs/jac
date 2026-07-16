@@ -2,7 +2,7 @@
 
 The agent groups its tools into capability objects on a single `AgentRuntime`
 composition root -- `agent.files`, `agent.proc`, `agent.semantic`, `agent.guides`,
-`agent.web` -- drives phases with an `AgentSession` walker, and renders the live
+`agent.web` -- drives phases with an `AgentRun` walker, and renders the live
 view through `agent.view`. These tests exercise that surface:
 
 - the file toolbox (writes/edits reach disk, with inline compiler feedback and
@@ -215,13 +215,13 @@ test "the note tool records onto the active session's ledger" {
     proj = make_project();
     events: list = [];
     arm(proj, events);
-    ai.agent.active_session = ai.AgentSession(
+    ai.agent.active_run = ai.AgentRun(
         objective="x", ledger=ai.Ledger(), stats=ai.TurnStats()
     );
 
     out = ai.agent.note("the build directory is app/");
     assert "noted:" in out , out;
-    assert "the build directory is app/" in ai.agent.active_session.ledger.notes;
+    assert "the build directory is app/" in ai.agent.active_run.ledger.notes;
 
     shutil.rmtree(proj, ignore_errors=True);
 }
@@ -303,7 +303,7 @@ test "ui sessions suppress tool error results from the live transcript" {
 
     events_snapshot: list = [];
     try {
-        out = capturing(lambda : ai.agent.view.render_stream(stream));
+        out = capturing(lambda { ai.agent.view.render_stream(stream); });
         events_snapshot = list(ai.agent.bus.events);
     } finally {
         ai.agent.bus.active_feed = False;
@@ -349,7 +349,7 @@ test "ui mode keeps non-error results that merely contain the tool-error prefix"
     ];
     events_snapshot: list = [];
     try {
-        capturing(lambda : ai.agent.view.render_stream(stream));
+        capturing(lambda { ai.agent.view.render_stream(stream); });
         events_snapshot = list(ai.agent.bus.events);
     } finally {
         ai.agent.bus.active_feed = False;
@@ -378,7 +378,7 @@ test "ui mode keeps model stream on the bus and off stdout" {
     ];
     events_snapshot: list = [];
     try {
-        out = capturing(lambda : ai.agent.view.render_stream(stream));
+        out = capturing(lambda { ai.agent.view.render_stream(stream); });
         events_snapshot = list(ai.agent.bus.events);
     } finally {
         ai.agent.bus.active_feed = False;
@@ -423,7 +423,7 @@ test "ui mode routes tool invocations to tool events for the transcript" {
     ];
     events_snapshot: list = [];
     try {
-        out = capturing(lambda : ai.agent.view.render_stream(stream));
+        out = capturing(lambda { ai.agent.view.render_stream(stream); });
         events_snapshot = list(ai.agent.bus.events);
     } finally {
         ai.agent.bus.active_feed = False;
@@ -455,7 +455,7 @@ test "ui mode routes tool invocations to tool events for the transcript" {
 }
 
 
-test "a scripted MockLLM drives the AgentSession walker through its phases" {
+test "a scripted MockLLM drives the AgentRun walker through its phases" {
     proj = make_project();
     events: list = [];
     arm(proj, events);
@@ -491,7 +491,7 @@ test "a scripted MockLLM drives the AgentSession walker through its phases" {
         }
     );
 
-    out = capturing(lambda { AgentSessionSpawn(proj); });
+    out = capturing(lambda { AgentRunSpawn(proj); });
 
     # The Build phase wrote the file through the real file tool.
     assert Path(feat).exists() , out;
@@ -505,9 +505,9 @@ test "a scripted MockLLM drives the AgentSession walker through its phases" {
 }
 
 
-"""Spawn an AgentSession bounded to two steps so the walk halts after QA."""
-def AgentSessionSpawn(objective: str) {
-    ai.AgentSession(
+"""Spawn an AgentRun bounded to two steps so the walk halts after QA."""
+def AgentRunSpawn(objective: str) {
+    ai.AgentRun(
         objective=objective, ledger=ai.Ledger(), stats=ai.TurnStats(), max_steps=2
     ) spawn root;
 }

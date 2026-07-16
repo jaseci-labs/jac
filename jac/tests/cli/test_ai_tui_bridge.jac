@@ -165,6 +165,7 @@ test "native TUI runtime keeps embed transport dispatch concrete" {
     runtime_src = (cli_dir / "ai_tui_na" / "runtime.na.jac").read_text();
     transport_src = (cli_dir / "ai_tui_na" / "transport.na.jac").read_text();
     loop_src = (cli_dir / "ai_tui_na" / "tui_loop.na.jac").read_text();
+    host_src = (cli_dir / "ai_tui_na" / "host_embed.na.jac").read_text();
 
     assert "transport: EmbedPyTransport = EmbedPyTransport()" in runtime_src , (
         "TuiRuntime.transport must stay concretely typed as EmbedPyTransport or "
@@ -173,12 +174,35 @@ test "native TUI runtime keeps embed transport dispatch concrete" {
     assert "obj EmbedPyTransport(TtyFdTransport)" in transport_src , (
         "Embed transport implementation missing from transport.na.jac"
     );
+    assert "import from jacpyembed" not in transport_src , (
+        "Phase 4: transport must not import CPython symbols; EmbedRuntime owns them"
+    );
     assert "def poll_gil(timeout_ms: int)" in transport_src , (
-        "Embed transport must expose poll_gil for the loop's GIL-aware wait"
+        "TtyFdTransport must expose poll_gil for tests and injected-key harnesses"
     );
-    assert "rt.transport.poll_gil(50);" in loop_src , (
-        "TUI loop must call poll_gil() so the background Python feed can run"
+    assert "tty_poll(50);" in loop_src , (
+        "TUI loop must poll the tty without virtual dispatch so the Python feed can run"
     );
+    assert "tui_drain_session" in loop_src , (
+        "Phase 4 loop drains typed session batches via EmbedSessionClient"
+    );
+    assert "rt.transport.close_py();" not in host_src , (
+        "host teardown must not dispatch through rt.transport after the loop"
+    );
+    assert "import from jacpyembed" not in host_src , (
+        "Phase 4: host_embed must not import jacpyembed; EmbedRuntime owns C-API"
+    );
+    # Phase 1+4: tty restore precedes managed dispose / conditional finalize.
+    finally_i = host_src.rfind("} finally {");
+    assert finally_i > 0 , "host _run_embed must have a finally teardown block";
+    teardown = host_src[finally_i:];
+    leave_i = teardown.find("tui_leave_screen(state);");
+    tty_i = teardown.find("tty_close();");
+    disp_i = teardown.find("session.dispose(");
+    fin_i = teardown.find("finalize_if_safe(");
+    assert leave_i > 0 and tty_i > leave_i , "leave_screen must precede tty_close";
+    assert disp_i > tty_i , "tty_close must precede session.dispose (terminal-first quit)";
+    assert fin_i > disp_i , "finalize_if_safe must follow dispose";
 }
 
 
@@ -492,4 +516,53 @@ test "ui output capture removes loguru's default sink and gags litellm" {
         import litellm;
         assert litellm.suppress_debug_info == True , litellm.suppress_debug_info;
     } except ImportError { }
+}
+
+
+test "SEND dispatch returns ACCEPTED or REJECTED receipt" {
+    tui_mod = importlib.import_module("jaclang.cli.ai_tui.tui_shared");
+    schema = importlib.import_module("jaclang.cli.ai_tui.ipc_schema");
+    dispatch = getattr(tui_mod, "_dispatch_cmd");
+    old_send = getattr(ai_mod, "ui_send");
+
+    def fake_ok(prompt: str) -> bool {
+        return True;
+    }
+
+    def fake_busy(prompt: str) -> bool {
+        return False;
+    }
+
+    setattr(ai_mod, "ui_send", fake_ok);
+    try {
+        rc = dispatch("SEND:hi", DummyStopEvt(), DummyProc());
+        assert rc == schema.RECEIPT_ACCEPTED , rc;
+    } finally {
+        setattr(ai_mod, "ui_send", old_send);
+    }
+
+    setattr(ai_mod, "ui_send", fake_busy);
+    try {
+        rc = dispatch("SEND:hi", DummyStopEvt(), DummyProc());
+        assert rc == schema.RECEIPT_REJECTED_BUSY , rc;
+    } finally {
+        setattr(ai_mod, "ui_send", old_send);
+    }
+}
+
+
+test "Phase 1 native seams: stopping status, no id=-1, pending submission" {
+    shared_mod = importlib.import_module("jaclang.cli.ai_tui.tui_shared");
+    cli_dir = Path(shared_mod.__file__).resolve().parent.parent;
+    ipc_src = (cli_dir / "ai_tui_na" / "ipc.na.jac").read_text();
+    state_src = (cli_dir / "ai_tui_na" / "state.na.jac").read_text();
+    input_src = (cli_dir / "ai_tui_na" / "input.na.jac").read_text();
+
+    assert 'if s == "stopping"' in ipc_src , "parse_tui_status must map stopping";
+    assert "STOPPING" in state_src , "TuiStatus must include STOPPING";
+    assert "obj PendingSubmission" in state_src;
+    assert "status_blocks_prompt" in state_src;
+    assert "upsert_event(-1," not in input_src , "no optimistic id=-1 user row";
+    assert "pending_submission" in input_src;
+    assert "_adopt_pending_user" not in state_src , "id=-1 adoption path must be removed";
 }
