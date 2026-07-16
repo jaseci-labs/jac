@@ -152,7 +152,7 @@ impl UnparsePass.exit_global_vars(nd: uni.GlobalVars) -> None {
     if nd.doc {
         parts.append(nd.doc.gen.jac);
     }
-    parts.append("global");
+    parts.append("glob");
     if nd.access {
         parts.append(nd.access.gen.jac);
     }
@@ -717,14 +717,6 @@ impl UnparsePass.exit_await_expr(nd: uni.AwaitExpr) -> None {
 
 impl UnparsePass.exit_cast_expr(nd: uni.CastExpr) -> None {
     nd.gen.jac = nd.value.gen.jac + " as " + nd.cast_type.gen.jac;
-}
-
-impl UnparsePass.exit_global_stmt(nd: uni.GlobalStmt) -> None {
-    nd.gen.jac = "global " + self._comma_sep(nd.target) + ";";
-}
-
-impl UnparsePass.exit_non_local_stmt(nd: uni.NonLocalStmt) -> None {
-    nd.gen.jac = "nonlocal " + self._comma_sep(nd.target) + ";";
 }
 
 impl UnparsePass.exit_assignment(nd: uni.Assignment) -> None {

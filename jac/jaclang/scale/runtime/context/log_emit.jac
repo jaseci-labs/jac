@@ -81,7 +81,6 @@ def debug(msg: str, **extras: Any) {
 
 
 def install_structured_logging {
-    global _structured_installed;
 
     if not _structured_installed {
         handler = logging.StreamHandler();

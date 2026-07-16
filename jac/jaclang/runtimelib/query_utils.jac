@@ -26,8 +26,8 @@ glob logger = logging.getLogger(__name__),
 
 obj _CodeKey {
     has filt: any,
-        code: any by postinit,
-        closure_types: tuple by postinit;
+        code: any postinit,
+        closure_types: tuple postinit;
 
     def postinit -> None;
     def __hash__ -> int;

@@ -43,6 +43,9 @@ impl ASTValidationPass.enter_name(self: ASTValidationPass, nd: uni.Name) -> None
 impl ASTValidationPass.enter_param_var(
     self: ASTValidationPass, nd: uni.ParamVar
 ) -> None {
+    if isinstance(nd.name, uni.Name) and keyword.iskeyword(nd.name.value) {
+        self.emit(E0067, node_override=nd.name, name=nd.name.value, context='parameter');
+    }
     sig = nd.parent;
     if isinstance(sig, uni.FuncSignature) and isinstance(sig.parent, uni.LambdaExpr) {
         return;
@@ -159,6 +162,9 @@ impl ASTValidationPass.enter_inner_compr(
 }
 
 impl ASTValidationPass.enter_has_var(self: ASTValidationPass, nd: uni.HasVar) -> None {
+    if isinstance(nd.name, uni.Name) and keyword.iskeyword(nd.name.value) {
+        self.emit(E0067, node_override=nd.name, name=nd.name.value, context='field');
+    }
     self._reject_non_bindable(nd.name);
 }
 
@@ -222,15 +228,6 @@ impl ASTValidationPass.enter_ctrl_stmt(
         parent = parent.parent;
     }
     self.emit(E0058, node_override=nd, keyword=kw);
-}
-
-impl ASTValidationPass.enter_non_local_stmt(
-    self: ASTValidationPass, nd: uni.NonLocalStmt
-) -> None {
-    if nd.find_parent_of_type(uni.Ability) is None
-    and nd.find_parent_of_type(uni.ImplDef) is None {
-        self.emit(E0062, node_override=nd);
-    }
 }
 
 impl ASTValidationPass.enter_global_vars(

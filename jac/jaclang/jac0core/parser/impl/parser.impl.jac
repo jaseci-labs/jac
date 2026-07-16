@@ -62,9 +62,7 @@ import from jaclang.jac0core.unitree {
 }
 import from jaclang.jac0core.unitree {
     TypedCtxBlock,
-    OpenStmt,
-    GlobalStmt,
-    NonLocalStmt
+    OpenStmt
 }
 import from jaclang.jac0core.unitree {
     BinaryExpr,
@@ -158,7 +156,7 @@ import from jaclang.jac0core.diagnostics {
     E2023,
     E2028,
     W0060,
-    W0061,
+    E0048,
     W0063
 }
 
@@ -336,8 +334,6 @@ impl Parser.is_keyword_token -> bool {
         TokenKind.KW_SEM,
         TokenKind.KW_TEST,
         TokenKind.KW_GLOBAL,
-        TokenKind.KW_GLOBAL_REF,
-        TokenKind.KW_NONLOCAL,
         TokenKind.KW_IMPORT,
         TokenKind.KW_INCLUDE,
         TokenKind.KW_FROM,
@@ -346,7 +342,6 @@ impl Parser.is_keyword_token -> bool {
         TokenKind.KW_ELIF,
         TokenKind.KW_ELSE,
         TokenKind.KW_FOR,
-        TokenKind.KW_TO,
         TokenKind.KW_BY,
         TokenKind.KW_WHILE,
         TokenKind.KW_FOREVER,
@@ -1379,7 +1374,7 @@ impl Parser.parse_atomic_chain -> Expr {
             );
         } elif self.check(TokenKind.LPAREN) {
             if self.check_peek(TokenKind.NULL_OK) {
-                self.emit_warn(W0061, loc=self.current().loc);
+                self.emit_diag(E0048, loc=self.current().loc);
                 self.advance();
                 filter_expr = self.parse_filter_compr_inner();
 
@@ -2419,7 +2414,7 @@ impl Parser.continue_edge_ref_chain(start_expr: Expr, lsquare_uni: UniToken) -> 
             kid.append(filter_expr);
         } elif self.check(TokenKind.LPAREN) {
             if self.check_peek(TokenKind.NULL_OK) {
-                self.emit_warn(W0061, loc=self.current().loc);
+                self.emit_diag(E0048, loc=self.current().loc);
                 self.advance();
                 filter_expr = self.parse_filter_compr_inner();
                 chain.append(filter_expr);
@@ -2500,7 +2495,7 @@ impl Parser.parse_edge_ref_chain -> Expr {
             kid.append(filter_expr);
         } elif self.check(TokenKind.LPAREN) {
             if self.check_peek(TokenKind.NULL_OK) {
-                self.emit_warn(W0061, loc=self.current().loc);
+                self.emit_diag(E0048, loc=self.current().loc);
                 self.advance();
                 filter_expr = self.parse_filter_compr_inner();
                 chain.append(filter_expr);
@@ -3785,14 +3780,6 @@ impl Parser.parse_statement{
         return self.parse_global_var();
     }
 
-    if self.check(TokenKind.KW_GLOBAL_REF) {
-        return self.parse_global_stmt();
-    }
-
-    if self.check(TokenKind.KW_NONLOCAL) {
-        return self.parse_nonlocal_stmt();
-    }
-
     if self.check(TokenKind.KW_VISIT) {
         return self.parse_visit_stmt();
     }
@@ -4034,9 +4021,9 @@ impl Parser.parse_for_stmt{
         eq_tok = self.advance();
         eq_uni = self.make_uni_token(eq_tok);
         start_val = self.parse_expression();
-        to_uni = self.consume_uni(TokenKind.KW_TO);
+        with_uni = self.consume_uni(TokenKind.KW_WITH);
         end_val = self.parse_pipe();
-        by_uni = self.consume_uni(TokenKind.KW_BY);
+        as_uni = self.consume_uni(TokenKind.KW_AS);
 
         step_target = self.parse_atomic_chain();
         step_assign: Assignment;
@@ -4086,7 +4073,7 @@ impl Parser.parse_for_stmt{
             kid.append(async_uni);
         }
         kid.extend(
-            [for_uni, init_assign, to_uni, end_val, by_uni, step_assign, lb_uni]
+            [for_uni, init_assign, with_uni, end_val, as_uni, step_assign, lb_uni]
         );
         kid.extend(body);
         kid.append(rb_uni);
@@ -4798,46 +4785,6 @@ impl Parser._recover_misplaced_disconnect -> None {
     ) {
         self.advance();
     }
-}
-
-impl Parser.parse_global_stmt -> GlobalStmt {
-    global_uni = self.consume_uni(TokenKind.KW_GLOBAL_REF);
-    targets: list = [];
-    kid: list = [global_uni];
-    name_tok = self.expect_name();
-    name = self.make_name(name_tok);
-    targets.append(name);
-    kid.append(name);
-    while self.match_tok(TokenKind.COMMA) {
-        kid.append(self.make_uni_token(self.previous()));
-        name_tok = self.expect_name();
-        name = self.make_name(name_tok);
-        targets.append(name);
-        kid.append(name);
-    }
-    self.expect(TokenKind.SEMI);
-    kid.append(self.make_semi());
-    return GlobalStmt(target=targets, kid=kid);
-}
-
-impl Parser.parse_nonlocal_stmt -> NonLocalStmt {
-    nonlocal_uni = self.consume_uni(TokenKind.KW_NONLOCAL);
-    targets: list = [];
-    kid: list = [nonlocal_uni];
-    name_tok = self.expect_name();
-    name = self.make_name(name_tok);
-    targets.append(name);
-    kid.append(name);
-    while self.match_tok(TokenKind.COMMA) {
-        kid.append(self.make_uni_token(self.previous()));
-        name_tok = self.expect_name();
-        name = self.make_name(name_tok);
-        targets.append(name);
-        kid.append(name);
-    }
-    self.expect(TokenKind.SEMI);
-    kid.append(self.make_semi());
-    return NonLocalStmt(target=targets, kid=kid);
 }
 
 impl Parser.parse_ownership_prefix(kids: list) -> OwnershipKind {
@@ -5581,13 +5528,12 @@ impl Parser.parse_has_var -> HasVar {
     value = None;
     defer = False;
     eq_uni: UniToken | None = None;
-    by_uni: UniToken | None = None;
+    postinit_name: Name | None = None;
     if self.match_tok(TokenKind.EQ) {
         eq_uni = self.make_uni_token(self.previous());
         value = self.parse_expression();
-    } elif self.match_tok(TokenKind.KW_BY) {
-        by_uni = self.make_uni_token(self.previous());
-        self.expect(TokenKind.KW_POST_INIT);
+    } elif self.match_tok(TokenKind.KW_POST_INIT) {
+        postinit_name = self.make_special_name(self.previous());
         defer = True;
     }
 
@@ -5614,8 +5560,7 @@ impl Parser.parse_has_var -> HasVar {
         kid.append(value);
     }
     if defer {
-        kid.append(by_uni);
-        kid.append(self.make_special_name(self.previous()));
+        kid.append(postinit_name);
     }
     if accessors is not None {
         kid.append(acc_lb_uni);

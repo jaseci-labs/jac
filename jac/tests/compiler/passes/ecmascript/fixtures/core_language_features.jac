@@ -1,7 +1,7 @@
 """Combined core Jac constructs for ECMAScript generator tests."""
 
 cl {
-    glob al_counter: int = 0;
+    glob global_counter: int = 0;
 
     # Basic functions and control flow
     def add(a: int, b: int) -> int {
@@ -57,7 +57,7 @@ cl {
             total += i * 2;
         }
 
-        for i = 0 to i < limit by i += 1 {
+        for i = 0 with i < limit as i += 1 {
             if i == 3 {
                 break;
             }
@@ -117,7 +117,6 @@ cl {
 
     # Exception handling
     def safe_division(a: int, b: int) -> float {
-        global global_counter;
         try {
             return a / b;
         } except ZeroDivisionError as err {

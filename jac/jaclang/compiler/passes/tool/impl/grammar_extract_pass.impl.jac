@@ -826,7 +826,7 @@ impl GrammarExtractPass.is_negated_check(cond: uni.Expr) -> bool {
         return True;
     }
     if isinstance(cond, uni.BinaryExpr) {
-        if cond.op and cond.op?.value and cond.op.value in ("and", "&&") {
+        if cond.op and cond.op?.value and cond.op.value == "and" {
             return (
                 self.is_negated_check(cond.left) and self.is_negated_check(cond.right)
             );
@@ -1605,10 +1605,10 @@ impl GrammarExtractPass.interpret_condition(cond: uni.Expr) -> ConditionResult |
 
     if isinstance(cond, uni.BinaryExpr) {
         if cond?.op and cond.op?.value {
-            if cond.op.value in ("or", "||") {
+            if cond.op.value == "or" {
                 return self._merge_or_conditions([cond.left, cond.right]);
             }
-            if cond.op.value in ("and", "&&") {
+            if cond.op.value == "and" {
                 left_result = self.interpret_condition(cond.left);
                 if left_result is not None {
                     return left_result;

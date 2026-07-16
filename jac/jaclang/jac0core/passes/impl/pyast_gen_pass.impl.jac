@@ -855,6 +855,22 @@ impl PyastGenPass.exit_test(nd: uni.Test) -> None {
             for stmt in self.resolve_stmt_block(nd.body, doc=nd.doc)
         ];
     }
+    test_directives = self.scope_directive_stmts([nd]);
+    if test_directives {
+        insert_at = 1
+            if (
+                len(body_stmts) > 0
+                and isinstance(body_stmts[0], ast3.Expr)
+                and isinstance(body_stmts[0].value, ast3.Constant)
+                and isinstance(body_stmts[0].value.value, str)
+            )
+            else 0;
+        body_stmts = [
+            *body_stmts[:insert_at],
+            *[cast(ast3.stmt, s) for s in test_directives],
+            *body_stmts[insert_at:]
+        ];
+    }
     func = self.sync(
         ast3.FunctionDef(
             name=test_name,
@@ -1583,6 +1599,20 @@ impl PyastGenPass.exit_ability(nd: uni.Ability) -> None {
     if (not body and not isinstance(nd.body, uni.Expr)) {
         self.emit(E5005, node_override=nd);
         body = [self.sync(ast3.Pass(), nd)];
+    }
+    directive_stmts = self.scope_directive_stmts(
+        [nd, nd.body if isinstance(nd.body, uni.ImplDef) else None]
+    );
+    if directive_stmts {
+        insert_at = 1
+            if (
+                len(body) > 0
+                and isinstance(body[0], ast3.Expr)
+                and isinstance(body[0].value, ast3.Constant)
+                and isinstance(body[0].value.value, str)
+            )
+            else 0;
+        body = [*body[:insert_at], *directive_stmts, *body[insert_at:]];
     }
     ast_returns: ast3.expr = self.sync(ast3.Constant(value=None));
     if (isinstance(nd.signature, uni.FuncSignature) and nd.signature.return_type) {
@@ -2378,20 +2408,41 @@ impl PyastGenPass.exit_cast_expr(nd: uni.CastExpr) -> None {
     nd.gen.py_ast = nd.value.gen.py_ast;
 }
 
-impl PyastGenPass.exit_global_stmt(nd: uni.GlobalStmt) -> None {
-    py_nodes = [];
-    for x in nd.target {
-        py_nodes.append(self.sync(ast3.Global(names=[x.sym_name]), jac_node=x));
-    }
-    nd.gen.py_ast = [*py_nodes];
-}
+"""Synthesize `global`/`nonlocal` statements for a function scope.
 
-impl PyastGenPass.exit_non_local_stmt(nd: uni.NonLocalStmt) -> None {
-    py_nodes = [];
-    for x in nd.target {
-        py_nodes.append(self.sync(ast3.Nonlocal(names=[x.sym_name]), jac_node=x));
+With lexical rebinding, assignments that bind to an outer scope are recorded
+in each scope's `implicit_rebinds` during symbol table construction; the
+emitted Python function needs the matching directive statements since Python
+scoping is assignment-creates-local.""";
+impl PyastGenPass.scope_directive_stmts(scopes: list) -> list[ast3.AST] {
+    global_names: list = [];
+    nonlocal_names: list = [];
+    seen: set = set();
+    for scope in scopes {
+        if scope is None {
+            continue;
+        }
+        for name in scope.implicit_rebinds {
+            if name in seen {
+                continue;
+            }
+            seen.add(name);
+            sym = scope.implicit_rebinds[name];
+            if isinstance(sym.parent_tab, uni.Module) {
+                global_names.append(name);
+            } else {
+                nonlocal_names.append(name);
+            }
+        }
     }
-    nd.gen.py_ast = [*py_nodes];
+    stmts: list = [];
+    if global_names {
+        stmts.append(self.sync(ast3.Global(names=sorted(global_names))));
+    }
+    if nonlocal_names {
+        stmts.append(self.sync(ast3.Nonlocal(names=sorted(nonlocal_names))));
+    }
+    return stmts;
 }
 
 impl PyastGenPass.exit_assignment(nd: uni.Assignment) -> None {

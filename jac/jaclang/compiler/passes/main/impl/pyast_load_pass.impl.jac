@@ -340,13 +340,7 @@ impl PyastBuildPass.proc_arguments(nd: py_ast.arguments) -> uni.FuncSignature {
 }
 
 impl PyastBuildPass.proc_arg(nd: py_ast.arg) -> uni.ParamVar {
-    import from jaclang.jac0core.constant { TOKEN_MAP }
-    reserved_keywords = [
-        v
-        for (_, v) in TOKEN_MAP.items()
-        if (v not in ['float', 'int', 'str', 'bool', 'self'])
-    ];
-    name = self.name_node(nd, nd.arg, is_kwesc=(nd.arg in reserved_keywords));
+    name = self.name_node(nd, nd.arg, is_kwesc=(nd.arg in _reserved_keywords));
     self.in_type_annotation = True;
     ann_expr = self.convert(nd.annotation)
         if nd.annotation
@@ -613,12 +607,9 @@ impl PyastBuildPass.proc_pass(nd: py_ast.Pass) -> uni.Semi {
     );
 }
 
-impl PyastBuildPass.proc_nonlocal(nd: py_ast.Nonlocal) -> uni.NonLocalStmt {
-    names: list[uni.NameAtom] = [];
-    for name in nd.names {
-        names.append(self.name_node(nd, name, is_kwesc=(name in _reserved_keywords)));
-    }
-    return uni.NonLocalStmt(target=names, kid=names);
+"""Python `nonlocal` has no Jac equivalent (Jac rebinds lexically); drop it.""";
+impl PyastBuildPass.proc_nonlocal(nd: py_ast.Nonlocal) -> uni.Semi {
+    return self.proc_pass(cast(py_ast.Pass, nd));
 }
 
 impl PyastBuildPass.proc_named_expr(nd: py_ast.NamedExpr) -> uni.AtomUnit {
@@ -647,14 +638,8 @@ impl PyastBuildPass.proc_named_expr(nd: py_ast.NamedExpr) -> uni.AtomUnit {
 }
 
 impl PyastBuildPass.proc_name(nd: py_ast.Name) -> uni.Name {
-    import from jaclang.jac0core.constant { TOKEN_MAP }
-    reserved_keywords = [
-        v
-        for (_, v) in TOKEN_MAP.items()
-        if (v not in ['float', 'int', 'str', 'bool', 'self'])
-    ];
     should_escape = (
-        (nd.id in reserved_keywords)
+        (nd.id in _reserved_keywords)
         and not self.in_type_annotation
         and not self.in_match_pattern
         and not self.in_fstring_expr
@@ -1098,12 +1083,9 @@ impl PyastBuildPass.proc_if_exp(nd: py_ast.IfExp) -> uni.IfElseExpr {
     }
 }
 
-impl PyastBuildPass.proc_global(nd: py_ast.Global) -> uni.GlobalStmt {
-    names: list[uni.NameAtom] = [];
-    for id in nd.names {
-        names.append(self.name_node(nd, id));
-    }
-    return uni.GlobalStmt(target=names, kid=names);
+"""Python `global` has no Jac equivalent (Jac rebinds lexically); drop it.""";
+impl PyastBuildPass.proc_global(nd: py_ast.Global) -> uni.Semi {
+    return self.proc_pass(cast(py_ast.Pass, nd));
 }
 
 impl PyastBuildPass.proc_generator_exp(nd: py_ast.GeneratorExp) -> uni.GenCompr {

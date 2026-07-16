@@ -8,7 +8,7 @@ tag.  This corrupts the mode state machine and causes an infinite loop.
 cl {
     def filter_points(points: list, limit: int) -> list {
         result = [];
-        for i=0 to i<points.length by i+=1 {
+        for i=0 with i<points.length as i+=1 {
             if points[i] < limit {
                 result.append(points[i]);
             }

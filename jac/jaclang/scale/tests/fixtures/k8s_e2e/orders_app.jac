@@ -30,7 +30,6 @@ sv {
         }
 
         # 2. Create order locally
-        global _order_counter;
         _order_counter += 1;
         order_id = f"ord_{_order_counter}";
 
@@ -40,7 +39,7 @@ sv {
             total += float(item.get("price", 0)) * int(item.get("qty", 1));
         }
 
-        root() ++> Order(
+        root ++> Order(
             id=order_id,
             items=items,
             total=round(total, 2),
@@ -61,7 +60,7 @@ sv {
 
     def:pub list_orders -> list[dict] {
         result: list[dict] = [];
-        for o in [root()-->][?:Order] {
+        for o in [root-->][?:Order] {
             result.append(
                 {
                     "id": o.id,
@@ -76,7 +75,7 @@ sv {
     }
 
     def:pub get_order(order_id: str) -> dict {
-        for o in [root()-->][?:Order] {
+        for o in [root-->][?:Order] {
             if o.id == order_id {
                 return {
                     "id": o.id,
@@ -91,7 +90,7 @@ sv {
     }
 
     def:pub cancel_order(order_id: str) -> dict {
-        for o in [root()-->][?:Order] {
+        for o in [root-->][?:Order] {
             if o.id == order_id {
                 if o.status == "confirmed" {
                     o.status = "cancelled";

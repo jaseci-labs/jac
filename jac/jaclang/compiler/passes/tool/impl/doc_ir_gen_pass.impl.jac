@@ -858,21 +858,6 @@ impl DocIRGenPass.exit_visit_stmt(nd: uni.VisitStmt) -> None {
     nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
 }
 
-impl DocIRGenPass.exit_non_local_stmt(nd: uni.NonLocalStmt) -> None {
-    self._assign_semi_stmt_doc_ir(nd);
-}
-
-impl DocIRGenPass.exit_global_stmt(nd: uni.GlobalStmt) -> None {
-    parts: list[doc.DocType] = [];
-    for i in nd.kid {
-        parts.append(i.gen.doc_ir);
-        if (isinstance(i, uni.Token) and (i.name == Tok.GLOBAL_OP)) {
-            parts.append(self.space());
-        }
-    }
-    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
-}
-
 impl DocIRGenPass.exit_module_code(nd: uni.ModuleCode) -> None {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [];
@@ -1444,7 +1429,7 @@ impl DocIRGenPass.exit_has_var(nd: uni.HasVar) -> None {
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
         } elif (
-            isinstance(i, uni.Token) and (i.name in [Tok.KW_BY, Tok.KW_POST_INIT])
+            isinstance(i, uni.Token) and (i.name == Tok.KW_POST_INIT)
         ) {
             parts.append(self.space());
             parts.append(i.gen.doc_ir);

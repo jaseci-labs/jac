@@ -53,7 +53,7 @@ import time;
 obj KubernetesTarget(DeploymentTarget) {
     has config: KubernetesConfig,
         logger: (Logger | None) = None,
-        k8s_config: KubernetesConfig by postinit,
+        k8s_config: KubernetesConfig postinit,
         env_list: list = [],
         secrets: dict[str, str] = {},
         # Set by the factory for --dry-run: manifest generation must then stay

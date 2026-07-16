@@ -745,14 +745,6 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=64,
-             class_name="GlobalStmt",
-             is_scope=False,
-             is_cfg=True,
-             is_name_atom=False,
-             fields=(FieldDesc(name="target", kind=5), )
-         ),
-         NodeSpec(
              type_idx=65,
              class_name="GlobalVars",
              is_scope=False,
@@ -1269,14 +1261,6 @@ glob NODE_SPECS: tuple = (
              fields=(FieldDesc(name="doc", kind=6), FieldDesc(name="body", kind=5))
          ),
          NodeSpec(
-             type_idx=113,
-             class_name="NonLocalStmt",
-             is_scope=False,
-             is_cfg=True,
-             is_name_atom=False,
-             fields=(FieldDesc(name="target", kind=5), )
-         ),
-         NodeSpec(
              type_idx=114,
              class_name="Null",
              is_scope=False,
@@ -1748,7 +1732,6 @@ glob NODE_SPECS: tuple = (
          "FuncCall": 61,
          "FuncSignature": 62,
          "GenCompr": 63,
-         "GlobalStmt": 64,
          "GlobalVars": 65,
          "HasVar": 66,
          "IfElseExpr": 67,
@@ -1797,7 +1780,6 @@ glob NODE_SPECS: tuple = (
          "Name": 110,
          "NameAtom": 111,
          "NativeBlock": 112,
-         "NonLocalStmt": 113,
          "Null": 114,
          "OpenStmt": 115,
          "ParamVar": 116,

@@ -9,7 +9,6 @@ glob _broker: EventStreamBroker | None = None,
 
 """Wire the active broker. Called once at startup by _setup_events."""
 def set_broker(broker: EventStreamBroker | None) {
-    global _broker;
     _broker = broker;
 }
 

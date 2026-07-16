@@ -214,7 +214,7 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
                 }
             }
         }
-    } elif isinstance(nd, uni.Semi) { } elif isinstance(nd, uni.GlobalStmt) { } elif isinstance(
+    } elif isinstance(nd, uni.Semi) { } elif isinstance(
         nd, uni.PyInlineCode
     ) { } elif isinstance(nd, uni.VisitStmt) {
         self._codegen_visit(nd);
