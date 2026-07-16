@@ -54,7 +54,7 @@ cl {
                 value={name}
                 placeholder="Type your name"
                 placeholderTextColor="#8a93a6"
-                onChangeText={lambda t: str { name = t; }}
+                onChangeText={lambda (t: str) { name = t; }}
             />
             <Pressable style={styles.button} onPress={lambda { count = count + 1; }}>
                 <Text style={styles.label}>Clicks: {str(count)}</Text>
@@ -69,7 +69,7 @@ cl {
 | Web `.cl.jac` | MobUI |
 |---|---|
 | `onClick={h}` | `onPress={h}` |
-| `onChange` → `e.target.value` | `onChangeText={lambda t: str { field = t; }}` (string directly) |
+| `onChange` → `e.target.value` | `onChangeText={lambda (t: str) { field = t; }}` (string directly) |
 | `<img src="x">` | `<Image source={{uri: "https://..."}} style={...}/>` |
 | `<input placeholder=..>` | `<TextInput placeholder=.. placeholderTextColor=.. secureTextEntry={True} multiline={True}/>` |
 | `className="..."` | `style={styles.x}` |
