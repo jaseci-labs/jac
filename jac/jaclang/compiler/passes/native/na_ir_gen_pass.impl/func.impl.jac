@@ -290,6 +290,7 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     self.local_vars = {};
     self.param_vars = set();
     self.nogc_stack_vars = set();
+    self.region_handle_vars = set();
 
     self._attach_di_subprogram(
         func, name, self._func_loc.get(name, nd.loc.first_line if nd.loc else 0)
@@ -374,6 +375,7 @@ impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
     self._builder = ir.IRBuilder(entry_bb);
     self.local_vars = {};
     self.nogc_stack_vars = set();
+    self.region_handle_vars = set();
     saved_param_vars = self.param_vars;
     self.param_vars = set();
     self._attach_di_subprogram(func, symbol, line);
@@ -477,6 +479,7 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
     self._builder = ir.IRBuilder(fn.append_basic_block("entry"));
     self.local_vars = {};
     self.nogc_stack_vars = set();
+    self.region_handle_vars = set();
     self.param_vars = set();
     self.var_list_elem_struct = {};
     for (i, arg) in enumerate(fn.args) {
@@ -536,6 +539,7 @@ impl NaIRGenPass._emit_glob_init_func -> None {
     self.local_vars = {};
     self.param_vars = set();
     self.nogc_stack_vars = set();
+    self.region_handle_vars = set();
 
     self._attach_di_subprogram(func, "__jac_glob_init", 0);
     if self?._global_init_nodes and self._global_init_nodes {
@@ -610,6 +614,7 @@ impl NaIRGenPass._codegen_entry(nodes: list[uni.ModuleCode]) -> None {
     self.local_vars = {};
     self.param_vars = set();
     self.nogc_stack_vars = set();
+    self.region_handle_vars = set();
 
     _first = nodes[0];
     entry_line = _first.loc.first_line if _first.loc else 0;

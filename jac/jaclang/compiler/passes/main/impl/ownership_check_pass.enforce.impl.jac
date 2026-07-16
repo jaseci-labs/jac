@@ -576,7 +576,9 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
         }
     }
 
-    for _reg in self.ir_in.get_all_sub_nodes(uni.RegionStmt) {
-        self.emit(E1406, node_override=_reg, name="region { } block", provenance=_prov);
+    for _reg in self.ir_in.get_all_sub_nodes(uni.OpenStmt) {
+        self.emit(
+            E1406, node_override=_reg, name="`in { }` region open", provenance=_prov
+        );
     }
 }

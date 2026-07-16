@@ -161,7 +161,7 @@ obj DocIRGenPass(UniPass) {
     def exit_sem_def(nd: uni.SemDef) -> None;
     def exit_event_signature(nd: uni.EventSignature) -> None;
     def exit_typed_ctx_block(nd: uni.TypedCtxBlock) -> None;
-    def exit_region_stmt(nd: uni.RegionStmt) -> None;
+    def exit_open_stmt(nd: uni.OpenStmt) -> None;
     def exit_token(nd: uni.Token) -> None;
     def exit_semi(nd: uni.Semi) -> None;
     def exit_name(nd: uni.Name) -> None;

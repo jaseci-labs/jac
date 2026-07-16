@@ -40,7 +40,9 @@ def build_service_apt_prefix(k8s_config: KubernetesConfig) -> str {
 }
 
 
-def build_runtime_install_commands(k8s_config: KubernetesConfig) -> list[str] {
+def build_runtime_install_commands(
+    k8s_config: KubernetesConfig, prefer_image_binary: bool = False
+) -> list[str] {
     config = k8s_config;
     commands: list[str] = [];
 
@@ -68,15 +70,25 @@ def build_runtime_install_commands(k8s_config: KubernetesConfig) -> list[str] {
     }
 
     tc = f"{APP_MOUNT_PATH}/{TOOLCHAIN_SUBDIR}";
-    # On the official base image /usr/local/bin/jac ships with its runtime
-    # pre-extracted; reuse it ONLY when it is byte-identical to the shipped
-    # binary (the .jab seal is version-locked), else install the bundle copy.
-    commands.append(
-        f'if [ -x /usr/local/bin/jac ] && [ "$(sha256sum /usr/local/bin/jac '
-        f"| cut -d' ' -f1)\" = \"$(sha256sum \"{tc}/bin/jac\" | cut -d' ' -f1)\" ]; "
-        f'then ln -sf /usr/local/bin/jac "$HOME/.local/bin/jac"; '
-        f'else install -m 0755 "{tc}/bin/jac" "$HOME/.local/bin/jac"; fi'
-    );
+    if prefer_image_binary {
+        # The image is the PR's own build, so its baked jac is the code under
+        # test: run it over the injected `dev` binary (only there to seal .jir).
+        commands.append(
+            'if [ -x /usr/local/bin/jac ]; '
+            'then ln -sf /usr/local/bin/jac "$HOME/.local/bin/jac"; '
+            f'else install -m 0755 "{tc}/bin/jac" "$HOME/.local/bin/jac"; fi'
+        );
+    } else {
+        # On the official base image /usr/local/bin/jac ships with its runtime
+        # pre-extracted; reuse it ONLY when it is byte-identical to the shipped
+        # binary (the .jab seal is version-locked), else install the bundle copy.
+        commands.append(
+            'if [ -x /usr/local/bin/jac ] && [ "$(sha256sum /usr/local/bin/jac '
+            f"| cut -d' ' -f1)\" = \"$(sha256sum \"{tc}/bin/jac\" | cut -d' ' -f1)\" ]; "
+            'then ln -sf /usr/local/bin/jac "$HOME/.local/bin/jac"; '
+            f'else install -m 0755 "{tc}/bin/jac" "$HOME/.local/bin/jac"; fi'
+        );
+    }
     commands.append('export PATH="$HOME/.local/bin:$PATH"');
     commands.append(
         'if ! command -v jac >/dev/null 2>&1; then echo "[jac-scale] FATAL: '
@@ -105,7 +117,12 @@ def runtime_container_env -> list[dict[str, str]] {
 def build_bootstrap_init_container(
     k8s_config: KubernetesConfig, base_image: str, is_gateway: bool = True
 ) -> dict[str, any] {
-    commands = build_runtime_install_commands(k8s_config);
+    # Keying off the resolved image name (not the config) self-corrects on
+    # fallback: an unpublished experimental tag resolves to a plain base, which
+    # will not match, so the injected binary runs.
+    import from jaclang.scale.injector.binary { OFFICIAL_IMAGE }
+    prefer_image_binary = base_image.startswith(f"{OFFICIAL_IMAGE}:experimental-");
+    commands = build_runtime_install_commands(k8s_config, prefer_image_binary);
     commands.append(f'cd {APP_MOUNT_PATH}');
     # Point the pip cache at the shared RWX bundle PVC: the first pod warms it,
     # every later pod (and every redeploy) downloads ~nothing. pip only - bun's
@@ -173,7 +190,12 @@ def build_bootstrap_init_container(
 
 
 def image_pull_policy(image: str) -> str {
-    # The rolling `dev` tag is mutable: without Always a node keeps serving
-    # whatever it cached first. Versioned and `latest` tags keep k8s defaults.
-    return "Always" if image.endswith(":dev") else "";
+    # Mutable tags (`dev`, per-PR `experimental-<N>`) are re-pushed in place, so
+    # a node must re-pull; versioned and `latest` tags keep k8s defaults. Anchor
+    # experimental to the official image so a custom python_image tagged
+    # `experimental-*` is not swept in.
+    import from jaclang.scale.injector.binary { OFFICIAL_IMAGE }
+    return "Always"
+        if image.endswith(":dev") or image.startswith(f"{OFFICIAL_IMAGE}:experimental-")
+        else "";
 }

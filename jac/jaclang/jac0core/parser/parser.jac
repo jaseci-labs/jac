@@ -107,7 +107,7 @@ import from jaclang.jac0core.unitree {
 }
 import from jaclang.jac0core.unitree {
     TypedCtxBlock,
-    RegionStmt,
+    OpenStmt,
     GlobalStmt,
     NonLocalStmt
 }
@@ -516,7 +516,7 @@ obj Parser {
     def parse_elif_stmt -> ElseIf;
     def parse_else_stmt -> ElseStmt;
     def parse_while_stmt -> WhileStmt;
-    def parse_region_stmt -> RegionStmt;
+    def parse_open_stmt -> OpenStmt;
     def parse_forever_stmt -> ForeverStmt;
     def parse_for_stmt;
     def parse_try_stmt -> TryStmt;
