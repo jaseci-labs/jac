@@ -246,6 +246,55 @@ def _precompile_app(base: Path, pod_binary: bytes) -> Path {
 }
 
 
+def fat_bundle_enabled(project_dir: str) -> bool {
+    import from jaclang.project.config { get_config_for_path }
+    # pack_jab tolerates malformed jac.tomls (the sanitizer is line-based), so
+    # an unparseable config means thin bundle, not a failed deploy.
+    try {
+        config = get_config_for_path(Path(project_dir));
+    } except Exception as exc {
+        logger.warning(f"fat_bundle check skipped, jac.toml unparseable: {exc}");
+        return False;
+    }
+    if config is None {
+        return False;
+    }
+    section = config.get_section("scale");
+    if section is None {
+        return False;
+    }
+    return bool(section.get("fat_bundle", False));
+}
+
+
+def _vendor_stage(stage: Path, sanitized_toml: (str | None), pod_binary: bytes) {
+    # Vendor the python dep closure into <stage>/_vendor with the SAME binary
+    # that sealed the app and that pods run, resolved against the same
+    # sanitized jac.toml the pod's `jac install` will see (the sanitizer can
+    # bake a provisioned-database intent that widens the capability closure).
+    if sanitized_toml is not None {
+        (stage / "jac.toml").write_text(sanitized_toml, encoding="utf-8");
+    }
+    jac_path = stage.parent / ".pod-jac";
+    jac_path.write_bytes(pod_binary);
+    jac_path.chmod(0o755);
+    script = Path(str(__file__)).parent.parent / "utils" / "vendor_wheels.jac";
+    result = subprocess.run(
+        [str(jac_path), "run", str(script), str(stage)],
+        capture_output=True,
+        text=True,
+        timeout=900
+    );
+    jac_path.unlink();
+    if (result.returncode != 0 or not (stage / "_vendor" / "VENDOR.json").is_file()) {
+        raise RuntimeError(
+            f"Fat bundle vendoring failed, so the deploy cannot ship offline "
+            f"deps: {(result.stderr or result.stdout).strip()[-300:]}"
+        );
+    }
+}
+
+
 def pack_jab(project_dir: str, provisioned_database: str, pod_binary: bytes) -> bytes {
     # Pack the app into a sealed .jab: project source, the sealed _precompiled/
     # image (MANIFEST.json at tar root), and jac.toml. The gzip-tar IS a valid
@@ -262,6 +311,10 @@ def pack_jab(project_dir: str, provisioned_database: str, pod_binary: bytes) -> 
     # a tar.add below raises, or a full project copy leaks in /tmp on every
     # failed deploy (accumulates on a retrying deploy driver).
     try {
+        sanitized = sanitized_jac_toml(base, provisioned_database);
+        if fat_bundle_enabled(project_dir) {
+            _vendor_stage(staged, sanitized, pod_binary);
+        }
         buf = io.BytesIO();
         (tar, gz) = open_det_tar(buf);
         try {
@@ -288,7 +341,23 @@ def pack_jab(project_dir: str, provisioned_database: str, pod_binary: bytes) -> 
                 logger.info(
                     f"Sealed {count} precompiled app-module artifacts into the .jab."
                 );
-                sanitized = sanitized_jac_toml(base, provisioned_database);
+                ven = staged / "_vendor";
+                if ven.is_dir() {
+                    wheel_count = 0;
+                    for path in sorted(ven.rglob("*")) {
+                        if path.is_file() {
+                            rel = path.relative_to(staged);
+                            tar.add(str(path), arcname=str(rel), filter=det_tar_member);
+                            if path.suffix == ".whl" {
+                                wheel_count += 1;
+                            }
+                        }
+                    }
+                    logger.info(
+                        f"Fat bundle: vendored {wheel_count} wheel(s) into the "
+                        f".jab; pods install python deps offline."
+                    );
+                }
                 if sanitized is not None {
                     data = sanitized.encode("utf-8");
                     info = tarfile.TarInfo(name="jac.toml");

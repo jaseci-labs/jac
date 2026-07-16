@@ -160,6 +160,20 @@ def build_bootstrap_init_container(
             'prebuilt client dist; full install"; fi'
         );
     }
+    # Fat bundle: a .jab packed with [scale] fat_bundle ships its python dep
+    # closure as wheels under _vendor/wheels (unpacked to the app volume by
+    # jac-pvc-bootstrap). Forcing pip offline keeps the identical `jac install`
+    # path (same venv, same closure) but resolves every spec from the local
+    # wheel dir with zero PyPI traffic; an incomplete closure fails the boot
+    # loudly instead of silently reaching for the network. Thin bundles have
+    # no _vendor/ and take the unchanged PyPI path.
+    vendor_wheels = f"{APP_MOUNT_PATH}/_vendor/wheels";
+    commands.append(
+        f'if ls {vendor_wheels}/*.whl >/dev/null 2>&1; then '
+        f'export PIP_NO_INDEX=1 PIP_FIND_LINKS={vendor_wheels}; '
+        'echo "[jac-scale] vendored wheels found; python deps install '
+        'offline"; fi'
+    );
     commands.append("jac install");
     script = ' && '.join(commands);
     container: dict[str, any] = {
