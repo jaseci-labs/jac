@@ -40,6 +40,7 @@ __all__ = [
     "DSFunc",
     "EdgeDir",
     "LLMModel",
+    "Region",
     # Fixed-width numeric types
     "i8",
     "u8",
@@ -114,6 +115,11 @@ class JsxElement:
 
 class OPath: ...
 class DSFunc: ...
+
+# First-class region handle: an ownable, sendable, escape-checked allocation
+# extent opened by `in <handle> { ... }`. On managed backends the handle is a
+# no-op; native codegen gives it arena semantics.
+class Region: ...
 
 class EdgeDir:
     OUT: int

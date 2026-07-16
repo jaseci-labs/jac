@@ -9,6 +9,7 @@ import from jaclang.jac0core.constant {
     Tokens as Tok,
     EdgeDir,
     SymbolAccess,
+    OwnershipKind,
 }
 import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
 import from jaclang.jac0core.passes.sym_tab_build_pass { SymTabBuildPass }

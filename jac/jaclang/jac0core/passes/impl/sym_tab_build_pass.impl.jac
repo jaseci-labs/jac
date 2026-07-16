@@ -428,15 +428,11 @@ impl SymTabBuildPass.exit_typed_ctx_block(
     self.pop_scope();
 }
 
-impl SymTabBuildPass.enter_region_stmt(
-    self: SymTabBuildPass, nd: uni.RegionStmt
-) -> None {
+impl SymTabBuildPass.enter_open_stmt(self: SymTabBuildPass, nd: uni.OpenStmt) -> None {
     self.push_scope_and_link(nd);
 }
 
-impl SymTabBuildPass.exit_region_stmt(
-    self: SymTabBuildPass, nd: uni.RegionStmt
-) -> None {
+impl SymTabBuildPass.exit_open_stmt(self: SymTabBuildPass, nd: uni.OpenStmt) -> None {
     self.pop_scope();
 }
 

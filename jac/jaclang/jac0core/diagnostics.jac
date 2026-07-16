@@ -622,29 +622,37 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E1307 = _err(
          "E1307",
          Category.SEMANTIC,
-         "Reference to '{name}' escapes its `region` block",
-         help="A `region {}` arena owns everything allocated inside it and frees the"
-         " whole arena at the closing brace. A reference rooted in the region may not"
-         " be returned, stored outside, or handed to a `flow`/`wait` boundary — it"
-         " would dangle once the arena is reclaimed. Keep the reference inside the"
-         " region, or move the value out with `own` before the block ends."
+         "Reference to '{name}' escapes its region",
+         help="A region owns everything allocated under an `in <handle> {}` open"
+         " and frees it wholesale when the region is reclaimed. A reference rooted"
+         " in the region may not be returned, stored outside, or handed to a"
+         " `flow`/`wait` boundary; it would dangle once the region is freed. Keep"
+         " the reference inside the region, or move the value out with `own`"
+         " before the open ends."
      ),
      E1308 = _err(
          "E1308",
          Category.SEMANTIC,
          "'{name}' is not sendable across a concurrency boundary",
-         help="Only a deep-immutable `val` value or a moved `own` value may cross a"
+         help="Only a deep-immutable `imm` value or a moved `own` value may cross a"
          " `flow`/`wait`/`thread_run` boundary — those are the only payloads that are"
          " statically race-free. A live `&`/`&mut` borrow or a shared managed value may"
-         " not be sent; move it with `own`, or send a `val` snapshot instead."
+         " not be sent; move it with `own`, or send an `imm` snapshot instead."
      ),
      E1309 = _err(
          "E1309",
          Category.SEMANTIC,
-         "Cannot mutate '{name}' through a deep-immutable `val` binding",
-         help="'{name}' is a `val` value: it is transitively immutable, so it may never"
-         " be reassigned, have a field written, or be borrowed `&mut`. Take a `val` as"
+         "Cannot mutate '{name}' through a deep-immutable `imm` binding",
+         help="'{name}' is an `imm` value: it is transitively immutable, so it may never"
+         " be reassigned, have a field written, or be borrowed `&mut`. Take an `imm` as"
          " read-only, or use an `own`/managed binding if you need to mutate."
+     ),
+     W1310 = _warn(
+         "W1310",
+         Category.LINT,
+         "Region open on '{name}' has an empty body",
+         help="Opening a region that allocates nothing pays for an arena and its"
+         " teardown with no benefit. Allocate inside the open, or drop the open."
      ),
      E1401 = _err(
          "E1401",
@@ -652,7 +660,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Heap-typed {position} '{name}' has no ownership state in a nogc-enforced module ({provenance})",
          help="Inside a nogc-enforced module every heap-typed contract position"
          " (parameter, return, or `has` field) must be in the owned world: annotate"
-         " it `own`, `&`, `&mut`, or `val`. Locals still infer ownership from a fresh"
+         " it `own`, `&`, `&mut`, or `imm`. Locals still infer ownership from a fresh"
          " right-hand side; only contracts must be explicit.",
          blocks_codegen=True
      ),
@@ -672,7 +680,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Heap value '{name}' crosses implicitly out of a nogc-enforced module ({provenance})",
          help="Heap values may leave a nogc-enforced module only by an explicit copy:"
          " wrap the argument in `managed(...)`, which reboxes it into a"
-         " reference-counted allocation on the managed side. Scalars and `val` values"
+         " reference-counted allocation on the managed side. Scalars and `imm` values"
          " cross freely.",
          blocks_codegen=True
      ),

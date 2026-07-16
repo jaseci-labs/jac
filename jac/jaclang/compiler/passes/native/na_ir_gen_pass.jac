@@ -184,6 +184,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         _native_builtin_emitter: (object | None) = None,
         _primitive_method_name_cache: (dict[str, set[str]] | None) = None,
         _rc_debug_codegen: bool = False,
+        rc_helpers_emitted: bool = False,
         rc_alloc_fn: (ir.Function | None) = None,
         rc_retain_fn: (ir.Function | None) = None,
         rc_release_simple_fn: (ir.Function | None) = None,
@@ -218,6 +219,17 @@ obj NaIRGenPass(ModuleCodegenPass) {
         struct_drop_fns: dict[str, ir.Function] = {},
         container_drop_fns: dict[str, ir.Function] = {},
         struct_drop_hooks: dict[str, ir.Function] = {},
+        struct_drop_fields_fns: dict[str, ir.Function] = {},
+        arena_helpers_emitted: bool = False,
+        region_new_fn: (ir.Function | None) = None,
+        region_alloc_fn: (ir.Function | None) = None,
+        region_log_dtor_fn: (ir.Function | None) = None,
+        region_drop_fn: (ir.Function | None) = None,
+        osp_anchor_alloc_fn: (ir.Function | None) = None,
+        region_stack: list = [],
+        region_handle_vars: set[str] = set(),
+        region_anon_count: int = 0,
+        rc_region_allocs: int = 0,
         nogc_stack_vars: set[str] = set(),
         list_release_fns: dict[str, ir.Function] = {},
         dict_release_fns: dict[str, ir.Function] = {},
@@ -260,7 +272,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_if(nd: uni.IfStmt) -> None;
     def _codegen_switch(nd: uni.SwitchStmt) -> None;
     def _codegen_while(nd: uni.WhileStmt) -> None;
-    def _codegen_region(nd: uni.RegionStmt) -> None;
+    def _codegen_open_stmt(nd: uni.OpenStmt) -> None;
     def _codegen_forever(nd: uni.ForeverStmt) -> None;
     def _codegen_assignment(nd: uni.Assignment) -> None;
     def _codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None);
@@ -902,8 +914,15 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _nogc_osp_skip(val: ir.Value) -> bool;
     def _nogc_headerless -> bool;
     def _arch_is_osp_name(arch_name: str) -> bool;
+    def _arch_is_walker_name(arch_name: str) -> bool;
     def _emit_struct_drop_fn(type_name: str) -> (ir.Function | None);
+    def _emit_struct_drop_fields_fn(type_name: str) -> (ir.Function | None);
     def _emit_container_drop_fn(cont_name: str) -> (ir.Function | None);
+    def _emit_arena_helpers -> None;
+    def _register_region_handle_var(nd: uni.Assignment, var_name: str) -> None;
+    def _region_alloc(size: ir.Value, name: str = "region.alloc") -> ir.Value;
+    def _region_log_dtor_if_needed(obj_i8: ir.Value, type_name: str) -> None;
+    def _emit_region_handle_drop(alloca: object, var_name: str) -> None;
     def _nogc_emit_drop(val: ir.Value, op: str = "", loc: str = "") -> bool;
     def _nogc_free_scratch(val: ir.Value, op: str) -> None;
     def _emit_last_use_releases(stmt: uni.UniNode) -> None;

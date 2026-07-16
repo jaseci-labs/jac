@@ -1,10 +1,12 @@
-obj Buffer { has n: int = 0; }
+obj Buffer {
+    has n: int = 0;
+}
 
-def use1(x: Buffer) -> None {}
+def use1(x: Buffer) { }
 
-def run() -> None {
-    region {
+def run {
+    in Region() {
         x = Buffer();
-        flow use1(x);
+        flow use1(x) ;
     }
 }

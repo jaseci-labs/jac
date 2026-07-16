@@ -1773,7 +1773,72 @@ def _bundle_sealed(config: any, output: str) -> int {
     return 0;
 }
 
-def _bundle_jab(config: any, output: str) -> int {
+def _vendor_jab_deps(config: any, img: Path) -> bool {
+    import from jaclang.project.providers { resolve_plan, get_python_provider }
+    import from jaclang.jac0core.sealed { python_tag }
+    import from jaclang.runtimelib.jab_vendor {
+        wheels_dir,
+        download_wheels,
+        write_vendor_manifest
+    }
+
+    plan = resolve_plan(config, include_dev=False);
+    py_prov = get_python_provider();
+    py_deps = [
+        d
+        for d in plan.for_ecosystem("python")
+        if d.source == "pypi"
+    ];
+    skipped = [
+        d.name
+        for d in plan.for_ecosystem("python")
+        if d.source != "pypi"
+    ];
+    if skipped {
+        console.print(
+            f"  ⚠ not vendoring non-pypi dep(s): {', '.join(sorted(skipped))} "
+            "(installed normally at run time)",
+            style="warning"
+        );
+    }
+    specs = py_prov.specs_for(py_deps);
+    if not specs {
+        console.print(
+            "  ✔ Fat jab: no third-party Python deps to vendor", style="success"
+        );
+        write_vendor_manifest(img, specs, python_tag=python_tag());
+        return True;
+    }
+
+    console.print(
+        f"  Vendoring {len(specs)} Python dependency closure as wheels", style="muted"
+    );
+    wd = wheels_dir(img);
+    (ok, err) = download_wheels(specs, wd);
+    if not ok {
+        console.error(
+            f"Fat-jab vendoring failed while downloading wheels:\n  {err}",
+            hint=(
+                "A dep may lack a wheel for this platform. Build without --fat, "
+                "or pre-provide the wheels via PIP_FIND_LINKS."
+            )
+        );
+        return False;
+    }
+    write_vendor_manifest(img, specs, python_tag=python_tag());
+
+    wheels = sorted(wd.glob("*.whl"));
+    total = sum([w.stat().st_size for w in wheels]);
+    console.print(
+        f"  ✔ Vendored {len(wheels)} wheel(s) ({total:,} bytes); "
+        "materializes offline, no PyPI",
+        style="success"
+    );
+    return True;
+}
+
+
+def _bundle_jab(config: any, output: str, fat: bool = False) -> int {
     import shutil;
     import tempfile;
 
@@ -1785,6 +1850,9 @@ def _bundle_jab(config: any, output: str) -> int {
         console.print(f"\n  Sealing {name}", style="muted");
         img = _make_sealed_image(config, work, name, out_dir=Path(output));
         if img is None {
+            return 1;
+        }
+        if fat and not _vendor_jab_deps(config, img) {
             return 1;
         }
         payload = _tar_gz_dir(img);
@@ -1801,7 +1869,7 @@ def _bundle_jab(config: any, output: str) -> int {
     return 0;
 }
 
-def _bundle_binary(config: any, output: str) -> int {
+def _bundle_binary(config: any, output: str, fat: bool = False) -> int {
     import sys;
     import os;
     import shutil;
@@ -1842,6 +1910,10 @@ def _bundle_binary(config: any, output: str) -> int {
                 "(main.jac at the package root, or [project] entry-point in jac.toml).",
                 hint="Package-only projects have nothing to run as a binary."
             );
+            return 1;
+        }
+
+        if fat and not _vendor_jab_deps(config, img) {
             return 1;
         }
 
@@ -1946,7 +2018,7 @@ def _bundle_npm_runtime(output: str, framework: str = "") -> int {
     return 0;
 }
 
-impl bundle(output: str = "dist", target: str = "wheel") -> int {
+impl bundle(output: str = "dist", target: str = "wheel", fat: bool = False) -> int {
     import from jaclang.project.config { get_config }
 
     if target == "npm-runtime" {
@@ -1971,10 +2043,10 @@ impl bundle(output: str = "dist", target: str = "wheel") -> int {
         return _bundle_sealed(config, output);
     }
     if target == "jab" {
-        return _bundle_jab(config, output);
+        return _bundle_jab(config, output, fat=fat);
     }
     if target == "binary" {
-        return _bundle_binary(config, output);
+        return _bundle_binary(config, output, fat=fat);
     }
     if target not in ("wheel", "npm", "all") {
         console.error(

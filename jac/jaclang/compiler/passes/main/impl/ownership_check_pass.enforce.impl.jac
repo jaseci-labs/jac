@@ -142,7 +142,7 @@ impl OwnershipCheckPass._nogc_infer_locals -> None {
         if _tgt.sym.storage == SymbolStorage.MODULE_GLOBAL {
             continue;
         }
-        if self._nogc_local_shape(_tgt) == "osp" {
+        if self._nogc_local_shape(_tgt) in ("osp", "scalar") {
             continue;
         }
         _sid = self._name_sym_id(_tgt);
@@ -175,7 +175,69 @@ impl OwnershipCheckPass._nogc_local_shape_expr_heap(expr: uni.Expr | None) -> bo
         result_ownership,
         Ownership
     }
-    return result_ownership(expr) == Ownership.OWNED;
+    _own = result_ownership(expr);
+    if _own == Ownership.STATIC or _own == Ownership.BORROWED {
+        return False;
+    }
+
+    return self._nogc_expr_type_is_heap(expr);
+}
+
+impl OwnershipCheckPass._nogc_expr_type_is_heap(expr: uni.Expr | None) -> bool {
+    if not isinstance(expr, uni.Expr) or expr.type is None {
+        return False;
+    }
+    _m = "";
+    try {
+        _m = expr.type.mangle();
+    } except Exception {
+        return False;
+    }
+    if _m in _NOGC_SCALARS or _m in ("any", "Unknown", "") {
+        return False;
+    }
+    for _arch in self.ir_in.get_all_sub_nodes(uni.Archetype) {
+        if _arch.name.value == _m
+        and _arch.arch_type.name in (Tok.KW_NODE, Tok.KW_EDGE, Tok.KW_WALKER) {
+            return False;
+        }
+    }
+    return True;
+}
+
+impl OwnershipCheckPass._nogc_is_container_expr(expr: uni.Expr | None) -> bool {
+    if not isinstance(expr, uni.Expr) or expr.type is None {
+        return False;
+    }
+    _tk = "";
+    try {
+        _tk = expr.type.mangle();
+    } except Exception {
+        return False;
+    }
+    for _nm in ("list", "set", "dict") {
+        if _tk == _nm or _tk.startswith(_nm + "[") {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl OwnershipCheckPass._nogc_container_grow_method(
+    call: uni.FuncCall
+) -> (str | None) {
+    _tgt = call.target;
+    if not isinstance(_tgt, uni.AtomTrailer) or not _tgt.is_attr {
+        return None;
+    }
+    _r = _tgt.right;
+    if not isinstance(_r, uni.Name) or _r.sym_name not in ("append", "add", "insert") {
+        return None;
+    }
+    if not self._nogc_is_container_expr(_tgt.target) {
+        return None;
+    }
+    return _r.sym_name;
 }
 
 impl OwnershipCheckPass._nogc_module_enforced(mod_name: str) -> bool {
@@ -339,6 +401,62 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
                 }
             }
         }
+        for _sv in self.ir_in.get_all_sub_nodes(uni.SetVal) {
+            if _sv.find_parent_of_type(uni.SubTag) is not None {
+                continue;
+            }
+            for _se in (_sv.values or []) {
+                if self._nogc_local_shape_expr_heap(_se) {
+                    self.emit(
+                        E1406,
+                        node_override=_sv,
+                        name="container of heap elements",
+                        provenance=_prov
+                    );
+                    break;
+                }
+            }
+        }
+        for _dv in self.ir_in.get_all_sub_nodes(uni.DictVal) {
+            if _dv.find_parent_of_type(uni.SubTag) is not None {
+                continue;
+            }
+            for _kv in (_dv.kv_pairs or []) {
+                if self._nogc_local_shape_expr_heap(_kv.key)
+                or self._nogc_local_shape_expr_heap(_kv.value) {
+                    self.emit(
+                        E1406,
+                        node_override=_dv,
+                        name="container of heap elements",
+                        provenance=_prov
+                    );
+                    break;
+                }
+            }
+        }
+        for _mc in self.ir_in.get_all_sub_nodes(uni.FuncCall) {
+            _grow = self._nogc_container_grow_method(_mc);
+            if _grow is None {
+                continue;
+            }
+            for _garg in self._call_params(_mc) {
+                _gav = _garg.value if isinstance(_garg, uni.KWPair) else _garg;
+                if isinstance(_gav, uni.FuncCall)
+                and isinstance(_gav.target, uni.Name)
+                and _gav.target.sym_name == "managed" {
+                    continue;
+                }
+                if self._nogc_local_shape_expr_heap(_gav) {
+                    self.emit(
+                        E1406,
+                        node_override=_mc,
+                        name=f"{_grow}() of a heap element",
+                        provenance=_prov
+                    );
+                    break;
+                }
+            }
+        }
         for _gv in self.ir_in.get_all_sub_nodes(uni.GlobalVars) {
             for _ga in _gv.get_all_sub_nodes(uni.Assignment) {
                 for _gt in _ga.target {
@@ -420,6 +538,17 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
                         E1402, node_override=_tgt, name=_root.sym_name, provenance=_prov
                     );
                 }
+            } elif _headerless
+            and not _tgt.is_attr
+            and self._nogc_is_container_expr(_tgt.target)
+            and nd.value is not None
+            and self._nogc_local_shape_expr_heap(nd.value) {
+                self.emit(
+                    E1406,
+                    node_override=_tgt,
+                    name="container of heap elements",
+                    provenance=_prov
+                );
             }
         }
     }
@@ -447,7 +576,9 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
         }
     }
 
-    for _reg in self.ir_in.get_all_sub_nodes(uni.RegionStmt) {
-        self.emit(E1406, node_override=_reg, name="region { } block", provenance=_prov);
+    for _reg in self.ir_in.get_all_sub_nodes(uni.OpenStmt) {
+        self.emit(
+            E1406, node_override=_reg, name="`in { }` region open", provenance=_prov
+        );
     }
 }
