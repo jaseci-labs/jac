@@ -146,6 +146,10 @@ impl UniPass.enter_finally_stmt(nd: uni.FinallyStmt) -> None {
     self.default_enter(nd);
 }
 
+impl UniPass.enter_forever_stmt(nd: uni.ForeverStmt) -> None {
+    self.default_enter(nd);
+}
+
 impl UniPass.enter_formatted_value(nd: uni.FormattedValue) -> None {
     self.default_enter(nd);
 }
@@ -346,6 +350,10 @@ impl UniPass.enter_non_local_stmt(nd: uni.NonLocalStmt) -> None {
     self.default_enter(nd);
 }
 
+impl UniPass.enter_open_stmt(nd: uni.OpenStmt) -> None {
+    self.default_enter(nd);
+}
+
 impl UniPass.enter_param_var(nd: uni.ParamVar) -> None {
     self.default_enter(nd);
 }
@@ -355,10 +363,6 @@ impl UniPass.enter_py_inline_code(nd: uni.PyInlineCode) -> None {
 }
 
 impl UniPass.enter_raise_stmt(nd: uni.RaiseStmt) -> None {
-    self.default_enter(nd);
-}
-
-impl UniPass.enter_region_stmt(nd: uni.RegionStmt) -> None {
     self.default_enter(nd);
 }
 
@@ -447,10 +451,6 @@ impl UniPass.enter_visit_stmt(nd: uni.VisitStmt) -> None {
 }
 
 impl UniPass.enter_while_stmt(nd: uni.WhileStmt) -> None {
-    self.default_enter(nd);
-}
-
-impl UniPass.enter_forever_stmt(nd: uni.ForeverStmt) -> None {
     self.default_enter(nd);
 }
 
@@ -623,6 +623,10 @@ impl UniPass.exit_finally_stmt(nd: uni.FinallyStmt) -> None {
 }
 
 impl UniPass.exit_float(nd: uni.Float) -> None {
+    self.default_exit(nd);
+}
+
+impl UniPass.exit_forever_stmt(nd: uni.ForeverStmt) -> None {
     self.default_exit(nd);
 }
 
@@ -834,6 +838,10 @@ impl UniPass.exit_null(nd: uni.Null) -> None {
     self.default_exit(nd);
 }
 
+impl UniPass.exit_open_stmt(nd: uni.OpenStmt) -> None {
+    self.default_exit(nd);
+}
+
 impl UniPass.exit_param_var(nd: uni.ParamVar) -> None {
     self.default_exit(nd);
 }
@@ -843,10 +851,6 @@ impl UniPass.exit_py_inline_code(nd: uni.PyInlineCode) -> None {
 }
 
 impl UniPass.exit_raise_stmt(nd: uni.RaiseStmt) -> None {
-    self.default_exit(nd);
-}
-
-impl UniPass.exit_region_stmt(nd: uni.RegionStmt) -> None {
     self.default_exit(nd);
 }
 
@@ -939,10 +943,6 @@ impl UniPass.exit_visit_stmt(nd: uni.VisitStmt) -> None {
 }
 
 impl UniPass.exit_while_stmt(nd: uni.WhileStmt) -> None {
-    self.default_exit(nd);
-}
-
-impl UniPass.exit_forever_stmt(nd: uni.ForeverStmt) -> None {
     self.default_exit(nd);
 }
 

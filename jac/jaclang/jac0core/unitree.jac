@@ -92,6 +92,7 @@ obj Symbol {
         ownership: OwnershipKind = OwnershipKind.NONE,
         param_rebound: bool = False,
         na_escapes: bool = False,
+        na_region_handle: bool = False,
         na_stack_ok: bool = False;
 
     def init(
@@ -685,11 +686,12 @@ obj TypedCtxBlock(CodeBlockStmt, WalkerStmtOnlyNode, UniScopeNode) {
     def postinit -> None;
 }
 
-obj RegionStmt(CodeBlockStmt, UniScopeNode) {
+obj OpenStmt(CodeBlockStmt, UniScopeNode) {
     def accept_exit(v: UniPass) -> None;
     def accept_enter(v: UniPass) -> None;
 
-    has body: Sequence[CodeBlockStmt];
+    has target: Expr,
+        body: Sequence[CodeBlockStmt];
 
     def postinit -> None;
 }

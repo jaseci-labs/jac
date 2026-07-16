@@ -1,10 +1,12 @@
-obj Box { has v: int = 0; }
+obj Box {
+    has v: int = 0;
+}
 
 def region_sum(n: int) -> int {
     total = 0;
     i = 0;
     while i < n {
-        region {
+        in Region() {
             b: own Box = Box(v=i);
             total = total + b.v;
         }

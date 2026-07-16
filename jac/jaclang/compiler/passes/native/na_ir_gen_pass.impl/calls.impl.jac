@@ -213,6 +213,17 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             return None;
         }
 
+        if func_name == "Region" {
+            import from jaclang.compiler.symbol_utils { is_builtin_region_name }
+            if is_builtin_region_name(nd.target) {
+                self._emit_arena_helpers();
+                return self.builder.call(self.region_new_fn, [], name="region.new");
+            }
+            if "Region" in self.struct_types {
+                return self._codegen_instantiation(nd);
+            }
+        }
+
         if func_name == "__float_bits" {
             params_l = nd.params or [];
             if params_l {

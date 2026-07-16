@@ -22,7 +22,7 @@ explicitly tagged -- `own`, `imm`, `linear`, `borrow` / `&` / `&mut` -- plus
 allocations lexically inside a `region { ... }` block. An unannotated binding
 is invisible to every rule below; annotating one binding never changes what is
 reported about another module, function, or unannotated binding. A module with
-no annotations and no `region` blocks produces no E13xx diagnostics, ever.
+no annotations and no region opens produces no E13xx diagnostics, ever.
 Unannotated code keeps the managed RC/GC floor exactly as before: gradual
 adoption is unchanged.
 
@@ -66,7 +66,7 @@ always within the symbol-level, intraprocedural bounds above.
 | `E1304` | No borrow outlives its owner's scope: if a borrow binding declared in an outer scope points at an owner declared in an inner one, the owner's scope end is flagged. |
 | `E1305` | Every `linear` binding is consumed (moved to a final owner, passed on, or sealed into managed storage) at least once before its scope ends. Consuming it *twice* is `E1301`, so a clean function uses each `linear` binding exactly once. Plain `own` is affine -- never consuming it is *not* an error, and E1305 is only ever emitted for `linear`. |
 | `E1306` | No `&`/`&mut` value escapes the scope that created it: not returned (except the single-passthrough-parameter case), not stored into a field or subscript slot. Borrows are second-class; there are no lifetimes to solve because escape is banned outright. |
-| `E1307` | No reference rooted in a `region` block survives the block -- not returned (including indirectly through a call's return value), not stored outside, not handed to a concurrency boundary. The arena free at `}` therefore cannot create a dangling reference *to a region-local binding*. (Granularity caveat: the roots are region-local symbols; a reference laundered through managed storage is beyond symbol-level tracking.) |
+| `E1307` | No reference rooted in an `in <handle> {}` region open outlives the handle: not returned (except via single-region elision on a lone `&Region` parameter), not stored where it outlives the handle (legal outward flows become shared borrows of the handle), not handed to an opaque callee (calls that also receive the handle, safe builtins, methods on region-rooted receivers, and constructors under the open are exempt), not sent across a concurrency boundary while borrows of the handle exist, and not wired into managed topology. Scalar values and `own` reboxes of scalars/strings copy out freely. The bulk free at the handle's drop point therefore cannot create a dangling reference to a region-rooted binding. |
 | `E1308` | Every value crossing a `flow`/`thread_run` send boundary is statically race-free at the binding level: a deep-immutable scalar (`int`/`float`/`bool`/`str`/`bytes`, sendable by value), a deep-immutable `imm`, or an `own`/`linear` moved into the boundary. Live borrows and unconsumed `linear` bindings do not cross. `wait` is a receive, not a send: the payload crossed at `flow` time, so reading a handle in `wait` is not a boundary crossing. |
 | `E1309` | An `imm` binding is never mutated *through that binding*: no reassignment, no field/subscript write through it, no `&mut` of it. (It is the binding that is deep-immutable; the checker cannot see writes through a separately-obtained managed alias.) |
 

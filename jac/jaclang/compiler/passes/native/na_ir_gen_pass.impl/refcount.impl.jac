@@ -697,6 +697,12 @@ impl NaIRGenPass._arch_is_osp_name(arch_name: str) -> bool {
     return lay is not None and lay.is_osp;
 }
 
+impl NaIRGenPass._arch_is_walker_name(arch_name: str) -> bool {
+    import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
+    lay = get_layout_registry(self.ir_in, self.prog).get_layout(arch_name);
+    return lay is not None and lay.arch_type == "walker";
+}
+
 impl NaIRGenPass._nogc_headerless -> bool {
     return getattr(self.ir_in.gen, "nogc_enforced", False)
     and self._gc_mode() == "none";
@@ -909,6 +915,12 @@ impl NaIRGenPass._emit_scope_cleanup(
 
         if isinstance(alloca.type, ir.PointerType)
         and isinstance(alloca.type.pointee, ir.PointerType) {
+            if var_name in self.region_handle_vars {
+                if var_name != skip_var {
+                    self._emit_region_handle_drop(alloca, var_name);
+                }
+                continue;
+            }
             val = self.builder.load(alloca, name=f"cleanup.{var_name}");
             if var_name == skip_var {
                 self.builder.store(ir.Constant(alloca.type.pointee, None), alloca);
@@ -939,6 +951,10 @@ impl NaIRGenPass._emit_loop_iter_cleanup(body_locals: list, loc: str = "") -> No
             isinstance(alloca.type, ir.PointerType)
             and isinstance(alloca.type.pointee, ir.PointerType)
         ) {
+            if var_name in self.region_handle_vars {
+                self._emit_region_handle_drop(alloca, var_name);
+                continue;
+            }
             val = self.builder.load(alloca, name=f"iter.cleanup.{var_name}");
             self._emit_rc_release_typed(val, op="iter_end", loc=loc);
             self.builder.store(ir.Constant(alloca.type.pointee, None), alloca);

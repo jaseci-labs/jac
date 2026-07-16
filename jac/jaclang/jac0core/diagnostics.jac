@@ -622,12 +622,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E1307 = _err(
          "E1307",
          Category.SEMANTIC,
-         "Reference to '{name}' escapes its `region` block",
-         help="A `region {}` arena owns everything allocated inside it and frees the"
-         " whole arena at the closing brace. A reference rooted in the region may not"
-         " be returned, stored outside, or handed to a `flow`/`wait` boundary — it"
-         " would dangle once the arena is reclaimed. Keep the reference inside the"
-         " region, or move the value out with `own` before the block ends."
+         "Reference to '{name}' escapes its region",
+         help="A region owns everything allocated under an `in <handle> {}` open"
+         " and frees it wholesale when the region is reclaimed. A reference rooted"
+         " in the region may not be returned, stored outside, or handed to a"
+         " `flow`/`wait` boundary; it would dangle once the region is freed. Keep"
+         " the reference inside the region, or move the value out with `own`"
+         " before the open ends."
      ),
      E1308 = _err(
          "E1308",
@@ -645,6 +646,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          help="'{name}' is an `imm` value: it is transitively immutable, so it may never"
          " be reassigned, have a field written, or be borrowed `&mut`. Take an `imm` as"
          " read-only, or use an `own`/managed binding if you need to mutate."
+     ),
+     W1310 = _warn(
+         "W1310",
+         Category.LINT,
+         "Region open on '{name}' has an empty body",
+         help="Opening a region that allocates nothing pays for an arena and its"
+         " teardown with no benefit. Allocate inside the open, or drop the open."
      ),
      E1401 = _err(
          "E1401",
