@@ -398,7 +398,9 @@ obj Parser {
     def is_builtin_type_token -> bool;
     def get_source -> Source;
     def match_tok(kind: TokenKind) -> Token | None;
+    def match_any(*kinds: TokenKind) -> Token | None;
     def expect(kind: TokenKind) -> Token;
+    def expect_any(*kinds: TokenKind) -> Token;
     def consume_uni(kind: TokenKind) -> UniToken;
     def expect_name -> Token;
     def _make_alert(
@@ -475,10 +477,10 @@ obj Parser {
     def parse_filter_compr_inner -> FilterCompr;
     def parse_filter_compr_bracket -> FilterCompr;
     def parse_assign_compr_inner -> AssignCompr;
-    def parse_atom_literal -> Expr;
-    def parse_multistring -> Expr;
-    def parse_builtin_type -> Expr;
-    def parse_special_ref -> Expr;
+    def parse_atom_literal -> Expr | None;
+    def parse_multistring -> Expr | None;
+    def parse_builtin_type -> Expr | None;
+    def parse_special_ref -> Expr | None;
     def parse_atom -> Expr;
     def parse_paren_expr -> Expr;
     def parse_bracket_expr -> Expr;
@@ -491,7 +493,7 @@ obj Parser {
     def parse_dict_spread_entry -> KVPair;
     def parse_edge_ref_chain -> Expr;
     def parse_edge_op_ref -> EdgeOpRef | None;
-    def continue_edge_ref_chain(start_expr: Expr, lsquare_uni: UniToken) -> Expr;
+    def _continue_edge_ref_chain(start_expr: Expr, lsquare_uni: UniToken) -> Expr;
     def parse_comprehension_clauses -> list;
     def parse_compr_clause -> InnerCompr;
     def parse_lambda_expr -> Expr;
@@ -500,7 +502,7 @@ obj Parser {
     def _consume_jsx_dynamic_close(close_kid: list);
     def parse_jsx_attributes -> list;
     def parse_jsx_children -> list;
-    def parse_jsx_child -> Expr;
+    def parse_jsx_child -> Expr | None;
     def parse_element_stmt;
     def _dispatch_decorated;
     def _dispatch_async;
@@ -510,7 +512,7 @@ obj Parser {
     def parse_native_block -> NativeBlock;
     def parse_module_code -> ModuleCode;
     def parse_code_block_stmts -> list;
-    def parse_ctrl_stmt;
+    def parse_ctrl_stmt -> CtrlStmt | DisengageStmt | None;
     def parse_statement;
     def parse_if_stmt -> IfStmt;
     def parse_elif_stmt -> ElseIf;
@@ -528,7 +530,7 @@ obj Parser {
     def parse_or_pattern;
     def parse_single_pattern;
     def parse_literal_pattern -> MatchValue;
-    def _literal_pattern_fallback -> MatchValue;
+    def parse_expression_pattern -> MatchValue;
     def parse_name_pattern;
     def parse_sequence_pattern;
     def parse_tuple_sequence_pattern;
