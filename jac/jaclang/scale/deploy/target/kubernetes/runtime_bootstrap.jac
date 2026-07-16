@@ -191,6 +191,11 @@ def build_bootstrap_init_container(
 
 def image_pull_policy(image: str) -> str {
     # Mutable tags (`dev`, per-PR `experimental-<N>`) are re-pushed in place, so
-    # a node must re-pull; versioned and `latest` tags keep k8s defaults.
-    return "Always" if image.endswith(":dev") or ":experimental-" in image else "";
+    # a node must re-pull; versioned and `latest` tags keep k8s defaults. Anchor
+    # experimental to the official image so a custom python_image tagged
+    # `experimental-*` is not swept in.
+    import from jaclang.scale.injector.binary { OFFICIAL_IMAGE }
+    return "Always"
+        if image.endswith(":dev") or image.startswith(f"{OFFICIAL_IMAGE}:experimental-")
+        else "";
 }
