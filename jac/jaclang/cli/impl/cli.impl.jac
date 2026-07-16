@@ -3,34 +3,14 @@ import sys;
 import from importlib.metadata { version as pkg_version }
 import from pathlib { Path }
 
-glob TOMBSTONED_VERBS: dict[str, str] = {
-         "add": "jac install <pkg>",
-         "format": "jac fmt",
-         "lint": "jac check --lint",
-         "deps": "jac install --plan",
-         "script": "jac x <name>",
-         "jacpack": "jac create --pack <dir>",
-         "enter": "jac run --entry <name> <file>",
-         "debug": "jac run --debug <file>",
-         "bundle": "jac build [--as jab|sealed|binary|wheel|npm]",
-         "eject": "jac build --as source",
-         "js": "jac tool jac2js <file>",
-         "jac2py": "jac tool jac2py <file>",
-         "py2jac": "jac tool py2jac <file>",
-         "jac2js": "jac tool jac2js <file>",
-         "grammar": "jac tool grammar",
-         "destroy": "jac scale destroy <file.jac>",
-         "status": "jac scale status <file.jac>"
-     };
-
 impl start_cli -> None {
     import from jaclang.cli.registry { get_registry, register_feature_commands }
     import from jaclang.cli.executor { get_executor }
     import from jaclang.cli.help { get_help_formatter }
     import from jaclang.cli.console { console }
+    import from jaclang.cli.manifest_route { handle_manifest_route }
 
     raw_argv = sys.argv[1:];
-    register_feature_commands(raw_argv);
 
     dev_source = os.environ.get('JAC_DEV_SOURCE');
     if dev_source {
@@ -42,18 +22,15 @@ impl start_cli -> None {
         console.print(notice, style='info', file=sys.stderr);
     }
 
+    if handle_manifest_route(raw_argv) {
+        return;
+    }
+
+    register_feature_commands(raw_argv);
+
     registry = get_registry();
     parser = registry.finalize();
 
-    if raw_argv
-    and raw_argv[0] in TOMBSTONED_VERBS
-    and raw_argv[0] not in registry.commands {
-        console.error(
-            f"'jac {raw_argv[0]}' was removed in the CLI cleanup (#7255); "
-            f"use: {TOMBSTONED_VERBS[raw_argv[0]]}"
-        );
-        sys.exit(2);
-    }
     has_jac_file = any(
         not tok.startswith('-') and tok.lower().endswith(('.jac', '.py', '.jab'))
         for tok in raw_argv
