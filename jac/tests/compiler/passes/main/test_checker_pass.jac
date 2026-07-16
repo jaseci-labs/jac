@@ -1164,7 +1164,7 @@ test "root_keyword_as_walker_trigger" {
         for e in program.errors_had
         if e.code and e.code.code == "E1116"
     ];
-    assert len(e1116) == 7 , f"Expected 7 E1116 (3 root keyword + 3 variable instance, bare/union/tuple, + 1 call-expr instance), got {len(
+    assert len(e1116) == 8 , f"Expected 8 E1116 (3 root keyword + 1 backtick `root + 3 variable instance, bare/union/tuple, + 1 call-expr instance), got {len(
         e1116
     )}:\n" + "\n---\n".join(e.pretty_print() for e in e1116);
     var_errors = [
@@ -1184,7 +1184,7 @@ test "root_keyword_as_walker_trigger" {
         if e not in var_errors and e not in call_errors
     ];
     assert len(var_errors) == 3 , "Expected 3 E1116 for `my_node` variable instance (bare, union, tuple)";
-    assert len(root_errors) == 3 , "Expected 3 E1116 for `root` keyword (bare, union, tuple)";
+    assert len(root_errors) == 4 , "Expected 4 E1116 for `root` keyword (bare, backtick `root, union, tuple)";
     assert len(call_errors) == 1 , "Expected 1 E1116 for `N()` call-expr instance trigger";
 }
 

@@ -55,6 +55,7 @@ obj JacScaleUserManager(UserManager) {
     def user_exists(user_id: str) -> bool;
     def get_user(user_id: str) -> dict[str, any] | None;
     def get_root_id(user_id: str) -> str | None;
+    def ensure_user_root(user_id: str) -> str | None;
     def update_password(
         user_id: str, current_password: str, new_password: str
     ) -> dict[str, str];

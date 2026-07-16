@@ -704,7 +704,7 @@ with entry {
 | `enum X: str { A = "a" }` | `class X(StrEnum)` |
 | `enum X: T { A = T(...) }` | `class X(T, Enum)` (mixin) |
 
-The mixin form is useful when members must carry behavior or state from a custom type:
+Prefer the `: int` / `: str` forms above for the common case. The mixin form over a custom `obj`/`class` base is a thin wrapper over Python's `class X(T, Enum)` and behaves **surprisingly**: the value you assign to a member is passed to the base's constructor rather than transparently proxied, so a member does *not* expose the wrapped instance's attributes the way you might expect.
 
 ```jac
 obj Box {
@@ -712,10 +712,18 @@ obj Box {
 }
 
 enum Crate: Box {
-    SMALL = Box(),
-    LARGE = Box()
+    SMALL = Box(size=1),
+    LARGE = Box(size=9)
+}
+
+with entry {
+    # Surprising: not the int 1
+    print(Crate.SMALL.size);    # Box(size=1)
+    print(Crate.SMALL.value);   # Box(size=Box(size=1))
 }
 ```
+
+Reach for the mixin form only when `T` itself subclasses a primitive; for members that should carry rich state, use a plain `enum` whose members map to real `obj` instances, or store the data on the members some other way.
 
 ### 5 Enums with Inline Python
 
