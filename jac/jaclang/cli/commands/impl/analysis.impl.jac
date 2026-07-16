@@ -863,7 +863,7 @@ def _install_precommit_hook(force: bool = False) -> int {
 }
 
 impl `test(
-    paths: list = [],
+    paths: (list | None) = None,
     test_name: str = "",
     filter: str = "",
     xit: bool = False,
@@ -878,6 +878,7 @@ impl `test(
     if isinstance(paths, str) {
         paths = [paths];
     }
+    paths = paths or [];
 
     if (not paths and not directory) {
         import from jaclang.project.config { get_config }

@@ -367,10 +367,9 @@ def _resolve_template(use: str, registry: any) -> any {
                     tmpl = load_template_from_json(use_path);
                     console.print(f"Using template '{tmpl.name}' from {use_path}");
                     return tmpl;
-                } else {
-                    console.error(f"Error: File must be a .jacpack file: {use}");
-                    return None;
                 }
+                console.error(f"Error: File must be a .jacpack file: {use}");
+                return None;
             } elif use_path.is_dir() {
                 tmpl = load_template_from_directory(use_path);
                 console.print(f"Using template '{tmpl.name}' from {use_path}");
@@ -481,10 +480,10 @@ def _create_root_gitignore(project_path: Path, entries: list[str]) {
 }
 
 impl install(
-    packages: list = [],
-    editable: list = [],
+    packages: (list | None) = None,
+    editable: (list | None) = None,
     dev: bool = False,
-    extras: list = [],
+    extras: (list | None) = None,
     no_save: bool = False,
     git: str = "",
     npm: bool = False,
@@ -502,6 +501,9 @@ impl install(
     plan: bool = False,
     as_json: bool = False
 ) -> int {
+    packages = packages or [];
+    editable = editable or [];
+    extras = extras or [];
     if plan {
         return deps(scale=scale, as_json=as_json);
     }
@@ -851,15 +853,18 @@ impl install(
     if install_success and not plugin_failed {
         console.success("All dependencies installed");
         return 0;
-    } else {
-        console.error("Some dependencies failed to install");
-        return 1;
     }
+    console.error("Some dependencies failed to install");
+    return 1;
 }
 
 impl remove(
-    packages: list = [], dev: bool = False, npm: bool = False, shadcn: bool = False
+    packages: (list | None) = None,
+    dev: bool = False,
+    npm: bool = False,
+    shadcn: bool = False
 ) -> int {
+    packages = packages or [];
     if shadcn {
         import from jaclang.cli.shadcn.cli { run_shadcn_remove }
         return run_shadcn_remove(packages);
@@ -908,7 +913,10 @@ def _major_minor(version: str) -> str {
     return version;
 }
 
-impl update(packages: list = [], dev: bool = False, verbose: bool = False) -> int {
+impl update(
+    packages: (list | None) = None, dev: bool = False, verbose: bool = False
+) -> int {
+    packages = packages or [];
     import from jaclang.project.config { get_config }
     import from jaclang.project.pyvenv { make_git_spec }
     import from jaclang.project.providers { InstallContext, get_python_provider }

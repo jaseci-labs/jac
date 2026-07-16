@@ -252,9 +252,8 @@ def get_format_sched(
     import from jaclang.compiler.passes.tool.jac_formatter_pass { JacFormatPass }
     if auto_lint {
         return [JacAutoLintPass, DocIRGenPass, CommentInjectionPass, JacFormatPass];
-    } else {
-        return [DocIRGenPass, CommentInjectionPass, JacFormatPass];
     }
+    return [DocIRGenPass, CommentInjectionPass, JacFormatPass];
 }
 
 def get_lint_sched -> list[type[Transform[uni.Module, uni.Module]]] {
