@@ -819,6 +819,24 @@ test "fstring multiple quotation" {
     assert lines[3] == 'hello klkl"""';
 }
 
+test "fstring literal text keeps its quotes" {
+    # Quote chars in an f-string's literal text are content, not delimiters, so
+    # they survive however many interpolations surround them.
+    output = run_module(
+        "compiler/passes/main/fixtures/fstring_literal_quotes",
+        os.path.join(JAC_ROOT, "tests")
+    );
+    lines = output.strip().split("\n");
+    assert lines[0] == "one 'x'";
+    assert lines[1] == "two 'x' and 'y'";
+    assert lines[2] == "nums '1' '2' '3'";
+    assert lines[3] == 'dq "x" and "y"';
+    assert lines[4] == "x' and 'y";
+    assert lines[5] == "x' not supported";
+    assert lines[6] == "innerx";
+    assert lines[7] == "raw 'x' and 'y'";
+}
+
 test "fstring escape sequences" {
     output = run_module(
         "compiler/passes/main/fixtures/fstring_escape_sequences",
