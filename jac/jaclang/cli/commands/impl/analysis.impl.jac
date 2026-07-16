@@ -453,7 +453,7 @@ def _format_single_file_worker(
                 return result;
             }
             result['cache_status'] = 'miss';
-        } except (OSError, ValueError, TypeError, ImportError, AttributeError) {
+        } except Exception {
             fcache = None;
             cache_key = "";
         }
@@ -601,7 +601,7 @@ def _format_single_file_worker(
                         );
                     }
                 }
-            } except (OSError, ValueError, TypeError, AttributeError) {
+            } except Exception {
                 ;
             }
         }
@@ -640,7 +640,7 @@ impl format(
         try {
             rev = formatter_pipeline_revision();
             cache_stamp = f"jfmt:{FORMAT_CACHE_SCHEMA_VERSION}:{jac_version()}:{rev}";
-        } except (OSError, ValueError, TypeError, ImportError, AttributeError) {
+        } except Exception {
             cache_stamp = "";
         }
     }
