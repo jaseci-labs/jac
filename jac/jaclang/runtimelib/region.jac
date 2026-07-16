@@ -24,7 +24,7 @@ obj JacRegion {
             try {
                 o.drop();
             } except Exception {
-                pass;
+                continue;
             }
         }
     }
@@ -53,10 +53,10 @@ def register_drop(item: any) {
 }
 
 def instrument_drops(cls: any) {
-    _orig_init = cls.__init__;
+    _orig_init: any = getattr(cls, "__init__");
     def _region_init(inst: any, *args: any, **kwargs: any) {
         _orig_init(inst, *args, **kwargs);
         register_drop(inst);
     }
-    cls.__init__ = _region_init;
+    setattr(cls, "__init__", _region_init);
 }
