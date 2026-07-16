@@ -321,12 +321,13 @@ impl jacSignup(
             error_data = JSON.parse(error_text);
             return {
                 "success": False,
+                "status": response.status,
                 "error": error_data["error"]
                     if error_data["error"] != None
                     else "Signup failed"
             };
         } except Exception {
-            return {"success": False, "error": error_text};
+            return {"success": False, "status": response.status, "error": error_text};
         }
     }
 }

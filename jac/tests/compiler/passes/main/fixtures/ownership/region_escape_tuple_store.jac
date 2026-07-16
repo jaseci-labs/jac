@@ -1,8 +1,10 @@
-obj Buffer { has n: int = 0; }
+obj Buffer {
+    has n: int = 0;
+}
 
-def run() -> None {
+def run {
     outer = None;
-    region {
+    in Region() {
         x = Buffer();
         outer = (x, );
     }

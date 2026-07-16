@@ -1234,6 +1234,53 @@ with entry {
 
 
 # ============================================================
+# Ownership & Borrowing (opt-in)
+# ============================================================
+# `own` marks a unique owner; assigning it elsewhere or passing it
+# to a call MOVES the value (use-after-move is a compile error).
+# `&`/`&mut` take a shared/mutable borrow; `imm` is deep-immutable.
+# Unannotated bindings are untouched -- the checker only tracks
+# what you tag. On native, full coverage enables zero-RC builds
+# (jac nacompile --gc none --enforce-nogc --assert-no-rc).
+
+obj Buffer { has n: int = 0; }
+
+def use_buf(x: Buffer) -> None {}
+
+with entry {
+    a: own Buffer = Buffer();   # unique owner
+    v: &Buffer = &a;            # shared borrow (owner is read-only while live)
+    use_buf(v);
+    m: imm Buffer = Buffer();   # deep-immutable: no writes through `m`, ever
+    b = a;                      # moves out of `a`; reading `a` again is E1301
+}
+
+# `in <handle> { }` opens a Region for allocation: everything created
+# under the open is reclaimed wholesale when the handle drops, and
+# references must not outlive it. `in Region() { }` is the anonymous,
+# block-scoped form.
+def scratch() -> None {
+    in Region() {
+        tmp = Buffer();   # reclaimed with the region at `}`
+    }
+    r: own Region = Region();
+    in r {
+        keep = Buffer();  # reclaimed when `r` drops (scope exit here)
+    }
+}
+
+# `def drop` runs exactly once when the object is destroyed, at its
+# owner's last use (native backend; Python does not call it yet).
+obj Res {
+    has fd: int = 0;
+
+    def drop {
+        print("closing", self.fd);
+    }
+}
+
+
+# ============================================================
 # FULL-STACK DEVELOPMENT (Codespaces)
 # ============================================================
 # Jac code can target different execution environments:

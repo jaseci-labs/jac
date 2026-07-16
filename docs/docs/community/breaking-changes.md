@@ -7,6 +7,22 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### `region { }` blocks replaced by first-class `Region` handles and `in <handle> { }` opens
+
+Regions are now a complete feature ([#7491](https://github.com/jaseci-labs/jac/issues/7491)): a `Region` is an ownable, sendable, escape-checked allocation extent, opened for allocation with the `in <handle> { ... }` statement. The old `region { ... }` contextual soft keyword is removed; its anonymous replacement is `in Region() { ... }`, and named handles (`r: own Region = Region(); in r { ... }`) add dynamic extent, helper opens through `&Region` parameters, and subgraph transfer across `flow`/`wait`.
+
+This is a **clean break** -- `region { ... }` no longer parses.
+
+| Old | New |
+|---|---|
+| `region { ... }` | `in Region() { ... }` |
+
+On the native backend the open now bump-allocates into a real arena and reclaims wholesale (dtor-log walk, then one bulk free) at the handle's drop point, so the `E1307` escape rules are correspondingly stricter: heap-typed region values handed to opaque callees, laundered through aug-assigns, or wired into managed topology are now rejected. Scalars copy out freely and `own <expr>` reboxes a scalar or string copy out of the region.
+
+**Impact:** mechanically rewrite `region {` to `in Region() {`. Code that leaked region references through calls or containers now gets `E1307` and needs an `own` rebox, a `&Region` helper signature, or restructuring.
+
+---
+
 ### `jac create --list_jacpacks` renamed to `jac create --list`
 
 The flag never listed jacpacks. A `.jacpack` is a distributable bundle you produce with `jac create --pack <dir>` and consume with `jac create --use <path|url>`; the flag instead lists the **project kinds** (used with `--kind`) and **named variants** (used with `--use <name>`) registered in the template registry. The name promised one thing and printed another, and its underscore spelling (`--list_jacpacks`, since `--list-jacpacks` was rejected) made it easy to get wrong.

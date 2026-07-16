@@ -1006,7 +1006,7 @@ impl gen_parser -> int {
     return 0;
 }
 
-impl grammar(output: str = "") -> int {
+impl grammar(output: str = "", strict: bool = False) -> int {
     import from jaclang.jac0core.program { JacProgram }
     import from jaclang.compiler.passes.tool.grammar_extract_pass { GrammarExtractPass }
     import jaclang;
@@ -1034,8 +1034,11 @@ impl grammar(output: str = "") -> int {
             f.write("\n");
         }
         console.success(f"EBNF grammar ({len(pass_.rules)} rules) written to {output}");
-    } else {
+    } elif not strict {
         console.print(text);
+    }
+    if strict {
+        console.print(pass_.emit_diagnostics());
     }
     return 0;
 }
