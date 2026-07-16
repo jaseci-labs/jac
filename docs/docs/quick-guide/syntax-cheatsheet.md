@@ -1255,11 +1255,17 @@ with entry {
     b = a;                      # moves out of `a`; reading `a` again is E1301
 }
 
-# `region { }` = arena scope: everything allocated inside is freed
-# together at the closing brace; references must not escape it.
+# `in <handle> { }` opens a Region for allocation: everything created
+# under the open is reclaimed wholesale when the handle drops, and
+# references must not outlive it. `in Region() { }` is the anonymous,
+# block-scoped form.
 def scratch() -> None {
-    region {
-        tmp = Buffer();   # reclaimed with the whole arena at `}`
+    in Region() {
+        tmp = Buffer();   # reclaimed with the region at `}`
+    }
+    r: own Region = Region();
+    in r {
+        keep = Buffer();  # reclaimed when `r` drops (scope exit here)
     }
 }
 

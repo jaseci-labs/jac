@@ -67,8 +67,18 @@ glob FORBIDDEN: dict[str, str] = {
              "for interop payloads and Ref[...] head detection - the "
              "declared NAME is the consumed fact, not a resolved type"
          ),
-         ("native/na_ir_gen_pass.impl/calls.impl.jac", "symbol_utils"): (
+         ("native/na_ir_gen_pass.impl/stmt.impl.jac", "symbol_utils"): (
              1,
+             "is_builtin_region_name as the shadowing-aware test for the "
+             "anonymous `in Region() {}` open (#7491) - consuming the "
+             "central classification instead of re-implementing name "
+             "resolution"
+         ),
+         ("native/na_ir_gen_pass.impl/calls.impl.jac", "symbol_utils"): (
+             2,
+             "is_builtin_region_name as the shadowing-aware test for the "
+             "builtin Region constructor (#7491) - consuming the central "
+             "classification instead of re-implementing name resolution; and "
              "classify_call as the shadowing-aware builtin test for the "
              "`type(None)` isinstance argument form (#6957) - consuming the "
              "central classification instead of re-implementing name "

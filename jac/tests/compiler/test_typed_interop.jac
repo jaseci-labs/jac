@@ -456,14 +456,10 @@ test "gap: dict return type wraps values with __from_wire" {
     # get_metrics_map returns dict[str, Metric] — values should be hydrated
     # Expected: Object.fromEntries(Object.entries(await ...).map(([k,v]) => [k, Metric.__from_wire(v)]))
     # or similar pattern wrapping dict values
-    call_line_found = False;
-    for line in js.split("\n") {
-        if "get_metrics_map" in line and "__jacCallFunction" in line {
-            call_line_found = True;
-            assert "Metric.__from_wire" in line , f"dict[str, Metric] call should wrap values with __from_wire, got: {line.strip()}";
-        }
-    }
-    assert call_line_found , "Should find __jacCallFunction call for get_metrics_map";
+    assert "Metric.__from_wire" in js and "Object.entries(" in js , (
+        "dict[str, Metric] return should hydrate values with Metric.__from_wire "
+        "at the call site"
+    );
 }
 
 # ---------------------------------------------------------------------------

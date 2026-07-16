@@ -87,6 +87,7 @@ Use these appendices when you need to look up a specific keyword, operator, or s
 | `to` | Control | For loop upper bound |
 | `try` | Control | Try block |
 | `type` | Module | Type-only import marker (`import type from ...`) |
+| `visit` | OSP | Queue node(s)/edge(s) for walker traversal (`visit [-->];`) |
 | `visitor` | OSP | Visiting walker (in node) |
 | `wait` | Concurrency | Wait for concurrent result |
 | `walker` | Archetype | Walker type |
@@ -190,7 +191,7 @@ import        : "import" "type"? (module | "from" import_path "{" names "}")
               | "import" "from" STRING "{" extern_decl* "}"  # C library import (na)
 import_path   : (NAME ":")? dotted_name       # Optional namespace prefix (e.g., jac:module)
 entry         : "with" "entry" (":" NAME)? body
-test          : "test" NAME body
+test          : "test" STRING? body           # Name is a string literal or omitted; a bare NAME is a parse error
 impl          : "impl" NAME "." NAME params body
 
 visit_stmt    : "visit" (":" expr ":")? expr ("else" block)?  # Optional index selector

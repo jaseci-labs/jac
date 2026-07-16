@@ -63,7 +63,7 @@ spawn ::= "spawn" unpack | unpack ("spawn" unpack)*
 
 unpack ::= "*" ref | ref
 
-ref ::= "&" (await_expr | "mut"? await_expr) | await_expr
+ref ::= "own" await_expr | "&" (await_expr | "mut"? await_expr) | await_expr
 
 await_expr ::= "await" pipe_call | pipe_call
 
@@ -283,7 +283,7 @@ statement ::=
     | import_stmt
     | if_stmt
     | while_stmt
-    | region_stmt
+    | open_stmt
     | forever_stmt
     | for_stmt
     | with_stmt
@@ -318,7 +318,7 @@ else_stmt ::= "else" "{" code_block_stmts "}"
 
 while_stmt ::= "while" expression "{" code_block_stmts "}" else_stmt?
 
-region_stmt ::= NAME "{" code_block_stmts "}"
+open_stmt ::= "in" expression "{" code_block_stmts "}"
 
 forever_stmt ::= "forever" "{" code_block_stmts "}"
 
