@@ -1126,6 +1126,125 @@ test "lambda_param_unresolved_requires_annotation" {
     );
 }
 
+test "bare_generic_lambda_key_type_checks" {
+    # sorted()/.sort() with an inline `key=lambda d: dict : d["n"]` over
+    # list[dict] must type-check. Bare `dict` should default its type
+    # args to `any` (same as the W1036 warning already claims), so
+    # d["n"] resolves to `any` instead of Unknown, and the
+    # `Callable[[_T], SupportsRichComparison]` overload matches.
+    path = os.path.join(CHECKER_FIXTURES, "checker_bare_generic_lambda_key.jac");
+    program = JacProgram();
+    program.compile(path, type_check=True);
+    assert len(program.errors_had) == 0 , f"Unexpected errors: {[
+        e.pretty_print() for e in program.errors_had
+    ]}";
+}
+
+test "bare_generic_lambda_key_whole_dict_still_errors" {
+    # Negative control: defaulting bare-generic type args to `any` must
+    # not make a genuine protocol mismatch pass. `dict` never satisfies
+    # SupportsRichComparison, regardless of its type args, so using the
+    # whole dict as the sort key must still be E1054.
+    path = os.path.join(
+        CHECKER_FIXTURES, "checker_bare_generic_lambda_key_negative.jac"
+    );
+    program = JacProgram();
+    program.compile(path, type_check=True);
+    e1054 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1054"
+    ];
+    assert len(e1054) == 1 , f"Expected 1 E1054 (dict key is not comparable), got {len(
+        e1054
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1054);
+}
+
+test "lambda_return_unresolved_gets_help_text" {
+    # When a lambda's return type is genuinely unresolvable -- not just a
+    # bare-generic default -- E1054 should explain why instead of the
+    # bare "no matching overload found".
+    path = os.path.join(CHECKER_FIXTURES, "checker_lambda_return_unresolved.jac");
+    program = JacProgram();
+    program.compile(path, type_check=True);
+    e1054 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1054"
+    ];
+    assert len(e1054) == 1 , f"Expected 1 E1054, got {len(e1054)}:\n" + "\n---\n".join(
+        e.pretty_print() for e in e1054
+    );
+    assert e1054[0].help_text is not None and len(e1054[0].help_text) > 0 , (
+        "Expected E1054 to carry a specific help_text explaining the " + "unresolved return type, got: " + e1054[
+            0
+        ].pretty_print()
+    );
+}
+
+test "bare_generic_any_direct_strict_call_type_checks" {
+    # Same underlying bug as bare_generic_lambda_key_type_checks (bare
+    # dict's _VT defaults to `any`, but strict-mode assign_type refuses to
+    # trust it against a non-TypeVar destination), reached via a plain
+    # direct call instead of sorted's Callable-return checking. Pins that
+    # the fix lands in the shared assign_type rule, not just in
+    # sorted/.sort's overload matching.
+    path = os.path.join(
+        CHECKER_FIXTURES, "checker_bare_generic_any_direct_strict_call.jac"
+    );
+    program = JacProgram();
+    program.compile(path, type_check=True);
+    e1053 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1053"
+    ];
+    assert len(e1053) == 0 , f"Expected no E1053, got {len(e1053)}:\n" + "\n---\n".join(
+        e.pretty_print() for e in e1053
+    );
+    assert len(program.errors_had) == 0 , f"Unexpected errors: {[
+        e.pretty_print() for e in program.errors_had
+    ]}";
+}
+
+test "bare_generic_any_attr_chain_propagates_as_any" {
+    # build_type_var_solution marks a bare generic's unresolved-type-param
+    # `any` as is_foreign=True, the same flag untyped-import `any` uses.
+    # That flag is also read by attribute-access resolution to propagate
+    # trust through `.attr` chains, so `d["n"].bit_length` must resolve
+    # end-to-end to `any` -- no E1053/E1054 downstream, and no spurious
+    # W1051 (the pre-fix behavior, when this `any` wasn't yet trusted and
+    # attribute access on it fell through to Unknown).
+    path = os.path.join(CHECKER_FIXTURES, "checker_bare_generic_any_attr_chain.jac");
+    program = JacProgram();
+    program.compile(path, type_check=True);
+    assert len(program.errors_had) == 0 , f"Unexpected errors: {[
+        e.pretty_print() for e in program.errors_had
+    ]}";
+    w1051 = [
+        w
+        for w in program.warnings_had
+        if w.code and w.code.code == "W1051"
+    ];
+    assert len(w1051) == 0 , f"Expected no W1051 now that this `any` is " + f"trusted end-to-end, got {len(
+        w1051
+    )}:\n" + "\n---\n".join(w.pretty_print() for w in w1051);
+}
+
+test "bare_generic_lambda_key_cast_still_type_checks" {
+    # `key=lambda d: dict : (d["n"] as int)` already type-checks today
+    # (an explicit cast produces a real `int` return, not the `any` this
+    # bug is about), so this is a plain regression check against the
+    # primary fix touching shared assign_type/AnyType machinery broadly
+    # enough to break it.
+    path = os.path.join(CHECKER_FIXTURES, "checker_bare_generic_lambda_key_cast.jac");
+    program = JacProgram();
+    program.compile(path, type_check=True);
+    assert len(program.errors_had) == 0 , f"Unexpected errors: {[
+        e.pretty_print() for e in program.errors_had
+    ]}";
+}
+
 test "ability_trigger_archetype" {
     # Walker abilities must trigger on a node/edge/Root; node/edge
     # abilities must trigger on a walker. Tuple and union triggers are
