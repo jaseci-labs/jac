@@ -1,8 +1,16 @@
 """Regression fixture for #7221: a `sv import` nested in a `cl { }` block
 must lower to an RPC stub, not a client import of the server module."""
 
+walker:pub say_hi {
+    has name: str;
+
+    can g with Root entry {
+        report {"msg": "hi " + self.name};
+    }
+}
+
 cl {
-    sv import from .sv_import_cl_block_server { say_hi }
+    sv import from .sv_import_cl_block { say_hi }
 
     def:pub Greet() -> JsxElement {
         has msg: str = "";
