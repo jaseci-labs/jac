@@ -4021,9 +4021,9 @@ impl Parser.parse_for_stmt{
         eq_tok = self.advance();
         eq_uni = self.make_uni_token(eq_tok);
         start_val = self.parse_expression();
-        with_uni = self.consume_uni(TokenKind.KW_WITH);
-        end_val = self.parse_pipe();
-        as_uni = self.consume_uni(TokenKind.KW_AS);
+        init_semi_uni = self.consume_uni(TokenKind.SEMI);
+        end_val = self.parse_expression();
+        cond_semi_uni = self.consume_uni(TokenKind.SEMI);
 
         step_target = self.parse_atomic_chain();
         step_assign: Assignment;
@@ -4073,7 +4073,7 @@ impl Parser.parse_for_stmt{
             kid.append(async_uni);
         }
         kid.extend(
-            [for_uni, init_assign, with_uni, end_val, as_uni, step_assign, lb_uni]
+            [for_uni, init_assign, init_semi_uni, end_val, cond_semi_uni, step_assign, lb_uni]
         );
         kid.extend(body);
         kid.append(rb_uni);

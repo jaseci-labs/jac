@@ -13,14 +13,14 @@ node turn {
 }
 
 impl GuessGame.start_game{
-    for i = 0 with i < 10 as i += 1 {
+    for i = 0; i < 10; i += 1 {
         here ++> turn();
     }
     visit [-->];
 }
 
 impl GuessGame2.start_game{
-    for i = 0 with i < 10 as i += 1 {
+    for i = 0; i < 10; i += 1 {
         here ++> turn();
     }
     visit [-->][15:];

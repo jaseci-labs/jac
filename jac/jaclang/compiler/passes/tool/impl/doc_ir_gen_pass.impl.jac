@@ -1344,7 +1344,35 @@ impl DocIRGenPass.exit_try_stmt(nd: uni.TryStmt) -> None {
 }
 
 impl DocIRGenPass.exit_iter_for_stmt(nd: uni.IterForStmt) -> None {
-    nd.gen.doc_ir = self.format_simple_stmt_with_body(nd, nd.body);
+    parts: list[doc.DocType] = [];
+    body_parts: list[doc.DocType] = [self.hard_line()];
+    prev_body_item: (uni.UniNode | None) = None;
+    for i in nd.kid {
+        if self.is_within(i, nd.body) {
+            if (nd.body and (i == nd.body[0])) {
+                parts.append(self.indent(self.concat(body_parts), ast_node=nd));
+                parts.append(self.hard_line());
+            }
+            self.add_body_stmt_with_spacing(body_parts, i, prev_body_item);
+            prev_body_item = i;
+        } else {
+            if (
+                isinstance(i, uni.Token)
+                and (i.name == Tok.SEMI)
+                and parts
+                and isinstance(parts[-1], doc.Text)
+                and (parts[-1].text == ' ')
+            ) {
+                parts.pop();
+            }
+            parts.append(i.gen.doc_ir);
+            parts.append(self.space());
+        }
+    }
+    if (parts and isinstance(parts[-1], doc.Text) and (parts[-1].text == ' ')) {
+        parts.pop();
+    }
+    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
 }
 
 impl DocIRGenPass.exit_in_for_stmt(nd: uni.InForStmt) -> None {

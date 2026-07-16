@@ -581,19 +581,20 @@ impl UnparsePass.exit_finally_stmt(nd: uni.FinallyStmt) -> None {
 }
 
 impl UnparsePass.exit_iter_for_stmt(nd: uni.IterForStmt) -> None {
-    parts: list = ["for"];
+    header = "for";
     if nd.is_async {
-        parts.append("async");
+        header = "async for";
     }
-    parts.append(nd.iter.gen.jac);
+    header += " " + nd.iter.gen.jac + ";";
     if nd.condition {
-        parts.append(nd.condition.gen.jac);
+        header += " " + nd.condition.gen.jac;
     }
+    header += ";";
     if nd.count_by {
-        parts.append(nd.count_by.gen.jac);
+        header += " " + nd.count_by.gen.jac;
     }
     body = " ".join([s.gen.jac for s in nd.body]);
-    parts.append("{ " + body + " }");
+    parts: list = [header, "{ " + body + " }"];
     if nd.else_body {
         parts.append(nd.else_body.gen.jac);
     }

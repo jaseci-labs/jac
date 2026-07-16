@@ -19,13 +19,13 @@ edge Edge_c {
 }
 
 impl creator.create{
-    for i = 0 with i < 2 as i += 1 {
+    for i = 0; i < 2; i += 1 {
         here +>: Edge_c : value2=30 :+> (node_a(val=i + 1));
         visit [-->];
     }
     here +>: Edge_a : value=10 :+> (end := node_a(val=i + 10));
     end +>: Edge_b : value1=20 :+> (last := node_a(val=i + 20));
-    for j = 0 with j < 2 as j += 1 {
+    for j = 0; j < 2; j += 1 {
         last +>: Edge_c : value2=40 :+> (node_a(val=i + 40));
     }
 }

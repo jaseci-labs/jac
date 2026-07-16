@@ -764,9 +764,9 @@ impl NormalizePass.enter_iter_for_stmt(nd: uni.IterForStmt) -> None {
     }
     new_kid.append(nd.gen_token(Tok.KW_FOR));
     new_kid.append(nd.iter);
-    new_kid.append(nd.gen_token(Tok.KW_WITH));
+    new_kid.append(nd.gen_token(Tok.SEMI));
     new_kid.append(nd.condition);
-    new_kid.append(nd.gen_token(Tok.KW_AS));
+    new_kid.append(nd.gen_token(Tok.SEMI));
     new_kid.append(nd.count_by);
     new_kid.append(nd.gen_token(Tok.LBRACE));
     for stmt in nd.body {

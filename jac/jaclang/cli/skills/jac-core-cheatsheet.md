@@ -125,7 +125,7 @@ A no-dot import is depth-independent: moving a file between directories never ch
 
 ## Also available (Python semantics, brace bodies)
 
-Generators (`yield` / `yield from`), decorators (`@deco` above `def`), walrus `(n := len(items))`, context managers (`with open(f) as fh { ... }`), C-style loops `for i = 0 with i < 10 as i += 1 { }`, null-safe access `user?.profile?.name`, `cfg?["key"]` (returns `None` instead of raising - even for missing keys/out-of-range indices), and the default idiom `name = user?.name or "Anonymous";`.
+Generators (`yield` / `yield from`), decorators (`@deco` above `def`), walrus `(n := len(items))`, context managers (`with open(f) as fh { ... }`), C-style loops `for i = 0; i < 10; i += 1 { }`, null-safe access `user?.profile?.name`, `cfg?["key"]` (returns `None` instead of raising - even for missing keys/out-of-range indices), and the default idiom `name = user?.name or "Anonymous";`.
 
 ## Pitfalls
 
