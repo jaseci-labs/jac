@@ -2408,12 +2408,6 @@ impl PyastGenPass.exit_cast_expr(nd: uni.CastExpr) -> None {
     nd.gen.py_ast = nd.value.gen.py_ast;
 }
 
-"""Synthesize `global`/`nonlocal` statements for a function scope.
-
-With lexical rebinding, assignments that bind to an outer scope are recorded
-in each scope's `implicit_rebinds` during symbol table construction; the
-emitted Python function needs the matching directive statements since Python
-scoping is assignment-creates-local.""";
 impl PyastGenPass.scope_directive_stmts(scopes: list) -> list[ast3.AST] {
     global_names: list = [];
     nonlocal_names: list = [];

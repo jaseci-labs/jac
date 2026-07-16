@@ -811,7 +811,10 @@ class DictEmitter[V, C] {
 }
 
 class SetEmitter[V, C] {
-    def emit_add(self: SetEmitter, ctx: C, target: V, args: list[V]) -> (V | None) abst;
+    def emit_add(
+        self: SetEmitter, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abst;
+
     def emit_remove(
         self: SetEmitter, ctx: C, target: V, args: list[V]
     ) -> (V | None) abst;
@@ -820,7 +823,10 @@ class SetEmitter[V, C] {
         self: SetEmitter, ctx: C, target: V, args: list[V]
     ) -> (V | None) abst;
 
-    def emit_pop(self: SetEmitter, ctx: C, target: V, args: list[V]) -> (V | None) abst;
+    def emit_pop(
+        self: SetEmitter, ctx: C, target: V, args: list[V]
+    ) -> (V | None) abst;
+
     def emit_clear(
         self: SetEmitter, ctx: C, target: V, args: list[V]
     ) -> (V | None) abst;
@@ -1097,8 +1103,14 @@ class BuiltinEmitter[V, C] {
     def emit_filter(self: BuiltinEmitter, ctx: C, args: list[V]) -> (V | None) abst;
     def emit_any(self: BuiltinEmitter, ctx: C, args: list[V]) -> (V | None) abst;
     def emit_all(self: BuiltinEmitter, ctx: C, args: list[V]) -> (V | None) abst;
-    def emit_isinstance(self: BuiltinEmitter, ctx: C, args: list[V]) -> (V | None) abst;
-    def emit_issubclass(self: BuiltinEmitter, ctx: C, args: list[V]) -> (V | None) abst;
+    def emit_isinstance(
+        self: BuiltinEmitter, ctx: C, args: list[V]
+    ) -> (V | None) abst;
+
+    def emit_issubclass(
+        self: BuiltinEmitter, ctx: C, args: list[V]
+    ) -> (V | None) abst;
+
     def emit_type(self: BuiltinEmitter, ctx: C, args: list[V]) -> (V | None) abst;
     def emit_id(self: BuiltinEmitter, ctx: C, args: list[V]) -> (V | None) abst;
     def emit_hash(self: BuiltinEmitter, ctx: C, args: list[V]) -> (V | None) abst;

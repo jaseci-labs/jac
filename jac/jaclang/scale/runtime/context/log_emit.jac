@@ -81,7 +81,6 @@ def debug(msg: str, **extras: Any) {
 
 
 def install_structured_logging {
-
     if not _structured_installed {
         handler = logging.StreamHandler();
         handler.setFormatter(_JacJsonFormatter());

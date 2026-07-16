@@ -1428,9 +1428,7 @@ impl DocIRGenPass.exit_has_var(nd: uni.HasVar) -> None {
             parts.append(self.space());
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
-        } elif (
-            isinstance(i, uni.Token) and (i.name == Tok.KW_POST_INIT)
-        ) {
+        } elif (isinstance(i, uni.Token) and (i.name == Tok.KW_POST_INIT)) {
             parts.append(self.space());
             parts.append(i.gen.doc_ir);
         } elif (isinstance(i, uni.Token) and (i.name == Tok.LBRACE)) {

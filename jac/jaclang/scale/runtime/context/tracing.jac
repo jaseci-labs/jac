@@ -135,7 +135,6 @@ def install_tracing(
     endpoint: str | None = None,
     sample_ratio: float = 1.0
 ) -> bool {
-
     if _tracing_installed {
         return _tracing_active;
     }

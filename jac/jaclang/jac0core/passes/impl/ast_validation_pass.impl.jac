@@ -44,7 +44,9 @@ impl ASTValidationPass.enter_param_var(
     self: ASTValidationPass, nd: uni.ParamVar
 ) -> None {
     if isinstance(nd.name, uni.Name) and keyword.iskeyword(nd.name.value) {
-        self.emit(E0067, node_override=nd.name, name=nd.name.value, context='parameter');
+        self.emit(
+            E0067, node_override=nd.name, name=nd.name.value, context='parameter'
+        );
     }
     sig = nd.parent;
     if isinstance(sig, uni.FuncSignature) and isinstance(sig.parent, uni.LambdaExpr) {

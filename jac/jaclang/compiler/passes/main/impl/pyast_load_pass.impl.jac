@@ -607,7 +607,6 @@ impl PyastBuildPass.proc_pass(nd: py_ast.Pass) -> uni.Semi {
     );
 }
 
-"""Python `nonlocal` has no Jac equivalent (Jac rebinds lexically); drop it.""";
 impl PyastBuildPass.proc_nonlocal(nd: py_ast.Nonlocal) -> uni.Semi {
     return self.proc_pass(cast(py_ast.Pass, nd));
 }
@@ -1083,7 +1082,6 @@ impl PyastBuildPass.proc_if_exp(nd: py_ast.IfExp) -> uni.IfElseExpr {
     }
 }
 
-"""Python `global` has no Jac equivalent (Jac rebinds lexically); drop it.""";
 impl PyastBuildPass.proc_global(nd: py_ast.Global) -> uni.Semi {
     return self.proc_pass(cast(py_ast.Pass, nd));
 }

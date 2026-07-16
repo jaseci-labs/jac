@@ -102,6 +102,4 @@ def rebind_or_def_insert(
     target: uni.AstSymbolNode, py_scope: UniScopeNode, single_decl: str
 ) -> None;
 
-def record_cross_scope_rebind(
-    py_scope: UniScopeNode, name: str, sym: Symbol
-) -> None;
+def record_cross_scope_rebind(py_scope: UniScopeNode, name: str, sym: Symbol) -> None;

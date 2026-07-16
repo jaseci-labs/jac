@@ -83,7 +83,6 @@ def get_firestore_client(project_id: (str | None) = None) -> FirestoreClient {
 def get_firestore_db(db_name: str = 'jac_db', project_id: (str | None) = None) -> Db;
 
 def close_all_db_connections {
-
     for client in _mongo_clients.values() {
         try {
             client.close();
@@ -165,7 +164,10 @@ obj Db {
         col_name: str, id: str, update_data: dict, upsert_mode: bool = False
     ) -> PyMongoUpdateResult | UpdateResult abst;
 
-    def delete_by_id(col_name: str, id: str) -> PyMongoDeleteResult | DeleteResult abst;
+    def delete_by_id(
+        col_name: str, id: str
+    ) -> PyMongoDeleteResult | DeleteResult abst;
+
     def set_with_ttl(
         key: str, value: dict, ttl: int, col_name: str = 'default'
     ) -> bool abst;

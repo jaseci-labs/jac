@@ -60,10 +60,7 @@ import from jaclang.jac0core.unitree {
     DisengageStmt,
     ExprStmt
 }
-import from jaclang.jac0core.unitree {
-    TypedCtxBlock,
-    OpenStmt
-}
+import from jaclang.jac0core.unitree { TypedCtxBlock, OpenStmt }
 import from jaclang.jac0core.unitree {
     BinaryExpr,
     UnaryExpr,

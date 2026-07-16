@@ -76,9 +76,7 @@ impl SymTabBuildPass.exit_global_vars(
     }
 }
 
-impl lookup_enclosing_binding(
-    from_scope: UniScopeNode, name: str
-) -> (Symbol | None) {
+impl lookup_enclosing_binding(from_scope: UniScopeNode, name: str) -> (Symbol | None) {
     import from jaclang.jac0core.constant { SymbolType }
     scope = find_python_scope_node_of(from_scope);
     while scope is not None {
@@ -100,13 +98,7 @@ impl lookup_enclosing_binding(
     return None;
 }
 
-"""Record an implicit rebind when a resolved assignment target's symbol lives
-in an outer python scope (e.g. reached through the ImplDef -> decl_link
-lookup fallback), so codegen synthesizes the matching directive. A no-op for
-same-scope symbols and for decl/impl pairs that share a unified name table.""";
-impl record_cross_scope_rebind(
-    py_scope: UniScopeNode, name: str, sym: Symbol
-) -> None {
+impl record_cross_scope_rebind(py_scope: UniScopeNode, name: str, sym: Symbol) -> None {
     import from jaclang.jac0core.constant { SymbolType }
     outer_tab = sym.parent_tab;
     if outer_tab is None or outer_tab is py_scope {

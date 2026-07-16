@@ -542,7 +542,6 @@ glob _telemetry_store: TelemetryStore | None = None;
 
 
 impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
-
     import from jaclang.scale.config.config_loader { get_scale_config }
     telemetry_cfg = get_scale_config().get_telemetry_config();
     _telemetry_store = TelemetryStore(max_traces=telemetry_cfg.get('max_traces', 1000));

@@ -34,7 +34,6 @@ def boot(
     max_queue: int = 128,
     debug: bool = False
 ) {
-
     _BOOT_ERROR = "";
     _timeout_s = timeout_s;
     _max_queue = max_queue;
@@ -61,7 +60,6 @@ def _ensure_jac_meta_importer {
 
 
 def _boot_impl(entry_file: str, graph_path: str) {
-
     if _runtime is not None {
         try {
             _runtime.close();

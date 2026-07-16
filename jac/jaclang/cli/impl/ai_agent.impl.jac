@@ -2156,7 +2156,6 @@ impl verify_and_continue(max_rounds: int = 3) {
 }
 
 impl run_agent(req: object) -> int {
-
     r: any = req;
 
     agent.ws.cwd = os.path.normpath(str(r?.cwd or os.getcwd()));
@@ -2264,7 +2263,6 @@ impl run_agent(req: object) -> int {
 }
 
 impl ui_configure -> None {
-
     proj = os.environ.get("JAC_AI_UI_PROJECT") or os.getcwd();
     agent.ws.cwd = os.path.normpath(proj);
 
@@ -2558,7 +2556,6 @@ impl ui_settings -> dict {
 impl ui_apply_settings(
     model: str, api_key: str, base_url: str, temperature: str, n_ctx: str
 ) -> dict {
-
     if agent.bus.status == "running" or agent.bus.status == "stopping" {
         return {
             "ok": False,

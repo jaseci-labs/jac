@@ -609,10 +609,6 @@ glob TOKEN_MAP: dict[str, str] = {
          '#F0FFFF'
      ];
 
-"""Keyword-spelled names the parser still accepts as ordinary identifiers in
-name position; imported Python code does not need backtick-escaping for
-these. Single source of truth — pyast_load and lint must both derive from
-this rather than keeping local copies.""";
 glob NON_ESCAPED_KEYWORDS: set = {'float', 'int', 'str', 'bool', 'self'};
 
 glob RESERVED_IDENT_NAMES: set = {
