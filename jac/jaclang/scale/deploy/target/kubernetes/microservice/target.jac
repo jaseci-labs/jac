@@ -159,6 +159,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         crash = "";
         crash_pod = None;
         pulls: dict[str, any] = {};
+        creating: dict[str, any] = {};
         phases: list[str] = [];
         states: list[str] = [];
         try {
@@ -204,6 +205,10 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 if pod_pull {
                     pulls[pod_name] = (pod_pull, pod_pull_reason, p);
                 }
+                all_transient = bool(statuses) and not pod_reason and not pod_pull;
+                if phase == "Pending" and all_transient and in_fleet {
+                    creating[pod_name] = p;
+                }
                 if pod_crash and not crash {
                     crash = (
                         f"pod '{pod_name}' container '{pod_crash}' "
@@ -226,9 +231,54 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             "crash": crash,
             "crash_pod": crash_pod,
             "pulls": pulls,
+            "creating": creating,
             "phases": phases,
             "states": states
         };
+    }
+
+    def _pod_mount_wedged(core_v1: any, ns: str, pod_name: str) -> bool {
+        try {
+            evs = core_v1.list_namespaced_event(
+                namespace=ns, field_selector=f"involvedObject.name={pod_name}"
+            ).items;
+        } except Exception {
+            return False;
+        }
+        for e in evs {
+            if str(e.reason or "") in {"FailedMount", "FailedAttachVolume"} {
+                return True;
+            }
+        }
+        return False;
+    }
+
+    def _try_self_heal(
+        core_v1: any, ns: str, pod: any, why: str, healed_apps: dict[str, int]
+    ) -> bool {
+        # One reschedule per service and three per rollout: enough to route
+        # around a bad node, small enough that a genuinely broken deploy still
+        # fails through the normal path when the replacement wedges again.
+        app = str((pod.metadata.labels or {}).get("app", "")) or str(pod.metadata.name);
+        if healed_apps.get(app, 0) >= 1 or sum(healed_apps.values()) >= 3 {
+            return False;
+        }
+        pod_name = str(pod.metadata.name);
+        try {
+            core_v1.delete_namespaced_pod(name=pod_name, namespace=ns);
+        } except Exception {
+            return False;
+        }
+        healed_apps[app] = healed_apps.get(app, 0) + 1;
+        if self.logger {
+            self.logger.warn(
+                f"Self-heal: deleted wedged pod '{pod_name}' ({why}); "
+                f"its ReplicaSet schedules a replacement. One retry per "
+                f"service, then the rollout fails as usual.",
+                {"namespace": ns, "app": app}
+            );
+        }
+        return True;
     }
 
     def _wait_for_fleet_rollout(bundle: dict[str, any], timeout: int = 1200) -> None {
@@ -269,6 +319,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             if app_labels
             else None;
         imagepull_streak: dict[str, int] = {};
+        creating_streak: dict[str, int] = {};
+        healed_apps: dict[str, int] = {};
         last_sig = "";
         last_heartbeat = -90;
 
@@ -334,12 +386,47 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 pull_pod = None;
                 for (pod_name, info) in pulls.items() {
                     if imagepull_streak.get(pod_name, 0) >= 2 {
+                        # A pull that keeps failing is usually one bad node
+                        # (broken egress, stale CSI), not a bad image: five
+                        # sibling services pull the same image fine. One
+                        # reschedule is cheap; only fail when the replacement
+                        # fails too.
+                        if self._try_self_heal(
+                            core_v1,
+                            ns,
+                            info[2],
+                            f"container '{info[0]}' cannot pull image ({info[1]})",
+                            healed_apps
+                        ) {
+                            imagepull_streak.pop(pod_name, None);
+                            continue;
+                        }
                         pull_failure = (
                             f"pod '{pod_name}' container '{info[0]}' "
                             f"cannot pull image ({info[1]})"
                         );
                         pull_pod = info[2];
                         break;
+                    }
+                }
+                creating_now = scan.get("creating", {});
+                creating_streak = {
+                    k: creating_streak.get(k, 0) + 1 for k in creating_now
+                };
+                for (pod_name, pod) in creating_now.items() {
+                    # ~5 min stuck before the event check: big first-time image
+                    # pulls legitimately hold ContainerCreating for a while.
+                    if creating_streak.get(pod_name, 0) >= 30
+                    and self._pod_mount_wedged(core_v1, ns, pod_name) {
+                        if self._try_self_heal(
+                            core_v1,
+                            ns,
+                            pod,
+                            "stuck >5min with FailedMount events",
+                            healed_apps
+                        ) {
+                            creating_streak.pop(pod_name, None);
+                        }
                     }
                 }
 

@@ -151,15 +151,25 @@ def build_bootstrap_init_container(
     # Point the pip cache at the shared RWX bundle PVC: the first pod warms it,
     # every later pod (and every redeploy) downloads ~nothing. pip only - bun's
     # cache is thousands of tiny files, pathological on EFS/NFS; it stays on
-    # the pod-local disk. Best-effort: an unwritable PVC skips the export.
+    # the pod-local disk.
+    # The cache is shared across pods whose images may run different uids, so
+    # the creator opens it up (0777); pods that still cannot write (dirs made
+    # by an older uid before the chmod) fall back to a pod-local cache instead
+    # of exporting a dir pip would silently refuse ("cache has been disabled",
+    # which forces sdist rebuilds on every boot).
     cache = f"{BUNDLE_MOUNT_PATH}/.cache";
     commands.append(
         f'if mkdir -p {cache}/pip 2>/dev/null; then '
+        f'chmod 0777 {cache} {cache}/pip 2>/dev/null || true; '
         # Bound the cache so it cannot squeeze the bundles off the shared PVC
         # (default size 1Gi): past ~512MB it is wiped and rewarmed by this boot.
         f'if [ "$(du -sm {cache} 2>/dev/null | cut -f1)" -gt 512 ] 2>/dev/null; then '
-        f'rm -rf {cache}/pip && mkdir -p {cache}/pip; fi; '
-        f'export PIP_CACHE_DIR={cache}/pip; '
+        f'rm -rf {cache}/pip && mkdir -p {cache}/pip && '
+        f'chmod 0777 {cache}/pip 2>/dev/null || true; fi; '
+        f'if touch {cache}/pip/.writable 2>/dev/null; then '
+        f'rm -f {cache}/pip/.writable; export PIP_CACHE_DIR={cache}/pip; '
+        f'else export PIP_CACHE_DIR=/tmp/jac-pip-cache; fi; '
+        f'else export PIP_CACHE_DIR=/tmp/jac-pip-cache; '
         f'fi'
     );
     # The toolchain bundle ships the prebuilt jac binary and the app bundle
