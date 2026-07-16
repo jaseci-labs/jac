@@ -1,33 +1,35 @@
 name: Experimental jac image (per-PR)
 
-# Publishes jaseci/jaclang:experimental-<PR#> from an open PR's latest commit so
-# it can be tested in a cluster before merge (point [experimental] pr = <PR#> at
-# it in jac.toml). Dispatch is manual: it builds contributor HEAD with the push
-# token in scope, so write access IS the vouch -- never auto-triggered on forks.
-# The tag is deleted when the PR merges or closes.
+# Build or delete a per-PR experimental image on demand. Manual only
+# (workflow_dispatch): write access is the vouch for building contributor HEAD
+# with the push token in scope, and for deleting a published tag.
+#   action=build  -> publish jaseci/jaclang:experimental-<PR#> from the PR's HEAD
+#   action=delete -> remove that tag from Docker Hub once the PR is done
+# Deploy from it with [experimental] pr = <PR#> in jac.toml.
 
 on:
   workflow_dispatch:
     inputs:
+      action:
+        description: "Build the image, or delete it"
+        type: choice
+        default: build
+        options: [build, delete]
       pr:
-        description: "Open PR number to build (image is jaseci/jaclang:experimental-<PR#>)."
+        description: "PR number (image tag is experimental-<PR#>)"
         required: true
         type: string
-  pull_request_target:
-    types: [closed]
 
 permissions:
   contents: read
 
-# One in-flight build per PR; a newer dispatch supersedes an older one. The
-# group keys off whichever event carries the number.
 concurrency:
-  group: experimental-image-${{ github.event_name == 'workflow_dispatch' && inputs.pr || github.event.pull_request.number }}
+  group: experimental-image-${{ inputs.pr }}
   cancel-in-progress: true
 
 jobs:
   resolve:
-    if: github.event_name == 'workflow_dispatch' && github.repository == 'jaseci-labs/jac'
+    if: inputs.action == 'build' && github.repository == 'jaseci-labs/jac'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -155,27 +157,26 @@ jobs:
             echo '`jaseci/jaclang:experimental-'"$PR"'`'
             echo ""
             echo "Point a deploy at it with \`[experimental] pr = $PR\` in jac.toml."
-            echo "It is deleted automatically when PR #$PR is merged or closed."
+            echo "When done, delete it by re-running this workflow with action=delete."
           } >> "$GITHUB_STEP_SUMMARY"
 
-  cleanup:
-    if: github.event_name == 'pull_request_target' && github.repository == 'jaseci-labs/jac'
+  delete:
+    if: inputs.action == 'delete' && github.repository == 'jaseci-labs/jac'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      # No checkout: pull_request_target is privileged, so run no PR-controlled code.
       - name: Delete the experimental tag from Docker Hub
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-          PR: ${{ github.event.pull_request.number }}
+          PR: ${{ inputs.pr }}
         run: |
           set -euo pipefail
           REPO="jaseci/jaclang"
           TAG="experimental-${PR}"
           if [ -z "${DOCKERHUB_USERNAME:-}" ] || [ -z "${DOCKERHUB_TOKEN:-}" ]; then
-            echo "::notice::Docker Hub secrets absent (fork or unconfigured); nothing to delete."
-            exit 0
+            echo "::error::DOCKERHUB_USERNAME/DOCKERHUB_TOKEN are not configured."
+            exit 1
           fi
           JWT="$(curl -fsSL -H 'Content-Type: application/json' \
             -d "{\"username\": \"${DOCKERHUB_USERNAME}\", \"password\": \"${DOCKERHUB_TOKEN}\"}" \
@@ -189,8 +190,9 @@ jobs:
             "https://hub.docker.com/v2/repositories/${REPO}/tags/${TAG}/")"
           case "$code" in
             204) echo "Deleted ${REPO}:${TAG}." ;;
-            # Most PRs never get an experimental image; a missing tag is success.
             404) echo "${REPO}:${TAG} not found (never built or already deleted); nothing to do." ;;
+            # 403 comes back before 404 when the token cannot delete, so a
+            # missing tag still fails here rather than reporting "not found".
             403) echo "::error::Docker Hub returned 403 deleting ${REPO}:${TAG}; the access token lacks delete permission."; exit 1 ;;
             *)   echo "::error::Unexpected HTTP ${code} deleting ${REPO}:${TAG}."; exit 1 ;;
           esac

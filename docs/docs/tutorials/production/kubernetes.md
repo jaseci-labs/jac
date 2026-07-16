@@ -257,9 +257,9 @@ not-yet-merged change against a real cluster:
 pr = 7494
 ```
 
-A maintainer publishes that image on demand (the **Experimental jac image**
-workflow, dispatched with the PR number); it is deleted when the PR merges or
-closes. If it is not published yet, the deploy falls back to `:dev`. An explicit
+A maintainer publishes and deletes that image on demand via the **Experimental
+jac image** workflow (dispatched with the PR number and a `build`/`delete`
+action). If it is not published yet, the deploy falls back to `:dev`. An explicit
 `python_image` still overrides all of this.
 
 ---
