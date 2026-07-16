@@ -119,7 +119,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E0023 = _err(
          "E0023",
          Category.SYNTAX,
-         "Expected augmented assignment in for-loop step (for init; cond; step)"
+         "Expected augmented assignment in for-loop step (for init while cond with step)"
      ),
      E0024 = _err(
          "E0024",

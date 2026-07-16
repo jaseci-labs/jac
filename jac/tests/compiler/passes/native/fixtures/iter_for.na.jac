@@ -7,7 +7,7 @@ while <cond> holds, running <step> after each iteration. `break` and
 
 def sum_n(n: int) -> int {
     total: int = 0;
-    for i = 0; i < n; i += 1 {
+    for i = 0 while i < n with i += 1 {
         total = total + i;
     }
     return total;
@@ -15,7 +15,7 @@ def sum_n(n: int) -> int {
 
 def count_down(start: int) -> int {
     c: int = 0;
-    for i = start; i > 0; i -= 1 {
+    for i = start while i > 0 with i -= 1 {
         c = c + 1;
     }
     return c;
@@ -23,7 +23,7 @@ def count_down(start: int) -> int {
 
 def with_break(n: int) -> int {
     total: int = 0;
-    for i = 0; i < n; i += 1 {
+    for i = 0 while i < n with i += 1 {
         if i == 3 {
             break;
         }
@@ -34,7 +34,7 @@ def with_break(n: int) -> int {
 
 def with_continue(n: int) -> int {
     total: int = 0;
-    for i = 0; i < n; i += 1 {
+    for i = 0 while i < n with i += 1 {
         if i == 2 {
             continue;
         }

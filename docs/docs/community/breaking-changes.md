@@ -19,7 +19,7 @@ A set of long-deprecated or redundant forms is removed with no deprecation windo
 | `nodes(?:Type, cond)` / `[-->(?:Type)]` | `nodes[?:Type, cond]` / `[-->[?:Type]]` (error **E0048**) |
 | `root()` in `.jac` source | bare `root` (error **E0049**) |
 | `has x: T by postinit;` | `has x: T postinit;` |
-| `for i = 0 to i < 10 by i += 1 { }` | `for i = 0; i < 10; i += 1 { }` -- classic C punctuation; the condition may be any expression. `to` is no longer a keyword at all |
+| `for i = 0 to i < 10 by i += 1 { }` | `for i = 0 while i < 10 with i += 1 { }` -- keyword separators (`while` condition, `with` step); the condition may be any expression. `to` is no longer a keyword at all |
 | `can foo() { ... }` (function-style) | `def foo() { ... }` (error **E0034**; `can` is only for abilities with `with entry` / `with exit`) |
 | `` has `class: str; `` (backticked Python reserved word as field/parameter name) | Rejected at compile time (error **E0067**) -- rename the field |
 

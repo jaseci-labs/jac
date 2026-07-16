@@ -1567,7 +1567,7 @@ def example() {
 
 ## Control Flow
 
-Jac's control flow is familiar to Python developers with a few enhancements: braces instead of indentation, semicolons to end statements, and additional constructs like C-style for loops (`for i = 0; i < 10; i += 1`) and `switch` statements. Jac also supports Python's pattern matching (`match/case`) for destructuring complex data.
+Jac's control flow is familiar to Python developers with a few enhancements: braces instead of indentation, semicolons to end statements, and additional constructs like C-style for loops (`for i = 0 while i < 10 with i += 1`) and `switch` statements. Jac also supports Python's pattern matching (`match/case`) for destructuring complex data.
 
 ### 1 Conditional Statements
 
@@ -1629,7 +1629,7 @@ def example() {
     }
 
     # C-style for loop: for INIT; CONDITION; UPDATE
-    for i = 0; i < 10; i += 1 {
+    for i = 0 while i < 10 with i += 1 {
         print(i);
     }
 

@@ -83,7 +83,7 @@ Emitted by the parser and lexer during source code parsing.
 | `E0020` | Walrus operator ':=' requires a simple name on the left side |
 | `E0021` | Expected `:<+` or `:+>` to close connect operator |
 | `E0022` | Expected ':' or '{' after lambda parameters |
-| `E0023` | Expected augmented assignment in for-loop step (for init; cond; step) |
+| `E0023` | Expected augmented assignment in for-loop step (for init while cond with step) |
 
 ### Statement-Level Errors
 

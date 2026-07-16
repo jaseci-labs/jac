@@ -189,7 +189,7 @@ with entry {
 
     # --- C-style for loop ---
     # Syntax: for INIT; CONDITION; UPDATE { ... }
-    for i = 0; i < 10; i += 2 {
+    for i = 0 while i < 10 with i += 2 {
         print(i);   # 0, 2, 4, 6, 8
     }
 

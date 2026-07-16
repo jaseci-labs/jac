@@ -57,7 +57,7 @@ cl {
             total += i * 2;
         }
 
-        for i = 0; i < limit; i += 1 {
+        for i = 0 while i < limit with i += 1 {
             if i == 3 {
                 break;
             }

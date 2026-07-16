@@ -14,7 +14,7 @@ edge connector {
 
 impl Creator.create{
     end = here;
-    for i = 0; i < 3; i += 1 {
+    for i = 0 while i < 3 with i += 1 {
         end ++> (end := node_a(val=i));
     }
     end +>:connector:value=i:+> (end := node_a(val=i + 10));
