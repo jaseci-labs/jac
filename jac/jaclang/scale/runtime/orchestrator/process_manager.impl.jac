@@ -35,6 +35,47 @@ def _remove_pidfile(name: str) {
     } except OSError {
         ;
     }
+    _remove_portfile(name);
+}
+
+# The port is persisted beside the pid so a SIBLING process (e.g. `jac scale
+# status` run in another terminal) can find and health-check services it did
+# not spawn itself.
+def _portfile_path(name: str) -> _Path {
+    return _Path(".jac/run") / f"{name}.port";
+}
+
+def _write_portfile(name: str, port: int) {
+    run_dir = _Path(".jac/run");
+    run_dir.mkdir(parents=True, exist_ok=True);
+    _portfile_path(name).write_text(str(port));
+}
+
+def _read_portfile(name: str) -> int | None {
+    path = _portfile_path(name);
+    try {
+        if not path.exists() {
+            return None;
+        }
+        content: str = path.read_text().strip();
+        if not content {
+            return None;
+        }
+        return int(content);
+    } except (ValueError, OSError) {
+        return None;
+    }
+}
+
+def _remove_portfile(name: str) {
+    path = _portfile_path(name);
+    try {
+        if path.exists() {
+            path.unlink();
+        }
+    } except OSError {
+        ;
+    }
 }
 
 def _log_tail(name: str, lines: int = 8) -> str {
@@ -134,6 +175,7 @@ impl ServiceProcessManager.start_service(name: str) -> bool {
         self._failure_counts[name] = 0;
 
         _write_pidfile(name, proc.pid);
+        _write_portfile(name, port);
 
         import from jaclang.runtimelib { sv_client }
         sv_client.register(name, entry.url);

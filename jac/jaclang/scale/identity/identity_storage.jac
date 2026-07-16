@@ -51,6 +51,7 @@ obj IdentityStorage {
     ) -> dict[str, any];
 
     def user_exists_by_id(user_id: str) -> bool;
+    def ensure_user_by_id(user_id: str) -> str | None;
     def authenticate(identifier: str, password: str) -> dict[str, any] | None;
     def set_user_role(user_id: str, role: str) -> bool;
     def get_user_role(user_id: str) -> str | None;

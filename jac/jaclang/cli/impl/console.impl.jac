@@ -602,6 +602,12 @@ impl JacConsole.error(
     # live status line first so the two don't collide on the terminal.
     self._renderer.clear_status();
     prefix = '✖' if emoji and self.use_emoji else '[ERROR]';
+    # Some callers pass a message that already carries an "Error:" prefix
+    # (e.g. a formatted runtime exception); drop it so we don't print the
+    # doubled "Error: Error:" banner.
+    if message.startswith("Error: ") {
+        message = message[len("Error: "):];
+    }
     self._renderer.emit(
         [Span(f"{prefix} Error:", 'error'), Span(f" {message}", None)], sys.stderr
     );

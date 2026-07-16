@@ -332,6 +332,7 @@ jac/jaclang/cli/commands/impl/transform.impl.jac
 jac/jaclang/cli/commands/mcp.jac
 jac/jaclang/cli/commands/transform.jac
 jac/jaclang/cli/impl/ai_agent.impl.jac
+jac/jaclang/cli/impl/browser_engine.impl.jac
 jac/jaclang/cli/impl/cli.impl.jac
 jac/jaclang/cli/mcp/impl/protocol.impl.jac
 jac/jaclang/cli/mcp/protocol.jac

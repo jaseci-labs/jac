@@ -137,6 +137,15 @@ impl JacAPIServerEndpoints.create_walker_callback(
             );
         }
         if 'error' in result {
+            if result.get('error') == 'User not found' {
+                # Validly-signed token for a user this service cannot resolve:
+                # an auth problem for the caller, not a server fault.
+                return TransportResponse.fail(
+                    code='UNAUTHORIZED',
+                    message='Unauthorized: unknown user',
+                    meta=Meta(extra={'http_status': 401})
+                );
+            }
             return TransportResponse.fail(
                 code='EXECUTION_ERROR',
                 message=result.get('error', 'Walker execution failed'),
@@ -268,6 +277,15 @@ impl JacAPIServerEndpoints.create_function_callback(
             );
         }
         if 'error' in result {
+            if result.get('error') == 'User not found' {
+                # Validly-signed token for a user this service cannot resolve:
+                # an auth problem for the caller, not a server fault.
+                return TransportResponse.fail(
+                    code='UNAUTHORIZED',
+                    message='Unauthorized: unknown user',
+                    meta=Meta(extra={'http_status': 401})
+                );
+            }
             return TransportResponse.fail(
                 code='EXECUTION_ERROR',
                 message=result.get('error', 'Function execution failed'),
