@@ -74,6 +74,30 @@ test "arithmetic multiply" {
     assert mul(0, 999) == 0;
 }
 
+# Regression: sub-64-bit integer arithmetic must run at the operands'
+# true width, not force i64 overflow intrinsics (i32/i16/i8 kernels).
+test "arithmetic narrow int width" {
+    (eng, _) = compile_native("narrow_int_truediv.na.jac");
+    add32 = get_func(eng, "add32", ctypes.c_int32, ctypes.c_int32, ctypes.c_int32);
+    assert add32(3, 4) == 7;
+    sub32 = get_func(eng, "sub32", ctypes.c_int32, ctypes.c_int32, ctypes.c_int32);
+    assert sub32(10, 3) == 7;
+    mul32 = get_func(eng, "mul32", ctypes.c_int32, ctypes.c_int32, ctypes.c_int32);
+    assert mul32(6, 7) == 42;
+}
+
+# Regression: `/` is true division (Python semantics) -- int / int is a
+# float, while `//` stays integer floor division.
+test "arithmetic true division" {
+    (eng, _) = compile_native("narrow_int_truediv.na.jac");
+    td = get_func(eng, "truediv", ctypes.c_double, ctypes.c_int64, ctypes.c_int64);
+    assert td(3, 4) == 0.75;
+    assert td(10, 2) == 5.0;
+    fd = get_func(eng, "floordiv", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
+    assert fd(3, 4) == 0;
+    assert fd(7, 2) == 3;
+}
+
 # --- Function pointers in struct fields (the OSP dispatch-slot shape) ---
 test "native callable struct field: indirect call through a field" {
     (eng, _) = compile_native("callable_field.na.jac");

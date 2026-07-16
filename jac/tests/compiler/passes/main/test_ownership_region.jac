@@ -93,6 +93,19 @@ test "R2: single-region elision lets a &Region helper return region values" {
     expect_ownership_codes(compile_fixture("region_elision_ok.jac"), []);
 }
 
+test "R2: a return inside a region open is not a missing-return (no E1004)" {
+    # `expect_ownership_codes` only inspects E13xx, so assert the full error
+    # set is empty: the type checker must count `return` inside `in r {}` as
+    # a guaranteed return, not emit E1004 'may implicitly return None'.
+    prog = compile_fixture("region_elision_ok.jac");
+    codes = [
+        a.code.code
+        for a in prog.errors_had
+        if a.code is not None
+    ];
+    assert codes == [] , f"expected no errors, got {codes}";
+}
+
 test "R2: E1307 with two &Region params a region-rooted return is ambiguous" {
     expect_ownership_codes(compile_fixture("region_two_region_reject.jac"), ["E1307"]);
 }
