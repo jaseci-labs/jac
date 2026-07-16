@@ -1,6 +1,6 @@
 """Builtin functions used inside an untyped client function."""
 
-cl def summarize(xs: list) -> dict {
+def summarize(xs: list) -> dict {
     return {
         "sorted": sorted(xs),
         "total": sum(xs),
@@ -10,11 +10,11 @@ cl def summarize(xs: list) -> dict {
     };
 }
 
-cl def numeric(n: int) -> dict {
+def numeric(n: int) -> dict {
     return {"abs": abs(0 - n), "round": round(3.14159, 2)};
 }
 
-cl def combined(a: list, b: list) -> list {
+def combined(a: list, b: list) -> list {
     m = min(a);
     x = max(a);
     pairs = zip(a, b);
