@@ -1499,6 +1499,12 @@ impl PyastGenPass.exit_ability(nd: uni.Ability) -> None {
                 trigger_arg = tinfo;
             }
         }
+        for n in ast3.walk(trigger_arg) {
+            if (isinstance(n, ast3.Name) and (n.id in ('Root', 'root'))) {
+                n.id = 'Root';
+                self.jaclib_imports.add('Root');
+            }
+        }
 
         trigger_thunk = self.sync(
             ast3.Lambda(
@@ -1755,7 +1761,8 @@ impl PyastGenPass.exit_event_signature(nd: uni.EventSignature) -> None {
     }
     if annotation {
         for n in ast3.walk(annotation) {
-            if (isinstance(n, ast3.Name) and (n.id == 'Root')) {
+            if (isinstance(n, ast3.Name) and (n.id in ('Root', 'root'))) {
+                n.id = 'Root';
                 self.jaclib_imports.add('Root');
             }
         }
