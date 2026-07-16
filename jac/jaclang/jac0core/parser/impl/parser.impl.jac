@@ -1246,8 +1246,6 @@ impl Parser.parse_unpack -> Expr {
 
 impl Parser.parse_ref -> Expr {
     if self.match_tok(TokenKind.KW_OWN) {
-        # The `own <expr>` rebox: the region membrane's outbound crossing
-        # (#7491 R4). The copy exits the region; the source stays inside.
         own_op = self.make_uni_token(self.previous());
         own_target = self.parse_await_expr();
         return UnaryExpr(

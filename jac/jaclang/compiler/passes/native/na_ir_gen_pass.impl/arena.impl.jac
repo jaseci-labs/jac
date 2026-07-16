@@ -1,36 +1,8 @@
-"""Region arena runtime, emitted as LLVM IR beside the RC helpers (#7491 R1).
-
-A `Region` handle is a bump-allocating arena. The control struct sits behind a
-sentinel-stamped RC header so any stray retain/release on a handle is a no-op
-through the existing sentinel fast path; the same is true for every object
-allocated inside the arena. Reclaim is one dtor-log walk plus a bulk chunk
-free at the handle's drop point.
-
-Handle layout (all offsets from the returned handle pointer, which itself
-points 32 bytes past the malloc base so the RC header sits at negative
-offsets exactly like every managed object):
-    -32..-1  RC header (magic|aid, tag "Region", rc=RC_SENTINEL, dtor=0)
-    +0   i8* chunk_head     newest chunk (chain via chunk.prev)
-    +8   i64 offset         bytes used in the newest chunk (incl chunk header)
-    +16  i64 capacity       total bytes of the newest chunk
-    +24  i8* dtor_head      LIFO list of dtor-log entries
-    +32  i64 alloc_count    stats
-
-Chunk layout: +0 i8* prev, +8 i8* region (back-pointer to the owning handle,
-the seam `region_of` derives from), +16.. bump payload. Dtor-log entries
-(+0 next, +8 obj, +16 fn) are bump-allocated inside the arena itself, so the
-bulk free reclaims them too.
-"""
-
 glob ARENA_CTRL_SIZE: int = 40,
      ARENA_CHUNK_HDR: int = 16,
      ARENA_CHUNK_DEFAULT: int = 32768,
      ARENA_DTOR_ENTRY: int = 24;
 
-# Arena-resident objects carry a distinct header magic (HDR_MAGIC + 1) and
-# their owning handle in the (otherwise dead) dtor slot: `region_of` is one
-# magic test plus one load. The RC fast paths never reach the magic check
-# for these objects because the sentinel rc test comes first.
 glob ARENA_MAGIC_SHIFT_BASE: int = (44061 + 1) * 4294967296;
 
 impl NaIRGenPass._emit_arena_helpers -> None {
@@ -48,7 +20,6 @@ impl NaIRGenPass._emit_arena_helpers -> None {
     _free = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
     _dtor_fnty_ptr = ir.FunctionType(ir.VoidType(), [i8p]).as_pointer();
 
-    # -- __jac_region_new() -> handle ------------------------------------
     _new_fn = self._define_function("__jac_region_new", ir.FunctionType(i8p, []));
     _new_fn.linkage = "private";
     b = ir.IRBuilder(_new_fn.append_basic_block("entry"));
@@ -103,7 +74,6 @@ impl NaIRGenPass._emit_arena_helpers -> None {
     b.ret(hdl);
     self.region_new_fn = _new_fn;
 
-    # -- __jac_region_raw(handle, size) -> ptr (internal bump) -----------
     _raw_fn = self._define_function(
         "__jac_region_raw", ir.FunctionType(i8p, [i8p, i64])
     );
@@ -173,7 +143,6 @@ impl NaIRGenPass._emit_arena_helpers -> None {
     );
     b.ret(_ptr);
 
-    # -- __jac_region_alloc(handle, size) -> obj (sentinel-headered) -----
     _alloc_fn = self._define_function(
         "__jac_region_alloc", ir.FunctionType(i8p, [i8p, i64])
     );
@@ -216,7 +185,6 @@ impl NaIRGenPass._emit_arena_helpers -> None {
     b.ret(b.gep(_araw, [ir.Constant(i64, HDR_TOTAL)], name="obj"));
     self.region_alloc_fn = _alloc_fn;
 
-    # -- __jac_region_log_dtor(handle, obj, fn) --------------------------
     _log_fn = self._define_function(
         "__jac_region_log_dtor", ir.FunctionType(ir.VoidType(), [i8p, i8p, i8p])
     );
@@ -246,7 +214,6 @@ impl NaIRGenPass._emit_arena_helpers -> None {
     b.ret_void();
     self.region_log_dtor_fn = _log_fn;
 
-    # -- __jac_region_drop(handle) ----------------------------------------
     _drop_fn = self._define_function(
         "__jac_region_drop", ir.FunctionType(ir.VoidType(), [i8p])
     );
@@ -326,10 +293,6 @@ impl NaIRGenPass._emit_arena_helpers -> None {
     b.ret_void();
     self.region_drop_fn = _drop_fn;
 
-    # -- __jac_osp_anchor_alloc(anchor, size, dtor_fn) -> obj -------------
-    # The growth rule (#7491 OQ1): an allocation anchored to a region-
-    # resident object lands in that object's region (derived from the
-    # anchor's header); anchored to a managed object it stays managed.
     if self.rc_alloc_fn is None {
         self._emit_rc_helpers();
     }
@@ -405,9 +368,6 @@ impl NaIRGenPass._emit_arena_helpers -> None {
 }
 
 impl NaIRGenPass._assign_rhs_is_region_handle(nd: uni.Assignment) -> bool {
-    # Region-handle detection is syntactic (no inference dependence):
-    # a direct Region() construction, a `: Region` annotation, a call to a
-    # callee declared `-> Region`, or aliasing a known handle binding.
     if (
         isinstance(nd.value, uni.FuncCall)
         and isinstance(nd.value.target, uni.Name)
@@ -460,8 +420,6 @@ impl NaIRGenPass._register_region_handle_var(
     if isinstance(nd.value, uni.Name)
     and nd.value.sym_name in self.region_handle_vars
     and nd.value.sym_name != var_name {
-        # Handle aliasing is a move: exactly one binding owns the drop
-        # (the checker's E1301 polices annotated code).
         self.region_handle_vars.discard(nd.value.sym_name);
     }
 }

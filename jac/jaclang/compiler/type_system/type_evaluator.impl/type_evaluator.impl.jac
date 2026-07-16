@@ -1699,7 +1699,6 @@ impl TypeEvaluator._get_type_of_expression_core(
                     return self.get_type_of_expression(expr.operand);
                 }
                 if expr.ownership == OwnershipKind.OWN {
-                    # `own <expr>` rebox: an owned copy of the operand.
                     return self.get_type_of_expression(expr.operand);
                 }
                 if expr.op.name == Tok.NOT {

@@ -103,10 +103,6 @@ impl __getattr__(name: str) -> object {
             '_jac_region_instrument'
         )
     ) {
-        # Lazy: region.jac holds obj methods, which cannot compile during
-        # CLI bootstrap; it compiles on first use in a user program. Its
-        # internal names differ so its own generated code never round-trips
-        # through this module's __all__.
         import jaclang.runtimelib.region as _region_mod;
         _region_map = {
             'Region': 'JacRegion',

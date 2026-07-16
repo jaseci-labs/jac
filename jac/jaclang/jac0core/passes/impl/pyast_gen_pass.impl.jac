@@ -971,12 +971,6 @@ impl PyastGenPass.exit_server_block(nd: uni.ServerBlock) -> None {
 }
 
 impl PyastGenPass.exit_open_stmt(nd: uni.OpenStmt) -> None {
-    # Portable drop timing (#7491 R4): the open pushes the handle onto the
-    # runtime's region stack so drop-hooked objects constructed in the body
-    # register with it; the close pops it. Teardown itself rides the
-    # handle's death (CPython refcounting), so an anonymous open reclaims
-    # at the brace (the temp is nulled in the finally) and a named handle
-    # reclaims when its last reference dies.
     self.builtin_imports.add("_jac_region_open");
     self.builtin_imports.add("_jac_region_close");
     _tmp = f"_jac_region_{nd.loc.first_line}_{nd.loc.col_start}";
@@ -2776,8 +2770,6 @@ impl PyastGenPass._emit_jobj_ref(nd: uni.UnaryExpr) -> None {
 
 impl PyastGenPass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
     if nd.ownership == OwnershipKind.OWN {
-        # `own <expr>` rebox: on the managed backend the value itself is
-        # the copy that exits (scalars and str are immutable here).
         nd.gen.py_ast = [self.py_ast_val(nd.operand)];
         return;
     }

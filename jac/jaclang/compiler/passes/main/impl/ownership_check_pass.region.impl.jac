@@ -1,9 +1,8 @@
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.diagnostics { E1307, W1310 }
 
-glob _REGION_SCALARS: tuple = ("int", "float", "bool", "None", "NoneType");
-
-glob _REGION_SAFE_CALLEES: frozenset[str] = frozenset(
+glob _REGION_SCALARS: tuple = ("int", "float", "bool", "None", "NoneType"),
+     _REGION_SAFE_CALLEES: frozenset[str] = frozenset(
          {
              "print",
              "len",
@@ -154,8 +153,6 @@ impl OwnershipCheckPass._param_is_region_borrow(param: uni.ParamVar) -> bool {
 }
 
 impl OwnershipCheckPass._region_handle_kind(region: uni.OpenStmt) -> str {
-    # "own": a tracked owned local handle; "param": a &Region parameter;
-    # "": anonymous or untracked (block-scoped R1 rules apply unchanged).
     nm = self._open_handle_name(region);
     if nm is None or nm.sym is None or nm.sym.decl is None {
         return "";
@@ -189,9 +186,6 @@ impl OwnershipCheckPass._region_param_count(region: uni.OpenStmt) -> int {
 impl OwnershipCheckPass._call_borrows_handle(
     expr: uni.Expr | None, hsid: SymId
 ) -> bool {
-    # A call that receives the handle (or a borrow of it) alongside
-    # region-rooted arguments ties their lifetimes at the signature level:
-    # the callee can hold the values no longer than the region they live in.
     if not isinstance(expr, uni.FuncCall) {
         return False;
     }
@@ -206,11 +200,6 @@ impl OwnershipCheckPass._call_borrows_handle(
 }
 
 impl OwnershipCheckPass._stamp_region_borrows -> None {
-    # Borrow-collapse (decision #3): a region-rooted value that flows to a
-    # binding which cannot outlive the handle becomes a shared borrow of the
-    # handle, so the existing borrow discipline (E1302/E1303/E1304/E1306,
-    # sendability) polices it from here on. Flows that WOULD outlive the
-    # handle are left unregistered for E1307 to reject.
     regions = self.ir_in.get_all_sub_nodes(uni.OpenStmt);
     if not regions {
         return;
@@ -267,12 +256,6 @@ impl OwnershipCheckPass._stamp_region_borrows -> None {
 }
 
 impl OwnershipCheckPass._region_expr_is_scalar(expr: uni.Expr | None) -> bool {
-    # Scalar-typed values copy by value at the region boundary, so letting
-    # them out can never dangle. An unknown/untyped expression is treated
-    # as heap-shaped (conservative). An `own <expr>` rebox of a scalar or
-    # string is the membrane's outbound crossing: the copy exits, so it is
-    # boundary-safe too (bare `str` stays heap-shaped: region-object string
-    # fields may be region-resident refs under decision #7).
     if not isinstance(expr, uni.Expr) {
         return False;
     }
@@ -307,8 +290,7 @@ impl OwnershipCheckPass._region_callee_is_safe(
     call: uni.FuncCall, region: uni.OpenStmt
 ) -> bool {
     _callee = call.target;
-    # A method whose receiver is rooted in the region stores, at worst, into
-    # region-resident state: the reference cannot outlive the arena.
+
     if isinstance(_callee, uni.AtomTrailer) {
         _recv = self._place_of(_callee.target);
         if _recv is not None and self._is_region_local(_recv, region) {
@@ -320,10 +302,7 @@ impl OwnershipCheckPass._region_callee_is_safe(
         if _callee.sym_name in _REGION_SAFE_CALLEES {
             return True;
         }
-        # A constructor call allocates under the open, so feeding it
-        # region-locals creates region-internal refs (decision #7 allows
-        # these); if the fresh object itself escapes, the return/store
-        # rules flag it at that site.
+
         if _callee.sym is not None and _callee.sym.decl is not None {
             _decl = _callee.sym.decl;
             if isinstance(_decl.find_parent_of_type(uni.Archetype), uni.Archetype) {
@@ -339,8 +318,7 @@ impl OwnershipCheckPass._emit_region_escape_diagnostics -> None {
     if not regions {
         return;
     }
-    # Dedup per (region, symbol): one report per escaping binding, however
-    # many sites it leaks through.
+
     seen: set[tuple[int, int]] = set();
     for region in regions {
         if not region.body {
@@ -353,10 +331,7 @@ impl OwnershipCheckPass._emit_region_escape_diagnostics -> None {
         }
         _hkind = self._region_handle_kind(region);
         _hsid = self._region_handle_sid(region);
-        # Single-region elision (decision #3): a function with exactly one
-        # &Region parameter may return values rooted in an open of it -- the
-        # result is tied to that parameter at every call site. Two or more
-        # region params are ambiguous, so returns stay rejected.
+
         _elide_returns = _hkind == "param" and self._region_param_count(region) == 1;
         for ret in self.idx_returns {
             if _elide_returns {
@@ -375,9 +350,7 @@ impl OwnershipCheckPass._emit_region_escape_diagnostics -> None {
                 seen.add(key);
                 self._emit_region_escape(root_nm, region);
             }
-            # A rootless heap return lexically inside the open (e.g.
-            # `return Buffer();`) is a fresh arena allocation with no named
-            # binding to track: it dangles the moment the handle drops.
+
             if (
                 not _flagged_root
                 and ret.expr is not None
@@ -405,10 +378,7 @@ impl OwnershipCheckPass._emit_region_escape_diagnostics -> None {
                 self._emit_region_escape(nm, region);
                 break;
             }
-            # Sendable regions (decision #5): moving the handle across a
-            # `flow` boundary is the legal way to transfer the subgraph --
-            # but only with no registered borrows of it in this function
-            # (conservative: borrow liveness at the send is not compared).
+
             if _hsid is None {
                 continue;
             }
@@ -459,8 +429,6 @@ impl OwnershipCheckPass._emit_region_escape_diagnostics -> None {
                         and tsid in self.borrow_meta
                         and self.borrow_meta[tsid].owner == _hsid
                     ) {
-                        # Registered as a shared borrow of the handle: the
-                        # flow is legal and borrow discipline polices it.
                         continue;
                     }
                     dest = tgt.sym.decl.find_parent_of_type(uni.UniScopeNode);
@@ -481,10 +449,7 @@ impl OwnershipCheckPass._emit_region_escape_diagnostics -> None {
                 self._emit_region_escape(root_nm, region);
             }
         }
-        # Default-deny call laundering: symbol-level tracking cannot see
-        # what a callee does with a region-rooted heap argument (it may
-        # store it in managed state that outlives the arena), so any such
-        # argument escapes unless the callee provably keeps it region-local.
+
         for call in region.get_all_sub_nodes(uni.FuncCall) {
             if self._region_callee_is_safe(call, region) {
                 continue;
@@ -508,9 +473,7 @@ impl OwnershipCheckPass._emit_region_escape_diagnostics -> None {
                 }
             }
         }
-        # Membrane rule for topology (decision #7): wiring a region-resident
-        # node to managed topology (or vice versa) creates a cross-extent
-        # edge that dangles when the region drops.
+
         for bexpr in region.get_all_sub_nodes(uni.BinaryExpr) {
             if not isinstance(bexpr.op, uni.ConnectOp) {
                 continue;
@@ -533,9 +496,7 @@ impl OwnershipCheckPass._emit_region_escape_diagnostics -> None {
             seen.add(key);
             self._emit_region_escape(_mix_root, region);
         }
-        # The same default-deny applies to registered region borrows used as
-        # call arguments anywhere in the enclosing function: an opaque callee
-        # could launder them into state that outlives the handle.
+
         if _hsid is None {
             continue;
         }

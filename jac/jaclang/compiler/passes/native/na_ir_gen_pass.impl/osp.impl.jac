@@ -720,12 +720,9 @@ impl NaIRGenPass._osp_generic_edge -> (ir.Value | None) {
     }
     i64 = ir.IntType(64);
     if self.region_stack {
-        # Untyped edges wired under an open live in the region too.
         return self._region_alloc(ir.Constant(i64, 8), name="osp.gedge.rgn");
     }
     if "here" in self.local_vars {
-        # Growth rule: an untyped edge created mid-traversal follows the
-        # visited node's region (managed when `here` is managed).
         self._emit_arena_helpers();
         _i8p_ge = ir.IntType(8).as_pointer();
         _here_v = self.builder.load(self.local_vars["here"], name="gedge.here");

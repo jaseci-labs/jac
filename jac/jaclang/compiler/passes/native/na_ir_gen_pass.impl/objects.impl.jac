@@ -901,12 +901,6 @@ impl NaIRGenPass._codegen_instantiation(
         obj_ptr = self.builder.bitcast(raw_ptr, struct_ptr_type, name="obj.ptr");
         self._emit_struct_drop_fn(type_name);
     } elif self.region_stack and not self._arch_is_walker_name(type_name) {
-        # Allocation under an `in <handle> {}` open: bump-allocate into the
-        # region's arena with a sentinel-stamped header, so every existing
-        # retain/release on the object is an inert sentinel fast-path hit.
-        # Nodes and edges allocate here too (decision #7: region-resident
-        # topology); walkers stay managed visitors (Phase W). Reclaim is
-        # the dtor-log + bulk free at the handle's drop point.
         null_ptr = ir.Constant(struct_ptr_type, None);
         size_gep = self.builder.gep(
             null_ptr, [ir.Constant(ir.IntType(32), 1)], name="sizeof.gep"
@@ -926,11 +920,6 @@ impl NaIRGenPass._codegen_instantiation(
         and not self._arch_is_walker_name(type_name)
         and "here" in self.local_vars
     ) {
-        # Growth rule (#7491 OQ1): a node/edge created inside an ability
-        # allocates into the region of the visited node (`region_of(here)`)
-        # when that node is region-resident, so traversals grow the graph
-        # they are walking without any &Region handle access; anchored to
-        # a managed node it stays managed.
         self._emit_arena_helpers();
         null_ptr = ir.Constant(struct_ptr_type, None);
         size_gep = self.builder.gep(
@@ -1031,10 +1020,6 @@ impl NaIRGenPass._codegen_instantiation(
         _tt_val = stable_osp_tag(type_name);
         self.builder.store(ir.Constant(ir.IntType(64), _tt_val), _tt_slot);
 
-        # Walkers are transient visitors, not topology: they stay ordinary
-        # managed objects (ARC + recycler) instead of RC_SENTINEL-immortal,
-        # so spawn-heavy workloads reclaim them (#7491 Phase W). Nodes and
-        # edges keep reachability-shaped liveness until regions cover them.
         if not self._arch_is_walker_name(type_name) {
             self._osp_make_immortal(obj_ptr);
         }

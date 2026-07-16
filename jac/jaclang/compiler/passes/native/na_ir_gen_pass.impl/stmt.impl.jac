@@ -75,9 +75,6 @@ impl NaIRGenPass._emit_last_use_releases(stmt: uni.UniNode) -> None {
             continue;
         }
         if name in self.region_handle_vars {
-            # Region handles drop at scope exit, not NLL last use: values
-            # allocated under an open may be borrowed by bindings whose
-            # uses extend past the handle's own last mention (#7491 R2).
             continue;
         }
         val = self.builder.load(alloca, name=f"lu.{name}");
@@ -477,8 +474,6 @@ impl NaIRGenPass._codegen_open_stmt(nd: uni.OpenStmt) -> None {
     );
     _synth: (str | None) = None;
     if _anon_region {
-        # Anonymous open: the handle's whole extent is this block. Bind it
-        # to a synthetic local so early-return scope cleanup drops it too.
         _arena = self.builder.call(self.region_new_fn, [], name="region.anon");
         _synth = f".region.{self.region_anon_count}";
         self.region_anon_count += 1;
