@@ -472,10 +472,8 @@ test "JSX slot statement bodies round-trip through the formatter" {
 }
 
 test "dynamic JSX tags round-trip through the formatter" {
-    # a comprehension or ternary.
-    # The lowering must never leak into formatted source.
-    # Idempotency: formatting the formatted output must be a no-op.
-    # Idempotency: formatting the formatted output must be a no-op.
+    # `<@expr ...>` syntax must survive formatting verbatim — the `@`-led
+    # dynamic-tag form is parsed into the JSX kid list and the structural
     # formatter must emit it back in the same shape.
     source = (
         'def:pub Box(as_: str, children: any = None) -> JsxElement {\n'
@@ -902,7 +900,7 @@ mixed JSX flat. Previously the mixed-children path emitted `hard_line()`
 between every child and the printer rstripped the trailing space, so
 `score <b>0</b> fps` silently reformatted to render `score0fps`."""
 test "jsx significant whitespace around inline elements is preserved" {
-    # return formatted if no errors, else return original source
+    # Short, space-separated mixed JSX (text interleaved with <b> elements)
     # must stay flat -- the inline spaces are significant and must survive.
     short_src = (
         'cl def:pub hud -> JsxElement {\n'
