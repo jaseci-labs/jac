@@ -285,7 +285,7 @@ def resolve_pod_base_image(
         return image;
     }
     try {
-        digest = str(json.loads(raw).get("digest", "") or "");
+        digest = str(json.loads(raw.decode("utf-8")).get("digest", "") or "");
     } except Exception {
         digest = "";
     }
