@@ -87,10 +87,14 @@ def handle_manifest_route(raw_argv: list[str]) -> bool:
         )
         sys.exit(2)
 
+    # Resolve the effective command. A bare script file implies `run`;
+    # rewrite argv exactly as the legacy start_cli path does.
     if _has_script_file(raw_argv) and first not in known:
-        return False
-
-    if first not in known:
+        sys.argv = [sys.argv[0], "run"] + raw_argv
+        command_name = "run"
+    elif first in known:
+        command_name = first
+    else:
         choices = "', '".join(sorted(known))
         sys.stderr.write("usage: jac [-h] [-V] COMMAND ...\n")
         console.error(
@@ -98,4 +102,9 @@ def handle_manifest_route(raw_argv: list[str]) -> bool:
         )
         sys.exit(2)
 
-    return False
+    # Phase 2: lazy dispatch -- import only the selected command's modules,
+    # skipping register_feature_commands()/registry.finalize().
+    from jaclang.cli.dispatch import run_selected_command
+
+    run_selected_command(command_name)
+    return True

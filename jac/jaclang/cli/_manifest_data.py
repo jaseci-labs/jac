@@ -186,6 +186,7 @@ COMMANDS: list[dict] = [
         "examples": [
             ("jac build", "Gate + build a single .jab into dist/"),
             ("jac build --as binary", "Gate + build a self-contained executable"),
+            ("jac build --fat", "Gate + build a fat jab (Python deps vendored)"),
             ("jac build --as wheel", "Gate + build a PyPI wheel"),
             ("jac build --check_only", "Run the whole-program gate only"),
             ("jac build --no_typecheck", "Build without the gate (escape hatch)"),
@@ -245,6 +246,19 @@ COMMANDS: list[dict] = [
                 "default": False,
                 "help": "Skip the whole-program type-check gate (escape hatch)",
                 "short": "n",
+                "choices": None,
+                "required": False,
+                "dest": None,
+                "metavar": None,
+            },
+            {
+                "name": "fat",
+                "kind": "OPTION",
+                "typ": "bool",
+                "default": False,
+                "help": "Vendor the Python dependency closure as wheels into the bundle (jab/binary only) so it "
+                "materializes offline, with no PyPI",
+                "short": "f",
                 "choices": None,
                 "required": False,
                 "dest": None,
@@ -1825,6 +1839,10 @@ COMMANDS: list[dict] = [
                 "jac nacompile mathlib.na.jac --shared",
                 "Build ./libmathlib.so exporting its `:pub` functions over the C ABI",
             ),
+            (
+                "jac nacompile service.na.jac --gc none --assert-no-rc",
+                "Compile and prove the artifact contains no RC/collector machinery",
+            ),
         ],
         "args": [
             {
@@ -1903,10 +1921,36 @@ COMMANDS: list[dict] = [
                 "name": "gc",
                 "kind": "OPTION",
                 "typ": "str",
-                "default": "cycles",
-                "help": "Memory-management runtime to emit: 'cycles' (refcounting + cycle collector, default), 'rc' "
-                "(refcounting only, no collector code), or 'none' (no refcounting call sites; memory is never "
-                "reclaimed)",
+                "default": "",
+                "help": "Memory-management runtime to emit: 'cycles' (refcounting + cycle collector), 'rc' (refcounting "
+                "only, no collector code), or 'none' (no refcounting call sites; memory is never reclaimed). "
+                "Defaults to jac.toml [gc] default, else 'cycles'",
+                "short": "",
+                "choices": None,
+                "required": False,
+                "dest": None,
+                "metavar": None,
+            },
+            {
+                "name": "assert-no-rc",
+                "kind": "FLAG",
+                "typ": "str",
+                "default": None,
+                "help": "Fail the build if the emitted IR contains any RC/collector machinery: __rc_* helpers, trace "
+                "functions, roots-buffer globals, or entry-point GC env probes",
+                "short": "",
+                "choices": None,
+                "required": False,
+                "dest": None,
+                "metavar": None,
+            },
+            {
+                "name": "enforce-nogc",
+                "kind": "FLAG",
+                "typ": "str",
+                "default": None,
+                "help": "Enforce zero-RC ownership coverage (E140x hard errors) on the compiled module, regardless of "
+                "jac.toml [gc.enforce] patterns",
                 "short": "",
                 "choices": None,
                 "required": False,
