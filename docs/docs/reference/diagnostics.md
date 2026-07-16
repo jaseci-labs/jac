@@ -266,6 +266,35 @@ Emitted by `JsxIntrinsicGuardPass` when a `mobui` project (see [React Native tar
 !!! tip "Fixing `E1105`"
     `E1105` fires only in `mobui` projects (`[project] client_kind = "mobui"` in `jac.toml`). Replace the HTML tag with the suggested `@jac/mobui` primitive: `div`/`section`/`main` -> `View`, `span`/`p`/`h1`-`h6` -> `Text`, `button` -> `Pressable`, `input`/`textarea` -> `TextInput`, `img` -> `Image`, `ul`/`ol` -> `ScrollView`. If the lowercase name is meant to be a component, import it so it resolves in scope. Web projects (`client_kind` unset) are unaffected -- HTML tags remain valid there.
 
+### Ownership / Borrow Errors
+
+Emitted by `OwnershipCheckPass` for `own`/`imm`/`borrow`/`&`/`&mut` bindings and `region` blocks. See [Ownership & Borrowing](language/ownership-borrowing.md). On the native pathway the checker is one of the required analyses: it always runs there, and error-severity findings block native codegen -- a clean check is what makes the annotations trustworthy facts for lowering (see the [Ownership Fact Schema](language/ownership-checker-spec.md)). Whether diagnostics are *displayed* never changes generated code; builds with and without display are bit-identical.
+
+| Code | Message |
+|------|---------|
+| `E1301` | Use of '{name}' after it was moved |
+| `E1302` | Conflicting mutable borrow of '{name}' while another borrow is live |
+| `E1303` | Cannot mutate '{name}' while a shared borrow of it is live |
+| `E1304` | '{name}' is destroyed while still borrowed |
+| `E1305` | *Reserved, not yet registered* -- will be "Linear resource '{name}' is never consumed" once the planned `linear` marker lands (a `linear` binding must be moved exactly once; plain `own` is affine and may be silently dropped) |
+| `E1306` | Borrow of '{name}' escapes its scope |
+| `E1307` | Reference to '{name}' escapes its region |
+| `E1308` | '{name}' is not sendable across a concurrency boundary |
+| `E1309` | Cannot mutate '{name}' through a deep-immutable `imm` binding |
+
+### Zero-RC Enforcement Errors
+
+Emitted by `OwnershipCheckPass` only in **nogc-enforced** native modules (`jac nacompile --enforce-nogc`, or a module matching a `jac.toml [gc.enforce]` pattern -- see [Zero-RC ownership compilation](language/native-pathway.md#zero-rc-ownership-compilation)). They make zero-RC ownership coverage a compile-time contract: every heap-typed contract position must be in the owned world, and each violation is a hard error that blocks native codegen. The `{provenance}` in every message states why the module is enforced (the CLI flag or the matching config pattern).
+
+| Code | Message |
+|------|---------|
+| `E1401` | Heap-typed {position} '{name}' has no ownership state in a nogc-enforced module ({provenance}) |
+| `E1402` | Owned value '{name}' is sealed into managed storage inside a nogc-enforced module ({provenance}) |
+| `E1403` | Heap value '{name}' crosses implicitly out of a nogc-enforced module ({provenance}) |
+| `E1404` | '{name}' is `any`-typed and could be heap-allocated in a nogc-enforced module ({provenance}) |
+| `E1405` | Closure capture of '{name}' escapes its scope in a nogc-enforced module ({provenance}) |
+| `E1406` | '{name}' has retaining or aliasing semantics not supported in a nogc-enforced module ({provenance}) |
+
 ### Type Warnings
 
 | Code | Message |
@@ -274,6 +303,7 @@ Emitted by `JsxIntrinsicGuardPass` when a `mobui` project (see [React Native tar
 | `W1050` | Unknown intrinsic JSX element '<{tag}>' |
 | `W1051` | Expression type could not be resolved (Unknown) |
 | `W1052` | JSX component '{component}' uses an untyped props bag (`props: any`); its JSX props cannot be type-checked |
+| `W1310` | Region open on '{name}' has an empty body |
 
 ---
 
@@ -311,6 +341,26 @@ Emitted by static analysis and declaration-implementation matching passes.
 | `W2006` | '@classmethod' decorator is not recommended in '{kind}' definitions |
 | `W2007` | '@staticmethod' is not supported in '{kind}' definitions |
 | `E2008` | Invalid target for context update: {target} |
+| `W2029` | '@{decorator}' is not recommended in '{kind}' definitions -- use native property syntax |
+
+`W2029` covers the Python property decorators -- `@property`, and the same-object
+`@x.getter` / `@x.setter` / `@x.deleter` -- in favour of [native property
+syntax](language/functions-objects.md#6-properties-and-encapsulation):
+
+```jac
+obj Account {
+    has _balance: float = 0.0,
+        balance: float {
+            getter -> float { return self._balance; }
+            setter(value: float) { self._balance = value; }
+        }
+}
+```
+
+`jac check --lint --fix` rewrites the decorator form automatically
+([`property-to-native`](#lint-rules-w3xxx-e3xxx)). As with `W2006`/`W2007`, a
+Python-compat `class` is exempt. A cross-object `@Base.x.setter` extends a parent's
+property and has no direct native form, so it is not reported.
 
 ### Declaration-Implementation Matching
 
@@ -341,7 +391,7 @@ Emitted by `ViewLowerPass` when a `{...}` JSX slot's statement-template body vio
 
 ---
 
-## Lint Rules (W3xxx / E3xxx)
+## Lint Rules (W3xxx, E3xxx)
 
 Emitted by `jac check --lint`. Rules can be configured in [`jac.toml`](config/index.md#checklint). The kebab-case name in brackets is used for `jac.toml` configuration.
 

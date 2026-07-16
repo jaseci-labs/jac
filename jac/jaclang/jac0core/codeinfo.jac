@@ -158,8 +158,11 @@ def resolve_native_module(
     return (None, None);
 }
 
+glob NATIVE_ABI_VERSION: int = 1;
+
 obj NativeModuleLayout {
-    has structs: dict[(str, NativeStructLayout)] = field(default_factory=`dict),
+    has abi_version: int = NATIVE_ABI_VERSION,
+        structs: dict[(str, NativeStructLayout)] = field(default_factory=`dict),
         enums: dict[(str, NativeEnumLayout)] = field(default_factory=`dict),
         functions: dict[(str, NativeFuncLayout)] = field(default_factory=`dict),
         methods: dict[(str, NativeFuncLayout)] = field(default_factory=`dict),
@@ -204,13 +207,12 @@ obj InteropManifest {
         ),
         native_transitive_sources: list[str] = field(default_factory=`list),
         JAC_TO_CTYPES: dict[(str, str)] = field(
-            default_factory=lambda() :
-                {
-                    'int': 'ctypes.c_int64',
-                    'float': 'ctypes.c_double',
-                    'bool': 'ctypes.c_bool',
-                    'str': 'ctypes.c_char_p'
-                }
+            default_factory=lambda { return {
+                'int': 'ctypes.c_int64',
+                'float': 'ctypes.c_double',
+                'bool': 'ctypes.c_bool',
+                'str': 'ctypes.c_char_p'
+            }; }
         );
 
     has native_imports: list[InteropBinding] { getter; }
@@ -226,25 +228,31 @@ obj CodeGenTarget {
         _doc_ir: (Doc | None) = None,
         js: str = '',
         css: str = '',
-        client_manifest: ClientManifest = field(default_factory=ClientManifest),
+        _client_manifest: (ClientManifest | None) = None,
         py_ast: list = field(default_factory=`list),
         py_bytecode: (bytes | None) = None,
         es_ast: EsNode | Sequence[EsNode] | SliceInfo | IndexInfo | None = None,
         llvm_ir: (ModuleRef | None) = None,
         native_engine: (ExecutionEngine | None) = None,
         native_bitcode: (bytes | None) = None,
-        interop_manifest: InteropManifest = field(default_factory=InteropManifest),
+        _interop_manifest: (InteropManifest | None) = None,
         interop_py_funcs: dict[(str, Any)] = field(default_factory=`dict),
         _interop_callbacks: list[any] = field(default_factory=`list),
         native_layout: (NativeModuleLayout | None) = None,
         osp_model: (OspModel | None) = None,
         native_compat: bool = False,
+        native_viols_reported: bool = False,
+        nogc_enforced: bool = False,
+        nogc_provenance: str = '',
+        rc_last_use: dict[int, list[str]] = field(default_factory=`dict),
         layout_registry: any = None,
         _clib_paths: list[str] = field(default_factory=`list),
         _clib_symbol_lib: dict[(str, str)] = field(default_factory=`dict),
         _exported_symbols: list[str] = field(default_factory=`list);
 
     has doc_ir: Doc { getter; setter(value: Doc); }
+    has client_manifest: ClientManifest { getter; setter(value: ClientManifest); }
+    has interop_manifest: InteropManifest { getter; setter(value: InteropManifest); }
 }
 
 obj CodeLocInfo {
@@ -276,4 +284,6 @@ obj CodeLocInfo {
     def __str__ -> str {
         return f"{self.first_line}:{self.col_start} - {self.last_line}:{self.col_end}";
     }
+
+    def snapshot -> CodeLocInfo;
 }

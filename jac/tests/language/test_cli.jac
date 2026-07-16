@@ -2318,9 +2318,11 @@ test "jir_registry is up to date" {
 test "jac check reports errors for files inside jaclang source tree" {
     # Regression: _resolve_program routed jaclang-internal files to
     # internal_program, so errors were invisible to the caller's JacProgram.
-    # force_target_program=True (set by jac check) fixes this.
+    # force_target_program=True (set by jac check) fixes this. The fixture
+    # is deliberately ill-typed so this test never depends on an incidental
+    # compiler bug in a shared fixture.
     internal_fixture = os.path.join(
-        JAC_ROOT, "jaclang", "compiler", "tests", "fixtures", "prim_float.jac"
+        JAC_ROOT, "jaclang", "compiler", "tests", "fixtures", "always_type_error.jac"
     );
     captured_stdout = io.StringIO();
     captured_stderr = io.StringIO();
@@ -2340,8 +2342,8 @@ test "jac check reports errors for files inside jaclang source tree" {
 
     combined = stdout + stderr;
 
-    # prim_float.jac has type errors (unary + returns Unknown) — check must
-    # report them even though the file lives inside the jaclang package.
+    # always_type_error.jac is deliberately ill-typed — check must report
+    # its errors even though the file lives inside the jaclang package.
     assert result == 1 , (
         "jac check should report errors for jaclang-internal files, "
         f"but returned exit code {result}. Output:\n{combined}"

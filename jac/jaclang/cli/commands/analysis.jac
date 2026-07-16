@@ -267,4 +267,4 @@ def `test(
 )
 def gen_parser -> int;
 
-def grammar(output: str = "") -> int;
+def grammar(output: str = "", strict: bool = False) -> int;

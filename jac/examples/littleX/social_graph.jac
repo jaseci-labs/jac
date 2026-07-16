@@ -77,7 +77,7 @@ node Profile {
         followers = [p.to_user_view() for p in [self<-:Follow:<-[?:Profile]]];
         following = [p.to_user_view() for p in [self->:Follow:->[?:Profile]]];
         tweets = [t.to_view() for t in [self-->[?:Tweet]]];
-        tweets.sort(key=lambda t: TweetView : t.created_at, reverse=True);
+        tweets.sort(key=lambda (t: TweetView) { t.created_at; }, reverse=True);
         return ProfileView(
             id=jid(self),
             username=self.username,
@@ -123,7 +123,7 @@ node Channel {
         posts: list[TweetView] = [];
         if with_posts {
             posts = [t.to_view() for t in [self-->[?:Tweet]]];
-            posts.sort(key=lambda t: TweetView : t.created_at, reverse=True);
+            posts.sort(key=lambda (t: TweetView) { t.created_at; }, reverse=True);
         }
         return ChannelView(
             id=jid(self),
@@ -227,7 +227,7 @@ walker get_trending {
 
     can deliver with Root exit {
         tags = [TrendingTag(tag=t, count=self.counts[t]) for t in self.counts];
-        tags.sort(key=lambda x: TrendingTag : x.count, reverse=True);
+        tags.sort(key=lambda (x: TrendingTag) { x.count; }, reverse=True);
         report tags[:8];
     }
 }
@@ -260,7 +260,7 @@ walker load_feed {
                 if q in t.content.lower()
             ];
         }
-        result.sort(key=lambda t: TweetView : t.created_at, reverse=True);
+        result.sort(key=lambda (t: TweetView) { t.created_at; }, reverse=True);
         report result;
     }
 }
@@ -286,7 +286,7 @@ walker get_channels {
     }
 
     can deliver with Root exit {
-        self.results.sort(key=lambda c: ChannelView : c.created_at, reverse=True);
+        self.results.sort(key=lambda (c: ChannelView) { c.created_at; }, reverse=True);
         report self.results;
     }
 }

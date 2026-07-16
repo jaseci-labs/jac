@@ -40,7 +40,9 @@ def build_service_apt_prefix(k8s_config: KubernetesConfig) -> str {
 }
 
 
-def build_runtime_install_commands(k8s_config: KubernetesConfig) -> list[str] {
+def build_runtime_install_commands(
+    k8s_config: KubernetesConfig, prefer_image_binary: bool = False
+) -> list[str] {
     config = k8s_config;
     commands: list[str] = [];
 
@@ -68,7 +70,25 @@ def build_runtime_install_commands(k8s_config: KubernetesConfig) -> list[str] {
     }
 
     tc = f"{APP_MOUNT_PATH}/{TOOLCHAIN_SUBDIR}";
-    commands.append(f'install -m 0755 "{tc}/bin/jac" "$HOME/.local/bin/jac"');
+    if prefer_image_binary {
+        # The image is the PR's own build, so its baked jac is the code under
+        # test: run it over the injected `dev` binary (only there to seal .jir).
+        commands.append(
+            'if [ -x /usr/local/bin/jac ]; '
+            'then ln -sf /usr/local/bin/jac "$HOME/.local/bin/jac"; '
+            f'else install -m 0755 "{tc}/bin/jac" "$HOME/.local/bin/jac"; fi'
+        );
+    } else {
+        # On the official base image /usr/local/bin/jac ships with its runtime
+        # pre-extracted; reuse it ONLY when it is byte-identical to the shipped
+        # binary (the .jab seal is version-locked), else install the bundle copy.
+        commands.append(
+            'if [ -x /usr/local/bin/jac ] && [ "$(sha256sum /usr/local/bin/jac '
+            f"| cut -d' ' -f1)\" = \"$(sha256sum \"{tc}/bin/jac\" | cut -d' ' -f1)\" ]; "
+            'then ln -sf /usr/local/bin/jac "$HOME/.local/bin/jac"; '
+            f'else install -m 0755 "{tc}/bin/jac" "$HOME/.local/bin/jac"; fi'
+        );
+    }
     commands.append('export PATH="$HOME/.local/bin:$PATH"');
     commands.append(
         'if ! command -v jac >/dev/null 2>&1; then echo "[jac-scale] FATAL: '
@@ -97,19 +117,13 @@ def runtime_container_env -> list[dict[str, str]] {
 def build_bootstrap_init_container(
     k8s_config: KubernetesConfig, base_image: str, is_gateway: bool = True
 ) -> dict[str, any] {
-    commands = build_runtime_install_commands(k8s_config);
+    # Keying off the resolved image name (not the config) self-corrects on
+    # fallback: an unpublished experimental tag resolves to a plain base, which
+    # will not match, so the injected binary runs.
+    import from jaclang.scale.injector.binary { OFFICIAL_IMAGE }
+    prefer_image_binary = base_image.startswith(f"{OFFICIAL_IMAGE}:experimental-");
+    commands = build_runtime_install_commands(k8s_config, prefer_image_binary);
     commands.append(f'cd {APP_MOUNT_PATH}');
-    if not is_gateway {
-        # npm deps exist only to build the client, which only the gateway
-        # serves - service pods were installing 500+ packages for nothing
-        # (~1 min/pod, #7179). Strip the npm tables from this pod's own copy
-        # of jac.toml so `jac install` skips them.
-        commands.append(
-            "awk 'BEGIN{skip=0} /^\\[dependencies\\.npm(\\]|\\.)/{skip=1;next} "
-            "/^\\[/{skip=0} !skip' jac.toml > /tmp/jac.toml.nonpm "
-            "&& cat /tmp/jac.toml.nonpm > jac.toml"
-        );
-    }
     # Point the pip cache at the shared RWX bundle PVC: the first pod warms it,
     # every later pod (and every redeploy) downloads ~nothing. pip only - bun's
     # cache is thousands of tiny files, pathological on EFS/NFS; it stays on
@@ -126,10 +140,29 @@ def build_bootstrap_init_container(
     );
     # The toolchain bundle ships the prebuilt jac binary and the app bundle
     # ships source precompiled into .jir; first boot only needs to install the
-    # app's declared deps.
+    # app's declared deps. PIP_PREFIX puts them in the project venv on the
+    # shared volume (the CLI wires it onto sys.path at boot): pip's default
+    # target is the runtime site, which on the official base image is a
+    # container-local layer, so installs there never reach the main container.
+    commands.append(f'export PIP_PREFIX="{APP_MOUNT_PATH}/.jac/venv"');
+    # npm deps exist only to BUILD the client; JAC_CLIENT_SKIP_NPM_INSTALL
+    # (the `jac create --skip` knob) skips the whole closure, including the
+    # client machinery's base install that a jac.toml table-strip misses on
+    # client-kind projects. Service pods never build; the gateway only builds
+    # when the bundle ships no prebuilt dist.
+    if not is_gateway {
+        commands.append("export JAC_CLIENT_SKIP_NPM_INSTALL=1");
+    } else {
+        commands.append(
+            'if [ -f .jac/client/dist/index.html ]; then echo "[jac-scale] '
+            'prebuilt client dist found; skipping the npm closure"; '
+            "export JAC_CLIENT_SKIP_NPM_INSTALL=1; else echo \"[jac-scale] no "
+            'prebuilt client dist; full install"; fi'
+        );
+    }
     commands.append("jac install");
     script = ' && '.join(commands);
-    return {
+    container: dict[str, any] = {
         "name": "jac-bootstrap",
         "image": base_image,
         "command": ["bash", "-c"],
@@ -148,4 +181,21 @@ def build_bootstrap_init_container(
             {"name": BUNDLE_VOLUME_NAME, "mountPath": BUNDLE_MOUNT_PATH}
         ]
     };
+    policy = image_pull_policy(base_image);
+    if policy {
+        container["imagePullPolicy"] = policy;
+    }
+    return container;
+}
+
+
+def image_pull_policy(image: str) -> str {
+    # Mutable tags (`dev`, per-PR `experimental-<N>`) are re-pushed in place, so
+    # a node must re-pull; versioned and `latest` tags keep k8s defaults. Anchor
+    # experimental to the official image so a custom python_image tagged
+    # `experimental-*` is not swept in.
+    import from jaclang.scale.injector.binary { OFFICIAL_IMAGE }
+    return "Always"
+        if image.endswith(":dev") or image.startswith(f"{OFFICIAL_IMAGE}:experimental-")
+        else "";
 }

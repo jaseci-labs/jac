@@ -63,46 +63,46 @@ def _get_or_seed_anchor -> Products {
     return anchor;
 }
 
-to sv:
-
-def:pub list_products -> list[dict] {
-    anchor = _get_or_seed_anchor();
-    items: list = [];
-    for p in [anchor-->][?:Product] {
-        items.append(
-            {
-                "id": p.id,
-                "name": p.name,
-                "price": p.price,
-                "description": p.description,
-                "stock": p.stock
-            }
-        );
-    }
-    return items;
-}
-
-def:pub get_product(product_id: str) -> dict {
-    anchor = _get_or_seed_anchor();
-    for p in [anchor-->][?:Product] {
-        if p.id == product_id {
-            return {
-                "id": p.id,
-                "name": p.name,
-                "price": p.price,
-                "description": p.description,
-                "stock": p.stock
-            };
+sv {
+    def:pub list_products -> list[dict] {
+        anchor = _get_or_seed_anchor();
+        items: list = [];
+        for p in [anchor-->][?:Product] {
+            items.append(
+                {
+                    "id": p.id,
+                    "name": p.name,
+                    "price": p.price,
+                    "description": p.description,
+                    "stock": p.stock
+                }
+            );
         }
+        return items;
     }
-    return {"error": "Product not found"};
-}
 
-@restspec(protocol=APIProtocol.WEBSOCKET)
-async walker:pub EchoMessage {
-    has message: str;
+    def:pub get_product(product_id: str) -> dict {
+        anchor = _get_or_seed_anchor();
+        for p in [anchor-->][?:Product] {
+            if p.id == product_id {
+                return {
+                    "id": p.id,
+                    "name": p.name,
+                    "price": p.price,
+                    "description": p.description,
+                    "stock": p.stock
+                };
+            }
+        }
+        return {"error": "Product not found"};
+    }
 
-    async can echo with Root entry {
-        report {"echo": self.message, "from": "products_app"};
+    @restspec(protocol=APIProtocol.WEBSOCKET)
+    async walker:pub EchoMessage {
+        has message: str;
+
+        async can echo with Root entry {
+            report {"echo": self.message, "from": "products_app"};
+        }
     }
 }

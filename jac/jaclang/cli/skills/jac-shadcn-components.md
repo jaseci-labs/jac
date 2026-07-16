@@ -46,7 +46,7 @@ import from ..lib.utils { cn }
 # just @-scoped names. (Only local dotted paths above - `.ui.X`, `.lib.utils` - may
 # drop the quotes.)
 cl import from "@hugeicons/react" { HugeiconsIcon }
-cl import from "@hugeicons/core-free-icons" { SearchIcon, Add01Icon, Cancel01Icon, Menu01Icon }
+cl import from "@hugeicons/core-free-icons" { Search01Icon, Add01Icon, Cancel01Icon, Menu01Icon }
 ```
 
 **Leading dots are relative to the importing file's folder** (1 dot = current folder, each extra dot goes up one). Pick the prefix from where your file lives:
@@ -149,15 +149,39 @@ Load `jac-cl-styling` for full conditional class patterns and cn() usage.
 
 ## Icon pattern
 
+⚠ **Never guess an icon name.** The package exports ~5,500 icons and most are
+number-suffixed, so the obvious name is usually wrong: there is no `SearchIcon`,
+`DocumentIcon`, `FolderIcon`, `PlusIcon`, or `TrendUpIcon`. A wrong name is NOT a
+compile error - `jac check` and the build both pass, and it fails only when the
+page loads, with `SyntaxError: ... does not provide an export named 'DocumentIcon'`.
+Use a name from the table below, or list the real ones:
+
+```bash
+ls .jac/client/node_modules/@hugeicons/core-free-icons/dist/esm/ | grep -v '\.map' | grep -i '^chart'
+```
+
+| Need | Icon (verified) |
+|---|---|
+| home / menu / back / forward | `Home01Icon`, `Menu01Icon`, `ArrowLeft01Icon`, `ArrowRight01Icon`, `ArrowUpRight01Icon` |
+| add / edit / delete / close | `Add01Icon` (or `PlusSignIcon`), `Edit01Icon`, `Delete01Icon`, `Cancel01Icon` |
+| search / filter / download / upload | `Search01Icon`, `FilterIcon`, `Download01Icon`, `Upload01Icon` |
+| success / warning / info | `CheckmarkCircle01Icon`, `Alert01Icon`, `InformationCircleIcon` |
+| file / folder / message / mail | `File01Icon`, `Folder01Icon`, `Message01Icon`, `Mail01Icon` |
+| calendar / clock | `Calendar1Icon`, `Clock1Icon` (single digit, NOT `01`) |
+| user / settings / logout / bell | `UserIcon`, `Settings01Icon`, `Logout01Icon`, `Notification01Icon` |
+| chart / analytics / dashboard / money | `ChartIcon`, `Analytics01Icon`, `DashboardSquare01Icon`, `DollarCircleIcon` |
+| star / eye / lock / sparkle | `StarIcon`, `EyeIcon`, `LockIcon`, `SparklesIcon` |
+| overflow menu | `MoreVerticalIcon`, `MoreHorizontalIcon` |
+
 ```jac
 import from .ui.button { Button, buttonVariants }
 import from .ui.dropdown_menu { DropdownMenuTrigger }
 cl import from "@hugeicons/react" { HugeiconsIcon }
-cl import from "@hugeicons/core-free-icons" { Add01Icon, SearchIcon, MoreVerticalIcon }
+cl import from "@hugeicons/core-free-icons" { Add01Icon, Search01Icon, MoreVerticalIcon }
 
 # Inline icon
 def:pub InlineIconExample() -> JsxElement {
-    return <HugeiconsIcon icon={SearchIcon} strokeWidth={2} className="size-4" />;
+    return <HugeiconsIcon icon={Search01Icon} strokeWidth={2} className="size-4" />;
 }
 
 # Icon-only button

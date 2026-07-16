@@ -15,11 +15,16 @@ def consumer_loop(
     topic: str,
     group: str,
     handler: Callable[[Event], any],
-    retry: RetryPolicy
+    retry: RetryPolicy,
+    start_from: str = "latest"
 ) -> None {
     while not broker._stop_event.is_set() {
         events = broker.consume(
-            topic, group=group, max_messages=10, timeout_seconds=5.0
+            topic,
+            group=group,
+            max_messages=10,
+            timeout_seconds=5.0,
+            start_from=start_from
         );
         for event in events {
             if broker._stop_event.is_set() {

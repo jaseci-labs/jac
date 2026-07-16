@@ -239,6 +239,25 @@ The `dir` setting controls where all build artifacts are stored:
 
 ---
 
+### [gc]
+
+Memory-management defaults for **native** compilation (`jac nacompile`):
+
+```toml
+[gc]
+default = "cycles"    # gc mode emitted when --gc is not passed: "cycles", "rc", or "none"
+
+[gc.enforce]
+modules = []          # module-name patterns compiled under zero-RC nogc enforcement
+grandfathered = []    # patterns exempted from enforcement (checked before `modules`)
+```
+
+`default` selects the memory-management runtime the native backend emits when `jac nacompile` is invoked without an explicit `--gc`: `cycles` (reference counting plus the cycle collector), `rc` (reference counting only), or `none` (no retain/release call sites).
+
+`[gc.enforce] modules` lists `fnmatch`-style patterns matched against compiled module names; a native module matching one is compiled under **nogc enforcement**, which makes zero-RC ownership coverage a compile-time contract -- every heap-typed parameter, return type, and `has` field must be in the owned world, and violations are hard [`E1401`-`E1406`](../diagnostics.md#zero-rc-enforcement-errors) errors that block codegen. `grandfathered` patterns exempt matching modules, so a codebase can adopt enforcement incrementally. The `jac nacompile --enforce-nogc` flag enforces the compiled module regardless of these patterns. See [Zero-RC ownership compilation](../language/native-pathway.md#zero-rc-ownership-compilation).
+
+---
+
 ### [test]
 
 Defaults for `jac test`:
@@ -858,7 +877,7 @@ Project ID vars (`FIREBASE_AUTH_PROJECT_ID`, `FIRESTORE_PROJECT_ID`, `JAC_STORAG
 
 ### Scale: Kubernetes
 
-Deployment settings (app name, namespace, node port, CPU/memory requests and limits, registry credentials) are configured in `jac.toml` under `[scale.kubernetes]` -- see the [Kubernetes reference](../plugins/jac-scale-kubernetes.md). At deploy time, jac-scale injects these variables into every pod:
+Deployment settings (app name, namespace, node port, CPU/memory requests and limits, health probes) are configured in `jac.toml` under `[scale.kubernetes]` -- see the [Kubernetes reference](../plugins/jac-scale-kubernetes.md). At deploy time, jac-scale injects these variables into every pod:
 
 | Variable | Description |
 |----------|-------------|

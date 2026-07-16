@@ -970,6 +970,67 @@ impl PyastGenPass.exit_server_block(nd: uni.ServerBlock) -> None {
     nd.gen.py_ast = self._flatten_ast_list([item.gen.py_ast for item in nd.body]);
 }
 
+impl PyastGenPass.exit_open_stmt(nd: uni.OpenStmt) -> None {
+    self.builtin_imports.add("_jac_region_open");
+    self.builtin_imports.add("_jac_region_close");
+    _tmp = f"_jac_region_{nd.loc.first_line}_{nd.loc.col_start}";
+    assign_stmt = self.sync(
+        ast3.Assign(
+            targets=[self.sync(ast3.Name(id=_tmp, ctx=ast3.Store()), jac_node=nd)],
+            value=cast(ast3.expr, self.py_ast_val(nd.target))
+        ),
+        jac_node=nd.target
+    );
+    open_stmt = self.sync(
+        ast3.Expr(
+            value=self.sync(
+                ast3.Call(
+                    func=self.sync(
+                        ast3.Name(id="_jac_region_open", ctx=ast3.Load()), jac_node=nd
+                    ),
+                    args=[self.sync(ast3.Name(id=_tmp, ctx=ast3.Load()), jac_node=nd)],
+                    keywords=[]
+                ),
+                jac_node=nd
+            )
+        ),
+        jac_node=nd
+    );
+    close_stmt = self.sync(
+        ast3.Expr(
+            value=self.sync(
+                ast3.Call(
+                    func=self.sync(
+                        ast3.Name(id="_jac_region_close", ctx=ast3.Load()), jac_node=nd
+                    ),
+                    args=[self.sync(ast3.Name(id=_tmp, ctx=ast3.Load()), jac_node=nd)],
+                    keywords=[]
+                ),
+                jac_node=nd
+            )
+        ),
+        jac_node=nd
+    );
+    clear_stmt = self.sync(
+        ast3.Assign(
+            targets=[self.sync(ast3.Name(id=_tmp, ctx=ast3.Store()), jac_node=nd)],
+            value=self.sync(ast3.Constant(value=None), jac_node=nd)
+        ),
+        jac_node=nd
+    );
+    body_stmts = self._flatten_ast_list([item.gen.py_ast for item in nd.body]);
+    if not body_stmts {
+        body_stmts = [self.sync(ast3.Pass(), jac_node=nd)];
+    }
+    try_stmt = self.sync(
+        ast3.Try(
+            body=body_stmts, handlers=[], orelse=[], finalbody=[close_stmt, clear_stmt]
+        ),
+        jac_node=nd
+    );
+    nd.gen.py_ast = [assign_stmt, open_stmt, try_stmt];
+}
+
 impl PyastGenPass.exit_native_block(nd: uni.NativeBlock) -> None {
     ;
 }
@@ -2604,6 +2665,12 @@ impl PyastGenPass.exit_bool_expr(nd: uni.BoolExpr) -> None {
 
 impl PyastGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
     if isinstance(nd.body, `list) {
+        tail = nd.tail_return_expr();
+
+        if tail is not None {
+            self._emit_lambda_expr_body(nd, tail);
+            return;
+        }
         if (nd.signature and nd.signature.gen.py_ast) {
             arguments = cast(ast3.arguments, self.py_ast_val(nd.signature));
         } else {
@@ -2648,6 +2715,12 @@ impl PyastGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
         ];
         return;
     }
+    self._emit_lambda_expr_body(nd, cast(uni.Expr, nd.body));
+}
+
+impl PyastGenPass._emit_lambda_expr_body(
+    nd: uni.LambdaExpr, body_node: uni.Expr
+) -> None {
     if nd.signature {
         self._remove_lambda_param_annotations(nd.signature);
     }
@@ -2661,7 +2734,6 @@ impl PyastGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
             jac_node=nd
         );
     }
-    body_node = cast(uni.Expr, nd.body);
     body_expr = cast(ast3.expr, self.py_ast_val(body_node));
     nd.gen.py_ast = [
         self.sync(ast3.Lambda(args=arguments, body=body_expr), jac_node=nd)
@@ -2678,7 +2750,45 @@ impl PyastGenPass._remove_lambda_param_annotations(
     }
 }
 
+impl PyastGenPass._emit_jobj_ref(nd: uni.UnaryExpr) -> None {
+    nd.gen.py_ast = [
+        self.sync(
+            ast3.Call(
+                func=self.builtin_name('jobj'),
+                args=[],
+                keywords=[
+                    self.sync(
+                        ast3.keyword(
+                            arg='id', value=cast(ast3.expr, self.py_ast_val(nd.operand))
+                        )
+                    )
+                ]
+            )
+        )
+    ];
+}
+
 impl PyastGenPass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
+    if nd.ownership == OwnershipKind.OWN {
+        nd.gen.py_ast = [self.py_ast_val(nd.operand)];
+        return;
+    }
+    if nd.op.name == Tok.BW_AND {
+        if is_borrow_kind(nd.ownership) {
+            nd.gen.py_ast = [
+                self.sync(
+                    ast3.Call(
+                        func=self.builtin_name('jref'),
+                        args=[cast(ast3.expr, self.py_ast_val(nd.operand))],
+                        keywords=[]
+                    )
+                )
+            ];
+        } else {
+            self._emit_jobj_ref(nd);
+        }
+        return;
+    }
     op_tok = Tok(nd.op.name) if (nd.op.name in Tok.__members__) else None;
     op_cls = UNARY_OP_MAP.get(op_tok) if op_tok else None;
     if op_cls {
@@ -2715,23 +2825,6 @@ impl PyastGenPass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
         ];
     } elif (nd.op.name in [Tok.STAR_POW]) {
         nd.gen.py_ast = nd.operand.gen.py_ast;
-    } elif (nd.op.name in [Tok.BW_AND]) {
-        nd.gen.py_ast = [
-            self.sync(
-                ast3.Call(
-                    func=self.builtin_name('jobj'),
-                    args=[],
-                    keywords=[
-                        self.sync(
-                            ast3.keyword(
-                                arg='id',
-                                value=cast(ast3.expr, self.py_ast_val(nd.operand))
-                            )
-                        )
-                    ]
-                )
-            )
-        ];
     } else {
         self.ice("Unknown Unary operator " + str(nd.op.value));
     }

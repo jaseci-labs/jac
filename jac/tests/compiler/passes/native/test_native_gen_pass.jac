@@ -40,6 +40,22 @@ def get_func(eng: object, name: str, restype: type | None, *argtypes: type) -> o
     return functype(addr);
 }
 
+"""Current resident-set-size of this process in kB (Linux), or -1 if the
+/proc interface is unavailable (e.g. macOS) so callers can skip the gate."""
+def _rss_kb -> int {
+    if not os.path.exists("/proc/self/status") {
+        return -1;
+    }
+    with open("/proc/self/status") as f {
+        for line in f {
+            if line.startswith("VmRSS") {
+                return int(line.split()[1]);
+            }
+        }
+    }
+    return -1;
+}
+
 # --- TestNativeArithmeticExecution ---
 test "arithmetic add" {
     (eng, _) = compile_native("arithmetic.na.jac");
@@ -158,13 +174,13 @@ test "native partial class: native caller of a demoted method errors, not silent
         for e in (prog.errors_had or [])
         if e.code
     ];
-    assert "E5090" in codes , (
-        f"expected E5090 for native call to a demoted method, got {codes}"
+    assert "E5092" in codes , (
+        f"expected E5092 for native call to a demoted method, got {codes}"
     );
     # The diagnostic names the call site (the method), not the discarded
     # eval body that was demoted away.
     msgs = " ".join(str(e) for e in (prog.errors_had or []));
-    assert "Box.evaluate" in msgs , f"E5090 should name Box.evaluate, got: {msgs}";
+    assert "Box.evaluate" in msgs , f"E5092 should name Box.evaluate, got: {msgs}";
 }
 
 test "native partial class: un-lowerable virtual method stays a hard error" {
@@ -181,8 +197,8 @@ test "native partial class: un-lowerable virtual method stays a hard error" {
         for e in (prog.errors_had or [])
         if e.code
     ];
-    assert "E5090" in codes , (
-        f"expected E5090 for un-lowerable virtual method, got {codes}"
+    assert "E5092" in codes , (
+        f"expected E5092 for un-lowerable virtual method, got {codes}"
     );
 }
 
@@ -1012,6 +1028,37 @@ test "builtins strip split" {
     (eng, _) = compile_native("builtins.na.jac");
     f = get_func(eng, "test_strip_split", ctypes.c_int64);
     assert f() == 2;
+}
+
+test "builtins split and slice do not leak (#6814)" {
+    (eng, _) = compile_native("builtins.na.jac");
+    f_split = get_func(
+        eng, "split_count", ctypes.c_int64, ctypes.c_char_p, ctypes.c_char_p
+    );
+    f_slice = get_func(eng, "slice_half_len", ctypes.c_int64, ctypes.c_char_p);
+    many = b",".join([b"x"] * 200);
+    big = b"x" * 10000;
+    # Correctness must survive the ownership fix.
+    assert f_split(many, b",") == 200;
+    assert f_slice(big) == 5000;
+    # Warm up the allocator to steady state before sampling, so arena growth is
+    # not mistaken for a leak.
+    for _w in range(2000) {
+        f_split(many, b",");
+        f_slice(big);
+    }
+    base = _rss_kb();
+    for _i in range(20000) {
+        f_split(many, b",");
+        f_slice(big);
+    }
+    if base >= 0 {
+        growth = _rss_kb() - base;
+        assert growth < 32768 , (
+            f"split/slice leaked: RSS grew {growth} kB over 20k iters "
+            f"(expected ~0; unpatched leaks ~350 MB) -- #6814 regressed"
+        );
+    }
 }
 
 # --- TestNativeRuntime ---
@@ -1940,7 +1987,7 @@ test "py interop native calls python function" {
     assert eng is not None;
     # Register the Python function in the interop callback table
     py_func_table = ir.gen.interop_py_funcs;
-    py_func_table["py_double"] = lambda x : x * 2;
+    py_func_table["py_double"] = lambda (x) { x * 2; };
     # Now call the native function
     f = get_func(eng, "native_add_one_to_doubled", ctypes.c_int64, ctypes.c_int64);
     assert f(5) == 11;  # py_double(5) = 10, + 1 = 11
@@ -2677,6 +2724,24 @@ test "rc stress large dict" {
     (eng, _) = compile_native("rc_stress.na.jac");
     f = get_func(eng, "test_large_dict", ctypes.c_int64, ctypes.c_int64);
     assert f(1000) == 1000;
+}
+
+test "cycle collector reclaims A<->B cycles without double-free" {
+    # collect_white reclaims each white node through its own per-type destructor
+    # so container backing arrays are freed, not just the header allocation. The
+    # dtor's recursive child-release is gated on __rc_collecting, so mid-sweep it
+    # frees backing storage + the struct WITHOUT re-releasing the cyclic members
+    # that collect_white already reclaims (which would double-free). The probe
+    # drives both a plain struct A<->B cycle and a cycle routed through a list
+    # field, over repeated sweeps in-process: an invalid/double free aborts the
+    # JIT here, and a leaked backing array shows up under ASan/valgrind. This runs
+    # without the static musl toolchain the RSS reclamation test in
+    # test_native_gc.jac needs, so it guards the free path locally and in CI.
+    (eng, _) = compile_native("cycle_collect_jit_probe.na.jac");
+    f = get_func(eng, "drive_cycles", ctypes.c_int64, ctypes.c_int64);
+    assert f(20000) == 20000;
+    assert f(20000) == 20000;
+    assert f(20000) == 20000;
 }
 
 test "dicts items iteration sum" {
@@ -5000,8 +5065,8 @@ test "isinstance mixed tuple unsupported type errors" {
         for e in (prog.errors_had or [])
         if e.code
     ];
-    assert "E5090" in codes , (
-        f"expected E5090 for mixed-tuple isinstance, got {codes}"
+    assert "E5092" in codes , (
+        f"expected E5092 for mixed-tuple isinstance, got {codes}"
     );
 }
 

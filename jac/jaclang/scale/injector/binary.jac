@@ -83,6 +83,13 @@ def download_release_binary(channel: str, arch: str) -> bytes {
     binary_url = "";
     checksum_url = "";
 
+    # Experimental pods run the PR binary from the image; the injected binary
+    # only seals .jir (recompiled from source on mismatch), so reuse `dev`
+    # rather than publish a per-PR asset.
+    if channel == "experimental" {
+        channel = "dev";
+    }
+
     if channel == "local" {
         import from jaclang.scale.config.dev_config { BINARY_PATH_ENV }
         local = os.environ.get(BINARY_PATH_ENV, "");
@@ -206,6 +213,70 @@ def _fetch_verified_asset(
         }
     }
     return payload;
+}
+
+
+glob OFFICIAL_IMAGE: str = "jaseci/jaclang";
+
+
+def resolve_pod_base_image(
+    project_dir: str, configured: str, probe: bool = True
+) -> str {
+    # Auto-select the official base image to match the pod binary channel:
+    # dev -> jaseci/jaclang:dev, stable -> jaseci/jaclang:latest. The image
+    # ships the runtime pre-extracted and the serve closure pre-installed, so
+    # pods skip the one-time setup. An explicit [scale.kubernetes].python_image
+    # always wins; the local channel keeps the plain python base (no image
+    # matches a developer-built binary).
+    if configured {
+        return configured;
+    }
+    fallback = "python:3.12-slim";
+    import from jaclang.scale.config.dev_config {
+        resolve_dev_channel,
+        resolve_experimental_pr,
+        Channel
+    }
+    channel = resolve_dev_channel(project_dir);
+    if channel == Channel.LOCAL {
+        return fallback;
+    }
+    if channel == Channel.EXPERIMENTAL {
+        pr = resolve_experimental_pr(project_dir);
+        if not pr {
+            logger.warning(
+                "[experimental] has no `pr = <N>`; using the dev base image instead."
+            );
+            tag = "dev";
+        } else {
+            tag = f"experimental-{pr}";
+        }
+    } elif channel == Channel.DEV {
+        tag = "dev";
+    } else {
+        tag = "latest";
+    }
+    image = f"{OFFICIAL_IMAGE}:{tag}";
+    # probe=False is the --dry-run path: it must not touch the network, so
+    # report the image a connected deploy would select instead of confirming
+    # the tag against the registry (issue #7431).
+    if not probe {
+        return image;
+    }
+    # The tag may not be published yet (or the registry is unreachable from
+    # this driver); fall back rather than shipping manifests that cannot pull.
+    try {
+        _http_get_bytes(
+            f"https://hub.docker.com/v2/repositories/{OFFICIAL_IMAGE}/tags/{tag}"
+        );
+        return image;
+    } except Exception {
+        logger.info(
+            f"Official base image {image} is not published or not reachable; "
+            f"pods use {fallback}."
+        );
+        return fallback;
+    }
 }
 
 

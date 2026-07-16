@@ -521,15 +521,17 @@ impl Calculator.multiply(n: int) -> int {
 # ============================================================
 
 with entry {
-    # Simple lambda (untyped params, colon body)
-    add = lambda x, y: x + y;
+    # Simple lambda: params always parenthesized, body always braced.
+    # A body that is exactly one expression statement is the implicit return.
+    add = lambda (x: int, y: int) { x + y; };
     print(add(3, 4));
 
     # Typed lambda with return type
-    mul = lambda (x: int, y: int) -> int : x * y;
+    mul = lambda (x: int, y: int) -> int { x * y; };
     print(mul(3, 4));
 
-    # Multi-statement lambda (brace body)
+    # Multi-statement lambda: needs an explicit return
+    # (without one, the lambda returns None)
     classify = lambda (score: int) -> str {
         if score >= 90 { return "A"; }
         elif score >= 80 { return "B"; }
@@ -538,7 +540,7 @@ with entry {
     print(classify(85));
 
     # No-arg lambda
-    get_42 = lambda : 42;
+    get_42 = lambda { 42; };
 
     # Void lambda (common in JSX event handlers)
     handler = lambda -> None { print("clicked"); };
@@ -1232,12 +1234,59 @@ with entry {
 
 
 # ============================================================
+# Ownership & Borrowing (opt-in)
+# ============================================================
+# `own` marks a unique owner; assigning it elsewhere or passing it
+# to a call MOVES the value (use-after-move is a compile error).
+# `&`/`&mut` take a shared/mutable borrow; `imm` is deep-immutable.
+# Unannotated bindings are untouched -- the checker only tracks
+# what you tag. On native, full coverage enables zero-RC builds
+# (jac nacompile --gc none --enforce-nogc --assert-no-rc).
+
+obj Buffer { has n: int = 0; }
+
+def use_buf(x: Buffer) -> None {}
+
+with entry {
+    a: own Buffer = Buffer();   # unique owner
+    v: &Buffer = &a;            # shared borrow (owner is read-only while live)
+    use_buf(v);
+    m: imm Buffer = Buffer();   # deep-immutable: no writes through `m`, ever
+    b = a;                      # moves out of `a`; reading `a` again is E1301
+}
+
+# `in <handle> { }` opens a Region for allocation: everything created
+# under the open is reclaimed wholesale when the handle drops, and
+# references must not outlive it. `in Region() { }` is the anonymous,
+# block-scoped form.
+def scratch() -> None {
+    in Region() {
+        tmp = Buffer();   # reclaimed with the region at `}`
+    }
+    r: own Region = Region();
+    in r {
+        keep = Buffer();  # reclaimed when `r` drops (scope exit here)
+    }
+}
+
+# `def drop` runs exactly once when the object is destroyed, at its
+# owner's last use (native backend; Python does not call it yet).
+obj Res {
+    has fd: int = 0;
+
+    def drop {
+        print("closing", self.fd);
+    }
+}
+
+
+# ============================================================
 # FULL-STACK DEVELOPMENT (Codespaces)
 # ============================================================
 # Jac code can target different execution environments:
-#   sv { } / to sv: = server (Python/PyPI)
-#   cl { } / to cl: = client (JavaScript/npm)
-#   na { } / to na: = native (C ABI)
+#   sv { } = server (Python/PyPI)
+#   cl { } = client (JavaScript/npm)
+#   na { } = native (C ABI)
 
 
 # ============================================================
@@ -1272,15 +1321,7 @@ cl {
 # Code after the block is back in the server codespace
 node Secret { has value: str; }
 
-# Section header -- an alternative to a block; sets the codespace for
-# every following element until the next "to X:" header or end of file
-to cl:
-
-import from react { useEffect }
-
-to sv:
-
-# Single-statement form (no header, no braces)
+# Single-statement form (no block, no braces) -- tags exactly one statement
 sv import from .database { connect_db }
 cl import from react { useState }
 
@@ -1359,7 +1400,7 @@ cl {
         # Mount effect (runs once on component mount)
         async can with entry {
             data = await fetch("/api/data").then(
-                lambda r: any -> any { return r.json(); }
+                lambda (r: any) -> any { return r.json(); }
             );
             loading = False;
         }

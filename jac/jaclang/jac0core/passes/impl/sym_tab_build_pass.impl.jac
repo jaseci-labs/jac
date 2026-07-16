@@ -428,6 +428,14 @@ impl SymTabBuildPass.exit_typed_ctx_block(
     self.pop_scope();
 }
 
+impl SymTabBuildPass.enter_open_stmt(self: SymTabBuildPass, nd: uni.OpenStmt) -> None {
+    self.push_scope_and_link(nd);
+}
+
+impl SymTabBuildPass.exit_open_stmt(self: SymTabBuildPass, nd: uni.OpenStmt) -> None {
+    self.pop_scope();
+}
+
 impl SymTabBuildPass.enter_if_stmt(self: SymTabBuildPass, nd: uni.IfStmt) -> None {
     self.push_scope_and_link(nd);
 }

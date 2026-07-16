@@ -35,7 +35,13 @@ glob MANUAL_FIELDS: dict[str, list] = {
          "FuncCall": [('callee_decl', FIELD_KINDS["OPT_NODE_REF"])],
 
      },
-     ENUM_TYPES: set = {"SymbolType", "SymbolAccess", "EdgeDir", "CodeContext"},
+     ENUM_TYPES: set = {
+         "SymbolType",
+         "SymbolAccess",
+         "EdgeDir",
+         "CodeContext",
+         "OwnershipKind"
+     },
      SKIP_PARAMS: set = {"self", "kid", "parent"};
 
 def classify_type(ann_str: str) -> int {
