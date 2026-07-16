@@ -171,5 +171,5 @@ with entry {
 
 - `JAC_DUMP_IR=/tmp/out.ll jac nacompile app.na.jac` writes the optimized LLVM IR to a readable `.ll` file.
 - Stale behavior after moving/regenerating files: use `jac nacompile --scrub` (or `jac run --no-cache`) to wipe the native IR cache, which lives in the module's cache dir (`.jac/cache/native/`, or the global `~/.cache/jac/jir/` for installed sources).
-- Memory: reference counting by default, with emit-time modes - `jac nacompile --gc cycles|rc|none` - and an opt-in ownership/borrow surface (`own`, `&`/`&mut`, `imm`, `region`, `def drop`) that scales to fully RC-free binaries (`--enforce-nogc --assert-no-rc`). `JAC_RC_STATS=1` prints per-module RC coverage. Any `E13xx`/`E14xx` diagnostic, leak, or refcount question: see `jac-native-memory`.
+- Memory: reference counting by default, with emit-time modes - `jac nacompile --gc cycles|rc|none` - and an opt-in ownership/borrow surface (`own`, `&`/`&mut`, `imm`, `Region` arenas opened with `in r { }`, `def drop`) that scales to fully RC-free binaries (`--enforce-nogc --assert-no-rc`). `JAC_RC_STATS=1` prints per-module RC coverage. Any `E13xx`/`E14xx` diagnostic, leak, or refcount question: see `jac-native-memory`.
 - Run native test files with `jac test <file>`, not pytest. See `jac-testing` and `jac-debugging`.
