@@ -305,6 +305,30 @@ test "native block comments stay in place" {
     assert formatted == formatted2 , "Formatting of na {} block is not idempotent";
 }
 
+"""Regression guard for the CommentInjectionPass memoization (#7495).
+
+The DocIR is a DAG: `IfBreak` break/flat branches share child objects. The pure
+structural helpers (`_remove_redundant_lines`/`_doc_line_span`/`_get_tokens`) are
+memoized on node identity, but the comment-placement walk `_process` must NOT be
+(it consumes comments from a shared store and depends on its context, so caching
+it on node identity misattributes or duplicates comments across the DAG). The
+earlier buggy build grew standalone comments by one on each formatting pass over
+this comment-dense fixture; here we format it and re-format the output and assert
+the result is byte-for-byte stable. The fixture is loaded by its real fixtures/
+path so the deslop lint rule is excluded and the comments are kept -- the path on
+which the bug manifests."""
+test "comment injection idempotent on comment-dense blocks" {
+    path = os.path.join(FIXTURES, "comment_dedup_regression.jac");
+    out1 = JacProgram.jac_file_formatter(path, auto_lint=True).mod.main.gen.jac;
+    out2 = JacProgram.jac_str_formatter(
+        source_str=out1, file_path=path, auto_lint=True
+    ).mod.main.gen.jac;
+    assert out1 == out2 , (
+        "comment injection is not idempotent -- comments duplicated or "
+        "misplaced across a re-format:\n" + out1
+    );
+}
+
 """Regression: inline comment after a func-call argument swallowed the next
 argument because the soft line break after the comma collapsed to a space."""
 test "inline comment in func call args" {
@@ -448,8 +472,10 @@ test "JSX slot statement bodies round-trip through the formatter" {
 }
 
 test "dynamic JSX tags round-trip through the formatter" {
-    # `<@expr ...>` syntax must survive formatting verbatim — the `@`-led
-    # dynamic-tag form is parsed into the JSX kid list and the structural
+    # a comprehension or ternary.
+    # The lowering must never leak into formatted source.
+    # Idempotency: formatting the formatted output must be a no-op.
+    # Idempotency: formatting the formatted output must be a no-op.
     # formatter must emit it back in the same shape.
     source = (
         'def:pub Box(as_: str, children: any = None) -> JsxElement {\n'
@@ -876,7 +902,7 @@ mixed JSX flat. Previously the mixed-children path emitted `hard_line()`
 between every child and the printer rstripped the trailing space, so
 `score <b>0</b> fps` silently reformatted to render `score0fps`."""
 test "jsx significant whitespace around inline elements is preserved" {
-    # Short, space-separated mixed JSX (text interleaved with <b> elements)
+    # return formatted if no errors, else return original source
     # must stay flat -- the inline spaces are significant and must survive.
     short_src = (
         'cl def:pub hud -> JsxElement {\n'

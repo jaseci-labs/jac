@@ -1,6 +1,5 @@
 impl CommentInjectionPass.postinit -> None {
     self._token_cache = {};
-    self._process_cache = {};
     self._redundant_lines_cache = {};
     self._span_cache = {};
     super.postinit();
@@ -864,7 +863,9 @@ impl CommentInjectionPass._get_tokens(nd: doc.DocType) -> list[uni.Token] {
         }
         result = tokens;
     } elif isinstance(nd, doc.IfBreak) {
-        result = self._get_tokens(nd.break_contents);
+        result = self._get_tokens(nd.break_contents) + self._get_tokens(
+            nd.flat_contents
+        );
     } else {
         result = [];
     }
@@ -903,11 +904,6 @@ impl CommentInjectionPass._find_delimiters(
 }
 
 impl CommentInjectionPass._process(ctx: uni.UniNode, nd: doc.DocType) -> doc.DocType {
-    cache_key = id(nd);
-    cached = self._process_cache.get(cache_key);
-    if cached is not None {
-        return cached;
-    }
     result: doc.DocType;
     if isinstance(nd, doc.Concat) {
         ctx = nd.ast_node or ctx;
@@ -976,13 +972,11 @@ impl CommentInjectionPass._process(ctx: uni.UniNode, nd: doc.DocType) -> doc.Doc
     } else {
         result = nd;
     }
-    self._process_cache[cache_key] = result;
     return result;
 }
 
 impl CommentInjectionPass.transform(ir_in: uni.Module) -> uni.Module {
     self._token_cache = {};
-    self._process_cache = {};
     self._redundant_lines_cache = {};
     self._span_cache = {};
     self._comments: (CommentStore | None) = None;
