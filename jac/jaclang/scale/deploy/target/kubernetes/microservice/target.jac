@@ -164,6 +164,12 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         states: list[str] = [];
         try {
             for p in core_v1.list_namespaced_pod(namespace=ns).items {
+                # A pod already being deleted (e.g. just healed) lingers here
+                # until its grace period ends; counting it would rebuild the
+                # wedge streak and falsely abort while its replacement boots.
+                if p.metadata.deletion_timestamp is not None {
+                    continue;
+                }
                 pod_name = str(p.metadata.name);
                 labels = p.metadata.labels or {};
                 app = str(labels.get("app", ""));

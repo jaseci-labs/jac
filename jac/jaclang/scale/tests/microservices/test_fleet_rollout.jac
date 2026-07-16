@@ -35,9 +35,15 @@ def _cs(
     );
 }
 
-def _pod(name: str, app: str, phase: str, inits: list, mains: list) -> object {
+def _pod(
+    name: str, app: str, phase: str, inits: list, mains: list, deleting: bool = False
+) -> object {
     return SimpleNamespace(
-        metadata=SimpleNamespace(name=name, labels={"app": app}),
+        metadata=SimpleNamespace(
+            name=name,
+            labels={"app": app},
+            deletion_timestamp=("2026-01-01T00:00:00Z" if deleting else None)
+        ),
         status=SimpleNamespace(
             phase=phase,
             init_container_statuses=inits,
@@ -359,4 +365,23 @@ test "a pod running init containers (PodInitializing) is never mount-healed" {
         "PodInitializing means volumes mounted; a slow init is not a wedge"
     );
     assert err is not None and "timed out" in str(err);
+}
+
+
+test "a terminating pod is invisible to the scanner (no false re-abort)" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="jac-shop", namespace="ns")
+    );
+    app_c = _cs("gateway", restarts=0, waiting_reason="ImagePullBackOff");
+    dying = _pod("gateway-old", "gateway", "Pending", [], [app_c], deleting=True);
+    (apps, core) = _apis(0, [dying]);
+
+    err = _run(target, _bundle("gateway-deployment", "gateway"), apps, core, 120);
+
+    assert core.delete_namespaced_pod.call_count == 0 , (
+        "a pod already terminating must not be counted or re-healed"
+    );
+    assert err is not None and "timed out" in str(err) , (
+        f"only the plain timeout may fire: {err}"
+    );
 }
