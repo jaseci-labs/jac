@@ -840,6 +840,9 @@ test "fstring literal text keeps its quotes" {
     assert lines[9] == 'oct "x" Ay';
     assert lines[10] == 'nl "x" ';
     assert lines[11] == "y";
+    # Unparsable escapes fall back to basic decoding; `\\n` stays literal there.
+    assert lines[12] == 'inv "x" \\xZZ';
+    assert lines[13] == 'inv2 "x" p\\nq \\xZZ';
 }
 
 test "fstring escape sequences" {

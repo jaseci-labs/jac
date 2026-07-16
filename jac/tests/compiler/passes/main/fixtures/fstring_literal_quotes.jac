@@ -14,4 +14,7 @@ with entry {
     print(f'esc "{a}" \x41{b}');
     print(f'oct "{a}" \101{b}');
     print(f'nl "{a}" \n{b}');
+    # Unparsable escapes fall back to basic decoding; `\\n` stays literal there.
+    print(f'inv "{a}" \xZZ');
+    print(f'inv2 "{a}" p\\nq \xZZ');
 }

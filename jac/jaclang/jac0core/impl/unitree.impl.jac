@@ -2492,16 +2492,28 @@ impl String.lit_value.getter -> str {
             return out;
         }
 
+        def decode_basic_escapes(text: str) -> str {
+            simple = {'n': '\n', 't': '\t', 'r': '\r', '\\': '\\'};
+            out = "";
+            i = 0;
+            while i < len(text) {
+                ch = text[i];
+                if ch == '\\' and i + 1 < len(text) {
+                    nxt = text[i + 1];
+                    out += simple[nxt] if nxt in simple else ch + nxt;
+                    i += 2;
+                    continue;
+                }
+                out += ch;
+                i += 1;
+            }
+            return out;
+        }
+
         try {
             return ast3.literal_eval('"' + escape_dquotes(result) + '"');
         } except (ValueError, SyntaxError) {
-            placeholder = '\x00';
-            result = result.replace('\\\\', placeholder);
-            result = result.replace('\\n', '\n');
-            result = result.replace('\\t', '\t');
-            result = result.replace('\\r', '\r');
-            result = result.replace(placeholder, '\\');
-            return result;
+            return decode_basic_escapes(result);
         }
     }
 
