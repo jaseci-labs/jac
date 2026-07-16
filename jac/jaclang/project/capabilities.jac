@@ -61,7 +61,8 @@ glob CAPABILITY_SPECS: dict[str, dict[str, any]] = {
              "deps": {
                  "kubernetes": ">=34.1.0,<35.0.0",
                  "docker": ">=7.1.0,<8.0.0",
-                 "bcrypt": ">=4.0.0,<5.0.0"
+                 "bcrypt": ">=4.0.0,<5.0.0",
+                 "python-dotenv": ">=1.2.1,<2.0.0"
              }
          },
          "llm": {

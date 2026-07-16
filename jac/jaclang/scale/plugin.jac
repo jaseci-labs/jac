@@ -257,6 +257,11 @@ def deploy_destroy(
 
     code_folder = os.path.dirname(file_path) or '.';
     dotenv_path = os.path.join(code_folder, '.env');
+    # dotenv is deploy tooling from the deploy.k8s closure; sync it before the
+    # first import so a clean operator machine does not crash on the verbs
+    # that read .env before DeploymentTargetFactory.create() runs.
+    import from .deploy.target.factory { ensure_deploy_tooling }
+    ensure_deploy_tooling();
     import from dotenv { load_dotenv }
     load_dotenv(dotenv_path);
 
@@ -310,6 +315,11 @@ def deploy_status(file_path: str, target: str = "kubernetes") -> int {
     }
     code_folder = os.path.dirname(file_path) or '.';
     dotenv_path = os.path.join(code_folder, '.env');
+    # dotenv is deploy tooling from the deploy.k8s closure; sync it before the
+    # first import so a clean operator machine does not crash on the verbs
+    # that read .env before DeploymentTargetFactory.create() runs.
+    import from .deploy.target.factory { ensure_deploy_tooling }
+    ensure_deploy_tooling();
     import from dotenv { load_dotenv }
     load_dotenv(dotenv_path);
 

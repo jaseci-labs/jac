@@ -771,12 +771,18 @@ impl check_K8s_status -> None {
 
 impl load_env_variables(code_folder: str) -> list {
     env_file = os.path.join(code_folder, '.env');
-    env_vars = dotenv_values(env_file);
+    if not os.path.exists(env_file) {
+        return [];
+    }
+    # Point-of-use import: dotenv arrives with the deploy.k8s closure on first
+    # deploy, and a dry run -- which never installs tooling -- only needs it
+    # when a .env actually exists.
+    import from jaclang.scale._optdeps.optional_deps { require_optional }
+    require_optional("dotenv", "deploy.k8s");
+    import from dotenv { dotenv_values }
     env_list = [];
-    if os.path.exists(env_file) {
-        for (key, value) in env_vars.items() {
-            env_list.append({'name': key, 'value': value});
-        }
+    for (key, value) in dotenv_values(env_file).items() {
+        env_list.append({'name': key, 'value': value});
     }
     return env_list;
 }

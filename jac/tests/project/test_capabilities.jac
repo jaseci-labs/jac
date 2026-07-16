@@ -394,7 +394,8 @@ test "missing_capability_dists reports pinned specs for absent distributions" {
         assert missing == [
             "bcrypt>=4.0.0,<5.0.0",
             "docker>=7.1.0,<8.0.0",
-            "kubernetes>=34.1.0,<35.0.0"
+            "kubernetes>=34.1.0,<35.0.0",
+            "python-dotenv>=1.2.1,<2.0.0"
         ];
     }
     assert missing_capability_dists("bogus") == [];
@@ -406,11 +407,13 @@ test "ensure_global_capability pip-installs only the missing deploy tooling" {
     with patch("importlib.metadata.distribution") as mock_dist, patch(
         "subprocess.run"
     ) as mock_run {
-        # first sweep: kubernetes + bcrypt present, docker absent;
-        # recheck: all three present
+        # first sweep: kubernetes, bcrypt, and python-dotenv present, docker
+        # absent; recheck: all four present
         mock_dist.side_effect = [
             object(),
             metadata.PackageNotFoundError("docker"),
+            object(),
+            object(),
             object(),
             object(),
             object(),
