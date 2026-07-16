@@ -6,6 +6,7 @@ import from pathlib { Path }
 import from jaclang.scale.injector.bundle {
     content_address,
     fat_bundle_enabled,
+    fat_bundle_setting,
     pack_jab
 }
 
@@ -43,27 +44,39 @@ def _member(raw: bytes, name: str) -> bytes {
 }
 
 
-test "fat_bundle_enabled reads [scale] fat_bundle with a false default" {
-    assert not fat_bundle_enabled(_app("[project]\nname = \"a\"\n"));
-    assert not fat_bundle_enabled(
+test "fat bundles default ON; [scale] fat_bundle=false opts out" {
+    assert fat_bundle_setting(_app("[project]\nname = \"a\"\n")) == (True, False);
+    assert fat_bundle_setting(
         _app("[project]\nname = \"a\"\n\n[scale]\nreplicas = 1\n")
-    );
-    assert not fat_bundle_enabled(
+    ) == (True, False);
+    assert fat_bundle_setting(
         _app("[project]\nname = \"a\"\n\n[scale]\nfat_bundle = false\n")
-    );
-    assert fat_bundle_enabled(
+    ) == (False, True);
+    assert fat_bundle_setting(
         _app("[project]\nname = \"a\"\n\n[scale]\nfat_bundle = true\n")
-    );
+    ) == (True, True);
+    assert fat_bundle_enabled(_app("[project]\nname = \"a\"\n"));
 }
 
 
-test "a thin bundle ships no _vendor tree" {
+test "fat_bundle=false ships no _vendor tree" {
+    pod = _pod_binary();
+    if pod is None {
+        return;
+    }
+    toml = "[project]\nname = \"mini\"\n\n[scale]\nfat_bundle = false\n";
+    names = _names(pack_jab(_app(toml), "", pod));
+    assert not any([n.startswith("_vendor") for n in names]) , names;
+}
+
+
+test "default-on: a bare project ships a _vendor manifest for its closure" {
     pod = _pod_binary();
     if pod is None {
         return;
     }
     names = _names(pack_jab(_app("[project]\nname = \"mini\"\n"), "", pod));
-    assert not any([n.startswith("_vendor") for n in names]) , names;
+    assert "_vendor/VENDOR.json" in names , names;
 }
 
 

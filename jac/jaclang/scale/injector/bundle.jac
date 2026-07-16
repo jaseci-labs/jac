@@ -246,7 +246,11 @@ def _precompile_app(base: Path, pod_binary: bytes) -> Path {
 }
 
 
-def fat_bundle_enabled(project_dir: str) -> bool {
+def fat_bundle_setting(project_dir: str) -> tuple[bool, bool] {
+    # Returns (enabled, explicit). Fat bundles are the DEFAULT; an explicit
+    # `[scale] fat_bundle = true` additionally makes vendoring failures fatal,
+    # while the implicit default falls back to a thin bundle with a warning,
+    # so projects with un-vendorable deps (e.g. sdist-only) keep deploying.
     import from jaclang.project.config { get_config_for_path }
     # pack_jab tolerates malformed jac.tomls (the sanitizer is line-based), so
     # an unparseable config means thin bundle, not a failed deploy.
@@ -254,16 +258,23 @@ def fat_bundle_enabled(project_dir: str) -> bool {
         config = get_config_for_path(Path(project_dir));
     } except Exception as exc {
         logger.warning(f"fat_bundle check skipped, jac.toml unparseable: {exc}");
-        return False;
+        return (False, False);
     }
     if config is None {
-        return False;
+        # No project config: nothing to resolve a dep closure against.
+        return (False, False);
     }
     section = config.get_section("scale");
-    if section is None {
-        return False;
+    if section is None or "fat_bundle" not in section {
+        return (True, False);
     }
-    return bool(section.get("fat_bundle", False));
+    return (bool(section.get("fat_bundle")), True);
+}
+
+
+def fat_bundle_enabled(project_dir: str) -> bool {
+    (enabled, _) = fat_bundle_setting(project_dir);
+    return enabled;
 }
 
 
@@ -312,8 +323,23 @@ def pack_jab(project_dir: str, provisioned_database: str, pod_binary: bytes) -> 
     # failed deploy (accumulates on a retrying deploy driver).
     try {
         sanitized = sanitized_jac_toml(base, provisioned_database);
-        if fat_bundle_enabled(project_dir) {
-            _vendor_stage(staged, sanitized, pod_binary);
+        (fat, fat_explicit) = fat_bundle_setting(project_dir);
+        if fat {
+            try {
+                _vendor_stage(staged, sanitized, pod_binary);
+            } except Exception as exc {
+                if fat_explicit {
+                    raise;
+                }
+                # Default-on mode degrades to the pre-fat behavior (pods
+                # install from PyPI at boot) instead of blocking the deploy.
+                shutil.rmtree(str(staged / "_vendor"), ignore_errors=True);
+                logger.warning(
+                    f"Fat bundle vendoring failed; shipping a thin bundle "
+                    f"(pods will install python deps from PyPI at boot). "
+                    f"Set [scale] fat_bundle = true to make this fatal. {exc}"
+                );
+            }
         }
         buf = io.BytesIO();
         (tar, gz) = open_det_tar(buf);
