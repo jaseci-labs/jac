@@ -3,6 +3,13 @@ import re;
 import from dataclasses { fields, is_dataclass }
 import from jaclang.byllm._optdeps.loguru { logger }
 
+# Condensed-context cache for multistage routing: intent/incl_info are
+# re-sent verbatim on every hop, so one condensation serves a whole traversal.
+glob _CTX_BRIEF_CACHE: dict = {},
+     _CTX_BRIEF_CACHE_MAX: int = 32,
+     # Below this size, condensing costs more tokens than it saves.
+     _CONDENSE_MIN_CHARS: int = 400;
+
 
 def _class_info(arch: object) -> object {
     import from jaclang.jac0core.mtp { fetch_mtir }
@@ -14,13 +21,13 @@ def _class_info(arch: object) -> object {
 }
 
 
-def _safe_repr(value: object, limit: int = 120) -> str {
+def _safe_repr(value: object, limit: int | None = 120) -> str {
     try {
         text = repr(value);
     } except Exception {
         text = f"<{type(value).__name__}>";
     }
-    if len(text) <= limit {
+    if limit is None or len(text) <= limit {
         return text;
     }
     keep = (limit - 5) // 2;
@@ -28,7 +35,7 @@ def _safe_repr(value: object, limit: int = 120) -> str {
 }
 
 
-def _describe_arch(arch: object) -> str {
+def _describe_arch(arch: object, limit: int | None = 120) -> str {
     if arch is None {
         return "(none)";
     }
@@ -49,7 +56,7 @@ def _describe_arch(arch: object) -> str {
             if f.name.startswith("_") {
                 continue;
             }
-            val = _safe_repr(getattr(arch, f.name));
+            val = _safe_repr(getattr(arch, f.name), limit);
             label = f"{f.name} ({fsem[f.name]})" if f.name in fsem else f.name;
             parts.append(f"{label}={val}");
         }
@@ -241,26 +248,37 @@ def _resolve_choice(item: object, by_handle: dict, recs: list) -> object {
 }
 
 
-def route_visit(candidates: list, model: object) -> list {
-    import from jaclang.byllm.mtir { MTRuntime }
-    import from jaclang.byllm.types { Message, MessageRole }
-    import from jaclang.jac0core.runtime { JacRuntime as Jac }
-
-    if not candidates {
-        return [];
-    }
-
-    call_params = model?.call_params or {};
+def _normalize_select(call_params: dict) -> object {
     select = call_params.get("select", "all");
-
     if isinstance(select, int) and not isinstance(select, bool) and (select < 1) {
         select = "all";
     }
-    intent = call_params.get("intent");
-    incl_info = call_params.get("incl_info");
+    return select;
+}
 
-    (wkr, here_anchor) = _route_context();
 
+def _select_directive(select: object) -> str {
+    if select == 1 {
+        return " Choose exactly one.";
+    } elif isinstance(select, int) and not isinstance(select, bool) {
+        return f" Choose exactly {select}.";
+    } elif isinstance(select, tuple) and len(select) == 2 {
+        return f" Choose between {select[0]} and {select[1]} (inclusive).";
+    }
+    return "";
+}
+
+
+def _routing_api_params(call_params: dict) -> dict {
+    return {
+        k: v
+        for (k, v) in call_params.items()
+        if k not in ("select", "intent", "incl_info", "multistage")
+    };
+}
+
+
+def _build_recs(candidates: list, here_anchor: object) -> list {
     recs: list = [];
     for item in candidates {
         (edge_arch, node_arch, direction) = _candidate_for(item, here_anchor);
@@ -271,10 +289,14 @@ def route_visit(candidates: list, model: object) -> list {
     for (i, handle) in enumerate(_make_handles(recs)) {
         recs[i]["handle"] = handle;
     }
+    return recs;
+}
 
+
+def _render_candidates(recs: list, wkr: object, limit: int | None = 120) -> str {
     lines: list = [];
     for r in recs {
-        node_txt = _describe_arch(r["node"]);
+        node_txt = _describe_arch(r["node"], limit);
         runs = _node_run_desc(r["node"], wkr);
         if runs {
             node_txt = node_txt + f" [runs: {runs}]";
@@ -282,7 +304,7 @@ def route_visit(candidates: list, model: object) -> list {
         if r["edge"] is None {
             lines.append(f"{r['handle']}) {node_txt}");
         } else {
-            edge_txt = _describe_arch(r["edge"]);
+            edge_txt = _describe_arch(r["edge"], limit);
             if r["dir"] == "in" {
                 arrow = f"<--({edge_txt})--";
             } elif r["dir"] == "undir" {
@@ -293,7 +315,247 @@ def route_visit(candidates: list, model: object) -> list {
             lines.append(f"{r['handle']}) here {arrow} {node_txt}");
         }
     }
-    candidates_block = "\n".join(lines);
+    return "\n".join(lines);
+}
+
+
+def _collect_chosen(selected: list, recs: list) -> list {
+    by_handle = {r["handle"]: r["node"] for r in recs};
+    chosen: list = [];
+    seen_ids: set = set();
+    for item in selected {
+        picked = _resolve_choice(item, by_handle, recs);
+        if picked is not None and id(picked) not in seen_ids {
+            seen_ids.add(id(picked));
+            chosen.append(picked);
+        }
+    }
+    return chosen;
+}
+
+
+def _trim_selection(chosen: list, select: object, n_cands: int) -> list {
+    if select == 1 {
+        chosen = chosen[:1];
+    } elif isinstance(select, int) and not isinstance(select, bool) {
+        chosen = chosen[:select];
+    } elif isinstance(select, tuple) and len(select) == 2 {
+        chosen = chosen[:select[1]];
+        if len(chosen) < select[0] {
+            logger.warning(
+                f"visit-by routing: requested at least {select[0]} node(s) (select={select}) but the model selected {len(
+                    chosen
+                )} from {n_cands} candidate(s)."
+            );
+        }
+    }
+    return chosen;
+}
+
+
+"""Stage 1 of multistage routing: condense the caller-supplied context.
+
+`intent`/`incl_info` are re-sent verbatim on every hop, so their token cost
+scales as context x traversal depth. This compresses them once into a short
+brief and caches the result keyed on the raw text, so subsequent hops (which
+carry the identical context) pay nothing. Short context is passed through
+untouched -- condensing it would cost more than it saves.
+"""
+def _condense_context(
+    intent: object, incl_info: object, model: object, api_params: dict
+) -> str {
+    import from jaclang.byllm.mtir { MTRuntime }
+    import from jaclang.byllm.types { Message, MessageRole }
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
+
+    parts: list = [];
+    if intent {
+        parts.append(f"Goal: {intent}");
+    }
+    if incl_info and isinstance(incl_info, dict) {
+        parts.append("\n".join([f"{k} = {v}" for (k, v) in incl_info.items()]));
+    }
+    raw_ctx = "\n\n".join(parts);
+    if not raw_ctx or len(raw_ctx) <= _CONDENSE_MIN_CHARS {
+        return raw_ctx;
+    }
+    cached = _CTX_BRIEF_CACHE.get(raw_ctx);
+    if cached is not None {
+        return cached;
+    }
+    sys_txt = (
+        "You are a helper to compress task context for a graph-routing agent. Rewrite the " + "context below as a brief text, keeping every " + "detail that could matter for choosing which node a walker visits " + "next. Output plain text only."
+    );
+    mt_run = MTRuntime(
+        messages=[
+            Message(role=MessageRole.SYSTEM, content=sys_txt),
+            Message(role=MessageRole.USER, content=raw_ctx)
+        ],
+        resp_type=str,
+        stream=False,
+        tools=[],
+        call_params=api_params,
+        mtir=None
+    );
+    brief = str(Jac.call_llm(model, mt_run));
+    if len(_CTX_BRIEF_CACHE) >= _CTX_BRIEF_CACHE_MAX {
+        _CTX_BRIEF_CACHE.clear();
+    }
+    _CTX_BRIEF_CACHE[raw_ctx] = brief;
+    return brief;
+}
+
+
+"""Parse the trailing 'CHOICE: <handle>[, <handle>...]' line of the reasoning.
+
+Returns the handle list when every token is a valid handle, [] when the model
+explicitly chose nothing, and None when no well-formed choice line is found
+(the caller then falls back to the structured extraction call).
+"""
+def _parse_choice_line(reasoning: str, handles: list) -> list | None {
+    valid = set(handles);
+    for line in reversed(reasoning.strip().splitlines()) {
+        m = re.search(r"choice\s*:\s*(.+)$", line.strip(), re.IGNORECASE);
+        if m is None {
+            continue;
+        }
+        toks = [t.strip().strip("'\"`*.") for t in m.group(1).split(",")];
+        toks = [
+            t
+            for t in toks
+            if t
+        ];
+        if len(toks) == 1 and toks[0].lower() in ("none", "(none)", "nothing") {
+            return [];
+        }
+        if toks and all((t in valid) for t in toks) {
+            return toks;
+        }
+        return None;
+    }
+    return None;
+}
+
+
+"""Multistage visit routing: condense -> reason -> extract.
+
+Decouples the single routing call into stages so each LLM call has a short,
+single-purpose prompt that small models handle reliably: (1) the unbounded
+caller context (intent/incl_info) is condensed once and cached across hops
+instead of being re-paid per hop; (2) the routing decision is made in free
+text, leaving room for reasoning tokens instead of forcing constrained
+decoding to commit immediately; (3) the structured choice is extracted last --
+for free when the reasoning ends in a well-formed 'CHOICE:' line, otherwise
+via one short schema-constrained call. Enabled with `by llm(multistage=True)`.
+"""
+def route_visit_multistage(candidates: list, model: object) -> list {
+    import from jaclang.byllm.mtir { MTRuntime }
+    import from jaclang.byllm.types { Message, MessageRole }
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
+
+    if not candidates {
+        return [];
+    }
+
+    call_params = model?.call_params or {};
+    select = _normalize_select(call_params);
+    intent = call_params.get("intent");
+    incl_info = call_params.get("incl_info");
+    api_params = _routing_api_params(call_params);
+    # The intermediate stages are internal decision calls; never stream them.
+    api_params.pop("stream", None);
+
+    (wkr, here_anchor) = _route_context();
+    recs = _build_recs(candidates, here_anchor);
+    handles = [r["handle"] for r in recs];
+    # Multistage reasons over full context in free text, so field values are
+    # rendered untruncated (limit=None); the single-stage path keeps the cap.
+    candidates_block = _render_candidates(recs, wkr, None);
+    directive = _select_directive(select);
+
+    brief = _condense_context(intent, incl_info, model, api_params);
+
+    reason_sys = (
+        "You are routing a graph walker. Reason briefly about which " + "candidate node(s) the walker should visit next." + directive + " End your reply with one final line of the form " + "'CHOICE: <handle>' (comma-separated for several handles, or " + "'CHOICE: none' to visit nothing). Use only listed handles."
+    );
+    user_parts: list = [];
+    if brief {
+        user_parts.append(f"Task brief:\n{brief}");
+    }
+    if wkr is not None {
+        user_parts.append(f"Walker:\n{_describe_arch(wkr, None)}");
+    }
+    if here_anchor is not None {
+        user_parts.append(f"Current node:\n{_describe_arch(here_anchor.archetype, None)}");
+    }
+    user_parts.append(f"Candidates (choose by handle):\n{candidates_block}");
+
+    reason_run = MTRuntime(
+        messages=[
+            Message(role=MessageRole.SYSTEM, content=reason_sys),
+            Message(role=MessageRole.USER, content="\n\n".join(user_parts))
+        ],
+        resp_type=str,
+        stream=False,
+        tools=[],
+        call_params=api_params,
+        mtir=None
+    );
+    reasoning = str(Jac.call_llm(model, reason_run));
+
+    selected = _parse_choice_line(reasoning, handles);
+    if selected is None {
+        Choice = enum.Enum("RouteChoice", {h: h for h in handles}) if handles else None;
+        resp_type = list[Choice] if Choice is not None else list;
+        extract_sys = (
+            "Extract the routing decision from the reasoning below. " + "Return only valid candidate handles." + directive
+        );
+        extract_user = (
+            f"Valid handles: {', '.join(handles)}\n\nReasoning:\n{reasoning}"
+        );
+        extract_run = MTRuntime(
+            messages=[
+                Message(role=MessageRole.SYSTEM, content=extract_sys),
+                Message(role=MessageRole.USER, content=extract_user)
+            ],
+            resp_type=resp_type,
+            stream=False,
+            tools=[],
+            call_params=api_params,
+            mtir=None
+        );
+        raw = Jac.call_llm(model, extract_run);
+        selected = raw if isinstance(raw, list) else [raw];
+    }
+
+    chosen = _collect_chosen(selected, recs);
+    return _trim_selection(chosen, select, len(recs));
+}
+
+
+def route_visit(candidates: list, model: object) -> list {
+    import from jaclang.byllm.mtir { MTRuntime }
+    import from jaclang.byllm.types { Message, MessageRole }
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
+
+    if not candidates {
+        return [];
+    }
+
+    call_params = model?.call_params or {};
+    if call_params.get("multistage") is True {
+        if call_params.get("verbose") is True {
+            print("\033[31m Visit by enabled multistage routing \033[0m");
+        }
+        return route_visit_multistage(candidates, model);
+    }
+    select = _normalize_select(call_params);
+    intent = call_params.get("intent");
+    incl_info = call_params.get("incl_info");
+
+    (wkr, here_anchor) = _route_context();
+    recs = _build_recs(candidates, here_anchor);
+    candidates_block = _render_candidates(recs, wkr);
 
     user_parts: list = [];
     if intent {
@@ -311,64 +573,29 @@ def route_visit(candidates: list, model: object) -> list {
     }
 
     sys_txt = "You are routing a graph walker. Choose which candidate node(s) the " + "walker should visit next, by handle. Return only valid handles.";
-    if select == 1 {
-        sys_txt += " Choose exactly one.";
-    } elif isinstance(select, int) and not isinstance(select, bool) {
-        sys_txt += f" Choose exactly {select}.";
-    } elif isinstance(select, tuple) and len(select) == 2 {
-        sys_txt += f" Choose between {select[0]} and {select[1]} (inclusive).";
-    }
+    sys_txt += _select_directive(select);
 
     handles = [r["handle"] for r in recs];
 
     Choice = enum.Enum("RouteChoice", {h: h for h in handles}) if handles else None;
     resp_type = list[Choice] if Choice is not None else list;
 
-    api_params = {
-        k: v
-        for (k, v) in call_params.items()
-        if k not in ("select", "intent", "incl_info")
-    };
+    api_params = _routing_api_params(call_params);
     mt_run = MTRuntime(
         messages=[
             Message(role=MessageRole.SYSTEM, content=sys_txt),
-            Message(role=MessageRole.USER, content="\n\n".join(user_parts)),
-
+            Message(role=MessageRole.USER, content="\n\n".join(user_parts))
         ],
         resp_type=resp_type,
         stream=bool(call_params.get("stream", False)),
         tools=[],
         call_params=api_params,
-        mtir=None,
+        mtir=None
     );
 
     raw = Jac.call_llm(model, mt_run);
 
     selected = raw if isinstance(raw, list) else [raw];
-    by_handle = {r["handle"]: r["node"] for r in recs};
-    chosen: list = [];
-    seen_ids: set = set();
-    for item in selected {
-        picked = _resolve_choice(item, by_handle, recs);
-        if picked is not None and id(picked) not in seen_ids {
-            seen_ids.add(id(picked));
-            chosen.append(picked);
-        }
-    }
-
-    if select == 1 {
-        chosen = chosen[:1];
-    } elif isinstance(select, int) and not isinstance(select, bool) {
-        chosen = chosen[:select];
-    } elif isinstance(select, tuple) and len(select) == 2 {
-        chosen = chosen[:select[1]];
-        if len(chosen) < select[0] {
-            logger.warning(
-                f"visit-by routing: requested at least {select[0]} node(s) (select={select}) but the model selected {len(
-                    chosen
-                )} from {len(recs)} candidate(s)."
-            );
-        }
-    }
-    return chosen;
+    chosen = _collect_chosen(selected, recs);
+    return _trim_selection(chosen, select, len(recs));
 }
