@@ -400,15 +400,17 @@ impl tool_to_schema(
     required: list[str] = schema.get("required", []);  # type: ignore
     for (param_name, param_info) in properties.items() {
         param_info["description"] = params_desc.get(param_name, "");  # type: ignore
-        param_info.pop(
-            "title", None
-        );  # type: ignore  # Gemini rejects 'title' in property schemas
+        # Recursive: nested Title-Cased labels invite the model to rename
+        # fields. Gemini also rejects 'title' in property schemas.
+        _strip_titles(param_info);
     }
     return {
         "type": "function",
         "function": {
             "name": func.__name__,
             "description": description,
+            # Enforce exact property names, mirroring type_to_schema.
+            "strict": True,
             "parameters": {
                 "type": "object",
                 "properties": properties,
@@ -422,11 +424,166 @@ impl tool_to_schema(
     };
 }
 
+"""Recursively drop every `title` key from a (nested) JSON-schema fragment."""
+impl _strip_titles(sch: object) -> None {
+    if isinstance(sch, dict) {
+        d: dict = sch;
+        d.pop("title", None);
+        for v in list(d.values()) {
+            _strip_titles(v);
+        }
+    } elif isinstance(sch, list) {
+        lst: list = sch;
+        for it in lst {
+            _strip_titles(it);
+        }
+    }
+}
+
+"""Case/format-insensitive matching form of a key (`Root Cause` -> `rootcause`)."""
+impl _norm_key(k: str) -> str {
+    return k.replace("_", "").replace(" ", "").replace("-", "").lower();
+}
+
+"""Pick the dataclass arm whose fields best match the emitted keys (first on tie)."""
+impl _best_union_arm(data: dict, arms: list) -> any {
+    best_arm = None;
+    best_score = 0;
+    for arm in arms {
+        field_norms = {
+            _norm_key(str(name))
+            for name in get_type_hints(arm)
+            if not str(name).startswith("_")
+        };
+        score = sum(
+            [
+                1
+                for k in data.keys()
+                if _norm_key(str(k)) in field_norms
+            ]
+        );
+        if score > best_score {
+            best_score = score;
+            best_arm = arm;
+        }
+    }
+    return best_arm;
+}
+
+"""Type-directed remap of model-emitted keys onto real dataclass field names."""
+impl normalize_json_keys(data: object, ty: any) -> object {
+    origin = get_origin(ty);
+    if origin in (Union, UnionType) {
+        structural = [
+            arm
+            for arm in get_args(ty)
+            if is_dataclass(arm) or get_origin(arm) in (dict, list)
+        ];
+        # Optional[T] and similar: exactly one structural arm, unambiguous.
+        if len(structural) == 1 {
+            return normalize_json_keys(data, structural[0]);
+        }
+        # Union of dataclasses only: pick the arm whose fields best match the
+        # emitted keys and repair against it. A dict/list arm carries real keys
+        # as data, so its presence makes the shape ambiguous -- leave the
+        # payload untouched rather than risk renaming a genuine dict key.
+        dc_arms = [
+            arm
+            for arm in structural
+            if is_dataclass(arm)
+        ];
+        if (
+            isinstance(data, dict)
+            and len(dc_arms) > 1
+            and len(dc_arms) == len(structural)
+        ) {
+            best_arm = _best_union_arm(data, dc_arms);
+            if best_arm is not None {
+                return normalize_json_keys(data, best_arm);
+            }
+        }
+        return data;
+    }
+    if origin is list and isinstance(data, list) {
+        largs = get_args(ty);
+        if not largs {
+            return data;
+        }
+        items: list = data;
+        return [normalize_json_keys(it, largs[0]) for it in items];
+    }
+    # dict[str, V]: keys are real data -- only recurse into the values.
+    if origin is dict and isinstance(data, dict) {
+        dargs = get_args(ty);
+        if len(dargs) != 2 {
+            return data;
+        }
+        dval: dict = data;
+        return {k: normalize_json_keys(v, dargs[1]) for (k, v) in dval.items()};
+    }
+    # Dataclass: remap emitted keys onto the real field names.
+    if is_dataclass(ty) and isinstance(data, dict) {
+        field_types: dict = {
+            name: t
+            for (name, t) in get_type_hints(ty).items()
+            if not name.startswith("_")
+        };
+        lookup: dict = {_norm_key(str(name)): name for name in field_types};
+        src: dict = data;
+        out: dict = {};
+        exact: list = [];
+        # Exact field-name matches win: a Title-Case variant must never clobber
+        # a value the model already supplied under the real field name.
+        for (k, v) in src.items() {
+            if k in field_types {
+                out[k] = normalize_json_keys(v, field_types[k]);
+                exact.append(k);
+            }
+        }
+        for (k, v) in src.items() {
+            if k in field_types {
+                continue;
+            }
+            nk = _norm_key(str(k));
+            if nk not in lookup {
+                logger.warning(
+                    f"byllm: {ty.__name__} has no field for emitted key {k!r}; "
+                    "ignored (matching field left at default)."
+                );
+                out[k] = v;
+            } else {
+                canon = lookup[nk];
+                normalized = normalize_json_keys(v, field_types[canon]);
+                if canon in exact or canon in out {
+                    # A second key maps to a field already populated (by its real
+                    # name or an earlier alias). Identical values are a harmless
+                    # duplicate; conflicting values are genuinely ambiguous, so
+                    # reject rather than pick one silently -- the caller retries
+                    # (OutputConversionError) or the model sees a tool error and
+                    # self-corrects.
+                    if normalized != out[canon] {
+                        raise OutputConversionError(
+                            f"byllm: {ty.__name__} received conflicting values for "
+                            f"field {canon!r} (including alias {k!r}); cannot "
+                            "disambiguate the intended value."
+                        );
+                    }
+                } else {
+                    out[canon] = normalized;
+                }
+            }
+        }
+        return out;
+    }
+    return data;
+}
+
 """Convert a JSON dictionary to an instance of the given type."""
 impl json_to_instance(json_obj: dict, ty: type) -> object {
     json_obj = _unwrap_from_object(json_obj);
     json_obj = _decode_dict(json_obj);
-    return TypeAdapter(ty).validate_python(json_obj);
+    normalized = normalize_json_keys(json_obj, ty);
+    return TypeAdapter(ty).validate_python(normalized);
 }
 
 # ---------------------------------------------------------------------------

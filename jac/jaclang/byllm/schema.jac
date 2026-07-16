@@ -4,16 +4,19 @@ This module provides functionality to generate JSON schemas for classes and type
 and to validate instances against these schemas.
 """
 
+import logging;
 import from dataclasses { is_dataclass }
 import from enum { Enum }
 import from types { FunctionType, MethodType, UnionType }
 import from typing { Callable, Union, get_args, get_origin, get_type_hints }
 import from jaclang.byllm._optdeps.pydantic { TypeAdapter }
 import from jaclang.jac0core.mtp { Info, FieldInfo, ClassInfo, ParamInfo, EnumInfo }
-import from jaclang.byllm.exceptions { ConfigurationError }
+import from jaclang.byllm.exceptions { ConfigurationError, OutputConversionError }
 
 glob _SCHEMA_OBJECT_WRAPPER = "schema_object_wrapper",
      _SCHEMA_DICT_WRAPPER = "schema_dict_wrapper";
+
+glob logger: logging.Logger = logging.getLogger("byllm.schema");
 
 def _type_to_schema(
     ty: type, title: str = "", desc: str = "", info: Info = None
@@ -28,6 +31,22 @@ def type_to_schema(resp_type: type, info: Info) -> dict[str, object];
 def tool_to_schema(
     func: Callable, description: str, params_desc: dict[str, str], info: Info
 ) -> dict[str, object];
+
+"""Recursively drop every `title` key from a (nested) JSON-schema fragment."""
+def _strip_titles(sch: object) -> None;
+
+"""Case/format-insensitive matching form of a key (`Root Cause` -> `rootcause`)."""
+def _norm_key(k: str) -> str;
+
+"""Pick the dataclass arm of a union whose fields best match the emitted keys."""
+def _best_union_arm(data: dict, arms: list) -> any;
+
+"""Remap Title-Cased model keys onto dataclass field names, type-directed.
+
+Only touches dataclass levels, never a real `dict[str, V]` field's keys.
+Unmatched keys are left for pydantic to drop (and logged).
+"""
+def normalize_json_keys(data: object, ty: any) -> object;
 
 def json_to_instance(json_obj: dict, ty: type) -> object;
 
