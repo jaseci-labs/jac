@@ -239,6 +239,29 @@ python_image = "123456789012.dkr.ecr.us-east-2.amazonaws.com/jaclang:latest"
 That is the only registry a deploy depends on, and only for the base image --
 your code is never baked into it.
 
+### Base Image Channel
+
+Which `jaseci/jaclang` tag pods boot from is chosen automatically:
+
+| `jac.toml`                     | Base image                     |
+| ------------------------------ | ------------------------------ |
+| _(default)_                    | `jaseci/jaclang:latest`        |
+| `[dev]`                        | `jaseci/jaclang:dev` (main HEAD) |
+| `[experimental]` `pr = <N>`    | `jaseci/jaclang:experimental-<N>` |
+
+The experimental channel runs an open PR's own build in your pods, for trying a
+not-yet-merged change against a real cluster:
+
+```toml
+[experimental]
+pr = 7494
+```
+
+A maintainer publishes that image on demand (the **Experimental jac image**
+workflow, dispatched with the PR number); it is deleted when the PR merges or
+closes. If it is not published yet, the deploy falls back to `:dev`. An explicit
+`python_image` still overrides all of this.
+
 ---
 
 ## Cross-Service Shared Filesystem

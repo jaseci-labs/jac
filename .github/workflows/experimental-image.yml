@@ -1,0 +1,196 @@
+name: Experimental jac image (per-PR)
+
+# Publishes jaseci/jaclang:experimental-<PR#> from an open PR's latest commit so
+# it can be tested in a cluster before merge (point [experimental] pr = <PR#> at
+# it in jac.toml). Dispatch is manual: it builds contributor HEAD with the push
+# token in scope, so write access IS the vouch -- never auto-triggered on forks.
+# The tag is deleted when the PR merges or closes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Open PR number to build (image is jaseci/jaclang:experimental-<PR#>)."
+        required: true
+        type: string
+  pull_request_target:
+    types: [closed]
+
+permissions:
+  contents: read
+
+# One in-flight build per PR; a newer dispatch supersedes an older one. The
+# group keys off whichever event carries the number.
+concurrency:
+  group: experimental-image-${{ github.event_name == 'workflow_dispatch' && inputs.pr || github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  resolve:
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'jaseci-labs/jac'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      pr: ${{ inputs.pr }}
+    steps:
+      - name: Verify the PR is open
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ inputs.pr }}
+        run: |
+          set -euo pipefail
+          state="$(gh pr view "$PR" --json state --jq .state)"
+          if [ "$state" != "OPEN" ]; then
+            echo "::error::PR #$PR is $state; experimental images are built only for OPEN PRs."
+            exit 1
+          fi
+          echo "PR #$PR is open; building refs/pull/$PR/head."
+
+  build:
+    needs: resolve
+    strategy:
+      fail-fast: false
+      matrix:
+        # One native runner per arch: setup-jac builds host-native, no cross-compile.
+        include:
+          - os: ubuntu-latest
+            platform: amd64
+          - os: ubuntu-24.04-arm
+            platform: arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      # refs/pull/<N>/head lives on the base repo, so fork PRs resolve too.
+      # SHA-pinned: this job builds contributor code.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: refs/pull/${{ needs.resolve.outputs.pr }}/head
+
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/setup-jac
+
+      - name: Stage the binary
+        run: |
+          set -euxo pipefail
+          mkdir -p out
+          cp jac/zig-out/bin/jac out/jac
+          chmod +x out/jac
+
+      - name: Upload the arch binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: jac-experimental-${{ matrix.platform }}
+          path: out/jac
+          if-no-files-found: error
+
+  image:
+    needs: [resolve, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      # Presence flag ("true"/"false"): `secrets` is not available in step `if:`
+      # expressions, and the token value itself must not sit in env.
+      DOCKERHUB_TOKEN_SET: ${{ secrets.DOCKERHUB_TOKEN != '' }}
+    steps:
+      # Only the Dockerfile is needed; the binaries carry the PR's code.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Fail if publishing secrets are missing (org repo)
+        if: github.repository == 'jaseci-labs/jac' && (env.DOCKERHUB_USERNAME == '' || env.DOCKERHUB_TOKEN_SET != 'true')
+        run: |
+          echo "::error::DOCKERHUB_USERNAME/DOCKERHUB_TOKEN are not configured; cannot publish the experimental image."
+          exit 1
+
+      - name: Fetch the amd64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: jac-experimental-amd64
+          path: ctx/amd64
+
+      - name: Fetch the arm64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: jac-experimental-arm64
+          path: ctx/arm64
+
+      - name: Stage the build context
+        run: |
+          set -euxo pipefail
+          chmod +x ctx/amd64/jac ctx/arm64/jac
+          cp docker/jaclang.Dockerfile ctx/Dockerfile
+
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+        if: env.DOCKERHUB_USERNAME != ''
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+        if: env.DOCKERHUB_USERNAME != ''
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        if: env.DOCKERHUB_USERNAME != ''
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push (linux/amd64, linux/arm64)
+        if: env.DOCKERHUB_USERNAME != ''
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: ctx
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: jaseci/jaclang:experimental-${{ needs.resolve.outputs.pr }}
+
+      - name: Summary
+        if: env.DOCKERHUB_USERNAME != ''
+        env:
+          PR: ${{ needs.resolve.outputs.pr }}
+        run: |
+          {
+            echo "## Experimental image published"
+            echo ""
+            echo '`jaseci/jaclang:experimental-'"$PR"'`'
+            echo ""
+            echo "Point a deploy at it with \`[experimental] pr = $PR\` in jac.toml."
+            echo "It is deleted automatically when PR #$PR is merged or closed."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  cleanup:
+    if: github.event_name == 'pull_request_target' && github.repository == 'jaseci-labs/jac'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # No checkout: pull_request_target is privileged, so run no PR-controlled code.
+      - name: Delete the experimental tag from Docker Hub
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          REPO="jaseci/jaclang"
+          TAG="experimental-${PR}"
+          if [ -z "${DOCKERHUB_USERNAME:-}" ] || [ -z "${DOCKERHUB_TOKEN:-}" ]; then
+            echo "::notice::Docker Hub secrets absent (fork or unconfigured); nothing to delete."
+            exit 0
+          fi
+          JWT="$(curl -fsSL -H 'Content-Type: application/json' \
+            -d "{\"username\": \"${DOCKERHUB_USERNAME}\", \"password\": \"${DOCKERHUB_TOKEN}\"}" \
+            https://hub.docker.com/v2/users/login/ | jq -r .token)"
+          if [ -z "$JWT" ] || [ "$JWT" = "null" ]; then
+            echo "::error::Docker Hub login failed; cannot delete ${REPO}:${TAG}."
+            exit 1
+          fi
+          code="$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
+            -H "Authorization: JWT ${JWT}" \
+            "https://hub.docker.com/v2/repositories/${REPO}/tags/${TAG}/")"
+          case "$code" in
+            204) echo "Deleted ${REPO}:${TAG}." ;;
+            # Most PRs never get an experimental image; a missing tag is success.
+            404) echo "${REPO}:${TAG} not found (never built or already deleted); nothing to do." ;;
+            403) echo "::error::Docker Hub returned 403 deleting ${REPO}:${TAG}; the access token lacks delete permission."; exit 1 ;;
+            *)   echo "::error::Unexpected HTTP ${code} deleting ${REPO}:${TAG}."; exit 1 ;;
+          esac
