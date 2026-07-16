@@ -24,7 +24,11 @@ import from jaclang.project { config as config_mod }
 
 glob CLEAN = "def f(x: int) -> int {\n    return x + 1;\n}\n",
      NEEDS_FMT = "def f(x:int)->int{return x+1;}\n",
-     BROKEN = "def f(x: int) -> int {\n    return x + ;\n}\n";
+     BROKEN = "def f(x: int) -> int {\n    return x + ;\n}\n",
+     CLEAN_MOD = "# top-level comment\nobj Foo {\n    def bar -> int;\n}\n",
+     CLEAN_MOD_V2 = "# top-level comment v2\nobj Foo {\n    def bar -> int;\n}\n",
+     CLEAN_IMPL = "def foo -> int {\n    return 42;\n}\n",
+     NEEDS_FMT_IMPL = "def foo->int{return 42;}\n";
 
 """Make a temp project (with jac.toml) and return its path."""
 def make_project -> str {
@@ -397,6 +401,54 @@ test "precommit cache uses nested file config instead of root anchor" {
         assert r2 == 0;
         assert stats2.get("hits", 0) == 0 and stats2.get("misses", 0) == 1 , (
             f"nested config changes must invalidate the cache, got {stats2}"
+        );
+    } finally {
+        os.chdir(old);
+        shutil.rmtree(repo, ignore_errors=True);
+    }
+}
+
+test "staged verify cache key covers tracked annex in the format unit" {
+    # P1: when `precommit --staged --verify` builds a temp checkout from
+    # staged targets, sibling .impl.jac/.test.jac annexes that were tracked
+    # (committed) but not themselves staged were absent from the temp dir.
+    # The cache key then covered only the main file, and a clean verdict
+    # that skipped an unformatted annex could be recorded.  The fix ensures
+    # tracked annexes are checked out into the temp directory so the
+    # formatter verifies the full module unit and the cache key covers it.
+    #
+    # Proof: stage *only* the clean main file while a tracked annex in the
+    # index is unformatted.  Without the fix the verify passes (annex
+    # absent → skipped); with the fix it must fail (annex now verified).
+    import subprocess;
+    repo = tempfile.mkdtemp(prefix="fmtcache-annex-pc-");
+    subprocess.run(["git", "init", "-q", repo], check=True);
+    (Path(repo) / "jac.toml").write_text(
+        '[project]\nname = "anx"\nversion = "0.0.1"\n\n'
+        '[precommit]\ntypecheck = false\n'
+    );
+    old = os.getcwd();
+    os.chdir(repo);
+    try {
+        import from jaclang.project { config as config_mod }
+        f = Path(repo) / "mod.jac";
+        annex = Path(repo) / "mod.impl.jac";
+        f.write_text(CLEAN_MOD);
+        annex.write_text(NEEDS_FMT_IMPL);
+        subprocess.run(["git", "add", "mod.jac", "mod.impl.jac"], check=True, cwd=repo);
+        subprocess.run(["git", "commit", "-qm", "c0"], check=True, cwd=repo);
+        # Now the annex is tracked & clean-in-index but unformatted.
+        # Stage ONLY the main file with a different clean content.
+        f.write_text(CLEAN_MOD_V2);
+        subprocess.run(["git", "add", "mod.jac"], check=True, cwd=repo);
+        config_mod._config = None;
+        config_mod._config_explicit = False;
+        config_mod._config_by_root = {};
+        rc = precommit(staged=True, verify=True);
+        assert rc != 0 , (
+            "staged verify must fail when a tracked annex is unformatted "
+            "(the annex belongs to the module unit and the cache key must "
+            "cover it)"
         );
     } finally {
         os.chdir(old);

@@ -453,7 +453,7 @@ def _format_single_file_worker(
                 return result;
             }
             result['cache_status'] = 'miss';
-        } except Exception {
+        } except (OSError, ValueError, TypeError, ImportError, AttributeError) {
             fcache = None;
             cache_key = "";
         }
@@ -601,7 +601,7 @@ def _format_single_file_worker(
                         );
                     }
                 }
-            } except Exception {
+            } except (OSError, ValueError, TypeError, AttributeError) {
                 ;
             }
         }
@@ -640,7 +640,7 @@ impl format(
         try {
             rev = formatter_pipeline_revision();
             cache_stamp = f"jfmt:{FORMAT_CACHE_SCHEMA_VERSION}:{jac_version()}:{rev}";
-        } except Exception {
+        } except (OSError, ValueError, TypeError, ImportError, AttributeError) {
             cache_stamp = "";
         }
     }
@@ -944,6 +944,44 @@ impl precommit(
         if dirty {
             tmp_root = tempfile.mkdtemp(prefix="jac-precommit-");
             try {
+                checkout_paths = list(rel_targets);
+                try {
+                    import from jaclang.jac0core.bccache { discover_annex_files }
+                    rel_set = {r for r in rel_targets};
+                    annex_rel: list[str] = [];
+                    for rel in rel_targets {
+                        abs_t = os.path.join(git_root, rel);
+                        if not os.path.exists(abs_t) {
+                            continue;
+                        }
+                        for ap in (
+                            discover_annex_files(abs_t, '.impl.jac') + discover_annex_files(
+                                abs_t, '.test.jac'
+                            )
+                        ) {
+                            ap_rel = os.path.relpath(ap, git_root).replace(os.sep, "/");
+                            if ap_rel not in rel_set {
+                                annex_rel.append(ap_rel);
+                            }
+                        }
+                    }
+                    if annex_rel {
+                        ls_out = subprocess.run(
+                            ["git", "ls-files", "--"] + annex_rel,
+                            capture_output=True,
+                            text=True,
+                            cwd=git_root,
+                            check=True
+                        ).stdout;
+                        for line in ls_out.splitlines() {
+                            tracked = line.strip();
+                            if tracked and tracked not in rel_set {
+                                rel_set.add(tracked);
+                                checkout_paths.append(tracked);
+                            }
+                        }
+                    }
+                } except Exception { }
                 subprocess.run(
                     [
                         "git",
@@ -951,7 +989,7 @@ impl precommit(
                         "-f",
                         f"--prefix={tmp_root}{os.sep}",
                         "--"
-                    ] + rel_targets,
+                    ] + checkout_paths,
                     check=True,
                     cwd=git_root
                 );
