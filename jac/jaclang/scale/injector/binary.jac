@@ -233,7 +233,9 @@ def resolve_pod_base_image(
     }
     fallback = "python:3.12-slim";
     import from jaclang.scale.config.dev_config {
-        resolve_dev_channel, resolve_experimental_pr, Channel
+        resolve_dev_channel,
+        resolve_experimental_pr,
+        Channel
     }
     channel = resolve_dev_channel(project_dir);
     if channel == Channel.LOCAL {
