@@ -19,7 +19,7 @@ code table is in
 
 **1. Opt-in.** The checker only reasons about bindings the programmer
 explicitly tagged -- `own`, `imm`, `linear`, `borrow` / `&` / `&mut` -- plus
-allocations lexically inside a `region { ... }` block. An unannotated binding
+allocations under an `in <handle> { ... }` region open. An unannotated binding
 is invisible to every rule below; annotating one binding never changes what is
 reported about another module, function, or unannotated binding. A module with
 no annotations and no region opens produces no E13xx diagnostics, ever.
