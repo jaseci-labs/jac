@@ -157,13 +157,42 @@ def _related_files(source_path: str) -> list[tuple[str, str]] {
 }
 
 glob _client_kind_probe_active: bool = False,
-     _client_kind_by_source: dict[str, str] = {};
+     _client_kind_cache: dict[str, tuple[str, str, float]] = {};
+
+def _read_toml_mtime(proj_root: str) -> (float | None) {
+    try {
+        return os.path.getmtime(os.path.join(proj_root, "jac.toml"));
+    } except OSError {
+        return None;
+    }
+}
+
+def _evict_project_from_kind_cache(proj_root: str) {
+    stale: list[str] = [];
+    for (src_path, (_kind, _root, _mt)) in _client_kind_cache.items() {
+        if _root == proj_root {
+            stale.append(src_path);
+        }
+    }
+    for s in stale {
+        _client_kind_cache.pop(s, None);
+    }
+}
+
+def clear_module_client_kind_cache {
+    _client_kind_cache.clear();
+}
 
 def _module_client_kind(source_path: str) -> str {
     global _client_kind_probe_active;
-    cached = _client_kind_by_source.get(source_path);
-    if cached is not None {
-        return cached;
+    entry = _client_kind_cache.get(source_path);
+    if entry is not None {
+        (kind, proj_root, cached_mtime) = entry;
+        current_mtime = _read_toml_mtime(proj_root);
+        if current_mtime is not None and current_mtime == cached_mtime {
+            return kind;
+        }
+        _evict_project_from_kind_cache(proj_root);
     }
     if _client_kind_probe_active {
         return "web";
@@ -171,8 +200,11 @@ def _module_client_kind(source_path: str) -> str {
     _client_kind_probe_active = True;
     try {
         import from jaclang.project.client_kind { resolve_client_kind_context }
-        (kind, _) = resolve_client_kind_context(source_path);
-        _client_kind_by_source[source_path] = kind;
+        (kind, proj_root) = resolve_client_kind_context(source_path);
+        toml_mtime = _read_toml_mtime(proj_root) if proj_root is not None else None;
+        if toml_mtime is not None {
+            _client_kind_cache[source_path] = (kind, proj_root, toml_mtime);
+        }
         return kind;
     } except Exception {
         return "web";
