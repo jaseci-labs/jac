@@ -29,13 +29,21 @@ def build_service_apt_prefix(k8s_config: KubernetesConfig) -> str {
             );
         }
     }
-    pkg_list = ' '.join(sorted(set(packages)));
+    pkgs = sorted(set(packages));
+    pkg_list = ' '.join(pkgs);
+    # Skip apt entirely when every declared package is already installed
+    # (e.g. baked into the pod image): apt-get update is a network fetch that
+    # can stall a pod for minutes behind flaky NAT egress.
+    present = ' && '.join([f"dpkg -s {pkg} >/dev/null 2>&1" for pkg in pkgs]);
     # Trailing ` && ` (not `;`) chains the install into the app-start command so
     # a failed apt aborts the container boot instead of starting without the deps.
     return (
+        f"if {present}; then "
+        f"echo '[jac-scale] system packages present ({pkg_list}); skipping apt'; "
+        "else "
         "export DEBIAN_FRONTEND=noninteractive && "
         "apt-get update && apt-get install -y --no-install-recommends "
-        f"{pkg_list} && "
+        f"{pkg_list}; fi && "
     );
 }
 
@@ -53,20 +61,26 @@ def build_runtime_install_commands(
 
     # apt only for declared packages: the binary bundles bun+python and the bundle ships as a tar, so the default boot needs nothing from apt.
     if config.additional_packages {
-        commands.append(
-            'echo \'APT::Sandbox::User "root";\' > /etc/apt/apt.conf.d/00sandbox'
+        pkgs = sorted(set(config.additional_packages));
+        # Skip apt when every package is already installed (e.g. baked into
+        # the pod image): apt-get update is a network fetch that can stall a
+        # pod behind flaky NAT egress.
+        present = ' && '.join([f"dpkg -s {pkg} >/dev/null 2>&1" for pkg in pkgs]);
+        apt_cmds = ' && '.join(
+            [
+                'echo \'APT::Sandbox::User "root";\' > /etc/apt/apt.conf.d/00sandbox',
+                '{ sed -i \'/trixie-updates\\|trixie-security/d\' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null || true; }',
+                '{ sed -i -E \'/^Suites:/ s/[[:space:]]+trixie-updates//g\' /etc/apt/sources.list.d/*.sources 2>/dev/null || true; }',
+                '{ apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 '
+                '-o Acquire::https::Timeout=20 update || true; }',
+                f"apt-get install -y {' '.join(pkgs)}"
+            ]
         );
         commands.append(
-            'sed -i \'/trixie-updates\\|trixie-security/d\' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null || true'
+            f"if {present}; then "
+            "echo '[jac-scale] system packages present; skipping apt'; "
+            f"else {apt_cmds}; fi"
         );
-        commands.append(
-            'sed -i -E \'/^Suites:/ s/[[:space:]]+trixie-updates//g\' /etc/apt/sources.list.d/*.sources 2>/dev/null || true'
-        );
-        commands.append(
-            'apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 '
-            '-o Acquire::https::Timeout=20 update || true'
-        );
-        commands.append(f"apt-get install -y {' '.join(config.additional_packages)}");
     }
 
     tc = f"{APP_MOUNT_PATH}/{TOOLCHAIN_SUBDIR}";
