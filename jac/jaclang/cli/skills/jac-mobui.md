@@ -5,7 +5,7 @@ description: Building a cross-platform mobile + web app with MobUI - `client_kin
 
 MobUI is Jac's cross-platform UI model: **one source compiles to both native React Native (Expo/Metro) and web (react-native-web)**. It is turned on by `client_kind = "mobui"` in `jac.toml`, which flips on a compiler guard that bans HTML. You author entirely in `@jac/mobui` primitives - **no `<div>`, no `className`, no CSS**.
 
-This is a different target from `jac-mobile-app` (Capacitor), which wraps the *web* bundle in a webview and keeps HTML. MobUI is real React Native components. The worked reference app is `jac/examples/mobui/jachammer/` (a mobile clone of jacBuilder) - copy its patterns.
+This is a different target from `jac-mobile-app` (Capacitor), which wraps the *web* bundle in a webview and keeps HTML. MobUI is real React Native components. The in-repo examples are `jac/examples/mobui/` (`hello`, `littlex`); the worked product-scale reference app is `jachammer` (a mobile clone of jacBuilder) in the jacBuilder repo under `mobile/` - copy its patterns.
 
 A MobUI app is still a normal Jac full-stack app: backend `node`/`walker:pub` in the server section, and a `cl { }` client block (or `.cl.jac` files) built from primitives. All of `jac-walker-patterns`, `jac-sv-endpoints`, `jac-sv-persistence` apply to the backend unchanged.
 
@@ -197,4 +197,4 @@ def kbBehavior() -> str { return "padding" if Platform.OS == "ios" else "height"
 - `jac-mobile-app` - the **Capacitor** target (webview wrapper of a web bundle; keeps HTML) - different from MobUI
 - `jac-fullstack-patterns`, `jac-walker-patterns`, `jac-sv-endpoints` - the backend the UI calls
 - `jac-project-kinds` - target comparison
-- Reference app: `jac/examples/mobui/jachammer/` (also `hello`, `littlex`)
+- Examples: `jac/examples/mobui/` (`hello`, `littlex`); product-scale reference: `jachammer` in the jacBuilder repo (`mobile/`)
