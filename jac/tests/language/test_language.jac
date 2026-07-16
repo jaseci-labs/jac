@@ -835,6 +835,11 @@ test "fstring literal text keeps its quotes" {
     assert lines[5] == "x' not supported";
     assert lines[6] == "innerx";
     assert lines[7] == "raw 'x' and 'y'";
+    # A double-quote in the chunk must not stop the other escapes decoding.
+    assert lines[8] == 'esc "x" Ay';
+    assert lines[9] == 'oct "x" Ay';
+    assert lines[10] == 'nl "x" ';
+    assert lines[11] == "y";
 }
 
 test "fstring escape sequences" {

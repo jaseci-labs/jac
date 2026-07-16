@@ -2475,8 +2475,25 @@ impl String.lit_value.getter -> str {
             return self.value;
         }
         result = self.value;
+
+        def escape_dquotes(text: str) -> str {
+            out = "";
+            i = 0;
+            while i < len(text) {
+                ch = text[i];
+                if ch == '\\' and i + 1 < len(text) {
+                    out += ch + text[i + 1];
+                    i += 2;
+                    continue;
+                }
+                out += '\\"' if ch == '"' else ch;
+                i += 1;
+            }
+            return out;
+        }
+
         try {
-            return ast3.literal_eval('"' + result + '"');
+            return ast3.literal_eval('"' + escape_dquotes(result) + '"');
         } except (ValueError, SyntaxError) {
             placeholder = '\x00';
             result = result.replace('\\\\', placeholder);

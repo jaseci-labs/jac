@@ -11,4 +11,7 @@ with entry {
     print(f"{a}' not supported");
     print(f"{'inner'}{a}");
     print(rf"raw '{a}' and '{b}'");
+    print(f'esc "{a}" \x41{b}');
+    print(f'oct "{a}" \101{b}');
+    print(f'nl "{a}" \n{b}');
 }
