@@ -183,9 +183,11 @@ test "[dependencies.system] in jac.toml installs into the service container" {
         assert "ffmpeg" in prefix;
         # Packages baked into the pod image skip apt entirely: apt-get update
         # is a network fetch that can stall the pod behind flaky NAT egress.
-        assert prefix.startswith(
-            "if dpkg -s ffmpeg >/dev/null 2>&1 && dpkg -s git >/dev/null 2>&1; then"
-        );
+        assert prefix.startswith("if dpkg-query -W");
+        # Removed-but-not-purged packages pass a bare dpkg -s; only the full
+        # installed status may skip apt.
+        assert prefix.count("grep -q 'install ok installed'") == 2;
+        assert prefix.index("ffmpeg") < prefix.index("git");
         assert "else export DEBIAN_FRONTEND=noninteractive && apt-get update" in prefix;
         # Chains into app-start so a failed apt aborts the boot (no silent start).
         assert prefix.endswith("fi && ");

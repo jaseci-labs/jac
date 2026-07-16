@@ -34,7 +34,12 @@ def build_service_apt_prefix(k8s_config: KubernetesConfig) -> str {
     # Skip apt entirely when every declared package is already installed
     # (e.g. baked into the pod image): apt-get update is a network fetch that
     # can stall a pod for minutes behind flaky NAT egress.
-    present = ' && '.join([f"dpkg -s {pkg} >/dev/null 2>&1" for pkg in pkgs]);
+    present = ' && '.join(
+        [
+            f"dpkg-query -W -f='${{Status}}' {pkg} 2>/dev/null "
+            "| grep -q 'install ok installed'" for pkg in pkgs
+        ]
+    );
     # Trailing ` && ` (not `;`) chains the install into the app-start command so
     # a failed apt aborts the container boot instead of starting without the deps.
     return (
@@ -65,7 +70,12 @@ def build_runtime_install_commands(
         # Skip apt when every package is already installed (e.g. baked into
         # the pod image): apt-get update is a network fetch that can stall a
         # pod behind flaky NAT egress.
-        present = ' && '.join([f"dpkg -s {pkg} >/dev/null 2>&1" for pkg in pkgs]);
+        present = ' && '.join(
+            [
+                f"dpkg-query -W -f='${{Status}}' {pkg} 2>/dev/null "
+                "| grep -q 'install ok installed'" for pkg in pkgs
+            ]
+        );
         apt_cmds = ' && '.join(
             [
                 'echo \'APT::Sandbox::User "root";\' > /etc/apt/apt.conf.d/00sandbox',
