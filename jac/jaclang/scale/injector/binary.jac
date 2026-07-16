@@ -266,10 +266,9 @@ def resolve_pod_base_image(
     # The tag may not be published yet (or the registry is unreachable from
     # this driver); fall back rather than shipping manifests that cannot pull.
     try {
-        _http_get_bytes(
+        raw = _http_get_bytes(
             f"https://hub.docker.com/v2/repositories/{OFFICIAL_IMAGE}/tags/{tag}"
         );
-        return image;
     } except Exception {
         logger.info(
             f"Official base image {image} is not published or not reachable; "
@@ -277,6 +276,24 @@ def resolve_pod_base_image(
         );
         return fallback;
     }
+    # Pin the mutable channel tag to its current digest so every pod of this
+    # deploy runs identical bytes: dev/latest move under running previews, and
+    # a pod re-created after a republish would otherwise pull a different
+    # runtime than the .jab was sealed against. Experimental tags stay in tag
+    # form (per-PR, and downstream logic keys on the tag name).
+    if channel == Channel.EXPERIMENTAL {
+        return image;
+    }
+    try {
+        digest = str(json.loads(raw).get("digest", "") or "");
+    } except Exception {
+        digest = "";
+    }
+    if digest.startswith("sha256:") {
+        logger.info(f"Pod base image {image} pinned to {digest} for this deploy.");
+        return f"{OFFICIAL_IMAGE}@{digest}";
+    }
+    return image;
 }
 
 
