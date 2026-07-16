@@ -83,6 +83,13 @@ def download_release_binary(channel: str, arch: str) -> bytes {
     binary_url = "";
     checksum_url = "";
 
+    # Experimental pods run the PR binary from the image; the injected binary
+    # only seals .jir (recompiled from source on mismatch), so reuse `dev`
+    # rather than publish a per-PR asset.
+    if channel == "experimental" {
+        channel = "dev";
+    }
+
     if channel == "local" {
         import from jaclang.scale.config.dev_config { BINARY_PATH_ENV }
         local = os.environ.get(BINARY_PATH_ENV, "");
@@ -225,12 +232,30 @@ def resolve_pod_base_image(
         return configured;
     }
     fallback = "python:3.12-slim";
-    import from jaclang.scale.config.dev_config { resolve_dev_channel, Channel }
+    import from jaclang.scale.config.dev_config {
+        resolve_dev_channel,
+        resolve_experimental_pr,
+        Channel
+    }
     channel = resolve_dev_channel(project_dir);
     if channel == Channel.LOCAL {
         return fallback;
     }
-    tag = "dev" if channel == Channel.DEV else "latest";
+    if channel == Channel.EXPERIMENTAL {
+        pr = resolve_experimental_pr(project_dir);
+        if not pr {
+            logger.warning(
+                "[experimental] has no `pr = <N>`; using the dev base image instead."
+            );
+            tag = "dev";
+        } else {
+            tag = f"experimental-{pr}";
+        }
+    } elif channel == Channel.DEV {
+        tag = "dev";
+    } else {
+        tag = "latest";
+    }
     image = f"{OFFICIAL_IMAGE}:{tag}";
     # probe=False is the --dry-run path: it must not touch the network, so
     # report the image a connected deploy would select instead of confirming

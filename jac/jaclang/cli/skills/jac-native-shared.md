@@ -41,7 +41,7 @@ def:pub greet(name: str) -> str { return "hi " + name; }
 
 ## The ABI: scalars by value, objects as opaque handles
 
-Scalars cross by value (`int` -> `int64`, `float` -> `double`, `bool`); `str` crosses as a NUL-terminated `char*` both directions. Jac objects/lists/dicts cross as **opaque `void*` handles** - pass them back into other `:pub` functions, never dereference. The library exports `jac_retain(void*)` / `jac_release(void*)` to manage their refcounted lifetime.
+Scalars cross by value (`int` -> `int64`, `float` -> `double`, `bool`); `str` crosses as a NUL-terminated `char*` both directions. Jac objects/lists/dicts cross as **opaque `void*` handles** - pass them back into other `:pub` functions, never dereference. The library exports `jac_retain(void*)` / `jac_release(void*)` to manage their refcounted lifetime. (Those two wrappers exist only when the library was built under a managed gc mode - the default; a zero-RC `--gc none` build emits no RC helpers to wrap, so the exports are absent by design. See `jac-native-memory`.)
 
 ```python
 import ctypes
