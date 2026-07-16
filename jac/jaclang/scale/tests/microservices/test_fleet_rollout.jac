@@ -1,5 +1,6 @@
 import time;
 import kubernetes;
+import from datetime { datetime, timezone, timedelta }
 import from types { SimpleNamespace }
 import unittest.mock;
 import from jaclang.scale.deploy.target.kubernetes.microservice.target {
@@ -270,7 +271,14 @@ test "pod stuck ContainerCreating with FailedMount events is healed" {
     pod = _pod("gateway-xyz", "gateway", "Pending", [boot], []);
     (apps, core) = _apis(0, [pod]);
     core.list_namespaced_event.return_value = SimpleNamespace(
-        items=[SimpleNamespace(reason="FailedMount")]
+        items=[
+            SimpleNamespace(
+                reason="FailedMount",
+                last_timestamp=datetime.now(timezone.utc),
+                event_time=None,
+                first_timestamp=None
+            )
+        ]
     );
 
     err = _run(target, _bundle("gateway-deployment", "gateway"), apps, core, 400);
@@ -296,6 +304,59 @@ test "slow ContainerCreating without FailedMount events is left alone" {
 
     assert core.delete_namespaced_pod.call_count == 0 , (
         "a merely slow pod must never be deleted"
+    );
+    assert err is not None and "timed out" in str(err);
+}
+
+
+test "a stale FailedMount event from a recovered hiccup never heals" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="jac-shop", namespace="ns")
+    );
+    boot = _cs("wait-for-mongodb", restarts=0, waiting_reason="ContainerCreating");
+    pod = _pod("gateway-xyz", "gateway", "Pending", [boot], []);
+    (apps, core) = _apis(0, [pod]);
+    core.list_namespaced_event.return_value = SimpleNamespace(
+        items=[
+            SimpleNamespace(
+                reason="FailedMount",
+                last_timestamp=datetime.now(timezone.utc) - timedelta(minutes=45),
+                event_time=None,
+                first_timestamp=None
+            )
+        ]
+    );
+
+    err = _run(target, _bundle("gateway-deployment", "gateway"), apps, core, 400);
+
+    assert core.delete_namespaced_pod.call_count == 0 , (
+        "an event 45 minutes old is history, not a wedge"
+    );
+    assert err is not None and "timed out" in str(err);
+}
+
+test "a pod running init containers (PodInitializing) is never mount-healed" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="jac-shop", namespace="ns")
+    );
+    boot = _cs("jac-bootstrap", restarts=0, waiting_reason="PodInitializing");
+    pod = _pod("gateway-xyz", "gateway", "Pending", [boot], []);
+    (apps, core) = _apis(0, [pod]);
+    core.list_namespaced_event.return_value = SimpleNamespace(
+        items=[
+            SimpleNamespace(
+                reason="FailedMount",
+                last_timestamp=datetime.now(timezone.utc),
+                event_time=None,
+                first_timestamp=None
+            )
+        ]
+    );
+
+    err = _run(target, _bundle("gateway-deployment", "gateway"), apps, core, 400);
+
+    assert core.delete_namespaced_pod.call_count == 0 , (
+        "PodInitializing means volumes mounted; a slow init is not a wedge"
     );
     assert err is not None and "timed out" in str(err);
 }

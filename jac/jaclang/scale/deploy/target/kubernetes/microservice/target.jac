@@ -205,8 +205,27 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 if pod_pull {
                     pulls[pod_name] = (pod_pull, pod_pull_reason, p);
                 }
-                all_transient = bool(statuses) and not pod_reason and not pod_pull;
-                if phase == "Pending" and all_transient and in_fleet {
+                # Mount wedges hold containers in ContainerCreating; a pod
+                # showing PodInitializing has mounted its volumes and is just
+                # running init containers, so it never counts.
+                reasons = [
+                    str(
+                        (
+                            cs.state.waiting.reason
+                                if cs.state and cs.state.waiting
+                                else ""
+                        )
+                        or ""
+                    ) for cs in statuses
+                ];
+                stuck_creating = (
+                    bool(statuses)
+                    and not pod_reason
+                    and not pod_pull
+                    and ("ContainerCreating" in reasons)
+                    and ("PodInitializing" not in reasons)
+                );
+                if phase == "Pending" and stuck_creating and in_fleet {
                     creating[pod_name] = p;
                 }
                 if pod_crash and not crash {
@@ -238,6 +257,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     }
 
     def _pod_mount_wedged(core_v1: any, ns: str, pod_name: str) -> bool {
+        import from datetime { datetime, timezone }
         try {
             evs = core_v1.list_namespaced_event(
                 namespace=ns, field_selector=f"involvedObject.name={pod_name}"
@@ -245,8 +265,24 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         } except Exception {
             return False;
         }
+        now = datetime.now(timezone.utc);
         for e in evs {
-            if str(e.reason or "") in {"FailedMount", "FailedAttachVolume"} {
+            if str(e.reason or "") not in {"FailedMount", "FailedAttachVolume"} {
+                continue;
+            }
+            # Events linger for ~an hour; a mount hiccup the pod already
+            # recovered from must not count as wedged. Only failures
+            # contemporaneous with the stuck observation qualify.
+            ts = e.last_timestamp or e.event_time or e.first_timestamp;
+            if ts is None {
+                continue;
+            }
+            try {
+                age = (now - ts).total_seconds();
+            } except Exception {
+                continue;
+            }
+            if age <= 360 {
                 return True;
             }
         }
