@@ -43,7 +43,10 @@ impl ASTValidationPass.enter_name(self: ASTValidationPass, nd: uni.Name) -> None
 impl ASTValidationPass.enter_param_var(
     self: ASTValidationPass, nd: uni.ParamVar
 ) -> None {
-    if isinstance(nd.name, uni.Name) and keyword.iskeyword(nd.name.value) {
+    ctx_owner = nd.find_parent_of_type(uni.ContextAwareNode);
+    if isinstance(nd.name, uni.Name)
+    and keyword.iskeyword(nd.name.value)
+    and (ctx_owner is None or ctx_owner.code_context == CodeContext.SERVER) {
         self.emit(
             E0067, node_override=nd.name, name=nd.name.value, context='parameter'
         );
@@ -164,7 +167,10 @@ impl ASTValidationPass.enter_inner_compr(
 }
 
 impl ASTValidationPass.enter_has_var(self: ASTValidationPass, nd: uni.HasVar) -> None {
-    if isinstance(nd.name, uni.Name) and keyword.iskeyword(nd.name.value) {
+    ctx_owner = nd.find_parent_of_type(uni.ContextAwareNode);
+    if isinstance(nd.name, uni.Name)
+    and keyword.iskeyword(nd.name.value)
+    and (ctx_owner is None or ctx_owner.code_context == CodeContext.SERVER) {
         self.emit(E0067, node_override=nd.name, name=nd.name.value, context='field');
     }
     self._reject_non_bindable(nd.name);

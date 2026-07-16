@@ -1,6 +1,6 @@
 import keyword;
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.constant { Tokens as Tok }
+import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
 import from jaclang.jac0core.passes.uni_pass { UniPass }
 import from jaclang.jac0core.diagnostics {
     E0010,

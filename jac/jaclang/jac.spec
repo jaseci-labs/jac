@@ -315,8 +315,6 @@ statement ::=
     | assert_stmt
     | delete_stmt
     | global_var
-    | global_stmt
-    | nonlocal_stmt
     | visit_stmt
     | report_stmt
     | docstring_target
@@ -342,8 +340,8 @@ forever_stmt ::= "forever" "{" code_block_stmts "}"
 
 for_stmt ::=
     "async"? "for" atomic_chain (
-        "=" expression "to" pipe "by" atomic_chain assignment_with_target? "{"
-        code_block_stmts "}" else_stmt?
+        "=" expression "while" expression "with" atomic_chain assignment_with_target?
+        "{" code_block_stmts "}" else_stmt?
         | "in" expression "{" code_block_stmts "}" else_stmt?
     )
 
@@ -403,10 +401,6 @@ raise_stmt ::= "raise" expression? ("from" expression)? ";"
 assert_stmt ::= "assert" expression ("," expression)? ";"
 
 delete_stmt ::= "del" expression ";"
-
-global_stmt ::= "global" (NAME | KWESC_NAME) ("," (NAME | KWESC_NAME))* ";"
-
-nonlocal_stmt ::= "nonlocal" (NAME | KWESC_NAME) ("," (NAME | KWESC_NAME))* ";"
 
 ownership_prefix ::= "own" | "imm" | "&" "mut"?
 
@@ -471,15 +465,14 @@ archetype_member ::=
 has_stmt ::= "static"? "has" access_tag has_var ("," has_var)* ";"
 
 has_var ::=
-    (NAME | KWESC_NAME) ":" pipe ("=" expression | ("by" "postinit")?)
-    ("{" accessor* "}")?
+    (NAME | KWESC_NAME) ":" pipe ("=" expression | "postinit"?) ("{" accessor* "}")?
 
 accessor ::= func_signature ("{" code_block_stmts "}" | ";")
 
 ability ::=
     ("@" atomic_chain)* "override"? "class"? "static"? ("async" "class"?)? access_tag
     (NAME | KWESC_NAME)? ("[" type_params "]")? ("with" expression | func_signature)
-    ("{" code_block_stmts "}" | "by" expression ";" | "abs"? ";")
+    ("{" code_block_stmts "}" | "by" expression ";" | "abst"? ";")
 
 func_signature ::= ("(" func_params? ")")? ("->" pipe)?
 
