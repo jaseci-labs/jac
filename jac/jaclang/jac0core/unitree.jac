@@ -92,6 +92,7 @@ obj Symbol {
         ownership: OwnershipKind = OwnershipKind.NONE,
         param_rebound: bool = False,
         na_escapes: bool = False,
+        na_region_handle: bool = False,
         na_stack_ok: bool = False;
 
     def init(

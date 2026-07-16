@@ -366,67 +366,20 @@ impl NaIRGenPass._emit_arena_helpers -> None {
     self.osp_anchor_alloc_fn = _aa_fn;
 }
 
-impl NaIRGenPass._name_is_builtin_region(nm: object) -> bool {
-    if not isinstance(nm, uni.Name) or nm.sym_name != "Region" {
-        return False;
-    }
-    if nm.sym is None or nm.sym.decl is None {
-        return True;
-    }
-    _loc = nm.sym.decl.loc;
-    _mp = _loc.mod_path if _loc is not None else "";
-    return isinstance(_mp, str) and _mp.endswith(".pyi");
-}
-
-impl NaIRGenPass._assign_rhs_is_region_handle(nd: uni.Assignment) -> bool {
-    if isinstance(nd.value, uni.FuncCall)
-    and self._name_is_builtin_region(nd.value.target) {
-        return True;
-    }
-    if nd.type_tag is not None {
-        _tt_expr = nd.type_tag.tag;
-        while isinstance(_tt_expr, uni.AtomTrailer) {
-            _tt_expr = _tt_expr.target;
-        }
-        if self._name_is_builtin_region(_tt_expr) {
-            return True;
-        }
-    }
-    if (
-        isinstance(nd.value, uni.FuncCall)
-        and isinstance(nd.value.target, uni.Name)
-        and nd.value.target.sym is not None
-        and nd.value.target.sym.decl is not None
-    ) {
-        _cal_ab = nd.value.target.sym.decl.find_parent_of_type(uni.Ability);
-        if _cal_ab is not None
-        and isinstance(_cal_ab.signature, uni.FuncSignature)
-        and _cal_ab.signature.return_type is not None {
-            _rt_expr = _cal_ab.signature.return_type;
-            while isinstance(_rt_expr, uni.AtomTrailer) {
-                _rt_expr = _rt_expr.target;
-            }
-            if self._name_is_builtin_region(_rt_expr) {
-                return True;
-            }
-        }
-    }
-    if isinstance(nd.value, uni.Name)
-    and nd.value.sym_name in self.region_handle_vars {
-        return True;
-    }
-    return False;
-}
 
 impl NaIRGenPass._register_region_handle_var(
     nd: uni.Assignment, var_name: str
 ) -> None {
-    if not self._assign_rhs_is_region_handle(nd) {
+    _tgt = nd.target[0]
+        if (len(nd.target) == 1 and isinstance(nd.target[0], uni.Name))
+        else None;
+    if _tgt is None or _tgt.sym is None or not _tgt.sym.na_region_handle {
         return;
     }
     self.region_handle_vars.add(var_name);
     if isinstance(nd.value, uni.Name)
-    and nd.value.sym_name in self.region_handle_vars
+    and nd.value.sym is not None
+    and nd.value.sym.na_region_handle
     and nd.value.sym_name != var_name {
         self.region_handle_vars.discard(nd.value.sym_name);
     }

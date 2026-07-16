@@ -214,7 +214,8 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
 
         if func_name == "Region" {
-            if self._name_is_builtin_region(nd.target) {
+            import from jaclang.compiler.symbol_utils { is_builtin_region_name }
+            if is_builtin_region_name(nd.target) {
                 self._emit_arena_helpers();
                 return self.builder.call(self.region_new_fn, [], name="region.new");
             }

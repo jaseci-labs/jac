@@ -919,8 +919,6 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _emit_struct_drop_fields_fn(type_name: str) -> (ir.Function | None);
     def _emit_container_drop_fn(cont_name: str) -> (ir.Function | None);
     def _emit_arena_helpers -> None;
-    def _name_is_builtin_region(nm: object) -> bool;
-    def _assign_rhs_is_region_handle(nd: uni.Assignment) -> bool;
     def _register_region_handle_var(nd: uni.Assignment, var_name: str) -> None;
     def _region_alloc(size: ir.Value, name: str = "region.alloc") -> ir.Value;
     def _region_log_dtor_if_needed(obj_i8: ir.Value, type_name: str) -> None;

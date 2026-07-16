@@ -103,7 +103,6 @@ obj OwnershipCheckPass(Transform[uni.Module, uni.Module]) {
     def _open_handle_name(region: uni.OpenStmt) -> (uni.Name | None);
     def _region_handle_sid(region: uni.OpenStmt) -> (SymId | None);
     def _region_handle_kind(region: uni.OpenStmt) -> str;
-    def _name_is_builtin_region(nm: object) -> bool;
     def _param_is_region_borrow(param: uni.ParamVar) -> bool;
     def _region_param_count(region: uni.OpenStmt) -> int;
     def _call_borrows_handle(expr: uni.Expr | None, hsid: SymId) -> bool;

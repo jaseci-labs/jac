@@ -467,9 +467,9 @@ impl NaIRGenPass._codegen_open_stmt(nd: uni.OpenStmt) -> None {
 
     self._emit_arena_helpers();
     _i8p = ir.IntType(8).as_pointer();
+    import from jaclang.compiler.symbol_utils { is_builtin_region_name }
     _anon_region = (
-        isinstance(nd.target, uni.FuncCall)
-        and self._name_is_builtin_region(nd.target.target)
+        isinstance(nd.target, uni.FuncCall) and is_builtin_region_name(nd.target.target)
     );
     _synth: (str | None) = None;
     if _anon_region {

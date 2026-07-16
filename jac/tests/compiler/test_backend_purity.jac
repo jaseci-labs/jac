@@ -67,8 +67,18 @@ glob FORBIDDEN: dict[str, str] = {
              "for interop payloads and Ref[...] head detection - the "
              "declared NAME is the consumed fact, not a resolved type"
          ),
-         ("native/na_ir_gen_pass.impl/calls.impl.jac", "symbol_utils"): (
+         ("native/na_ir_gen_pass.impl/stmt.impl.jac", "symbol_utils"): (
              1,
+             "is_builtin_region_name as the shadowing-aware test for the "
+             "anonymous `in Region() {}` open (#7491) - consuming the "
+             "central classification instead of re-implementing name "
+             "resolution"
+         ),
+         ("native/na_ir_gen_pass.impl/calls.impl.jac", "symbol_utils"): (
+             2,
+             "is_builtin_region_name as the shadowing-aware test for the "
+             "builtin Region constructor (#7491) - consuming the central "
+             "classification instead of re-implementing name resolution; and "
              "classify_call as the shadowing-aware builtin test for the "
              "`type(None)` isinstance argument form (#6957) - consuming the "
              "central classification instead of re-implementing name "
@@ -89,12 +99,6 @@ glob FORBIDDEN: dict[str, str] = {
              "scalar LLVM materialization from declared clib annotations "
              "at the declaration site - the backend's lowering role "
              "(sysv sig planning + fixed-param lowering, #6707, #6708)"
-         ),
-         ("native/na_ir_gen_pass.impl/arena.impl.jac", "type_tag.tag"): (
-             1,
-             "declaration-surface read: a `: Region` annotation marks the "
-             "binding as a region handle so drop tracking never depends on "
-             "inference having typed the RHS (#7491 R2)"
          ),
          ("native/na_ir_gen_pass.impl/objects.impl.jac", "type_tag.tag"): (
              1,

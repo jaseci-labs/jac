@@ -140,18 +140,6 @@ impl OwnershipCheckPass._region_handle_sid(region: uni.OpenStmt) -> (SymId | Non
     return self._name_sym_id(nm);
 }
 
-impl OwnershipCheckPass._name_is_builtin_region(nm: object) -> bool {
-    if not isinstance(nm, uni.Name) or nm.sym_name != "Region" {
-        return False;
-    }
-    if nm.sym is None or nm.sym.decl is None {
-        return True;
-    }
-    _loc = nm.sym.decl.loc;
-    _mp = _loc.mod_path if _loc is not None else "";
-    return isinstance(_mp, str) and _mp.endswith(".pyi");
-}
-
 impl OwnershipCheckPass._param_is_region_borrow(param: uni.ParamVar) -> bool {
     tag = param.type_tag;
     if tag is None or not is_borrow_kind(tag.ownership) {
@@ -161,7 +149,8 @@ impl OwnershipCheckPass._param_is_region_borrow(param: uni.ParamVar) -> bool {
     while isinstance(_expr, uni.AtomTrailer) {
         _expr = _expr.target;
     }
-    return self._name_is_builtin_region(_expr);
+    import from jaclang.compiler.symbol_utils { is_builtin_region_name }
+    return is_builtin_region_name(_expr);
 }
 
 impl OwnershipCheckPass._region_handle_kind(region: uni.OpenStmt) -> str {
