@@ -1,6 +1,6 @@
 # Ownership & Borrowing
 
-Jac has an opt-in ownership and borrow-checking surface: `own` marks a local or parameter as the unique owner of a value, `&`/`&mut` take a shared or mutable borrow of an owned value, and `OwnershipCheckPass` statically verifies that owned values aren't used after they move and that borrows never outlive or conflict with their owner. Unannotated bindings are completely unaffected -- the checker only tracks names it sees tagged `own`, `imm`, or `borrow` (`&`/`&mut`), plus allocations inside a `region` block. (A `linear` must-use marker is planned but not yet implemented -- see below.)
+Jac has an opt-in ownership and borrow-checking surface: `own` marks a local or parameter as the unique owner of a value, `&`/`&mut` take a shared or mutable borrow of an owned value, and `OwnershipCheckPass` statically verifies that owned values aren't used after they move and that borrows never outlive or conflict with their owner. Unannotated bindings are completely unaffected -- the checker only tracks names it sees tagged `own`, `imm`, or `borrow` (`&`/`&mut`), plus allocations under an `in <handle> {}` region open. (A `linear` must-use marker is planned but not yet implemented -- see below.)
 
 The checker is one of the compiler's required analyses on the native pathway: it always runs there, its error-severity findings (E13xx) block native codegen, and a clean check is what makes the annotations trustworthy facts for lowering. Whether diagnostics are *displayed* is a compile-request property that never changes generated code -- builds with and without display are bit-identical. Reference-count move elision is proven by the core `RcFactsPass` (a backward-liveness proof on the compiler's shared dataflow framework, stamped as `Assignment.na_move_lowerable`), which serves annotated and unannotated code alike. See the [Ownership Fact Schema](ownership-checker-spec.md) for the full facts contract.
 
@@ -162,24 +162,68 @@ with entry {
 }
 ```
 
-## `region` blocks
+## Regions: first-class `Region` handles and `in <handle> { }` opens
 
-A `region { ... }` block is an arena scope: everything allocated inside it is owned by the region and conceptually freed all at once at the closing brace. The checker enforces that no reference rooted in the region survives the block -- returning one, storing it outside, or handing it to a concurrency boundary is [`E1307`](../diagnostics.md#ownership-borrow-errors), including when it escapes indirectly through a call:
+A **`Region`** is an ownable, sendable, escape-checked allocation extent. A
+region is *opened* for allocation with the `in <handle> { ... }` statement:
+everything constructed under an open lives in that region and is reclaimed
+wholesale when the handle drops -- on the native backend a bump-allocating
+arena is torn down with one dtor-log walk (LIFO) plus a bulk free at the
+handle's static drop point; on the Python backend memory stays GC-managed
+but `drop` hooks fire at the same points. `in Region() { ... }` opens an
+anonymous region whose extent is exactly the block.
 
 ```jac
-obj Buffer { has n: int = 0; }
-
-def wrap(b: Buffer) -> Buffer { return b; }
-
-def make() -> Buffer {
-    region {
-        x = Buffer();
-        return wrap(x);   # error[E1307]: reference to 'x' escapes its `region` block
+def plan() -> int {
+    r: own Region = Region();
+    total = 0;
+    in r {
+        a = Spot(v=1);
+        b = Spot(v=2);
+        a ++> b;                 # cycles and aliasing inside are free
+        total = (a spawn Sum()).total;
     }
+    return total;                # drop r: dtor log runs, one bulk free
 }
 ```
 
-To get a value out of a region, move it out with `own` before the block ends.
+Inside a region there is **no ownership discipline** -- alias and build
+cycles freely. The checker's only job is the boundary:
+
+- A reference rooted in a region may not be returned, stored where it
+  outlives the handle, handed to an opaque callee, or sent across a
+  `flow`/`wait` boundary: each is [`E1307`](../diagnostics.md#ownership-borrow-errors).
+- A region-rooted value that flows to a binding which cannot outlive the
+  handle becomes a **shared borrow of the handle**, and ordinary borrow
+  discipline polices it from there. Helpers that receive the handle
+  (`widen(&r, s)`) are legal carriers of region-rooted values.
+- **Single-region elision**: a function with exactly one `&Region`
+  parameter may return values rooted in an open of it -- the result is tied
+  to that parameter at every call site. Two or more region parameters are
+  ambiguous, so such returns stay rejected.
+- Scalars copy by value at the boundary, and `own <expr>` **reboxes** a
+  scalar or string into a fresh copy that legally exits the region.
+- Wiring a region-resident node to managed topology (either direction) is
+  rejected: region-internal edges are free, cross-extent edges dangle.
+- Moving an `own Region` handle across a `flow` boundary transfers the
+  whole subgraph, zero-copy; it is legal only while no borrows of the
+  handle exist.
+
+Handles have **dynamic extent**: return one from a helper, extend it
+through a `Region`-typed parameter in another function, and drop it in the
+caller at scope exit. A walker traversing a region may also *grow* it: a
+node or edge created in an ability allocates into the region of the visited
+node (`region_of(here)`) with no `&Region` field on the walker; anchored to
+a managed node it stays managed.
+
+```jac
+def seed(r: &Region) -> Cand {
+    in r {
+        x = Cand();
+        return x;        # ok: single-region elision ties x to r
+    }
+}
+```
 
 ## Sendability across concurrency boundaries
 

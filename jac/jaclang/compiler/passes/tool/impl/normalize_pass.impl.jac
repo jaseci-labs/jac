@@ -800,9 +800,10 @@ impl NormalizePass.enter_in_for_stmt(nd: uni.InForStmt) -> None {
     nd.set_kids(nodes=new_kid);
 }
 
-impl NormalizePass.enter_region_stmt(nd: uni.RegionStmt) -> None {
+impl NormalizePass.enter_open_stmt(nd: uni.OpenStmt) -> None {
     new_kid: list[uni.UniNode] = [
-        nd.gen_token(Tok.NAME, "region"),
+        nd.gen_token(Tok.KW_IN),
+        nd.target,
         nd.gen_token(Tok.LBRACE),
 
     ];

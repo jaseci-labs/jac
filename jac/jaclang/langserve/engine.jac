@@ -22,6 +22,9 @@ import from jaclang.compiler.type_system.types {
     ModuleType,
     TypeBase
 }
+import from jaclang.jac0core.constant { TOKEN_MAP }
+import from jaclang.jac0core.parser.lexer { tokenize_full }
+import from jaclang.jac0core.parser.tokens { TokenKind }
 import from jaclang.jac0core.unitree { UniScopeNode }
 import from .sem_manager { SemTokManager }
 import from jaclang.lsp { uris }
@@ -96,6 +99,13 @@ obj JacLangServer(JacProgram, LanguageServer) {
         ty: TypeBase | uni.UniScopeNode
     ) -> lspt.CompletionList;
 
+    def get_scope_completion(scope: uni.UniScopeNode) -> lspt.CompletionList;
+    def get_scope_at_position(
+        file_path: str, line: int, col: int
+    ) -> Optional[uni.UniScopeNode];
+
+    def _flush_completion_state(file_uri: str) -> None;
+    def _position_in_string_or_comment(file_uri: str, line: int, col: int) -> bool;
     def rename_module(old_path: str, new_path: str) -> None;
     def close_module(uri: str) -> None;
     def delete_module(uri: str) -> None;

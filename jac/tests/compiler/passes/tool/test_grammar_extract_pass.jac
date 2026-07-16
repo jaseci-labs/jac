@@ -154,6 +154,149 @@ test "equality" {
     assert GTok(name="X") != GRef(name="X");
 }
 
+test "alt collapses bare choice into optional twin" {
+    expr = GAlt(choices=[GTok(name="SEMI"), GOpt(inner=GTok(name="SEMI"))]);
+    assert fmt(simplify(expr)) == '";"?';
+}
+
+test "alt collapses bare choice into star twin" {
+    expr = GAlt(choices=[GStar(inner=GTok(name="COMMA")), GTok(name="COMMA")]);
+    assert fmt(simplify(expr)) == '","*';
+}
+
+# ── Mini-parser fixture: behaviors of interpretation itself ──────────────
+glob MINI_PARSER_SRC = """
+import from jaclang.jac0core.parser.tokens { TokenKind }
+
+obj Parser {
+    def check(kind: TokenKind) -> bool { return True; }
+    def match_tok(kind: TokenKind) -> bool { return True; }
+    def expect(kind: TokenKind) -> int { return 0; }
+    def advance -> int { return 0; }
+    def flagged -> bool { return True; }
+    def parse_module;
+    def parse_loopy;
+    def parse_optish;
+    def parse_choice;
+    def parse_outer;
+    def parse_inner_if;
+    def parse_fallback;
+    def parse_rec;
+    def parse_leaf;
+}
+
+impl Parser.parse_module {
+    self.parse_loopy();
+    self.parse_optish();
+    self.parse_choice();
+    self.parse_outer();
+    self.parse_rec();
+}
+
+impl Parser.parse_loopy {
+    while self.match_tok(TokenKind.DOT) or self.match_tok(TokenKind.DOT_FWD) {
+        self.expect(TokenKind.NAME);
+    }
+}
+
+impl Parser.parse_optish {
+    if self.match_tok(TokenKind.DOT) or self.match_tok(TokenKind.DOT_BKWD) {
+        self.expect(TokenKind.NAME);
+    }
+}
+
+impl Parser.parse_choice {
+    if self.flagged() {
+        self.expect(TokenKind.SEMI);
+    } else {
+        self.expect(TokenKind.COMMA);
+    }
+}
+
+impl Parser.parse_outer {
+    if self.check(TokenKind.KW_IF) {
+        x = self.parse_inner_if();
+        return x;
+    }
+    return self.parse_fallback();
+}
+
+impl Parser.parse_inner_if {
+    self.expect(TokenKind.KW_IF);
+    self.expect(TokenKind.NAME);
+}
+
+impl Parser.parse_fallback {
+    self.expect(TokenKind.NAME);
+}
+
+impl Parser.parse_rec {
+    if self.check(TokenKind.MINUS) {
+        op = self.advance();
+        val = self.parse_rec();
+        return val;
+    }
+    return self.parse_leaf();
+}
+
+impl Parser.parse_leaf {
+    self.expect(TokenKind.NAME);
+}
+""";
+
+"""Compile the mini parser fixture and run extraction on it."""
+def mini_pass -> GrammarExtractPass {
+    import tempfile;
+    with tempfile.TemporaryDirectory() as td {
+        path = os.path.join(td, "mini_parser.jac");
+        with open(path, "w", encoding="utf-8") as f {
+            f.write(MINI_PARSER_SRC);
+        }
+        prog = JacProgram();
+        mod = prog.compile(path, no_cgen=True);
+        return GrammarExtractPass(ir_in=mod, prog=prog);
+    }
+}
+
+def mini_rules -> dict {
+    return {r.name: r for r in mini_pass().rules};
+}
+
+test "or merged match_tok loop emits full token set" {
+    rules = mini_rules();
+    assert fmt(rules["loopy"].body) == '(("." | ".>") NAME)*';
+}
+
+test "or merged match_tok opt emits full token set" {
+    rules = mini_rules();
+    assert fmt(rules["optish"].body) == '(("." | "<.") NAME)?';
+}
+
+test "opaque if else becomes alternation" {
+    rules = mini_rules();
+    assert fmt(rules["choice"].body) == '";" | ","';
+}
+
+test "guard suppressed when child rule consumes it" {
+    rules = mini_rules();
+    assert fmt(rules["outer"].body) == "inner_if | fallback";
+}
+
+test "self recursive guard is kept" {
+    rules = mini_rules();
+    assert fmt(rules["rec"].body) == '"-" rec | leaf';
+}
+
+test "strict diagnostics flag invisible constructs" {
+    p = mini_pass();
+    kinds = {d["kind"] for d in p.diagnostics};
+    assert "bare-advance" in kinds;
+    assert "unknown-method" in kinds;
+    diag_text = p.emit_diagnostics();
+    assert "finding" in diag_text;
+    assert "flagged" in diag_text;
+}
+
 # ── Integration: extract rules from the real parser ──────────────────────
 test "rules extracted" {
     prog = JacProgram();

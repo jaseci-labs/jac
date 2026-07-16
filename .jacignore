@@ -227,6 +227,7 @@ SSOPage.cl.jac
 UsersPage.cl.jac
 useStorage.cl.jac
 asset_processor.impl.jac
+arena.impl.jac
 base_ast_gen_pass.impl.jac
 bccache.jac
 calls.impl.jac
@@ -250,6 +251,7 @@ import_processor.jac
 interop_bridge.jac
 jaccomplete.impl.jac
 jaccomplete.jac
+jir_registry.jac
 jsx_processor.impl.jac
 lists.impl.jac
 mockllm.impl.jac
@@ -409,6 +411,7 @@ jac/jaclang/runtimelib/client/cli.jac
 jac/jaclang/runtimelib/client/client_runtime_native.cl.jac
 jac/jaclang/runtimelib/client/config_loader.jac
 jac/jaclang/runtimelib/client/desktop_config.jac
+jac/jaclang/runtimelib/client/impl/client_runtime_core.impl.jac
 jac/jaclang/runtimelib/client/impl/client_runtime_native.impl.jac
 jac/jaclang/runtimelib/client/impl/config_loader.impl.jac
 jac/jaclang/runtimelib/client/impl/serving.impl.jac

@@ -1644,7 +1644,7 @@ impl TypedCtxBlock.postinit -> None {
 }
 
 
-impl RegionStmt.postinit -> None {
+impl OpenStmt.postinit -> None {
     self.body = `list(self.body);
     UniNode.postinit(self);
     UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");

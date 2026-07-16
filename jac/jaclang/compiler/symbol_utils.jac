@@ -10,6 +10,18 @@ enum CallKind {
     FUNCTION = "function"
 }
 
+def is_builtin_region_name(nm: object) -> bool {
+    if not isinstance(nm, uni.Name) or nm.sym_name != "Region" {
+        return False;
+    }
+    if nm.sym is None or nm.sym.decl is None {
+        return True;
+    }
+    _loc = nm.sym.decl.loc;
+    _mp = _loc.mod_path if _loc is not None else "";
+    return isinstance(_mp, str) and _mp.endswith(".pyi");
+}
+
 def resolve_expr_symbol(
     expr: uni.Expr, module: (uni.Module | None) = None
 ) -> (uni.Symbol | None) {

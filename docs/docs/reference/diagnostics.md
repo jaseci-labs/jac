@@ -278,7 +278,7 @@ Emitted by `OwnershipCheckPass` for `own`/`imm`/`borrow`/`&`/`&mut` bindings and
 | `E1304` | '{name}' is destroyed while still borrowed |
 | `E1305` | *Reserved, not yet registered* -- will be "Linear resource '{name}' is never consumed" once the planned `linear` marker lands (a `linear` binding must be moved exactly once; plain `own` is affine and may be silently dropped) |
 | `E1306` | Borrow of '{name}' escapes its scope |
-| `E1307` | Reference to '{name}' escapes its `region` block |
+| `E1307` | Reference to '{name}' escapes its region |
 | `E1308` | '{name}' is not sendable across a concurrency boundary |
 | `E1309` | Cannot mutate '{name}' through a deep-immutable `imm` binding |
 
@@ -303,6 +303,7 @@ Emitted by `OwnershipCheckPass` only in **nogc-enforced** native modules (`jac n
 | `W1050` | Unknown intrinsic JSX element '<{tag}>' |
 | `W1051` | Expression type could not be resolved (Unknown) |
 | `W1052` | JSX component '{component}' uses an untyped props bag (`props: any`); its JSX props cannot be type-checked |
+| `W1310` | Region open on '{name}' has an empty body |
 
 ---
 

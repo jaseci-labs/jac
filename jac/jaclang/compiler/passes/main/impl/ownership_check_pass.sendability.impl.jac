@@ -47,7 +47,7 @@ impl OwnershipCheckPass._emit_sendability_diagnostics -> None {
             if ownership == OwnershipKind.OWN and self._is_move_producing_use(nm) {
                 continue;
             }
-            if nm.find_parent_of_type(uni.RegionStmt) is not None {
+            if nm.find_parent_of_type(uni.OpenStmt) is not None {
                 continue;
             }
             if self._borrow_sym_of(nm) is not None {
