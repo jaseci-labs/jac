@@ -530,7 +530,7 @@ Convert Python code to Jac.
 
 ```json
 {
-  "jac_code": "can greet(name: str) -> str {\n    return f\"Hello, {name}!\";\n}\n",
+  "jac_code": "def greet(name: str) -> str {\n    return f\"Hello, {name}!\";\n}\n",
   "warnings": []
 }
 ```

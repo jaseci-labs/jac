@@ -8,7 +8,7 @@
 
 ---
 
-This part covers Jac's approach to functions and object-oriented programming. Jac uses `def` for standalone functions and `can` for methods (called "abilities") on objects. The key difference from Python: `has` declarations make your data model explicit, and `impl` blocks let you separate interface from implementation.
+This part covers Jac's approach to functions and object-oriented programming. Jac uses `def` for functions and methods, and `can` for event-triggered abilities on archetypes. The key difference from Python: `has` declarations make your data model explicit, and `impl` blocks let you separate interface from implementation.
 
 ## Functions and Abilities
 
@@ -490,7 +490,7 @@ The same tags mean *member encapsulation* on a `has`/`def` declared inside an ar
 
 ## Object-Oriented Programming
 
-Jac uses `obj` instead of `class` to define types (though `class` is also supported for Python compatibility). The key differences from Python: fields are declared with `has` at the top of the definition, methods use `can` instead of `def`, and there's no explicit `__init__` -- the constructor is generated automatically from `has` declarations.
+Jac uses `obj` instead of `class` to define types (though `class` is also supported for Python compatibility). The key differences from Python: fields are declared with `has` at the top of the definition, and there's no explicit `__init__` -- the constructor is generated automatically from `has` declarations.
 
 ### 1 Objects (Classes)
 
@@ -559,15 +559,15 @@ with entry {
 }
 ```
 
-#### Initialization with `by postinit`
+#### Initialization with `postinit`
 
-If an attribute's value depends on other fields or requires complex calculation during setup, use the `by postinit` modifier and define a `postinit` method.
+If an attribute's value depends on other fields or requires complex calculation during setup, use the `postinit` field modifier and define a `postinit` method.
 
 ```jac
 obj Rectangle {
     has width: float,
         height: float;
-    has area: float by postinit;
+    has area: float postinit;
 
     def postinit() {
         self.area = self.width * self.height;

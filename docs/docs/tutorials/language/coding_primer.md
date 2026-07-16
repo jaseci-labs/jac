@@ -493,7 +493,7 @@ When you know exactly how many times to repeat:
 ```jac
 with entry {
     # Count from 0 to 4
-    for i = 0 to i < 5 by i += 1 {
+    for i = 0; i < 5; i += 1 {
         print(f"Number: {i}");
     }
 }
@@ -504,8 +504,8 @@ with entry {
 **Breaking it down:**
 
 - `i = 0` - Start at 0
-- `to i < 5` - Continue while i is less than 5
-- `by i += 1` - Add 1 to i each time
+- `i < 5` - Continue while i is less than 5
+- `i += 1` - Add 1 to i each time
 
 ### 5.3 The For-In Loop (Iterating)
 
@@ -535,7 +535,7 @@ Sometimes you want to stop a loop early:
 ```jac
 with entry {
     # Find first number divisible by 7
-    for i = 1 to i <= 100 by i += 1 {
+    for i = 1; i <= 100; i += 1 {
         if i % 7 == 0 {
             print(f"Found it: {i}");
             break;  # Exit the loop immediately
@@ -555,7 +555,7 @@ Skip to the next iteration without running the rest of the loop body:
 ```jac
 with entry {
     # Print only odd numbers
-    for i = 1 to i <= 10 by i += 1 {
+    for i = 1; i <= 10; i += 1 {
         if i % 2 == 0 {
             continue;  # Skip even numbers
         }
@@ -574,7 +574,7 @@ with entry {
 
 ```jac
 with entry {
-    for i = 3 to i <= 30 by i += 3 {
+    for i = 3; i <= 30; i += 3 {
         print(i);
     }
 }
@@ -967,7 +967,7 @@ with entry {
     }
 
     # Loop with index
-    for i = 0 to i < len(fruits) by i += 1 {
+    for i = 0; i < len(fruits); i += 1 {
         print(f"{i}: {fruits[i]}");
     }
 }
@@ -1087,7 +1087,7 @@ Create lists in one line:
 with entry {
     # Traditional way
     squares = [];
-    for i = 0 to i < 5 by i += 1 {
+    for i = 0; i < 5; i += 1 {
         squares.append(i ** 2);
     }
     print(squares);  # [0, 1, 4, 9, 16]
@@ -2884,7 +2884,7 @@ with entry {
     }
 
     # For loop (counting)
-    for i = 0 to i < 5 by i += 1 {
+    for i = 0; i < 5; i += 1 {
         print(f"i: {i}");
     }
 
