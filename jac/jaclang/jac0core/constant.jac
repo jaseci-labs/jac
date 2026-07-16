@@ -114,7 +114,7 @@ enum CodeContext {
 
 enum EdgeDir { IN = 1, OUT = 2, ANY = 3 }
 
-enum OwnershipKind { NONE = 0, OWN = 1, BORROW = 2, MUT_BORROW = 3, VAL = 4 }
+enum OwnershipKind { NONE = 0, OWN = 1, BORROW = 2, MUT_BORROW = 3, IMM = 4 }
 
 def is_borrow_kind(k: OwnershipKind) -> bool {
     return k == OwnershipKind.BORROW or k == OwnershipKind.MUT_BORROW;

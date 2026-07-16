@@ -608,6 +608,7 @@ impl MicroserviceGateway.setup -> FastAPI {
                 classify_route,
                 ROUTE_BUILTIN,
                 ROUTE_ADMIN,
+                ROUTE_IDENTITY,
                 ROUTE_PROXY
             }
             service_prefixes: list = [e.prefix for e in gw.registry.entries.values()];
@@ -646,6 +647,17 @@ impl MicroserviceGateway.setup -> FastAPI {
                     admin_resp = not_found(path);
                 }
                 resp = admin_resp;
+            } elif decision.kind == ROUTE_IDENTITY {
+                # Gateway-owned identity: answer /user/* from the gateway's
+                # own endpoints; a 404/405 (endpoint not registered here)
+                # leaves resp None so the passthrough fallback below runs.
+                if gw.server is not None {
+                    ident_resp = await call_next(request);
+                    if ident_resp.status_code not in (404, 405) {
+                        svc_label = "__identity__";
+                        resp = ident_resp;
+                    }
+                }
             } elif decision.kind == ROUTE_PROXY {
                 matched = gw.registry.match_route(path);
                 if matched {
@@ -789,10 +801,27 @@ impl MicroserviceGateway._install_admin_api -> None {
     self.register_network_endpoints();
     self.register_podenv_endpoints();
 
+    # Gateway-owned identity: the gateway is the single registration/login
+    # authority for the deployment, so /user/* state never depends on which
+    # service a passthrough happens to land on. Services accept these tokens
+    # (shared [scale.jwt] secret) and JIT-provision their local user root.
+    # Endpoints not registered here (verification, SSO, ...) still fall back
+    # to service passthrough in the dispatcher.
+    self.register_register_endpoint();
+    self.register_login_endpoint();
+    self.register_refresh_token_endpoint();
+    self.register_update_password_endpoint();
+    self.register_me_endpoint();
+    self.register_update_me_endpoint();
+
     self.server.create_server();
 
     logger.info(
         "Admin JSON API installed on gateway "
         "(/admin/login, /admin/me, /admin/users, /admin/logs/*, ...)"
+    );
+    logger.info(
+        "Gateway-owned identity installed "
+        "(/user/register, /user/login, /user/me served by the gateway)"
     );
 }

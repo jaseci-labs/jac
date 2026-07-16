@@ -49,7 +49,7 @@ Use `jac.toml` to suppress diagnostics project-wide. See the [Configuration](con
 ### CLI Flags
 
 - `--nowarn` on `jac check` suppresses all warnings (errors are still shown)
-- `-e` / `--diagnostics` on `jac run` controls diagnostic verbosity: `error` (default -- fail on errors with full details), `all` (errors + warnings), or `none` (silent)
+- `-e` / `--diagnostics` on `jac run` controls diagnostic verbosity: `error` (default -- report error-level diagnostics with full detail), `all` (errors + warnings), or `none` (silent). This flag governs *what is printed*, not whether the program runs. `jac run` still executes -- and exits `0` -- when the type checker finds errors: for example, `x: int = "no";` reports `E1001` under `jac check` but runs anyway under `jac run`. Only errors that stop the compiler from producing runnable code (parse/lex and codegen errors, such as a missing `;`) abort a run. To gate on type errors, use `jac check`, which exits non-zero
 
 ---
 
@@ -113,6 +113,7 @@ Emitted by the parser and lexer during source code parsing.
 |------|---------|
 | `E0050` | Duplicate '{param}' in parameter list |
 | `E0051` | '{first}' must appear before '{second}' in parameter list |
+| `E0052` | Parameter '{name}' is missing a type annotation |
 
 ### Property Declaration Errors
 
@@ -167,6 +168,7 @@ Emitted by the type checker and type evaluator.
 |------|---------|
 | `E1010` | Operator "{op}" not supported for type "{type}" |
 | `E1011` | Unsupported operand types for {op}: {left} and {right} |
+| `E1110` | Operator "{op}" not supported between types "{left}" and "{right}" (comparison operators) |
 
 ### Iterability / Callable
 
@@ -268,7 +270,7 @@ Emitted by `JsxIntrinsicGuardPass` when a `mobui` project (see [React Native tar
 
 ### Ownership / Borrow Errors
 
-Emitted by `OwnershipCheckPass` for `own`/`val`/`linear`/`borrow`/`&`/`&mut` bindings and `region` blocks. See [Ownership & Borrowing](language/ownership-borrowing.md). These are diagnostics only -- no backend reads the checker's results, and generated code is identical whether or not the checker ran.
+Emitted by `OwnershipCheckPass` for `own`/`imm`/`borrow`/`&`/`&mut` bindings and `region` blocks. See [Ownership & Borrowing](language/ownership-borrowing.md). On the native pathway the checker is one of the required analyses: it always runs there, and error-severity findings block native codegen -- a clean check is what makes the annotations trustworthy facts for lowering (see the [Ownership Fact Schema](language/ownership-checker-spec.md)). Whether diagnostics are *displayed* never changes generated code; builds with and without display are bit-identical.
 
 | Code | Message |
 |------|---------|
@@ -276,20 +278,35 @@ Emitted by `OwnershipCheckPass` for `own`/`val`/`linear`/`borrow`/`&`/`&mut` bin
 | `E1302` | Conflicting mutable borrow of '{name}' while another borrow is live |
 | `E1303` | Cannot mutate '{name}' while a shared borrow of it is live |
 | `E1304` | '{name}' is destroyed while still borrowed |
-| `E1305` | Linear resource '{name}' is never consumed (a `linear` binding must be moved exactly once; plain `own` is affine and may be silently dropped) |
+| `E1305` | *Reserved, not yet registered* -- will be "Linear resource '{name}' is never consumed" once the planned `linear` marker lands (a `linear` binding must be moved exactly once; plain `own` is affine and may be silently dropped) |
 | `E1306` | Borrow of '{name}' escapes its scope |
-| `E1307` | Reference to '{name}' escapes its `region` block |
+| `E1307` | Reference to '{name}' escapes its region |
 | `E1308` | '{name}' is not sendable across a concurrency boundary |
-| `E1309` | Cannot mutate '{name}' through a deep-immutable `val` binding |
+| `E1309` | Cannot mutate '{name}' through a deep-immutable `imm` binding |
+
+### Zero-RC Enforcement Errors
+
+Emitted by `OwnershipCheckPass` only in **nogc-enforced** native modules (`jac nacompile --enforce-nogc`, or a module matching a `jac.toml [gc.enforce]` pattern -- see [Zero-RC ownership compilation](language/native-pathway.md#zero-rc-ownership-compilation)). They make zero-RC ownership coverage a compile-time contract: every heap-typed contract position must be in the owned world, and each violation is a hard error that blocks native codegen. The `{provenance}` in every message states why the module is enforced (the CLI flag or the matching config pattern).
+
+| Code | Message |
+|------|---------|
+| `E1401` | Heap-typed {position} '{name}' has no ownership state in a nogc-enforced module ({provenance}) |
+| `E1402` | Owned value '{name}' is sealed into managed storage inside a nogc-enforced module ({provenance}) |
+| `E1403` | Heap value '{name}' crosses implicitly out of a nogc-enforced module ({provenance}) |
+| `E1404` | '{name}' is `any`-typed and could be heap-allocated in a nogc-enforced module ({provenance}) |
+| `E1405` | Closure capture of '{name}' escapes its scope in a nogc-enforced module ({provenance}) |
+| `E1406` | '{name}' has retaining or aliasing semantics not supported in a nogc-enforced module ({provenance}) |
 
 ### Type Warnings
 
 | Code | Message |
 |------|---------|
 | `W1036` | Generic type "{type}" used without type arguments, defaulting to "{type}[Any]"; consider adding explicit type arguments |
+| `W1037` | Explicit 'any' type annotation disables type checking here; consider a more specific type |
 | `W1050` | Unknown intrinsic JSX element '<{tag}>' |
 | `W1051` | Expression type could not be resolved (Unknown) |
 | `W1052` | JSX component '{component}' uses an untyped props bag (`props: any`); its JSX props cannot be type-checked |
+| `W1310` | Region open on '{name}' has an empty body |
 
 ---
 

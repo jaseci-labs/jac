@@ -255,6 +255,39 @@ test "consumed event exposes delivery_id, delivery_topic, delivery_group" {
 }
 
 
+test "consume self-heals after the stream key is evicted" {
+    _flush_redis();
+    b = _make_broker(group="t_evict");
+    client = get_redis_client(REDIS_URI);
+
+    b.publish("evict.topic", Event(event_type="e.one", data={"n": 1}));
+    first = b.consume(
+        "evict.topic",
+        group="t_evict",
+        max_messages=1,
+        timeout_seconds=2.0,
+        start_from="earliest"
+    );
+    assert len(first) == 1;
+
+    client.delete("evict.topic");
+    b.publish("evict.topic", Event(event_type="e.two", data={"n": 2}));
+
+    healed = b.consume(
+        "evict.topic",
+        group="t_evict",
+        max_messages=1,
+        timeout_seconds=2.0,
+        start_from="earliest"
+    );
+    assert len(healed) == 1;
+    assert healed[0].data["n"] == 2;
+
+    b.stop(drain=False);
+    cleanup_connections();
+}
+
+
 test "health returns healthy redis broker" {
     b = _make_broker(group="t_health");
     h = b.health();

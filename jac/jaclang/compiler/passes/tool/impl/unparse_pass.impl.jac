@@ -111,8 +111,8 @@ impl UnparsePass.exit_sub_tag(nd: uni.SubTag) -> None {
         prefix = "&mut ";
     } elif nd.ownership == OwnershipKind.BORROW {
         prefix = "&";
-    } elif nd.ownership == OwnershipKind.VAL {
-        prefix = "val ";
+    } elif nd.ownership == OwnershipKind.IMM {
+        prefix = "imm ";
     }
     nd.gen.jac = ": " + prefix + nd.tag.gen.jac;
 }
@@ -510,9 +510,9 @@ impl UnparsePass.exit_typed_ctx_block(nd: uni.TypedCtxBlock) -> None {
     nd.gen.jac = " ".join(parts);
 }
 
-impl UnparsePass.exit_region_stmt(nd: uni.RegionStmt) -> None {
+impl UnparsePass.exit_open_stmt(nd: uni.OpenStmt) -> None {
     body = " ".join([s.gen.jac for s in nd.body]);
-    nd.gen.jac = "region { " + body + " }";
+    nd.gen.jac = "in " + nd.target.gen.jac + " { " + body + " }";
 }
 
 impl UnparsePass.exit_if_stmt(nd: uni.IfStmt) -> None {

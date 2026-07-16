@@ -970,8 +970,65 @@ impl PyastGenPass.exit_server_block(nd: uni.ServerBlock) -> None {
     nd.gen.py_ast = self._flatten_ast_list([item.gen.py_ast for item in nd.body]);
 }
 
-impl PyastGenPass.exit_region_stmt(nd: uni.RegionStmt) -> None {
-    nd.gen.py_ast = self._flatten_ast_list([item.gen.py_ast for item in nd.body]);
+impl PyastGenPass.exit_open_stmt(nd: uni.OpenStmt) -> None {
+    self.builtin_imports.add("_jac_region_open");
+    self.builtin_imports.add("_jac_region_close");
+    _tmp = f"_jac_region_{nd.loc.first_line}_{nd.loc.col_start}";
+    assign_stmt = self.sync(
+        ast3.Assign(
+            targets=[self.sync(ast3.Name(id=_tmp, ctx=ast3.Store()), jac_node=nd)],
+            value=cast(ast3.expr, self.py_ast_val(nd.target))
+        ),
+        jac_node=nd.target
+    );
+    open_stmt = self.sync(
+        ast3.Expr(
+            value=self.sync(
+                ast3.Call(
+                    func=self.sync(
+                        ast3.Name(id="_jac_region_open", ctx=ast3.Load()), jac_node=nd
+                    ),
+                    args=[self.sync(ast3.Name(id=_tmp, ctx=ast3.Load()), jac_node=nd)],
+                    keywords=[]
+                ),
+                jac_node=nd
+            )
+        ),
+        jac_node=nd
+    );
+    close_stmt = self.sync(
+        ast3.Expr(
+            value=self.sync(
+                ast3.Call(
+                    func=self.sync(
+                        ast3.Name(id="_jac_region_close", ctx=ast3.Load()), jac_node=nd
+                    ),
+                    args=[self.sync(ast3.Name(id=_tmp, ctx=ast3.Load()), jac_node=nd)],
+                    keywords=[]
+                ),
+                jac_node=nd
+            )
+        ),
+        jac_node=nd
+    );
+    clear_stmt = self.sync(
+        ast3.Assign(
+            targets=[self.sync(ast3.Name(id=_tmp, ctx=ast3.Store()), jac_node=nd)],
+            value=self.sync(ast3.Constant(value=None), jac_node=nd)
+        ),
+        jac_node=nd
+    );
+    body_stmts = self._flatten_ast_list([item.gen.py_ast for item in nd.body]);
+    if not body_stmts {
+        body_stmts = [self.sync(ast3.Pass(), jac_node=nd)];
+    }
+    try_stmt = self.sync(
+        ast3.Try(
+            body=body_stmts, handlers=[], orelse=[], finalbody=[close_stmt, clear_stmt]
+        ),
+        jac_node=nd
+    );
+    nd.gen.py_ast = [assign_stmt, open_stmt, try_stmt];
 }
 
 impl PyastGenPass.exit_native_block(nd: uni.NativeBlock) -> None {
@@ -2447,7 +2504,7 @@ impl PyastGenPass.exit_binary_expr(nd: uni.BinaryExpr) -> None {
             keywords.append(
                 self.sync(
                     ast3.keyword(
-                        arg='EdgeDir',
+                        arg='dir',
                         value=self.sync(
                             ast3.Attribute(
                                 value=self.jaclib_obj('EdgeDir'),
@@ -2463,7 +2520,7 @@ impl PyastGenPass.exit_binary_expr(nd: uni.BinaryExpr) -> None {
             keywords.append(
                 self.sync(
                     ast3.keyword(
-                        arg='filter_on',
+                        arg='filter',
                         value=cast(
                             ast3.expr, self.py_ast_val(nd.op.edge_spec.filter_cond)
                         )
@@ -2712,6 +2769,10 @@ impl PyastGenPass._emit_jobj_ref(nd: uni.UnaryExpr) -> None {
 }
 
 impl PyastGenPass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
+    if nd.ownership == OwnershipKind.OWN {
+        nd.gen.py_ast = [self.py_ast_val(nd.operand)];
+        return;
+    }
     if nd.op.name == Tok.BW_AND {
         if is_borrow_kind(nd.ownership) {
             nd.gen.py_ast = [

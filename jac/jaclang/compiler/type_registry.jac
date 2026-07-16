@@ -219,6 +219,7 @@ glob JAC_TYPE_REGISTRY = JacTypeRegistry(
                  "new",
                  "unsafe_html",
                  "managed",
+                 "Region",
                  "repr",
                  "format",
                  "ascii",

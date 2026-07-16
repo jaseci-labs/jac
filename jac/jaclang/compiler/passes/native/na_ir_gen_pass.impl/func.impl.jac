@@ -288,7 +288,9 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     block = func.append_basic_block(name="entry");
     self._builder = ir.IRBuilder(block);
     self.local_vars = {};
+    self.param_vars = set();
     self.nogc_stack_vars = set();
+    self.region_handle_vars = set();
 
     self._attach_di_subprogram(
         func, name, self._func_loc.get(name, nd.loc.first_line if nd.loc else 0)
@@ -373,6 +375,7 @@ impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
     self._builder = ir.IRBuilder(entry_bb);
     self.local_vars = {};
     self.nogc_stack_vars = set();
+    self.region_handle_vars = set();
     saved_param_vars = self.param_vars;
     self.param_vars = set();
     self._attach_di_subprogram(func, symbol, line);
@@ -476,6 +479,7 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
     self._builder = ir.IRBuilder(fn.append_basic_block("entry"));
     self.local_vars = {};
     self.nogc_stack_vars = set();
+    self.region_handle_vars = set();
     self.param_vars = set();
     self.var_list_elem_struct = {};
     for (i, arg) in enumerate(fn.args) {
@@ -525,6 +529,7 @@ impl NaIRGenPass._define_function(name: str, fnty: ir.FunctionType) -> ir.Functi
 impl NaIRGenPass._emit_glob_init_func -> None {
     saved_builder = self._builder;
     saved_locals = self.local_vars if self?.local_vars else {};
+    saved_param_vars = self.param_vars;
     saved_di_sp = self._di_current_sp;
 
     fnty = ir.FunctionType(ir.VoidType(), []);
@@ -532,7 +537,9 @@ impl NaIRGenPass._emit_glob_init_func -> None {
     block = func.append_basic_block(name="entry");
     self._builder = ir.IRBuilder(block);
     self.local_vars = {};
+    self.param_vars = set();
     self.nogc_stack_vars = set();
+    self.region_handle_vars = set();
 
     self._attach_di_subprogram(func, "__jac_glob_init", 0);
     if self?._global_init_nodes and self._global_init_nodes {
@@ -585,6 +592,7 @@ impl NaIRGenPass._emit_glob_init_func -> None {
 
     self._builder = saved_builder;
     self.local_vars = saved_locals;
+    self.param_vars = saved_param_vars;
     self._di_current_sp = saved_di_sp;
 }
 
@@ -604,7 +612,9 @@ impl NaIRGenPass._codegen_entry(nodes: list[uni.ModuleCode]) -> None {
     block = func.append_basic_block(name="entry");
     self._builder = ir.IRBuilder(block);
     self.local_vars = {};
+    self.param_vars = set();
     self.nogc_stack_vars = set();
+    self.region_handle_vars = set();
 
     _first = nodes[0];
     entry_line = _first.loc.first_line if _first.loc else 0;
