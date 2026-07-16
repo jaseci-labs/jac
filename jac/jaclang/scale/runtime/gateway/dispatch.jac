@@ -30,6 +30,7 @@ glob _SERVICE_MEMBER_SEGMENTS: set[str] = _PASSTHROUGH_SEGMENTS | {
 
 glob ROUTE_BUILTIN: str = "builtin",
      ROUTE_ADMIN: str = "admin",
+     ROUTE_IDENTITY: str = "identity",
      ROUTE_PROXY: str = "proxy",
      ROUTE_PASSTHROUGH: str = "passthrough",
      ROUTE_STATIC: str = "static";
@@ -85,6 +86,13 @@ def classify_route(path: str, service_prefixes: list[str]) -> RouteDecision {
     matched = _longest_prefix_match(norm, service_prefixes);
     if matched != "" {
         return RouteDecision(kind=ROUTE_PROXY, service=matched);
+    }
+    if _first_segment(norm) == "user" {
+        # Identity is gateway-owned: /user/* is answered by the gateway's own
+        # user manager first, with service passthrough as the fallback for
+        # endpoints the gateway does not implement. Explicit per-service
+        # routes (/svc/user/...) still proxy via the prefix match above.
+        return RouteDecision(kind=ROUTE_IDENTITY);
     }
     if _first_segment(norm) in _PASSTHROUGH_SEGMENTS {
         return RouteDecision(kind=ROUTE_PASSTHROUGH);
