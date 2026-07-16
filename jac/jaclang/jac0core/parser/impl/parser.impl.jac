@@ -3458,7 +3458,7 @@ impl Parser.parse_client_block -> ClientBlock {
                 body.append(stmt);
                 kid.append(stmt);
 
-                if stmt?.code_context {
+                if stmt?.code_context and stmt._source_context_token() is None {
                     stmt.code_context = CodeContext.CLIENT;
                 }
             }

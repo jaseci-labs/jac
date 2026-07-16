@@ -411,6 +411,7 @@ jac/jaclang/runtimelib/client/cli.jac
 jac/jaclang/runtimelib/client/client_runtime_native.cl.jac
 jac/jaclang/runtimelib/client/config_loader.jac
 jac/jaclang/runtimelib/client/desktop_config.jac
+jac/jaclang/runtimelib/client/impl/client_runtime_core.impl.jac
 jac/jaclang/runtimelib/client/impl/client_runtime_native.impl.jac
 jac/jaclang/runtimelib/client/impl/config_loader.impl.jac
 jac/jaclang/runtimelib/client/impl/serving.impl.jac
