@@ -24,35 +24,6 @@ def _get_cache_dir -> Path {
     }
 }
 
-"""Return the Jac version without importing the full CLI."""
-def _get_cli_version -> str {
-    dev_source = os.environ.get("JAC_DEV_SOURCE");
-    if dev_source {
-        toml_path = Path(dev_source) / "jac.toml";
-        if toml_path.exists() {
-            try {
-                import from jaclang.project.config { JacConfig }
-                return JacConfig.load(toml_path).project.version;
-            } except Exception { }
-        }
-    }
-    import from importlib.metadata { version as pkg_version }
-    return pkg_version("jaclang");
-}
-
-"""Handle the 'jac --version' command."""
-def _handle_version {
-    import platform;
-    dev_source = os.environ.get("JAC_DEV_SOURCE");
-    if dev_source {
-        print(
-            f"🛠  jac dev mode — using compiler source at {dev_source}", file=sys.stderr
-        );
-    }
-    print(f"jac {_get_cli_version()}  ({platform.system()} {platform.machine()})");
-    sys.exit(0);
-}
-
 """Handle the 'jac purge' command."""
 def _handle_purge {
     if "-h" in sys.argv or "--help" in sys.argv {
@@ -149,21 +120,20 @@ def start_cli -> None {
         sys.exit(app_rc);
     }
 
-    # Keep version checks ahead of the full CLI import. This is deliberately
-    # exact so malformed invocations such as `jac --version extra` retain the
-    # full parser's error handling.
-    if len(sys.argv) == 2 and sys.argv[1] in ("-V", "--version") {
-        _handle_version();
-        return;
-    }
-
     # Check if first argument is 'purge'
     if len(sys.argv) >= 2 and sys.argv[1] == "purge" {
         _handle_purge();
         return;
     }
 
-    # Delegate to the full CLI for all other commands
+    # Manifest-backed fast paths (--version/--help/bare/known commands) avoid
+    # importing jaclang.cli.cli and its eager command registrations.
+    import from jaclang.cli.manifest_route { handle_manifest_route }
+    if handle_manifest_route(sys.argv[1:]) {
+        return;
+    }
+
+    # Rare fallback: flag-only argv that manifest routing declines.
     import from jaclang.cli.cli { start_cli as _start_cli }
     _start_cli();
 }

@@ -10,10 +10,24 @@ from pathlib import Path
 
 from jaclang.cli.manifest import TOMBSTONED_VERBS, known_command_names
 from jaclang.cli.manifest_help import (
+    _use_color,
     format_curated_help,
     format_logo,
     format_verbose_help,
 )
+
+
+def _read_version_from_toml(toml_path: Path) -> str | None:
+    try:
+        data = tomllib.loads(toml_path.read_text(encoding="utf-8"))
+        project = data.get("project", {})
+        if isinstance(project, dict):
+            ver = project.get("version")
+            if isinstance(ver, str) and ver:
+                return ver
+    except Exception:
+        pass
+    return None
 
 
 def resolve_cli_version() -> str:
@@ -22,15 +36,17 @@ def resolve_cli_version() -> str:
     if dev_source:
         toml_path = Path(dev_source) / "jac.toml"
         if toml_path.exists():
-            try:
-                data = tomllib.loads(toml_path.read_text(encoding="utf-8"))
-                project = data.get("project", {})
-                if isinstance(project, dict):
-                    ver = project.get("version")
-                    if isinstance(ver, str) and ver:
-                        return ver
-            except Exception:
-                pass
+            ver = _read_version_from_toml(toml_path)
+            if ver:
+                return ver
+
+    # Source checkout fallback (e.g. dev tree on sys.path without wheel metadata).
+    source_toml = Path(__file__).resolve().parents[2] / "jac.toml"
+    if source_toml.exists():
+        ver = _read_version_from_toml(source_toml)
+        if ver:
+            return ver
+
     from importlib.metadata import version as pkg_version
 
     return pkg_version("jaclang")
@@ -51,27 +67,36 @@ def _has_script_file(raw_argv: list[str]) -> bool:
     return any(_looks_like_script_token(tok) for tok in raw_argv)
 
 
+def _write_stdout(text: str) -> None:
+    sys.stdout.write(text)
+    if not text.endswith("\n"):
+        sys.stdout.write("\n")
+
+
+def _print_error(message: str) -> None:
+    sys.stderr.write(f"error: {message}\n")
+
+
 def handle_manifest_route(raw_argv: list[str]) -> bool:
     """Handle manifest-only paths. Return True when the invocation is complete."""
-    from jaclang.cli.console import console
-
     if raw_argv in (["-V"], ["--version"]):
         sys_info = f"{platform.system()} {platform.machine()}"
         ver = resolve_cli_version()
-        bold = "\033[1m" if console.use_color else ""
-        reset = "\033[0m" if console.use_color else ""
-        console.print(f"{bold}jac{reset} {ver}  ({sys_info})")
+        use_color = _use_color()
+        bold = "\033[1m" if use_color else ""
+        reset = "\033[0m" if use_color else ""
+        _write_stdout(f"{bold}jac{reset} {ver}  ({sys_info})")
         return True
 
     if raw_argv in (["-h"], ["--help"]):
-        console.print(format_verbose_help())
+        _write_stdout(format_verbose_help())
         return True
 
     if not raw_argv:
         ver = resolve_cli_version()
-        console.print(format_logo(ver))
-        console.print("")
-        console.print(format_curated_help())
+        _write_stdout(format_logo(ver))
+        _write_stdout("")
+        _write_stdout(format_curated_help())
         return True
 
     first = _first_command_token(raw_argv)
@@ -81,7 +106,7 @@ def handle_manifest_route(raw_argv: list[str]) -> bool:
     known = known_command_names()
 
     if first in TOMBSTONED_VERBS and first not in known:
-        console.error(
+        _print_error(
             f"'jac {first}' was removed in the CLI cleanup (#7255); "
             f"use: {TOMBSTONED_VERBS[first]}"
         )
@@ -97,7 +122,7 @@ def handle_manifest_route(raw_argv: list[str]) -> bool:
     else:
         choices = "', '".join(sorted(known))
         sys.stderr.write("usage: jac [-h] [-V] COMMAND ...\n")
-        console.error(
+        _print_error(
             f"argument COMMAND: invalid choice: {first!r} (choose from '{choices}')"
         )
         sys.exit(2)
