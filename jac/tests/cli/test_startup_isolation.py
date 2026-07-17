@@ -86,10 +86,47 @@ def test_purge_avoids_heavy_imports() -> None:
     assert code == 0, err
 
 
+def test_command_help_isolates_features() -> None:
+    """COMMAND --help must be served from the manifest parser alone.
+
+    Help is short-circuited before project config, feature bootstrap, client
+    imports, or command-implementation loading, so it must meet the same
+    isolation bar as the global fast paths (--version/--help). Static argument
+    choices live in the manifest, so help output is preserved.
+    """
+    for argv in (
+        ["run", "--help"],
+        ["check", "--help"],
+        ["fmt", "--help"],
+        ["code", "--help"],
+        ["test", "--help"],
+        ["build", "--help"],
+        ["start", "--help"],
+        ["setup", "--help"],
+        ["scale", "--help"],
+        ["model", "--help"],
+        ["retheme", "--help"],
+    ):
+        code, err = _probe(argv)
+        assert code == 0, f"jac {' '.join(argv)} leaked heavy imports or failed:\n{err}"
+
+
+def test_command_help_preserves_terminator() -> None:
+    """A literal --help after the argparse terminator is a script/remainder
+    argument and must NOT trigger the help short-circuit (it is forwarded).
+    """
+    # `run` has a REMAINDER arg; `-- --help` is handed to the program, so this
+    # is NOT a help request. It will try to run a (missing) program and exit
+    # nonzero, but must not be mistaken for help (which would exit 0).
+    code, _ = _probe(["run", "--", "--help"], blocked=set())
+    assert code != 0
+
+
 if __name__ == "__main__":
     test_version_fast_path_avoids_heavy_imports()
     test_help_fast_path_avoids_heavy_imports()
     test_bare_invocation_avoids_heavy_imports()
     test_unknown_command_avoids_heavy_imports()
     test_purge_avoids_heavy_imports()
+    test_command_help_isolates_features()
     print("ok")

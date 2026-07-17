@@ -296,6 +296,18 @@ def _materialize_spec(meta: CommandMeta, handler: Callable) -> CommandSpec {
     );
 }
 
+def _requests_help(cmd_argv: list[str]) -> bool {
+    for tok in cmd_argv {
+        if tok == '--' {
+            return False;
+        }
+        if tok in ('-h', '--help') {
+            return True;
+        }
+    }
+    return False;
+}
+
 impl run_selected_command(command_name: str) -> None {
     import from jaclang.cli.console { console }
     import from jaclang.cli.executor { get_executor }
@@ -308,6 +320,17 @@ impl run_selected_command(command_name: str) -> None {
         raise SystemExit(2);
     }
 
+    parser = _build_command_parser(meta);
+    cmd_argv = (
+        sys.argv[2:]
+            if len(sys.argv) > 1 and sys.argv[1] == command_name
+            else sys.argv[1:]
+    );
+
+    if _requests_help(cmd_argv) {
+        parser.parse_known_args(cmd_argv);
+    }
+
     _load_project_config();
 
     if command_name in ('build', 'start', 'setup') {
@@ -318,7 +341,6 @@ impl run_selected_command(command_name: str) -> None {
     spec = _materialize_spec(meta, handler);
     script_args = _extract_script_args(meta);
 
-    parser = _build_command_parser(meta);
     cmd_argv = (
         sys.argv[2:]
             if len(sys.argv) > 1 and sys.argv[1] == command_name
