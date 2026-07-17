@@ -167,7 +167,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 # A pod already being deleted (e.g. just healed) lingers here
                 # until its grace period ends; counting it would rebuild the
                 # wedge streak and falsely abort while its replacement boots.
-                if p.metadata.deletion_timestamp is not None {
+                if p.metadata?.deletion_timestamp is not None {
                     continue;
                 }
                 pod_name = str(p.metadata.name);
