@@ -667,12 +667,9 @@ impl format(
         try {
             import multiprocessing as mp;
             ctx = mp.get_context("fork") if os.name != "nt" else None;
-            pool_cls = (
-                ProcessPoolExecutor
-                    if ctx is None
-                    else lambda (**kw) { ProcessPoolExecutor(mp_context=ctx, **kw); }
-            );
-            with pool_cls(max_workers=max_workers) as executor {
+            with ProcessPoolExecutor(
+                max_workers=max_workers, mp_context=ctx
+            ) as executor {
                 futures = {
                     executor.submit(
                         _format_single_file_worker,
@@ -712,14 +709,12 @@ impl format(
                     }
                 }
             }
-        } except (
-            OSError,
-            ValueError,
-            TypeError,
-            ImportError,
-            AttributeError,
-            RuntimeError
-        ) {
+        } except Exception as e {
+            console.print(
+                f"Parallel formatting unavailable ({type(e).__name__}: {e}); "
+                "falling back to serial."
+            );
+            results = [];
             use_parallel = False;
         }
     }
