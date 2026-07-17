@@ -828,6 +828,28 @@ impl JacCompiler.compile(
                 _check_passes = [_CfgPass] + _check_passes;
             } except ImportError { }
         }
+
+        _available = set(_mod_analyses);
+        _kept: list = [];
+        _progress = True;
+        while _progress {
+            _progress = False;
+            for _p in _check_passes {
+                if _p in _kept {
+                    continue;
+                }
+
+                _reqs = getattr(_p, 'REQUIRES', ()) or ();
+                if all(_r in _available for _r in _reqs) {
+                    _kept.append(_p);
+                    for _prov in (getattr(_p, 'PROVIDES', ()) or ()) {
+                        _available.add(_prov);
+                    }
+                    _progress = True;
+                }
+            }
+        }
+        _check_passes = _kept;
         self.run_schedule(
             mod=mod_targ,
             target_program=actual_program,

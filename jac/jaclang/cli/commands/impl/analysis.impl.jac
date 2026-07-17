@@ -34,6 +34,19 @@ impl check(
     if isinstance(paths, str) {
         paths = [paths];
     }
+
+    if not parse_only {
+        import from jaclang.jac0core.compiler { typeshed_stubs_available }
+        if not typeshed_stubs_available() {
+            console.warning(
+                "type stubs unavailable -- the vendored typeshed stdlib is "
+                "missing (builtins.pyi not found), so inference and the "
+                "ownership/type checks that depend on it are skipped. Fetch "
+                "them by running `zig build` (or extract the tarball pinned "
+                "in jaclang/vendor/typeshed/PIN) and re-run."
+            );
+        }
+    }
     start_time = time();
     ignore_list = _normalize_ignore_patterns(ignore or []);
     (suppressed_codes, unknown_codes) = resolve_diagnostic_tokens(
@@ -144,8 +157,7 @@ impl check(
                 filtered_warnings
             );
         } except Exception as e {
-            console.error(f"Error checking '{file_path}': {e}");
-            return (False, 1, 0, [], []);
+            return (False, 1, 0, [f"Error checking '{file_path}': {e}"], []);
         } finally {
             prog.release_compile_closure();
         }
