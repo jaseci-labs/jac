@@ -221,7 +221,7 @@ def run_admin_prebuild_tests(runner: IntegrationTestRunner) {
     main_jac = os.path.join(tmpdir, "main.jac");
     open(main_jac, "w").write(
         'walker:pub Health {\n'
-        '    can check with `root entry {\n'
+        '    can check with Root entry {\n'
         '        report {"status": "healthy"};\n'
         '    }\n'
         '}\n'
