@@ -247,10 +247,8 @@ def _precompile_app(base: Path, pod_binary: bytes) -> Path {
 
 
 def fat_bundle_setting(project_dir: str) -> tuple[bool, bool] {
-    # Returns (enabled, explicit). Fat bundles are the DEFAULT; an explicit
-    # `[scale] fat_bundle = true` additionally makes vendoring failures fatal,
-    # while the implicit default falls back to a thin bundle with a warning,
-    # so projects with un-vendorable deps (e.g. sdist-only) keep deploying.
+    # (enabled, explicit): fat is the default; an explicit `fat_bundle = true`
+    # additionally makes vendoring failures fatal instead of degrading to thin.
     import from jaclang.project.config { get_config_for_path }
     # pack_jab tolerates malformed jac.tomls (the sanitizer is line-based), so
     # an unparseable config means thin bundle, not a failed deploy.
@@ -261,7 +259,6 @@ def fat_bundle_setting(project_dir: str) -> tuple[bool, bool] {
         return (False, False);
     }
     if config is None {
-        # No project config: nothing to resolve a dep closure against.
         return (False, False);
     }
     section = config.get_section("scale");
@@ -279,10 +276,9 @@ def fat_bundle_enabled(project_dir: str) -> bool {
 
 
 def _vendor_stage(stage: Path, sanitized_toml: (str | None), pod_binary: bytes) {
-    # Vendor the python dep closure into <stage>/_vendor with the SAME binary
-    # that sealed the app and that pods run, resolved against the same
-    # sanitized jac.toml the pod's `jac install` will see (the sanitizer can
-    # bake a provisioned-database intent that widens the capability closure).
+    # Vendor with the same binary that sealed the app and that pods run,
+    # against the same sanitized jac.toml the pod's `jac install` will see
+    # (sanitizing can bake a database intent that widens the closure).
     if sanitized_toml is not None {
         (stage / "jac.toml").write_text(sanitized_toml, encoding="utf-8");
     }
@@ -290,18 +286,28 @@ def _vendor_stage(stage: Path, sanitized_toml: (str | None), pod_binary: bytes) 
     jac_path.write_bytes(pod_binary);
     jac_path.chmod(0o755);
     script = Path(str(__file__)).parent.parent / "utils" / "vendor_wheels.jac";
-    result = subprocess.run(
-        [str(jac_path), "run", str(script), str(stage)],
-        capture_output=True,
-        text=True,
-        timeout=900
-    );
-    jac_path.unlink();
+    try {
+        result = subprocess.run(
+            [str(jac_path), "run", str(script), str(stage)],
+            capture_output=True,
+            text=True,
+            timeout=900
+        );
+    } finally {
+        jac_path.unlink(missing_ok=True);
+    }
     if (result.returncode != 0 or not (stage / "_vendor" / "VENDOR.json").is_file()) {
         raise RuntimeError(
             f"Fat bundle vendoring failed, so the deploy cannot ship offline "
             f"deps: {(result.stderr or result.stdout).strip()[-300:]}"
         );
+    }
+    # The vendor script reports skips (e.g. non-pypi deps left to pod boot);
+    # keep that visible in the deploy log.
+    for line in f"{result.stdout}\n{result.stderr}".splitlines() {
+        if line.strip() {
+            logger.info(f"vendor: {line.strip()}");
+        }
     }
 }
 

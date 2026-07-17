@@ -1,15 +1,14 @@
 """Vendor an app's python dep closure into <app_dir>/_vendor for a fat .jab.
 
-Run by pack_jab under the POD binary (`.pod-jac run vendor_wheels.jac <dir>`),
-never the driver's own jac: the wheels must be resolved by the same
-interpreter that executes `jac install` on the pod, and against the same
-(sanitized) jac.toml the pod unpacks, or the vendored closure can drift from
-what the pod asks pip for.
+pack_jab runs this under the pod binary so wheels are resolved by the same
+interpreter, and against the same sanitized jac.toml, that the pod's
+`jac install` will use.
 """
 
 import sys;
 
 import from pathlib { Path }
+import from jaclang.cli.console { console }
 import from jaclang.jac0core.sealed { python_tag }
 import from jaclang.project.config { get_config_for_path }
 import from jaclang.project.providers { get_python_provider, resolve_plan }
@@ -20,52 +19,53 @@ import from jaclang.runtimelib.jab_vendor {
 }
 
 
-def main -> int {
+def main {
     args = sys.argv[1:];
     if not args {
-        print("usage: jac run vendor_wheels.jac <app_dir>", file=sys.stderr);
-        return 2;
+        console.error("usage: jac run vendor_wheels.jac <app_dir>");
+        sys.exit(2);
     }
     app_dir = Path(args[0]).resolve();
     config = get_config_for_path(app_dir);
     if config is None {
-        print(f"vendor_wheels: no jac.toml under {app_dir}", file=sys.stderr);
-        return 1;
+        console.error(f"No jac.toml under {app_dir}; nothing to vendor.");
+        sys.exit(1);
     }
-    # Mirror the pod's plain `jac install`: include_dev=False, scale=False.
+    # Mirror the pod's plain `jac install` resolution.
     plan = resolve_plan(config, include_dev=False);
     py_deps = [
         d
         for d in plan.for_ecosystem("python")
         if d.source == "pypi"
     ];
-    skipped = [
-        d.name
-        for d in plan.for_ecosystem("python")
-        if d.source != "pypi"
-    ];
+    skipped = sorted(
+        [
+            d.name
+            for d in plan.for_ecosystem("python")
+            if d.source != "pypi"
+        ]
+    );
     if skipped {
-        print(
-            f"vendor_wheels: not vendoring non-pypi dep(s): "
-            f"{', '.join(sorted(skipped))} (pod installs them at boot)",
-            file=sys.stderr
+        console.print(
+            f"  ⚠ not vendoring non-pypi dep(s): {', '.join(skipped)} "
+            "(pods install them at boot)",
+            style="warning"
         );
     }
     specs = get_python_provider().specs_for(py_deps);
     if specs {
         (ok, err) = download_wheels(specs, wheels_dir(app_dir));
         if not ok {
-            print(f"vendor_wheels: wheel download failed:\n{err}", file=sys.stderr);
-            return 1;
+            console.error(f"Wheel download failed:\n{err}");
+            sys.exit(1);
         }
     }
     write_vendor_manifest(app_dir, specs, python_tag=python_tag());
     wd = wheels_dir(app_dir);
     count = len(list(wd.glob("*.whl"))) if wd.is_dir() else 0;
-    print(f"vendor_wheels: vendored {count} wheel(s) for {len(specs)} spec(s)");
-    return 0;
+    console.print(f"  Vendored {count} wheel(s) for {len(specs)} spec(s).");
 }
 
 with entry:__main__ {
-    sys.exit(main());
+    main();
 }
