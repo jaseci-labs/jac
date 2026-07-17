@@ -18,7 +18,9 @@ import from jaclang.compiler.rust_bridge._blob {
     tag_is_map,
     tag_is_list,
     tag_map_value,
-    tag_list_value
+    tag_list_value,
+    tag_is_wide,
+    tag_wide_record
 }
 
 glob STATUS_OK = 0,
@@ -51,6 +53,7 @@ obj Slot {
         value: SlotKind | None = None,
         is_shared: bool = False,
         is_borrowed: bool = False,
+        record: int = 0,
         name: str = "";
 }
 
@@ -105,15 +108,15 @@ def classify(tag: int) -> Slot {
             is_borrowed=tag_is_borrowed(tag)
         );
     }
+    if tag_is_wide(tag) {
+        return Slot(kind=SlotKind.Wide, is_opt=opt, record=tag_wide_record(tag));
+    }
     base = tag_base(tag);
     if base == TAG_STR {
         return Slot(kind=SlotKind.Str, is_opt=opt);
     }
     if base == TAG_BYTES {
         return Slot(kind=SlotKind.Bytes, is_opt=opt);
-    }
-    if base == TAG_WIDE {
-        return Slot(kind=SlotKind.Wide, is_opt=opt);
     }
     if base == TAG_BOOL {
         return Slot(kind=SlotKind.Bool, is_opt=opt);

@@ -15,8 +15,15 @@ enum TypeKind { Opaque, Error }
 
 struct TypeDef { name: Ident, kind: TypeKind }
 
+/// A typed wide record (2.9): a `#[jac_record]`-marked struct the binder emits for
+/// an `#[automatically_derived]` serde type whose rustdoc fields ARE the msgpack
+/// wire shape. Collected by [`analyze`] into the blob record table (name + field
+/// tags); never a real opaque `TypeDef`. Field order == declaration order ==
+/// msgpack map key order.
+struct RecordDef { name: Ident, fields: Vec<(String, Tag)> }
+
 #[derive(Clone, PartialEq, Eq)]
-enum Tag { Bool, Int, Uint, F64, Str, Bytes, Void, Ref(usize), Opt(Box<Tag>), Callback, Map(Box<Tag>), List(Box<Tag>), Wide }
+enum Tag { Bool, Int, Uint, F64, Str, Bytes, Void, Ref(usize), Opt(Box<Tag>), Callback, Map(Box<Tag>), List(Box<Tag>), Wide(u32) }
 
 impl Tag {
     fn as_u32(&self) -> u32 {
@@ -35,9 +42,11 @@ impl Tag {
             Tag::List(elem) => schema::TAG_LIST_BIT | elem.as_u32(),
             // The serde wide lane: any `Serialize`/`Deserialize` type crosses as a
             // self-describing MessagePack payload behind ONE tag. Composition
-            // (Option/nesting/records) lives INSIDE the payload, so `Wide` carries
-            // no inner tag — the type model is maintained by serde, not by us.
-            Tag::Wide       => schema::TAG_WIDE,
+            // (Option/nesting/containers) lives INSIDE the payload, so the wire is
+            // one msgpack blob regardless. The optional 1-based RECORD ID (2.9)
+            // rides the tag's upper bits: 0 = dynamic document, else it indexes the
+            // blob record table so the loader synthesizes a typed object.
+            Tag::Wide(id)   => schema::TAG_WIDE | (id << schema::TAG_WIDE_REC_SHIFT),
         }
     }
 }
@@ -172,8 +181,8 @@ fn expand(module_name: String, input: ItemMod) -> Result<TS2, Error> {
             "#[jac_bridge::bridge] requires an inline module: mod name { ... }")),
     };
 
-    let (types, fns) = analyze(&module_name, &items, span)?;
-    let blob      = build_blob(&module_name, &types, &fns);
+    let (types, records, fns) = analyze(&module_name, &items, span)?;
+    let blob      = build_blob(&module_name, &types, &records, &fns);
     let static_ts = gen_static(&blob, &module_name);
     let shims_ts  = gen_shims(&module_name, &types, &fns, &input.ident);
 
@@ -200,7 +209,7 @@ fn expand(module_name: String, input: ItemMod) -> Result<TS2, Error> {
     // the sibling rt module; inject the `use` only when a wide value is present so
     // wide-free bridges stay byte-identical (mirrors the JacCallback import above).
     let has_wide = fns.iter().any(|f|
-        f.ret == Tag::Wide || f.params.iter().any(|p| p.tag == Tag::Wide));
+        matches!(f.ret, Tag::Wide(_)) || f.params.iter().any(|p| matches!(p.tag, Tag::Wide(_))));
     if has_wide {
         let rt = format_ident!("__jac_bridge_{module_name}_rt");
         cleaned.insert(0, quote! {
@@ -228,6 +237,15 @@ fn strip_bridge_attrs(item: &Item) -> TS2 {
             s2.attrs.retain(|a| !a.path().is_ident("jac_error"));
             // The error type is a name-only marker for D2 metadata; error handles
             // are Box<String> at runtime, so the struct is never constructed.
+            return quote! { #[allow(dead_code)] #s2 };
+        }
+        if has_attr(&s.attrs, "jac_record") {
+            let mut s2 = s.clone();
+            s2.attrs.retain(|a| !a.path().is_ident("jac_record"));
+            // A typed wide record (2.9) is pure metadata for the blob record table —
+            // its field shape mirrors the foreign serde struct, but nothing here
+            // constructs it (the wrapper marshals `Wide<foreign::T>`). Emit it inert
+            // so the field types stay compile-checked without an unused warning.
             return quote! { #[allow(dead_code)] #s2 };
         }
     }
@@ -260,10 +278,19 @@ fn analyze(
     module_name: &str,
     items: &[Item],
     span: Span,
-) -> Result<(Vec<TypeDef>, Vec<FnDef>), Error> {
+) -> Result<(Vec<TypeDef>, Vec<RecordDef>, Vec<FnDef>), Error> {
+    // A `#[jac_record]` struct is a typed wide record (2.9), never an opaque type:
+    // collect its fields as a record and skip the TypeDef. Fields cross by their own
+    // scalar tag — a non-scalar field type is a binder bug (it should have kept the
+    // shape dynamic), rejected here with a spanned error.
+    let mut records: Vec<RecordDef> = Vec::new();
     let mut types: Vec<TypeDef> = Vec::new();
     for item in items {
         if let Item::Struct(s) = item {
+            if has_attr(&s.attrs, "jac_record") {
+                records.push(analyze_record(s)?);
+                continue;
+            }
             let kind = if has_attr(&s.attrs, "jac_error") { TypeKind::Error } else { TypeKind::Opaque };
             types.push(TypeDef { name: s.ident.clone(), kind });
         }
@@ -287,7 +314,7 @@ fn analyze(
         for ii in &imp.items {
             let ImplItem::Fn(f) = ii else { continue };
             if !matches!(f.vis, syn::Visibility::Public(_)) { continue }
-            fns.push(analyze_fn(f, type_i, &types, error_idx, module_name)?);
+            fns.push(analyze_fn(f, type_i, &types, &records, error_idx, module_name)?);
         }
     }
 
@@ -312,7 +339,32 @@ fn analyze(
         });
     }
 
-    Ok((types, fns))
+    Ok((types, records, fns))
+}
+
+/// Parse a `#[jac_record]` struct into a [`RecordDef`]: each named field becomes
+/// `(name, scalar tag)` in declaration order. Only a struct with named fields and
+/// scalar/str field types is a valid typed record; anything else is a binder bug.
+fn analyze_record(s: &syn::ItemStruct) -> Result<RecordDef, Error> {
+    let syn::Fields::Named(named) = &s.fields else {
+        return Err(Error::new(s.ident.span(),
+            "#[jac_record] requires a struct with named fields"));
+    };
+    let mut fields = Vec::new();
+    for f in &named.named {
+        let fname = f.ident.as_ref()
+            .ok_or_else(|| Error::new(f.span(), "#[jac_record] field must be named"))?
+            .to_string();
+        let (tag, _) = ty_to_tag(&f.ty, &[], &[])?;
+        match tag {
+            Tag::Bool | Tag::Int | Tag::Uint | Tag::F64 | Tag::Str => {}
+            _ => return Err(Error::new(f.ty.span(),
+                "#[jac_record] field must be a scalar or String (bool/int/uint/f64/str); \
+                 a record with a non-scalar field must stay on the dynamic wide lane")),
+        }
+        fields.push((fname, tag));
+    }
+    Ok(RecordDef { name: s.ident.clone(), fields })
 }
 
 fn impl_type_name(imp: &syn::ItemImpl) -> Result<Ident, Error> {
@@ -328,6 +380,7 @@ fn analyze_fn(
     f: &syn::ImplItemFn,
     type_i: usize,
     types: &[TypeDef],
+    records: &[RecordDef],
     error_idx: Option<usize>,
     module_name: &str,
 ) -> Result<FnDef, Error> {
@@ -356,11 +409,11 @@ fn analyze_fn(
 
     let params: Vec<Param> = f.sig.inputs.iter()
         .filter(|a| !matches!(a, FnArg::Receiver(_)))
-        .map(|a| analyze_param(a, types))
+        .map(|a| analyze_param(a, types, records))
         .collect::<Result<_, _>>()?;
 
     let (ret, throws, ret_is_result, ret_is_self_borrow) =
-        analyze_ret(&f.sig.output, types, type_i, has_self, error_idx)?;
+        analyze_ret(&f.sig.output, types, records, type_i, has_self, error_idx)?;
 
     let ownership = parse_ownership(&f.attrs)?;
     // The ownership contract only governs opaque-handle returns, and `borrowed`
@@ -464,7 +517,7 @@ fn parse_jac_attr(attrs: &[Attribute]) -> Result<(Ownership, bool), Error> {
     Ok((ownership, is_assoc))
 }
 
-fn analyze_param(arg: &FnArg, types: &[TypeDef]) -> Result<Param, Error> {
+fn analyze_param(arg: &FnArg, types: &[TypeDef], records: &[RecordDef]) -> Result<Param, Error> {
     let FnArg::Typed(pt) = arg else {
         return Err(Error::new(arg.span(), "unexpected self"));
     };
@@ -472,7 +525,7 @@ fn analyze_param(arg: &FnArg, types: &[TypeDef]) -> Result<Param, Error> {
         Pat::Ident(pi) => pi.ident.to_string(),
         _ => return Err(Error::new(pt.pat.span(), "expected a plain param name")),
     };
-    let (tag, is_str_ref) = ty_to_tag(&pt.ty, types)?;
+    let (tag, is_str_ref) = ty_to_tag(&pt.ty, types, records)?;
     let int_ty = match &tag {
         Tag::Int | Tag::Uint => simple_ident(&pt.ty),
         _ => None,
@@ -496,13 +549,13 @@ fn simple_ident(ty: &Type) -> Option<String> {
     }
 }
 
-fn ty_to_tag(ty: &Type, types: &[TypeDef]) -> Result<(Tag, bool), Error> {
+fn ty_to_tag(ty: &Type, types: &[TypeDef], records: &[RecordDef]) -> Result<(Tag, bool), Error> {
     // The serde wide lane: `Wide<T>` crosses as a MessagePack payload on the same
     // (ptr, len) two-slot boundary as `&str`/`&[u8]`, but the second field of the
     // returned pair is `false` — the wide arm in the param codegen owns the two
     // C slots explicitly, so it is NOT flagged as a str/bytes wide-boundary param.
     if is_wide_marker(ty) {
-        return Ok((Tag::Wide, false));
+        return Ok((Tag::Wide(wide_record_id(ty, records)), false));
     }
     match ty {
         Type::Reference(tr) => {
@@ -517,7 +570,7 @@ fn ty_to_tag(ty: &Type, types: &[TypeDef]) -> Result<(Tag, bool), Error> {
                     if tp.path.is_ident("u8") { return Ok((Tag::Bytes, true)); }
                 }
             }
-            let (tag, _) = ty_to_tag(&tr.elem, types)?;
+            let (tag, _) = ty_to_tag(&tr.elem, types, records)?;
             Ok((tag, false))
         }
         Type::Path(tp) if tp.path.segments.len() == 1 => {
@@ -553,6 +606,7 @@ fn ty_to_tag(ty: &Type, types: &[TypeDef]) -> Result<(Tag, bool), Error> {
 fn analyze_ret(
     ret: &ReturnType,
     types: &[TypeDef],
+    records: &[RecordDef],
     self_i: usize,
     has_self: bool,
     error_idx: Option<usize>,
@@ -571,7 +625,7 @@ fn analyze_ret(
         return Ok((Tag::Ref(self_i), None, false, true));
     }
     if let Some((ok_ty, _)) = extract_result(ty) {
-        let ok_tag = ret_tag(ok_ty, types, self_i)?;
+        let ok_tag = ret_tag(ok_ty, types, records, self_i)?;
         if error_idx.is_none() {
             return Err(Error::new(ty.span(),
                 "function returns Result but the bridge module has no #[jac_error] type; \
@@ -579,7 +633,7 @@ fn analyze_ret(
         }
         return Ok((ok_tag, error_idx, true, false));
     }
-    let tag = ret_tag(ty, types, self_i)?;
+    let tag = ret_tag(ty, types, records, self_i)?;
     Ok((tag, None, false, false))
 }
 
@@ -651,6 +705,32 @@ fn is_wide_marker(ty: &Type) -> bool {
         .count() == 1
 }
 
+/// The single type argument `T` of a `Wide<T>` marker, if `ty` is one.
+fn wide_inner(ty: &Type) -> Option<&Type> {
+    let Type::Path(tp) = ty else { return None };
+    let seg = tp.path.segments.last()?;
+    if seg.ident != "Wide" { return None; }
+    let PathArguments::AngleBracketed(args) = &seg.arguments else { return None };
+    args.args.iter().find_map(|a| if let GenericArgument::Type(t) = a { Some(t) } else { None })
+}
+
+/// The 1-based record id for a `Wide<Inner>` marker: `Inner`'s last path segment
+/// (`demo::Point` → `Point`) matched by name against the collected typed records.
+/// `0` when the inner is not a typed record (a bare `serde_json::Value`, a nested
+/// std container, or a manual-serde type the binder left un-emitted) — that value
+/// keeps the dynamic wide lane. 2.9: the binder emits a `#[jac_record]` struct
+/// for exactly the derived-record shapes whose rustdoc fields ARE the wire shape.
+fn wide_record_id(ty: &Type, records: &[RecordDef]) -> u32 {
+    let Some(inner) = wide_inner(ty) else { return 0 };
+    let Type::Path(tp) = inner else { return 0 };
+    let Some(seg) = tp.path.segments.last() else { return 0 };
+    records
+        .iter()
+        .position(|r| r.name == seg.ident)
+        .map(|i| (i + 1) as u32)
+        .unwrap_or(0)
+}
+
 /// The single type argument of an `Option<T>` path, if `ty` is one.
 fn option_inner(ty: &Type) -> Option<&Type> {
     let Type::Path(tp) = ty else { return None };
@@ -663,12 +743,12 @@ fn option_inner(ty: &Type) -> Option<&Type> {
     if tys.len() == 1 { Some(tys[0]) } else { None }
 }
 
-fn ret_tag(ty: &Type, types: &[TypeDef], self_i: usize) -> Result<Tag, Error> {
+fn ret_tag(ty: &Type, types: &[TypeDef], records: &[RecordDef], self_i: usize) -> Result<Tag, Error> {
     // The serde wide lane: `Wide<T>` returns as an owned JacBuf holding the
     // MessagePack image of `T`. Checked first — a `Wide<..>` path must never be
     // mistaken for an opaque type reference by the generic Path arms below.
     if is_wide_marker(ty) {
-        return Ok(Tag::Wide);
+        return Ok(Tag::Wide(wide_record_id(ty, records)));
     }
     // HashMap<String, V> marshals as a real Jac dict[str, V] (str keys in v1).
     // Checked before the generic Path arms so the `HashMap` ident is not mistaken
@@ -681,7 +761,7 @@ fn ret_tag(ty: &Type, types: &[TypeDef], self_i: usize) -> Result<Tag, Error> {
                 "unsupported HashMap key type: only HashMap<String, V> is bridgeable \
                  (keys marshal as Jac str)"));
         }
-        let val_tag = ret_tag(val_ty, types, self_i)?;
+        let val_tag = ret_tag(val_ty, types, records, self_i)?;
         match val_tag {
             Tag::Bool | Tag::Int | Tag::Uint | Tag::Str =>
                 return Ok(Tag::Map(Box::new(val_tag))),
@@ -703,7 +783,7 @@ fn ret_tag(ty: &Type, types: &[TypeDef], self_i: usize) -> Result<Tag, Error> {
     // Vec<V> marshals as a real Jac list[V]. Checked before the generic Path arms
     // so the `Vec` ident is not mistaken for an opaque type reference.
     if let Some(elem_ty) = extract_vec(ty) {
-        let elem_tag = ret_tag(elem_ty, types, self_i)?;
+        let elem_tag = ret_tag(elem_ty, types, records, self_i)?;
         match elem_tag {
             Tag::Bool | Tag::Int | Tag::Uint | Tag::Str =>
                 return Ok(Tag::List(Box::new(elem_tag))),
@@ -717,7 +797,7 @@ fn ret_tag(ty: &Type, types: &[TypeDef], self_i: usize) -> Result<Tag, Error> {
         Type::Path(tp) if tp.path.segments.last().map(|s| s.ident == "Option").unwrap_or(false) => {
             let inner_ty = option_inner(ty).ok_or_else(|| Error::new(ty.span(),
                 "Option must have a single concrete type argument"))?;
-            let inner = ret_tag(inner_ty, types, self_i)?;
+            let inner = ret_tag(inner_ty, types, records, self_i)?;
             match inner {
                 // Only Ref (null handle), Str, and Bytes (null JacBuf.ptr) have an
                 // in-band None channel. Option<bool>/Option<int>/Option<Option<_>>
@@ -762,7 +842,6 @@ fn ret_tag(ty: &Type, types: &[TypeDef], self_i: usize) -> Result<Tag, Error> {
 // ─── D2 blob ──────────────────────────────────────────────────────────────────
 
 fn put_u32(b: &mut [u8], o: usize, v: u32) { b[o..o+4].copy_from_slice(&v.to_le_bytes()); }
-fn put_u64(b: &mut [u8], o: usize, v: u64) { b[o..o+8].copy_from_slice(&v.to_le_bytes()); }
 fn put_sr(b: &mut [u8], o: usize, (abs, len): (u32, u32)) { put_u32(b, o, abs); put_u32(b, o+4, len); }
 
 struct Pool { bytes: Vec<u8>, map: std::collections::HashMap<String, u32> }
@@ -783,14 +862,26 @@ impl Pool {
     fn abs(&self, base: u32, (rel, len): (u32, u32)) -> (u32, u32) { (base + rel, len) }
 }
 
-fn build_blob(module_name: &str, types: &[TypeDef], fns: &[FnDef]) -> Vec<u8> {
+fn build_blob(module_name: &str, types: &[TypeDef], records: &[RecordDef], fns: &[FnDef]) -> Vec<u8> {
     let n_params: usize = fns.iter().map(|f| f.params.len()).sum();
-    let pool_base = 56 + types.len() * 32 + fns.len() * 44 + n_params * 12;
+    let n_fields: usize = records.iter().map(|r| r.fields.len()).sum();
+    let rec_desc = schema::RECORD_DESC_SIZE as usize;
+    let field_desc = schema::FIELD_DESC_SIZE as usize;
+    // Layout: header | TypeDescs | FnDescs | ParamDescs | RecordDescs | FieldDescs | pool
+    let records_base = 56 + types.len() * 32 + fns.len() * 44 + n_params * 12;
+    let fields_base  = records_base + records.len() * rec_desc;
+    let pool_base    = fields_base + n_fields * field_desc;
     let pb = pool_base as u32;
 
     let mut pool = Pool::new();
 
     let mod_sr = pool.intern(module_name);
+    // Intern record + field names up front so their StrRefs land in the pool.
+    let record_srs: Vec<((u32, u32), Vec<(u32, u32)>)> = records.iter().map(|r| {
+        let nsr = pool.intern(&r.name.to_string());
+        let fsrs = r.fields.iter().map(|(n, _)| pool.intern(n)).collect();
+        (nsr, fsrs)
+    }).collect();
 
     let type_srs: Vec<_> = types.iter().map(|t| {
         let n = t.name.to_string();
@@ -820,7 +911,11 @@ fn build_blob(module_name: &str, types: &[TypeDef], fns: &[FnDef]) -> Vec<u8> {
     put_u32(&mut buf, 16, blob_len as u32);
     put_u32(&mut buf, 20, 0);
     put_sr (&mut buf, 24, pool.abs(pb, mod_sr));
-    put_u64(&mut buf, 32, 0);
+    // The previously-reserved u64 at 32 now carries the record table locator (2.9).
+    // Zero when there are no typed records — byte-identical to a v1 blob, so old
+    // loaders (which never read offset 32) are unaffected.
+    put_u32(&mut buf, 32, if records.is_empty() { 0 } else { records_base as u32 });
+    put_u32(&mut buf, 36, records.len() as u32);
     put_u32(&mut buf, 40, 56);
     put_u32(&mut buf, 44, types.len() as u32);
     put_u32(&mut buf, 48, (56 + types.len() * 32) as u32);
@@ -867,6 +962,22 @@ fn build_blob(module_name: &str, types: &[TypeDef], fns: &[FnDef]) -> Vec<u8> {
             put_sr(&mut buf, poff, pool.abs(pb, psr));
             put_u32(&mut buf, poff + 8, p.tag.as_u32());
             poff += 12;
+        }
+    }
+
+    // RecordDescs (20 bytes each) + FieldDescs (12 bytes each), 2.9 typed-obj table.
+    let mut fcursor = fields_base;
+    for (i, (r, (nsr, fsrs))) in records.iter().zip(record_srs.iter()).enumerate() {
+        let off = records_base + i * rec_desc;
+        put_u32(&mut buf, off, schema::RECORD_DESC_SIZE);
+        put_sr(&mut buf, off + 4, pool.abs(pb, *nsr));
+        let field_off = if r.fields.is_empty() { 0 } else { fcursor as u32 };
+        put_u32(&mut buf, off + 12, field_off);
+        put_u32(&mut buf, off + 16, r.fields.len() as u32);
+        for ((_, tag), &fsr) in r.fields.iter().zip(fsrs.iter()) {
+            put_sr(&mut buf, fcursor, pool.abs(pb, fsr));
+            put_u32(&mut buf, fcursor + 8, tag.as_u32());
+            fcursor += field_desc;
         }
     }
 
@@ -929,7 +1040,7 @@ fn gen_shims(module_name: &str, types: &[TypeDef], fns: &[FnDef], mod_ident: &Id
     // envelope). The codec helpers are generic over the whole target so `T` is
     // inferred from the wrapper fn's signature at each call site.
     let has_wide = fns.iter().any(|f|
-        f.ret == Tag::Wide || f.params.iter().any(|p| p.tag == Tag::Wide));
+        matches!(f.ret, Tag::Wide(_)) || f.params.iter().any(|p| matches!(p.tag, Tag::Wide(_))));
     let wide_helpers: TS2 = if has_wide {
         quote! {
             #[derive(::serde::Serialize, ::serde::Deserialize)]
@@ -1459,7 +1570,7 @@ fn gen_fn_shim(f: &FnDef, types: &[TypeDef], mod_ident: &Ident, rt: &Ident, _has
                     c_params.push(quote! { #pn: u64 });
                     decode.push(quote! { let #pn = f64::from_bits(#pn) as #fty; });
                 }
-                Tag::Wide => {
+                Tag::Wide(_) => {
                     // The serde wide lane: a `Wide<T>` param crosses as a
                     // (payload_ptr, payload_len) pair — the same two-slot boundary
                     // as `&str`/`&[u8]` — carrying a MessagePack document. Decode it
@@ -1810,7 +1921,7 @@ fn out_param_tokens(ret: &Tag, rt: &Ident) -> (TS2, TS2, TS2) {
         // discipline as a `Vec<u8>`/String return. `wide_encode` serializes `val`
         // (a `Wide<T>`, serde-transparent over `T`) and hands the buffer to the
         // loader to free via the module's free-buf shim.
-        Tag::Wide => (
+        Tag::Wide(_) => (
             quote! { out_buf: *mut #rt::JacBuf, },
             quote! { *out_buf = #rt::wide_encode(&val); },
             quote! { *out_buf = #rt::JacBuf { ptr: ::std::ptr::null_mut(), len: 0, cap: 0 }; },

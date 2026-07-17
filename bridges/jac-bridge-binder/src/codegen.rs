@@ -172,6 +172,25 @@ pub fn emit(spec: &BridgeSpec) -> String {
         }
     }
 
+    // ── typed wide records (2.9) ──────────────────────────────────────────────
+    // A `#[jac_record]` struct is pure metadata for the blob record table: it
+    // mirrors the derived-serde foreign struct's field shape so the loader can
+    // synthesize a typed object. The wrapper signatures still marshal
+    // `Wide<foreign::T>`; the macro links a wide slot to its record by the LAST
+    // path segment matching the record name.
+    for rec in &spec.records {
+        if !first {
+            writeln!(out).unwrap();
+        }
+        first = false;
+        writeln!(out, "    #[jac_record]").unwrap();
+        writeln!(out, "    pub struct {} {{", rec.name).unwrap();
+        for f in &rec.fields {
+            writeln!(out, "        pub {}: {},", f.name, f.rust_ty).unwrap();
+        }
+        writeln!(out, "    }}").unwrap();
+    }
+
     // ── impl blocks ───────────────────────────────────────────────────────────
 
     for bt in &spec.types {

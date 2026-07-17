@@ -59,6 +59,23 @@ pub const TAG_BYTES: u32 = 7;
 /// space (1..=8) is frozen; any further wire evolution bumps [`ABI_VERSION`].
 /// Additive to ABI v1 — old blobs never set it (append-only evolution rule, D2).
 pub const TAG_WIDE: u32 = 8;
+/// Bit shift for the 1-based **record id** packed into a `TAG_WIDE` slot tag
+/// (Phase 2.9, typed-obj synthesis). A wide value whose Rust type is an
+/// `#[automatically_derived]` serde struct with NO stripped/private fields has a
+/// statically known field shape, so the binder emits `TAG_WIDE | (record_id <<
+/// TAG_WIDE_REC_SHIFT)`; the id indexes the blob's **record table** (name +
+/// field list). `record_id == 0` (a bare `TAG_WIDE`) is the ABI-v1 behaviour: the
+/// value crosses as a DYNAMIC document (dict / JacValue), field shape unknown.
+/// The WIRE is unchanged either way — still one `rmp_serde` msgpack `JacBuf`; the
+/// id only tells the loader to decode into a typed object instead of a dict. The
+/// id occupies bits [8..26), below the top-6 flag region, so it never collides
+/// with the `Ref`/`Opt`/`Map`/`List`/`Shared`/`Borrow` bits. Additive to ABI v1
+/// (append-only, D2): old blobs set no id, and a loader that ignores the id still
+/// decodes the identical bytes dynamically.
+pub const TAG_WIDE_REC_SHIFT: u32 = 8;
+/// Mask for the record id after shifting out [`TAG_WIDE_REC_SHIFT`] (18 bits,
+/// bounded below [`TAG_BORROW_BIT`]).
+pub const TAG_WIDE_REC_MASK: u32 = 0x0003_FFFF;
 /// Sentinel meaning "no type" (absent self_type / throws / void return).
 pub const TAG_VOID: u32 = 0xFFFF_FFFF;
 /// OR'd with a type index to produce a type-reference tag.
@@ -115,3 +132,28 @@ pub const FN_METHOD: u8 = 1;
 /// loader exposes it as a static method on the owning type. `self_type` carries
 /// the OWNING type index (for loader placement), never a receiver.
 pub const FN_STATIC: u8 = 2;
+
+// ─── Record table (Phase 2.9, typed-obj synthesis) ──────────────────────────
+//
+// A NEW blob section, appended after the ParamDescs and before the string pool,
+// carrying the field schema of every typed wide record. Located via two header
+// words written into the previously-reserved u64 at header offset 32:
+//   header[32..36] = record_off  (byte offset of the first RecordDesc, 0 if none)
+//   header[36..40] = record_count
+// Old readers left this u64 zero and never read it, so a blob with records is
+// still parsed correctly (records ignored) by an ABI-v1-only loader — the wide
+// values simply decode dynamically. Append-only (D2).
+//
+// RecordDesc — 20 bytes, one per typed record (1-based `record_id` = index+1):
+//   +0  u32   desc size (20; lets a future reader skip an enlarged desc)
+//   +4  StrRef record name (the synthesized Jac obj / Python class name)
+//   +12 u32   field_off   (byte offset of this record's first FieldDesc)
+//   +16 u32   field_count
+// FieldDesc — 12 bytes, one per field (declaration order == msgpack map order):
+//   +0  StrRef field name
+//   +8  u32    field value tag (a scalar TAG_*; nested records are out of the
+//              v1 typed-obj slice and keep the dynamic lane)
+/// Byte size of one RecordDesc in the record table.
+pub const RECORD_DESC_SIZE: u32 = 20;
+/// Byte size of one FieldDesc in the record table.
+pub const FIELD_DESC_SIZE: u32 = 12;

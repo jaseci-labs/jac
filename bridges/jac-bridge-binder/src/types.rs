@@ -13,6 +13,15 @@ pub struct BridgeSpec {
     /// registry artifact is keyed by. Empty is the default-feature build.
     pub crate_features: Vec<String>,
     pub types: Vec<BridgeType>,
+    /// Typed wide records (2.9): derived-serde structs whose rustdoc field list IS
+    /// the msgpack wire shape, so the loader synthesizes a typed Jac `obj` /
+    /// Python class instead of a dynamic dict. Emitted as `#[jac_record]` structs
+    /// in the generated module (the macro turns them into the blob record table)
+    /// and referenced from a wide slot by name. Ordered; the 1-based position is
+    /// the record id the macro packs into the wide tag. Only FLAT records with
+    /// scalar/String fields qualify in v1 — a record with a nested/container field
+    /// stays on the dynamic wide lane.
+    pub records: Vec<WideRecord>,
     pub skips: Vec<Skip>,
     /// Whole public types the classifier dropped before it could even reach their
     /// methods — a lifetime/const/type-generic struct with no overlay directive to
@@ -29,6 +38,25 @@ pub struct BridgeSpec {
     /// 80 defaults nothing can reach). Surfaced as "+N inherited defaults not
     /// considered" in the report — auditable, but out of `total()`/`pct()`.
     pub inherited_excluded: usize,
+}
+
+/// A typed wide record (2.9): a derived-serde struct emitted as a `#[jac_record]`
+/// struct so the loader can synthesize a typed object. `name` is both the emitted
+/// struct's name and the record's name in the blob table; it matches the LAST
+/// segment of the `Wide<..>` inner type spelled in signatures, which is how the
+/// macro links a wide slot to its record. Fields are in declaration order (==
+/// msgpack map key order); each `rust_ty` is the field's Rust type spelling
+/// (`i64`, `String`, `f64`, `bool`) the macro re-maps to a scalar tag.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WideRecord {
+    pub name: String,
+    pub fields: Vec<WideField>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct WideField {
+    pub name: String,
+    pub rust_ty: String,
 }
 
 /// A public type removed wholesale during classify (not a per-method skip). Each

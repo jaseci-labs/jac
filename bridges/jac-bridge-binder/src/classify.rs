@@ -12,7 +12,7 @@ use crate::overlay::Overlay;
 use crate::types::{
     BridgeFn, BridgeParam, BridgeReturn, BridgeSpec, BridgeType, DrainCollect, DropReason,
     DroppedType, MonoType, Ownership, OwningWrapper, Recv, RootProducer, ScalarType, SerdeInfo,
-    Skip, SkipReason, TypeKind, WrapperKind,
+    Skip, SkipReason, TypeKind, WideField, WideRecord, WrapperKind,
 };
 
 /// Which serde trait a path check / whitelist-leaf lookup is after. A wide return
@@ -168,6 +168,7 @@ pub fn classify_with_overlay(doc: &Crate, overlay: Option<&Overlay>) -> BridgeSp
         ref_type_names: HashSet::new(),
         root_reexports: collect_root_reexports(doc),
         root_glob_modules: collect_root_glob_modules(doc, &module_name),
+        wide_record_ids: std::cell::RefCell::new(vec![]),
     };
 
     let mut types = ctx.find_types();
@@ -237,11 +238,13 @@ pub fn classify_with_overlay(doc: &Crate, overlay: Option<&Overlay>) -> BridgeSp
     sort_types(&mut types);
 
     ctx.dropped.sort_by(|a, b| a.name.cmp(&b.name));
+    let records = ctx.build_wide_records();
     BridgeSpec {
         module_name,
         crate_version,
         crate_features: overlay.map(|o| o.features().to_vec()).unwrap_or_default(),
         types,
+        records,
         skips: ctx.skips,
         dropped: ctx.dropped,
         inherited_excluded: ctx.inherited_excluded,
@@ -469,6 +472,13 @@ struct Ctx<'a> {
     /// flat `crate::Type` path even though its canonical path is deeper
     /// (`regex::regex::string::Regex`).
     root_glob_modules: HashSet<String>,
+    /// Rustdoc ids of the derived-record structs a wide slot resolved to a TYPED
+    /// record (2.9), in first-seen order, deduplicated. Collected during method
+    /// classification (via `&self` wide-slot resolution, hence the interior
+    /// mutability) and turned into [`BridgeSpec::records`] afterwards. A struct
+    /// lands here only when it passes `derived_record_at`'s gate — derived serde,
+    /// no stripped fields, all fields scalar/String.
+    wide_record_ids: std::cell::RefCell<Vec<u32>>,
 }
 
 impl<'a> Ctx<'a> {
@@ -1060,10 +1070,97 @@ impl<'a> Ctx<'a> {
         // serde-attested named leaf; a shape with only std/primitive leaves stays a
         // skip. (`[type."T"] wide = true` bypasses this — it is handled earlier.)
         if self.is_wide_serializable(ty, dir) && self.wide_has_serde_leaf(ty, dir) {
-            self.render_wide_ty(ty)
+            let rendered = self.render_wide_ty(ty)?;
+            // 2.9: if the wide value's TOP type is a derived-serde record with a
+            // statically known field shape, register it so codegen emits a
+            // `#[jac_record]` and the loader synthesizes a typed object. Only the
+            // DETECTION path collects records; an overlay `wide = true` escape hatch
+            // (handled earlier) stays a dynamic document by design.
+            self.note_wide_top(ty);
+            Some(rendered)
         } else {
             None
         }
+    }
+
+    /// The Rust spelling of a field type IF it is a scalar or `String` — the only
+    /// field shapes a v1 typed record admits. `None` for anything else (a nested
+    /// record, a container, a foreign type), which disqualifies the whole record so
+    /// it stays on the dynamic wide lane.
+    fn scalar_field_ty(&self, ty: &Type) -> Option<String> {
+        match ty {
+            Type::Primitive(p) => match p.as_str() {
+                "bool" | "i8" | "i16" | "i32" | "i64" | "isize" | "u8" | "u16" | "u32"
+                | "u64" | "usize" | "f32" | "f64" => Some(p.clone()),
+                _ => None,
+            },
+            Type::ResolvedPath(rp) if rp_name(&rp.path) == "String" => Some("String".into()),
+            _ => None,
+        }
+    }
+
+    /// The rustdoc id of the derived-record struct `ty`'s TOP type resolves to, if it
+    /// qualifies for typed-obj synthesis (2.9): a plain struct with a
+    /// `#[automatically_derived]` serde impl (so rustdoc's field list IS the wire
+    /// shape), no stripped/private fields, and every field a scalar/`String`. `None`
+    /// otherwise — that value keeps the dynamic wide lane. A leading `&` is peeled.
+    fn derived_record_at(&self, ty: &Type) -> Option<u32> {
+        let ty = match ty {
+            Type::BorrowedRef { type_, .. } => &**type_,
+            t => t,
+        };
+        let Type::ResolvedPath(rp) = ty else { return None };
+        let id = rp.id.0;
+        let item = self.doc.index.get(&Id(id))?;
+        let ItemEnum::Struct(s) = &item.inner else { return None };
+        if !self.serde_disposition(id).automatically_derived {
+            return None;
+        }
+        let StructKind::Plain { fields, has_stripped_fields } = &s.kind else { return None };
+        if *has_stripped_fields {
+            return None;
+        }
+        for fid in fields {
+            let f = self.item(fid)?;
+            let ItemEnum::StructField(fty) = &f.inner else { return None };
+            self.scalar_field_ty(fty)?;
+        }
+        Some(id)
+    }
+
+    /// Register `ty`'s top type as a typed record if it qualifies (dedup, first-seen
+    /// order). Interior mutability: the wide-slot resolution path is `&self`.
+    fn note_wide_top(&self, ty: &Type) {
+        if let Some(id) = self.derived_record_at(ty) {
+            let mut ids = self.wide_record_ids.borrow_mut();
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
+    }
+
+    /// Materialize [`BridgeSpec::records`] from the ids collected during
+    /// classification: each struct's name + its scalar/`String` fields in
+    /// declaration order (== msgpack map key order).
+    fn build_wide_records(&self) -> Vec<WideRecord> {
+        let ids = self.wide_record_ids.borrow();
+        ids.iter()
+            .filter_map(|&id| {
+                let item = self.doc.index.get(&Id(id))?;
+                let name = item.name.clone()?;
+                let ItemEnum::Struct(s) = &item.inner else { return None };
+                let StructKind::Plain { fields, .. } = &s.kind else { return None };
+                let mut wf = Vec::new();
+                for fid in fields {
+                    let f = self.item(fid)?;
+                    let fname = f.name.clone()?;
+                    let ItemEnum::StructField(fty) = &f.inner else { return None };
+                    let rust_ty = self.scalar_field_ty(fty)?;
+                    wf.push(WideField { name: fname, rust_ty });
+                }
+                Some(WideRecord { name, fields: wf })
+            })
+            .collect()
     }
 
     /// True when `ty` contains at least one NAMED leaf that actually implements the
@@ -2948,6 +3045,7 @@ mod serde_lane_tests {
             ref_type_names: HashSet::new(),
             root_reexports: collect_root_reexports(doc),
             root_glob_modules: collect_root_glob_modules(doc, &module_name),
+            wide_record_ids: std::cell::RefCell::new(vec![]),
         }
     }
 

@@ -11,6 +11,8 @@ glob MAGIC = b"JACBRDG1",
      TAG_F64 = 6,
      TAG_BYTES = 7,
      TAG_WIDE = 8,
+     TAG_WIDE_REC_SHIFT = 8,
+     TAG_WIDE_REC_MASK = 0x0003FFFF,
      TAG_REF_BIT = 0x80000000,
      TAG_OPT_BIT = 0x40000000,
      TAG_MAP_BIT = 0x20000000,
@@ -59,6 +61,17 @@ def tag_is_borrowed(tag: int) -> bool {
 
 def tag_ref_index(tag: int) -> int {
     return tag_base(tag) & ~TAG_REF_BIT & ~TAG_SHARED_BIT & ~TAG_BORROW_BIT;
+}
+
+
+def tag_is_wide(tag: int) -> bool {
+    b = tag_base(tag);
+    return (b & 0xFF) == TAG_WIDE and b < TAG_MAP_BIT;
+}
+
+
+def tag_wide_record(tag: int) -> int {
+    return (tag_base(tag) >> TAG_WIDE_REC_SHIFT) & TAG_WIDE_REC_MASK;
 }
 
 
@@ -124,18 +137,40 @@ class TypeDesc {
 }
 
 
+class FieldDesc {
+    def init(self: FieldDesc, name: str, tag: int) {
+        self.name = name;
+        self.tag = tag;
+    }
+}
+
+
+class RecordDesc {
+    def init(
+        self: RecordDesc, index: int, name: str, fields: list[FieldDesc] | None = None
+    ) {
+        self.index = index;
+        self.name = name;
+        self.fields = fields if fields is not None else [];
+    }
+}
+
+
 class BridgeMeta {
     def init(
         self: BridgeMeta,
         abi_version: int,
         module_name: str,
         types: list[TypeDesc] | None = None,
-        fns: list[FnDesc] | None = None
+        fns: list[FnDesc] | None = None,
+        records: list[RecordDesc] | None = None
     ) {
         self.abi_version = abi_version;
         self.module_name = module_name;
         self.types = types if types is not None else [];
         self.fns = fns if fns is not None else [];
+
+        self.records = records if records is not None else [];
     }
 }
 
@@ -253,5 +288,46 @@ def parse(blob: bytes) -> BridgeMeta {
         off = off + dsz;
     }
 
-    return BridgeMeta(abi_version=abi, module_name=mod, types=types, fns=fns);
+    records = [];
+    r_off = u32(32);
+    r_cnt = u32(36);
+    if r_cnt > 0 {
+        if r_off < 56 or r_off > blob_len {
+            raise ValueError(f"record section offset {r_off} out of range");
+        }
+        off = r_off;
+        for i in range(r_cnt) {
+            if off + 4 > blob_len {
+                raise ValueError(f"RecordDesc[{i}] descriptor truncated at {off}");
+            }
+            dsz = u32(off);
+            if dsz < 20 or off + dsz > blob_len {
+                raise ValueError(
+                    f"RecordDesc[{i}] invalid descriptor size {dsz} at {off}"
+                );
+            }
+            rname = sref(off + 4);
+            fld_off = u32(off + 12);
+            fld_cnt = u32(off + 16);
+            if fld_cnt > 0 and (fld_off < 56 or fld_off + fld_cnt * 12 > blob_len) {
+                raise ValueError(
+                    f"RecordDesc[{i}] field section [{fld_off}:{fld_off + fld_cnt * 12}] " + f"out of bounds (blob_len={blob_len})"
+                );
+            }
+            fields = [];
+            foff = fld_off;
+            for _ in range(fld_cnt) {
+                fldname = sref(foff);
+                fldtag = u32(foff + 8);
+                fields.append(FieldDesc(name=fldname, tag=fldtag));
+                foff = foff + 12;
+            }
+            records.append(RecordDesc(index=i, name=rname, fields=fields));
+            off = off + dsz;
+        }
+    }
+
+    return BridgeMeta(
+        abi_version=abi, module_name=mod, types=types, fns=fns, records=records
+    );
 }

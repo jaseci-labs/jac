@@ -99,6 +99,7 @@ fn empty_surface_is_full_coverage() {
         crate_version: "0.1.0".into(),
         crate_features: vec![],
         types: vec![],
+        records: vec![],
         skips: vec![],
         dropped: vec![],
         inherited_excluded: 0,

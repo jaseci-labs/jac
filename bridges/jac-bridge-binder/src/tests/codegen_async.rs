@@ -93,6 +93,7 @@ fn async_spec() -> BridgeSpec {
         crate_version: "0.1.0".into(),
         crate_features: vec![],
         types: vec![calc],
+        records: vec![],
         skips: vec![],
         dropped: vec![],
         inherited_excluded: 0,
