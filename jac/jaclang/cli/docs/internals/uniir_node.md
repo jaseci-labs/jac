@@ -5,6 +5,7 @@ source: docs/docs/internals/uniir_node.md
 ---
 
 ## Ability
+
 ```mermaid
 flowchart LR
 Ability -->|T , None| body
@@ -26,6 +27,7 @@ Ability -->|list - TypeBase , None| event_triggers
 Ability(kid: 'Sequence[UniNode]' = <factory>, *, body: 'T | None', is_async: 'bool' = False, doc: 'String | None' = None, access: 'SubTag[Token] | None' = None, name_ref: 'NameAtom | None', is_override: 'bool', is_static: 'bool', is_classmethod: 'bool', is_abstract: 'bool', signature: 'FuncSignature | EventSignature | None', decorators: 'Sequence[Expr] | None' = None, type_params: 'Sequence[TypeParam] | None' = None, accessor_kind: 'str' = '', event_triggers: 'list[TypeBase] | None' = None)
 
 ## ArchHas
+
 ```mermaid
 flowchart LR
 ArchHas -->|String , None| doc
@@ -38,6 +40,7 @@ ArchHas -->|bool| is_frozen
 ArchHas(kid: 'Sequence[UniNode]' = <factory>, *, doc: 'String | None' = None, access: 'SubTag[Token] | None' = None, is_static: 'bool', vars: 'Sequence[HasVar]', is_frozen: 'bool')
 
 ## Archetype
+
 ```mermaid
 flowchart LR
 Archetype -->|String , None| doc
@@ -56,6 +59,7 @@ Archetype -->|Expr , None| tgt_end_point
 Archetype(kid: 'Sequence[UniNode]' = <factory>, *, doc: 'String | None' = None, is_async: 'bool' = False, body: 'T | None', access: 'SubTag[Token] | None' = None, decorators: 'Sequence[Expr] | None', name: 'Name', arch_type: 'Token', base_classes: 'Sequence[Expr] | None', type_params: 'Sequence[TypeParam] | None' = None, src_endpoint: 'Expr | None' = None, tgt_endpoint: 'Expr | None' = None)
 
 ## AssertStmt
+
 ```mermaid
 flowchart LR
 AssertStmt -->|Expr| condition
@@ -65,6 +69,7 @@ AssertStmt -->|Expr , None| error_msg
 AssertStmt(kid: 'Sequence[UniNode]' = <factory>, *, condition: 'Expr', error_msg: 'Expr | None')
 
 ## AssignCompr
+
 ```mermaid
 flowchart LR
 AssignCompr -->|KWPair| assigns
@@ -73,6 +78,7 @@ AssignCompr -->|KWPair| assigns
 AssignCompr(kid: 'Sequence[UniNode]' = <factory>, *, assigns: 'Sequence[KWPair]')
 
 ## Assignment
+
 ```mermaid
 flowchart LR
 Assignment -->|bool| is_enum_stmt
@@ -87,6 +93,7 @@ Assignment -->|bool| na_move_lowerable
 Assignment(kid: 'Sequence[UniNode]' = <factory>, *, is_enum_stmt: 'bool' = False, type_tag: 'SubTag[Expr] | None' = None, target: 'Sequence[Expr]', value: 'Expr | YieldExpr | None', mutable: 'bool' = True, aug_op: 'Token | None' = None, na_move_lowerable: 'bool' = False)
 
 ## AtomTrailer
+
 ```mermaid
 flowchart LR
 AtomTrailer -->|Expr| target
@@ -99,6 +106,7 @@ AtomTrailer -->|bool| is_genai
 AtomTrailer(kid: 'Sequence[UniNode]' = <factory>, *, target: 'Expr', right: 'AtomExpr | Expr', is_attr: 'bool', is_null_ok: 'bool', is_genai: 'bool' = False)
 
 ## AtomUnit
+
 ```mermaid
 flowchart LR
 AtomUnit -->|Expr , YieldExpr , Ability| value
@@ -107,6 +115,7 @@ AtomUnit -->|Expr , YieldExpr , Ability| value
 AtomUnit(kid: 'Sequence[UniNode]' = <factory>, *, value: 'Expr | YieldExpr | Ability')
 
 ## AwaitExpr
+
 ```mermaid
 flowchart LR
 AwaitExpr -->|Expr| target
@@ -115,6 +124,7 @@ AwaitExpr -->|Expr| target
 AwaitExpr(kid: 'Sequence[UniNode]' = <factory>, *, target: 'Expr')
 
 ## AwaitingClause
+
 ```mermaid
 flowchart LR
 AwaitingClause -->|CodeBlockStmt| body
@@ -123,6 +133,7 @@ AwaitingClause -->|CodeBlockStmt| body
 AwaitingClause(kid: 'Sequence[UniNode]' = <factory>, *, body: 'Sequence[CodeBlockStmt]')
 
 ## BinaryExpr
+
 ```mermaid
 flowchart LR
 BinaryExpr -->|Expr| left
@@ -133,6 +144,7 @@ BinaryExpr -->|Token , DisconnectOp , ConnectOp| op
 BinaryExpr(kid: 'Sequence[UniNode]' = <factory>, *, left: 'Expr', right: 'Expr', op: 'Token | DisconnectOp | ConnectOp')
 
 ## Bool
+
 ```mermaid
 flowchart LR
 Bool -->|Source| orig_src
@@ -148,6 +160,7 @@ Bool -->|int| pos_end_
 Bool(orig_src: 'Source', name: 'str', value: 'str', line: 'int', end_line: 'int', col_start: 'int', col_end: 'int', pos_start: 'int', pos_end: 'int') -> 'None'
 
 ## BoolExpr
+
 ```mermaid
 flowchart LR
 BoolExpr -->|Token| op
@@ -157,6 +170,7 @@ BoolExpr -->|list - CfgExpr| values
 BoolExpr(kid: 'Sequence[UniNode]' = <factory>, *, op: 'Token', values: 'list[CfgExpr]')
 
 ## BuiltinType
+
 ```mermaid
 flowchart LR
 BuiltinType -->|Source| orig_src
@@ -174,6 +188,7 @@ BuiltinType -->|bool| is_kwesc
 BuiltinType(orig_src: 'Source', name: 'str', value: 'str', line: 'int', end_line: 'int', col_start: 'int', col_end: 'int', pos_start: 'int', pos_end: 'int', is_enum_stmt: 'bool' = False, is_kwesc: 'bool' = False) -> 'None'
 
 ## CastExpr
+
 ```mermaid
 flowchart LR
 CastExpr -->|Expr| value
@@ -183,6 +198,7 @@ CastExpr -->|Expr| cast_type
 CastExpr(kid: 'Sequence[UniNode]' = <factory>, *, value: 'Expr', cast_type: 'Expr')
 
 ## CfgExpr
+
 ```mermaid
 flowchart LR
 CfgExpr -->|UniCFGNode , None| sc_true_target
@@ -193,6 +209,7 @@ CfgExpr -->|Expr| expr
 CfgExpr(kid: 'Sequence[UniNode]' = <factory>, *, sc_true_target: 'UniCFGNode | None' = None, sc_false_target: 'UniCFGNode | None' = None, expr: 'Expr')
 
 ## ClientBlock
+
 ```mermaid
 flowchart LR
 ClientBlock -->|String , None| doc
@@ -202,6 +219,7 @@ ClientBlock -->|ElementStmt| body
 ClientBlock(kid: 'Sequence[UniNode]' = <factory>, *, doc: 'String | None' = None, body: 'Sequence[ElementStmt]')
 
 ## CommentToken
+
 ```mermaid
 flowchart LR
 CommentToken -->|Source| orig_src
@@ -218,6 +236,7 @@ CommentToken -->|bool| is_inline
 CommentToken(orig_src: 'Source', name: 'str', value: 'str', line: 'int', end_line: 'int', col_start: 'int', col_end: 'int', pos_start: 'int', pos_end: 'int', kid: 'Sequence[UniNode]', is_inline: 'bool' = False) -> 'None'
 
 ## CompareExpr
+
 ```mermaid
 flowchart LR
 CompareExpr -->|Expr| left
@@ -228,6 +247,7 @@ CompareExpr -->|list - Token| ops
 CompareExpr(kid: 'Sequence[UniNode]' = <factory>, *, left: 'Expr', rights: 'list[Expr]', ops: 'list[Token]')
 
 ## ConcurrentExpr
+
 ```mermaid
 flowchart LR
 ConcurrentExpr -->|Token , None| tok
@@ -237,6 +257,7 @@ ConcurrentExpr -->|Expr| target
 ConcurrentExpr(kid: 'Sequence[UniNode]' = <factory>, *, tok: 'Token | None', target: 'Expr')
 
 ## ConditionalNode
+
 ```mermaid
 flowchart LR
 ConditionalNode -->|UniCFGNode , None| sc_true_target
@@ -246,6 +267,7 @@ ConditionalNode -->|UniCFGNode , None| sc_false_target
 ConditionalNode(kid: 'Sequence[UniNode]' = <factory>, *, sc_true_target: 'UniCFGNode | None' = None, sc_false_target: 'UniCFGNode | None' = None)
 
 ## ConnectOp
+
 ```mermaid
 flowchart LR
 ConnectOp -->|Expr , None| conn_type
@@ -256,6 +278,7 @@ ConnectOp -->|EdgeDir| edge_dir
 ConnectOp(kid: 'Sequence[UniNode]' = <factory>, *, conn_type: 'Expr | None', conn_assign: 'AssignCompr | None', edge_dir: 'EdgeDir')
 
 ## CtrlStmt
+
 ```mermaid
 flowchart LR
 CtrlStmt -->|Token| ctrl
@@ -264,6 +287,7 @@ CtrlStmt -->|Token| ctrl
 CtrlStmt(kid: 'Sequence[UniNode]' = <factory>, *, ctrl: 'Token')
 
 ## DeleteStmt
+
 ```mermaid
 flowchart LR
 DeleteStmt -->|Expr| target
@@ -272,6 +296,7 @@ DeleteStmt -->|Expr| target
 DeleteStmt(kid: 'Sequence[UniNode]' = <factory>, *, target: 'Expr')
 
 ## DictCompr
+
 ```mermaid
 flowchart LR
 DictCompr -->|KVPair| kv_pair
@@ -281,6 +306,7 @@ DictCompr -->|list - InnerCompr| compr
 DictCompr(kid: 'Sequence[UniNode]' = <factory>, *, kv_pair: 'KVPair', compr: 'list[InnerCompr]')
 
 ## DictVal
+
 ```mermaid
 flowchart LR
 DictVal -->|KVPair| kv_pairs
@@ -289,6 +315,7 @@ DictVal -->|KVPair| kv_pairs
 DictVal(kid: 'Sequence[UniNode]' = <factory>, *, kv_pairs: 'Sequence[KVPair]')
 
 ## DisconnectOp
+
 ```mermaid
 flowchart LR
 DisconnectOp -->|EdgeOpRef| edge_spec
@@ -297,6 +324,7 @@ DisconnectOp -->|EdgeOpRef| edge_spec
 DisconnectOp(kid: 'Sequence[UniNode]' = <factory>, *, edge_spec: 'EdgeOpRef')
 
 ## EdgeOpRef
+
 ```mermaid
 flowchart LR
 EdgeOpRef -->|FilterCompr , None| filter_cond
@@ -306,6 +334,7 @@ EdgeOpRef -->|EdgeDir| edge_dir
 EdgeOpRef(kid: 'Sequence[UniNode]' = <factory>, *, filter_cond: 'FilterCompr | None', edge_dir: 'EdgeDir')
 
 ## EdgeRefTrailer
+
 ```mermaid
 flowchart LR
 EdgeRefTrailer -->|list - Expr , FilterCompr| chain
@@ -316,6 +345,7 @@ EdgeRefTrailer -->|bool| is_async
 EdgeRefTrailer(kid: 'Sequence[UniNode]' = <factory>, *, chain: 'list[Expr | FilterCompr]', edges_only: 'bool', is_async: 'bool')
 
 ## Ellipsis
+
 ```mermaid
 flowchart LR
 Ellipsis -->|Source| orig_src
@@ -331,6 +361,7 @@ Ellipsis -->|int| pos_end_
 Ellipsis(orig_src: 'Source', name: 'str', value: 'str', line: 'int', end_line: 'int', col_start: 'int', col_end: 'int', pos_start: 'int', pos_end: 'int') -> 'None'
 
 ## ElseIf
+
 ```mermaid
 flowchart LR
 ElseIf -->|ElseStmt , ElseIf , None| else_body
@@ -341,6 +372,7 @@ ElseIf -->|CodeBlockStmt| body
 ElseIf(kid: 'Sequence[UniNode]' = <factory>, *, else_body: 'ElseStmt | ElseIf | None' = None, condition: 'Expr', body: 'Sequence[CodeBlockStmt]')
 
 ## ElseStmt
+
 ```mermaid
 flowchart LR
 ElseStmt -->|CodeBlockStmt| body
@@ -349,6 +381,7 @@ ElseStmt -->|CodeBlockStmt| body
 ElseStmt(kid: 'Sequence[UniNode]' = <factory>, *, body: 'Sequence[CodeBlockStmt]')
 
 ## Enum
+
 ```mermaid
 flowchart LR
 Enum -->|String , None| doc
@@ -364,6 +397,7 @@ Enum -->|Expr , None| base_classes
 Enum(kid: 'Sequence[UniNode]' = <factory>, *, doc: 'String | None' = None, is_async: 'bool' = False, body: 'T | None', access: 'SubTag[Token] | None' = None, decorators: 'Sequence[Expr] | None', name: 'Name', value_type: 'Expr | None', base_classes: 'Sequence[Expr] | None')
 
 ## EventSignature
+
 ```mermaid
 flowchart LR
 EventSignature -->|Token| event
@@ -373,6 +407,7 @@ EventSignature -->|Expr , None| arch_tag_info
 EventSignature(kid: 'Sequence[UniNode]' = <factory>, *, event: 'Token', arch_tag_info: 'Expr | None')
 
 ## Except
+
 ```mermaid
 flowchart LR
 Except -->|Expr| ex_type
@@ -383,6 +418,7 @@ Except -->|CodeBlockStmt| body
 Except(kid: 'Sequence[UniNode]' = <factory>, *, ex_type: 'Expr', name: 'Name | None', body: 'Sequence[CodeBlockStmt]')
 
 ## ExprAsItem
+
 ```mermaid
 flowchart LR
 ExprAsItem -->|Expr| expr
@@ -392,6 +428,7 @@ ExprAsItem -->|Expr , None| alias
 ExprAsItem(kid: 'Sequence[UniNode]' = <factory>, *, expr: 'Expr', alias: 'Expr | None')
 
 ## ExprStmt
+
 ```mermaid
 flowchart LR
 ExprStmt -->|Expr| expr
@@ -401,6 +438,7 @@ ExprStmt -->|bool| in_fstring
 ExprStmt(kid: 'Sequence[UniNode]' = <factory>, *, expr: 'Expr', in_fstring: 'bool')
 
 ## FString
+
 ```mermaid
 flowchart LR
 FString -->|Token , None| start
@@ -411,6 +449,7 @@ FString -->|Token , None| end
 FString(kid: 'Sequence[UniNode]' = <factory>, *, start: 'Token | None', parts: 'Sequence[String | FormattedValue]', end: 'Token | None')
 
 ## FilterCompr
+
 ```mermaid
 flowchart LR
 FilterCompr -->|Expr , None| f_type
@@ -420,6 +459,7 @@ FilterCompr -->|CompareExpr| compares
 FilterCompr(kid: 'Sequence[UniNode]' = <factory>, *, f_type: 'Expr | None', compares: 'Sequence[CompareExpr]')
 
 ## FinallyStmt
+
 ```mermaid
 flowchart LR
 FinallyStmt -->|CodeBlockStmt| body
@@ -428,6 +468,7 @@ FinallyStmt -->|CodeBlockStmt| body
 FinallyStmt(kid: 'Sequence[UniNode]' = <factory>, *, body: 'Sequence[CodeBlockStmt]')
 
 ## Float
+
 ```mermaid
 flowchart LR
 Float -->|Source| orig_src
@@ -443,6 +484,7 @@ Float -->|int| pos_end_
 Float(orig_src: 'Source', name: 'str', value: 'str', line: 'int', end_line: 'int', col_start: 'int', col_end: 'int', pos_start: 'int', pos_end: 'int') -> 'None'
 
 ## ForeverStmt
+
 ```mermaid
 flowchart LR
 ForeverStmt -->|CodeBlockStmt| body
@@ -451,6 +493,7 @@ ForeverStmt -->|CodeBlockStmt| body
 ForeverStmt(kid: 'Sequence[UniNode]' = <factory>, *, body: 'Sequence[CodeBlockStmt]')
 
 ## FormattedValue
+
 ```mermaid
 flowchart LR
 FormattedValue -->|Expr| format_part
@@ -461,6 +504,7 @@ FormattedValue -->|Expr , None| format_spec
 FormattedValue(kid: 'Sequence[UniNode]' = <factory>, *, format_part: 'Expr', conversion: 'int', format_spec: 'Expr | None')
 
 ## FuncCall
+
 ```mermaid
 flowchart LR
 FuncCall -->|Expr| target
@@ -472,6 +516,7 @@ FuncCall -->|str , None| call_kind
 FuncCall(kid: 'Sequence[UniNode]' = <factory>, *, target: 'Expr', params: 'Sequence[Expr | KWPair] | None', genai_call: 'Expr | None', call_kind: 'str | None' = None)
 
 ## FuncSignature
+
 ```mermaid
 flowchart LR
 FuncSignature -->|ParamVar| posonly_params
@@ -485,6 +530,7 @@ FuncSignature -->|Expr , None| return_type
 FuncSignature(kid: 'Sequence[UniNode]' = <factory>, *, posonly_params: 'Sequence[ParamVar]', params: 'Sequence[ParamVar] | None', varargs: 'ParamVar | None', kwonlyargs: 'Sequence[ParamVar]', kwargs: 'ParamVar | None', return_type: 'Expr | None')
 
 ## GenCompr
+
 ```mermaid
 flowchart LR
 GenCompr -->|Expr| out_expr
@@ -494,6 +540,7 @@ GenCompr -->|list - InnerCompr| compr
 GenCompr(kid: 'Sequence[UniNode]' = <factory>, *, out_expr: 'Expr', compr: 'list[InnerCompr]')
 
 ## GlobalStmt
+
 ```mermaid
 flowchart LR
 GlobalStmt -->|NameAtom| target
@@ -502,6 +549,7 @@ GlobalStmt -->|NameAtom| target
 GlobalStmt(kid: 'Sequence[UniNode]' = <factory>, *, target: 'Sequence[NameAtom]')
 
 ## GlobalVars
+
 ```mermaid
 flowchart LR
 GlobalVars -->|Token , None| access
@@ -513,6 +561,7 @@ GlobalVars -->|bool| is_frozen
 GlobalVars(kid: 'Sequence[UniNode]' = <factory>, *, access: 'SubTag[Token] | None' = None, doc: 'String | None' = None, assignments: 'Sequence[Assignment]', is_frozen: 'bool')
 
 ## HasVar
+
 ```mermaid
 flowchart LR
 HasVar -->|Expr , None| type_tag
@@ -525,6 +574,7 @@ HasVar -->|Ability , None| accessors
 HasVar(kid: 'Sequence[UniNode]' = <factory>, *, type_tag: 'SubTag[Expr] | None' = None, name: 'Name', value: 'Expr | None', defer: 'bool', accessors: 'Sequence[Ability] | None' = None)
 
 ## IfElseExpr
+
 ```mermaid
 flowchart LR
 IfElseExpr -->|CfgExpr| condition
@@ -535,6 +585,7 @@ IfElseExpr -->|CfgExpr| else_value
 IfElseExpr(kid: 'Sequence[UniNode]' = <factory>, *, condition: 'CfgExpr', value: 'CfgExpr', else_value: 'CfgExpr')
 
 ## IfStmt
+
 ```mermaid
 flowchart LR
 IfStmt -->|ElseStmt , ElseIf , None| else_body
@@ -545,6 +596,7 @@ IfStmt -->|CodeBlockStmt| body
 IfStmt(kid: 'Sequence[UniNode]' = <factory>, *, else_body: 'ElseStmt | ElseIf | None' = None, condition: 'Expr', body: 'Sequence[CodeBlockStmt]')
 
 ## ImplDef
+
 ```mermaid
 flowchart LR
 ImplDef -->|String , None| doc
@@ -558,6 +610,7 @@ ImplDef -->|UniNode , None| decl_link
 ImplDef(kid: 'Sequence[UniNode]' = <factory>, *, doc: 'String | None' = None, decorators: 'Sequence[Expr] | None', target: 'Sequence[NameAtom]', spec: 'Sequence[Expr] | FuncSignature | EventSignature | None', body: 'Sequence[CodeBlockStmt] | Sequence[EnumBlockStmt] | Expr', decl_link: 'UniNode | None' = None)
 
 ## Import
+
 ```mermaid
 flowchart LR
 Import -->|String , None| doc
@@ -571,6 +624,7 @@ Import -->|UniNode , None| clib_decls
 Import(kid: 'Sequence[UniNode]' = <factory>, *, doc: 'String | None' = None, from_loc: 'ModulePath | None', items: 'Sequence[ModuleItem] | Sequence[ModulePath]', is_absorb: 'bool', is_typed: 'bool' = False, clib_decls: 'Sequence[UniNode] | None' = None)
 
 ## InForStmt
+
 ```mermaid
 flowchart LR
 InForStmt -->|ElseStmt , ElseIf , None| else_body
@@ -583,6 +637,7 @@ InForStmt -->|CodeBlockStmt| body
 InForStmt(kid: 'Sequence[UniNode]' = <factory>, *, else_body: 'ElseStmt | ElseIf | None' = None, is_async: 'bool' = False, target: 'Expr', collection: 'Expr', body: 'Sequence[CodeBlockStmt]')
 
 ## IndexSlice
+
 ```mermaid
 flowchart LR
 IndexSlice -->|list - Slice| slices
@@ -592,6 +647,7 @@ IndexSlice -->|bool| is_range
 IndexSlice(kid: 'Sequence[UniNode]' = <factory>, *, slices: 'list[Slice]', is_range: 'bool')
 
 ## InnerCompr
+
 ```mermaid
 flowchart LR
 InnerCompr -->|bool| is_async
@@ -603,6 +659,7 @@ InnerCompr -->|list - Expr , None| conditional
 InnerCompr(kid: 'Sequence[UniNode]' = <factory>, *, is_async: 'bool' = False, target: 'Expr', collection: 'Expr', conditional: 'list[Expr] | None')
 
 ## Int
+
 ```mermaid
 flowchart LR
 Int -->|Source| orig_src
@@ -618,6 +675,7 @@ Int -->|int| pos_end_
 Int(orig_src: 'Source', name: 'str', value: 'str', line: 'int', end_line: 'int', col_start: 'int', col_end: 'int', pos_start: 'int', pos_end: 'int') -> 'None'
 
 ## IterForStmt
+
 ```mermaid
 flowchart LR
 IterForStmt -->|ElseStmt , ElseIf , None| else_body
@@ -631,6 +689,7 @@ IterForStmt -->|CodeBlockStmt| body
 IterForStmt(kid: 'Sequence[UniNode]' = <factory>, *, else_body: 'ElseStmt | ElseIf | None' = None, is_async: 'bool' = False, iter: 'Assignment', condition: 'Expr', count_by: 'Assignment', body: 'Sequence[CodeBlockStmt]')
 
 ## JsxComment
+
 ```mermaid
 flowchart LR
 JsxComment -->|Token| value
@@ -639,6 +698,7 @@ JsxComment -->|Token| value
 JsxComment(kid: 'Sequence[UniNode]' = <factory>, *, value: 'Token')
 
 ## JsxElement
+
 ```mermaid
 flowchart LR
 JsxElement -->|JsxElementName , None| name
@@ -652,6 +712,7 @@ JsxElement -->|Expr , None| dynamic_tag
 JsxElement(kid: 'Sequence[UniNode]' = <factory>, *, name: 'JsxElementName | None', attributes: 'Sequence[JsxAttribute] | None', children: 'Sequence[JsxChild | JsxElement] | None', is_self_closing: 'bool', is_fragment: 'bool', dynamic_tag: 'Expr | None' = None)
 
 ## JsxElementName
+
 ```mermaid
 flowchart LR
 JsxElementName -->|Name , Token| parts
@@ -660,6 +721,7 @@ JsxElementName -->|Name , Token| parts
 JsxElementName(kid: 'Sequence[UniNode]' = <factory>, *, parts: 'Sequence[Name | Token]')
 
 ## JsxExpression
+
 ```mermaid
 flowchart LR
 JsxExpression -->|Expr| expr
@@ -668,6 +730,7 @@ JsxExpression -->|Expr| expr
 JsxExpression(kid: 'Sequence[UniNode]' = <factory>, *, expr: 'Expr')
 
 ## JsxNormalAttribute
+
 ```mermaid
 flowchart LR
 JsxNormalAttribute -->|Name , Token| name
@@ -678,6 +741,7 @@ JsxNormalAttribute -->|bool| is_shorthand
 JsxNormalAttribute(kid: 'Sequence[UniNode]' = <factory>, *, name: 'Name | Token', value: 'String | Expr | None', is_shorthand: 'bool' = False)
 
 ## JsxSlot
+
 ```mermaid
 flowchart LR
 JsxSlot -->|list - UniNode| body
@@ -686,6 +750,7 @@ JsxSlot -->|list - UniNode| body
 JsxSlot(kid: 'Sequence[UniNode]' = <factory>, *, body: 'list[UniNode]')
 
 ## JsxSpreadAttribute
+
 ```mermaid
 flowchart LR
 JsxSpreadAttribute -->|Expr| expr
@@ -694,6 +759,7 @@ JsxSpreadAttribute -->|Expr| expr
 JsxSpreadAttribute(kid: 'Sequence[UniNode]' = <factory>, *, expr: 'Expr')
 
 ## JsxText
+
 ```mermaid
 flowchart LR
 JsxText -->|str , Token| value
@@ -702,6 +768,7 @@ JsxText -->|str , Token| value
 JsxText(kid: 'Sequence[UniNode]' = <factory>, *, value: 'str | Token')
 
 ## KVPair
+
 ```mermaid
 flowchart LR
 KVPair -->|Expr , None| key
@@ -711,6 +778,7 @@ KVPair -->|Expr| value
 KVPair(kid: 'Sequence[UniNode]' = <factory>, *, key: 'Expr | None', value: 'Expr')
 
 ## KWPair
+
 ```mermaid
 flowchart LR
 KWPair -->|NameAtom , None| key
@@ -720,6 +788,7 @@ KWPair -->|Expr| value
 KWPair(kid: 'Sequence[UniNode]' = <factory>, *, key: 'NameAtom | None', value: 'Expr')
 
 ## LambdaExpr
+
 ```mermaid
 flowchart LR
 LambdaExpr -->|Expr , CodeBlockStmt| body
@@ -729,6 +798,7 @@ LambdaExpr -->|FuncSignature , None| signature
 LambdaExpr(kid: 'Sequence[UniNode]' = <factory>, *, body: 'Expr | Sequence[CodeBlockStmt]', signature: 'FuncSignature | None' = None)
 
 ## ListCompr
+
 ```mermaid
 flowchart LR
 ListCompr -->|Expr| out_expr
@@ -738,6 +808,7 @@ ListCompr -->|list - InnerCompr| compr
 ListCompr(kid: 'Sequence[UniNode]' = <factory>, *, out_expr: 'Expr', compr: 'list[InnerCompr]')
 
 ## ListVal
+
 ```mermaid
 flowchart LR
 ListVal -->|Expr| values
@@ -746,6 +817,7 @@ ListVal -->|Expr| values
 ListVal(kid: 'Sequence[UniNode]' = <factory>, *, values: 'Sequence[Expr]')
 
 ## MatchArch
+
 ```mermaid
 flowchart LR
 MatchArch -->|AtomTrailer , NameAtom| name
@@ -756,6 +828,7 @@ MatchArch -->|MatchKVPair , None| kw_patterns
 MatchArch(kid: 'Sequence[UniNode]' = <factory>, *, name: 'AtomTrailer | NameAtom', arg_patterns: 'Sequence[MatchPattern] | None', kw_patterns: 'Sequence[MatchKVPair] | None')
 
 ## MatchAs
+
 ```mermaid
 flowchart LR
 MatchAs -->|NameAtom| name
@@ -765,6 +838,7 @@ MatchAs -->|MatchPattern , None| pattern
 MatchAs(kid: 'Sequence[UniNode]' = <factory>, *, name: 'NameAtom', pattern: 'MatchPattern | None')
 
 ## MatchCase
+
 ```mermaid
 flowchart LR
 MatchCase -->|MatchPattern| pattern
@@ -775,6 +849,7 @@ MatchCase -->|list - CodeBlockStmt| body
 MatchCase(kid: 'Sequence[UniNode]' = <factory>, *, pattern: 'MatchPattern', guard: 'Expr | None', body: 'list[CodeBlockStmt]')
 
 ## MatchKVPair
+
 ```mermaid
 flowchart LR
 MatchKVPair -->|MatchPattern , NameAtom , AtomExpr| key
@@ -784,6 +859,7 @@ MatchKVPair -->|MatchPattern| value
 MatchKVPair(kid: 'Sequence[UniNode]' = <factory>, *, key: 'MatchPattern | NameAtom | AtomExpr', value: 'MatchPattern')
 
 ## MatchMapping
+
 ```mermaid
 flowchart LR
 MatchMapping -->|list - MatchKVPair , MatchStar| values
@@ -792,6 +868,7 @@ MatchMapping -->|list - MatchKVPair , MatchStar| values
 MatchMapping(kid: 'Sequence[UniNode]' = <factory>, *, values: 'list[MatchKVPair | MatchStar]')
 
 ## MatchOr
+
 ```mermaid
 flowchart LR
 MatchOr -->|list - MatchPattern| patterns
@@ -800,6 +877,7 @@ MatchOr -->|list - MatchPattern| patterns
 MatchOr(kid: 'Sequence[UniNode]' = <factory>, *, patterns: 'list[MatchPattern]')
 
 ## MatchSequence
+
 ```mermaid
 flowchart LR
 MatchSequence -->|list - MatchPattern| values
@@ -808,6 +886,7 @@ MatchSequence -->|list - MatchPattern| values
 MatchSequence(kid: 'Sequence[UniNode]' = <factory>, *, values: 'list[MatchPattern]')
 
 ## MatchSingleton
+
 ```mermaid
 flowchart LR
 MatchSingleton -->|Bool , Null| value
@@ -816,6 +895,7 @@ MatchSingleton -->|Bool , Null| value
 MatchSingleton(kid: 'Sequence[UniNode]' = <factory>, *, value: 'Bool | Null')
 
 ## MatchStar
+
 ```mermaid
 flowchart LR
 MatchStar -->|NameAtom| name
@@ -825,6 +905,7 @@ MatchStar -->|bool| is_list
 MatchStar(kid: 'Sequence[UniNode]' = <factory>, *, name: 'NameAtom', is_list: 'bool')
 
 ## MatchStmt
+
 ```mermaid
 flowchart LR
 MatchStmt -->|Expr| target
@@ -834,6 +915,7 @@ MatchStmt -->|list - MatchCase| cases
 MatchStmt(kid: 'Sequence[UniNode]' = <factory>, *, target: 'Expr', cases: 'list[MatchCase]')
 
 ## MatchValue
+
 ```mermaid
 flowchart LR
 MatchValue -->|Expr| value
@@ -842,6 +924,7 @@ MatchValue -->|Expr| value
 MatchValue(kid: 'Sequence[UniNode]' = <factory>, *, value: 'Expr')
 
 ## Module
+
 ```mermaid
 flowchart LR
 Module -->|String , None| doc
@@ -857,6 +940,7 @@ Module -->|bool| is_raised_from_py
 Module(kid: 'Sequence[UniNode]' = <factory>, *, doc: 'String | None' = None, name: 'str', source: 'Source', body: 'Sequence[ElementStmt | String | EmptyToken]', terminals: 'list[Token]', stub_only: 'bool' = False, src_terminals: 'list[Token]' = <factory>, is_raised_from_py: 'bool' = False)
 
 ## ModuleCode
+
 ```mermaid
 flowchart LR
 ModuleCode -->|bool| is_enum_stmt
@@ -868,6 +952,7 @@ ModuleCode -->|CodeBlockStmt| body
 ModuleCode(kid: 'Sequence[UniNode]' = <factory>, *, is_enum_stmt: 'bool' = False, doc: 'String | None' = None, name: 'Name | None', body: 'Sequence[CodeBlockStmt]')
 
 ## ModuleItem
+
 ```mermaid
 flowchart LR
 ModuleItem -->|Name , Token| name
@@ -877,6 +962,7 @@ ModuleItem -->|Name , None| alias
 ModuleItem(kid: 'Sequence[UniNode]' = <factory>, *, name: 'Name | Token', alias: 'Name | None')
 
 ## ModulePath
+
 ```mermaid
 flowchart LR
 ModulePath -->|Name , String , None| path
@@ -887,6 +973,7 @@ ModulePath -->|Name , None| alias
 ModulePath(kid: 'Sequence[UniNode]' = <factory>, *, path: 'Sequence[Name | String] | None', level: 'int', alias: 'Name | None')
 
 ## MultiString
+
 ```mermaid
 flowchart LR
 MultiString -->|String , FString| strings
@@ -895,6 +982,7 @@ MultiString -->|String , FString| strings
 MultiString(kid: 'Sequence[UniNode]' = <factory>, *, strings: 'Sequence[String | FString]')
 
 ## Name
+
 ```mermaid
 flowchart LR
 Name -->|Source| orig_src
@@ -912,6 +1000,7 @@ Name -->|bool| is_kwesc
 Name(orig_src: 'Source', name: 'str', value: 'str', line: 'int', end_line: 'int', col_start: 'int', col_end: 'int', pos_start: 'int', pos_end: 'int', is_enum_stmt: 'bool' = False, is_kwesc: 'bool' = False) -> 'None'
 
 ## NativeBlock
+
 ```mermaid
 flowchart LR
 NativeBlock -->|String , None| doc
@@ -921,6 +1010,7 @@ NativeBlock -->|ElementStmt| body
 NativeBlock(kid: 'Sequence[UniNode]' = <factory>, *, doc: 'String | None' = None, body: 'Sequence[ElementStmt]')
 
 ## NonLocalStmt
+
 ```mermaid
 flowchart LR
 NonLocalStmt -->|NameAtom| target
@@ -929,6 +1019,7 @@ NonLocalStmt -->|NameAtom| target
 NonLocalStmt(kid: 'Sequence[UniNode]' = <factory>, *, target: 'Sequence[NameAtom]')
 
 ## Null
+
 ```mermaid
 flowchart LR
 Null -->|Source| orig_src
@@ -944,6 +1035,7 @@ Null -->|int| pos_end_
 Null(orig_src: 'Source', name: 'str', value: 'str', line: 'int', end_line: 'int', col_start: 'int', col_end: 'int', pos_start: 'int', pos_end: 'int') -> 'None'
 
 ## ParamVar
+
 ```mermaid
 flowchart LR
 ParamVar -->|Expr , None| type_tag
@@ -955,6 +1047,7 @@ ParamVar -->|Expr , None| value
 ParamVar(kid: 'Sequence[UniNode]' = <factory>, *, type_tag: 'SubTag[Expr] | None' = None, name: 'Name', unpack: 'Token | None', value: 'Expr | None')
 
 ## PyInlineCode
+
 ```mermaid
 flowchart LR
 PyInlineCode -->|bool| is_enum_stmt
@@ -965,6 +1058,7 @@ PyInlineCode -->|Token| code
 PyInlineCode(kid: 'Sequence[UniNode]' = <factory>, *, is_enum_stmt: 'bool' = False, doc: 'String | None' = None, code: 'Token')
 
 ## RaiseStmt
+
 ```mermaid
 flowchart LR
 RaiseStmt -->|Expr , None| cause
@@ -974,6 +1068,7 @@ RaiseStmt -->|Expr , None| from_target
 RaiseStmt(kid: 'Sequence[UniNode]' = <factory>, *, cause: 'Expr | None', from_target: 'Expr | None')
 
 ## RegionStmt
+
 ```mermaid
 flowchart LR
 RegionStmt -->|CodeBlockStmt| body
@@ -982,6 +1077,7 @@ RegionStmt -->|CodeBlockStmt| body
 RegionStmt(kid: 'Sequence[UniNode]' = <factory>, *, body: 'Sequence[CodeBlockStmt]')
 
 ## ReportStmt
+
 ```mermaid
 flowchart LR
 ReportStmt -->|Expr| expr
@@ -990,6 +1086,7 @@ ReportStmt -->|Expr| expr
 ReportStmt(kid: 'Sequence[UniNode]' = <factory>, *, expr: 'Expr')
 
 ## ReturnStmt
+
 ```mermaid
 flowchart LR
 ReturnStmt -->|Expr , None| expr
@@ -998,6 +1095,7 @@ ReturnStmt -->|Expr , None| expr
 ReturnStmt(kid: 'Sequence[UniNode]' = <factory>, *, expr: 'Expr | None')
 
 ## SemDef
+
 ```mermaid
 flowchart LR
 SemDef -->|String , None| doc
@@ -1008,6 +1106,7 @@ SemDef -->|MultiString| value
 SemDef(kid: 'Sequence[UniNode]' = <factory>, *, doc: 'String | None' = None, target: 'Sequence[NameAtom]', value: 'MultiString')
 
 ## Semi
+
 ```mermaid
 flowchart LR
 Semi -->|Source| orig_src
@@ -1023,6 +1122,7 @@ Semi -->|int| pos_end_
 Semi(orig_src: 'Source', name: 'str', value: 'str', line: 'int', end_line: 'int', col_start: 'int', col_end: 'int', pos_start: 'int', pos_end: 'int') -> 'None'
 
 ## ServerBlock
+
 ```mermaid
 flowchart LR
 ServerBlock -->|String , None| doc
@@ -1032,6 +1132,7 @@ ServerBlock -->|ElementStmt| body
 ServerBlock(kid: 'Sequence[UniNode]' = <factory>, *, doc: 'String | None' = None, body: 'Sequence[ElementStmt]')
 
 ## SetCompr
+
 ```mermaid
 flowchart LR
 SetCompr -->|Expr| out_expr
@@ -1041,6 +1142,7 @@ SetCompr -->|list - InnerCompr| compr
 SetCompr(kid: 'Sequence[UniNode]' = <factory>, *, out_expr: 'Expr', compr: 'list[InnerCompr]')
 
 ## SetVal
+
 ```mermaid
 flowchart LR
 SetVal -->|Expr , None| values
@@ -1049,6 +1151,7 @@ SetVal -->|Expr , None| values
 SetVal(kid: 'Sequence[UniNode]' = <factory>, *, values: 'Sequence[Expr] | None')
 
 ## Slice
+
 ```mermaid
 flowchart LR
 Slice -->|Expr , None| start
@@ -1059,6 +1162,7 @@ Slice -->|Expr , None| step
 Slice(kid: 'Sequence[UniNode]' = <factory>, *, start: 'Expr | None', stop: 'Expr | None', step: 'Expr | None')
 
 ## SpecialVarRef
+
 ```mermaid
 flowchart LR
 SpecialVarRef -->|Name| var
@@ -1068,6 +1172,7 @@ SpecialVarRef -->|bool| is_enum_stmt
 SpecialVarRef(var: 'Name', is_enum_stmt: 'bool' = False) -> 'None'
 
 ## String
+
 ```mermaid
 flowchart LR
 String -->|Source| orig_src
@@ -1083,6 +1188,7 @@ String -->|int| pos_end_
 String(orig_src: 'Source', name: 'str', value: 'str', line: 'int', end_line: 'int', col_start: 'int', col_end: 'int', pos_start: 'int', pos_end: 'int') -> 'None'
 
 ## SubTag
+
 ```mermaid
 flowchart LR
 SubTag -->|T| tag
@@ -1092,6 +1198,7 @@ SubTag -->|OwnershipKind| ownership
 SubTag(kid: 'Sequence[UniNode]' = <factory>, *, tag: 'T', ownership: 'OwnershipKind' = <OwnershipKind.NONE: 0>)
 
 ## SwitchCase
+
 ```mermaid
 flowchart LR
 SwitchCase -->|MatchPattern , None| pattern
@@ -1101,6 +1208,7 @@ SwitchCase -->|list - CodeBlockStmt| body
 SwitchCase(kid: 'Sequence[UniNode]' = <factory>, *, pattern: 'MatchPattern | None', body: 'list[CodeBlockStmt]')
 
 ## SwitchStmt
+
 ```mermaid
 flowchart LR
 SwitchStmt -->|Expr| target
@@ -1110,6 +1218,7 @@ SwitchStmt -->|list - SwitchCase| cases
 SwitchStmt(kid: 'Sequence[UniNode]' = <factory>, *, target: 'Expr', cases: 'list[SwitchCase]')
 
 ## Test
+
 ```mermaid
 flowchart LR
 Test -->|String , None| doc
@@ -1122,6 +1231,7 @@ Test -->|Expr , None| decorators
 Test(kid: 'Sequence[UniNode]' = <factory>, *, doc: 'String | None' = None, name: 'Name | Token', body: 'Sequence[CodeBlockStmt]', description: 'String | None' = None, decorators: 'Sequence[Expr] | None' = None)
 
 ## Token
+
 ```mermaid
 flowchart LR
 Token -->|Source| orig_src
@@ -1137,6 +1247,7 @@ Token -->|int| pos_end_
 Token(orig_src: 'Source', name: 'str', value: 'str', line: 'int', end_line: 'int', col_start: 'int', col_end: 'int', pos_start: 'int', pos_end: 'int') -> 'None'
 
 ## TryStmt
+
 ```mermaid
 flowchart LR
 TryStmt -->|ElseStmt , ElseIf , None| else_body
@@ -1149,6 +1260,7 @@ TryStmt -->|FinallyStmt , None| finally_body
 TryStmt(kid: 'Sequence[UniNode]' = <factory>, *, else_body: 'ElseStmt | ElseIf | None' = None, body: 'Sequence[CodeBlockStmt]', excepts: 'Sequence[Except]', awaiting_body: 'AwaitingClause | None', finally_body: 'FinallyStmt | None')
 
 ## TupleVal
+
 ```mermaid
 flowchart LR
 TupleVal -->|Expr , KWPair| values
@@ -1157,6 +1269,7 @@ TupleVal -->|Expr , KWPair| values
 TupleVal(kid: 'Sequence[UniNode]' = <factory>, *, values: 'Sequence[Expr | KWPair]')
 
 ## TypeAlias
+
 ```mermaid
 flowchart LR
 TypeAlias -->|String , None| doc
@@ -1169,6 +1282,7 @@ TypeAlias -->|Expr| value
 TypeAlias(kid: 'Sequence[UniNode]' = <factory>, *, doc: 'String | None' = None, access: 'SubTag[Token] | None' = None, name: 'Name', type_params: 'Sequence[TypeParam] | None', value: 'Expr')
 
 ## TypeParam
+
 ```mermaid
 flowchart LR
 TypeParam -->|Name| name
@@ -1179,6 +1293,7 @@ TypeParam -->|Expr , None| default_val
 TypeParam(kid: 'Sequence[UniNode]' = <factory>, *, name: 'Name', bound: 'Expr | None', default_val: 'Expr | None')
 
 ## TypedCtxBlock
+
 ```mermaid
 flowchart LR
 TypedCtxBlock -->|Expr| type_ctx
@@ -1188,6 +1303,7 @@ TypedCtxBlock -->|CodeBlockStmt| body
 TypedCtxBlock(kid: 'Sequence[UniNode]' = <factory>, *, type_ctx: 'Expr', body: 'Sequence[CodeBlockStmt]')
 
 ## UnaryExpr
+
 ```mermaid
 flowchart LR
 UnaryExpr -->|Expr| operand
@@ -1198,6 +1314,7 @@ UnaryExpr -->|OwnershipKind| ownership
 UnaryExpr(kid: 'Sequence[UniNode]' = <factory>, *, operand: 'Expr', op: 'Token', ownership: 'OwnershipKind' = <OwnershipKind.NONE: 0>)
 
 ## VisitStmt
+
 ```mermaid
 flowchart LR
 VisitStmt -->|ElseStmt , ElseIf , None| else_body
@@ -1208,6 +1325,7 @@ VisitStmt -->|Expr| target
 VisitStmt(kid: 'Sequence[UniNode]' = <factory>, *, else_body: 'ElseStmt | ElseIf | None' = None, insert_loc: 'Expr | None', target: 'Expr')
 
 ## WhileStmt
+
 ```mermaid
 flowchart LR
 WhileStmt -->|ElseStmt , ElseIf , None| else_body
@@ -1218,6 +1336,7 @@ WhileStmt -->|CodeBlockStmt| body
 WhileStmt(kid: 'Sequence[UniNode]' = <factory>, *, else_body: 'ElseStmt | ElseIf | None' = None, condition: 'Expr', body: 'Sequence[CodeBlockStmt]')
 
 ## WithStmt
+
 ```mermaid
 flowchart LR
 WithStmt -->|bool| is_async
@@ -1228,6 +1347,7 @@ WithStmt -->|CodeBlockStmt| body
 WithStmt(kid: 'Sequence[UniNode]' = <factory>, *, is_async: 'bool' = False, exprs: 'Sequence[ExprAsItem]', body: 'Sequence[CodeBlockStmt]')
 
 ## YieldExpr
+
 ```mermaid
 flowchart LR
 YieldExpr -->|Expr , None| expr

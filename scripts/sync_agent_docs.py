@@ -204,7 +204,8 @@ def existing_corpus() -> dict[str, str]:
 def check(corpus: dict[str, str]) -> int:
     on_disk = existing_corpus()
     stale = sorted(
-        set(corpus) - set(on_disk) | {n for n, c in corpus.items() if on_disk.get(n) != c}
+        set(corpus) - set(on_disk)
+        | {n for n, c in corpus.items() if on_disk.get(n) != c}
     )
     orphaned = sorted(set(on_disk) - set(corpus))
     if not stale and not orphaned:
