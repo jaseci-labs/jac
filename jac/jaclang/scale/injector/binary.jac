@@ -1,37 +1,69 @@
 import io;
 import os;
 import json;
-import shutil;
 import hashlib;
 import logging;
-import platform;
-import subprocess;
+import shutil;
 import tarfile;
-import tempfile;
 import from pathlib { Path }
 import from urllib.request { urlopen }
 import from urllib.error { HTTPError }
-import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR, APP_MOUNT_PATH }
+import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR }
+import from jaclang.runtimelib.utils { release_arch, host_arch }
 
 glob logger = logging.getLogger(__name__);
 
 glob BINARY_ARCNAME: str = "bin/jac",
-     OVERLAY_SUBDIR: str = "jaclang-src",
-     JIR_SEED_SUBDIR: str = "jir-seed",
-     _HTTP_TIMEOUT: int = 60,
-     _SUBPROCESS_TIMEOUT: int = 300,
-     _JASECI_REPO: str = "https://github.com/jaseci-labs/jaseci",
-     _SKIP_DIRS: set[str] = {"__pycache__", ".git", "node_modules", ".jac"};
+     _HTTP_TIMEOUT: int = 60;
 
 
-def host_arch -> str {
-    m = platform.machine();
-    return "aarch64" if m in ("arm64", "aarch64") else m;
+def _node_architecture(k8s_node: object) -> str {
+    status = k8s_node?.status;
+    info = status?.node_info;
+    return str(getattr(info, "architecture", "") or "");
+}
+
+
+def cluster_node_archs -> list[str] {
+    try {
+        import from kubernetes { client }
+    } except ImportError {
+        return [];
+    }
+    nodes: list = [];
+    try {
+        nodes = list(client.CoreV1Api().list_node(_request_timeout=10).items);
+    } except Exception as e {
+        logger.warning(f"Could not read the cluster's node architectures ({e}).");
+        return [];
+    }
+    archs: set[str] = set();
+    for node in nodes {
+        arch = release_arch(_node_architecture(node));
+        if arch {
+            archs.add(arch);
+        }
+    }
+    return sorted(archs);
 }
 
 
 def node_arch -> str {
-    return os.environ.get("JAC_NODE_ARCH", "") or host_arch();
+    override = os.environ.get("JAC_NODE_ARCH", "");
+    if override {
+        return release_arch(override);
+    }
+    archs = cluster_node_archs();
+    if len(archs) == 1 {
+        return archs[0];
+    }
+    if archs {
+        logger.warning(
+            f"Cluster nodes report multiple architectures ({', '.join(archs)}); "
+            f"defaulting to the host arch. Set JAC_NODE_ARCH to pick one."
+        );
+    }
+    return host_arch();
 }
 
 
@@ -50,6 +82,33 @@ def download_release_binary(channel: str, arch: str) -> bytes {
     suffix = f"-linux-{arch}";
     binary_url = "";
     checksum_url = "";
+
+    # Experimental pods run the PR binary from the image; the injected binary
+    # only seals .jir (recompiled from source on mismatch), so reuse `dev`
+    # rather than publish a per-PR asset.
+    if channel == "experimental" {
+        channel = "dev";
+    }
+
+    if channel == "local" {
+        import from jaclang.scale.config.dev_config { BINARY_PATH_ENV }
+        local = os.environ.get(BINARY_PATH_ENV, "");
+        if not local {
+            raise RuntimeError(
+                f"channel 'local' requires {BINARY_PATH_ENV} to point at a jac "
+                "binary; it is unset or empty."
+            );
+        }
+        path = Path(local);
+        if not path.is_file() {
+            raise RuntimeError(
+                f"{BINARY_PATH_ENV}={local!r} is not a file; cannot ship a local "
+                "jac binary that does not exist."
+            );
+        }
+        logger.info(f"Shipping the local jac binary at {local} ({BINARY_PATH_ENV}).");
+        return path.read_bytes();
+    }
 
     if channel == "dev" {
         # The rolling `dev` prerelease has fixed asset names, so build the URL directly and skip the API (anonymous, 60 req/hr, exhausted on CI).
@@ -82,40 +141,13 @@ def download_release_binary(channel: str, arch: str) -> bytes {
         }
     }
 
-    # Fetch the (tiny) checksum first: it both verifies the download and keys a
-    # local cache, so an unchanged release never re-downloads the 130-170MB
-    # binary on every deploy (#7179 warm-redeploy cost).
-    want = "";
-    if checksum_url {
-        parts = _http_get_bytes(checksum_url).decode("utf-8").split();
-        if not parts {
-            raise RuntimeError(
-                f"Checksum file at {checksum_url} is empty or malformed; "
-                f"cannot verify the downloaded binary."
-            );
-        }
-        want = parts[0].strip().lower();
-        cached = _binary_cache_path(channel, arch);
-        if cached.is_file() {
-            # Read defensively: the file can vanish between is_file() and here
-            # (cache-cleanup job, manual removal, a concurrent deploy's rename),
-            # so a read failure is just a cache miss, not a failed deploy.
-            cached_bytes: bytes | None = None;
-            try {
-                cached_bytes = cached.read_bytes();
-            } except OSError {
-                ;
-            }
-            if cached_bytes is not None
-            and hashlib.sha256(cached_bytes).hexdigest() == want {
-                logger.info(f"Using the cached {channel} jac binary (checksum match).");
-                return cached_bytes;
-            }
-        }
-    }
-
     try {
-        payload = _http_get_bytes(binary_url);
+        return _fetch_verified_asset(
+            binary_url,
+            checksum_url,
+            _binary_cache_path(channel, arch),
+            f"{channel} jac binary"
+        );
     } except HTTPError as e {
         if e.code == 404 {
             raise RuntimeError(
@@ -126,109 +158,148 @@ def download_release_binary(channel: str, arch: str) -> bytes {
         }
         raise;
     }
+}
+
+
+def _fetch_verified_asset(
+    url: str, checksum_url: str, cache_file: Path, what: str
+) -> bytes {
+    # Fetch the (tiny) checksum first: it both verifies the download and keys
+    # a local cache, so an unchanged release never re-downloads the asset on
+    # every deploy.
+    want = "";
+    if checksum_url {
+        parts = _http_get_bytes(checksum_url).decode("utf-8").split();
+        if not parts {
+            raise RuntimeError(
+                f"Checksum file at {checksum_url} is empty or malformed; "
+                f"cannot verify the download."
+            );
+        }
+        want = parts[0].strip().lower();
+        if cache_file.is_file() {
+            # Read defensively: the file can vanish between is_file() and here
+            # (cache-cleanup job, manual removal, a concurrent deploy's rename),
+            # so a read failure is just a cache miss, not a failed deploy.
+            cached_bytes: bytes | None = None;
+            try {
+                cached_bytes = cache_file.read_bytes();
+            } except OSError {
+                ;
+            }
+            if cached_bytes is not None
+            and hashlib.sha256(cached_bytes).hexdigest() == want {
+                logger.info(f"Using the cached {what} (checksum match).");
+                return cached_bytes;
+            }
+        }
+    }
+    payload = _http_get_bytes(url);
     if want {
         got = hashlib.sha256(payload).hexdigest();
         if got != want {
             raise RuntimeError(
-                f"Checksum mismatch for the downloaded jac binary "
+                f"Checksum mismatch for the downloaded {what} "
                 f"(expected {want}, got {got}); refusing to ship it."
             );
         }
         try {
-            cached = _binary_cache_path(channel, arch);
-            cached.parent.mkdir(parents=True, exist_ok=True);
-            tmp = cached.with_suffix(f".{os.getpid()}.tmp");
+            cache_file.parent.mkdir(parents=True, exist_ok=True);
+            tmp = cache_file.with_suffix(f".{os.getpid()}.tmp");
             tmp.write_bytes(payload);
-            tmp.rename(cached);
+            tmp.rename(cache_file);
         } except Exception as e {
-            logger.warning(f"Could not cache the downloaded binary ({e}).");
+            logger.warning(f"Could not cache the downloaded {what} ({e}).");
         }
     }
     return payload;
 }
 
 
-def _binary_cache_path(channel: str, arch: str) -> Path {
+glob OFFICIAL_IMAGE: str = "jaseci/jaclang";
+
+
+def resolve_pod_base_image(
+    project_dir: str, configured: str, probe: bool = True
+) -> str {
+    # Auto-select the official base image to match the pod binary channel:
+    # dev -> jaseci/jaclang:dev, stable -> jaseci/jaclang:latest. The image
+    # ships the runtime pre-extracted and the serve closure pre-installed, so
+    # pods skip the one-time setup. An explicit [scale.kubernetes].python_image
+    # always wins; the local channel keeps the plain python base (no image
+    # matches a developer-built binary).
+    if configured {
+        return configured;
+    }
+    fallback = "python:3.12-slim";
+    import from jaclang.scale.config.dev_config {
+        resolve_dev_channel,
+        resolve_experimental_pr,
+        Channel
+    }
+    channel = resolve_dev_channel(project_dir);
+    if channel == Channel.LOCAL {
+        return fallback;
+    }
+    if channel == Channel.EXPERIMENTAL {
+        pr = resolve_experimental_pr(project_dir);
+        if not pr {
+            logger.warning(
+                "[experimental] has no `pr = <N>`; using the dev base image instead."
+            );
+            tag = "dev";
+        } else {
+            tag = f"experimental-{pr}";
+        }
+    } elif channel == Channel.DEV {
+        tag = "dev";
+    } else {
+        tag = "latest";
+    }
+    image = f"{OFFICIAL_IMAGE}:{tag}";
+    # probe=False is the --dry-run path: it must not touch the network, so
+    # report the image a connected deploy would select instead of confirming
+    # the tag against the registry (issue #7431).
+    if not probe {
+        return image;
+    }
+    # The tag may not be published yet (or the registry is unreachable from
+    # this driver); fall back rather than shipping manifests that cannot pull.
+    try {
+        _http_get_bytes(
+            f"https://hub.docker.com/v2/repositories/{OFFICIAL_IMAGE}/tags/{tag}"
+        );
+        return image;
+    } except Exception {
+        logger.info(
+            f"Official base image {image} is not published or not reachable; "
+            f"pods use {fallback}."
+        );
+        return fallback;
+    }
+}
+
+
+def _scale_cache_root -> Path {
     # Cache on the DEPLOY-DRIVER machine (laptop / CI runner / operator pod),
     # not the cluster: the driver needs the binary before the PVC exists, and
     # this one copy serves every app/cluster it deploys. The PVC hop is
     # deduplicated separately by the content-addressed seeder (#7198).
     base = os.environ.get("JAC_SCALE_CACHE_DIR", "");
-    cache_root = Path(base)
-        if base
-        else (
-            Path(os.environ.get("XDG_CACHE_HOME", "") or (Path.home() / ".cache")) / "jac" / "scale-binaries"
-        );
-    return Path(cache_root) / f"jac-{channel}-linux-{arch}";
+    if base {
+        return Path(base);
+    }
+    return Path(os.environ.get("XDG_CACHE_HOME", "") or (Path.home() / ".cache")) / "jac" / "scale-binaries";
 }
 
 
-def _clone_jac_source(repo: str, branch: str) -> tuple[Path, Path] {
-    dest = Path(tempfile.mkdtemp(prefix="jac-overlay-"));
-    try {
-        subprocess.run(
-            [
-                "git",
-                "clone",
-                "--depth",
-                "1",
-                "--branch",
-                branch,
-                "--single-branch",
-                repo,
-                str(dest)
-            ],
-            check=True,
-            timeout=_SUBPROCESS_TIMEOUT
-        );
-        jacdir = dest / "jac";
-        if not (jacdir / "jaclang").is_dir() {
-            raise RuntimeError(
-                f"{repo}@{branch} has no jac/jaclang source tree to overlay."
-            );
-        }
-        return (jacdir, dest);
-    } except Exception {
-        shutil.rmtree(dest, ignore_errors=True);
-        raise;
-    }
+def _binary_cache_path(channel: str, arch: str) -> Path {
+    return _scale_cache_root() / f"jac-{channel}-linux-{arch}";
 }
 
 
-def resolve_overlay_source(
-    repo: str, branch: str, jaclang_source: str, project_dir: str
-) -> tuple[Path, (Path | None)] {
-    if repo {
-        return _clone_jac_source(repo, branch or "main");
-    }
-    if jaclang_source {
-        local = (Path(project_dir) / jaclang_source).resolve();
-        if (local / "jaclang").is_dir() {
-            return (local, None);
-        }
-        logger.warning(
-            f"[dev] jaclang_source '{jaclang_source}' has no 'jaclang/' package "
-            f"under {local}; overlaying a fresh {_JASECI_REPO}@main clone instead."
-        );
-    }
-    return _clone_jac_source(_JASECI_REPO, "main");
-}
-
-
-def cleanup_overlay_source(cleanup_root: (Path | None)) {
-    if cleanup_root is not None {
-        shutil.rmtree(cleanup_root, ignore_errors=True);
-    }
-}
-
-
-def _skip(path: Path) -> bool {
-    for part in path.parts {
-        if part in _SKIP_DIRS {
-            return True;
-        }
-    }
-    return False;
+def _admin_dist_cache_path(channel: str) -> Path {
+    return _scale_cache_root() / f"jac-{channel}-admin-dist.tar.gz";
 }
 
 
@@ -250,189 +321,104 @@ def pack_binary_bytes(binary_bytes: bytes) -> bytes {
 }
 
 
-def jac_executable -> str {
-    # The driver invoking ITSELF must not depend on `jac` being on PATH (the
-    # launcher exports its real path as JAC_EXECUTABLE); bench/operator hosts
-    # without PATH setup otherwise silently fall back to on-pod builds.
-    return os.environ.get("JAC_EXECUTABLE", "") or shutil.which("jac") or "jac";
+def _admin_dist_urls(channel: str) -> tuple[str, str] {
+    repo = "jaseci-labs/jaseci";
+    suffix = "-admin-dist.tar.gz";
+    if channel == "dev" {
+        url = f"https://github.com/{repo}/releases/download/dev/jac-dev{suffix}";
+        return (url, url + ".sha256");
+    }
+    if channel == "local" {
+        # A downloaded console could skew against a developer-supplied binary.
+        return ("", "");
+    }
+    api = f"https://api.github.com/repos/{repo}/releases/latest";
+    meta = json.loads(_http_get_bytes(api).decode("utf-8"));
+    dist_url = "";
+    checksum_url = "";
+    for asset in meta.get("assets", []) {
+        name = str(asset.get("name", ""));
+        url = str(asset.get("browser_download_url", ""));
+        if not name.startswith("jac-") {
+            continue;
+        }
+        if name.endswith(suffix + ".sha256") {
+            checksum_url = url;
+        } elif name.endswith(suffix) {
+            dist_url = url;
+        }
+    }
+    return (dist_url, checksum_url);
 }
 
 
-def ensure_admin_dist_built(source_root: Path) -> None {
-    # Build the admin console `_dist` on the host (like the client bundle) so the gateway ships it pre-built instead of doing a heavy on-pod `bun` build that can OOM-kill the container.
-    admin = source_root / "jaclang" / "scale" / "admin";
-    dist = admin / "_dist";
-    if (dist / "index.html").is_file() {
-        return;
-    }
-    ui = admin / "ui";
-    if not (ui / "main.jac").is_file() {
-        logger.warning(
-            f"Admin UI source not found at {ui}; the gateway will build the "
-            f"admin console on-pod instead."
-        );
-        return;
-    }
-    logger.info(
-        "Building the admin console on the host (ships pre-built to the gateway)."
-    );
+def download_admin_dist(channel: str) -> bytes | None {
+    # Best-effort: releases published before the console asset existed have
+    # nothing to download, and the gateway can still build it on boot.
     try {
-        result = subprocess.run(
-            [jac_executable(), "build", "main.jac", "--client", "web"],
-            cwd=str(ui),
-            capture_output=True,
-            text=True,
-            timeout=_SUBPROCESS_TIMEOUT
-        );
-        if result.returncode != 0 {
+        (dist_url, checksum_url) = _admin_dist_urls(channel);
+        if not dist_url {
+            return None;
+        }
+        # The console is extracted straight to disk, so never fetch it without
+        # a checksum to verify against: a release missing its .sha256 falls
+        # back to the gateway's on-boot build rather than an unverified asset.
+        if not checksum_url {
             logger.warning(
-                f"Host admin build failed ({result.stderr.strip()}); the gateway "
-                f"will build it on-pod instead."
+                f"No checksum published for the {channel} admin console; "
+                "skipping the download so nothing unverified is staged."
             );
-            return;
+            return None;
         }
-    } except Exception as e {
-        logger.warning(
-            f"Host admin build error ({e}); the gateway will build it on-pod."
+        return _fetch_verified_asset(
+            dist_url,
+            checksum_url,
+            _admin_dist_cache_path(channel),
+            f"{channel} admin console"
         );
-        return;
-    }
-    built = ui / ".jac" / "client" / "dist";
-    if not (built / "index.html").is_file() {
-        logger.warning(f"Host admin build produced no dist at {built}.");
-        return;
-    }
-    dist.mkdir(parents=True, exist_ok=True);
-    for item in built.iterdir() {
-        target = dist / item.name;
-        if item.is_dir() {
-            if target.exists() {
-                shutil.rmtree(target);
-            }
-            shutil.copytree(item, target);
-        } else {
-            shutil.copy2(item, target);
-        }
-    }
-    logger.info("Admin console built; shipping it in the overlay.");
-}
-
-
-glob _JIR_ADOPT_PY: str = """\
-# Re-home host-precompiled .jir seeds via the baked manifest (#7138); pure stdlib on system python3 - invoking jac here would compile the overlay first.
-import os
-import shutil
-from pathlib import Path
-
-seed_root = Path(__file__).resolve().parent
-manifest = seed_root / "_manifest.tsv"
-xdg = os.environ.get("XDG_CACHE_HOME")
-cache_base = Path(xdg) if xdg else (Path.home() / ".cache")
-dest_dir = cache_base / "jac" / "jir" / "modules"
-dest_dir.mkdir(parents=True, exist_ok=True)
-adopted = 0
-for line in manifest.read_text().splitlines():
-    if not line.strip():
-        continue
-    seed_rel, dest_name = line.split("\\t", 1)
-    seed = seed_root / seed_rel
-    if not seed.is_file():
-        continue
-    dest = dest_dir / dest_name
-    shutil.copy2(str(seed), str(dest))
-    os.utime(str(dest), None)  # fresher than the untarred source -> cache valid
-    adopted += 1
-print("[jac-scale] adopted %d host-precompiled modules" % adopted)
-""";
-
-
-def _host_jir_cache_for(source_path: Path) -> (Path | None) {
-    # Host-side compiled .jir for this source, if the driver (same binary as pods) compiled it; best-effort.
-    try {
-        import from jaclang.jac0core.jir { get_module_cache_path }
-        cache = get_module_cache_path(str(source_path));
-        return cache if cache.is_file() else None;
-    } except Exception {
+    } except Exception as e {
+        logger.warning(f"Could not download the admin console asset ({e}).");
         return None;
     }
 }
 
 
-def _pod_seed_dest_name(rel: str) -> str {
-    # Literal pod-side cache filename: content key matches, only the path hash differs and the pod path is fixed.
-    import sys;
-    pod_abs = f"{APP_MOUNT_PATH}/{TOOLCHAIN_SUBDIR}/{OVERLAY_SUBDIR}/{rel}";
-    path_hash = hashlib.sha256(pod_abs.encode()).hexdigest()[:8];
-    stem = Path(rel).stem;
-    (major, minor) = (sys.version_info.major, sys.version_info.minor);
-    return f"{stem}.{path_hash}.cpython-{major}{minor}.jir";
-}
-
-
-def pack_overlay(binary_bytes: bytes, source_root: Path) -> bytes {
-    ensure_admin_dist_built(source_root);
-    seeded = 0;
-    manifest: list[str] = [];
-    import from jaclang.scale.injector.bundle { open_det_tar, det_tar_member }
-    buf = io.BytesIO();
-    (tar, gz) = open_det_tar(buf);
+def stage_admin_dist(project_dir: str, channel: str) -> bool {
+    # Stage the channel's console asset at <app>/.jac/admin so gateway pods
+    # serve it instead of building it from source on boot.
+    dest = Path(project_dir) / ".jac" / "admin";
     try {
-        with tar {
-            info = tarfile.TarInfo(name=f"{TOOLCHAIN_SUBDIR}/{BINARY_ARCNAME}");
-            info.size = len(binary_bytes);
-            info.mode = 0o755;
-            tar.addfile(info, io.BytesIO(binary_bytes));
-            jac_pkg = source_root / "jaclang";
-            for path in sorted(jac_pkg.rglob("*")) {
-                if not path.is_file() or _skip(path) {
-                    continue;
-                }
-                rel = path.relative_to(source_root);
-                tar.add(
-                    str(path),
-                    arcname=f"{TOOLCHAIN_SUBDIR}/{OVERLAY_SUBDIR}/{rel}",
-                    filter=det_tar_member
-                );
-                # Ship the host's compiled .jir so pods validate instead of recompiling (#7138).
-                if str(path).endswith(".jac") {
-                    cache = _host_jir_cache_for(path);
-                    if cache is not None {
-                        tar.add(
-                            str(cache),
-                            arcname=f"{TOOLCHAIN_SUBDIR}/{JIR_SEED_SUBDIR}/{rel}.jir",
-                            filter=det_tar_member
-                        );
-                        manifest.append(f"{rel}.jir\t{_pod_seed_dest_name(str(rel))}");
-                        seeded += 1;
-                    }
-                }
-            }
-            if seeded {
-                for (name, payload) in [
-                    ("_adopt.py", _JIR_ADOPT_PY),
-                    ("_manifest.tsv", "\n".join(manifest) + "\n")
-                ] {
-                    raw = payload.encode("utf-8");
-                    info = tarfile.TarInfo(
-                        name=f"{TOOLCHAIN_SUBDIR}/{JIR_SEED_SUBDIR}/{name}"
-                    );
-                    info.size = len(raw);
-                    tar.addfile(info, io.BytesIO(raw));
-                }
-            }
+        payload = download_admin_dist(channel);
+        if payload is None {
+            return False;
         }
-    } finally {
-        gz.close();
+        # Extract into a temp sibling and rename so a killed process cannot
+        # leave a partial dir whose index.html passes the gateway's sentinel.
+        tmp = dest.with_name(f".admin.tmp-{os.getpid()}");
+        if tmp.exists() {
+            shutil.rmtree(str(tmp));
+        }
+        with tarfile.open(fileobj=io.BytesIO(payload), mode="r:gz") as tar {
+            tar.extractall(str(tmp), filter="data");
+        }
+        if not (tmp / "index.html").is_file() {
+            shutil.rmtree(str(tmp));
+            logger.warning("Admin console asset has no index.html; not staging it.");
+            return False;
+        }
+        dest.parent.mkdir(parents=True, exist_ok=True);
+        if dest.exists() {
+            shutil.rmtree(str(dest));
+        }
+        tmp.rename(dest);
+        logger.info("Staged the downloaded admin console into the app bundle.");
+        return True;
+    } except Exception as e {
+        logger.warning(
+            f"Could not stage the admin console ({e}); the gateway builds it on boot."
+        );
+        return False;
     }
-    if seeded {
-        logger.info(f"Packed {seeded} host-precompiled modules into the overlay.");
-    }
-    return buf.getvalue();
-}
-
-
-def overlay_pod_path -> str {
-    return f"{TOOLCHAIN_SUBDIR}/{OVERLAY_SUBDIR}";
 }
 
 

@@ -70,6 +70,7 @@ impl NaIRGenPass.postinit -> None {
     }
 
     self.type_map["LiteralString"] = self.type_map.get("str", _spec_map["i8*"]);
+    self.type_map["Region"] = _spec_map["i8*"];
 
     self.complex_struct_type = self.llvm_module.context.get_identified_type(
         "JacComplex"
@@ -107,12 +108,18 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
         native_capability_violations
     }
     _viols = native_capability_violations(self.ir_in);
-    for (_vnode, _vkind, _vname, _vhelp) in _viols {
-        self.emit(
-            E5090, node_override=_vnode, kind=_vkind, name=_vname, help_text=_vhelp
-        );
-    }
     if _viols {
+        if not self.ir_in.gen.native_viols_reported {
+            for (_vnode, _vkind, _vname, _vhelp) in _viols {
+                self.emit(
+                    E5090,
+                    node_override=_vnode,
+                    kind=_vkind,
+                    name=_vname,
+                    help_text=_vhelp
+                );
+            }
+        }
         return self.ir_in;
     }
 
@@ -144,6 +151,7 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
         }
     }
     self._codegen_entry(_entry_nodes);
+    self._finalize_trace_lookup();
 
     if self.has_native_code {
         if self.errors_had {
@@ -155,6 +163,23 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
         self.ir_in.gen.llvm_ir = self.llvm_module;
 
         import os;
+        if os.environ.get("JAC_RC_STATS", "") {
+            _rc_total = self.rc_retains_emitted + self.rc_releases_emitted;
+            _rc_known = _rc_total + self.rc_ops_elided;
+            _rc_pct = (100.0 * self.rc_ops_elided / _rc_known) if _rc_known else 0.0;
+            _rc_free = " rc-free" if _rc_total == 0 else "";
+            import sys;
+            _rc_arena = (
+                f" arena={self.rc_region_allocs}" if self.rc_region_allocs else ""
+            );
+            sys.stderr.write(
+                f"rc-stats [{os.path.basename(self.ir_in.loc.mod_path)}] "
+                f"gc={self._gc_mode()} retains={self.rc_retains_emitted} "
+                f"releases={self.rc_releases_emitted} "
+                f"elided={self.rc_ops_elided} coverage={_rc_pct:.1f}%"
+                f"{_rc_arena}{_rc_free}\n"
+            );
+        }
         _ir_dump_path = os.environ.get("JAC_DUMP_IR", "");
         if _ir_dump_path {
             with open(_ir_dump_path, "w") as _f {
@@ -237,7 +262,7 @@ impl NaIRGenPass._export_native_layout -> None {
         field_types = self.struct_field_types.get(arch_name, {});
         fields: list[NativeFieldInfo] = [];
         enum_types = self.struct_field_enum_type.get(arch_name, {});
-        for (fname, idx) in sorted(field_indices.items(), key=lambda x : x[1]) {
+        for (fname, idx) in sorted(field_indices.items(), key=lambda (x) { x[1]; }) {
             ftype = field_types.get(fname);
             llvm_t = self._llvm_type_str(ftype) if ftype is not None else "i64";
 
@@ -308,8 +333,8 @@ impl NaIRGenPass._export_native_layout -> None {
                     if func.function_type.return_type.pointee == ttype {
                         ret_tuple = layout.tuples.get(tkey);
                         if ret_tuple is not None {
-                            hints = self.func_ret_tuple_hints.get(fname);
-                            if hints and len(hints) == len(ret_tuple.element_types) {
+                            hints = self._ret_tuple_hints(fname, ret_tuple);
+                            if hints is not None {
                                 ret_tuple = NativeTupleLayout(
                                     key=ret_tuple.key,
                                     element_types=ret_tuple.element_types,
@@ -326,9 +351,9 @@ impl NaIRGenPass._export_native_layout -> None {
 
         ret_enum: (str | None) = None;
         if ret_type == "i64" {
-            _rname = self.func_ret_ann_name.get(fname);
-            if _rname is not None and _rname in self.enum_types {
-                ret_enum = _rname;
+            _rkey = self.func_ret_type_key.get(fname);
+            if _rkey is not None and _rkey in self.enum_types {
+                ret_enum = _rkey;
             }
         }
         layout.functions[fname] = NativeFuncLayout(
@@ -376,56 +401,31 @@ impl NaIRGenPass._export_native_layout -> None {
     self.ir_in.gen.native_layout = layout;
 }
 
-impl NaIRGenPass._extract_tuple_struct_hints(type_node: object) -> list {
-    hints: list = [];
-    if not isinstance(type_node, uni.Expr) {
-        return hints;
-    }
-
-    if type_node?.right and type_node.right?.slices {
-        slices = type_node.right.slices or [];
-        for s in slices {
-            inner = s.start if s?.start else s;
-
-            if isinstance(inner, uni.TupleVal) {
-                for tv in inner.values {
-                    hints.append(self._extract_elem_struct_hint(tv));
-                }
-            } else {
-                hints.append(self._extract_elem_struct_hint(inner));
-            }
-        }
-    }
-    return hints;
-}
-
-impl NaIRGenPass._extract_elem_struct_hint(type_node: object) -> (str | None) {
-    if not isinstance(type_node, uni.Expr) {
+impl NaIRGenPass._ret_tuple_hints(fname: str, ret_tuple: any) -> (list | None) {
+    keys = self.func_ret_elem_keys.get(fname);
+    if not keys or len(keys) != len(ret_tuple.element_types) {
         return None;
     }
-
-    name = self._get_name(type_node);
-    if name is None and isinstance(type_node, uni.AtomTrailer) {
-        if type_node.kid {
-            name = self._get_name(type_node.kid[0]);
-        }
-    }
-
-    if name == "list" and type_node?.right and type_node.right?.slices {
-        inner_slices = type_node.right.slices or [];
-        for is_ in inner_slices {
-            inner_type = is_.start if is_?.start else is_;
-            inner_name = self._get_name(inner_type);
-            if inner_name is not None and inner_name in self.struct_types {
-                return inner_name;
+    hints: list = [];
+    _any = False;
+    for k in keys {
+        hint: (str | None) = None;
+        if k is not None {
+            if k in self.struct_types {
+                hint = k;
+            } elif k.startswith("list[") and k.endswith("]") {
+                _inner = k[5:-1];
+                if _inner in self.struct_types {
+                    hint = _inner;
+                }
             }
         }
+        if hint is not None {
+            _any = True;
+        }
+        hints.append(hint);
     }
-
-    if name is not None and name in self.struct_types {
-        return name;
-    }
-    return None;
+    return hints if _any else None;
 }
 
 impl NaIRGenPass._register_imported_struct_types -> None {
@@ -982,7 +982,9 @@ impl NaIRGenPass._dispatch_primitive_method(
     method_name: str,
     target: ir.Value,
     args: list[ir.Value],
-    type_key: str
+    type_key: str,
+    kwargs: (dict | None) = None,
+    kw_node: (uni.UniNode | None) = None
 ) -> (ir.Value | None) {
     self._ensure_emitters();
     _emitter = self._native_emitters.get(type_name);
@@ -993,18 +995,53 @@ impl NaIRGenPass._dispatch_primitive_method(
     if _emit_fn is None {
         return None;
     }
-    _ctx = self._native_emit_ctx_class(pass_ref=self, type_key=type_key);
+    if kwargs and method_name not in ("sort", ) {
+        self.emit(
+            E5092,
+            node_override=kw_node,
+            kind="keyword argument for native method",
+            name=f"{method_name}({', '.join(kwargs.keys())}=...)"
+        );
+        return None;
+    }
+    _ctx = self._native_emit_ctx_class(
+        pass_ref=self, type_key=type_key, call_kwargs=(kwargs or {})
+    );
     return _emit_fn(_ctx, target, args);
 }
 
 impl NaIRGenPass._dispatch_builtin(
-    func_name: str, args: list[ir.Value]
+    func_name: str,
+    args: list[ir.Value],
+    kwargs: (dict | None) = None,
+    kw_node: (uni.UniNode | None) = None
 ) -> (ir.Value | None) {
     self._ensure_emitters();
     _emit_fn = getattr(self._native_builtin_emitter, "emit_" + func_name, None);
     if _emit_fn is None {
         return None;
     }
-    _ctx = self._native_emit_ctx_class(pass_ref=self, type_key="");
+    if kwargs and func_name not in ("sorted", ) {
+        self.emit(
+            E5092,
+            node_override=kw_node,
+            kind="keyword argument for native builtin",
+            name=f"{func_name}({', '.join(kwargs.keys())}=...)"
+        );
+        return None;
+    }
+    _ctx = self._native_emit_ctx_class(
+        pass_ref=self, type_key="", call_kwargs=(kwargs or {})
+    );
     return _emit_fn(_ctx, args);
+}
+
+impl NaIRGenPass._split_call_kwargs(nd: uni.FuncCall) -> dict {
+    out: dict = {};
+    for param in (nd.params or []) {
+        if isinstance(param, uni.KWPair) and param.key is not None {
+            out[param.key.sym_name] = param.value;
+        }
+    }
+    return out;
 }

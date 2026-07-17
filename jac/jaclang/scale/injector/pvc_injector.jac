@@ -2,7 +2,7 @@ import os;
 import logging;
 import from jaclang.scale.injector.injector { Injector }
 import from jaclang.scale.injector.bundle {
-    pack_source,
+    pack_jab,
     content_address,
     bundle_object_key,
     ensure_jac_toml_cmd,
@@ -14,6 +14,9 @@ glob logger = logging.getLogger(__name__);
 
 glob BUNDLE_VOLUME_NAME: str = "jac-bundles",
      BUNDLE_MOUNT_PATH: str = "/jac-bundles";
+
+glob LOADER_UID: int = 1000,
+     LOADER_GID: int = 1000;
 
 
 def bundle_pvc_name(app_name: str) -> str {
@@ -57,6 +60,91 @@ def build_bundle_pvc(
             "labels": {"managed": "jac-scale", "jac-scale.role": "bundle-store"}
         },
         "spec": spec
+    };
+}
+
+
+def build_loader_perms_init_container(loader_image: str) -> dict[str, any] {
+    # The pod's fsGroup is only honored on volumes whose plugin manages
+    # ownership: hostPath and NFS never do, and CSI drivers with the default
+    # fsGroupPolicy (ReadWriteOnceWithFSType) skip ReadWriteMany volumes --
+    # exactly what the bundle PVC must be. On such storage the volume root
+    # arrives root-owned 0755 and the non-root loader dies at its first mkdir
+    # with "Permission denied" (#7432). This init container runs as root just
+    # long enough to hand the mount to the loader identity; the hardened
+    # non-root loader then takes over. It is best-effort: storage that squashes
+    # root (EFS access points, root-squash NFS) rejects the chown, but there
+    # the backend's own identity mapping decides writability and the loader's
+    # mkdir still surfaces a clear error if the volume is truly unwritable.
+    script = (
+        f"chown -R {LOADER_UID}:{LOADER_GID} {BUNDLE_MOUNT_PATH} "
+        f"&& chmod 0775 {BUNDLE_MOUNT_PATH} "
+        "|| echo 'bundle-perms: chown/chmod not permitted by the storage "
+        "backend; relying on the volume permissions as provisioned' >&2"
+    );
+    return {
+        "name": "bundle-perms",
+        "image": loader_image,
+        "command": ["sh", "-c", script],
+        "securityContext": {
+            "runAsNonRoot": False,
+            "runAsUser": 0,
+            "readOnlyRootFilesystem": True,
+            "allowPrivilegeEscalation": False,
+            "capabilities": {
+                "drop": ["ALL"],
+                "add": ["CHOWN", "FOWNER", "DAC_OVERRIDE"]
+            },
+            "seccompProfile": {"type": "RuntimeDefault"}
+        },
+        "volumeMounts": [{"name": "bundles", "mountPath": BUNDLE_MOUNT_PATH}]
+    };
+}
+
+
+def build_loader_pod(
+    loader_pod: str, pvc_name: str, loader_image: str
+) -> dict[str, any] {
+    return {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "metadata": {
+            "name": loader_pod,
+            "labels": {"managed": "jac-scale", "jac-scale.role": "bundle-loader"}
+        },
+        "spec": {
+            "restartPolicy": "Never",
+            "securityContext": {
+                "runAsNonRoot": True,
+                "runAsUser": LOADER_UID,
+                "fsGroup": LOADER_GID,
+                "seccompProfile": {"type": "RuntimeDefault"}
+            },
+            "initContainers": [build_loader_perms_init_container(loader_image)],
+            "containers": [
+                {
+                    "name": "loader",
+                    "image": loader_image,
+                    "command": ["sh", "-c", "sleep 3600"],
+                    "securityContext": {
+                        "runAsNonRoot": True,
+                        "runAsUser": LOADER_UID,
+                        "readOnlyRootFilesystem": True,
+                        "allowPrivilegeEscalation": False,
+                        "capabilities": {"drop": ["ALL"]},
+                        "seccompProfile": {"type": "RuntimeDefault"}
+                    },
+                    "volumeMounts": [
+                        {"name": "bundles", "mountPath": BUNDLE_MOUNT_PATH},
+                        {"name": "tmp", "mountPath": "/tmp"}
+                    ]
+                }
+            ],
+            "volumes": [
+                {"name": "bundles", "persistentVolumeClaim": {"claimName": pvc_name}},
+                {"name": "tmp", "emptyDir": {}}
+            ]
+        }
     };
 }
 
@@ -112,8 +200,8 @@ obj PvcInjector(Injector) {
     }
 
     def prepare(app_name: str, namespace: str, project_dir: str) {
-        # BinaryInjector sets _pod_binary_bytes so the app's modules ship precompiled (#7179); plain PVC deploys pack source only.
-        raw = pack_source(
+        # BinaryInjector sets _pod_binary_bytes; pack_jab needs it to seal the .jab.
+        raw = pack_jab(
             project_dir,
             self.provisioned_database,
             getattr(self, "_pod_binary_bytes", b"")
@@ -143,49 +231,7 @@ obj PvcInjector(Injector) {
         pvc_name = bundle_pvc_name(app_name);
         loader_pod = f"{app_name}-bundle-loader";
 
-        pod_body = {
-            "apiVersion": "v1",
-            "kind": "Pod",
-            "metadata": {
-                "name": loader_pod,
-                "labels": {"managed": "jac-scale", "jac-scale.role": "bundle-loader"}
-            },
-            "spec": {
-                "restartPolicy": "Never",
-                "securityContext": {
-                    "runAsNonRoot": True,
-                    "runAsUser": 1000,
-                    "fsGroup": 1000,
-                    "seccompProfile": {"type": "RuntimeDefault"}
-                },
-                "containers": [
-                    {
-                        "name": "loader",
-                        "image": self.loader_image,
-                        "command": ["sh", "-c", "sleep 3600"],
-                        "securityContext": {
-                            "runAsNonRoot": True,
-                            "runAsUser": 1000,
-                            "readOnlyRootFilesystem": True,
-                            "allowPrivilegeEscalation": False,
-                            "capabilities": {"drop": ["ALL"]},
-                            "seccompProfile": {"type": "RuntimeDefault"}
-                        },
-                        "volumeMounts": [
-                            {"name": "bundles", "mountPath": BUNDLE_MOUNT_PATH},
-                            {"name": "tmp", "mountPath": "/tmp"}
-                        ]
-                    }
-                ],
-                "volumes": [
-                    {
-                        "name": "bundles",
-                        "persistentVolumeClaim": {"claimName": pvc_name}
-                    },
-                    {"name": "tmp", "emptyDir": {}}
-                ]
-            }
-        };
+        pod_body = build_loader_pod(loader_pod, pvc_name, self.loader_image);
         try {
             core_v1.create_namespaced_pod(namespace, pod_body);
         } except ApiException as exc {
@@ -231,9 +277,11 @@ obj PvcInjector(Injector) {
                     # real infra problem resurfaces loudly on the upload below.
                     logger.debug(f"pvc-injector: presence probe: {probe_err}");
                 }
-                with tempfile.NamedTemporaryFile(
-                    suffix=".tar.gz", delete=False
-                ) as tmp {
+                # Local scratch file only: kubectl cp needs a path to copy FROM.
+                # The suffix is irrelevant (nothing reads it); the real PVC
+                # filename comes from object_key (.jab app bundle / .tar.gz
+                # toolchain). Deleted right after the copy.
+                with tempfile.NamedTemporaryFile(delete=False) as tmp {
                     tmp.write(raw);
                     tmp_path = Path(tmp.name);
                 }

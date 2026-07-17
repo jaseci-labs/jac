@@ -155,7 +155,8 @@ glob NODE_SPECS: tuple = (
                  FieldDesc(name="target", kind=5),
                  FieldDesc(name="value", kind=6),
                  FieldDesc(name="mutable", kind=2),
-                 FieldDesc(name="aug_op", kind=6)
+                 FieldDesc(name="aug_op", kind=6),
+                 FieldDesc(name="na_move_lowerable", kind=2)
              )
          ),
          NodeSpec(
@@ -355,11 +356,7 @@ glob NODE_SPECS: tuple = (
              is_scope=False,
              is_cfg=False,
              is_name_atom=False,
-             fields=(
-                 FieldDesc(name="doc", kind=6),
-                 FieldDesc(name="body", kind=5),
-                 FieldDesc(name="implicit", kind=2)
-             )
+             fields=(FieldDesc(name="doc", kind=6), FieldDesc(name="body", kind=5))
          ),
          NodeSpec(
              type_idx=28,
@@ -690,6 +687,14 @@ glob NODE_SPECS: tuple = (
          ),
          NodeSpec(
              type_idx=59,
+             class_name="ForeverStmt",
+             is_scope=True,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(FieldDesc(name="body", kind=5), )
+         ),
+         NodeSpec(
+             type_idx=60,
              class_name="FormattedValue",
              is_scope=False,
              is_cfg=False,
@@ -701,7 +706,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=60,
+             type_idx=61,
              class_name="FuncCall",
              is_scope=False,
              is_cfg=False,
@@ -714,7 +719,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=61,
+             type_idx=62,
              class_name="FuncSignature",
              is_scope=False,
              is_cfg=False,
@@ -729,7 +734,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=62,
+             type_idx=63,
              class_name="GenCompr",
              is_scope=True,
              is_cfg=True,
@@ -738,14 +743,6 @@ glob NODE_SPECS: tuple = (
                  FieldDesc(name="out_expr", kind=4),
                  FieldDesc(name="compr", kind=5)
              )
-         ),
-         NodeSpec(
-             type_idx=63,
-             class_name="GlobalStmt",
-             is_scope=False,
-             is_cfg=True,
-             is_name_atom=False,
-             fields=(FieldDesc(name="target", kind=5), )
          ),
          NodeSpec(
              type_idx=64,
@@ -1261,22 +1258,10 @@ glob NODE_SPECS: tuple = (
              is_scope=False,
              is_cfg=False,
              is_name_atom=False,
-             fields=(
-                 FieldDesc(name="doc", kind=6),
-                 FieldDesc(name="body", kind=5),
-                 FieldDesc(name="implicit", kind=2)
-             )
+             fields=(FieldDesc(name="doc", kind=6), FieldDesc(name="body", kind=5))
          ),
          NodeSpec(
              type_idx=112,
-             class_name="NonLocalStmt",
-             is_scope=False,
-             is_cfg=True,
-             is_name_atom=False,
-             fields=(FieldDesc(name="target", kind=5), )
-         ),
-         NodeSpec(
-             type_idx=113,
              class_name="Null",
              is_scope=False,
              is_cfg=False,
@@ -1292,6 +1277,14 @@ glob NODE_SPECS: tuple = (
                  FieldDesc(name="pos_start", kind=1),
                  FieldDesc(name="pos_end", kind=1)
              )
+         ),
+         NodeSpec(
+             type_idx=113,
+             class_name="OpenStmt",
+             is_scope=True,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(FieldDesc(name="target", kind=4), FieldDesc(name="body", kind=5))
          ),
          NodeSpec(
              type_idx=114,
@@ -1397,11 +1390,7 @@ glob NODE_SPECS: tuple = (
              is_scope=False,
              is_cfg=False,
              is_name_atom=False,
-             fields=(
-                 FieldDesc(name="doc", kind=6),
-                 FieldDesc(name="body", kind=5),
-                 FieldDesc(name="implicit", kind=2)
-             )
+             fields=(FieldDesc(name="doc", kind=6), FieldDesc(name="body", kind=5))
          ),
          NodeSpec(
              type_idx=124,
@@ -1487,7 +1476,7 @@ glob NODE_SPECS: tuple = (
              is_scope=False,
              is_cfg=False,
              is_name_atom=False,
-             fields=(FieldDesc(name="tag", kind=4), )
+             fields=(FieldDesc(name="tag", kind=4), FieldDesc(name="ownership", kind=3))
          ),
          NodeSpec(
              type_idx=131,
@@ -1599,7 +1588,11 @@ glob NODE_SPECS: tuple = (
              is_scope=False,
              is_cfg=False,
              is_name_atom=False,
-             fields=(FieldDesc(name="operand", kind=4), FieldDesc(name="op", kind=4))
+             fields=(
+                 FieldDesc(name="operand", kind=4),
+                 FieldDesc(name="op", kind=4),
+                 FieldDesc(name="ownership", kind=3)
+             )
          ),
          NodeSpec(
              type_idx=141,
@@ -1734,11 +1727,11 @@ glob NODE_SPECS: tuple = (
          "FilterCompr": 56,
          "FinallyStmt": 57,
          "Float": 58,
-         "FormattedValue": 59,
-         "FuncCall": 60,
-         "FuncSignature": 61,
-         "GenCompr": 62,
-         "GlobalStmt": 63,
+         "ForeverStmt": 59,
+         "FormattedValue": 60,
+         "FuncCall": 61,
+         "FuncSignature": 62,
+         "GenCompr": 63,
          "GlobalVars": 64,
          "HasVar": 65,
          "IfElseExpr": 66,
@@ -1787,8 +1780,8 @@ glob NODE_SPECS: tuple = (
          "Name": 109,
          "NameAtom": 110,
          "NativeBlock": 111,
-         "NonLocalStmt": 112,
-         "Null": 113,
+         "Null": 112,
+         "OpenStmt": 113,
          "ParamVar": 114,
          "ProgramModule": 115,
          "PyInlineCode": 116,

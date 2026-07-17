@@ -1767,6 +1767,79 @@ jaclang = ">=0.15.2"
     }
 }
 
+test "save preserves comments when adding a dependency" {
+    # save() must perform a surgical edit of jac.toml: adding one dependency
+    # may not delete user comments, reorder keys, or touch unrelated lines.
+    config_mod._config = None;
+    commented_toml = """# Top-level note about this project.
+[project]
+name = "repro"
+version = "0.1.0"  # keep in sync with git tags
+
+[dependencies]
+# Pinned <5.0.0 deliberately: bcrypt 5.x breaks our password hashes.
+# DO NOT BUMP without migrating the hash format first.
+bcrypt = ">=4.0.0,<5.0.0"
+""";
+    with TemporaryDirectory() as tmpdir {
+        toml_path = Path(tmpdir) / "jac.toml";
+        toml_path.write_text(commented_toml);
+        cfg = JacConfig.load(toml_path);
+        cfg.add_dependency("httpx", "~=0.28");
+        cfg.save();
+        saved = toml_path.read_text();
+        assert "# Top-level note about this project." in saved , (
+            "full-line comments must survive save()"
+        );
+        assert "# keep in sync with git tags" in saved , (
+            "inline trailing comments must survive save()"
+        );
+        assert "# DO NOT BUMP without migrating the hash format first." in saved , (
+            "comments inside [dependencies] must survive save()"
+        );
+        assert 'bcrypt = ">=4.0.0,<5.0.0"' in saved , (
+            "untouched dependency lines must be preserved verbatim"
+        );
+        parsed = tomllib.loads(saved);
+        assert parsed["dependencies"]["httpx"] == "~=0.28";
+        assert parsed["dependencies"]["bcrypt"] == ">=4.0.0,<5.0.0";
+    }
+}
+
+test "save preserves comments when removing a dependency" {
+    # Removing one dependency must delete only that key's line; every comment
+    # and unrelated line stays byte-for-byte intact.
+    config_mod._config = None;
+    commented_toml = """[project]
+name = "repro"
+version = "0.1.0"
+
+[dependencies]
+# httpx stays on 0.28 until the retry middleware is ported.
+httpx = "~=0.28"
+# bcrypt 5.x breaks our password hashes.
+bcrypt = ">=4.0.0,<5.0.0"
+
+[dev-dependencies]
+# pytest 9 drops the plugin API we rely on.
+pytest = ">=8.0.0,<9.0.0"
+""";
+    with TemporaryDirectory() as tmpdir {
+        toml_path = Path(tmpdir) / "jac.toml";
+        toml_path.write_text(commented_toml);
+        cfg = JacConfig.load(toml_path);
+        assert cfg.remove_dependency("httpx");
+        cfg.save();
+        saved = toml_path.read_text();
+        assert "# bcrypt 5.x breaks our password hashes." in saved;
+        assert "# pytest 9 drops the plugin API we rely on." in saved;
+        assert 'bcrypt = ">=4.0.0,<5.0.0"' in saved;
+        assert 'pytest = ">=8.0.0,<9.0.0"' in saved;
+        parsed = tomllib.loads(saved);
+        assert "httpx" not in parsed["dependencies"];
+    }
+}
+
 test "serialize_toml preserves arbitrarily deep nested tables" {
     # The canonical serializer must round-trip tables nested 3+ levels deep
     # (e.g. [dependencies.npm.dev]). Regression for the old CLI writer that

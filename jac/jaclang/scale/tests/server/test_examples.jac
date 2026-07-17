@@ -5,7 +5,6 @@ import gc;
 import io;
 import socket;
 import subprocess;
-import sys;
 import time;
 import requests;
 import from pathlib { Path }
@@ -20,9 +19,9 @@ obj JacScaleTestRunner {
     has example_file: Path,
         session_name: str = "test",
         setup_npm: bool = True,
-        port: int by postinit,
-        base_url: str by postinit,
-        session_file: Path by postinit,
+        port: int postinit,
+        base_url: str postinit,
+        session_file: Path postinit,
         server_process: subprocess.Popen | None = None,
         token: str | None = None,
         root_id: str | None = None;
@@ -61,10 +60,9 @@ obj JacScaleTestRunner {
             print("Example directory setup complete");
         }
 
-        jac_executable = Path(sys.executable).parent / "jac";
-
+        import from jaclang.scale.runtime.context.util { jac_executable }
         cmd = [
-            str(jac_executable),
+            jac_executable(),
             "start",
             str(self.example_file),
             "--port",

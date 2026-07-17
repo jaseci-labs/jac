@@ -2,9 +2,11 @@ import marshal;
 import os;
 import sys;
 import types;
+import from pathlib { Path }
 import from jaclang.cli.console { console }
 import from jaclang.cli.commands.cli_helpers { proc_file as _proc_file }
 import from jaclang.jac0core.ext_registry { is_native_module }
+import from jaclang.project.kinds { RunPlan }
 
 def _discover_config_from_file(filename: str) -> None {
     import from pathlib { Path }
@@ -57,7 +59,7 @@ def _populate_native_argv(engine: object, argv: list[str]) -> None {
     engine._jac_argv_refs = (c_strings, c_argv);
 }
 
-def _print_plan(plan: object) {
+def _print_plan(plan: RunPlan) {
     console.print(f"project kind : {plan.kind}");
     console.print(f"action       : {plan.action}");
     console.print(f"summary      : {plan.summary}");
@@ -65,35 +67,16 @@ def _print_plan(plan: object) {
         console.print(f"entry-point  : {plan.entry_path}");
     }
     console.print(f"equivalent   : {plan.command_line()}");
-    if plan.requires_plugin {
-        console.print(f"requires     : {plan.requires_plugin} plugin");
-    }
-}
-
-def _plugin_available(pkg: str) -> bool {
-    import importlib.util;
-    try {
-        return importlib.util.find_spec(pkg.replace("-", "_")) is not None;
-    } except (ImportError, ValueError) {
-        return False;
-    }
 }
 
 def _execute_plan(
-    plan: object,
+    plan: RunPlan,
     main: bool,
     cache: bool,
     autonative: bool,
     diagnostics: str,
     args: list
 ) -> int {
-    if plan.requires_plugin and not _plugin_available(plan.requires_plugin) {
-        console.error(
-            f"Project kind '{plan.kind}' requires the {plan.requires_plugin} plugin, "
-            f"which is not installed. Install it, then: {plan.command_line()}"
-        );
-        return 1;
-    }
     if plan.action == "execute" {
         return run(
             filename=plan.entry_path,
@@ -105,19 +88,12 @@ def _execute_plan(
         );
     }
     if plan.action == "serve" {
-        if "client" in plan.flags {
-            console.error(
-                f"Project kind '{plan.kind}' is run via the {plan.requires_plugin} "
-                f"plugin command: {plan.command_line()}"
-            );
-            return 1;
-        }
-
         return start(
             filename=plan.entry_path,
             port=plan.flags.get("port", 8000),
             no_client=plan.flags.get("no_client", False),
-            dev=plan.flags.get("dev", False)
+            dev=plan.flags.get("dev", False),
+            client=plan.flags.get("client", "web")
         );
     }
     if plan.action == "build" {
@@ -138,13 +114,13 @@ def _execute_plan(
         }
         if plan.verb == "build" {
             import from jaclang.cli.commands.build { build }
-            return build(projection=plan.flags.get("as", "jab"));
+            return build(
+                projection=plan.flags.get("as", "jab"),
+                client=plan.flags.get("client", "")
+            );
         }
 
-        console.error(
-            f"Project kind '{plan.kind}' builds via the {plan.requires_plugin} "
-            f"plugin command: {plan.command_line()}"
-        );
+        console.error(f"Project kind '{plan.kind}' has no build verb '{plan.verb}'.");
         return 1;
     }
     console.error(f"Unsupported run action '{plan.action}' for kind '{plan.kind}'.");
@@ -152,7 +128,7 @@ def _execute_plan(
 }
 
 def _run_jab(filename: str, port: (int | None), args: list, serve_only: bool) -> int {
-    import from jaclang.runtimelib.jab { materialize_jab, jab_app_meta }
+    import from jaclang.runtimelib.jab { materialize_jab }
 
     try {
         img_root = materialize_jab(filename);
@@ -160,6 +136,14 @@ def _run_jab(filename: str, port: (int | None), args: list, serve_only: bool) ->
         console.error(f"Cannot load {filename}: {e}");
         return 1;
     }
+    return run_jab_image(img_root, port, args, serve_only, filename);
+}
+
+impl run_jab_image(
+    img_root: Path, port: (int | None), args: list, serve_only: bool, label: str
+) -> int {
+    import from jaclang.runtimelib.jab { jab_app_meta }
+
     meta = jab_app_meta(img_root);
     kind = str(meta.get("kind") or "cli");
     entry_meta: dict = meta.get("entry") or {};
@@ -168,14 +152,14 @@ def _run_jab(filename: str, port: (int | None), args: list, serve_only: bool) ->
     if not entry_rel {
         attach_note = ", attachable package" if "attachable" in caps else "";
         console.error(
-            f"{filename} has no entry (kind '{kind}'{attach_note}); "
+            f"{label} has no entry (kind '{kind}'{attach_note}); "
             "it cannot be run directly."
         );
         return 1;
     }
     entry_abs = str(img_root / entry_rel);
     if not os.path.isfile(entry_abs) {
-        console.error(f"{filename}: sealed entry '{entry_rel}' missing from image.");
+        console.error(f"{label}: sealed entry '{entry_rel}' missing from image.");
         return 1;
     }
     servable = kind in ["service", "service-mesh", "web-app", "web-static"];
@@ -203,7 +187,7 @@ def _run_jab(filename: str, port: (int | None), args: list, serve_only: bool) ->
         return run(filename=entry_abs, args=args);
     }
     console.error(
-        f"{filename}: kind '{kind}' is not directly runnable from a jab "
+        f"{label}: kind '{kind}' is not directly runnable from a jab "
         "(build its platform projection instead)."
     );
     return 1;
@@ -397,8 +381,7 @@ impl run(
                                 fn();
                                 native_executed = True;
                                 console.print(
-                                    f"[Module '{filename}' executed natively]",
-                                    style="dim"
+                                    f"  Executed {filename} natively", style="dim"
                                 );
                             }
                         }
@@ -544,10 +527,33 @@ impl start(
     faux: bool = False,
     dev: bool = False,
     api_port: int = 0,
-    no_client: bool = False
+    no_client: bool = False,
+    client: str = "web",
+    host: str = "",
+    platform: str = "auto",
+    scale: bool = False,
+    target: str = "kubernetes",
+    enable_tls: bool = False,
+    dry_run: bool = False,
+    show_yaml: bool = False
 ) -> int {
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     import from pathlib { Path }
+
+    import from jaclang.runtimelib.client.cli { run_client_start }
+    client_rc = run_client_start(
+        filename, client, host, platform, port, api_port, dev, no_client
+    );
+    if client_rc is not None {
+        return client_rc;
+    }
+
+    import from jaclang.scale.plugin { scale_start }
+    scale_rc = scale_start(filename, scale, target, enable_tls, dry_run, show_yaml);
+    if scale_rc is not None {
+        return scale_rc;
+    }
+
     if filename.endswith(".jab") {
         if dev {
             console.error(
@@ -559,19 +565,7 @@ impl start(
         return _run_jab(filename, port, [], serve_only=True);
     }
     if not Path(filename).exists() {
-        if filename == "main.jac" {
-            console.error(
-                f"Error: File 'main.jac' not found in the current directory."
-            );
-            console.error(f"  Current directory: {os.getcwd()}");
-            console.error(
-                "  Please specify a file: jac start <filename.jac> or make sure main.jac exists in the current directory"
-            );
-        } else {
-            console.error(f"Error: File '{filename}' not found.");
-            console.error(f"  Current directory: {os.getcwd()}");
-            console.error("  Please check the file path and try again.");
-        }
+        console.error(f"couldn't read `{filename}`: No such file or directory");
         return 1;
     }
 
@@ -672,7 +666,7 @@ impl start(
             mach.close();
             return 1;
         } except Exception as e {
-            console.error(f"Warning: HMR initialization failed: {e}");
+            console.warning(f"HMR initialization failed: {e}");
         }
 
         if not no_client {
@@ -681,7 +675,7 @@ impl start(
                 compiler.compile(server.introspector._module, Path(filename));
                 console.print("  ✔ Initial client compilation completed");
             } except Exception as e {
-                console.error(f"Warning: Initial client compilation failed: {e}");
+                console.warning(f"Initial client compilation failed: {e}");
 
                 if hot_reloader {
                     hot_reloader.record_error(str(filename), str(e));
@@ -714,7 +708,7 @@ impl start(
         server.start(dev=dev, no_client=no_client, on_ready=_announce_ready);
         return 0;
     } except KeyboardInterrupt {
-        console.print('\nShutting down...');
+        console.print('\nShutting down');
         if hot_reloader {
             hot_reloader.stop();
         }
@@ -767,7 +761,7 @@ def _ensure_watchdog_installed -> bool {
     }
 
     console.print(
-        "\n  📦 Installing watchdog (required for --dev mode)...\n", style="info"
+        "\n  Installing watchdog (required for --dev mode)...\n", style="info"
     );
     python = get_python_provider();
     if python.install_specs(config, ["watchdog>=3.0.0"], InstallContext()) {
@@ -824,9 +818,9 @@ def _print_startup_message(
 
     try {
         version = pkg_version('jaclang');
-        console.print(f"\n  JAC DEV SERVER v{version}\n", style="bold cyan");
+        console.print(f"\n  jac dev server v{version}\n", style="bold cyan");
     } except Exception {
-        console.print(f"\n  JAC DEV SERVER\n", style="bold cyan");
+        console.print(f"\n  jac dev server\n", style="bold cyan");
     }
 
     urls = [];
@@ -842,7 +836,7 @@ def _print_startup_message(
     console.print();
 
     if dev and not no_client {
-        console.print("  🚀 Server ready", style="bold green");
+        console.print("  Server ready", style="bold green");
         console.print();
         console.print("  Mode: Development (with HMR)", style="muted");
         console.print(f"    App:  http://localhost:{primary_port}/", style="muted");
@@ -853,21 +847,21 @@ def _print_startup_message(
         if file_count > 0 {
             console.print_watching("**/*.jac", file_count);
         } else {
-            console.print("  👀 Watching for changes...", style="info");
+            console.print("  Watching for changes", style="info");
         }
     } elif dev and no_client {
-        console.print("  🚀 Server ready (API only)", style="bold green");
+        console.print("  Server ready (API only)", style="bold green");
         console.print();
         file_count = _count_jac_files(base_path);
         if file_count > 0 {
             console.print_watching("**/*.jac", file_count);
         } else {
-            console.print("  👀 Watching for changes...", style="info");
+            console.print("  Watching for changes", style="info");
         }
     } elif no_client {
-        console.print("  🚀 Server ready (no client)", style="bold green");
+        console.print("  Server ready (no client)", style="bold green");
     } else {
-        console.print("  🚀 Server ready", style="bold green");
+        console.print("  Server ready", style="bold green");
     }
 
     console.print();
@@ -918,12 +912,10 @@ def _start_vite_dev_server(base_path: str, vite_port: int, api_port: int) -> any
         process = bundler.start_dev_server(vite_port, suppress_initial_output=True);
         return (process, bundler.dev_server_port or vite_port);
     } except ImportError as e {
-        console.error(
-            f"[Vite] Warning: client bundler unavailable, skipping Vite dev server: {e}"
-        );
+        console.warning(f"client bundler unavailable, skipping Vite dev server: {e}");
         return (None, vite_port);
     } except Exception as e {
-        console.error(f"[Vite] Warning: Could not start Vite dev server: {e}");
+        console.warning(f"Could not start Vite dev server: {e}");
         return (None, vite_port);
     }
 }

@@ -11,23 +11,23 @@ impl JacAccessValidation._resolve_anchor(
 }
 
 impl JacAccessValidation._check_access(
-    `to: Anchor, min_level: AccessLevel, operation: str
+    to: Anchor, min_level: AccessLevel, operation: str
 ) -> bool {
-    actual = JacRuntimeInterface.check_access_level(`to);
+    actual = JacRuntimeInterface.check_access_level(to);
     granted = actual.value > min_level.value;
     if not granted {
         logger.info(
-            "Current root doesn't have " + operation + " access to " + `to.__class__.__name__ + " " + `to.archetype.__class__.__name__ + "[" + str(
-                `to.id
+            "Current root doesn't have " + operation + " access to " + to.__class__.__name__ + " " + to.archetype.__class__.__name__ + "[" + str(
+                to.id
             ) + "]"
         );
         if operation != "read" {
             required = AccessLevel(min_level.value + 1);
             diag = PermissionDenied(
                 operation=operation,
-                target_id=str(`to.id),
-                target_type=`to.archetype.__class__.__name__,
-                target_owner=str(`to.root) if `to.root else None,
+                target_id=str(to.id),
+                target_type=to.archetype.__class__.__name__,
+                target_owner=str(to.root) if to.root else None,
                 required=required,
                 actual=actual
             );
@@ -97,26 +97,26 @@ impl JacAccessValidation.perm_revoke(archetype: Archetype) -> None {
     }
 }
 
-impl JacAccessValidation.check_read_access(`to: Anchor) -> bool {
-    return JacAccessValidation._check_access(`to, AccessLevel.NO_ACCESS, "read");
+impl JacAccessValidation.check_read_access(to: Anchor) -> bool {
+    return JacAccessValidation._check_access(to, AccessLevel.NO_ACCESS, "read");
 }
 
 impl JacAccessValidation.check_connect_access(
-    `to: Anchor, op_hint: str = "connect"
+    to: Anchor, op_hint: str = "connect"
 ) -> bool {
-    return JacAccessValidation._check_access(`to, AccessLevel.READ, op_hint);
+    return JacAccessValidation._check_access(to, AccessLevel.READ, op_hint);
 }
 
 impl JacAccessValidation.check_write_access(
-    `to: Anchor, op_hint: str = "write"
+    to: Anchor, op_hint: str = "write"
 ) -> bool {
-    return JacAccessValidation._check_access(`to, AccessLevel.CONNECT, op_hint);
+    return JacAccessValidation._check_access(to, AccessLevel.CONNECT, op_hint);
 }
 
 impl JacAccessValidation.check_access_level(
-    `to: Anchor, no_custom: bool = False
+    to: Anchor, no_custom: bool = False
 ) -> AccessLevel {
-    if (not `to.persistent or (`to.hash == 0)) {
+    if (not to.persistent or (to.hash == 0)) {
         return AccessLevel.WRITE;
     }
     jctx = JacRuntimeInterface.get_context();
@@ -125,19 +125,19 @@ impl JacAccessValidation.check_access_level(
         return AccessLevel.NO_ACCESS;
     }
     jroot: NodeAnchor = _jroot;
-    if ((jroot == jctx.system_root) or (jroot.id == `to.root) or (jroot == `to)) {
+    if ((jroot == jctx.system_root) or (jroot.id == to.root) or (jroot == to)) {
         return AccessLevel.WRITE;
     }
     if (
-        not no_custom and ((custom_level := `to.archetype.__jac_access__()) is not None)
+        not no_custom and ((custom_level := to.archetype.__jac_access__()) is not None)
     ) {
         return access_level_cast(custom_level);
     }
     access_level = AccessLevel.NO_ACCESS;
-    if ((to_access := `to.access).all.value > AccessLevel.NO_ACCESS.value) {
+    if ((to_access := to.access).all.value > AccessLevel.NO_ACCESS.value) {
         access_level = to_access.all;
     }
-    if (`to.root and isinstance((to_root := jctx.mem.get(`to.root)), Anchor)) {
+    if (to.root and isinstance((to_root := jctx.mem.get(to.root)), Anchor)) {
         if (to_root.access.all.value > access_level.value) {
             access_level = to_root.access.all;
         }
@@ -1082,7 +1082,7 @@ impl JacGraph.refs(
             last.nd = post_filter;
         } else {
             orig_nd = last.nd;
-            last.nd = lambda i: any : (orig_nd(i) and post_filter(i));
+            last.nd = lambda (i: any) { orig_nd(i) and post_filter(i); };
         }
     }
 

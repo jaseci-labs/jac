@@ -1,3 +1,4 @@
+import from pathlib { Path }
 import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.registry { get_registry }
 
@@ -116,7 +117,7 @@ def run(
 
 @registry.command(
     name="dev",
-    help="Run the live dev loop: serve with hot reload and live compilation (never reads sealed artifacts)",
+    help="Serve with hot reload and live compilation",
     tier="core",
     args=[
         Arg.create(
@@ -187,7 +188,7 @@ def enter(
             help="Separate API port for HMR mode (0=same as port)"
         ),
         Arg.create(
-            "no_client",
+            "no-client",
             typ=bool,
             default=False,
             help="Skip client bundling/serving (API only)"
@@ -197,6 +198,72 @@ def enter(
             default="",
             short="",
             help="Configuration profile to load (e.g. prod, staging)"
+        ),
+        Arg.create(
+            "client",
+            typ=str,
+            default="web",
+            help=(
+                "Client build target for dev server (web, pwa, mobile, desktop). "
+                "Choices reflect installed targets (desktop builds a native webview app)."
+            ),
+            choices=["web", "pwa", "mobile", "desktop"],
+            short=""
+        ),
+        Arg.create(
+            "host",
+            typ=str,
+            default="",
+            help=(
+                "Mobile dev (--client mobile --dev): optional host/IP override for "
+                "Capacitor live-reload. When omitted, jac auto-selects a host."
+            ),
+            short=""
+        ),
+        Arg.create(
+            "platform",
+            typ=str,
+            default="auto",
+            help=(
+                "Mobile start/dev: android or ios (auto = use [client.mobile] "
+                "default_platform or android)"
+            ),
+            choices=["auto", "android", "ios"],
+            short=""
+        ),
+        Arg.create(
+            "scale",
+            typ=bool,
+            default=False,
+            help="Deploy to a target platform instead of running locally",
+            short=""
+        ),
+        Arg.create(
+            "target",
+            typ=str,
+            default="kubernetes",
+            help="Deployment target (kubernetes, aws, gcp, etc.)"
+        ),
+        Arg.create(
+            "enable-tls",
+            typ=bool,
+            default=False,
+            help="Enable HTTPS via Let's Encrypt (run after pointing your domain CNAME to the NLB)",
+            short=""
+        ),
+        Arg.create(
+            "dry-run",
+            typ=bool,
+            default=False,
+            help="Print the manifests that would be applied; touch nothing (no cluster contact, no downloads, no client build, no DB provisioning, no TLS issuance, no deploy tooling installed)",
+            short=""
+        ),
+        Arg.create(
+            "show-yaml",
+            typ=bool,
+            default=False,
+            help="With --dry-run: dump the raw YAML stream",
+            short=""
         ),
 
     ],
@@ -208,6 +275,8 @@ def enter(
         ("jac start --dev", "Start with hot module replacement"),
         ("jac start app.jac --dev --no-client", "HMR mode without client bundling"),
         ("jac start --profile prod", "Start with production profile"),
+        ("jac start --client mobile", "Run the mobile client dev server"),
+        ("jac start --scale", "Deploy to a platform target instead of serving locally"),
 
     ],
     group="execution"
@@ -219,10 +288,22 @@ def start(
     faux: bool = False,
     dev: bool = False,
     api_port: int = 0,
-    no_client: bool = False
+    no_client: bool = False,
+    client: str = "web",
+    host: str = "",
+    platform: str = "auto",
+    scale: bool = False,
+    target: str = "kubernetes",
+    enable_tls: bool = False,
+    dry_run: bool = False,
+    show_yaml: bool = False
 ) -> int;
 
 def debug(filename: str, main: bool = True, cache: bool = False) -> int;
+
+def run_jab_image(
+    img_root: Path, port: (int | None), args: list, serve_only: bool, label: str
+) -> int;
 
 @registry.command(
     name="x",

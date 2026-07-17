@@ -8,6 +8,13 @@ import from jaclang.cli.check_report {
     print_final_summary
 }
 
+def _maybe_malloc_trim {
+    try {
+        import ctypes;
+        ctypes.CDLL("libc.so.6").malloc_trim(0);
+    } except (ImportError, OSError, AttributeError, ValueError) { }
+}
+
 impl check(
     paths: list,
     print_errs: bool = True,
@@ -40,8 +47,9 @@ impl check(
         );
     }
 
+    total_files = failed_files=total_errors=total_warnings=0;
+
     def process_file_result(file_path: str, idx: int, total: int) {
-        nonlocal total_files , total_errors , total_warnings , failed_files;
         total_files += 1;
         (success, errs, warns, errors_list, warnings_list) = check_single_file(
             prog, file_path
@@ -92,6 +100,11 @@ impl check(
                     suppress_codes=suppressed_codes
                 )
             );
+
+            for m in prog.mod.hub.values() {
+                m.terminals = [];
+                m.src_terminals = [];
+            }
             new_errors = prog.errors_had[err_start:];
             new_warnings = prog.warnings_had[warn_start:];
 
@@ -102,7 +115,7 @@ impl check(
                     if i.loc
                     and i.loc.mod_path
                     and i.loc.mod_path.endswith(".jac")
-                    and not any(p in i.loc.mod_path for p in ignore_list)
+                    and not _should_ignore(i.loc.mod_path, ignore_list)
                 ];
             }
             filtered_errors = filter_issues(new_errors);
@@ -133,14 +146,17 @@ impl check(
         } except Exception as e {
             console.error(f"Error checking '{file_path}': {e}");
             return (False, 1, 0, [], []);
+        } finally {
+            prog.release_compile_closure();
         }
     }
-    total_files = failed_files=total_errors=total_warnings=0;
     prog = JacProgram();
     (all_files, had_path_errors) = _iter_jac_files(paths, ignore_list);
     total_to_check = len(all_files);
     for (idx, jac_file_path) in enumerate(all_files, 1) {
         process_file_result(jac_file_path, idx, total_to_check);
+
+        _maybe_malloc_trim();
     }
 
     if print_errs and len(failed_results) > 0 {
@@ -184,7 +200,7 @@ impl lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int {
             return (False, 1);
         }
     }
-    def lint_fix_file(file_path: str) -> tuple[bool, int, int] {
+    def lint_fix_file(file_path: str, covered: set[str]) -> tuple[bool, int, int] {
         path_obj = Path(file_path);
         if not path_obj.exists() {
             console.error(f"File '{file_path}' does not exist.");
@@ -237,12 +253,16 @@ impl lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int {
             }
 
             import from jaclang.jac0core.bccache { discover_annex_files }
+            import os;
             annex_paths = (
                 discover_annex_files(str(path_obj), '.impl.jac') + discover_annex_files(
                     str(path_obj), '.test.jac'
                 )
             );
             for annex_path in annex_paths {
+                if os.path.realpath(annex_path) in covered {
+                    continue;
+                }
                 try {
                     annex_prog = JacProgram.jac_file_formatter(
                         annex_path, auto_lint=True
@@ -278,10 +298,12 @@ impl lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int {
     total_errors = 0;
     total_unfixable = 0;
     (all_files, had_path_errors) = _iter_jac_files(paths, ignore_list);
+    import os;
+    covered: set[str] = {os.path.realpath(f) for f in all_files};
     for file_path in all_files {
         total_files += 1;
         if fix {
-            (success, errors, unfixable) = lint_fix_file(file_path);
+            (success, errors, unfixable) = lint_fix_file(file_path, covered);
             total_unfixable += unfixable;
         } else {
             (success, errors) = lint_report_file(file_path);
@@ -314,7 +336,9 @@ impl lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int {
     return 0;
 }
 
-def _format_single_file_worker(file_path: str, lintfix: bool, check: bool) -> dict {
+def _format_single_file_worker(
+    file_path: str, lintfix: bool, check: bool, covered: (set[str] | None) = None
+) -> dict {
     import from jaclang.jac0core.program { JacProgram }
     path_obj = Path(file_path);
     result: dict = {
@@ -361,12 +385,17 @@ def _format_single_file_worker(file_path: str, lintfix: bool, check: bool) -> di
 
             if lintfix {
                 import from jaclang.jac0core.bccache { discover_annex_files }
+                import os;
                 annex_paths = (
                     discover_annex_files(file_path, '.impl.jac') + discover_annex_files(
                         file_path, '.test.jac'
                     )
                 );
                 for annex_path in annex_paths {
+                    if covered is not None
+                    and (os.path.realpath(annex_path) in covered) {
+                        continue;
+                    }
                     try {
                         annex_prog = JacProgram.jac_file_formatter(
                             annex_path, auto_lint=True
@@ -429,6 +458,9 @@ impl format(
         return 1 if had_path_errors else 0;
     }
 
+    import os;
+    covered: set[str] = {os.path.realpath(f) for f in all_files};
+
     use_parallel = total_files > 1 and not to_screen;
     max_workers = min(os.cpu_count() or 4, total_files, 8);
 
@@ -441,12 +473,13 @@ impl format(
             pool_cls = (
                 ProcessPoolExecutor
                     if ctx is None
-                    else lambda **kw : ProcessPoolExecutor(mp_context=ctx, **kw)
+                    else lambda (**kw) { ProcessPoolExecutor(mp_context=ctx, **kw); }
             );
             with pool_cls(max_workers=max_workers) as executor {
                 futures = {
-                    executor.submit(_format_single_file_worker, fp, lintfix, check): fp
-                    for fp in all_files
+                    executor.submit(
+                        _format_single_file_worker, fp, lintfix, check, covered
+                    ): fp for fp in all_files
                 };
                 completed = 0;
                 for future in as_completed(futures) {
@@ -481,7 +514,7 @@ impl format(
     if not use_parallel {
         for fp in all_files {
             console.print(f"Formatting {fp}...");
-            results.append(_format_single_file_worker(fp, lintfix, check));
+            results.append(_format_single_file_worker(fp, lintfix, check, covered));
         }
     }
 
@@ -973,7 +1006,7 @@ impl gen_parser -> int {
     return 0;
 }
 
-impl grammar(output: str = "") -> int {
+impl grammar(output: str = "", strict: bool = False) -> int {
     import from jaclang.jac0core.program { JacProgram }
     import from jaclang.compiler.passes.tool.grammar_extract_pass { GrammarExtractPass }
     import jaclang;
@@ -1001,8 +1034,11 @@ impl grammar(output: str = "") -> int {
             f.write("\n");
         }
         console.success(f"EBNF grammar ({len(pass_.rules)} rules) written to {output}");
-    } else {
+    } elif not strict {
         console.print(text);
+    }
+    if strict {
+        console.print(pass_.emit_diagnostics());
     }
     return 0;
 }

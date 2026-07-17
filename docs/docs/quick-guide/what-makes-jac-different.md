@@ -12,7 +12,7 @@ This page focuses on the three concepts that Jac adds beyond traditional program
 
 ## 1. How can one language target frontends, backends, and native binaries at the same time?
 
-Similar to namespaces, the Jac language introduces the concept of **codespaces**. A Jac program can contain code that runs in different environments. You denote the codespace with a **braced block** (or **section header** or **statement prefix**) inside a file, or with a **file extension**:
+Similar to namespaces, the Jac language introduces the concept of **codespaces**. A Jac program can contain code that runs in different environments. You denote the codespace with a **braced block** (or **statement prefix**) inside a file, or with a **file extension**:
 
 ```mermaid
 graph LR
@@ -31,7 +31,7 @@ graph LR
 - `na { ... }` -- code inside the braces compiles natively for the host machine (compiles to a native binary)
 - Code outside any block defaults to the server codespace. Blocks also work inside a function or class body.
 
-**Section headers** (`to sv:` / `to cl:` / `to na:`) are an alternative -- a header sets the default codespace for every following module-level element until the next header or end of file, convenient for a file that is mostly one codespace. A single-statement prefix (`cl def foo() ...`) tags one declaration.
+**Single-statement prefixes** -- a prefix like `cl def foo() ...` tags one declaration for a codespace, handy for the occasional cross-codespace item in a file.
 
 **File extensions** -- set the default top-level codespace for a file, e.g., for a module `prog`:
 
@@ -212,9 +212,9 @@ In practice, these compose: walkers traverse a graph on the server, delegate dec
 
 | Syntax | Meaning |
 |--------|---------|
-| `to sv:` | Server codespace section header |
-| `to cl:` | Client codespace section header |
-| `to na:` | Native codespace section header |
+| `sv { }` | Server codespace block |
+| `cl { }` | Client codespace block |
+| `na { }` | Native codespace block |
 | `node X { has ...; }` | Declare a graph data type |
 | `root` | Built-in starting node (persistence anchor) |
 | `a ++> b` | Connect node `a` to node `b` |

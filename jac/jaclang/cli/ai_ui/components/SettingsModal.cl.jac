@@ -32,7 +32,7 @@ def:pub SettingsModal(
     keyPlaceholder = "•••••••• set — leave blank to keep" if apiKeySet else "sk-…";
     return
         <div className="modal-overlay" onClick={lambda { onClose(); }}>
-            <div className="modal" onClick={lambda e: any { e.stopPropagation(); }}>
+            <div className="modal" onClick={lambda (e: any) { e.stopPropagation(); }}>
                 <div className="modal-head">
                     <span>Settings</span>
                     <span className="spacer"/>
@@ -54,7 +54,7 @@ def:pub SettingsModal(
                             className="input"
                             value={model}
                             placeholder="anthropic/claude-opus-4-7"
-                            onChange={lambda e: ChangeEvent { onModel(
+                            onChange={lambda (e: ChangeEvent) { onModel(
                                 e.target.value
                             ); }}
                         />
@@ -80,7 +80,9 @@ def:pub SettingsModal(
                             type="password"
                             value={keyDraft}
                             placeholder={keyPlaceholder}
-                            onChange={lambda e: ChangeEvent { onKey(e.target.value); }}
+                            onChange={lambda (e: ChangeEvent) { onKey(
+                                e.target.value
+                            ); }}
                         />
                     </div>
                     <div className="field">
@@ -89,7 +91,7 @@ def:pub SettingsModal(
                             className="input"
                             value={baseUrl}
                             placeholder="https://… (custom endpoint or proxy)"
-                            onChange={lambda e: ChangeEvent { onBaseUrl(
+                            onChange={lambda (e: ChangeEvent) { onBaseUrl(
                                 e.target.value
                             ); }}
                         />
@@ -101,7 +103,7 @@ def:pub SettingsModal(
                                 className="input"
                                 value={temp}
                                 placeholder="default"
-                                onChange={lambda e: ChangeEvent { onTemp(
+                                onChange={lambda (e: ChangeEvent) { onTemp(
                                     e.target.value
                                 ); }}
                             />
@@ -112,7 +114,7 @@ def:pub SettingsModal(
                                 className="input"
                                 value={nctx}
                                 placeholder="0 = model default"
-                                onChange={lambda e: ChangeEvent { onNctx(
+                                onChange={lambda (e: ChangeEvent) { onNctx(
                                     e.target.value
                                 ); }}
                             />

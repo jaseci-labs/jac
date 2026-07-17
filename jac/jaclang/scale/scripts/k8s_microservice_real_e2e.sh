@@ -198,25 +198,29 @@ if [ "${CLUSTER_TYPE}" = "kind" ]; then
 fi
 
 cd "${PROJECT_DIR}"
+# The fixture ships jac.preview.toml with a deployment_overlay marker;
+# selecting it here makes the deploy exercise profile resolution AND
+# build-time overlays, asserted after the HPA phase below.
+export JAC_PROFILE=preview
 jac - <<PYEOF
 import logging, os, sys, jaclang  # noqa: F401
 from jaclang.scale.deploy.target.kubernetes.microservice.target import KubernetesMicroserviceTarget
 from jaclang.scale.deploy.target.kubernetes.kubernetes_config import KubernetesConfig
 from jaclang.scale.config.app_config import AppConfig
-from jaclang.scale.config.dev_config import DevDeploy, CHANNEL_DEV
+from jaclang.scale.config.dev_config import BINARY_PATH_ENV
 
-_want = os.path.realpath("${REPO_ROOT}/jac")
-_got = os.path.realpath(os.path.dirname(os.path.dirname(jaclang.__file__)))
-if _got != _want:
+# JAC_SCALE_BINARY_PATH makes the deploy resolve to the LOCAL channel and ship
+# the jac built from THIS checkout, so the e2e validates the code under test
+# rather than a published release.
+_local = os.environ.get(BINARY_PATH_ENV, "")
+if not _local or not os.path.isfile(_local):
     print(
-        f"FATAL: host jac is running jaclang from {_got}, not the checkout at "
-        f"{_want}. The editable dev overlay did not activate, so this run would "
-        f"validate the wrong code. Set [dev] jaclang_source (or use a -Ddev "
-        f"binary) before running.",
+        f"FATAL: {BINARY_PATH_ENV} must point at the jac binary built from this "
+        f"checkout so the pod runs the code under test; got {_local!r}.",
         file=sys.stderr,
     )
     sys.exit(1)
-print(f"host jaclang overlay active: {_got}", file=sys.stderr)
+print(f"shipping local jac binary to pods: {_local}", file=sys.stderr)
 
 # Surface MonitoringDeployer / observability warnings to stderr so CI
 # logs show the actual error instead of the silent
@@ -231,13 +235,16 @@ class StderrLogger:
     def debug(self, msg, *args, **kwargs):
         pass
 
-# No python_image override: the default base (python:3.12-slim) is a plain
+# Empty python_image = the plain default base; the official-image e2e leg
+# sets E2E_POD_BASE_IMAGE to an image built from this PR's binary so the
+# baked-cache path (container-local runtime site) is exercised too.
 target = KubernetesMicroserviceTarget(
     config=KubernetesConfig(
         app_name="jac-e2e",
         namespace="${NAMESPACE}",
         container_port=8000,
         bundle_storage_class="${BUNDLE_STORAGE_CLASS}",
+        python_image="${E2E_POD_BASE_IMAGE:-}",
     ),
     logger=StderrLogger(),
 )
@@ -245,7 +252,6 @@ result = target.deploy(
     AppConfig(
         code_folder=".",
         app_name="jac-e2e",
-        dev=DevDeploy(channel=CHANNEL_DEV, jaclang_source="${REPO_ROOT}/jac"),
     )
 )
 if not result.success:
@@ -284,12 +290,31 @@ done
 
 _t "pods Ready"
 
-echo "=== first-boot compile stats (jir-seed adoption per pod) ==="
+echo "=== gateway npm closure skipped when the dist shipped ==="
+GW_POD=$(kubectl get pods -n "${NAMESPACE}" -l app=gateway -o name | head -1)
+if kubectl exec -n "${NAMESPACE}" "${GW_POD#pod/}" -c gateway -- \
+        test -f /app/.jac/client/dist/index.html 2>/dev/null; then
+    # the "Installing npm dependencies" banner prints even under --no-npm;
+    # a "bun install" invocation only appears when the closure really installs
+    if kubectl logs -n "${NAMESPACE}" "${GW_POD}" -c jac-bootstrap 2>/dev/null \
+            | grep -q "bun install v"; then
+        echo "FAIL: bundle shipped a prebuilt dist but the gateway still installed the npm closure"
+        echo "--- debug: dist dir + bootstrap branch marker ---"
+        kubectl exec -n "${NAMESPACE}" "${GW_POD#pod/}" -c gateway -- ls -la /app/.jac/client/dist/ 2>&1 | head -6
+        kubectl logs -n "${NAMESPACE}" "${GW_POD}" -c jac-bootstrap 2>/dev/null | grep -E "jac-scale|bun install" | head -4
+        exit 1
+    fi
+    echo "  dist shipped and npm skipped OK"
+else
+    echo "  (no prebuilt dist in this run; the npm fallback path is in effect)"
+fi
+
+echo "=== first-boot compile stats (per pod) ==="
 for pod in $(kubectl get pods -n "${NAMESPACE}" -l managed=jac-scale -o name 2>/dev/null); do
     # `|| true` throughout: pods without a jac-bootstrap container (mongo,
     # observability) and no-match greps must not trip `set -e`.
     line=$( (kubectl logs -n "${NAMESPACE}" "${pod}" -c jac-bootstrap 2>/dev/null || true) \
-        | (grep -E "adopted [0-9]+ host-precompiled|modules compiled and cached|adoption failed" || true) | tail -2)
+        | (grep -E "modules compiled and cached" || true) | tail -2)
     [ -n "${line}" ] && echo "  ${pod}: $(echo "${line}" | tr '\n' ' ')" || true
 done
 echo "=== port-forward gateway + curl /health ==="
@@ -328,6 +353,71 @@ for prefix in ${ROUTES}; do
 done
 
 _t "routing OK"
+echo "=== verify HPA OOM guardrails (cpu+memory metrics, behavior rate limits) ==="
+# The heredoc feeds python's stdin, so the HPA JSON must travel via a file.
+HPA_JSON="$(mktemp)"
+kubectl get hpa -n "${NAMESPACE}" -l managed=jac-scale -o json > "${HPA_JSON}"
+python3 - "${HPA_JSON}" <<'PYEOF'
+import json
+import sys
+
+with open(sys.argv[1]) as f:
+    items = json.load(f).get("items", [])
+if not items:
+    sys.exit("FAIL: no managed HPAs found in namespace")
+for hpa in items:
+    name = hpa["metadata"]["name"]
+    spec = hpa["spec"]
+    metric_names = sorted(
+        m["resource"]["name"]
+        for m in spec.get("metrics", [])
+        if m.get("type") == "Resource"
+    )
+    if metric_names != ["cpu", "memory"]:
+        sys.exit(f"FAIL: {name} metrics={metric_names}, expected cpu+memory")
+    behavior = spec.get("behavior") or {}
+    up = behavior.get("scaleUp") or {}
+    down = behavior.get("scaleDown") or {}
+    if not up.get("policies") or up.get("stabilizationWindowSeconds") is None:
+        sys.exit(f"FAIL: {name} missing scaleUp guardrails: {behavior}")
+    if not down.get("policies") or not down.get("stabilizationWindowSeconds"):
+        sys.exit(f"FAIL: {name} missing scaleDown guardrails: {behavior}")
+    print(
+        f"  {name}: metrics={metric_names}, "
+        f"scaleUp<={up['policies'][0]['value']} pods/{up['policies'][0]['periodSeconds']}s "
+        f"(stab {up['stabilizationWindowSeconds']}s), "
+        f"scaleDown stab {down['stabilizationWindowSeconds']}s"
+    )
+print(f"  {len(items)} HPA(s) verified")
+PYEOF
+rm -f "${HPA_JSON}"
+
+_t "HPA guardrails OK"
+echo "=== verify profile + deployment_overlay landed on the first rollout ==="
+OVL_JSON="$(mktemp)"
+kubectl get deployment products-app-deployment -n "${NAMESPACE}" -o json > "${OVL_JSON}"
+RS_COUNT=$(kubectl get rs -n "${NAMESPACE}" -o json | python3 -c "import json,sys; print(sum(1 for r in json.load(sys.stdin)['items'] if r['metadata']['ownerReferences'][0]['name']=='products-app-deployment'))")
+python3 - "${OVL_JSON}" "${RS_COUNT}" <<'PYEOF'
+import json
+import sys
+
+with open(sys.argv[1]) as f:
+    dep = json.load(f)
+spec = dep["spec"]
+if spec.get("progressDeadlineSeconds") != 900:
+    sys.exit(f"FAIL: overlay progressDeadlineSeconds missing (got {spec.get('progressDeadlineSeconds')})")
+env = spec["template"]["spec"]["containers"][0].get("env", [])
+if not any(e.get("name") == "E2E_OVERLAY_MARKER" for e in env):
+    sys.exit("FAIL: overlay env marker missing; jac.preview.toml did not reach the manifest")
+if dep["metadata"]["labels"].get("managed") != "jac-scale":
+    sys.exit("FAIL: managed label lost after overlay merge")
+if int(sys.argv[2]) != 1:
+    sys.exit(f"FAIL: expected a single ReplicaSet (one rollout), found {sys.argv[2]}")
+print(f"  overlay OK: progressDeadline=900, marker env present, labels intact, ReplicaSets=1")
+PYEOF
+rm -f "${OVL_JSON}"
+
+_t "profile+overlay OK"
 echo "=== M-14.a: verify observability stack (logs.enabled) ==="
 # When [scale.microservices.logs].enabled = true (the fixture
 # default) the microservice target also calls MonitoringDeployer, which

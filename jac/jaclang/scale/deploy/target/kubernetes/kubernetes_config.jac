@@ -1,5 +1,14 @@
 import from jaclang.scale.config.base_config { BaseConfig }
 
+def k8s_safe_slug(name: str, fallback: str = 'jaseci') -> str {
+    import re;
+    lowered = (name or '').strip().lower();
+    slug = re.sub(r'[^a-z0-9-]+', '-', lowered);
+    slug = re.sub(r'-+', '-', slug).strip('-');
+    slug = slug[:63].strip('-');
+    return slug or fallback;
+}
+
 obj KubernetesConfig(BaseConfig) {
     has container_port: int = 8000,
         mongodb_enabled: bool = True,
@@ -16,14 +25,19 @@ obj KubernetesConfig(BaseConfig) {
         min_replicas: int = 1,
         max_replicas: int = 3,
         cpu_utilization_target: int = 50,
+        memory_utilization_target: int = 80,
         autoscaler_engine: str = "hpa",
+        autoscaler_scale_up_stabilization: int = 60,
+        autoscaler_scale_up_max_pods: int = 2,
         idle_replicas: (int | None) = None,
         autoscaler_polling_interval: int = 30,
         autoscaler_cooldown: int = 300,
         autoscaler_initial_cooldown: int = 0,
         extra_triggers: list[dict] = [],
         health_check_path: str = '/docs',
-        python_image: str = 'python:3.12-slim',
+        # Empty = auto: the official channel image when published, else
+        # python:3.12-slim (resolve_pod_base_image decides at deploy time).
+        python_image: str = '',
         busybox_image: str = 'busybox:1.36',
         wait_image: str = 'busybox',
         pvc_size: str = '5Gi',
@@ -92,7 +106,10 @@ obj KubernetesConfig(BaseConfig) {
                 'min_replicas': self.min_replicas,
                 'max_replicas': self.max_replicas,
                 'cpu_utilization_target': self.cpu_utilization_target,
+                'memory_utilization_target': self.memory_utilization_target,
                 'autoscaler_engine': self.autoscaler_engine,
+                'autoscaler_scale_up_stabilization': self.autoscaler_scale_up_stabilization,
+                'autoscaler_scale_up_max_pods': self.autoscaler_scale_up_max_pods,
                 'idle_replicas': self.idle_replicas,
                 'autoscaler_polling_interval': self.autoscaler_polling_interval,
                 'autoscaler_cooldown': self.autoscaler_cooldown,
@@ -172,14 +189,19 @@ obj KubernetesConfig(BaseConfig) {
             min_replicas=config.get('min_replicas', 1),
             max_replicas=config.get('max_replicas', 3),
             cpu_utilization_target=config.get('cpu_utilization_target', 50),
+            memory_utilization_target=config.get('memory_utilization_target', 80),
             autoscaler_engine=config.get('autoscaler_engine', 'hpa'),
+            autoscaler_scale_up_stabilization=config.get(
+                'autoscaler_scale_up_stabilization', 60
+            ),
+            autoscaler_scale_up_max_pods=config.get('autoscaler_scale_up_max_pods', 2),
             idle_replicas=config.get('idle_replicas'),
             autoscaler_polling_interval=config.get('autoscaler_polling_interval', 30),
             autoscaler_cooldown=config.get('autoscaler_cooldown', 300),
             autoscaler_initial_cooldown=config.get('autoscaler_initial_cooldown', 0),
             extra_triggers=config.get('extra_triggers', []),
             health_check_path=config.get('health_check_path', '/docs'),
-            python_image=config.get('python_image', 'python:3.12-slim'),
+            python_image=config.get('python_image', ''),
             busybox_image=config.get('busybox_image', 'busybox:1.36'),
             wait_image=config.get('wait_image', 'busybox'),
             pvc_size=config.get('pvc_size', '5Gi'),

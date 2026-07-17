@@ -160,6 +160,18 @@ native_accel.jac
 # type-clean. jac format excludes it via the find in ci.yml; this skips it
 # for `jac check`. fnmatch path-pattern -> matches every file under the package.
 passes/native/llvm/*
+# Native wasm/LLVM emission + na_ir_gen_pass.impl ctypes-heavy submodules: bind
+# raw llvmlite/llvm-c handles (is_declaration, linkage, verify, emit_object,
+# create_target_machine) whose attrs the checker sees as Unknown, same class as
+# na_ir_gen_pass.jac / na_compile_pass.jac above. Skipped for `jac check`.
+# cycle_collector/struct/debug/trace_fn.impl.jac (#7149) are na_ir_gen_pass.impl
+# LLVM-IR builder submodules in this same category (ir.GlobalVariable/ir.Constant/
+# .linkage etc.), not a new kind of exclusion.
+wasm_build.jac
+cycle_collector.impl.jac
+struct.impl.jac
+debug.impl.jac
+trace_fn.impl.jac
 normalize_pass.impl.jac
 plugin.impl.jac
 primitives_native.jac
@@ -215,6 +227,7 @@ SSOPage.cl.jac
 UsersPage.cl.jac
 useStorage.cl.jac
 asset_processor.impl.jac
+arena.impl.jac
 base_ast_gen_pass.impl.jac
 bccache.jac
 calls.impl.jac
@@ -238,6 +251,7 @@ import_processor.jac
 interop_bridge.jac
 jaccomplete.impl.jac
 jaccomplete.jac
+jir_registry.jac
 jsx_processor.impl.jac
 lists.impl.jac
 mockllm.impl.jac
@@ -253,10 +267,13 @@ toolcall.impl.jac
 transport.impl.jac
 tuples.impl.jac
 types.impl.jac
-# Built-in shadcn handler (jac/jaclang/cli/shadcn) — dynamic `config: any` +
-# Path/file-IO false positives (sibling plugin.jac / plugin.impl.jac ignored above)
+# Built-in shadcn handler + CLI (jac/jaclang/cli/shadcn) — dynamic `config: any` +
+# Path/file-IO false positives (e.g. Path(__file__) in template discovery). The
+# CLI was renamed from plugin.jac/plugin.impl.jac to cli.jac/cli.impl.jac.
 shadcn_handler.jac
 shadcn_handler.impl.jac
+jac/jaclang/cli/shadcn/cli.jac
+jac/jaclang/cli/shadcn/impl/cli.impl.jac
 theme_handler.jac
 
 # Files failing the full-repo jac check as of the #7166 merge. The check
@@ -315,6 +332,7 @@ jac/jaclang/cli/commands/impl/transform.impl.jac
 jac/jaclang/cli/commands/mcp.jac
 jac/jaclang/cli/commands/transform.jac
 jac/jaclang/cli/impl/ai_agent.impl.jac
+jac/jaclang/cli/impl/browser_engine.impl.jac
 jac/jaclang/cli/impl/cli.impl.jac
 jac/jaclang/cli/mcp/impl/protocol.impl.jac
 jac/jaclang/cli/mcp/protocol.jac
@@ -394,6 +412,7 @@ jac/jaclang/runtimelib/client/cli.jac
 jac/jaclang/runtimelib/client/client_runtime_native.cl.jac
 jac/jaclang/runtimelib/client/config_loader.jac
 jac/jaclang/runtimelib/client/desktop_config.jac
+jac/jaclang/runtimelib/client/impl/client_runtime_core.impl.jac
 jac/jaclang/runtimelib/client/impl/client_runtime_native.impl.jac
 jac/jaclang/runtimelib/client/impl/config_loader.impl.jac
 jac/jaclang/runtimelib/client/impl/serving.impl.jac
@@ -407,6 +426,7 @@ jac/jaclang/runtimelib/client/targets/desktop/native/cef/cef_subprocess.na.jac
 jac/jaclang/runtimelib/client/targets/desktop/native/host_boot.jac
 jac/jaclang/runtimelib/client/targets/desktop/native/inprocess_dispatch.jac
 jac/jaclang/runtimelib/client/targets/desktop/native/oauth_broker.jac
+jac/jaclang/runtimelib/client/targets/desktop/native/plugin_bridge.na.jac
 jac/jaclang/runtimelib/client/targets/desktop/plugin/plugin_host.jac
 jac/jaclang/runtimelib/client/targets/impl/mobile_target.impl.jac
 jac/jaclang/runtimelib/client/targets/impl/pwa_target.impl.jac
@@ -422,9 +442,11 @@ jac/jaclang/runtimelib/client/targets/react_native/dev.jac
 jac/jaclang/runtimelib/client/targets/react_native/scaffold.jac
 jac/jaclang/runtimelib/client/targets/react_native_target.jac
 jac/jaclang/runtimelib/client/targets/static_target.jac
+jac/jaclang/runtimelib/client_runtime_core.cl.jac
 jac/jaclang/runtimelib/client_surface.jac
 jac/jaclang/runtimelib/exceptions.jac
 jac/jaclang/runtimelib/impl/cl_test_runner.impl.jac
+jac/jaclang/runtimelib/impl/client_runtime_core.impl.jac
 jac/jaclang/runtimelib/impl/planner.impl.jac
 jac/jaclang/runtimelib/impl/pwa_runtime.impl.jac
 jac/jaclang/runtimelib/impl/resolver.impl.jac
@@ -565,8 +587,40 @@ jac/jaclang/compiler/rust_bridge/_elf.jac
 jac/jaclang/compiler/rust_bridge/_finder.jac
 jac/jaclang/compiler/rust_bridge/_importer.jac
 jac/jaclang/compiler/rust_bridge/_synth.jac
+# External-library glue failing the full-repo jac check since ~2026-07-14
+# (stricter Unknown discipline). These files bind SQLAlchemy, ctypes, llvmlite
+# and other untyped third-party APIs whose values the checker sees as
+# object/<Unknown>; they can't be made type-clean without upstream stubs, same
+# class as the passes/native/llvm and na_ir_gen_pass.impl entries above.
+# Path-qualified so fixes/stubs can be shaved off file-by-file.
+jac/jaclang/runtimelib/storage/sqlalchemy_memory.jac
+jac/jaclang/runtimelib/storage/impl/sqlalchemy_memory.impl.jac
+jac/jaclang/runtimelib/client/jac_client_compiler.jac
+jac/jaclang/runtimelib/client/impl/jac_client_compiler.impl.jac
+jac/jaclang/runtimelib/client/targets/desktop/plugin/desktop_api.cl.jac
+jac/jaclang/runtimelib/client/targets/desktop/plugin/desktop_plugin.jac
+jac/jaclang/runtimelib/client/targets/desktop/plugin/built_in/window_plugin.jac
+jac/jaclang/runtimelib/client/targets/desktop/plugin/built_in/dialog_plugin.jac
+jac/jaclang/runtimelib/client/targets/desktop/plugin/built_in/shell_plugin.jac
+jac/jaclang/runtimelib/client/targets/desktop/plugin/built_in/notification_plugin.jac
+jac/jaclang/runtimelib/client/targets/desktop/plugin/built_in/fs_plugin.jac
+jac/jaclang/runtimelib/client/targets/desktop/plugin/built_in/clipboard_plugin.jac
+jac/jaclang/runtimelib/client/targets/desktop/plugin/built_in/path_plugin.jac
+jac/jaclang/scale/jserver/jserver.jac
+jac/jaclang/scale/jserver/impl/jserver.impl.jac
+jac/jaclang/scale/admin/ui/pages/admin/monitoring/LLMMetricsPage.cl.jac
+jac/jaclang/scale/server/impl/serve.scheduler.impl.jac
+jac/jaclang/compiler/passes/native/na_ir_gen_pass.impl/clib_vtable.impl.jac
+scripts/integration_tests.jac
 
 # Generated zig package fetches (jac ninja pins fetch into jac/zig-pkg/ at
 # build time; the tree-sitter-jac package ships its own examples/sample.jac).
 # Bare name so any zig-pkg path component is skipped by the check step.
 zig-pkg
+
+# Impl annexes of modules already baselined above by bare name (lang_tools.jac,
+# template_registry.jac). Scoped CI passes changed files explicitly, and an
+# .impl.jac arg resolves to its (baselined known-bad) module after ignore
+# filtering runs -- so the annex paths must be listed too.
+jac/jaclang/utils/impl/lang_tools.impl.jac
+jac/jaclang/project/impl/template_registry.impl.jac

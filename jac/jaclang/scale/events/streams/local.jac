@@ -208,7 +208,7 @@ obj LocalEventStream(EventStreamBroker) {
 
         broker = self;
         def _loop {
-            consumer_loop(broker, topic, grp, handler, retry_policy);
+            consumer_loop(broker, topic, grp, handler, retry_policy, start_from);
         }
 
         thread = Thread(

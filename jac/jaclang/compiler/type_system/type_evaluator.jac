@@ -3,8 +3,14 @@ import os;
 import from pathlib { Path }
 import from typing { cast }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.constant { TOKEN_MAP }
-import from jaclang.jac0core.constant { SymbolType, Tokens as Tok, EdgeDir }
+import from jaclang.jac0core.constant {
+    TOKEN_MAP,
+    SymbolType,
+    Tokens as Tok,
+    EdgeDir,
+    SymbolAccess,
+    OwnershipKind,
+}
 import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
 import from jaclang.jac0core.passes.sym_tab_build_pass { SymTabBuildPass }
 import from jaclang.compiler.type_system { types }
@@ -17,6 +23,14 @@ import from jaclang.compiler.type_system { properties }
 import from jaclang.compiler.symbol_utils { int_subscript_suffix }
 import from jaclang.compiler.type_system { enum_utils }
 import from jaclang.compiler.type_system.types { TypeBase }
+import from jaclang.compiler.type_system.ts_decl_parser {
+    TsDecl,
+    TsType,
+    TsTypeKind,
+    TsDeclKind,
+    TsAccess,
+    TsMember
+}
 
 import from jaclang.jac0core.diagnostics {
     DiagnosticInfo,
@@ -61,7 +75,7 @@ import from jaclang.jac0core.diagnostics {
     E1110,
     E1111,
     E1120,
-    W0062,
+    E0049,
     W1050,
     W1051,
     W1100,
@@ -150,38 +164,39 @@ obj ConditionInfo {
 
 obj TypeEvaluator {
     has program: "JacProgram",
-        _BUILTINS_STUB_FILE_PATH: str by postinit,
-        _TYPING_STUB_FILE_PATH: str by postinit,
-        _TYPES_STUB_FILE_PATH: str by postinit,
-        _JAC_BUILTINS_STUB_FILE_PATH: str by postinit,
-        _DOM_TYPES_STUB_FILE_PATH: str by postinit,
-        _NA_BUILTINS_STUB_FILE_PATH: str by postinit,
-        _JS_GLOBALS_STUB_FILE_PATH: str by postinit,
-        _TYPING_AMBIENT_STUB_FILE_PATH: str by postinit,
+        _BUILTINS_STUB_FILE_PATH: str postinit,
+        _TYPING_STUB_FILE_PATH: str postinit,
+        _TYPES_STUB_FILE_PATH: str postinit,
+        _JAC_BUILTINS_STUB_FILE_PATH: str postinit,
+        _DOM_TYPES_STUB_FILE_PATH: str postinit,
+        _NA_BUILTINS_STUB_FILE_PATH: str postinit,
+        _JS_GLOBALS_STUB_FILE_PATH: str postinit,
+        _TYPING_AMBIENT_STUB_FILE_PATH: str postinit,
         ambient_typing_names_by_module: dict[str, set[str]] = {},
-        _ENUM_STUB_FILE_PATH: str by postinit,
+        _ENUM_STUB_FILE_PATH: str postinit,
         symbol_resolution_stack: list[SymbolResolutionStackEntry] = [],
-        prefetch: PrefetchedTypes by postinit,
+        prefetch: PrefetchedTypes postinit,
         _pass: object | None = None,
         builtins_module: uni.Module | None = None,
         _flow_node_type_cache: dict[tuple, types.TypeBase | None] = {},
-        _flow_pending_symbols: set[int] by postinit,
-        _flow_pending_keys: set[str] by postinit,
+        _flow_pending_symbols: set[int] postinit,
+        _flow_pending_keys: set[str] postinit,
         _module_type_cache: dict[str, types.ModuleType] = {},
         _mobui_module_cache: dict[str, bool] = {},
         _strict_site_cache: dict[int, bool] = {},
         _sv_async_syms_cache: dict[int, set[int]] = {},
         _and_narrowing_overrides: dict[int, TypeBase] = {},
-        _ts_decl_cache: dict[str, (dict | None)] = {},
+        _ts_decl_cache: dict[str, (dict[str, TsDecl] | None)] = {},
         _ts_decl_path_cache: dict[str, (str | None)] = {},
+        _ts_synth_class_cache: dict[int, (dict[str, types.ClassType] | None)] = {},
         _untyped_external_cfg_cache: dict[str, bool] = {},
-        typing_module: uni.Module by postinit,
-        types_module: uni.Module by postinit,
-        enum_module: uni.Module by postinit,
-        jac_builtins_module: uni.Module by postinit,
-        dom_types_module: uni.Module by postinit,
-        na_builtins_module: uni.Module by postinit,
-        js_globals_module: uni.Module by postinit;
+        typing_module: uni.Module postinit,
+        types_module: uni.Module postinit,
+        enum_module: uni.Module postinit,
+        jac_builtins_module: uni.Module postinit,
+        dom_types_module: uni.Module postinit,
+        na_builtins_module: uni.Module postinit,
+        js_globals_module: uni.Module postinit;
 
     def postinit -> None;
     def _load_stub_module(path: str) -> uni.Module;
@@ -213,11 +228,32 @@ obj TypeEvaluator {
         dts_path: str, item_name: str
     ) -> (TypeBase | None);
 
-    def _load_ts_declarations(dts_path: str) -> (dict | None);
-    def _map_ts_decl(decl: object, decls: dict, item_name: str) -> (TypeBase | None);
+    def _load_ts_declarations(dts_path: str) -> (dict[str, TsDecl] | None);
+    def _map_ts_decl(
+        decl: TsDecl, decls: dict[str, TsDecl], item_name: str
+    ) -> (TypeBase | None);
+
     def _map_ts_type(
-        ts: object, decls: dict, seen: (set[str] | None) = None
+        ts: (TsType | None),
+        decls: dict[str, TsDecl],
+        seen: (set[str] | None) = None,
+        shells: (dict[str, types.ClassType] | None) = None
     ) -> TypeBase;
+
+    def _synthesize_ts_decl_class(
+        decls: dict[str, TsDecl], item_name: str
+    ) -> (TypeBase | None);
+
+    def _install_synth_member(
+        scope: uni.UniScopeNode,
+        synth_src: uni.Source,
+        mname: str,
+        member_type: TypeBase
+    ) -> None;
+
+    def _ts_synth_class_types(
+        decls: dict[str, TsDecl]
+    ) -> (dict[str, types.ClassType] | None);
 
     def _emit_untyped_external(name_node: uni.Name, name: str, module: str) -> None;
     def _untyped_external_is_error(node_: uni.UniNode) -> bool;
@@ -227,6 +263,10 @@ obj TypeEvaluator {
     def get_type_of_module(node_: uni.ModulePath) -> types.TypeBase;
     def _try_resolve_rust_bridge(node_: uni.ModulePath) -> types.TypeBase | None;
     def get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeBase;
+    def _resolve_submodule_attr(
+        base_type: types.ModuleType, attr_name: str
+    ) -> (types.ModuleType | None);
+
     def _resolve_star_import_symbol(
         mod: uni.Module, name: str, visited: set[int] | None = None
     ) -> uni.Symbol | None;
@@ -281,6 +321,7 @@ obj TypeEvaluator {
     ) -> bool;
 
     def _is_ability_classmethod(node_: uni.Ability) -> bool;
+    def _is_ability_staticmethod(node_: uni.Ability) -> bool;
     def _classify_property_symbol(symbol: uni.Symbol) -> type_utils.PropertyWriteKind;
     def get_getter_type_from_property(symbol: uni.Symbol) -> (TypeBase | None);
     def get_property_write_type(symbol: uni.Symbol) -> type_utils.PropertyWriteResult;
@@ -371,6 +412,8 @@ obj TypeEvaluator {
         expected_type: TypeBase | None, dict_class: TypeBase
     ) -> tuple[TypeBase, TypeBase] | None;
 
+    def _infer_list_elem_from_mutations(expr: uni.ListVal) -> TypeBase | None;
+    def _list_mutation_elem_contrib(ref: uni.NameAtom) -> TypeBase | None;
     def _get_special_form_type(
         name: str, symbol_type: types.TypeBase
     ) -> types.TypeBase | None;

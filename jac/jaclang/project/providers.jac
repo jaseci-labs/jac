@@ -86,6 +86,20 @@ obj EcosystemProvider {
         raise NotImplementedError(f"provider '{self.name}' cannot add packages");
     }
 
+    def add_packages(
+        config: JacConfig, specs: list[tuple[str, str]], dev: bool, ctx: InstallContext
+    ) -> list[str] | None {
+        recorded: list[str] = [];
+        for (name, version) in specs {
+            one = self.add_package(config, name, version, dev, ctx);
+            if one is None {
+                return None;
+            }
+            recorded.append(one);
+        }
+        return recorded;
+    }
+
     def remove_package(
         config: JacConfig, name: str, dev: bool, ctx: InstallContext
     ) -> bool {
@@ -357,31 +371,63 @@ obj PythonProvider(EcosystemProvider) {
     override def add_package(
         config: JacConfig, name: str, version: str, dev: bool, ctx: InstallContext
     ) -> str | None {
-        install_spec = make_pip_spec(name, version) if version else name;
-        if not self.install_specs(config, [install_spec], ctx) {
-            return None;
-        }
-        version_str = version;
-        if not version_str {
-            installed_version = self.get_installed_version(config, name);
-            if installed_version {
-                version_str = f"~={_major_minor(installed_version)}";
-                if ctx.verbose {
-                    console.print(
-                        f"Detected version: {installed_version}", style="muted"
-                    );
-                }
-            } else {
-                version_str = ">=0.0.0";
-                if ctx.verbose {
+        recorded = self.add_packages(config, [(name, version)], dev, ctx);
+        return recorded[0] if recorded else None;
+    }
+
+    override def add_packages(
+        config: JacConfig, specs: list[tuple[str, str]], dev: bool, ctx: InstallContext
+    ) -> list[str] | None {
+        plan: list[tuple[str, str]] = [];
+        for (name, version) in specs {
+            declared = _declared_constraint(config, name, dev);
+            keep_typed_name = declared is None or "[" in name;
+            record_name = name if keep_typed_name else declared[0];
+            if version {
+                if declared and declared[1] != version {
                     console.warning(
-                        f"Could not detect version for {name}, using >=0.0.0"
+                        f"{declared[0]}: replacing declared constraint "
+                        f"'{declared[1]}' with '{version}' in jac.toml"
                     );
                 }
+                plan.append((record_name, version));
+            } elif declared {
+                plan.append((record_name, declared[1]));
+            } else {
+                plan.append((name, ""));
             }
         }
-        config.add_dependency(name, version_str, dev=dev, dep_type="python");
-        return version_str;
+        install_targets: list[str] = [
+            make_pip_spec(name, version) for (name, version) in plan
+        ];
+        if not self.install_specs(config, install_targets, ctx) {
+            return None;
+        }
+        recorded: list[str] = [];
+        for (name, version) in plan {
+            version_str = version;
+            if not version_str {
+                installed_version = self.get_installed_version(config, name);
+                if installed_version {
+                    version_str = f"~={_major_minor(installed_version)}";
+                    if ctx.verbose {
+                        console.print(
+                            f"Detected version: {installed_version}", style="muted"
+                        );
+                    }
+                } else {
+                    version_str = ">=0.0.0";
+                    if ctx.verbose {
+                        console.warning(
+                            f"Could not detect version for {name}, using >=0.0.0"
+                        );
+                    }
+                }
+            }
+            config.add_dependency(name, version_str, dev=dev, dep_type="python");
+            recorded.append(version_str);
+        }
+        return recorded;
     }
 
     override def remove_package(
@@ -548,7 +594,6 @@ obj ProviderRegistry {
 glob _registry: ProviderRegistry | None = None;
 
 def get_provider_registry -> ProviderRegistry {
-    global _registry;
     if _registry is None {
         _registry = ProviderRegistry();
         _registry.register(PythonProvider());
@@ -565,7 +610,6 @@ def get_python_provider -> PythonProvider {
 }
 
 def reset_provider_registry {
-    global _registry;
     _registry = None;
 }
 
@@ -656,6 +700,27 @@ def _normalized_name(name: str) -> str {
         base = base[:base.index("[")];
     }
     return base.strip().lower().replace("_", "-");
+}
+
+def _declared_constraint(
+    config: JacConfig, name: str, dev: bool
+) -> tuple[str, str] | None {
+    sections = (
+        [config.dev_dependencies, config.dependencies]
+            if dev
+            else [config.dependencies, config.dev_dependencies]
+    );
+    wanted = _normalized_name(name);
+    for section in sections {
+        for (declared, spec) in section.items() {
+            if _normalized_name(declared) == wanted
+            and isinstance(spec, str)
+            and spec.strip() {
+                return (declared, spec.strip());
+            }
+        }
+    }
+    return None;
 }
 
 def resolve_plan(

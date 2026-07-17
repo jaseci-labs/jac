@@ -12,15 +12,18 @@ impl NaIRGenPass._emit_set_helpers(
     i64 = ir.IntType(64);
     i32 = ir.IntType(32);
 
-    _rel_fn_name_s = f"__rc_release_set_{elem_type_name}";
-    _rel_fnty_s = ir.FunctionType(ir.VoidType(), [set_ptr_type]);
-    try {
-        _rel_fn_decl_s = self.llvm_module.get_global(_rel_fn_name_s);
-    } except KeyError {
-        _rel_fn_decl_s = ir.Function(
-            self.llvm_module, _rel_fnty_s, name=_rel_fn_name_s
-        );
-        _rel_fn_decl_s.linkage = "private";
+    _rel_fn_decl_s = None;
+    if not self._nogc_headerless() {
+        _rel_fn_name_s = f"__rc_release_set_{elem_type_name}";
+        _rel_fnty_s = ir.FunctionType(ir.VoidType(), [set_ptr_type]);
+        try {
+            _rel_fn_decl_s = self.llvm_module.get_global(_rel_fn_name_s);
+        } except KeyError {
+            _rel_fn_decl_s = ir.Function(
+                self.llvm_module, _rel_fnty_s, name=_rel_fn_name_s
+            );
+            _rel_fn_decl_s.linkage = "private";
+        }
     }
 
     new_fn = self._emit_container_new_fn(
@@ -108,10 +111,14 @@ impl NaIRGenPass._emit_set_helpers(
 
     len_fn = self._emit_container_len_fn(f"__set_len_{elem_type_name}", set_ptr_type);
 
-    release_fn = self._emit_container_release_fn(
-        f"__rc_release_set_{elem_type_name}", set_ptr_type, [(2, elem_type)]
-    );
-    self.set_release_fns[elem_type_name] = release_fn;
+    if self._nogc_headerless() {
+        self._emit_container_drop_fn(f"Set.{elem_type_name}");
+    } else {
+        release_fn = self._emit_container_release_fn(
+            f"__rc_release_set_{elem_type_name}", set_ptr_type, [(2, elem_type)]
+        );
+        self.set_release_fns[elem_type_name] = release_fn;
+    }
 
     self.set_helpers[elem_type_name] = {
         "new": new_fn,

@@ -34,10 +34,10 @@ glob registry = get_registry();
             short="u"
         ),
         Arg.create(
-            "list_jacpacks",
+            "list",
             typ=bool,
             default=False,
-            help="List available project kinds and templates",
+            help="List available project kinds and named variants",
             short="l"
         ),
         Arg.create(
@@ -51,6 +51,61 @@ glob registry = get_registry();
             default="",
             short="",
             help="With --pack: output .jacpack file path"
+        ),
+        Arg.create(
+            "skip",
+            typ=bool,
+            default=False,
+            help="Skip npm package installation (when creating client kinds: web-app/web-static/mobile)"
+        ),
+        Arg.create(
+            "style",
+            typ=str,
+            default=None,
+            help="shadcn style preset (nova|vega|maia|lyra|mira)",
+            short=""
+        ),
+        Arg.create(
+            "baseColor",
+            typ=str,
+            default=None,
+            help="shadcn base palette (neutral|stone|zinc|gray)",
+            short=""
+        ),
+        Arg.create(
+            "theme",
+            typ=str,
+            default=None,
+            help="shadcn accent theme (e.g. rose, emerald)",
+            short=""
+        ),
+        Arg.create(
+            "font",
+            typ=str,
+            default=None,
+            help="shadcn font family (e.g. inter, outfit)",
+            short=""
+        ),
+        Arg.create(
+            "radius",
+            typ=str,
+            default=None,
+            help="shadcn border radius (none|small|medium|large)",
+            short=""
+        ),
+        Arg.create(
+            "menuAccent",
+            typ=str,
+            default=None,
+            help="shadcn menu accent (subtle|bold)",
+            short=""
+        ),
+        Arg.create(
+            "menuColor",
+            typ=str,
+            default=None,
+            help="shadcn menu color scheme",
+            short=""
         ),
 
     ],
@@ -73,7 +128,7 @@ glob registry = get_registry();
         ("jac create --force", "Reinitialize existing project"),
         ("jac create --use ./my.jacpack", "Create from local .jacpack file"),
         ("jac create --use https://example.com/t.jacpack", "Create from URL"),
-        ("jac create --list_jacpacks", "List available project kinds and templates"),
+        ("jac create --list", "List available project kinds and named variants"),
 
     ],
     group="project"
@@ -83,20 +138,28 @@ def create(
     force: bool = False,
     kind: str = "",
     use: str = "default",
-    list_jacpacks: bool = False,
+    `list: bool = False,
     pack: str = "",
-    pack_output: str = ""
+    pack_output: str = "",
+    `skip: bool = False,
+    style: str | None = None,
+    baseColor: str | None = None,
+    theme: str | None = None,
+    font: str | None = None,
+    radius: str | None = None,
+    menuAccent: str | None = None,
+    menuColor: str | None = None
 ) -> int;
 
 @registry.command(
     name="install",
-    help="Install project dependencies, or 'jac install <pkg>' to add a package to the project venv",
+    help="Install project dependencies",
     args=[
         Arg.create(
             "packages",
             kind=ArgKind.MULTI,
             default=[],
-            help="Package(s) to install into the project's venv (.jac/venv)"
+            help="Package(s) to add to jac.toml and install into the project's venv (.jac/venv)"
         ),
         Arg.create(
             "editable",
@@ -107,7 +170,11 @@ def create(
             metavar="PATH"
         ),
         Arg.create(
-            "dev", typ=bool, default=False, help="Include dev dependencies", short="d"
+            "dev",
+            typ=bool,
+            default=False,
+            help="Include dev dependencies, or record named package(s) as dev dependencies",
+            short="d"
         ),
         Arg.create(
             "extras",
@@ -115,6 +182,31 @@ def create(
             default=[],
             help="Optional dependency groups to install (e.g. data monitoring)",
             short="x"
+        ),
+        Arg.create(
+            "no-save",
+            typ=bool,
+            default=False,
+            help="Install named package(s) without recording them in jac.toml",
+            short=""
+        ),
+        Arg.create(
+            "git",
+            default="",
+            help="Git repository URL to install and record as a git dependency",
+            short="g"
+        ),
+        Arg.create(
+            "npm",
+            typ=bool,
+            default=False,
+            help="Install npm (client-side) package(s); with no names, install all npm deps from jac.toml"
+        ),
+        Arg.create(
+            "shadcn",
+            typ=bool,
+            default=False,
+            help="Install shadcn UI component(s) from the bundled registry"
         ),
         Arg.create(
             "verbose", typ=bool, default=False, help="Verbose output", short="v"
@@ -203,11 +295,19 @@ def create(
             "jac install --scale",
             "Also install deploy-time capabilities (kubernetes/docker) for the operator machine"
         ),
-        ("jac install numpy", "Install numpy into the project venv"),
+        ("jac install requests", "Add requests to jac.toml and install it"),
         (
-            "jac install numpy pandas scipy",
-            "Install multiple packages into the project venv"
+            'jac install "numpy>=1.24" pandas',
+            "Add multiple packages with version constraints"
         ),
+        ("jac install pytest --dev", "Add a dev dependency"),
+        ("jac install numpy --no-save", "Install without recording in jac.toml"),
+        (
+            "jac install --git https://github.com/user/plugin.git",
+            "Install and record a git dependency"
+        ),
+        ("jac install --npm left-pad", "Add a client-side npm dependency"),
+        ("jac install --shadcn button card", "Add shadcn UI components"),
         ("jac install -e .", "Install current package in editable mode"),
         ("jac install -e /path/to/lib", "Install a cloned library in editable mode"),
         (
@@ -236,6 +336,10 @@ def install(
     editable: list = [],
     dev: bool = False,
     extras: list = [],
+    no_save: bool = False,
+    git: str = "",
+    npm: bool = False,
+    shadcn: bool = False,
     verbose: bool = False,
     force_reinstall: bool = False,
     no_cache_dir: bool = False,
@@ -295,16 +399,26 @@ def add(
             help="Remove from dev dependencies",
             short="d"
         ),
+        Arg.create(
+            "npm", typ=bool, default=False, help="Remove npm (client-side) dependency"
+        ),
+        Arg.create(
+            "shadcn", typ=bool, default=False, help="Remove shadcn UI component(s)"
+        ),
 
     ],
     examples=[
         ("jac remove requests", "Remove a package"),
         ("jac remove pytest --dev", "Remove dev dependency"),
+        ("jac remove --npm left-pad", "Remove a client-side npm dependency"),
+        ("jac remove --shadcn button", "Remove shadcn UI components"),
 
     ],
     group="project"
 )
-def remove(packages: list = [], dev: bool = False) -> int;
+def remove(
+    packages: list = [], dev: bool = False, npm: bool = False, shadcn: bool = False
+) -> int;
 
 @registry.command(
     name="update",
@@ -398,4 +512,4 @@ def clean(
 
 def jacpack(action: str = "", path: str = "", output: str = "") -> int;
 
-def bundle(output: str = "dist", target: str = "wheel") -> int;
+def bundle(output: str = "dist", target: str = "wheel", fat: bool = False) -> int;

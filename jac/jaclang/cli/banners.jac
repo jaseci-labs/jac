@@ -32,8 +32,8 @@ def print_version_banner(version: str) {
         platform_short = platform_info;
     }
     print_logo(version, platform_short);
-    console.print(f'\n📚 Documentation: {JAC_DOCS_URL}');
-    console.print(f'💬 Community:     {JAC_DISCORD_URL}');
-    console.print(f'🐛 Issues:        {JAC_ISSUES_URL}');
+    console.print(f'\nDocs:      {JAC_DOCS_URL}', style='dim');
+    console.print(f'Community: {JAC_DISCORD_URL}', style='dim');
+    console.print(f'Issues:    {JAC_ISSUES_URL}', style='dim');
     console.print();
 }

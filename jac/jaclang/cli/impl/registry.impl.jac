@@ -40,13 +40,11 @@ impl CommandRegistry.command(
     examples: list[tuple[str, str]] | None = None,
     group: str = "general",
     tier: str = "",
-    priority: CommandPriority = CommandPriority.CORE,
-    source: str = "jaclang",
     hidden: bool = False
 ) -> Callable[[Callable], Callable] {
-    import from jaclang.cli.command { Arg, CommandSpec, CommandPriority }
+    import from jaclang.cli.command { Arg, CommandSpec }
     def decorator(func: Callable) -> Callable {
-        spec = CommandSpec(
+        self.commands[name] = CommandSpec(
             name=name,
             help=help,
             description=func.__doc__ or "",
@@ -54,62 +52,12 @@ impl CommandRegistry.command(
             examples=examples or [],
             group=group,
             tier=tier,
-            priority=priority,
-            source=source,
             hidden=hidden,
             handler=func
         );
-
-        if name in self.commands {
-            existing = self.commands[name];
-
-            if priority.value > existing.priority.value {
-                spec.pre_hooks = list(existing.pre_hooks) + spec.pre_hooks;
-                spec.post_hooks = list(existing.post_hooks) + spec.post_hooks;
-                spec.extra_args = list(existing.extra_args) + spec.extra_args;
-                self.commands[name] = spec;
-            }
-        } else {
-            self.commands[name] = spec;
-        }
-
-        self._apply_pending_extensions(name);
-
         return func;
     }
     return decorator;
-}
-
-impl CommandRegistry.extend_command(
-    command_name: str,
-    args: list[Arg] | None = None,
-    pre_hook: Callable[[HookContext], None] | None = None,
-    post_hook: Callable[[HookContext, int], int] | None = None,
-    source: str = "unknown"
-) -> None {
-    import from jaclang.cli.command { Arg, HookContext }
-
-    if command_name in self.commands {
-        spec = self.commands[command_name];
-        if args {
-            for arg in args {
-                spec.add_extension_arg(arg, source);
-            }
-        }
-        if pre_hook {
-            spec.add_pre_hook(pre_hook, source);
-        }
-        if post_hook {
-            spec.add_post_hook(post_hook, source);
-        }
-    } else {
-        if command_name not in self._pending_extensions {
-            self._pending_extensions[command_name] = [];
-        }
-        self._pending_extensions[command_name].append(
-            (args, pre_hook, post_hook, source)
-        );
-    }
 }
 
 impl CommandRegistry.get(name: str) -> CommandSpec | None {
@@ -153,31 +101,6 @@ impl CommandRegistry.finalize -> argparse.ArgumentParser {
     return self.parser;
 }
 
-impl CommandRegistry._apply_pending_extensions(name: str) -> None {
-    if name not in self._pending_extensions {
-        return;
-    }
-    spec = self.commands.get(name);
-    if spec is None {
-        return;
-    }
-    for (args, pre_hook, post_hook, source) in self._pending_extensions[name] {
-        if args {
-            for arg in args {
-                spec.add_extension_arg(arg, source);
-            }
-        }
-        if pre_hook {
-            spec.add_pre_hook(pre_hook, source);
-        }
-        if post_hook {
-            spec.add_post_hook(post_hook, source);
-        }
-    }
-
-    del self._pending_extensions[name];
-}
-
 impl CommandRegistry._build_subparser(
     subparsers: any, spec: CommandSpec
 ) -> argparse.ArgumentParser {
@@ -202,23 +125,6 @@ impl CommandRegistry._build_subparser(
 
     for arg in spec.args {
         self._add_argument(cmd_parser, arg);
-    }
-
-    if spec.extra_args {
-        sources: dict[str, list] = {};
-        for arg in spec.extra_args {
-            src = arg.source or "plugin";
-            if src not in sources {
-                sources[src] = [];
-            }
-            sources[src].append(arg);
-        }
-        for (src, args) in sources.items() {
-            group = cmd_parser.add_argument_group(f"Options from {src}");
-            for arg in args {
-                self._add_argument(group, arg);
-            }
-        }
     }
     return cmd_parser;
 }
@@ -306,28 +212,15 @@ impl CommandRegistry._add_argument(parser: argparse.ArgumentParser, arg: Arg) ->
 
 impl get_registry -> CommandRegistry {
     import from jaclang.cli.registry { CommandRegistry }
-    global _registry;
     if _registry is None {
         _registry = CommandRegistry();
     }
     return _registry;
 }
 
-impl extend_builtin_commands -> None {
-    try {
-        import from jaclang.runtimelib.client.cli { JacClientCmd }
-        JacClientCmd.create_cmd();
-    } except ImportError { }
-    try {
-        import from jaclang.cli.shadcn.plugin { JacShadcnPlugin }
-        JacShadcnPlugin.create_cmd();
-    } except ImportError { }
-    try {
-        import from jaclang.scale.plugin { JacCmd as _ScaleCmd }
-        _ScaleCmd.create_cmd();
-    } except ImportError { }
-    try {
-        import from jaclang.byllm.cli { JacCmd as _ByllmCmd }
-        _ByllmCmd.create_cmd();
-    } except ImportError { }
+impl register_feature_commands -> None {
+    import jaclang.runtimelib.client.cli;
+    import jaclang.cli.shadcn.cli;
+    import jaclang.scale.plugin;
+    import jaclang.byllm.cli;
 }

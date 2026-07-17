@@ -519,8 +519,8 @@ impl explain_error(error_message: str) -> dict[str, any] {
 }
 
 impl list_examples(category: str | None = None) -> dict[str, any] {
-    import from jaclang.cli.mcp.resources { ResourceProvider }
-    rp = ResourceProvider();
+    import from jaclang.cli.mcp.resources { get_resource_provider }
+    rp = get_resource_provider();
     rp.index_resources();
     examples: list[dict[str, str]] = [];
     for (uri, info) in rp._resources.items() {
@@ -552,12 +552,12 @@ impl list_examples(category: str | None = None) -> dict[str, any] {
             }
         }
     }
-    return {"examples": sorted(examples, key=lambda x : x["name"])};
+    return {"examples": sorted(examples, key=lambda (x) { x["name"]; })};
 }
 
 impl get_example(name: str) -> dict[str, any] {
-    import from jaclang.cli.mcp.resources { ResourceProvider }
-    rp = ResourceProvider();
+    import from jaclang.cli.mcp.resources { get_resource_provider }
+    rp = get_resource_provider();
     rp.index_resources();
     uri = f"jac://examples/{name}";
     content = rp.read_resource(uri);
@@ -568,8 +568,8 @@ impl get_example(name: str) -> dict[str, any] {
 }
 
 impl search_docs(query: str, limit: int = 5) -> dict[str, any] {
-    import from jaclang.cli.mcp.resources { ResourceProvider }
-    rp = ResourceProvider();
+    import from jaclang.cli.mcp.resources { get_resource_provider }
+    rp = get_resource_provider();
     rp.index_resources();
     keywords = [
         w.lower()
@@ -631,7 +631,7 @@ impl search_docs(query: str, limit: int = 5) -> dict[str, any] {
             );
         }
     }
-    scored.sort(key=lambda x : -x[0]);
+    scored.sort(key=lambda (x) { -x[0]; });
     results = [item[1] for item in scored[:limit]];
     return {"results": results};
 }
@@ -677,10 +677,10 @@ impl graph_visualize(
 
 impl list_commands -> dict[str, any] {
     try {
-        import from jaclang.cli.registry { get_registry, extend_builtin_commands }
+        import from jaclang.cli.registry { get_registry, register_feature_commands }
         import jaclang.cli.commands;
 
-        extend_builtin_commands();
+        register_feature_commands();
 
         registry = get_registry();
         if not registry._finalized {
@@ -689,28 +689,12 @@ impl list_commands -> dict[str, any] {
 
         commands: list[dict[str, any]] = [];
         for spec in registry.get_all() {
-            extensions: list[str] = [];
-            seen_ext: set = set();
-            for arg in spec.extra_args {
-                if arg.source != spec.source and arg.source not in seen_ext {
-                    seen_ext.add(arg.source);
-                    extensions.append(arg.source);
-                }
-            }
-
-            cmd: dict[str, any] = {
-                "name": spec.name,
-                "help": spec.help,
-                "group": spec.group,
-                "source": spec.source
-            };
-            if extensions {
-                cmd["extended_by"] = extensions;
-            }
-            commands.append(cmd);
+            commands.append(
+                {"name": spec.name, "help": spec.help, "group": spec.group}
+            );
         }
 
-        commands.sort(key=lambda c : (c["group"], c["name"]));
+        commands.sort(key=lambda (c) { (c["group"], c["name"]); });
 
         return {
             "commands": commands,
@@ -724,10 +708,10 @@ impl list_commands -> dict[str, any] {
 
 impl get_command(name: str) -> dict[str, any] {
     try {
-        import from jaclang.cli.registry { get_registry, extend_builtin_commands }
+        import from jaclang.cli.registry { get_registry, register_feature_commands }
         import jaclang.cli.commands;
 
-        extend_builtin_commands();
+        register_feature_commands();
         registry = get_registry();
         if not registry._finalized {
             registry.finalize();
@@ -757,8 +741,7 @@ impl get_command(name: str) -> dict[str, any] {
                 "type": type_name,
                 "required": arg.required,
                 "default": arg.default,
-                "help": arg.help,
-                "source": arg.source
+                "help": arg.help
             };
             if arg.short is not None {
                 arg_info["short"] = arg.short;
@@ -769,25 +752,12 @@ impl get_command(name: str) -> dict[str, any] {
             args.append(arg_info);
         }
 
-        extensions: list[str] = [];
-        seen_ext: set = set();
-        for arg in spec.extra_args {
-            if arg.source != spec.source and arg.source not in seen_ext {
-                seen_ext.add(arg.source);
-                extensions.append(arg.source);
-            }
-        }
-
         result: dict[str, any] = {
             "name": spec.name,
             "help": spec.help,
             "group": spec.group,
-            "source": spec.source,
             "args": args
         };
-        if extensions {
-            result["extended_by"] = extensions;
-        }
         return result;
     } except Exception as e {
         return {"error": f"Failed to get command: {str(e)}"};
@@ -830,8 +800,8 @@ impl execute_command(
 }
 
 impl understand_jac_and_jaseci -> dict[str, any] {
-    import from jaclang.cli.mcp.resources { ResourceProvider }
-    rp = ResourceProvider();
+    import from jaclang.cli.mcp.resources { get_resource_provider }
+    rp = get_resource_provider();
     rp.index_resources();
     content = rp.read_resource("jac://guide/understand");
     if content.startswith("Error:") {
@@ -841,8 +811,8 @@ impl understand_jac_and_jaseci -> dict[str, any] {
 }
 
 impl get_resource(uri: str) -> dict[str, any] {
-    import from jaclang.cli.mcp.resources { ResourceProvider }
-    rp = ResourceProvider();
+    import from jaclang.cli.mcp.resources { get_resource_provider }
+    rp = get_resource_provider();
     rp.index_resources();
     content = rp.read_resource(uri);
     if content.startswith("Error:") {

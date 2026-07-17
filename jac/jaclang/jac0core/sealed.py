@@ -80,16 +80,13 @@ MANIFEST_FORMAT = 3
 # Format 3 adds optional app metadata (kind / capabilities / entry) and
 # payloads on top of format 2's module map; format-2 images stay loadable.
 MANIFEST_FORMATS_ACCEPTED = (2, MANIFEST_FORMAT)
-# Marker file a bundled-app binary carries next to its site dir; written by
-# `jac bundle --target binary` and read by cli_boot at startup.
-APP_MARKER = "jac_app.json"
 # Must match jaclang.jac0core.jir.* ; kept literal here because this module
 # must import before any .jac module (including jir.jac) can. This is the whole
 # point of the bootstrap tier: jac0core modules are loaded from their JIR by the
 # pure-Python section reader below, so they need none of the .jac machinery
 # (jir.jac's reader is itself a jac0core module).
 PRECOMPILE_SENTINEL = "__PKG_ROOT__"
-JIR_FORMAT_VERSION = 13
+JIR_FORMAT_VERSION = 15
 _HEADER_SIZE = 32
 _SECTIONS_MAGIC = b"JIRX"
 _SEC_BYTECODE = 0x02

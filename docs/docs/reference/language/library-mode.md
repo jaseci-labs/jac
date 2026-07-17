@@ -20,7 +20,7 @@ Library mode is designed for:
 - **Enterprise and corporate environments** where introducing standard Python libraries is more acceptable than adopting new language syntax
 
 !!! note "`root` is a function in library mode"
-    In `.jac` source, `root` is a reserved keyword and writing `root()` emits warning **W0062** (deprecated; use bare `root`). In **library mode**, `root` is a Python function imported from `jaclang.lib`, so it **must** be called as `root()` -- the bare reference is just the function object. The same applies to other graph builtins (`spawn`, `connect`, `get_all_root`). The deprecation in [breaking-changes.md](../../community/breaking-changes.md#1-root-is-a-reserved-keyword-again-specialvarref) only governs `.jac` source.
+    In `.jac` source, `root` is a reserved keyword and writing `root()` is an error (**E0049**; use bare `root`). In **library mode**, `root` is a Python function imported from `jaclang.lib`, so it **must** be called as `root()` -- the bare reference is just the function object. The same applies to other graph builtins (`spawn`, `connect`, `get_all_root`). The restriction in [breaking-changes.md](../../community/breaking-changes.md#1-root-is-a-reserved-keyword-again-specialvarref) only governs `.jac` source.
 
 ### **Converting Jac Code to Pure Python**
 
@@ -153,7 +153,7 @@ Run `jac tool jac2py friends.jac` to generate:
             visit(
                 self,
                 refs(
-                    OPath(here).edge_out(edge=lambda i: isinstance(i, Family)).edge().visit()
+                    OPath(here).edge_out(edge=lambda (i) { isinstance(i, Family); }).edge().visit()
                 ),
             )
 
@@ -330,7 +330,7 @@ from jaclang.lib import visit, refs, OPath
 
 visit(self, refs(OPath(here).edge_out().visit()))
 visit(
-    self, refs(OPath(here).edge_out(edge=lambda i: isinstance(i, Family)).edge().visit())
+    self, refs(OPath(here).edge_out(edge=lambda (i) { isinstance(i, Family); }).edge().visit())
 )
 ```
 
@@ -486,7 +486,6 @@ visit(
 | `impl_patch_filename(file_loc)` | Patch function file location | `file_loc`: File path for stack traces |
 | `thread_run(func, *args)` | Run function in thread | `func`: Function<br>`args`: Arguments |
 | `thread_wait(future)` | Wait for thread completion | `future`: Future object |
-| `create_cmd()` | Create CLI commands | No parameters (placeholder) |
 
 ---
 
@@ -515,13 +514,13 @@ Use lambda functions for flexible filtering:
 # Filter by edge type
 visit(
     self,
-    refs(OPath(here).edge_out(edge=lambda e: isinstance(e, (Friend, Family))).visit()),
+    refs(OPath(here).edge_out(edge=lambda (e) { isinstance(e, (Friend, Family)); }).visit()),
 )
 
 # Filter by node attribute
 visit(
     self,
-    refs(OPath(here).edge_out(node=lambda n: hasattr(n, "active") and n.active).visit()),
+    refs(OPath(here).edge_out(node=lambda (n) { hasattr(n, "active") and n.active; }).visit()),
 )
 ```
 
