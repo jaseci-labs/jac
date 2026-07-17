@@ -58,7 +58,7 @@ test "user lambda to a non-bridge fn is not rewritten into a bridge trampoline" 
     if skip_gate(SO, SHIM) {
         return;
     }
-    src = synthesize_source(SO) + "\ndef use_it(f: Callable) -> str {\n    return \"ok\";\n}\n" + "\nwith entry {\n" + "    print(use_it(lambda (m: str) -> str : m.upper()));\n" + "}\n";
+    src = synthesize_source(SO) + "\ndef use_it(f: Callable) -> str {\n    return \"ok\";\n}\n" + "\nwith entry {\n" + "    print(use_it(lambda (m: str) -> str { m.upper(); }));\n" + "}\n";
     td = tempfile.mkdtemp();
     try {
         (binp, ir_text) = nacompile_dump_ir(
@@ -110,19 +110,19 @@ test "two bridge crates in one module use their own per-crate allocators" {
     b = load_bridge(str(SO2));
     ra = a.Regex(r"\w+");
     rb = b.Regex2(r"\w+");
-    exp_a = ra.replace_all("hello world", lambda (m: str) -> str : m.upper());
-    exp_b = rb.replace_all("foo bar", lambda (m: str) -> str : "<" + m + ">");
+    exp_a = ra.replace_all("hello world", lambda (m: str) -> str { m.upper(); });
+    exp_b = rb.replace_all("foo bar", lambda (m: str) -> str { "<" + m + ">"; });
     ra.close();
     rb.close();
     probe = [
         "\nwith entry {",
         "    ra = Regex(" + jac_str(r"\w+") + ");",
-        "    print(" + jac_str("a=[") + " + ra.replace_all(" + jac_str("hello world") + ", lambda (m: str) -> str : m.upper()) + " + jac_str(
+        "    print(" + jac_str("a=[") + " + ra.replace_all(" + jac_str("hello world") + ", lambda (m: str) -> str { m.upper(); }) + " + jac_str(
             "]"
         ) + ");",
         "    ra.close();",
         "    rb = Regex2(" + jac_str(r"\w+") + ");",
-        "    print(" + jac_str("b=[") + " + rb.replace_all(" + jac_str("foo bar") + ", lambda (m: str) -> str : \"<\" + m + \">\") + " + jac_str(
+        "    print(" + jac_str("b=[") + " + rb.replace_all(" + jac_str("foo bar") + ", lambda (m: str) -> str { \"<\" + m + \">\"; }) + " + jac_str(
             "]"
         ) + ");",
         "    rb.close();",
@@ -136,7 +136,7 @@ test "two bridge crates in one module use their own per-crate allocators" {
 
 
 # ---------------------------------------------------------------------------
-# 3. Identity replacer (`lambda (m:str)->str : m`) must not double-free.  GREEN
+# 3. Identity replacer (`lambda (m: str) -> str { m; }`) must not double-free.  GREEN
 #    after task 0.1.3a (retain-on-return, or a pointer-equality guard before the
 #    two `_emit_rc_release_simple` calls in the trampoline).
 #
@@ -148,7 +148,7 @@ test "two bridge crates in one module use their own per-crate allocators" {
 def _identity_cpython(pat: str, text: str) -> str {
     owning = load_bridge(str(SO));
     re = owning.Regex(pat);
-    out = re.replace_all(text, lambda (m: str) -> str : m );
+    out = re.replace_all(text, lambda (m: str) -> str { m; });
     re.close();
     return out;
 }
@@ -175,7 +175,7 @@ test "identity replacer in a 1000-iteration loop does not double-free" {
         "    i = 0;",
         "    while i < 1000 {",
         "        re = Regex(" + jac_str(pat) + ");",
-        "        last = re.replace_all(" + jac_str(text) + ", lambda (m: str) -> str : m);",
+        "        last = re.replace_all(" + jac_str(text) + ", lambda (m: str) -> str { m; });",
         "        re.close();",
         "        i += 1;",
         "    }",
@@ -206,7 +206,7 @@ test "identity replacer in a 1000-iteration loop does not double-free" {
 #     fn bump(&mut self) -> i64            // mutates self.value, returns it
 #     fn apply(&mut self, cb: JacCallback) // invokes cb once while &mut self live
 #   }
-# Reentry: `c.apply(lambda (m:str)->str : c.bump())` — cb captures `c` and calls
+# Reentry: `c.apply(lambda (m: str) -> str { c.bump(); })` — cb captures `c` and calls
 # `c.bump()` (a second &mut) during `apply`'s live borrow.  Written against that
 # API and skip-gated on the crate's .so.
 # ---------------------------------------------------------------------------
@@ -221,7 +221,7 @@ test "reentrant method call yields a clean status error, not UB" {
         "    c = Cell(0);",
         "    marker = \"NO-ERROR\";",
         "    try {",
-        "        c.apply(lambda (m: str) -> str : str(c.bump()));",
+        "        c.apply(lambda (m: str) -> str { str(c.bump()); });",
         "    } except Exception as e {",
         "        marker = \"reentrant-error\";",
         "    }",
@@ -317,7 +317,7 @@ test "zero-parameter callback lambda is a readable compile error, not an ICE" {
         return;
     }
     _assert_readable_compile_error(
-        "lambda () -> str : \"x\"", "adv_arity0.na.jac", "adv_arity0"
+        "lambda () -> str { \"x\"; }", "adv_arity0.na.jac", "adv_arity0"
     );
 }
 
@@ -327,7 +327,7 @@ test "two-parameter callback lambda is a readable compile error, not an ICE" {
         return;
     }
     _assert_readable_compile_error(
-        "lambda (a: str, b: str) -> str : a", "adv_arity2.na.jac", "adv_arity2"
+        "lambda (a: str, b: str) -> str { a; }", "adv_arity2.na.jac", "adv_arity2"
     );
 }
 
@@ -337,6 +337,6 @@ test "non-str-returning callback lambda is a readable compile error, not an ICE"
         return;
     }
     _assert_readable_compile_error(
-        "lambda (m: str) -> int : 0", "adv_retty.na.jac", "adv_retty"
+        "lambda (m: str) -> int { 0; }", "adv_retty.na.jac", "adv_retty"
     );
 }

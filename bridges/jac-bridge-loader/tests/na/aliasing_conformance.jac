@@ -55,7 +55,7 @@ test "reentrant method call yields a clean status error, not UB" {
         "    c = Cell(0);",
         "    marker = \"NO-ERROR\";",
         "    try {",
-        "        c.apply(lambda (m: str) -> str : str(c.bump()));",
+        "        c.apply(lambda (m: str) -> str { str(c.bump()); });",
         "    } except Exception as e {",
         "        marker = \"reentrant-error\";",
         "    }",
@@ -132,10 +132,12 @@ test "closing one aliased wrapper leaves the other valid (aliasing defended by R
     if skip_gate(REENTRANT_SO, SHIM) {
         return;
     }
-    src = synthesize_source(REENTRANT_SO) + "\nwith entry {\n" + "    c = Cell(5);\n" + "    a = c.alias();\n" + "    c.close();\n"  # drops the Cell's Arc clone; counter alive via `a`
-     + "    print(str(a.get()));\n"  # reads the still-live shared counter -> 5
-     + "    a.close();\n"  # drops the last clone; counter freed exactly once
-     + "    print(" + jac_str("survived") + ");\n" + "}\n";
+    # Cell(5) then alias(): c.close() drops the Cell's Arc clone, counter stays
+    # alive via `a`; a.get() reads the still-live shared counter (-> 5); a.close()
+    # drops the last clone, freeing the counter exactly once.
+    src = synthesize_source(REENTRANT_SO) + "\nwith entry {\n" + "    c = Cell(5);\n" + "    a = c.alias();\n" + "    c.close();\n" + "    print(str(a.get()));\n" + "    a.close();\n" + "    print(" + jac_str(
+        "survived"
+    ) + ");\n" + "}\n";
     td = tempfile.mkdtemp();
     try {
         binp = nacompile_in_dir(src, td, "alias_uaf.na.jac", "alias_uaf", SHIM);

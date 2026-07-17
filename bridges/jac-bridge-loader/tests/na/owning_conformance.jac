@@ -193,7 +193,7 @@ def cpython_side -> list {
         pat = case[0];
         text = case[1];
         re = owning.Regex(pat);
-        out = re.replace_all(text, lambda (m: str) -> str : m.upper());
+        out = re.replace_all(text, lambda (m: str) -> str { m.upper(); });
         lines.append(_replace_label(pat, text, "upper") + "[" + out + "]");
         re.close();
     }
@@ -201,7 +201,7 @@ def cpython_side -> list {
         pat = case[0];
         text = case[1];
         re = owning.Regex(pat);
-        out = re.replace_all(text, lambda (m: str) -> str : "<" + m + ">");
+        out = re.replace_all(text, lambda (m: str) -> str { "<" + m + ">"; });
         lines.append(_replace_label(pat, text, "bracket") + "[" + out + "]");
         re.close();
     }
@@ -210,7 +210,7 @@ def cpython_side -> list {
         text = case[1];
         prefix = case[2];
         re = owning.Regex(pat);
-        out = re.replace_all(text, lambda (m: str) -> str : prefix + m);
+        out = re.replace_all(text, lambda (m: str) -> str { prefix + m; });
         lines.append(_replace_label(pat, text, "capture") + "[" + out + "]");
         re.close();
     }
@@ -340,7 +340,7 @@ def na_side -> list {
         label = _replace_label(pat, text, "upper");
         probe.append("    re = Regex(" + jac_str(pat) + ");");
         probe.append(
-            "    out = re.replace_all(" + jac_str(text) + ", lambda (m: str) -> str : m.upper());"
+            "    out = re.replace_all(" + jac_str(text) + ", lambda (m: str) -> str { m.upper(); });"
         );
         probe.append(
             "    print(" + jac_str(label + "[") + " + out + " + jac_str("]") + ");"
@@ -353,7 +353,7 @@ def na_side -> list {
         label = _replace_label(pat, text, "bracket");
         probe.append("    re = Regex(" + jac_str(pat) + ");");
         probe.append(
-            "    out = re.replace_all(" + jac_str(text) + ", lambda (m: str) -> str : \"<\" + m + \">\");"
+            "    out = re.replace_all(" + jac_str(text) + ", lambda (m: str) -> str { \"<\" + m + \">\"; });"
         );
         probe.append(
             "    print(" + jac_str(label + "[") + " + out + " + jac_str("]") + ");"
@@ -375,7 +375,7 @@ def na_side -> list {
         cap_helpers.append("    prefix = " + jac_str(prefix) + ";");
         cap_helpers.append("    re = Regex(" + jac_str(pat) + ");");
         cap_helpers.append(
-            "    out = re.replace_all(" + jac_str(text) + ", lambda (m: str) -> str : prefix + m);"
+            "    out = re.replace_all(" + jac_str(text) + ", lambda (m: str) -> str { prefix + m; });"
         );
         cap_helpers.append("    re.close();");
         cap_helpers.append("    return out;");

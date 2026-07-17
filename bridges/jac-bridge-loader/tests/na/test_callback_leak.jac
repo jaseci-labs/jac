@@ -43,7 +43,7 @@ glob SO = bridge_so("owning"),
 def _probe_src(n: int, base: str) -> str {
     loop = "\nwith entry {\n" + "    re = Regex(\"\\\\d+\");\n" + "    total = 0;\n" + "    i = 0;\n" + "    while i < " + str(
         n
-    ) + " {\n" + "        out = re.replace_all(\"a1b22c333\", lambda (m: str) -> str : m.upper());\n" + "        total = total + strlen(out);\n" + "        i = i + 1;\n" + "    }\n" + "    re.close();\n" + "    print(total);\n" + "}\n";
+    ) + " {\n" + "        out = re.replace_all(\"a1b22c333\", lambda (m: str) -> str { m.upper(); });\n" + "        total = total + strlen(out);\n" + "        i = i + 1;\n" + "    }\n" + "    re.close();\n" + "    print(total);\n" + "}\n";
     return base + loop;
 }
 
