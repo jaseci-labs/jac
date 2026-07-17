@@ -9,7 +9,7 @@ import from jaclang.jac0core.ext_registry { NATIVE_SUFFIX }
 
 glob _logger = logging.getLogger(__name__),
      _acceleration_complete: Event = Event(),
-     _acceleration_future: (Future | None) = None,
+     _accel_state: dict = {"future": None},
      _quiet_tls = threading.local();
 
 def native_accel_warnings_suppressed -> bool {
@@ -96,12 +96,11 @@ def _compile_all(modules: dict[str, str]) {
 }
 
 def schedule_native_acceleration -> None {
-    global _acceleration_future;
     modules = discover_bootstrap_na_modules();
     if not modules {
         _acceleration_complete.set();
         return;
     }
     import from jaclang.jac0core.runtime { JacRuntime }
-    _acceleration_future = JacRuntime.thread_run(_compile_all, modules);
+    _accel_state["future"] = JacRuntime.thread_run(_compile_all, modules);
 }

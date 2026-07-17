@@ -49,7 +49,7 @@ Use `jac.toml` to suppress diagnostics project-wide. See the [Configuration](con
 ### CLI Flags
 
 - `--nowarn` on `jac check` suppresses all warnings (errors are still shown)
-- `-e` / `--diagnostics` on `jac run` controls diagnostic verbosity: `error` (default -- fail on errors with full details), `all` (errors + warnings), or `none` (silent)
+- `-e` / `--diagnostics` on `jac run` controls diagnostic verbosity: `error` (default -- report error-level diagnostics with full detail), `all` (errors + warnings), or `none` (silent). This flag governs *what is printed*, not whether the program runs. `jac run` still executes -- and exits `0` -- when the type checker finds errors: for example, `x: int = "no";` reports `E1001` under `jac check` but runs anyway under `jac run`. Only errors that stop the compiler from producing runnable code (parse/lex and codegen errors, such as a missing `;`) abort a run. To gate on type errors, use `jac check`, which exits non-zero
 
 ---
 
@@ -83,7 +83,7 @@ Emitted by the parser and lexer during source code parsing.
 | `E0020` | Walrus operator ':=' requires a simple name on the left side |
 | `E0021` | Expected `:<+` or `:+>` to close connect operator |
 | `E0022` | Expected ':' or '{' after lambda parameters |
-| `E0023` | Expected augmented assignment in for...to...by step |
+| `E0023` | Expected augmented assignment in for-loop step (for init while cond with step) |
 
 ### Statement-Level Errors
 
@@ -107,12 +107,20 @@ Emitted by the parser and lexer during source code parsing.
 | `E0046` | Unexpected token in archetype body |
 | `E0047` | Expected '{' or 'by' for impl body |
 
+### Removed Syntax
+
+| Code | Message |
+|------|---------|
+| `E0048` | Parenthesized filter syntax `(?:...)` was removed. Use bracket syntax `[?:...]` instead. |
+| `E0049` | `'root()'` was removed. Use bare `'root'` instead. |
+
 ### Parameter List Errors
 
 | Code | Message |
 |------|---------|
 | `E0050` | Duplicate '{param}' in parameter list |
 | `E0051` | '{first}' must appear before '{second}' in parameter list |
+| `E0052` | Parameter '{name}' is missing a type annotation |
 
 ### Property Declaration Errors
 
@@ -126,8 +134,6 @@ Emitted by the parser and lexer during source code parsing.
 | Code | Message |
 |------|---------|
 | `W0060` | Docstrings in Jac go before the declaration, not inside the body |
-| `W0061` | Parenthesized filter syntax `(?:...)` is deprecated. Use bracket syntax `[?:...]` instead. |
-| `W0062` | `'root()'` is deprecated. Use bare `'root'` instead. |
 | `W0063` | JSX spread `{...expr}` is JS-idiomatic. Prefer `{**expr}` in Jac. |
 
 ### Lexer Errors
@@ -167,6 +173,7 @@ Emitted by the type checker and type evaluator.
 |------|---------|
 | `E1010` | Operator "{op}" not supported for type "{type}" |
 | `E1011` | Unsupported operand types for {op}: {left} and {right} |
+| `E1110` | Operator "{op}" not supported between types "{left}" and "{right}" (comparison operators) |
 
 ### Iterability / Callable
 
@@ -244,7 +251,7 @@ Emitted by the type checker and type evaluator.
 | `E1092` | Type {type} cannot be used in 'with' statement (no \_\_exit\_\_ method) |
 | `E1093` | Cannot yield {actual}, expected {expected} |
 | `E1094` | Visit target must be a node type, got {type} |
-| `E1095` | Field '{field}' declared 'by postinit' is never assigned in {arch}.postinit |
+| `E1095` | Field '{field}' declared 'postinit' is never assigned in {arch}.postinit |
 
 ### Connection Type Errors
 
@@ -268,7 +275,7 @@ Emitted by `JsxIntrinsicGuardPass` when a `mobui` project (see [React Native tar
 
 ### Ownership / Borrow Errors
 
-Emitted by `OwnershipCheckPass` for `own`/`imm`/`borrow`/`&`/`&mut` bindings and `region` blocks. See [Ownership & Borrowing](language/ownership-borrowing.md). On the native pathway the checker is one of the required analyses: it always runs there, and error-severity findings block native codegen -- a clean check is what makes the annotations trustworthy facts for lowering (see the [Ownership Fact Schema](language/ownership-checker-spec.md)). Whether diagnostics are *displayed* never changes generated code; builds with and without display are bit-identical.
+Emitted by `OwnershipCheckPass` for `own`/`imm`/`borrow`/`&`/`&mut` bindings and `in <handle> { }` region opens. See [Ownership & Borrowing](language/ownership-borrowing.md). On the native pathway the checker is one of the required analyses: it always runs there, and error-severity findings block native codegen -- a clean check is what makes the annotations trustworthy facts for lowering (see the [Ownership Fact Schema](language/ownership-checker-spec.md)). Whether diagnostics are *displayed* never changes generated code; builds with and without display are bit-identical.
 
 | Code | Message |
 |------|---------|
@@ -300,6 +307,7 @@ Emitted by `OwnershipCheckPass` only in **nogc-enforced** native modules (`jac n
 | Code | Message |
 |------|---------|
 | `W1036` | Generic type "{type}" used without type arguments, defaulting to "{type}[Any]"; consider adding explicit type arguments |
+| `W1037` | Explicit 'any' type annotation disables type checking here; consider a more specific type |
 | `W1050` | Unknown intrinsic JSX element '<{tag}>' |
 | `W1051` | Expression type could not be resolved (Unknown) |
 | `W1052` | JSX component '{component}' uses an untyped props bag (`props: any`); its JSX props cannot be type-checked |

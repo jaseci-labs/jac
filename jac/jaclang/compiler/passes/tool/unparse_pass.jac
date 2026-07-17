@@ -67,8 +67,6 @@ obj UnparsePass(UniPass) {
     def exit_disengage_stmt(nd: uni.DisengageStmt) -> None;
     def exit_await_expr(nd: uni.AwaitExpr) -> None;
     def exit_cast_expr(nd: uni.CastExpr) -> None;
-    def exit_global_stmt(nd: uni.GlobalStmt) -> None;
-    def exit_non_local_stmt(nd: uni.NonLocalStmt) -> None;
     def exit_assignment(nd: uni.Assignment) -> None;
     def exit_concurrent_expr(nd: uni.ConcurrentExpr) -> None;
     def exit_binary_expr(nd: uni.BinaryExpr) -> None;

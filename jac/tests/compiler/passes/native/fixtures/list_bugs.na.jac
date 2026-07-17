@@ -27,7 +27,6 @@ def pop_loop() -> int {
 glob g_items: list[int] = [10, 20, 30];
 
 def pop_global_len() -> int {
-    global g_items;
     g_items.pop();
     return len(g_items);
 }
@@ -57,7 +56,6 @@ def obj_list_two_items() -> int {
 glob g_obj_items: list[Item] = [];
 
 def obj_global_list() -> int {
-    global g_obj_items;
     g_obj_items.append(Item(x=100, y=200));
     first: Item = g_obj_items[0];
     return first.x;
@@ -67,7 +65,6 @@ def obj_global_list() -> int {
 glob g_ints: list[int] = [1, 2, 3];
 
 def reassign_int_list() -> int {
-    global g_ints;
     g_ints = [];
     g_ints.append(99);
     return g_ints[0];
@@ -76,7 +73,6 @@ def reassign_int_list() -> int {
 glob g_strs: list[str] = ["hello"];
 
 def reassign_str_list() -> int {
-    global g_strs;
     g_strs = [];
     g_strs.append("world");
     return len(g_strs);

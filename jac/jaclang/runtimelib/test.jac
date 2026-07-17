@@ -7,7 +7,7 @@ obj JacTestResult(unittest.TextTestResult) {
         descriptions: any,
         verbosity: int,
         max_failures: (int | None) = None,
-        failures_count: int by postinit;
+        failures_count: int postinit;
 
     def postinit -> None;
     def addFailure(`test: any, err: any) -> None;

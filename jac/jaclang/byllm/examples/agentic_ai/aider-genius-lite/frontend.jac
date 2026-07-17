@@ -53,7 +53,7 @@ def bootstrap_frontend(token: str) {
     if st.session_state.loading {
         with st.spinner("🧠 AI is thinking and generating code...") {
             try {
-                response = requests.post(
+                response: requests.Response = requests.post(
                     "http://localhost:8000/walker/generate_code",
                     json={"request": user_request},
                     headers={"Authorization": f"Bearer {token}"}
