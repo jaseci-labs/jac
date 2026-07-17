@@ -119,6 +119,17 @@ impl JacScaleUserManager.get_root_id(user_id: str) -> str | None {
     return result;
 }
 
+impl JacScaleUserManager.ensure_user_root(user_id: str) -> str | None {
+    # JIT provisioning for federated identity across microservice siblings:
+    # the caller has already validated the JWT signature, so a user_id this
+    # service has never seen is a user registered with the gateway (or a
+    # sibling) - materialize a local record + root rather than failing.
+    if not user_id or user_id == '__system__' {
+        return None;
+    }
+    return self._identity_storage.ensure_user_by_id(user_id);
+}
+
 impl JacScaleUserManager.update_password(
     user_id: str, current_password: str, new_password: str
 ) -> dict[str, str] {

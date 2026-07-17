@@ -383,11 +383,10 @@ impl OwnershipCheckPass._transfer(
     nd: uni.UniCFGNode, in_set: set[SymId]
 ) -> set[SymId] {
     out = set(in_set);
+    assign_kill: set[SymId] = set();
     if isinstance(nd, uni.Assignment) {
         (kill, gen) = self._assign_kill_gen(nd);
-        for k in kill {
-            out.discard(k);
-        }
+        assign_kill = kill;
         for g in gen {
             out.add(g);
             if g not in self.consumed_at {
@@ -406,6 +405,10 @@ impl OwnershipCheckPass._transfer(
         if g not in self.consumed_at {
             self.consumed_at[g] = nd;
         }
+    }
+
+    for k in assign_kill {
+        out.discard(k);
     }
     return out;
 }
@@ -683,6 +686,14 @@ impl OwnershipCheckPass._emit_loop_move_diagnostics -> None {
         cfg_nd = nd.find_parent_of_type(uni.UniCFGNode);
         if cfg_nd is not None and owned in self.in_consumed.get(id(cfg_nd), set()) {
             continue;
+        }
+
+        _assign = nd.find_parent_of_type(uni.Assignment);
+        if _assign is not None and _assign.aug_op is None {
+            (_ra_kill, _ra_gen) = self._assign_kill_gen(_assign);
+            if owned in _ra_kill {
+                continue;
+            }
         }
         if self._loop_depth(nd) > self._loop_depth(decl) {
             sym_name = self._owned_name(owned, nd.sym_name);
