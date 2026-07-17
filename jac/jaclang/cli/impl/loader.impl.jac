@@ -1,16 +1,6 @@
 import from jaclang.cli.manifest { CommandMeta }
 
-glob _FEATURE_BOOTSTRAPS: dict[str, list[str]] = {
-         "setup": ["jaclang.runtimelib.client.cli"],
-         "retheme": ["jaclang.cli.shadcn.cli"],
-         "scale": ["jaclang.scale.plugin"],
-         "model": ["jaclang.byllm.cli"]
-     },
-     _EXTRA_MODULES: dict[str, str] = {
-         "setup": "jaclang.runtimelib.client.cli",
-         "retheme": "jaclang.cli.shadcn.cli",
-         "scale": "jaclang.scale.plugin",
-         "model": "jaclang.byllm.cli",
+glob _EXTRA_MODULES: dict[str, str] = {
          "mcp": "jaclang.cli.commands.mcp",
          "ninja": "jaclang.cli.commands.tools",
          "precommit": "jaclang.cli.commands.tools",
@@ -36,7 +26,9 @@ def _load_feature_modules(command: str) {
         return;
     }
     import importlib;
-    for mod in _FEATURE_BOOTSTRAPS.get(command, []) {
+    import from jaclang.cli.registry { FEATURE_COMMAND_MODULES }
+    mod = FEATURE_COMMAND_MODULES.get(command);
+    if mod {
         importlib.import_module(mod);
     }
     _loaded_features.add(command);

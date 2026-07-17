@@ -1,8 +1,7 @@
 import os;
 import sys;
 import argparse;
-import from typing { Callable }
-import from jaclang.cli.command { Arg, ArgKind, CommandSpec }
+import from jaclang.cli.command { ArgKind }
 import from jaclang.cli.manifest { ArgMeta, CommandMeta }
 
 def _load_project_config {
@@ -265,37 +264,6 @@ def _apply_config_defaults(config: object, args_dict: dict) {
     }
 }
 
-def _materialize_spec(meta: CommandMeta, handler: Callable) -> CommandSpec {
-    args: list[Arg] = [];
-    for a in meta.args {
-        args.append(
-            Arg(
-                name=a.name,
-                kind=ArgKind(a.kind.value),
-                typ=int if a.typ == 'int' else str,
-                `default=a.default,
-                help=a.help,
-                short=a.short,
-                choices=list(a.choices) if a.choices else None,
-                required=a.required,
-                dest=a.dest,
-                metavar=a.metavar
-            )
-        );
-    }
-    return CommandSpec(
-        name=meta.name,
-        help=meta.help,
-        description=meta.description,
-        args=args,
-        examples=list(meta.examples),
-        group=meta.group,
-        tier=meta.tier,
-        hidden=meta.hidden,
-        handler=handler
-    );
-}
-
 def _requests_help(cmd_argv: list[str]) -> bool {
     for tok in cmd_argv {
         if tok == '--' {
@@ -313,6 +281,7 @@ impl run_selected_command(command_name: str) -> None {
     import from jaclang.cli.executor { get_executor }
     import from jaclang.cli.loader { load_handler }
     import from jaclang.cli.manifest { get_command_meta }
+    import from jaclang.cli.registry_adapter { manifest_to_spec }
 
     meta = get_command_meta(command_name);
     if meta is None {
@@ -338,7 +307,7 @@ impl run_selected_command(command_name: str) -> None {
     }
 
     handler = load_handler(command_name);
-    spec = _materialize_spec(meta, handler);
+    spec = manifest_to_spec(meta, handler);
     script_args = _extract_script_args(meta);
 
     cmd_argv = (

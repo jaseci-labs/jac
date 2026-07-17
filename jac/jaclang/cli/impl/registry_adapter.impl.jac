@@ -38,12 +38,3 @@ impl manifest_to_spec(
         handler=handler
     );
 }
-
-impl materialize_all_specs(include_hidden: bool = False) -> list[CommandSpec] {
-    import from jaclang.cli.manifest { iter_command_meta }
-
-    return [
-        manifest_to_spec(meta)
-        for meta in iter_command_meta(include_hidden=include_hidden)
-    ];
-}

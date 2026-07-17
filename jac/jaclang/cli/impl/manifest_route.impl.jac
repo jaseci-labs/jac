@@ -82,7 +82,6 @@ impl handle_manifest_route(raw_argv: list[str]) -> bool {
         format_logo,
         format_verbose_help
     }
-    import from jaclang.cli.dispatch { run_selected_command }
 
     if raw_argv in (['-V'], ['--version']) {
         sys_info = f"{platform.system()} {platform.machine()}";
@@ -152,6 +151,7 @@ impl handle_manifest_route(raw_argv: list[str]) -> bool {
         sys.exit(2);
     }
 
+    import from jaclang.cli.dispatch { run_selected_command }
     run_selected_command(command_name);
     return True;
 }

@@ -1,0 +1,426 @@
+{
+  "mode": "dev",
+  "jac": "/home/jac/.local/bin/jac",
+  "iterations": 1,
+  "floor_case": "version",
+  "floor_module_count": 263,
+  "budgets": {
+    "global": {
+      "max_commands": 0,
+      "max_features": 0,
+      "max_delta": 0
+    },
+    "command_help": {
+      "max_commands": 0,
+      "max_features": 0,
+      "max_delta": 4
+    }
+  },
+  "cases": [
+    {
+      "name": "bare",
+      "argv": [
+        "jac"
+      ],
+      "expect_exit": 0,
+      "budget_class": "global",
+      "exit_code": 0,
+      "import_budget": {
+        "command_modules": [],
+        "feature_modules": [],
+        "command_count": 0,
+        "feature_count": 0,
+        "delta_modules": [],
+        "delta_count": 0,
+        "total_modules": 263
+      },
+      "timing": {
+        "median_ms": 85014.3154870002,
+        "p95_ms": 85014.3154870002,
+        "min_ms": 85014.3154870002,
+        "max_ms": 85014.3154870002
+      },
+      "budget": {
+        "max_commands": 0,
+        "max_features": 0,
+        "max_delta": 0
+      },
+      "violations": []
+    },
+    {
+      "name": "version",
+      "argv": [
+        "jac",
+        "--version"
+      ],
+      "expect_exit": 0,
+      "budget_class": "global",
+      "exit_code": 0,
+      "import_budget": {
+        "command_modules": [],
+        "feature_modules": [],
+        "command_count": 0,
+        "feature_count": 0,
+        "delta_modules": [],
+        "delta_count": 0,
+        "total_modules": 263
+      },
+      "timing": {
+        "median_ms": 1218.793392000407,
+        "p95_ms": 1218.793392000407,
+        "min_ms": 1218.793392000407,
+        "max_ms": 1218.793392000407
+      },
+      "budget": {
+        "max_commands": 0,
+        "max_features": 0,
+        "max_delta": 0
+      },
+      "violations": []
+    },
+    {
+      "name": "help",
+      "argv": [
+        "jac",
+        "--help"
+      ],
+      "expect_exit": 0,
+      "budget_class": "global",
+      "exit_code": 0,
+      "import_budget": {
+        "command_modules": [],
+        "feature_modules": [],
+        "command_count": 0,
+        "feature_count": 0,
+        "delta_modules": [],
+        "delta_count": 0,
+        "total_modules": 263
+      },
+      "timing": {
+        "median_ms": 986.69950600015,
+        "p95_ms": 986.69950600015,
+        "min_ms": 986.69950600015,
+        "max_ms": 986.69950600015
+      },
+      "budget": {
+        "max_commands": 0,
+        "max_features": 0,
+        "max_delta": 0
+      },
+      "violations": []
+    },
+    {
+      "name": "purge_help",
+      "argv": [
+        "jac",
+        "purge",
+        "--help"
+      ],
+      "expect_exit": 0,
+      "budget_class": "global",
+      "exit_code": 0,
+      "import_budget": {
+        "command_modules": [],
+        "feature_modules": [],
+        "command_count": 0,
+        "feature_count": 0,
+        "delta_modules": [],
+        "delta_count": 0,
+        "total_modules": 253
+      },
+      "timing": {
+        "median_ms": 995.4988809995484,
+        "p95_ms": 995.4988809995484,
+        "min_ms": 995.4988809995484,
+        "max_ms": 995.4988809995484
+      },
+      "budget": {
+        "max_commands": 0,
+        "max_features": 0,
+        "max_delta": 0
+      },
+      "violations": []
+    },
+    {
+      "name": "unknown",
+      "argv": [
+        "jac",
+        "not-a-real-command"
+      ],
+      "expect_exit": 2,
+      "budget_class": "global",
+      "exit_code": 2,
+      "import_budget": {
+        "command_modules": [],
+        "feature_modules": [],
+        "command_count": 0,
+        "feature_count": 0,
+        "delta_modules": [],
+        "delta_count": 0,
+        "total_modules": 263
+      },
+      "timing": {
+        "median_ms": 981.5678929999194,
+        "p95_ms": 981.5678929999194,
+        "min_ms": 981.5678929999194,
+        "max_ms": 981.5678929999194
+      },
+      "budget": {
+        "max_commands": 0,
+        "max_features": 0,
+        "max_delta": 0
+      },
+      "violations": []
+    },
+    {
+      "name": "tombstone",
+      "argv": [
+        "jac",
+        "add"
+      ],
+      "expect_exit": 2,
+      "budget_class": "global",
+      "exit_code": 2,
+      "import_budget": {
+        "command_modules": [],
+        "feature_modules": [],
+        "command_count": 0,
+        "feature_count": 0,
+        "delta_modules": [],
+        "delta_count": 0,
+        "total_modules": 263
+      },
+      "timing": {
+        "median_ms": 997.169901000234,
+        "p95_ms": 997.169901000234,
+        "min_ms": 997.169901000234,
+        "max_ms": 997.169901000234
+      },
+      "budget": {
+        "max_commands": 0,
+        "max_features": 0,
+        "max_delta": 0
+      },
+      "violations": []
+    },
+    {
+      "name": "run_help",
+      "argv": [
+        "jac",
+        "run",
+        "--help"
+      ],
+      "expect_exit": 0,
+      "budget_class": "command_help",
+      "exit_code": 0,
+      "import_budget": {
+        "command_modules": [],
+        "feature_modules": [],
+        "command_count": 0,
+        "feature_count": 0,
+        "delta_modules": [
+          "jaclang.cli.executor",
+          "jaclang.cli.loader"
+        ],
+        "delta_count": 2,
+        "total_modules": 265
+      },
+      "timing": {
+        "median_ms": 1194.4141709991527,
+        "p95_ms": 1194.4141709991527,
+        "min_ms": 1194.4141709991527,
+        "max_ms": 1194.4141709991527
+      },
+      "budget": {
+        "max_commands": 0,
+        "max_features": 0,
+        "max_delta": 4
+      },
+      "violations": []
+    },
+    {
+      "name": "check_help",
+      "argv": [
+        "jac",
+        "check",
+        "--help"
+      ],
+      "expect_exit": 0,
+      "budget_class": "command_help",
+      "exit_code": 0,
+      "import_budget": {
+        "command_modules": [],
+        "feature_modules": [],
+        "command_count": 0,
+        "feature_count": 0,
+        "delta_modules": [
+          "jaclang.cli.executor",
+          "jaclang.cli.loader"
+        ],
+        "delta_count": 2,
+        "total_modules": 265
+      },
+      "timing": {
+        "median_ms": 990.5040009998629,
+        "p95_ms": 990.5040009998629,
+        "min_ms": 990.5040009998629,
+        "max_ms": 990.5040009998629
+      },
+      "budget": {
+        "max_commands": 0,
+        "max_features": 0,
+        "max_delta": 4
+      },
+      "violations": []
+    },
+    {
+      "name": "setup_help",
+      "argv": [
+        "jac",
+        "setup",
+        "--help"
+      ],
+      "expect_exit": 0,
+      "budget_class": "command_help",
+      "exit_code": 0,
+      "import_budget": {
+        "command_modules": [],
+        "feature_modules": [],
+        "command_count": 0,
+        "feature_count": 0,
+        "delta_modules": [
+          "jaclang.cli.executor",
+          "jaclang.cli.loader"
+        ],
+        "delta_count": 2,
+        "total_modules": 265
+      },
+      "timing": {
+        "median_ms": 982.8745029999482,
+        "p95_ms": 982.8745029999482,
+        "min_ms": 982.8745029999482,
+        "max_ms": 982.8745029999482
+      },
+      "budget": {
+        "max_commands": 0,
+        "max_features": 0,
+        "max_delta": 4
+      },
+      "violations": []
+    },
+    {
+      "name": "run_hello",
+      "argv": [
+        "jac",
+        "run",
+        "/home/jac/repos/lazy-cli-startup/jac/tests/language/fixtures/hello.jac"
+      ],
+      "expect_exit": 0,
+      "budget_class": null,
+      "exit_code": 0,
+      "import_budget": {
+        "command_modules": [
+          "jaclang.cli.commands",
+          "jaclang.cli.commands.cli_helpers"
+        ],
+        "feature_modules": [
+          "jaclang.cli.shadcn.cli",
+          "jaclang.runtimelib.client",
+          "jaclang.runtimelib.client.asset_processor",
+          "jaclang.runtimelib.client.bun_installer",
+          "jaclang.runtimelib.client.desktop_plugin_config",
+          "jaclang.runtimelib.client.import_processor",
+          "jaclang.runtimelib.client.jac_client_compiler",
+          "jaclang.runtimelib.client.jac_to_js",
+          "jaclang.runtimelib.client.npm_provider",
+          "jaclang.runtimelib.client.plugin_config",
+          "jaclang.runtimelib.client.route_scanner",
+          "jaclang.runtimelib.client.vite_bundler",
+          "jaclang.scale.config.firebase_env",
+          "jaclang.scale.plugin"
+        ],
+        "command_count": 2,
+        "feature_count": 14,
+        "delta_modules": [
+          "_adapters",
+          "_common",
+          "_functional",
+          "_hmac",
+          "_sqlite3",
+          "asset_processor",
+          "bun_installer",
+          "client_deps",
+          "compiler",
+          "config.config_loader",
+          "config_loader",
+          "hmac",
+          "import_processor",
+          "importlib.readers",
+          "importlib.resources",
+          "jac_to_js",
+          "jaclang.cli.banners",
+          "jaclang.cli.browser_engine",
+          "jaclang.cli.check_report",
+          "jaclang.cli.commands",
+          "jaclang.cli.commands.cli_helpers",
+          "jaclang.cli.executor",
+          "jaclang.cli.guide_store",
+          "jaclang.cli.loader",
+          "jaclang.cli.registry",
+          "jaclang.cli.shadcn.cli",
+          "jaclang.compiler.code_intel",
+          "jaclang.project.plugin_config",
+          "jaclang.runtimelib.auth_models",
+          "jaclang.runtimelib.changeset",
+          "jaclang.runtimelib.client",
+          "jaclang.runtimelib.client.asset_processor",
+          "jaclang.runtimelib.client.bun_installer",
+          "jaclang.runtimelib.client.desktop_plugin_config",
+          "jaclang.runtimelib.client.import_processor",
+          "jaclang.runtimelib.client.jac_client_compiler",
+          "jaclang.runtimelib.client.jac_to_js",
+          "jaclang.runtimelib.client.npm_provider",
+          "jaclang.runtimelib.client.plugin_config",
+          "jaclang.runtimelib.client.route_scanner",
+          "jaclang.runtimelib.client.vite_bundler",
+          "jaclang.runtimelib.client_bundle",
+          "jaclang.runtimelib.context",
+          "jaclang.runtimelib.exceptions",
+          "jaclang.runtimelib.memory",
+          "jaclang.runtimelib.query_plan",
+          "jaclang.runtimelib.scheduler",
+          "jaclang.runtimelib.schema_rules",
+          "jaclang.runtimelib.serializer",
+          "jaclang.runtimelib.server",
+          "jaclang.runtimelib.storage",
+          "jaclang.runtimelib.storage.local_storage",
+          "jaclang.runtimelib.storage.storage",
+          "jaclang.runtimelib.transport",
+          "jaclang.runtimelib.typecache",
+          "jaclang.runtimelib.utils",
+          "jaclang.scale.config.firebase_env",
+          "jaclang.scale.plugin",
+          "resources.readers",
+          "route_scanner",
+          "secrets",
+          "shlex",
+          "sqlite3",
+          "sqlite3.dbapi2",
+          "urllib.error",
+          "urllib.request",
+          "urllib.response",
+          "vite_bundler",
+          "vite_client_bundle"
+        ],
+        "delta_count": 69,
+        "total_modules": 332
+      },
+      "timing": {
+        "median_ms": 8201.047209000535,
+        "p95_ms": 8201.047209000535,
+        "min_ms": 8201.047209000535,
+        "max_ms": 8201.047209000535
+      }
+    }
+  ]
+}
