@@ -311,6 +311,9 @@ impl TypeEvaluator._try_resolve_rust_bridge(
     if len(node_.path) != 2 {
         return None;
     }
+    if node_.path[0].value != "rust" {
+        return None;
+    }
     import from jaclang.compiler.rust_bridge._finder { is_bridge_module }
     crate = node_.path[1].value;
     mod_name = node_.path[0].value + "." + crate;
