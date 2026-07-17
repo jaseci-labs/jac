@@ -228,7 +228,7 @@ and emit target code. The contract (tracked in jaseci-labs/jaseci#6542):
    stamped call classification everywhere).
 6. **Representation growth is cached growth.** New unitree fields are
    either serialized through the JIR registry with a format bump, or
-   documented recompute-on-load (`by postinit` fields like `Expr.type`).
+   documented recompute-on-load (`postinit` fields like `Expr.type`).
 
 ### The authority map
 

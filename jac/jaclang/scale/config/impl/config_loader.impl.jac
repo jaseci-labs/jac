@@ -447,7 +447,6 @@ impl JacScaleConfig.get_websocket_config(self: JacScaleConfig) -> dict[str, any]
 }
 
 impl get_scale_config(project_dir: Path | None = None) -> JacScaleConfig {
-    global _scale_config_instance;
     if _scale_config_instance is not None {
         return _scale_config_instance;
     }
@@ -457,7 +456,6 @@ impl get_scale_config(project_dir: Path | None = None) -> JacScaleConfig {
 }
 
 impl reset_scale_config -> None {
-    global _scale_config_instance;
     _scale_config_instance = None;
 }
 

@@ -135,14 +135,13 @@ def _related_files(source_path: str) -> list[tuple[str, str]] {
     return result;
 }
 
-glob _client_kind_probe_active: bool = False;
+glob _client_kind_probe: dict = {"active": False};
 
 def _module_client_kind(source_path: str) -> str {
-    global _client_kind_probe_active;
-    if _client_kind_probe_active {
+    if _client_kind_probe["active"] {
         return "web";
     }
-    _client_kind_probe_active = True;
+    _client_kind_probe["active"] = True;
     try {
         import from jaclang.project.client_kind { resolve_client_kind_context }
         (kind, _) = resolve_client_kind_context(source_path);
@@ -150,7 +149,7 @@ def _module_client_kind(source_path: str) -> str {
     } except Exception {
         return "web";
     } finally {
-        _client_kind_probe_active = False;
+        _client_kind_probe["active"] = False;
     }
 }
 
