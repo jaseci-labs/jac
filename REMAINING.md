@@ -9,10 +9,11 @@ policy - see IMPLEMENTATION.md / PLAN.md). Updated 2026-07.
 
 ## Before merge (housekeeping)
 
-- [ ] Push 6 unpushed commits on `rust-ffi`
-- [ ] Land uncommitted binder / synth / docs / test changes (~1.5k LOC)
-- [ ] Add `docs/docs/reference/language/rust-bridges.md` to the PR (currently untracked)
-- [ ] Refresh stale comments in demo crates (`jac-bridge-map`, `jac-bridge-list` still say na skips dict/list)
+- [ ] Push unpushed commits on `rust-ffi` (3 local: lambda fix + demo-comment refresh + gitignore)
+- [x] Land uncommitted binder / synth / docs / test changes (~1.5k LOC) — working tree clean (2026-07-17)
+- [x] `docs/docs/reference/language/rust-bridges.md` already tracked (2026-07-17)
+- [x] Refresh stale comments in demo crates (`jac-bridge-map`/`jac-bridge-list`) — done 2026-07-17; scalar `f64-param` note left as-is (still accurate: na miscompiles float params)
+- [x] `ndarray/` (upstream reference clone) + `.pi-subagents/` gitignored (2026-07-17)
 - [ ] PR description already updated; keep in sync if scope shifts
 
 ### Pre-existing na-test breaks (surfaced by the 2026-07-17 upstream merge probe; NOT merge-caused)
