@@ -126,14 +126,7 @@ def start_cli -> None {
         return;
     }
 
-    # Manifest-backed fast paths (--version/--help/bare/known commands) avoid
-    # importing jaclang.cli.cli and its eager command registrations.
-    import from jaclang.cli.manifest_route { handle_manifest_route }
-    if handle_manifest_route(sys.argv[1:]) {
-        return;
-    }
-
-    # Rare fallback: flag-only argv that manifest routing declines.
+    # Delegate to the full CLI for all other commands
     import from jaclang.cli.cli { start_cli as _start_cli }
     _start_cli();
 }
