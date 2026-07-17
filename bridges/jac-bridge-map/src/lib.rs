@@ -10,9 +10,10 @@
 //! (`[u32 count]` then per entry `[u32 key_len][key bytes][value]`, all
 //! little-endian) and the loader deep-copies it into a fresh dict.
 //!
-//! This crate proves the round-trip on the Rust side and is loaded by the CPython
-//! conformance suite (the na loader skips map returns — dict-return codegen is not
-//! yet supported on the native backend, a tracked follow-up):
+//! This crate proves the round-trip on the Rust side and is loaded by both the
+//! CPython and the native (na) conformance suites — the na synthesizer now builds
+//! and returns a real `dict[str, V]` (see `na/map_conformance.jac` for the runtime
+//! na<->CPython equivalence proof):
 //!   * dict[str, int]  — signed values incl. negatives,
 //!   * dict[str, int]  — unsigned wire slot decoded signed (u64 high bit),
 //!   * dict[str, str]  — nested length-prefixed string values, unicode keys,

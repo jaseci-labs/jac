@@ -8,9 +8,10 @@
 //! element `[value]`, all little-endian) and the loader deep-copies it into a fresh
 //! list.
 //!
-//! This crate proves the round-trip on the Rust side and is loaded by the CPython
-//! conformance suite (the na loader skips list returns — list-return codegen is not
-//! yet supported on the native backend, a tracked follow-up):
+//! This crate proves the round-trip on the Rust side and is loaded by both the
+//! CPython and the native (na) conformance suites — the na synthesizer now builds
+//! and returns a real `list[V]` (see `na/list_conformance.jac` for the runtime
+//! na<->CPython equivalence proof):
 //!   * list[int]  — signed values incl. negatives,
 //!   * list[int]  — unsigned wire slot decoded signed (u64 high bit),
 //!   * list[str]  — nested length-prefixed string values, incl. unicode + empty,
