@@ -1069,15 +1069,19 @@ these first; the adversarial suite already contains skip-gated tests waiting on 
       and the differential conformance (WIDE-LANE-CONFORMANCE.md §4 A/B/C, ALL
       PASS). Shares the `JacValue` value model with the na codec (2.5) but is a
       separate implementation.
-- [ ] 2.7 Differential fuzz harness: generate random value trees, encode with
-      rmp-serde (a tiny Rust test bin), decode with BOTH Jac decoders, assert
-      identical Jac values; plus round-trip through the encoders. STATUS: PARTIAL
-      -- a *deterministic* differential conformance test already exists
-      (WIDE-LANE-CONFORMANCE.md §3-4: rmp `to_vec_named` -> Jac `_mp_decode` ==
-      doc; Jac `_mp_encode` -> rmp `from_slice::<Widget>` count==3; echo
-      round-trip; all PASS via `test_rust_wide_lane.jac` /
-      `test_rust_wide_ctypes.jac`). The *randomized fuzz* generator/property
-      harness described in the task is NOT yet built -- still open.
+- [x] 2.7 Differential fuzz harness. STATUS: DONE (2026-07-17). On top of the
+      deterministic conformance (WIDE-LANE-CONFORMANCE.md §3-4), a *randomized*
+      harness now runs: `test_rust_wide_fuzz.jac` reads `fixtures/wide_fuzz_
+      corpus.jsonl` -- 800 random value trees each paired with `rmp_serde::
+      to_vec_named` of that exact value (generated offline by the checked-in
+      `fixtures/wide_fuzz/gen.rs`, deterministic LCG, no rand/Date). The ctypes
+      decoder must reproduce every tree from the real rmp bytes; the
+      encoder<->decoder round-trip must be a fixed point over the corpus AND a
+      seeded pure-Python generator adding float specials (NaN/+-Inf/-0.0) and edge
+      integers JSON cannot carry. Only the CPython (ctypes) codec runs -- the na
+      `_msgpack.jac` decoder reads raw memory via native-only intrinsics, so it
+      can't run in a CPython harness; it shares the identical wire contract and is
+      validated natively (AOT e2e).
 - [x] 2.8 Lane resolution in the binder. STATUS: DONE. `ScalarType::Wide(String)`
       / `BridgeReturn::Wide(String)` (inner = the Rust type re-declared inside the
       `Wide<…>` marker). Per-value rule wired by ORDERING: `classify_param_type` /
@@ -1112,15 +1116,53 @@ these first; the adversarial suite already contains skip-gated tests waiting on 
       Manual impls (chrono NaiveDate == ISO string) synthesize NO record and stay
       dynamic (binder test `manual_serde_impl_is_not_a_typed_record`). Proven e2e
       on the `demo` crate: typed `Point` in/out on na (AOT) + ctypes. See
-      WIDE-LANE-CONFORMANCE.md §6c. FOLLOW-UP: nested-record/container/enum fields
-      keep the dynamic lane (the next typed-obj slice).
-- [ ] 2.10 Sixth corpus fixture: a derived-serde data crate (e.g. `semver` or
-      `geojson`), floor >50% with zero overlay. Re-ratchet baselines.
-- [ ] 2.11 Perf gate in CI: scalar-signature codegen contains no wide-lane calls
-      (generated-source inspection); one timed bulk case (10k Vec<f64>) with a
-      generous ceiling to catch pathological regressions only.
-- [ ] 2.12 Declare ABI v1 FROZEN: comment in `jac-bridge-schema` + doc note; any
-      future need = payload-format evolution inside TAG_WIDE, never new tags.
+      WIDE-LANE-CONFORMANCE.md §6c.
+      FOLLOW-UP: DONE (2026-07-17) -- nested-record, container (Vec/Option/
+      HashMap|BTreeMap<String,_>), and enum fields now type across all five layers:
+      *ABI (within frozen v1, append-only): FieldDesc tags use the full wide-slot
+        tag algebra -- nested record = TAG_WIDE|id, containers compose the existing
+        LIST/OPT/MAP bits (no new wire tag). RecordDesc grows 20->24 (the +0
+        desc-size stride keeps it back-compat) with a +20 record kind
+        (RECORD_KIND_STRUCT|ENUM); for an enum record each FieldDesc is a variant
+        (name + payload tag, TAG_VOID = unit).
+      * macro: two-pass record collection (nested-record ids resolve),
+        `field_ty_to_tag` recurses containers + nested records, `#[jac_record]`
+        accepted on enums (unit + newtype variants).
+      *binder: `record_qualifies`/`render_field_ty` recurse (cycle-guarded);
+        `register_record_deep` pulls in transitive nested records; emits faithful
+        `#[jac_record]` struct/enum source.
+      * ctypes loader: recursive tag-driven typed converters (nested classes,
+        list/opt/map, enum tagged-union `.variant`+`.value`).
+      * na loader: nested records + containers typed (statement-loop converters,
+        each element rebound to a typed local); ENUM records stay on the na dynamic
+        (JacValue) lane -- na has no `any` to type a per-variant payload.
+      Proven e2e on the checked-in `geo_demo` fixture crate against a REAL rmp_serde
+      .so on BOTH loaders (ctypes in-process, na AOT-linked ELF). Struct- and
+      tuple-payload enum variants remain a later slice.
+- [x] 2.10 Sixth corpus fixture. STATUS: DONE (2026-07-17). BOTH: (1) `semver@
+      1.0.27` -- a real derived-serde data crate at an honest 50% (4/8) via the
+      OPAQUE lane (its serde is hand-written string form, so no typed record; it
+      guards serde detection + the manual-impl gate on real rustdoc JSON). (2)
+      `geo_demo` -- a purpose-built serde-DTO crate (source in
+      `tests/fixtures/crates/geo_demo`, wired into `gen-fixtures.sh`): an opaque
+      Canvas handle whose methods pass flat/nested/container/enum derived-serde
+      DTOs, 100% (6/6) zero-overlay. No real crates.io crate exposes that shape, so
+      this is the fixture that actually exercises the wide typed-record lane in the
+      coverage gate. Baselines re-ratcheted.
+- [x] 2.11 Perf gate in CI. STATUS: DONE (2026-07-17). Two halves: (1)
+      deterministic (binder `tests::wide_lane::scalar_signatures_never_emit_wide_
+      lane_calls`) -- an all-scalar/handle bridge must emit ZERO `Wide<...>` markers
+      and no serde deps, so a scalar signature can't silently regress onto the wide
+      lane; (2) wall-clock backstop (`jac-bridge/tests/wide.rs::wide_bulk_vec_f64_
+      under_ceiling`) -- a 10k-element Vec<f64> wide param crossing the real macro
+      shim, 100 round-trips, under a generous 10 s ceiling (fires only on a
+      catastrophic regression) and asserting the whole payload decodes.
+- [x] 2.12 Declare ABI v1 FROZEN. STATUS: DONE (2026-07-17). A top-level frozen-ABI
+      declaration in `jac-bridge-schema/src/lib.rs`: the scalar tag space (1..=8)
+      and flag bits are full; TAG_WIDE is the growth valve (new shapes ride its
+      msgpack payload); the typed-record table is the append-only precedent (a whole
+      typed-object capability with zero new wire tags). Anything that can't be
+      expressed that way bumps `ABI_VERSION`.
 
 ### Phase 3 -- py-interop tier (parallel track; start any time after 0.6)
 

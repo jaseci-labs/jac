@@ -211,13 +211,49 @@ same, `mod.Point` instance in and out (+ dict-in compat). Tests: binder
 round-trip). Recipe: render the na bridge against the `.so`, `nacompile`, run
 (as §8's na e2e); ctypes via `build_module` + `mod.Point`.
 
+## 6d. Nested / container / enum typed records (§2.9-followup) -- BUILT + PROVEN e2e (2026-07-17)
+
+Typed-obj synthesis now reaches beyond flat scalar/String records:
+
+- **Nested records** -- a field whose type is another derived record
+  (`Region { tl: Point, br: Point }`). The field tag is `TAG_WIDE | (child_id<<8)`,
+  and both loaders recurse the converters.
+- **Containers** -- `Vec<T>`, `Option<T>`, `HashMap|BTreeMap<String, T>` of a
+  scalar or nested record. Field tags compose the existing `TAG_LIST_BIT` /
+  `TAG_OPT_BIT` / `TAG_MAP_BIT` with the inner tag (no new wire tag).
+- **Enums** -- a derived-serde enum with unit + newtype variants. A `RecordDesc`
+  gains a `kind` word (`RECORD_KIND_STRUCT|ENUM`, RecordDesc 20->24 via the
+  desc-size stride); each FieldDesc of an enum record is a VARIANT (name + payload
+  tag, `TAG_VOID` = unit). Wire = serde external tagging: a bare string for a unit
+  variant, a 1-entry `{variant: payload}` map otherwise.
+
+**Loader parity:** the CPython/ctypes loader types ALL of the above (nested classes,
+list/opt/map, enum tagged-union `.variant`+`.value`). The **na** loader types nested
+records + containers, but keeps ENUM records on the dynamic (JacValue) lane -- na
+has no `any` to statically type a per-variant payload (the same conservatism as na's
+f64-in-record fields). na container converters emit STATEMENT loops, not
+comprehensions: na cannot type a comprehension loop var for a bare `_v.i` attribute
+access, and a na dict comprehension building `dict[str, JacValue]` silently yielded
+an empty map.
+
+**Proof:** the checked-in `geo_demo` fixture crate (`jac-bridge-binder/tests/fixtures/
+crates/geo_demo`) -- an opaque `Canvas` handle whose methods pass `Point` (flat),
+`Region` (nested), `Path` (`Vec<Point>` + `Option<String>` + `HashMap<String,i64>`),
+and `Shape` (enum). Classified 100% (6/6) zero-overlay; the FULL generated bridge
+compiles through the macro; driven e2e against a real rmp_serde `.so` on BOTH loaders
+(ctypes in-process via `build_module`; na via a `nacompile`d ELF linking the `.so`)
+-- nested/container round-trip typed on both, enum typed on ctypes. Tests:
+`typed_records.rs` (binder), `wide_records.rs` (macro blob table),
+`test_rust_wide_ctypes.jac` (ctypes converters), `test_rust_wide_lane.jac` (na
+render). Struct-payload and multi-field tuple enum variants remain a later slice.
+
 ## 7. Remaining gaps
 
-- **Typed-obj v1 is FLAT scalar/String records only.** A record field that is
-  itself a record, a container (`Vec`/`Option`/`Map`), or an enum keeps the whole
-  record on the dynamic wide lane (the binder's `scalar_field_ty` gate returns
-  `None`, so no `#[jac_record]` is emitted). Nested/container/enum typed records
-  are the next slice.
+- **na enum records stay dynamic** (JacValue), not a typed obj -- na's type system
+  has no `any` for a per-variant payload. ctypes types them. They still cross
+  correctly.
+- **Enum struct/tuple-payload variants** keep the whole enum dynamic on both loaders
+  (only unit + newtype variants type). A later slice.
 - **Sealed/wheel install: CONFIRMED (2026-07-17).** `_synth._codec_source()` reads
   the sibling `_msgpack.jac` `__file__`-relative. Both packaging paths ship it: the
   setuptools wheel packs `.jac` via a recursive glob (`Root-Is-Purelib` -> real
