@@ -1070,10 +1070,18 @@ these first; the adversarial suite already contains skip-gated tests waiting on 
       wide_return_lane_and_render, pure_std_shape_has_no_serde_intent_stays_skip,
       handle_wins_over_wide, overlay_wide_true_forces_over_handle,
       overlay_wide_false_forbids_lane}` (+6) and `tests::wide_lane` codegen (+1).
-- [ ] 2.9 Typed obj synthesis: only `automatically_derived && !has_stripped_fields`
-      → Jac `obj` with rustdoc field names; else dict/str per actual wire shape.
-      Pin per-crate round-trip fixtures (chrono NaiveDate == ISO string, uuid ==
-      hyphenated string).
+- [x] 2.9 Typed obj synthesis. STATUS: DONE for FLAT scalar/String records
+      (2026-07-17). Gate `automatically_derived && !has_stripped_fields` +
+      all-scalar/String fields → the binder emits a `#[jac_record]` struct; the
+      macro builds a blob RECORD TABLE (name + field tags) and packs a 1-based
+      record id into the wide tag's upper bits (`TAG_WIDE | id<<8`, no new wire
+      tag). na `_synth` emits `obj <R>` + `_<R>_to_jv`/`_jv_to_<R>` converters and
+      typed signatures; ctypes `_ctypes_codegen` emits a value class per record.
+      Manual impls (chrono NaiveDate == ISO string) synthesize NO record and stay
+      dynamic (binder test `manual_serde_impl_is_not_a_typed_record`). Proven e2e
+      on the `demo` crate: typed `Point` in/out on na (AOT) + ctypes. See
+      WIDE-LANE-CONFORMANCE.md §6c. FOLLOW-UP: nested-record/container/enum fields
+      keep the dynamic lane (the next typed-obj slice).
 - [ ] 2.10 Sixth corpus fixture: a derived-serde data crate (e.g. `semver` or
       `geojson`), floor >50% with zero overlay. Re-ratchet baselines.
 - [ ] 2.11 Perf gate in CI: scalar-signature codegen contains no wide-lane calls

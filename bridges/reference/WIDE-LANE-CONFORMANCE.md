@@ -23,7 +23,9 @@ rustdoc. For those, a dynamic value **is** the correct representation.
 
 The typed-record ergonomic (§2.6: synthesize a typed Jac `obj` with real fields
 when the `Serialize` impl is `#[automatically_derived]` and has no stripped
-fields) sits *in front of* the wide lane and is **not yet built** -- see §6.
+fields) sits *in front of* the wide lane and is **built** for flat scalar/String
+records -- see §6c. A manual-impl or stripped-field type stays on the dynamic
+lane.
 
 ## 2. Two-sided codec
 
@@ -172,12 +174,50 @@ meta-importer, which needs the module pre-seeded in `sys.modules` locally (the
 `_finder.jac`-no-bytecode quirk); driving `nacompile()` in-process after seeding
 `_elf` sidesteps it (CI has the bytecode cached).
 
+## 6c. Typed-obj synthesis (§2.6/2.9) -- BUILT + PROVEN end-to-end (2026-07-17)
+
+A derived-serde record now crosses as a **typed object** with checked fields, not
+a dynamic document. The wire is unchanged (still one `TAG_WIDE` msgpack blob); a
+1-based **record id** rides the wide tag's upper bits (`TAG_WIDE | id << 8`) and
+indexes a NEW blob **record table** (name + scalar/String field schema), appended
+after the ParamDescs and located via the previously reserved header u64 at offset
+32 -- additive, ABI v1 append-only (no new wire tag, §2.12 intact).
+
+Pipeline: the binder gates on `automatically_derived && !has_stripped_fields`,
+walks the plain-struct fields (scalar/String only in v1), and emits a
+`#[jac_record]` struct; the `#[bridge]` macro collects those into the record table
+and links each `Wide<foreign::T>` slot to its record by leaf name; the Jac reader
+(`_blob.jac`) parses the table and `_marshal` carries `Slot.record`. Then:
+
+- **na** (`_synth`): emits `obj Point { has x:int; has y:int; has label:str; }`
+  plus `_Point_to_jv` / `_jv_to_Point` converters over the shared codec; the
+  na-facing signature is `shift(p: Point) -> Point`. A record with an f64 field
+  stays dynamic on na (obj float-field truncation); ctypes still types it.
+- **ctypes** (`_ctypes_codegen`): a value class per record (ctor / `==` / `repr`),
+  exposed as `mod.Point`; a typed instance or a dict may be passed in.
+
+**Safety rule enforced:** a MANUAL serde impl (chrono's `NaiveDate` -> ISO string)
+synthesizes NO record and stays dynamic -- rustdoc's private fields are never
+trusted as the wire shape (binder test `manual_serde_impl_is_not_a_typed_record`).
+
+Proven on the real `demo` crate (`Point{x:i64,y:i64,label:String}` derives
+Serialize+Deserialize): binder -> `#[jac_record]` + record table in the built
+`.so`'s blob (`RECORD[0] Point{x,y,label}`, `shift` slots tagged `0x108` = rec 1)
+-> Jac reader parses it -> **na AOT binary**: `Shifter(100).shift(Point(1,2,
+"origin"),5,7) == Point(106,9,"origin")` with typed field access -> **ctypes**:
+same, `mod.Point` instance in and out (+ dict-in compat). Tests: binder
+`typed_record_emits_jac_record_struct` + the manual guard; jac
+`test_rust_wide_lane` (na typed emission) + `test_rust_wide_ctypes` (typed class
+round-trip). Recipe: render the na bridge against the `.so`, `nacompile`, run
+(as §8's na e2e); ctypes via `build_module` + `mod.Point`.
+
 ## 7. Remaining gaps
 
-- **§2.6 typed-obj synthesis is unbuilt** on both sides: derived records still
-  cross as a `JacValue` union (na) / `dict` (ctypes) rather than a typed Jac
-  `obj` with checked fields. This is the "does the wide lane keep typing"
-  ergonomic and is the natural next piece.
+- **Typed-obj v1 is FLAT scalar/String records only.** A record field that is
+  itself a record, a container (`Vec`/`Option`/`Map`), or an enum keeps the whole
+  record on the dynamic wide lane (the binder's `scalar_field_ty` gate returns
+  `None`, so no `#[jac_record]` is emitted). Nested/container/enum typed records
+  are the next slice.
 - **Sealed/wheel install: CONFIRMED (2026-07-17).** `_synth._codec_source()` reads
   the sibling `_msgpack.jac` `__file__`-relative. Both packaging paths ship it: the
   setuptools wheel packs `.jac` via a recursive glob (`Root-Is-Purelib` -> real
