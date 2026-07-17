@@ -110,6 +110,29 @@ test "scan_markers returns multiple sv-import targets" {
     assert sorted(m.sv_import_targets) == ["cart_app", "products_app"];
 }
 
+test "discover registers .sv.jac services under their logical module stem" {
+    tmp = tempfile.mkdtemp();
+    (Path(tmp) / "main.jac").write_text("with entry { print(1); }\n");
+    (Path(tmp) / "products_app.sv.jac").write_text(
+        "sv {\ndef:pub list_products -> list { return []; }\n}\n"
+    );
+
+    try {
+        routes = discover_sv_services(str(Path(tmp) / "main.jac"));
+
+        assert routes == {"products_app": "/products"} , (
+            f".sv.jac service must register as logical stem products_app, got: {routes}"
+        );
+
+        files = discover_sv_service_files(str(Path(tmp) / "main.jac"));
+        assert files.get("products_app") == "products_app.sv.jac" , (
+            f".sv.jac service file must map to products_app.sv.jac, got: {files}"
+        );
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
 test "discover finds sv-block files and sv-import targets" {
     tmp = tempfile.mkdtemp();
     (Path(tmp) / "main.jac").write_text("cl {\nimport from .frontend { app }\n}\n");

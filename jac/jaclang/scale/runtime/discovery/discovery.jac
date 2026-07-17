@@ -2,6 +2,7 @@ import os;
 import jaclang.jac0core.unitree as uni;
 import from pathlib { Path }
 import from jaclang.jac0core.parser { parse }
+import from jaclang.jac0core.ext_registry { base_stem }
 import from jaclang.jac0core.modresolver { find_jac_project_root }
 import from jaclang.scale.runtime.discovery.route_policy {
     derive_route_prefix,
@@ -75,7 +76,7 @@ def _scan_project(entry_file: str) -> tuple {
         entry_stem: str = "";
     } else {
         root_dir = entry_path.parent;
-        entry_stem: str = entry_path.stem;
+        entry_stem: str = base_stem(str(entry_path));
     }
     if not root_dir.is_dir() {
         return (set(), {});
@@ -109,7 +110,7 @@ def _scan_project(entry_file: str) -> tuple {
                 continue;
             }
             jac_path = os.path.join(cur_root, fn);
-            stem: str = Path(jac_path).stem;
+            stem: str = base_stem(jac_path);
             rel_path: str = os.path.relpath(jac_path, scan_root_str);
             if stem not in all_stems {
                 all_stems[stem] = rel_path;
