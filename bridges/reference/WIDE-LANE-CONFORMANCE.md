@@ -101,7 +101,43 @@ the nested containers). Confirmed by reading `pack()`'s raw `JacBuf` before deco
 - **u64 above i64::MAX** decodes to a Python `int` (ctypes) with no loss -- the
   same exposure `TAG_UINT` already documents.
 
-## 6. Remaining gaps
+## 6. Full binder path -- PROVEN end-to-end (2026-07-17)
+
+A real serde crate was run through the **entire production pipeline** and a wide
+method called from Jac -- nothing hand-authored past the source crate:
+
+1. `demo` source crate: an opaque `Shifter` handle with
+   `shift(&self, p: Point, dx, dy) -> Point`, where `Point{x:i64, y:i64,
+   label:String}` derives `Serialize + Deserialize`.
+2. `cargo +nightly rustdoc --output-format json` (format_version 60, matches the
+   binder's `rustdoc-types 0.60`).
+3. `jac-bridge-binder` classified `Point` into the wide lane and emitted
+   `shift(&self, p: Wide<demo::Point>, dx: i64, dy: i64) -> Wide<demo::Point>`
+   (100% of public API bridged, 0 skips) -- **the lane conflict rule fired
+   correctly**: `Point` is not opaque-bridged, so it is wide, not a handle.
+4. `#[bridge]` macro + `cargo build --release` produced `libjac_bridge_demo.so`
+   with the real rmp_serde codec.
+5. Jac read the ABI blob from the `.so` (`read_jac_bridge_section` -> `parse`),
+   `build_module`, and called `Shifter(100).shift({"x":1,"y":2,"label":"origin"},
+   5, 7)` -> `{"x":106, "y":9, "label":"origin"}`. State (the handle's `base`)
+   persisted across a second call. **PASS.**
+
+**Gap found and fixed by this exercise (commit `fix(binder): ... serde +
+rmp-serde`):** the `#[bridge]` macro expands wide slots to `::serde` /
+`::rmp_serde` *absolute* paths, so the generated crate must depend on both
+directly. `jac-bridge` declared them only as **dev-dependencies** (for its own
+tests), which do not flow downstream, so the first real wide bridge failed to
+compile with `could not find`rmp_serde``. `emit_cargo_toml` now adds
+`serde`/`rmp-serde` whenever `spec_has_wide(spec)` (mirroring the tokio-for-async
+rule); non-wide bridges stay minimal. Pinned by
+`jac-bridge-binder/src/tests/wide_lane.rs`
+(`wide_bridge_cargo_toml_declares_serde_and_rmp`, `non_wide_bridge_omits_serde_deps`).
+
+Only accommodation for the local/offline run: the generated `Cargo.toml`'s source
+dep was retargeted from the crates.io pin (`demo = "=0.1.0"`) to a path dep --
+an environment concern, not binder logic (classification/codegen are unmodified).
+
+## 7. Remaining gaps
 
 - **§2.6 typed-obj synthesis is unbuilt** on both sides: derived records still
   cross as a `JacValue` union (na) / `dict` (ctypes) rather than a typed Jac
@@ -110,12 +146,11 @@ the nested containers). Confirmed by reading `pack()`'s raw `JacBuf` before deco
 - **Sealed/wheel install:** `_synth._codec_source()` reads the sibling
   `_msgpack.jac` `__file__`-relative; verified in dev source, not yet in a
   packaged wheel.
-- **Full binder path:** the differential here loads a hand-authored `cdylib`; a
-  crate built through `_build_core.jac` (rustdoc -> classify -> macro -> cargo)
-  end-to-end is still untested, though the ABI and codec legs it depends on are
-  now proven live.
+- **na wide e2e:** the end-to-end above drove the ctypes loader; the na side is
+  proven at the synth-source and codec-byte level but not yet through a native
+  JIT call against a live wide `.so`.
 
-## 7. Reproduce
+## 8. Reproduce
 
 ```sh
 # rmp_serde cdylib (offline; crates cached under ~/.cargo)
@@ -125,6 +160,20 @@ cd <scratch>/wide_rs && CARGO_NET_OFFLINE=true cargo build --release --offline
 sed "s|__SO_PATH__|<scratch>/wide_rs/target/release/libwide_rs.so|" wide_diff.jac > run.jac
 PYTHONPATH=jac JAC_LLVM_SHIM=jac/zig-out/lib/libjacllvm.so \
   .venv/bin/python -m jaclang run run.jac
+
+# full binder end-to-end (demo source crate -> bridge -> .so -> live wide call)
+cargo build --release -p jac-bridge-binder --offline
+cd <scratch>/demo && RUSTC_BOOTSTRAP=1 cargo +nightly rustdoc --lib --offline \
+  -- -Zunstable-options --output-format json
+bridges/target/release/jac-bridge-binder <scratch>/demo/target/doc/demo.json \
+  --out <scratch>/demo_bridge --jac-bridge bridges/jac-bridge
+# offline-only: retarget the crates.io pin to a path dep, then build + call
+sed -i 's|^demo = "=0.1.0"|demo = { path = "<scratch>/demo" }|' <scratch>/demo_bridge/Cargo.toml
+cd <scratch>/demo_bridge && cargo build --release --offline
+sed "s|__SO_PATH__|<scratch>/demo_bridge/target/release/libjac_bridge_demo.so|" \
+  wide_e2e.jac > e2e.jac
+PYTHONPATH=jac JAC_LLVM_SHIM=jac/zig-out/lib/libjacllvm.so \
+  .venv/bin/python -m jaclang run e2e.jac
 ```
 
 Codec unit tests (committed): `jac/tests/compiler/test_rust_wide_ctypes.jac`
