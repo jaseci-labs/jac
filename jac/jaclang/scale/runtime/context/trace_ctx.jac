@@ -39,7 +39,6 @@ class TraceIdLogFilter(logging.Filter) {
 glob _trace_filter_installed: bool = False;
 
 def install_trace_log_filter -> None {
-    global _trace_filter_installed;
     if _trace_filter_installed {
         return;
     }
