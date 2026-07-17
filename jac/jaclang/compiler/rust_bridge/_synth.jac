@@ -24,7 +24,11 @@ import from jaclang.compiler.rust_bridge._blob {
     tag_is_map,
     tag_is_list,
     tag_map_value,
-    tag_list_value
+    tag_list_value,
+    tag_is_wide,
+    TAG_WIDE_REC_MASK,
+    RecordDesc,
+    FieldDesc
 }
 import from jaclang.compiler.rust_bridge._finder { _libc_soname }
 import from jaclang.compiler.rust_bridge._marshal {
@@ -324,6 +328,64 @@ class _Synth {
         self._bridged_str_method = False;
         self._bridged_callback = False;
         self._needs_codec = False;
+
+        self._typed_recs = [];
+        self._rec_names = {};
+        _seen_rec = set();
+        for fd in meta.fns {
+            _slots = [classify(fd.ret)];
+            for p in fd.params {
+                _slots.append(classify(p.tag));
+            }
+            for s in _slots {
+                rec = self._typed_record(s);
+                if rec is not None and rec.index not in _seen_rec {
+                    _seen_rec.add(rec.index);
+                    nm = _mangle(rec.name);
+                    while nm in _taken_types or nm in self._rec_names.values() {
+                        nm = nm + "_";
+                    }
+                    self._rec_names[rec.index] = nm;
+                    self._typed_recs.append(rec);
+                }
+            }
+        }
+        if self._typed_recs {
+            self._needs_codec = True;
+        }
+    }
+
+    def _na_scalar_field(self: _Synth, tag: int) -> bool {
+        base = tag_base(tag);
+        return base == TAG_INT
+        or base == TAG_UINT
+        or base == TAG_BOOL
+        or base == TAG_STR;
+    }
+
+    def _typed_record(self: _Synth, slot: Slot) -> RecordDesc | None {
+        if slot.kind != SlotKind.Wide or slot.record <= 0 or slot.is_opt {
+            return None;
+        }
+        idx = slot.record - 1;
+        if idx >= len(self.meta.records) {
+            return None;
+        }
+        rec = self.meta.records[idx];
+        for f in rec.fields {
+            if not self._na_scalar_field(f.tag) {
+                return None;
+            }
+        }
+        return rec;
+    }
+
+    def _wide_typed_name(self: _Synth, tag: int) -> str | None {
+        rec = self._typed_record(classify(tag));
+        if rec is None {
+            return None;
+        }
+        return self._rec_names.get(rec.index);
     }
 
     def _shim_decl(self: _Synth, fd: FnDesc) -> str | None {
@@ -543,15 +605,28 @@ class _Synth {
         if rs.kind == SlotKind.Map or rs.kind == SlotKind.List {
             body_lines.extend(self._na_decode_container(fd));
         } elif rs.kind == SlotKind.Wide {
+            _rrec = self._typed_record(rs);
             body_lines.append('        rb = struct.unpack("<QII", out_buf);');
             body_lines.append("        if rb[0] == 0 {");
-            body_lines.append("            return jv_nil();");
+            if _rrec is not None {
+                body_lines.append(
+                    f"            return {self._rec_names[_rrec.index]}();"
+                );
+            } else {
+                body_lines.append("            return jv_nil();");
+            }
             body_lines.append("        }");
             body_lines.append("        _wv = msgpack_decode(rb[0], rb[1]);");
             body_lines.append(
                 f"        {self.free_buf}(rb[0], rb[1] | (rb[2] << 32));"
             );
-            body_lines.append("        return _wv;");
+            if _rrec is not None {
+                body_lines.append(
+                    f"        return _jv_to_{self._rec_names[_rrec.index]}(_wv);"
+                );
+            } else {
+                body_lines.append("        return _wv;");
+            }
         } elif rs.kind == SlotKind.OpaqueRef {
             target = self.opaque[rs.ref_index];
             body_lines.append('        rh = struct.unpack("<Q", out_h)[0];');
@@ -629,12 +704,85 @@ class _Synth {
         return lines;
     }
 
+    def _record_source(self: _Synth, rec: RecordDesc) -> list[str] {
+        name = self._rec_names[rec.index];
+        lines = [];
+        lines.append(f"obj {name} {{");
+        for f in rec.fields {
+            fn = self._field_name(f.name);
+            base = tag_base(f.tag);
+            if base == TAG_STR {
+                lines.append(f"    has {fn}: str = \"\";");
+            } elif base == TAG_BOOL {
+                lines.append(f"    has {fn}: bool = False;");
+            } else {
+                lines.append(f"    has {fn}: int = 0;");
+            }
+        }
+        lines.append("}");
+        lines.append("");
+
+        lines.append(f"def _{name}_to_jv(_r: {name}) -> JacValue {{");
+        lines.append(f"    r: {name} = _r;");
+        lines.append("    m: dict[str, JacValue] = {};");
+        for f in rec.fields {
+            fn = self._field_name(f.name);
+            base = tag_base(f.tag);
+            if base == TAG_STR {
+                lines.append(f"    m[{f.name!r}] = jv_str(r.{fn});");
+            } elif base == TAG_BOOL {
+                lines.append(f"    m[{f.name!r}] = jv_bool(r.{fn});");
+            } elif base == TAG_UINT {
+                lines.append(f"    m[{f.name!r}] = jv_uint(r.{fn});");
+            } else {
+                lines.append(f"    m[{f.name!r}] = jv_int(r.{fn});");
+            }
+        }
+        lines.append("    return jv_map(m);");
+        lines.append("}");
+        lines.append("");
+
+        lines.append(f"def _jv_to_{name}(_v: JacValue) -> {name} {{");
+        lines.append(f"    v: JacValue = _v;");
+        lines.append(f"    r = {name}();");
+        lines.append("    e = v.entries;");
+        _i = 0;
+        for f in rec.fields {
+            fn = self._field_name(f.name);
+            base = tag_base(f.tag);
+            lines.append(f"    _f{_i} = e[{f.name!r}];");
+            if base == TAG_STR {
+                lines.append(f"    r.{fn} = _f{_i}.s;");
+            } elif base == TAG_BOOL {
+                lines.append(f"    r.{fn} = _f{_i}.b;");
+            } else {
+                lines.append(f"    r.{fn} = _f{_i}.i;");
+            }
+            _i += 1;
+        }
+        lines.append("    return r;");
+        lines.append("}");
+        return lines;
+    }
+
+    def _field_name(self: _Synth, raw: str) -> str {
+        m = _mangle(raw);
+        return m;
+    }
+
     def _wide_prelude(self: _Synth, fd: FnDesc) -> list[str] {
         lines = [];
         for p in fd.params {
-            if classify(p.tag).kind == SlotKind.Wide {
+            slot = classify(p.tag);
+            if slot.kind == SlotKind.Wide {
                 pn = self._pname(p);
-                lines.append(f"        _enc_{pn} = msgpack_encode({pn});");
+                rec = self._typed_record(slot);
+                if rec is not None {
+                    conv = f"_{self._rec_names[rec.index]}_to_jv";
+                    lines.append(f"        _enc_{pn} = msgpack_encode({conv}({pn}));");
+                } else {
+                    lines.append(f"        _enc_{pn} = msgpack_encode({pn});");
+                }
             }
         }
         return lines;
@@ -838,6 +986,11 @@ class _Synth {
             out.append("");
         }
 
+        for rec in self._typed_recs {
+            out.extend(self._record_source(rec));
+            out.append("");
+        }
+
         produces = {ti: set() for ti in self.opaque};
         for ti in self.opaque {
             for fd in methods_of.get(ti, []) {
@@ -983,8 +1136,9 @@ class _Synth {
         if tag_base(p.tag) == TAG_F64 {
             return f"{pn}: float";
         }
-        if tag_base(p.tag) == TAG_WIDE {
-            return f"{pn}: JacValue";
+        if tag_is_wide(p.tag) {
+            tn = self._wide_typed_name(p.tag);
+            return f"{pn}: {tn}" if tn is not None else f"{pn}: JacValue";
         }
         if tag_is_ref(p.tag) {
             return f"{pn}: {self.opaque.get(tag_ref_index(p.tag), 'object')}";
@@ -1033,8 +1187,9 @@ class _Synth {
         if tag_base(fd.ret) == TAG_STR {
             return " -> str | None" if tag_is_opt(fd.ret) else " -> str";
         }
-        if tag_base(fd.ret) == TAG_WIDE {
-            return " -> JacValue";
+        if tag_is_wide(fd.ret) {
+            tn = self._wide_typed_name(fd.ret);
+            return f" -> {tn}" if tn is not None else " -> JacValue";
         }
         if tag_is_ref(fd.ret) {
             t = self.opaque.get(tag_ref_index(fd.ret), "object");

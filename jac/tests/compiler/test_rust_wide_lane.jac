@@ -15,8 +15,11 @@ import from jaclang.compiler.rust_bridge._blob {
     FnDesc,
     ParamDesc,
     TypeDesc,
+    RecordDesc,
+    FieldDesc,
     TAG_WIDE,
     TAG_INT,
+    TAG_STR,
     TAG_REF_BIT,
     TAG_VOID,
     FN_CTOR,
@@ -86,6 +89,69 @@ test "classify maps TAG_WIDE to SlotKind.Wide" {
     assert classify(TAG_WIDE).kind == SlotKind.Wide;
     # a wide value is a whole serde document, never a scalar leaf.
     assert classify_scalar(TAG_WIDE).kind == SlotKind.Unbridgeable;
+}
+
+
+def _typed_meta -> BridgeMeta {
+    ref0 = TAG_REF_BIT | 0;
+    wide_rec = TAG_WIDE | (1 << 8);
+    types = [
+        TypeDesc(
+            index=0, kind=KIND_OPAQUE, name="Shifter", drop_sym="jac_t_shifter_drop"
+        )
+    ];
+    recs = [
+        RecordDesc(
+            index=0,
+            name="Point",
+            fields=[
+                FieldDesc(name="x", tag=TAG_INT),
+                FieldDesc(name="y", tag=TAG_INT),
+                FieldDesc(name="label", tag=TAG_STR)
+            ]
+        )
+    ];
+    fns = [
+        FnDesc(
+            index=0,
+            name="new",
+            sym="jac_t_shifter_new",
+            self_type=TAG_VOID,
+            kind=FN_CTOR,
+            throws=0,
+            ret=ref0,
+            params=[ParamDesc(name="base", tag=TAG_INT)]
+        ),
+        FnDesc(
+            index=1,
+            name="shift",
+            sym="jac_t_shifter_shift",
+            self_type=0,
+            kind=FN_METHOD,
+            throws=0,
+            ret=wide_rec,
+            params=[ParamDesc(name="p", tag=wide_rec)]
+        )
+    ];
+    return BridgeMeta(
+        abi_version=1, module_name="demo", types=types, fns=fns, records=recs
+    );
+}
+
+
+test "a typed record wide slot synthesizes a typed obj, not JacValue" {
+    src = render_na_source(_typed_meta(), "libdemo.so").source;
+    # the record becomes a real obj with checked fields
+    assert "obj Point {" in src;
+    assert "    has x: int = 0;" in src;
+    assert '    has label: str = "";' in src;
+    # both converters bridge it to the shared JacValue codec
+    assert "def _Point_to_jv(_r: Point) -> JacValue {" in src;
+    assert "def _jv_to_Point(_v: JacValue) -> Point {" in src;
+    # the na-facing signature is TYPED, not JacValue
+    assert "def shift(p: Point) -> Point {" in src;
+    assert "_enc_p = msgpack_encode(_Point_to_jv(p));" in src;
+    assert "return _jv_to_Point(_wv);" in src;
 }
 
 

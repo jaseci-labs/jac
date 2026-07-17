@@ -7,7 +7,7 @@
 use crate::codegen::{emit, emit_cargo_toml};
 use crate::types::{
     BridgeFn, BridgeParam, BridgeReturn, BridgeSpec, BridgeType, Ownership, Recv, ScalarType,
-    SerdeInfo, TypeKind,
+    SerdeInfo, TypeKind, WideField, WideRecord,
 };
 
 fn method(name: &str, params: Vec<BridgeParam>, ret: BridgeReturn) -> BridgeFn {
@@ -83,6 +83,30 @@ fn wide_param_and_return_emit_wide_marker() {
         src.contains("Wide(self.0.shift(p.0, dx))"),
         "wide body\n{src}"
     );
+}
+
+#[test]
+fn typed_record_emits_jac_record_struct() {
+    // 2.9: a spec carrying a typed record emits a `#[jac_record]` struct whose
+    // fields mirror the derived-serde shape; the macro turns it into the blob
+    // record table and the loader synthesizes a typed obj. The wide signatures are
+    // unchanged — the record is pure metadata beside `Wide<demo::Point>`.
+    let mut s = spec();
+    s.records = vec![WideRecord {
+        name: "Point".into(),
+        fields: vec![
+            WideField { name: "x".into(), rust_ty: "i64".into() },
+            WideField { name: "y".into(), rust_ty: "i64".into() },
+            WideField { name: "label".into(), rust_ty: "String".into() },
+        ],
+    }];
+    let src = emit(&s);
+    assert!(src.contains("#[jac_record]"), "missing marker\n{src}");
+    assert!(src.contains("pub struct Point {"), "missing record struct\n{src}");
+    assert!(src.contains("pub x: i64,"), "missing field x\n{src}");
+    assert!(src.contains("pub label: String,"), "missing field label\n{src}");
+    // The wide signature still marshals the foreign type, not the local record.
+    assert!(src.contains("p: Wide<demo::Point>"), "wide sig changed\n{src}");
 }
 
 #[test]

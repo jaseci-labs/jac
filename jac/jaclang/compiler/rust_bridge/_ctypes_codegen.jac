@@ -21,6 +21,7 @@ import from jaclang.compiler.rust_bridge._blob {
     BridgeMeta,
     FnDesc,
     TypeDesc,
+    RecordDesc,
     TAG_VOID,
     TAG_BOOL,
     TAG_INT,
@@ -129,6 +130,12 @@ class _Runtime {
         self._err_msgs = {};
         self._err_cls = {};
         self.PanicError = type("PanicError", (Exception, ), {});
+
+        self.records = meta.records;
+        self.record_classes = {};
+        for rec in meta.records {
+            self.record_classes[rec.index] = _make_record_class(rec);
+        }
 
         for td in meta.types {
             if td.kind != KIND_ERROR {
@@ -351,15 +358,6 @@ def _decode_list(raw: bytes, vtag: int) -> list {
     }
     return out;
 }
-
-
-# --- serde wide lane (TAG_WIDE) -------------------------------------------
-# A wide slot carries a whole serde document as a MessagePack payload across the
-# FFI boundary. Unlike the na surface — which has no `any` type and so must model
-# the value as a `JacValue` tagged union (see rust_bridge/_msgpack.jac) — CPython
-# is dynamically typed, so we decode straight to native dict/list/int/float/str/
-# bool/None and encode the same natives back. The wire format is standard
-# MessagePack and is byte-compatible with the na codec (rmp_serde accepts both).
 
 
 def _mp_read(raw: bytes, off: int, depth: int) -> tuple {
@@ -599,7 +597,8 @@ def _call(
             (enc, n) = _encode(v);
             c_args.extend([enc, c_uint32(n)]);
         } elif s.kind == SlotKind.Wide {
-            enc = _mp_encode(v);
+            payload = _rec_to_dict(v, rt.records[s.record - 1]) if s.record > 0 else v;
+            enc = _mp_encode(payload);
             c_args.extend([enc, c_uint32(len(enc))]);
         } elif s.kind == SlotKind.Bool {
             c_args.append(c_uint8(int(bool(v))));
@@ -698,7 +697,12 @@ def _call(
         }
         raw = string_at(out_buf.ptr, out_buf.len) if out_buf.ptr != 0 else b"";
         rt.free_buf(out_buf);
-        return _mp_decode(raw);
+        decoded = _mp_decode(raw);
+        if ret.record > 0 and isinstance(decoded, dict) {
+            cls = rt.record_classes[ret.record - 1];
+            return cls(**decoded);
+        }
+        return decoded;
     }
     if ret.kind == SlotKind.Int {
         v = out_h.value;
@@ -770,6 +774,60 @@ def _bind_static(
     }
     static_method.__name__ = fd_.name;
     return staticmethod(static_method);
+}
+
+
+def _make_record_class(rec: RecordDesc) -> type {
+    field_names = [f.name for f in rec.fields];
+
+    def __init__(self: object, *args: object, **kw: object) {
+        if len(args) > len(field_names) {
+            raise TypeError(
+                f"{rec.name}() takes at most {len(field_names)} positional args"
+            );
+        }
+        for (i, fn) in enumerate(field_names) {
+            if i < len(args) {
+                setattr(self, fn, args[i]);
+            } elif fn in kw {
+                setattr(self, fn, kw[fn]);
+            } else {
+                setattr(self, fn, None);
+            }
+        }
+    }
+
+    def __repr__(self: object) -> str {
+        inner = ", ".join([f"{fn}={getattr(self, fn)!r}" for fn in field_names]);
+        return f"{rec.name}({inner})";
+    }
+
+    def __eq__(self: object, other: object) -> bool {
+        if not isinstance(other, type(self)) {
+            return NotImplemented;
+        }
+        return all([getattr(self, fn) == getattr(other, fn) for fn in field_names]);
+    }
+
+    return type(
+        rec.name,
+        (),
+        {
+            "__init__": __init__,
+            "__repr__": __repr__,
+            "__eq__": __eq__,
+            "__hash__": None,
+            "_jac_fields": field_names
+        }
+    );
+}
+
+
+def _rec_to_dict(v: object, rec: RecordDesc) -> dict {
+    if isinstance(v, dict) {
+        return v;
+    }
+    return {f.name: getattr(v, f.name) for f in rec.fields};
 }
 
 
@@ -937,6 +995,10 @@ def build_module(so_path: str, meta: BridgeMeta) -> object {
         } elif td.kind == KIND_OPAQUE {
             setattr(mod, td.name, classes[td.index]);
         }
+    }
+
+    for rec in meta.records {
+        setattr(mod, rec.name, rt.record_classes[rec.index]);
     }
     mod.PanicError = rt.PanicError;
     mod._lib = lib;

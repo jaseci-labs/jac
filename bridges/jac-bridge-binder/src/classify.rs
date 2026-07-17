@@ -3270,6 +3270,26 @@ mod serde_lane_tests {
     }
 
     #[test]
+    fn manual_serde_impl_is_not_a_typed_record() {
+        // 2.9's load-bearing safety rule: a MANUAL serde impl (chrono's `NaiveDate`
+        // serializes as an ISO-8601 *string*, not a `{year, month, day}` record) must
+        // NEVER become a typed obj from its rustdoc fields — the fields are private
+        // and the wire shape is set by hand. It still crosses wide (dynamic), but
+        // classification records NO typed record for it.
+        let doc = load_doc();
+        let cx = ctx(&doc);
+        assert!(!cx.serde_disposition(find_id(&doc, "NaiveDate")).automatically_derived);
+        match cx.classify_param_type(&leaf(&doc, "NaiveDate"), &[]) {
+            Ok(ScalarType::Wide(_)) => {}
+            other => panic!("expected Wide, got {other:?}"),
+        }
+        assert!(
+            cx.build_wide_records().is_empty(),
+            "a manual-serde type must not synthesize a typed record"
+        );
+    }
+
+    #[test]
     fn pure_std_shape_has_no_serde_intent_stays_skip() {
         // The serde-intent gate: a shape whose leaves are ALL std/primitive carries
         // no serde intent, so it is NOT auto-crossed wide (keeping today's skips —

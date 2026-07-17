@@ -12,7 +12,11 @@ import from ctypes { c_char_p, c_uint32, c_uint64 }
 import from jaclang.compiler.rust_bridge._blob {
     FnDesc,
     ParamDesc,
+    RecordDesc,
+    FieldDesc,
     TAG_WIDE,
+    TAG_INT,
+    TAG_STR,
     TAG_VOID,
     FN_METHOD
 }
@@ -21,7 +25,42 @@ import from jaclang.compiler.rust_bridge._ctypes_codegen {
     _mp_encode,
     _mp_decode,
     _ret_bridgeable,
-    _wire
+    _wire,
+    _make_record_class,
+    _rec_to_dict
+}
+
+
+def _point_rec -> RecordDesc {
+    return RecordDesc(
+        index=0,
+        name="Point",
+        fields=[
+            FieldDesc(name="x", tag=TAG_INT),
+            FieldDesc(name="y", tag=TAG_INT),
+            FieldDesc(name="label", tag=TAG_STR)
+        ]
+    );
+}
+
+
+test "a typed record class round-trips through the msgpack codec" {
+    rec = _point_rec();
+    cls = _make_record_class(rec);
+    p = cls(x=1, y=2, label="origin");
+    # typed attribute access
+    assert p.x == 1 and p.y == 2 and p.label == "origin";
+    # value equality + a readable repr
+    assert p == cls(x=1, y=2, label="origin");
+    assert "Point(" in repr(p);
+    # instance -> dict projects onto the declared fields
+    d = _rec_to_dict(p, rec);
+    assert d == {"x": 1, "y": 2, "label": "origin"};
+    # a dict passes through unchanged (ergonomic: callers may pass a dict)
+    assert _rec_to_dict({"x": 9}, rec) == {"x": 9};
+    # the projected dict encodes/decodes byte-identically to the dynamic path
+    got = _mp_decode(_mp_encode(d));
+    assert got == {"x": 1, "y": 2, "label": "origin"};
 }
 
 
