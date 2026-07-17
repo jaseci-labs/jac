@@ -5,7 +5,7 @@ import from dataclasses { field }
 import from typing { Any }
 import type from jaclang.compiler.passes.ecmascript.estree { IndexInfo, SliceInfo }
 import type from jaclang.compiler.passes.ecmascript.estree { Node as EsNode }
-import type from jaclang.compiler.passes.tool.comment_attach_pass { NodeComments }
+import type from jaclang.jac0core.unitree { CommentToken }
 import type from jaclang.compiler.passes.tool.doc_ir { Doc }
 import type from jaclang.jac0core.unitree { Source, Token }
 import type from jaclang.jac0core.osp_model { OspModel }
@@ -221,6 +221,13 @@ obj InteropManifest {
     has native_cross_module_imports: list[InteropBinding] { getter; }
     has server_exports_to_client: list[InteropBinding] { getter; }
     has server_exports_to_server: list[InteropBinding] { getter; }
+}
+
+obj NodeComments {
+    has leading: list[CommentToken] = [],
+        trailing_inline: list[CommentToken] = [],
+        trailing_own: list[CommentToken] = [],
+        indent_trailing_own: bool = False;
 }
 
 obj CodeGenTarget {
