@@ -45,18 +45,32 @@ pub struct BridgeSpec {
 /// struct's name and the record's name in the blob table; it matches the LAST
 /// segment of the `Wide<..>` inner type spelled in signatures, which is how the
 /// macro links a wide slot to its record. Fields are in declaration order (==
-/// msgpack map key order); each `rust_ty` is the field's Rust type spelling
-/// (`i64`, `String`, `f64`, `bool`) the macro re-maps to a scalar tag.
+/// msgpack map key order); each `rust_ty` is the field's Rust type spelling the
+/// macro re-maps to a tag — a scalar (`i64`/`String`/…), a nested record name, or a
+/// container of those (`Vec<Point>`, `Option<String>`), 2.9-followup.
 #[derive(Debug, Clone, PartialEq)]
 pub struct WideRecord {
     pub name: String,
+    /// A plain struct, or a serde enum (each field is a variant).
+    pub kind: RecordKind,
     pub fields: Vec<WideField>,
 }
 
+/// Whether a [`WideRecord`] is a plain struct or a serde enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecordKind {
+    Struct,
+    Enum,
+}
+
+/// One field of a struct record, or one variant of an enum record. For a struct
+/// field `rust_ty` is always `Some` (the field's type spelling). For an enum
+/// variant, `rust_ty` is `None` for a unit variant and `Some(payload)` for a
+/// newtype variant `V(payload)`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct WideField {
     pub name: String,
-    pub rust_ty: String,
+    pub rust_ty: Option<String>,
 }
 
 /// A public type removed wholesale during classify (not a per-method skip). Each

@@ -11,8 +11,8 @@ use rustdoc_types::{Attribute, Crate, Id, Item, ItemEnum, StructKind, Type};
 use crate::overlay::Overlay;
 use crate::types::{
     BridgeFn, BridgeParam, BridgeReturn, BridgeSpec, BridgeType, DrainCollect, DropReason,
-    DroppedType, MonoType, Ownership, OwningWrapper, Recv, RootProducer, ScalarType, SerdeInfo,
-    Skip, SkipReason, TypeKind, WideField, WideRecord, WrapperKind,
+    DroppedType, MonoType, Ownership, OwningWrapper, Recv, RecordKind, RootProducer, ScalarType,
+    SerdeInfo, Skip, SkipReason, TypeKind, WideField, WideRecord, WrapperKind,
 };
 
 /// Which serde trait a path check / whitelist-leaf lookup is after. A wide return
@@ -169,6 +169,7 @@ pub fn classify_with_overlay(doc: &Crate, overlay: Option<&Overlay>) -> BridgeSp
         root_reexports: collect_root_reexports(doc),
         root_glob_modules: collect_root_glob_modules(doc, &module_name),
         wide_record_ids: std::cell::RefCell::new(vec![]),
+        qual_stack: std::cell::RefCell::new(vec![]),
     };
 
     let mut types = ctx.find_types();
@@ -476,9 +477,16 @@ struct Ctx<'a> {
     /// record (2.9), in first-seen order, deduplicated. Collected during method
     /// classification (via `&self` wide-slot resolution, hence the interior
     /// mutability) and turned into [`BridgeSpec::records`] afterwards. A struct
-    /// lands here only when it passes `derived_record_at`'s gate — derived serde,
-    /// no stripped fields, all fields scalar/String.
+    /// lands here only when it passes `record_qualifies`' gate — derived serde,
+    /// no stripped fields, and every field admissible (scalar/String, a nested
+    /// qualifying record, or a container of those). Nested records are registered
+    /// transitively (2.9-followup).
     wide_record_ids: std::cell::RefCell<Vec<u32>>,
+    /// Record ids currently on the `record_qualifies` recursion stack — the cycle
+    /// guard for a self-referential serde type (e.g. a tree `Node { kids:
+    /// Vec<Node> }`). A re-entered id is assumed to qualify (the enclosing frame
+    /// does the real field check), so the recursion terminates.
+    qual_stack: std::cell::RefCell<Vec<u32>>,
 }
 
 impl<'a> Ctx<'a> {
@@ -1083,28 +1091,69 @@ impl<'a> Ctx<'a> {
         }
     }
 
-    /// The Rust spelling of a field type IF it is a scalar or `String` — the only
-    /// field shapes a v1 typed record admits. `None` for anything else (a nested
-    /// record, a container, a foreign type), which disqualifies the whole record so
-    /// it stays on the dynamic wide lane.
-    fn scalar_field_ty(&self, ty: &Type) -> Option<String> {
+    /// The Rust spelling of a record FIELD type if it is admissible for typed-obj
+    /// synthesis, else `None` (which disqualifies the enclosing record). Admissible
+    /// = a scalar/`String`, a nested qualifying record (rendered as its LOCAL leaf
+    /// name — the `#[jac_record]` the binder also emits, matched by the macro by
+    /// name), or an `Option`/`Vec`/`HashMap<String,_>` of an admissible type
+    /// (2.9-followup). This is a PURE check — it registers nothing — so
+    /// `record_qualifies` can use it while deciding, and `register_records_deep`
+    /// does the registration separately.
+    fn render_field_ty(&self, ty: &Type) -> Option<String> {
         match ty {
+            Type::BorrowedRef { type_, .. } => self.render_field_ty(type_),
             Type::Primitive(p) => match p.as_str() {
                 "bool" | "i8" | "i16" | "i32" | "i64" | "isize" | "u8" | "u16" | "u32"
                 | "u64" | "usize" | "f32" | "f64" => Some(p.clone()),
                 _ => None,
             },
-            Type::ResolvedPath(rp) if rp_name(&rp.path) == "String" => Some("String".into()),
+            Type::ResolvedPath(rp) => match rp_name(&rp.path) {
+                "String" => Some("String".into()),
+                "Vec" => {
+                    let args = angle_type_args(rp);
+                    if args.len() != 1 {
+                        return None;
+                    }
+                    Some(format!("Vec<{}>", self.render_field_ty(args[0])?))
+                }
+                "Option" => {
+                    let args = angle_type_args(rp);
+                    if args.len() != 1 {
+                        return None;
+                    }
+                    Some(format!("Option<{}>", self.render_field_ty(args[0])?))
+                }
+                "HashMap" | "BTreeMap" => {
+                    let args = angle_type_args(rp);
+                    if args.len() != 2 {
+                        return None;
+                    }
+                    // A msgpack map crosses with string keys only.
+                    if !matches!(args[0], Type::ResolvedPath(k) if rp_name(&k.path) == "String") {
+                        return None;
+                    }
+                    Some(format!(
+                        "std::collections::HashMap<String, {}>",
+                        self.render_field_ty(args[1])?
+                    ))
+                }
+                // A nested type: admissible iff it is itself a qualifying record.
+                // Rendered as its own local record name (the emitted `#[jac_record]`).
+                _ => {
+                    let (id, _) = self.record_qualifies(ty)?;
+                    self.doc.index.get(&Id(id))?.name.clone()
+                }
+            },
             _ => None,
         }
     }
 
-    /// The rustdoc id of the derived-record struct `ty`'s TOP type resolves to, if it
-    /// qualifies for typed-obj synthesis (2.9): a plain struct with a
-    /// `#[automatically_derived]` serde impl (so rustdoc's field list IS the wire
-    /// shape), no stripped/private fields, and every field a scalar/`String`. `None`
-    /// otherwise — that value keeps the dynamic wide lane. A leading `&` is peeled.
-    fn derived_record_at(&self, ty: &Type) -> Option<u32> {
+    /// The `(id, kind)` of `ty` IF it is a derived-serde struct or enum, WITHOUT the
+    /// full field check — the cheap gate `record_qualifies` builds on. A struct must
+    /// be a plain-named struct with no stripped fields; an enum must have no stripped
+    /// variants. Both must carry an `#[automatically_derived]` serde impl (so
+    /// rustdoc's fields/variants ARE the wire shape). A leading `&` is peeled.
+    fn record_shell(&self, ty: &Type) -> Option<(u32, RecordKind)> {
         let ty = match ty {
             Type::BorrowedRef { type_, .. } => &**type_,
             t => t,
@@ -1112,53 +1161,209 @@ impl<'a> Ctx<'a> {
         let Type::ResolvedPath(rp) = ty else { return None };
         let id = rp.id.0;
         let item = self.doc.index.get(&Id(id))?;
-        let ItemEnum::Struct(s) = &item.inner else { return None };
         if !self.serde_disposition(id).automatically_derived {
             return None;
         }
-        let StructKind::Plain { fields, has_stripped_fields } = &s.kind else { return None };
-        if *has_stripped_fields {
-            return None;
+        match &item.inner {
+            ItemEnum::Struct(s) => match &s.kind {
+                StructKind::Plain { has_stripped_fields: false, .. } => {
+                    Some((id, RecordKind::Struct))
+                }
+                _ => None,
+            },
+            ItemEnum::Enum(e) if !e.has_stripped_variants => Some((id, RecordKind::Enum)),
+            _ => None,
         }
-        for fid in fields {
-            let f = self.item(fid)?;
-            let ItemEnum::StructField(fty) = &f.inner else { return None };
-            self.scalar_field_ty(fty)?;
-        }
-        Some(id)
     }
 
-    /// Register `ty`'s top type as a typed record if it qualifies (dedup, first-seen
-    /// order). Interior mutability: the wide-slot resolution path is `&self`.
-    fn note_wide_top(&self, ty: &Type) {
-        if let Some(id) = self.derived_record_at(ty) {
-            let mut ids = self.wide_record_ids.borrow_mut();
-            if !ids.contains(&id) {
-                ids.push(id);
+    /// The `(id, kind)` of the typed record `ty` resolves to, if it qualifies for
+    /// typed-obj synthesis (2.9 / 2.9-followup): a derived-serde struct whose every
+    /// field is admissible, or a derived-serde enum whose every variant is a unit or
+    /// newtype variant with an admissible payload. `None` keeps the value on the
+    /// dynamic wide lane. A self-referential type is broken by the `qual_stack` cycle
+    /// guard (a re-entered id is assumed to qualify).
+    fn record_qualifies(&self, ty: &Type) -> Option<(u32, RecordKind)> {
+        let (id, kind) = self.record_shell(ty)?;
+        if self.qual_stack.borrow().contains(&id) {
+            return Some((id, kind));
+        }
+        self.qual_stack.borrow_mut().push(id);
+        let ok = self.record_members_admissible(id, kind);
+        self.qual_stack.borrow_mut().pop();
+        if ok {
+            Some((id, kind))
+        } else {
+            None
+        }
+    }
+
+    /// True when every field (struct) / variant payload (enum) of record `id` is
+    /// admissible. Assumes `id` is a valid record shell of `kind`.
+    fn record_members_admissible(&self, id: u32, kind: RecordKind) -> bool {
+        let Some(item) = self.doc.index.get(&Id(id)) else { return false };
+        match kind {
+            RecordKind::Struct => {
+                let ItemEnum::Struct(s) = &item.inner else { return false };
+                let StructKind::Plain { fields, .. } = &s.kind else { return false };
+                fields.iter().all(|fid| {
+                    self.item(fid)
+                        .and_then(|f| match &f.inner {
+                            ItemEnum::StructField(fty) => self.render_field_ty(fty),
+                            _ => None,
+                        })
+                        .is_some()
+                })
+            }
+            RecordKind::Enum => {
+                let ItemEnum::Enum(e) = &item.inner else { return false };
+                e.variants.iter().all(|vid| self.variant_payload_ty(vid).is_some())
             }
         }
     }
 
+    /// The admissible payload spelling of an enum variant: `Some(None)` for a unit
+    /// variant, `Some(Some(ty))` for a newtype variant with an admissible payload,
+    /// `None` for anything unsupported (struct-payload / multi-field tuple / an
+    /// inadmissible payload) — which disqualifies the whole enum.
+    fn variant_payload_ty(&self, vid: &Id) -> Option<Option<String>> {
+        let v = self.item(vid)?;
+        let ItemEnum::Variant(var) = &v.inner else { return None };
+        match &var.kind {
+            rustdoc_types::VariantKind::Plain => Some(None),
+            rustdoc_types::VariantKind::Tuple(fields) if fields.len() == 1 => {
+                let fid = fields[0].as_ref()?;
+                let f = self.item(fid)?;
+                let ItemEnum::StructField(fty) = &f.inner else { return None };
+                Some(Some(self.render_field_ty(fty)?))
+            }
+            _ => None,
+        }
+    }
+
+    /// Register `ty`'s top type as a typed record if it qualifies, then recurse into
+    /// every nested record it references so the whole reachable graph gets a
+    /// `#[jac_record]` (dedup, first-seen order). Interior mutability: the wide-slot
+    /// resolution path is `&self`.
+    fn note_wide_top(&self, ty: &Type) {
+        if let Some((id, _)) = self.record_qualifies(ty) {
+            self.register_record_deep(id);
+        }
+    }
+
+    /// Register record `id` and, transitively, every nested record reachable from
+    /// its fields/variants. Guarded against cycles + re-registration by the
+    /// `wide_record_ids` set itself.
+    fn register_record_deep(&self, id: u32) {
+        {
+            let mut ids = self.wide_record_ids.borrow_mut();
+            if ids.contains(&id) {
+                return;
+            }
+            ids.push(id);
+        }
+        // Walk the record's member types and register any nested records.
+        let Some(item) = self.doc.index.get(&Id(id)) else { return };
+        let member_tys: Vec<Type> = match &item.inner {
+            ItemEnum::Struct(s) => match &s.kind {
+                StructKind::Plain { fields, .. } => fields
+                    .iter()
+                    .filter_map(|fid| match &self.item(fid)?.inner {
+                        ItemEnum::StructField(fty) => Some(fty.clone()),
+                        _ => None,
+                    })
+                    .collect(),
+                _ => vec![],
+            },
+            ItemEnum::Enum(e) => e
+                .variants
+                .iter()
+                .filter_map(|vid| match &self.item(vid)?.inner {
+                    ItemEnum::Variant(rustdoc_types::Variant {
+                        kind: rustdoc_types::VariantKind::Tuple(fields),
+                        ..
+                    }) if fields.len() == 1 => {
+                        let fid = fields[0].as_ref()?;
+                        match &self.item(fid)?.inner {
+                            ItemEnum::StructField(fty) => Some(fty.clone()),
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                })
+                .collect(),
+            _ => vec![],
+        };
+        for mty in &member_tys {
+            for nested in self.nested_record_types(mty) {
+                if let Some((nid, _)) = self.record_qualifies(&nested) {
+                    self.register_record_deep(nid);
+                }
+            }
+        }
+    }
+
+    /// The record-typed leaves inside a field type, peeling `Option`/`Vec`/`Map`
+    /// containers (e.g. `Option<Vec<Point>>` yields `Point`). A scalar yields none.
+    fn nested_record_types(&self, ty: &Type) -> Vec<Type> {
+        match ty {
+            Type::BorrowedRef { type_, .. } => self.nested_record_types(type_),
+            Type::ResolvedPath(rp) => match rp_name(&rp.path) {
+                "Vec" | "Option" => angle_type_args(rp)
+                    .iter()
+                    .flat_map(|t| self.nested_record_types(t))
+                    .collect(),
+                "HashMap" | "BTreeMap" => angle_type_args(rp)
+                    .iter()
+                    .skip(1) // key is String, only the value can be a record
+                    .flat_map(|t| self.nested_record_types(t))
+                    .collect(),
+                "String" => vec![],
+                // A path that is itself a record.
+                _ => {
+                    if self.record_shell(ty).is_some() {
+                        vec![ty.clone()]
+                    } else {
+                        vec![]
+                    }
+                }
+            },
+            _ => vec![],
+        }
+    }
+
     /// Materialize [`BridgeSpec::records`] from the ids collected during
-    /// classification: each struct's name + its scalar/`String` fields in
-    /// declaration order (== msgpack map key order).
+    /// classification: each struct's name + fields (with full type spellings), or
+    /// each enum's name + variants (unit or newtype payload), in declaration order.
     fn build_wide_records(&self) -> Vec<WideRecord> {
         let ids = self.wide_record_ids.borrow();
         ids.iter()
             .filter_map(|&id| {
                 let item = self.doc.index.get(&Id(id))?;
                 let name = item.name.clone()?;
-                let ItemEnum::Struct(s) = &item.inner else { return None };
-                let StructKind::Plain { fields, .. } = &s.kind else { return None };
-                let mut wf = Vec::new();
-                for fid in fields {
-                    let f = self.item(fid)?;
-                    let fname = f.name.clone()?;
-                    let ItemEnum::StructField(fty) = &f.inner else { return None };
-                    let rust_ty = self.scalar_field_ty(fty)?;
-                    wf.push(WideField { name: fname, rust_ty });
+                match &item.inner {
+                    ItemEnum::Struct(s) => {
+                        let StructKind::Plain { fields, .. } = &s.kind else { return None };
+                        let mut wf = Vec::new();
+                        for fid in fields {
+                            let f = self.item(fid)?;
+                            let fname = f.name.clone()?;
+                            let ItemEnum::StructField(fty) = &f.inner else { return None };
+                            let rust_ty = self.render_field_ty(fty)?;
+                            wf.push(WideField { name: fname, rust_ty: Some(rust_ty) });
+                        }
+                        Some(WideRecord { name, kind: RecordKind::Struct, fields: wf })
+                    }
+                    ItemEnum::Enum(e) => {
+                        let mut wf = Vec::new();
+                        for vid in &e.variants {
+                            let vname = self.item(vid)?.name.clone()?;
+                            let payload = self.variant_payload_ty(vid)?;
+                            wf.push(WideField { name: vname, rust_ty: payload });
+                        }
+                        Some(WideRecord { name, kind: RecordKind::Enum, fields: wf })
+                    }
+                    _ => None,
                 }
-                Some(WideRecord { name, fields: wf })
             })
             .collect()
     }
@@ -3046,6 +3251,7 @@ mod serde_lane_tests {
             root_reexports: collect_root_reexports(doc),
             root_glob_modules: collect_root_glob_modules(doc, &module_name),
             wide_record_ids: std::cell::RefCell::new(vec![]),
+            qual_stack: std::cell::RefCell::new(vec![]),
         }
     }
 

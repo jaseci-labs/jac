@@ -111,4 +111,23 @@ for entry in "${targets[@]}"; do
     echo "  → wrote $fixture"
 done
 
+# Local purpose-built serde-DTO crates (Phase 2.10 part 2 / 2.9-followup). These
+# live in-tree (tests/fixtures/crates/) because no crates.io crate exposes the
+# opaque-handle-passing-derived-DTO shape the wide typed-record lane is built for.
+LOCAL_CRATES=(
+    "geo_demo"
+)
+for name in "${LOCAL_CRATES[@]}"; do
+    crate_dir="$(dirname "$0")/../fixtures/crates/${name}"
+    fixture="${FIXTURES_DIR}/${name}-$(grep -m1 '^version' "${crate_dir}/Cargo.toml" | sed -E 's/.*"([^"]+)".*/\1/').json"
+    echo "gen   local ${name} → $fixture"
+    cargo +"$NIGHTLY" rustdoc \
+        -Z unstable-options \
+        --output-format json \
+        --manifest-path "${crate_dir}/Cargo.toml" \
+        --quiet 2>/dev/null
+    cp "${crate_dir}/target/doc/${name}.json" "$fixture"
+    echo "  → wrote $fixture"
+done
+
 echo "done"

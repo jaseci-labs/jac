@@ -2,7 +2,7 @@ use std::fmt::Write;
 
 use crate::types::{
     BridgeFn, BridgeReturn, BridgeSpec, BridgeType, DrainCollect, Ownership, OwningWrapper, Recv,
-    RootProducer, ScalarType, TypeKind, WrapperKind,
+    RecordKind, RootProducer, ScalarType, TypeKind, WrapperKind,
 };
 
 /// Emit a `Cargo.toml` for the generated bridge crate.
@@ -184,11 +184,31 @@ pub fn emit(spec: &BridgeSpec) -> String {
         }
         first = false;
         writeln!(out, "    #[jac_record]").unwrap();
-        writeln!(out, "    pub struct {} {{", rec.name).unwrap();
-        for f in &rec.fields {
-            writeln!(out, "        pub {}: {},", f.name, f.rust_ty).unwrap();
+        match rec.kind {
+            RecordKind::Struct => {
+                writeln!(out, "    pub struct {} {{", rec.name).unwrap();
+                for f in &rec.fields {
+                    // A struct field always carries a type spelling.
+                    let ty = f.rust_ty.as_deref().unwrap_or("()");
+                    writeln!(out, "        pub {}: {},", f.name, ty).unwrap();
+                }
+                writeln!(out, "    }}").unwrap();
+            }
+            RecordKind::Enum => {
+                writeln!(out, "    pub enum {} {{", rec.name).unwrap();
+                for v in &rec.fields {
+                    match &v.rust_ty {
+                        // A newtype variant carries a single payload type.
+                        Some(payload) => {
+                            writeln!(out, "        {}({}),", v.name, payload).unwrap()
+                        }
+                        // A unit variant has no payload.
+                        None => writeln!(out, "        {},", v.name).unwrap(),
+                    }
+                }
+                writeln!(out, "    }}").unwrap();
+            }
         }
-        writeln!(out, "    }}").unwrap();
     }
 
     // ── impl blocks ───────────────────────────────────────────────────────────

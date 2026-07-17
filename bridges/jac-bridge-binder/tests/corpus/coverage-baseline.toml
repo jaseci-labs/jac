@@ -242,3 +242,18 @@ dropped = 0
 bridged = 4
 total = 8
 dropped = 0
+
+# geo_demo (Phase 2.10 part 2 / 2.9-followup) is a PURPOSE-BUILT serde-DTO crate
+# (source in tests/fixtures/crates/geo_demo): an opaque Canvas handle whose methods
+# pass derived-serde DTOs by value across the wide lane -- a flat record (Point), a
+# NESTED record (Region{tl,br:Point}), CONTAINER fields (Path{Vec<Point>,
+# Option<String>, HashMap<String,i64>}), and an ENUM (Shape: unit + newtype
+# variants incl. a nested-record payload). Real serde crates rarely expose this
+# shape directly (semver above reaches 50% via the opaque lane and never touches
+# the wide lane), so this fixture is what actually exercises typed-record synthesis
+# -- nested/container/enum classification (2.9-followup) -- in the coverage gate.
+# 100% (6/6) with ZERO overlay: the Canvas ctor + all 5 wide methods bridge.
+[geo_demo]
+bridged = 6
+total = 6
+dropped = 0

@@ -6,8 +6,8 @@
 
 use crate::codegen::{emit, emit_cargo_toml};
 use crate::types::{
-    BridgeFn, BridgeParam, BridgeReturn, BridgeSpec, BridgeType, Ownership, Recv, ScalarType,
-    SerdeInfo, TypeKind, WideField, WideRecord,
+    BridgeFn, BridgeParam, BridgeReturn, BridgeSpec, BridgeType, Ownership, Recv, RecordKind,
+    ScalarType, SerdeInfo, TypeKind, WideField, WideRecord,
 };
 
 fn method(name: &str, params: Vec<BridgeParam>, ret: BridgeReturn) -> BridgeFn {
@@ -94,10 +94,11 @@ fn typed_record_emits_jac_record_struct() {
     let mut s = spec();
     s.records = vec![WideRecord {
         name: "Point".into(),
+        kind: RecordKind::Struct,
         fields: vec![
-            WideField { name: "x".into(), rust_ty: "i64".into() },
-            WideField { name: "y".into(), rust_ty: "i64".into() },
-            WideField { name: "label".into(), rust_ty: "String".into() },
+            WideField { name: "x".into(), rust_ty: Some("i64".into()) },
+            WideField { name: "y".into(), rust_ty: Some("i64".into()) },
+            WideField { name: "label".into(), rust_ty: Some("String".into()) },
         ],
     }];
     let src = emit(&s);
