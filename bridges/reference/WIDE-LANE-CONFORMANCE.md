@@ -137,18 +137,54 @@ Only accommodation for the local/offline run: the generated `Cargo.toml`'s sourc
 dep was retargeted from the crates.io pin (`demo = "=0.1.0"`) to a path dep --
 an environment concern, not binder logic (classification/codegen are unmodified).
 
+## 6b. na wide e2e -- PROVEN end-to-end, AOT-linked (2026-07-17)
+
+The §6 run drove the *ctypes* loader. The **na** side is now proven natively too:
+`render_na_source(widget_meta, libwide_rs.so)` was emitted, a `with entry` driver
+appended, and the module `jac nacompile`d to a **standalone ELF that DT_NEEDED-links
+the real rmp_serde `.so`** (`readelf -d` shows `NEEDED libwide_rs.so`, `RUNPATH
+$ORIGIN`). Running it:
+
+- **pack** (wide return): rmp `to_vec_named` -> na `msgpack_decode` -> the full
+  nested doc (`count=3`, `ratio~3.14159` via the f64-bits carry, `nested.ok=True`,
+  `nested.items[2]=3`, `tags` len 2).
+- **echo** (wide param + wide return): na `msgpack_encode` -> rmp deserialize into
+  the typed `Widget` struct -> re-serialize -> na `msgpack_decode`; round-trips.
+- **tally** (wide param -> int): na encode -> rmp `from_slice::<Widget>` -> count 3.
+
+**All PASS.** This exercises the na consumer surface (`JacValue` obj + inlined codec
+
+- shim out-buffer decode + `#7472` bytes-payload param) against a genuine
+`serde`/`rmp_serde` export -- the na analogue of §6.
+
+**Execution-path finding:** na foreign bridges must be **AOT-linked**, not
+JIT-run. The in-process JIT engine (`ir.gen.native_engine`, MCJIT) *cannot* execute
+a module that both allocates heap objects and carries the full foreign-import
+block: once the `Widget` FFI/panic surface is present, MCJIT object finalization
+poisons the whole module and even a non-FFI `JacValue()` allocation segfaults on a
+null call (a minimal `obj` + single `import from "…so"` decl survives; the full
+generated bridge does not). This matches how na foreign is validated everywhere
+else -- `test_shared_lib.jac` loads a *produced* `.so`, it does not JIT-call one.
+The AOT recipe (nacompile -> ELF -> run) is therefore the supported path and is
+what the e2e above uses. Local build note: nacompile's compile-time
+`_register_bridge_metadata` imports `rust_bridge._elf` through the runtime
+meta-importer, which needs the module pre-seeded in `sys.modules` locally (the
+`_finder.jac`-no-bytecode quirk); driving `nacompile()` in-process after seeding
+`_elf` sidesteps it (CI has the bytecode cached).
+
 ## 7. Remaining gaps
 
 - **§2.6 typed-obj synthesis is unbuilt** on both sides: derived records still
   cross as a `JacValue` union (na) / `dict` (ctypes) rather than a typed Jac
   `obj` with checked fields. This is the "does the wide lane keep typing"
   ergonomic and is the natural next piece.
-- **Sealed/wheel install:** `_synth._codec_source()` reads the sibling
-  `_msgpack.jac` `__file__`-relative; verified in dev source, not yet in a
-  packaged wheel.
-- **na wide e2e:** the end-to-end above drove the ctypes loader; the na side is
-  proven at the synth-source and codec-byte level but not yet through a native
-  JIT call against a live wide `.so`.
+- **Sealed/wheel install: CONFIRMED (2026-07-17).** `_synth._codec_source()` reads
+  the sibling `_msgpack.jac` `__file__`-relative. Both packaging paths ship it: the
+  setuptools wheel packs `.jac` via a recursive glob (`Root-Is-Purelib` -> real
+  files, so `os.path.dirname(__file__)`+`open()` resolves -- verified reading the
+  codec from an install-like tree outside the dev checkout), and mkpayload's
+  `skipJaclang` copies every `.jac` (no extension filter) into the sealed payload.
+  `_codec_source()` itself runs at synth/build time, not in the final sealed binary.
 
 ## 8. Reproduce
 
@@ -174,6 +210,13 @@ sed "s|__SO_PATH__|<scratch>/demo_bridge/target/release/libjac_bridge_demo.so|" 
   wide_e2e.jac > e2e.jac
 PYTHONPATH=jac JAC_LLVM_SHIM=jac/zig-out/lib/libjacllvm.so \
   .venv/bin/python -m jaclang run e2e.jac
+
+# na wide e2e (AOT): render the na bridge against the live .so, append a
+# `with entry` driver, nacompile to an ELF that DT_NEEDED-links it, run.
+#   render.py     -> render_na_source(widget_meta, libwide_rs.so) -> wide_e2e_aot.na.jac
+#   build_aot.py  -> seed rust_bridge._elf into sys.modules, then nacompile() in-process
+PYTHONPATH=jac JAC_LLVM_SHIM=jac/zig-out/lib/libjacllvm.so .venv/bin/python build_aot.py
+LD_LIBRARY_PATH=<scratch> <scratch>/wide_e2e_aot   # -> pack/echo/tally OK; ALL PASS
 ```
 
 Codec unit tests (committed): `jac/tests/compiler/test_rust_wide_ctypes.jac`
