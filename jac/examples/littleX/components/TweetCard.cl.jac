@@ -32,7 +32,9 @@ def:pub TweetCard(
 
     # Whose tweet this is falls out of data the client already holds -
     # no server round trip needed to answer a viewer-relative question.
-    is_mine = tweet.author_username == myUsername;
+    # The empty-string check keeps unowned tweets unowned while the
+    # viewer's profile is still loading (myUsername == "").
+    is_mine = tweet.author_username != "" and tweet.author_username == myUsername;
     is_liked = myUsername in tweet.likes;
     like_count = len(tweet.likes);
     comment_count = len(tweet.comments);

@@ -42,6 +42,7 @@ def first_report(response: TestResponse) -> any {
 
 """Return a reported node's jid: `_jac_id` is how identity crosses the wire."""
 def jid_of(reported: any) -> str {
+    assert "_jac_id" in reported , f"expected a reported node, got {reported}";
     return str(reported["_jac_id"]);
 }
 

@@ -72,9 +72,9 @@ test "two users: signup, post, follow, and feed propagation" {
 
     # Bob follows Alice.
     bob.activate();
-    follow = (
-        root spawn follow_user(target_id=jid(alice_profile["profile"]))
-    ).reports[0];
+    follow = (root spawn follow_user(target_id=jid(alice_profile["profile"]))).reports[
+        0
+    ];
     assert follow["success"] == True;
 
     # Bob now sees Alice's tweet in his feed.
