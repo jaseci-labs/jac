@@ -1198,12 +1198,32 @@ these first; the adversarial suite already contains skip-gated tests waiting on 
       which is the other half of the GO/NO-GO. na-side gotchas found: `obj` is a
       reserved keyword (use `target`); arithmetic on struct.unpack elements needs a
       typed-int rebind first.
-- [ ] 3.1 `jac/launcher/pyinterop.zig`: high-level surface (~15 fns) --
+- [~] 3.1 `jac/launcher/pyinterop.zig`: high-level surface (~15 fns) --
       `jac_py_import/getattr/call/from_*/to_*/decref` using jac-bridge
       status-code + JacBuf conventions; args to `jac_py_call` as a msgpack
       payload (reuse the Phase-2 wire format; Python-side decode helper in the
       shim bootstrap). Keep the `jpy_` prefix discipline; all dlopen/dlsym stays
       in the shim.
+  - LANDED (Stage A -- the non-`call` surface, 16 `jac_py_*` fns):
+      `jac/launcher/pyinterop.zig`, `@import`ed into pyembed.zig so its `export
+      fn`s land in the same libjacpyembed. Self-contained: resolves its OWN C-API
+      pointers via `pyinterop.resolve(&emb)` from `jac_engine_boot` (one-directional
+      pyembed -> pyinterop; no cross-file global coupling; all dlsym stays in the
+      shim). Surface: `import`/`getattr`; constructors `from_{int,float,bool,str,
+      bytes}` + `none` (return a new-ref handle directly, 0 == alloc fail);
+      coercions `to_{int,float,bool,str,bytes}` (status + typed out-slot + `out_err`
+      JacBuf); `incref`/`decref`; `free_buf`. Conventions matched: i32 status (0=OK,
+      1=Python raised w/ formatted text in `out_err`, 2=misuse); JacBuf
+      (`ptr,len,cap`; `cap!=0` == shim-`malloc`'d, na frees via `jac_py_free_buf`).
+      GIL managed IN-shim per call (Ensure/Release; reentrant, so correct on/off the
+      main thread). Every handed-out handle is a new ref the caller decrefs (incl.
+      `none`). Verified: `zig build pyembed` green, all 16 symbols exported
+      (`nm -D`); an na host declaring the surface `nacompile`s + links (JacBuf/u64
+      out-slots marshal through na `bytes`; all resolve DT_NEEDED).
+  - REMAINING (Stage B): `jac_py_call(handle, args_payload, args_len, out_val,
+      out_err)` -- decode the msgpack arg blob to a Python tuple (pure-Python codec
+      injected in the shim bootstrap, matching the Phase-2 wire format), `PyObject_Call`,
+      encode the result back to a msgpack JacBuf. Plus the CI/fused-build e2e run.
 - [ ] 3.2 `jaclang/runtimelib/.../python.na.jac`: `PyObj` with `__del__` decref;
       scalar/str/bytes conversions; lists/dicts as opaque PyObj + indexer
       helpers; GIL ensure/release per call; main-thread-only documented; make

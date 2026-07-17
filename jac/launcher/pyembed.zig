@@ -31,6 +31,10 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const embed = @import("embed.zig");
+// Phase 3.1: the high-level `jac_py_*` surface. Imported (not just re-declared)
+// so its `export fn`s land in this same libjacpyembed; it resolves its own C-API
+// pointers via `pyinterop.resolve(&emb)` in `jac_engine_boot` below.
+const pyinterop = @import("pyinterop.zig");
 
 const MAX_PATH = std.Io.Dir.max_path_bytes;
 
@@ -165,8 +169,17 @@ export fn jac_engine_boot() c_int {
     p_bytes_from = emb.symOrErr(PyBytesFromStringAndSize_t, "PyBytes_FromStringAndSize") catch return fail("missing PyBytes_FromStringAndSize");
     p_bytes_as = emb.symOrErr(PyBytesAsStringAndSize_t, "PyBytes_AsStringAndSize") catch return fail("missing PyBytes_AsStringAndSize");
 
+    // Phase 3.1: resolve the high-level surface's own C-API pointers. A missing
+    // symbol here is the same packaging bug class as above -- fail cleanly.
+    if (!pyinterop.resolve(&emb)) return fail("missing py-interop C-API symbol");
+
     booted = true;
     return 0;
+}
+
+// Force the pyinterop `export fn`s to be analyzed and emitted into this library.
+comptime {
+    _ = pyinterop;
 }
 
 /// `std.posix.getenv`-style lookup returning an optional slice for embed.open.
