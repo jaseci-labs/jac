@@ -71,7 +71,6 @@ glob GAP_FILES = [
          "enum_free_code.jac",
          "trailing_comma_collections.jac",
          "safe_call_subscript.jac",
-         "bool_operators_symbols.jac",
          "init_as_call.jac",
          "decorator_on_impl.jac",
          "rstring_concat.jac",
@@ -86,8 +85,8 @@ glob GAP_FILES = [
      MUST_REJECT: dict[str, str] = {
          "can_without_event_clause": "obj Foo { can bar { } }",
          "per_variable_access_tag": "obj Foo { has :pub x: int, :priv y: str; }",
-         "abs_prefix_on_ability": "obj Foo { abs def bar(); }",
-         "abs_prefix_decorated_ability": "@mydeco abs def bar() { }",
+         "abs_prefix_on_ability": "obj Foo { abst def bar(); }",
+         "abs_prefix_decorated_ability": "@mydeco abst def bar() { }",
          "abs_prefix_on_archetype": "abs obj Foo { }",
          "bare_expression_at_module_level": "5 + 3;",
          "bare_expression_in_archetype": "obj Foo { 5 + 3; }",

@@ -166,10 +166,6 @@ impl GenCompr.accept_enter(v: UniPass) -> None {
     v.enter_gen_compr(self);
 }
 
-impl GlobalStmt.accept_enter(v: UniPass) -> None {
-    v.enter_global_stmt(self);
-}
-
 impl GlobalVars.accept_enter(v: UniPass) -> None {
     v.enter_global_vars(self);
 }
@@ -344,10 +340,6 @@ impl Name.accept_enter(v: UniPass) -> None {
 
 impl NativeBlock.accept_enter(v: UniPass) -> None {
     v.enter_native_block(self);
-}
-
-impl NonLocalStmt.accept_enter(v: UniPass) -> None {
-    v.enter_non_local_stmt(self);
 }
 
 impl OpenStmt.accept_enter(v: UniPass) -> None {
@@ -646,10 +638,6 @@ impl GenCompr.accept_exit(v: UniPass) -> None {
     v.exit_gen_compr(self);
 }
 
-impl GlobalStmt.accept_exit(v: UniPass) -> None {
-    v.exit_global_stmt(self);
-}
-
 impl GlobalVars.accept_exit(v: UniPass) -> None {
     v.exit_global_vars(self);
 }
@@ -828,10 +816,6 @@ impl Name.accept_exit(v: UniPass) -> None {
 
 impl NativeBlock.accept_exit(v: UniPass) -> None {
     v.exit_native_block(self);
-}
-
-impl NonLocalStmt.accept_exit(v: UniPass) -> None {
-    v.exit_non_local_stmt(self);
 }
 
 impl Null.accept_exit(v: UniPass) -> None {
