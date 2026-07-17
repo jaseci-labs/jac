@@ -34,7 +34,6 @@ jac_formatter_pass.jac
 jfast_api.jac
 kubernetes_utils.impl.jac
 kubernetes_utils.jac
-lang_tools.jac
 llm.jac
 macho_linker.impl.jac
 macho_linker.jac
@@ -75,7 +74,6 @@ server.jac
 sym_tab_build_pass.jac
 template_loader.impl.jac
 template_loader.jac
-template_registry.jac
 testing.impl.jac
 testing.jac
 tools.impl.jac
@@ -87,7 +85,6 @@ treeprinter.jac
 type_checker_pass.jac
 type_evaluator.jac
 types.jac
-type_utils.jac
 uni_pass.jac
 unitree.jac
 unparse_pass.jac
@@ -604,10 +601,3 @@ scripts/integration_tests.jac
 # build time; the tree-sitter-jac package ships its own examples/sample.jac).
 # Bare name so any zig-pkg path component is skipped by the check step.
 zig-pkg
-
-# Impl annexes of modules already baselined above by bare name (lang_tools.jac,
-# template_registry.jac). Scoped CI passes changed files explicitly, and an
-# .impl.jac arg resolves to its (baselined known-bad) module after ignore
-# filtering runs -- so the annex paths must be listed too.
-jac/jaclang/utils/impl/lang_tools.impl.jac
-jac/jaclang/project/impl/template_registry.impl.jac

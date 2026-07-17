@@ -68,7 +68,7 @@ impl AstTool.ir(args: list[str]) -> str {
                     prog=prog
                 ).ir_out;
                 console.print(rep.unparse());
-                ir = prog.compile(
+                mod_ir = prog.compile(
                     use_str=rep.unparse(),
                     file_path=(file_name[:-3] + '.jac'),
                     options=CompileOptions(
@@ -79,7 +79,7 @@ impl AstTool.ir(args: list[str]) -> str {
                 return f"Error While Jac to Py AST conversion: {e}";
             }
         } else {
-            ir = prog.compile(
+            mod_ir = prog.compile(
                 file_name,
                 options=CompileOptions(
                     type_check=True, no_cgen=True, force_target_program=True
@@ -97,8 +97,8 @@ impl AstTool.ir(args: list[str]) -> str {
                 return out;
 
             case 'sym.':
-                return ir.sym_tab.sym_printgraph()
-                    if isinstance(ir.sym_tab, UniScopeNode)
+                return mod_ir.sym_tab.sym_printgraph()
+                    if isinstance(mod_ir.sym_tab, UniScopeNode)
                     else 'Sym_tab is None.';
 
             case 'ast':
@@ -111,37 +111,37 @@ impl AstTool.ir(args: list[str]) -> str {
                 return out;
 
             case 'ast.':
-                return ir.printgraph();
+                return mod_ir.printgraph();
 
             case 'cfg.':
                 return cfg_dot_from_file(file_name);
 
             case 'unparse':
-                return ir.unparse();
+                return mod_ir.unparse();
 
             case 'pyast':
-                ir = prog.compile(
+                mod_ir = prog.compile(
                     file_name,
                     options=CompileOptions(type_check=False, force_target_program=True)
                 );
-                return f"{py_ast.dump(ir.gen.py_ast[0], indent=2)}"
-                    if isinstance(ir.gen.py_ast[0], py_ast.AST)
+                return f"{py_ast.dump(mod_ir.gen.py_ast[0], indent=2)}"
+                    if isinstance(mod_ir.gen.py_ast[0], py_ast.AST)
                     else 'Compile failed.';
 
             case 'docir':
-                return str(DocIRGenPass(ir_in=ir, prog=prog).ir_out.gen.doc_ir);
+                return str(DocIRGenPass(ir_in=mod_ir, prog=prog).ir_out.gen.doc_ir);
 
             case 'py':
-                ir = prog.compile(
+                mod_ir = prog.compile(
                     file_name,
                     options=CompileOptions(type_check=False, force_target_program=True)
                 );
-                return f"{ir.gen.py}"
-                    if isinstance(ir.gen.py[0], str)
+                return f"{mod_ir.gen.py}"
+                    if isinstance(mod_ir.gen.py[0], str)
                     else 'Compile failed.';
 
             case 'esast':
-                esast_pass = EsastGenPass(ir_in=ir, prog=prog);
+                esast_pass = EsastGenPass(ir_in=mod_ir, prog=prog);
                 es_ir = esast_pass.ir_out;
                 es_ast = es_ir.gen.es_ast;
                 if isinstance(es_ast, EsNode) {
@@ -151,7 +151,7 @@ impl AstTool.ir(args: list[str]) -> str {
                 }
 
             case 'es':
-                esast_pass = EsastGenPass(ir_in=ir, prog=prog);
+                esast_pass = EsastGenPass(ir_in=mod_ir, prog=prog);
                 es_ir = esast_pass.ir_out;
                 es_ast = es_ir.gen.es_ast;
                 if isinstance(es_ast, EsNode) {
@@ -179,14 +179,18 @@ impl AstTool.py_uni_nodes -> str {
         if method.startswith('visit_')
     ];
     node_names = [method.replace('visit_', '') for method in visit_methods];
-    pass_func_names = [];
+    pass_func_names: list[str] = [];
     for (name, value) in inspect.getmembers(PyastBuildPass) {
-        if (name.startswith('proc_') and inspect.isfunction(value)) {
+        if (
+            isinstance(name, str)
+            and name.startswith('proc_')
+            and inspect.isfunction(value)
+        ) {
             pass_func_names.append(name.replace('proc_', ''));
         }
     }
     output = '';
-    missing = [];
+    missing: list[str] = [];
     for i in node_names {
         nd = pascal_to_snake(i);
         this_func = (
@@ -245,7 +249,8 @@ impl AstTool.init -> None {
         UniNodeInfo(cls)
         for (_, cls) in classes
         if (
-            issubclass(cls, uni.UniNode)
+            isinstance(cls, type)
+            and issubclass(cls, uni.UniNode)
             and (
                 cls.__name__ not in [
                     'UniNode',
