@@ -103,9 +103,12 @@ def handle_manifest_route(raw_argv: list[str]) -> bool:
     if first is None:
         return False
 
-    known = known_command_names()
+    # Hidden verbs (gen-jir-registry, nacompile, …) must still dispatch; only
+    # help/error surfaces prune them via the visible set.
+    dispatchable = known_command_names(include_hidden=True)
+    visible = known_command_names()
 
-    if first in TOMBSTONED_VERBS and first not in known:
+    if first in TOMBSTONED_VERBS and first not in dispatchable:
         _print_error(
             f"'jac {first}' was removed in the CLI cleanup (#7255); "
             f"use: {TOMBSTONED_VERBS[first]}"
@@ -114,13 +117,13 @@ def handle_manifest_route(raw_argv: list[str]) -> bool:
 
     # Resolve the effective command. A bare script file implies `run`;
     # rewrite argv exactly as the legacy start_cli path does.
-    if _has_script_file(raw_argv) and first not in known:
+    if _has_script_file(raw_argv) and first not in dispatchable:
         sys.argv = [sys.argv[0], "run"] + raw_argv
         command_name = "run"
-    elif first in known:
+    elif first in dispatchable:
         command_name = first
     else:
-        choices = "', '".join(sorted(known))
+        choices = "', '".join(sorted(visible))
         sys.stderr.write("usage: jac [-h] [-V] COMMAND ...\n")
         _print_error(
             f"argument COMMAND: invalid choice: {first!r} (choose from '{choices}')"

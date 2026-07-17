@@ -65,6 +65,13 @@ def test_help_fast_path_blocks_heavy_imports() -> None:
     assert code == 0, err
 
 
+def test_hidden_commands_dispatch_without_registry_finalize() -> None:
+    """Hidden manifest verbs must not fall through to `run` or invalid-choice."""
+    for argv in (["gen-jir-registry", "--help"], ["nacompile", "--help"]):
+        code, err = _probe(argv, set())
+        assert code == 0, f"jac {' '.join(argv)} failed: {err}"
+
+
 def test_purge_blocks_heavy_imports() -> None:
     blocked = {
         "jaclang.compiler",
