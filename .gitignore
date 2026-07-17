@@ -106,3 +106,10 @@ jactastic/**
 
 # Zig 0.16 project-local package cache (fetched, hash-pinned deps)
 zig-pkg/
+
+# Local reference checkout of upstream rust-ndarray/ndarray (own .git remote);
+# kept for bridge-authoring reference, not part of this tree.
+ndarray/
+
+# Agent tooling scratch
+.pi-subagents/
