@@ -18,6 +18,11 @@ import from jaclang.compiler.rust_bridge._blob {
     TAG_INT,
     TAG_STR,
     TAG_VOID,
+    TAG_WIDE_REC_SHIFT,
+    TAG_LIST_BIT,
+    TAG_OPT_BIT,
+    TAG_MAP_BIT,
+    RECORD_KIND_ENUM,
     FN_METHOD
 }
 import from jaclang.compiler.rust_bridge._marshal { classify, SlotKind }
@@ -27,7 +32,10 @@ import from jaclang.compiler.rust_bridge._ctypes_codegen {
     _ret_bridgeable,
     _wire,
     _make_record_class,
-    _rec_to_dict
+    _make_enum_class,
+    _rec_to_dict,
+    _rec_from_msg,
+    _rec_to_msg
 }
 
 
@@ -171,4 +179,149 @@ test "the wide codec rejects non-string map keys and unknown types" {
         got_type_err = True;
     }
     assert got_type_err;
+}
+
+
+# ── nested / container / enum typed records (2.9-followup) ──────────────────────
+
+class _FakeRt {
+    def init(self: _FakeRt, records: list, record_classes: dict) {
+        self.records = records;
+        self.record_classes = record_classes;
+    }
+}
+
+
+def _wide_ref(rid: int) -> int {
+    return TAG_WIDE | (rid << TAG_WIDE_REC_SHIFT);
+}
+
+
+"""A fake runtime holding the geo_demo record graph: Point(0), Region(1),
+Path(2), Shape(3-enum)."""
+def _geo_rt -> _FakeRt {
+    point = RecordDesc(
+        index=0,
+        name="Point",
+        fields=[
+            FieldDesc(name="x", tag=TAG_INT),
+            FieldDesc(name="y", tag=TAG_INT),
+            FieldDesc(name="label", tag=TAG_STR)
+        ]
+    );
+    region = RecordDesc(
+        index=1,
+        name="Region",
+        fields=[
+            FieldDesc(name="tl", tag=_wide_ref(1)),
+            FieldDesc(name="br", tag=_wide_ref(1))
+        ]
+    );
+    path = RecordDesc(
+        index=2,
+        name="Path",
+        fields=[
+            FieldDesc(name="pts", tag=TAG_LIST_BIT | _wide_ref(1)),
+            FieldDesc(name="name", tag=TAG_OPT_BIT | TAG_STR),
+            FieldDesc(name="weights", tag=TAG_MAP_BIT | TAG_INT)
+        ]
+    );
+    shape = RecordDesc(
+        index=3,
+        name="Shape",
+        fields=[
+            FieldDesc(name="Empty", tag=TAG_VOID),
+            FieldDesc(name="Dot", tag=_wide_ref(1)),
+            FieldDesc(name="Area", tag=_wide_ref(2)),
+            FieldDesc(name="Tag", tag=TAG_STR)
+        ],
+        kind=RECORD_KIND_ENUM
+    );
+    recs = [point, region, path, shape];
+    classes = {
+        0: _make_record_class(point),
+        1: _make_record_class(region),
+        2: _make_record_class(path),
+        3: _make_enum_class(shape)
+    };
+    return _FakeRt(records=recs, record_classes=classes);
+}
+
+
+test "a nested record round-trips as a typed instance through the wide codec" {
+    rt = _geo_rt();
+    Point = rt.record_classes[0];
+    Region = rt.record_classes[1];
+    r = Region(tl=Point(x=0, y=0, label="a"), br=Point(x=10, y=10, label="b"));
+    # encode (typed -> msgpack shape -> bytes) then decode back to typed
+    msg = _rec_to_msg(r, rt.records[1], rt);
+    assert msg == {
+        "tl": {"x": 0, "y": 0, "label": "a"},
+        "br": {"x": 10, "y": 10, "label": "b"}
+    } , msg;
+    back = _rec_from_msg(_mp_decode(_mp_encode(msg)), rt.records[1], rt);
+    assert isinstance(back, Region) and isinstance(back.tl, Point) , "nested field is typed";
+    assert back.tl.x == 0 and back.br.y == 10 , repr(back);
+    assert back == r;
+}
+
+
+test "container fields (list / optional / map) round-trip typed" {
+    rt = _geo_rt();
+    Point = rt.record_classes[0];
+    Path = rt.record_classes[2];
+    p = Path(
+        pts=[Point(x=1, y=1, label=""), Point(x=2, y=2, label="")],
+        name=None,
+        weights={"a": 3, "b": 4}
+    );
+    msg = _rec_to_msg(p, rt.records[2], rt);
+    assert msg["pts"] == [
+        {"x": 1, "y": 1, "label": ""},
+        {"x": 2, "y": 2, "label": ""}
+    ] , msg;
+    assert msg["name"] is None and msg["weights"] == {"a": 3, "b": 4} , msg;
+    back = _rec_from_msg(_mp_decode(_mp_encode(msg)), rt.records[2], rt);
+    assert isinstance(back, Path) , "typed Path";
+    assert len(back.pts) == 2 and isinstance(back.pts[0], Point) , "list elements typed";
+    assert back.pts[1].x == 2
+    and back.name is None
+    and back.weights == {"a": 3, "b": 4};
+}
+
+
+test "enum variants (unit / newtype scalar / nested record) round-trip typed" {
+    rt = _geo_rt();
+    Point = rt.record_classes[0];
+    Region = rt.record_classes[1];
+    Shape = rt.record_classes[3];
+
+    # unit variant -> bare string on the wire
+    unit = Shape(variant="Empty");
+    assert _rec_to_msg(unit, rt.records[3], rt) == "Empty";
+    assert _rec_from_msg("Empty", rt.records[3], rt) == unit;
+
+    # newtype variant with a nested-record payload -> {variant: payload}
+    dot = Shape(variant="Dot", value=Point(x=3, y=4, label="p"));
+    dmsg = _rec_to_msg(dot, rt.records[3], rt);
+    assert dmsg == {"Dot": {"x": 3, "y": 4, "label": "p"}} , dmsg;
+    dback = _rec_from_msg(_mp_decode(_mp_encode(dmsg)), rt.records[3], rt);
+    assert dback.variant == "Dot" and isinstance(dback.value, Point) , repr(dback);
+    assert dback.value.x == 3 and dback == dot;
+
+    # a deeper nested-record payload (Region inside the enum)
+    area = Shape(
+        variant="Area",
+        value=Region(tl=Point(x=0, y=0, label=""), br=Point(x=5, y=6, label=""))
+    );
+    aback = _rec_from_msg(
+        _mp_decode(_mp_encode(_rec_to_msg(area, rt.records[3], rt))), rt.records[3], rt
+    );
+    assert isinstance(aback.value, Region) and isinstance(aback.value.br, Point);
+    assert aback.value.br.y == 6 and aback == area;
+
+    # String-payload variant
+    tag = Shape(variant="Tag", value="hi");
+    assert _rec_to_msg(tag, rt.records[3], rt) == {"Tag": "hi"};
+    assert _rec_from_msg({"Tag": "hi"}, rt.records[3], rt) == tag;
 }

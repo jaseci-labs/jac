@@ -22,11 +22,13 @@ import from jaclang.compiler.rust_bridge._blob {
     FnDesc,
     TypeDesc,
     RecordDesc,
+    FieldDesc,
     TAG_VOID,
     TAG_BOOL,
     TAG_INT,
     TAG_STR,
     TAG_WIDE,
+    RECORD_KIND_ENUM,
     KIND_OPAQUE,
     KIND_ERROR,
     FN_CTOR,
@@ -37,6 +39,10 @@ import from jaclang.compiler.rust_bridge._blob {
     tag_is_borrowed,
     tag_is_shared,
     tag_ref_index,
+    tag_is_wide,
+    tag_wide_record,
+    tag_is_map,
+    tag_is_list,
     tag_map_value,
     tag_list_value
 }
@@ -134,7 +140,9 @@ class _Runtime {
         self.records = meta.records;
         self.record_classes = {};
         for rec in meta.records {
-            self.record_classes[rec.index] = _make_record_class(rec);
+            self.record_classes[rec.index] = _make_enum_class(rec)
+                if rec.kind == RECORD_KIND_ENUM
+                else _make_record_class(rec);
         }
 
         for td in meta.types {
@@ -597,7 +605,9 @@ def _call(
             (enc, n) = _encode(v);
             c_args.extend([enc, c_uint32(n)]);
         } elif s.kind == SlotKind.Wide {
-            payload = _rec_to_dict(v, rt.records[s.record - 1]) if s.record > 0 else v;
+            payload = _rec_to_msg(v, rt.records[s.record - 1], rt)
+                if s.record > 0
+                else v;
             enc = _mp_encode(payload);
             c_args.extend([enc, c_uint32(len(enc))]);
         } elif s.kind == SlotKind.Bool {
@@ -698,9 +708,8 @@ def _call(
         raw = string_at(out_buf.ptr, out_buf.len) if out_buf.ptr != 0 else b"";
         rt.free_buf(out_buf);
         decoded = _mp_decode(raw);
-        if ret.record > 0 and isinstance(decoded, dict) {
-            cls = rt.record_classes[ret.record - 1];
-            return cls(**decoded);
+        if ret.record > 0 {
+            return _rec_from_msg(decoded, rt.records[ret.record - 1], rt);
         }
         return decoded;
     }
@@ -828,6 +837,148 @@ def _rec_to_dict(v: object, rec: RecordDesc) -> dict {
         return v;
     }
     return {f.name: getattr(v, f.name) for f in rec.fields};
+}
+
+
+def _make_enum_class(rec: RecordDesc) -> type {
+    variant_names = [f.name for f in rec.fields];
+
+    def __init__(self: object, variant: str, value: object = None) {
+        if variant not in variant_names {
+            raise ValueError(f"{rec.name}: unknown variant {variant!r}");
+        }
+        self.variant = variant;
+        self.value = value;
+    }
+
+    def __repr__(self: object) -> str {
+        if self.value is None {
+            return f"{rec.name}.{self.variant}";
+        }
+        return f"{rec.name}.{self.variant}({self.value!r})";
+    }
+
+    def __eq__(self: object, other: object) -> bool {
+        if not isinstance(other, type(self)) {
+            return NotImplemented;
+        }
+        return self.variant == other.variant and self.value == other.value;
+    }
+
+    return type(
+        rec.name,
+        (),
+        {
+            "__init__": __init__,
+            "__repr__": __repr__,
+            "__eq__": __eq__,
+            "__hash__": None,
+            "_jac_variants": variant_names
+        }
+    );
+}
+
+
+def _variant_tag(rec: RecordDesc, vname: str) -> int {
+    for f in rec.fields {
+        if f.name == vname {
+            return f.tag;
+        }
+    }
+    raise ValueError(f"{rec.name}: unknown variant {vname!r}");
+}
+
+
+def _field_from_msg(val: object, tag: int, rt: _Runtime) -> object {
+    if val is None {
+        return None;
+    }
+    if tag_is_list(tag) {
+        et = tag_list_value(tag);
+        return [_field_from_msg(x, et, rt) for x in val];
+    }
+    if tag_is_map(tag) {
+        vt = tag_map_value(tag);
+        return {k: _field_from_msg(x, vt, rt) for (k, x) in val.items()};
+    }
+    if tag_is_wide(tag) and tag_wide_record(tag) > 0 {
+        return _rec_from_msg(val, rt.records[tag_wide_record(tag) - 1], rt);
+    }
+    return val;
+}
+
+
+def _field_to_msg(val: object, tag: int, rt: _Runtime) -> object {
+    if val is None {
+        return None;
+    }
+    if tag_is_list(tag) {
+        et = tag_list_value(tag);
+        return [_field_to_msg(x, et, rt) for x in val];
+    }
+    if tag_is_map(tag) {
+        vt = tag_map_value(tag);
+        return {k: _field_to_msg(x, vt, rt) for (k, x) in val.items()};
+    }
+    if tag_is_wide(tag) and tag_wide_record(tag) > 0 {
+        return _rec_to_msg(val, rt.records[tag_wide_record(tag) - 1], rt);
+    }
+    return val;
+}
+
+
+def _rec_from_msg(decoded: object, rec: RecordDesc, rt: _Runtime) -> object {
+    cls = rt.record_classes[rec.index];
+    if rec.kind == RECORD_KIND_ENUM {
+        if isinstance(decoded, str) {
+            return cls(variant=decoded, value=None);
+        }
+        if isinstance(decoded, dict) and len(decoded) == 1 {
+            (vname, payload) = next(iter(decoded.items()));
+            return cls(
+                variant=vname,
+                value=_field_from_msg(payload, _variant_tag(rec, vname), rt)
+            );
+        }
+        return decoded;
+    }
+    if not isinstance(decoded, dict) {
+        return decoded;
+    }
+    kw = {};
+    for f in rec.fields {
+        if f.name in decoded {
+            kw[f.name] = _field_from_msg(decoded[f.name], f.tag, rt);
+        }
+    }
+    return cls(**kw);
+}
+
+
+def _rec_to_msg(v: object, rec: RecordDesc, rt: _Runtime) -> object {
+    if rec.kind == RECORD_KIND_ENUM {
+        if isinstance(v, str) {
+            return v;
+        }
+        if isinstance(v, dict) {
+            return v;
+        }
+        variant = getattr(v, "variant");
+        value = getattr(v, "value");
+        vtag = _variant_tag(rec, variant);
+        if value is None and vtag == TAG_VOID {
+            return variant;
+        }
+        return {variant: _field_to_msg(value, vtag, rt)};
+    }
+    if isinstance(v, dict) {
+        return {
+            f.name: _field_to_msg(v[f.name], f.tag, rt)
+            for f in rec.fields
+            if f.name in v
+        };
+    }
+    return {f.name: _field_to_msg(getattr(v, f.name), f.tag, rt) for f in rec.fields};
 }
 
 
