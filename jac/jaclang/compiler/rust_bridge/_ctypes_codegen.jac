@@ -25,6 +25,7 @@ import from jaclang.compiler.rust_bridge._blob {
     TAG_BOOL,
     TAG_INT,
     TAG_STR,
+    TAG_WIDE,
     KIND_OPAQUE,
     KIND_ERROR,
     FN_CTOR,
@@ -59,6 +60,7 @@ def _ret_bridgeable(s: Slot) -> bool {
     if s.is_opt
     and s.kind != SlotKind.Str
     and s.kind != SlotKind.Bytes
+    and s.kind != SlotKind.Wide
     and s.kind != SlotKind.OpaqueRef {
         return False;
     }
@@ -233,7 +235,9 @@ def _wire(lib: CDLL, fd: FnDesc) -> object {
 
     for p in fd.params {
         s = classify(p.tag);
-        if s.kind == SlotKind.Str or s.kind == SlotKind.Bytes {
+        if s.kind == SlotKind.Str
+        or s.kind == SlotKind.Bytes
+        or s.kind == SlotKind.Wide {
             args.extend([c_char_p, c_uint32]);
         } elif s.kind == SlotKind.Bool {
             args.append(c_uint8);
@@ -258,7 +262,9 @@ def _wire(lib: CDLL, fd: FnDesc) -> object {
         args.append(POINTER(_JacBuf));
     } elif ret.kind == SlotKind.Bool {
         args.append(POINTER(c_uint8));
-    } elif ret.kind == SlotKind.Str or ret.kind == SlotKind.Bytes {
+    } elif ret.kind == SlotKind.Str
+    or ret.kind == SlotKind.Bytes
+    or ret.kind == SlotKind.Wide {
         args.append(POINTER(_JacBuf));
     } elif ret.kind != SlotKind.Void {
         args.append(POINTER(c_uint64));
@@ -347,6 +353,231 @@ def _decode_list(raw: bytes, vtag: int) -> list {
 }
 
 
+# --- serde wide lane (TAG_WIDE) -------------------------------------------
+# A wide slot carries a whole serde document as a MessagePack payload across the
+# FFI boundary. Unlike the na surface — which has no `any` type and so must model
+# the value as a `JacValue` tagged union (see rust_bridge/_msgpack.jac) — CPython
+# is dynamically typed, so we decode straight to native dict/list/int/float/str/
+# bool/None and encode the same natives back. The wire format is standard
+# MessagePack and is byte-compatible with the na codec (rmp_serde accepts both).
+
+
+def _mp_read(raw: bytes, off: int, depth: int) -> tuple {
+    if depth > 64 {
+        raise ValueError("msgpack decode: recursion depth exceeded");
+    }
+    (lead, ) = struct.unpack_from(">B", raw, off);
+    off += 1;
+
+    if lead < 0x80 {
+        return (lead, off);
+    }
+    if lead >= 0xe0 {
+        return (lead - 256, off);
+    }
+    if lead >= 0xa0 and lead < 0xc0 {
+        n = lead - 0xa0;
+        return (raw[off:off + n].decode("utf-8", errors="replace"), off + n);
+    }
+    if lead >= 0x80 and lead < 0x90 {
+        return _mp_read_map(raw, off, lead - 0x80, depth);
+    }
+    if lead >= 0x90 and lead < 0xa0 {
+        return _mp_read_array(raw, off, lead - 0x90, depth);
+    }
+
+    if lead == 0xc0 {
+        return (None, off);
+    }
+    if lead == 0xc2 {
+        return (False, off);
+    }
+    if lead == 0xc3 {
+        return (True, off);
+    }
+
+    if lead == 0xcc {
+        return (struct.unpack_from(">B", raw, off)[0], off + 1);
+    }
+    if lead == 0xcd {
+        return (struct.unpack_from(">H", raw, off)[0], off + 2);
+    }
+    if lead == 0xce {
+        return (struct.unpack_from(">I", raw, off)[0], off + 4);
+    }
+    if lead == 0xcf {
+        return (struct.unpack_from(">Q", raw, off)[0], off + 8);
+    }
+    if lead == 0xd0 {
+        return (struct.unpack_from(">b", raw, off)[0], off + 1);
+    }
+    if lead == 0xd1 {
+        return (struct.unpack_from(">h", raw, off)[0], off + 2);
+    }
+    if lead == 0xd2 {
+        return (struct.unpack_from(">i", raw, off)[0], off + 4);
+    }
+    if lead == 0xd3 {
+        return (struct.unpack_from(">q", raw, off)[0], off + 8);
+    }
+    if lead == 0xca {
+        return (struct.unpack_from(">f", raw, off)[0], off + 4);
+    }
+    if lead == 0xcb {
+        return (struct.unpack_from(">d", raw, off)[0], off + 8);
+    }
+
+    if lead == 0xd9 {
+        n = struct.unpack_from(">B", raw, off)[0];
+        off += 1;
+        return (raw[off:off + n].decode("utf-8", errors="replace"), off + n);
+    }
+    if lead == 0xda {
+        n = struct.unpack_from(">H", raw, off)[0];
+        off += 2;
+        return (raw[off:off + n].decode("utf-8", errors="replace"), off + n);
+    }
+    if lead == 0xdb {
+        n = struct.unpack_from(">I", raw, off)[0];
+        off += 4;
+        return (raw[off:off + n].decode("utf-8", errors="replace"), off + n);
+    }
+
+    if lead == 0xdc {
+        n = struct.unpack_from(">H", raw, off)[0];
+        return _mp_read_array(raw, off + 2, n, depth);
+    }
+    if lead == 0xdd {
+        n = struct.unpack_from(">I", raw, off)[0];
+        return _mp_read_array(raw, off + 4, n, depth);
+    }
+    if lead == 0xde {
+        n = struct.unpack_from(">H", raw, off)[0];
+        return _mp_read_map(raw, off + 2, n, depth);
+    }
+    if lead == 0xdf {
+        n = struct.unpack_from(">I", raw, off)[0];
+        return _mp_read_map(raw, off + 4, n, depth);
+    }
+    raise ValueError(f"msgpack decode: unsupported lead byte 0x{lead:02x}");
+}
+
+
+def _mp_read_array(raw: bytes, off: int, count: int, depth: int) -> tuple {
+    out = [];
+    for _ in range(count) {
+        (val, off) = _mp_read(raw, off, depth + 1);
+        out.append(val);
+    }
+    return (out, off);
+}
+
+
+def _mp_read_map(raw: bytes, off: int, count: int, depth: int) -> tuple {
+    out = {};
+    for _ in range(count) {
+        (key, off) = _mp_read(raw, off, depth + 1);
+        if not isinstance(key, str) {
+            raise ValueError("msgpack decode: non-string map key");
+        }
+        (val, off) = _mp_read(raw, off, depth + 1);
+        out[key] = val;
+    }
+    return (out, off);
+}
+
+
+def _mp_decode(raw: bytes) -> object {
+    (val, _off) = _mp_read(raw, 0, 0);
+    return val;
+}
+
+
+def _mp_encode_str(s: str) -> bytes {
+    eb = s.encode("utf-8");
+    el = len(eb);
+    if el < 32 {
+        return struct.pack(">B", 0xa0 + el) + eb;
+    }
+    if el < 256 {
+        return struct.pack(">BB", 0xd9, el) + eb;
+    }
+    if el < 65536 {
+        return struct.pack(">BH", 0xda, el) + eb;
+    }
+    return struct.pack(">BI", 0xdb, el) + eb;
+}
+
+
+def _mp_encode_int(n: int) -> bytes {
+    if n >= 0 {
+        if n < 0x80 {
+            return struct.pack(">B", n);
+        }
+        if n < 0x10000000000000000 {
+            return struct.pack(">B", 0xcf) + struct.pack(">Q", n);
+        }
+        raise OverflowError("msgpack encode: int exceeds u64");
+    }
+    if n >= -32 {
+        return struct.pack(">B", n + 256);
+    }
+    if n >= -0x8000000000000000 {
+        return struct.pack(">B", 0xd3) + struct.pack(">q", n);
+    }
+    raise OverflowError("msgpack encode: int below i64");
+}
+
+
+def _mp_encode(val: object) -> bytes {
+    if val is None {
+        return struct.pack(">B", 0xc0);
+    }
+    if isinstance(val, bool) {
+        return struct.pack(">B", 0xc3 if val else 0xc2);
+    }
+    if isinstance(val, int) {
+        return _mp_encode_int(val);
+    }
+    if isinstance(val, float) {
+        return struct.pack(">B", 0xcb) + struct.pack(">d", val);
+    }
+    if isinstance(val, str) {
+        return _mp_encode_str(val);
+    }
+    if isinstance(val, list) or isinstance(val, tuple) {
+        if len(val) < 16 {
+            out = struct.pack(">B", 0x90 + len(val));
+        } elif len(val) < 65536 {
+            out = struct.pack(">BH", 0xdc, len(val));
+        } else {
+            out = struct.pack(">BI", 0xdd, len(val));
+        }
+        for child in val {
+            out += _mp_encode(child);
+        }
+        return out;
+    }
+    if isinstance(val, dict) {
+        if len(val) < 16 {
+            out = struct.pack(">B", 0x80 + len(val));
+        } elif len(val) < 65536 {
+            out = struct.pack(">BH", 0xde, len(val));
+        } else {
+            out = struct.pack(">BI", 0xdf, len(val));
+        }
+        for (k, v) in val.items() {
+            if not isinstance(k, str) {
+                raise TypeError("msgpack encode: map keys must be str");
+            }
+            out += _mp_encode_str(k) + _mp_encode(v);
+        }
+        return out;
+    }
+    raise TypeError(f"msgpack encode: unsupported type {type(val).__name__}");
+}
+
+
 def _call(
     c_fn: object,
     fd: FnDesc,
@@ -367,6 +598,9 @@ def _call(
         if s.kind == SlotKind.Str or s.kind == SlotKind.Bytes {
             (enc, n) = _encode(v);
             c_args.extend([enc, c_uint32(n)]);
+        } elif s.kind == SlotKind.Wide {
+            enc = _mp_encode(v);
+            c_args.extend([enc, c_uint32(len(enc))]);
         } elif s.kind == SlotKind.Bool {
             c_args.append(c_uint8(int(bool(v))));
         } elif s.kind == SlotKind.Int or s.kind == SlotKind.Uint {
@@ -398,7 +632,9 @@ def _call(
         c_args.append(byref(out_buf));
     } elif ret.kind == SlotKind.Bool {
         c_args.append(byref(out_b));
-    } elif ret.kind == SlotKind.Str or ret.kind == SlotKind.Bytes {
+    } elif ret.kind == SlotKind.Str
+    or ret.kind == SlotKind.Bytes
+    or ret.kind == SlotKind.Wide {
         c_args.append(byref(out_buf));
     } elif ret.kind != SlotKind.Void {
         c_args.append(byref(out_h));
@@ -455,6 +691,14 @@ def _call(
         raw = string_at(out_buf.ptr, out_buf.len);
         rt.free_buf(out_buf);
         return raw;
+    }
+    if ret.kind == SlotKind.Wide {
+        if ret.is_opt and out_buf.ptr == 0 {
+            return None;
+        }
+        raw = string_at(out_buf.ptr, out_buf.len) if out_buf.ptr != 0 else b"";
+        rt.free_buf(out_buf);
+        return _mp_decode(raw);
     }
     if ret.kind == SlotKind.Int {
         v = out_h.value;
