@@ -26,7 +26,9 @@ import from jaclang.compiler.rust_bridge._blob {
     tag_map_value,
     tag_list_value,
     tag_is_wide,
+    tag_wide_record,
     TAG_WIDE_REC_MASK,
+    RECORD_KIND_ENUM,
     RecordDesc,
     FieldDesc
 }
@@ -331,6 +333,7 @@ class _Synth {
 
         self._typed_recs = [];
         self._rec_names = {};
+        self._taken_types = _taken_types;
         _seen_rec = set();
         for fd in meta.fns {
             _slots = [classify(fd.ret)];
@@ -339,14 +342,8 @@ class _Synth {
             }
             for s in _slots {
                 rec = self._typed_record(s);
-                if rec is not None and rec.index not in _seen_rec {
-                    _seen_rec.add(rec.index);
-                    nm = _mangle(rec.name);
-                    while nm in _taken_types or nm in self._rec_names.values() {
-                        nm = nm + "_";
-                    }
-                    self._rec_names[rec.index] = nm;
-                    self._typed_recs.append(rec);
+                if rec is not None {
+                    self._collect_record(rec.index, _seen_rec);
                 }
             }
         }
@@ -363,6 +360,44 @@ class _Synth {
         or base == TAG_STR;
     }
 
+    def _na_field_ok(self: _Synth, tag: int, visiting: set) -> bool {
+        if tag_is_list(tag) {
+            return self._na_field_ok(tag_list_value(tag), visiting);
+        }
+        if tag_is_map(tag) {
+            return self._na_field_ok(tag_map_value(tag), visiting);
+        }
+        if tag_is_opt(tag) {
+            return self._na_field_ok(tag_base(tag), visiting);
+        }
+        if tag_is_wide(tag) and tag_wide_record(tag) > 0 {
+            nidx = tag_wide_record(tag) - 1;
+            if nidx >= len(self.meta.records) {
+                return False;
+            }
+            return self._na_record_ok(self.meta.records[nidx], visiting);
+        }
+        return self._na_scalar_field(tag);
+    }
+
+    def _na_record_ok(self: _Synth, rec: RecordDesc, visiting: set) -> bool {
+        if rec.kind == RECORD_KIND_ENUM {
+            return False;
+        }
+        if rec.index in visiting {
+            return True;
+        }
+        visiting.add(rec.index);
+        ok = True;
+        for f in rec.fields {
+            if not self._na_field_ok(f.tag, visiting) {
+                ok = False;
+            }
+        }
+        visiting.remove(rec.index);
+        return ok;
+    }
+
     def _typed_record(self: _Synth, slot: Slot) -> RecordDesc | None {
         if slot.kind != SlotKind.Wide or slot.record <= 0 or slot.is_opt {
             return None;
@@ -372,12 +407,69 @@ class _Synth {
             return None;
         }
         rec = self.meta.records[idx];
-        for f in rec.fields {
-            if not self._na_scalar_field(f.tag) {
-                return None;
-            }
+        if not self._na_record_ok(rec, set()) {
+            return None;
         }
         return rec;
+    }
+
+    def _nested_record_indices(self: _Synth, tag: int) -> list[int] {
+        if tag_is_list(tag) {
+            return self._nested_record_indices(tag_list_value(tag));
+        }
+        if tag_is_map(tag) {
+            return self._nested_record_indices(tag_map_value(tag));
+        }
+        if tag_is_opt(tag) {
+            return self._nested_record_indices(tag_base(tag));
+        }
+        if tag_is_wide(tag) and tag_wide_record(tag) > 0 {
+            return [tag_wide_record(tag) - 1];
+        }
+        return [];
+    }
+
+    def _collect_record(self: _Synth, idx: int, seen: set) -> None {
+        if idx in seen or idx >= len(self.meta.records) {
+            return;
+        }
+        seen.add(idx);
+        rec = self.meta.records[idx];
+
+        for f in rec.fields {
+            for nidx in self._nested_record_indices(f.tag) {
+                self._collect_record(nidx, seen);
+            }
+        }
+        nm = _mangle(rec.name);
+        while nm in self._taken_types or nm in self._rec_names.values() {
+            nm = nm + "_";
+        }
+        self._rec_names[idx] = nm;
+        self._typed_recs.append(rec);
+    }
+
+    def _na_type(self: _Synth, tag: int) -> str {
+        if tag_is_list(tag) {
+            return f"list[{self._na_type(tag_list_value(tag))}]";
+        }
+        if tag_is_map(tag) {
+            return f"dict[str, {self._na_type(tag_map_value(tag))}]";
+        }
+        if tag_is_opt(tag) {
+            return f"{self._na_type(tag_base(tag))} | None";
+        }
+        if tag_is_wide(tag) and tag_wide_record(tag) > 0 {
+            return self._rec_names[tag_wide_record(tag) - 1];
+        }
+        base = tag_base(tag);
+        if base == TAG_STR {
+            return "str";
+        }
+        if base == TAG_BOOL {
+            return "bool";
+        }
+        return "int";
     }
 
     def _wide_typed_name(self: _Synth, tag: int) -> str | None {
@@ -704,20 +796,138 @@ class _Synth {
         return lines;
     }
 
+    def _na_default(self: _Synth, tag: int) -> str {
+        if tag_is_list(tag) {
+            return "[]";
+        }
+        if tag_is_map(tag) {
+            return "{}";
+        }
+        if tag_is_opt(tag) {
+            return "None";
+        }
+        if tag_is_wide(tag) and tag_wide_record(tag) > 0 {
+            return f"{self._rec_names[tag_wide_record(tag) - 1]}()";
+        }
+        base = tag_base(tag);
+        if base == TAG_STR {
+            return "\"\"";
+        }
+        if base == TAG_BOOL {
+            return "False";
+        }
+        return "0";
+    }
+
+    def _to_jv_expr(self: _Synth, acc: str, tag: int, d: int) -> str {
+        if tag_is_opt(tag) {
+            inner = self._to_jv_expr(acc, tag_base(tag), d);
+            return f"(jv_nil() if {acc} is None else {inner})";
+        }
+        if tag_is_wide(tag) and tag_wide_record(tag) > 0 {
+            return f"_{self._rec_names[tag_wide_record(tag) - 1]}_to_jv({acc})";
+        }
+        base = tag_base(tag);
+        if base == TAG_STR {
+            return f"jv_str({acc})";
+        }
+        if base == TAG_BOOL {
+            return f"jv_bool({acc})";
+        }
+        if base == TAG_UINT {
+            return f"jv_uint({acc})";
+        }
+        return f"jv_int({acc})";
+    }
+
+    def _to_jv_lines(self: _Synth, dst: str, acc: str, tag: int, d: int) -> list[str] {
+        if tag_is_list(tag) {
+            et = tag_list_value(tag);
+            out = [f"_items{d}: list[JacValue] = [];", f"for _sx{d} in {acc} {{"];
+            for ln in self._to_jv_lines(f"_sv{d}", f"_sx{d}", et, d + 1) {
+                out.append("    " + ln);
+            }
+            out.append(f"    _items{d}.append(_sv{d});");
+            out.append("}");
+            out.append(f"{dst} = jv_array(_items{d});");
+            return out;
+        }
+        if tag_is_map(tag) {
+            vt = tag_map_value(tag);
+            out = [
+                f"_ent{d}: dict[str, JacValue] = {{}};",
+                f"for (_sk{d}, _smv{d}) in {acc}.items() {{"
+            ];
+            for ln in self._to_jv_lines(f"_sv{d}", f"_smv{d}", vt, d + 1) {
+                out.append("    " + ln);
+            }
+            out.append(f"    _ent{d}[_sk{d}] = _sv{d};");
+            out.append("}");
+            out.append(f"{dst} = jv_map(_ent{d});");
+            return out;
+        }
+        return [f"{dst} = {self._to_jv_expr(acc, tag, d)};"];
+    }
+
+    def _from_jv_expr(self: _Synth, jv: str, tag: int, d: int) -> str {
+        if tag_is_opt(tag) {
+            inner = self._from_jv_expr(jv, tag_base(tag), d);
+            return f"(None if {jv}.kind == JV_NIL else {inner})";
+        }
+        if tag_is_wide(tag) and tag_wide_record(tag) > 0 {
+            return f"_jv_to_{self._rec_names[tag_wide_record(tag) - 1]}({jv})";
+        }
+        base = tag_base(tag);
+        if base == TAG_STR {
+            return f"{jv}.s";
+        }
+        if base == TAG_BOOL {
+            return f"{jv}.b";
+        }
+        return f"{jv}.i";
+    }
+
+    def _from_jv_lines(self: _Synth, dst: str, jv: str, tag: int, d: int) -> list[str] {
+        if tag_is_list(tag) {
+            et = tag_list_value(tag);
+            out = [
+                f"{dst} = [];",
+                f"for _lx{d} in {jv}.items {{",
+                f"    _e{d}: JacValue = _lx{d};"
+            ];
+            for ln in self._from_jv_lines(f"_ev{d}", f"_e{d}", et, d + 1) {
+                out.append("    " + ln);
+            }
+            out.append(f"    {dst}.append(_ev{d});");
+            out.append("}");
+            return out;
+        }
+        if tag_is_map(tag) {
+            vt = tag_map_value(tag);
+            out = [
+                f"{dst} = {{}};",
+                f"for (_lk{d}, _lv{d}) in {jv}.entries.items() {{",
+                f"    _e{d}: JacValue = _lv{d};"
+            ];
+            for ln in self._from_jv_lines(f"_ev{d}", f"_e{d}", vt, d + 1) {
+                out.append("    " + ln);
+            }
+            out.append(f"    {dst}[_lk{d}] = _ev{d};");
+            out.append("}");
+            return out;
+        }
+        return [f"{dst} = {self._from_jv_expr(jv, tag, d)};"];
+    }
+
     def _record_source(self: _Synth, rec: RecordDesc) -> list[str] {
         name = self._rec_names[rec.index];
         lines = [];
         lines.append(f"obj {name} {{");
         for f in rec.fields {
             fn = self._field_name(f.name);
-            base = tag_base(f.tag);
-            if base == TAG_STR {
-                lines.append(f"    has {fn}: str = \"\";");
-            } elif base == TAG_BOOL {
-                lines.append(f"    has {fn}: bool = False;");
-            } else {
-                lines.append(f"    has {fn}: int = 0;");
-            }
+            lines.append(
+                f"    has {fn}: {self._na_type(f.tag)} = {self._na_default(f.tag)};"
+            );
         }
         lines.append("}");
         lines.append("");
@@ -725,18 +935,13 @@ class _Synth {
         lines.append(f"def _{name}_to_jv(_r: {name}) -> JacValue {{");
         lines.append(f"    r: {name} = _r;");
         lines.append("    m: dict[str, JacValue] = {};");
+        _j = 0;
         for f in rec.fields {
             fn = self._field_name(f.name);
-            base = tag_base(f.tag);
-            if base == TAG_STR {
-                lines.append(f"    m[{f.name!r}] = jv_str(r.{fn});");
-            } elif base == TAG_BOOL {
-                lines.append(f"    m[{f.name!r}] = jv_bool(r.{fn});");
-            } elif base == TAG_UINT {
-                lines.append(f"    m[{f.name!r}] = jv_uint(r.{fn});");
-            } else {
-                lines.append(f"    m[{f.name!r}] = jv_int(r.{fn});");
+            for ln in self._to_jv_lines(f"m[{f.name!r}]", f"r.{fn}", f.tag, _j * 16) {
+                lines.append("    " + ln);
             }
+            _j += 1;
         }
         lines.append("    return jv_map(m);");
         lines.append("}");
@@ -749,14 +954,10 @@ class _Synth {
         _i = 0;
         for f in rec.fields {
             fn = self._field_name(f.name);
-            base = tag_base(f.tag);
-            lines.append(f"    _f{_i} = e[{f.name!r}];");
-            if base == TAG_STR {
-                lines.append(f"    r.{fn} = _f{_i}.s;");
-            } elif base == TAG_BOOL {
-                lines.append(f"    r.{fn} = _f{_i}.b;");
-            } else {
-                lines.append(f"    r.{fn} = _f{_i}.i;");
+            lines.append(f"    _f{_i}: JacValue = e[{f.name!r}];");
+
+            for ln in self._from_jv_lines(f"r.{fn}", f"_f{_i}", f.tag, _i * 16) {
+                lines.append("    " + ln);
             }
             _i += 1;
         }
