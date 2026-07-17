@@ -277,11 +277,7 @@ def _requests_help(cmd_argv: list[str]) -> bool {
 }
 
 impl run_selected_command(command_name: str) -> None {
-    import from jaclang.cli.console { console }
-    import from jaclang.cli.executor { get_executor }
-    import from jaclang.cli.loader { load_handler }
     import from jaclang.cli.manifest { get_command_meta }
-    import from jaclang.cli.registry_adapter { manifest_to_spec }
 
     meta = get_command_meta(command_name);
     if meta is None {
@@ -299,6 +295,11 @@ impl run_selected_command(command_name: str) -> None {
     if _requests_help(cmd_argv) {
         parser.parse_known_args(cmd_argv);
     }
+
+    import from jaclang.cli.console { console }
+    import from jaclang.cli.loader { load_handler }
+    import from jaclang.cli.registry_adapter { manifest_to_spec }
+    import from jaclang.cli.executor { get_executor }
 
     _load_project_config();
 
