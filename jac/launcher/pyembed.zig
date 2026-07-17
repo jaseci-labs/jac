@@ -55,8 +55,11 @@ const PyDecRef_t = *const fn (o: ?*anyopaque) callconv(.c) void;
 // Phase 3.0 py-interop spike surface. ImportModule reaches beyond __main__ so na
 // can pull in a pip-installed wheel (orjson/polars) by name; CallMethod is the
 // generic method-dispatch primitive (real symbol is variadic C -- the forwarder
-// pins one format arg, which covers "O"/"y#" round-trips); the PyBytes pair marshals
-// the msgpack/JSON byte payloads that cross the boundary in both directions.
+// pins EXACTLY ONE trailing vararg, so only single-value Py_BuildValue formats
+// work through it: "O", "s", "i", "l", ... NOT two-arg forms like "y#"/"s#", which
+// would read a second vararg that was never pushed. Marshal a bytes payload as a
+// PyBytes object + "O" instead); the PyBytes pair builds/reads those byte payloads
+// (msgpack/JSON) that cross the boundary in both directions.
 const PyImportImportModule_t = *const fn (name: [*:0]const u8) callconv(.c) ?*anyopaque;
 const PyObjectCallMethod_t = *const fn (obj: ?*anyopaque, name: [*:0]const u8, fmt: [*:0]const u8, ...) callconv(.c) ?*anyopaque;
 const PyBytesFromStringAndSize_t = *const fn (v: [*]const u8, len: isize) callconv(.c) ?*anyopaque;
@@ -217,9 +220,9 @@ export fn jpy_Py_DecRef(o: ?*anyopaque) void {
 }
 
 // Phase 3.0 py-interop forwarders. `na` declares each with fixed arity; the
-// CallMethod forwarder pins one format arg over the real variadic C symbol (the
-// spike only ever passes "O"/"y#" with a single value, which is all the arg-
-// marshaling wire format needs).
+// CallMethod forwarder pins exactly one trailing vararg over the real variadic C
+// symbol, so callers must use single-value formats ("O", "s", ...) -- a byte
+// payload crosses as a PyBytes object + "O", never a two-arg "y#"/"s#".
 export fn jpy_PyImport_ImportModule(name: [*:0]const u8) ?*anyopaque {
     return p_import_module(name);
 }

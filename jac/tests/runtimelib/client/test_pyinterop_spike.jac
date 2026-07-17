@@ -115,6 +115,9 @@ def _spike_host_src -> str {
         "    b1: int = b[1];\n"
         "    elapsed_ns: int = (b0 - a0) * 1000000000 + (b1 - a1);\n"
         "    jpy_PyRun_SimpleString(\"print('PYINTEROP_LAT_NS', \" + str(elapsed_ns) + \"/\" + str(iters) + \", flush=True)\");\n"
+        # ImportModule returns a new ref; drop it (and pb) before finalize so the
+        # spike models leak-free ownership for the 3.1 surface to copy.
+        "    jpy_Py_DecRef(binascii);\n"
         "    jpy_Py_DecRef(pb);\n"
         "    jpy_PyGILState_Release(gstate);\n"
         "    jpy_Py_Finalize();\n"

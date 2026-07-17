@@ -1176,7 +1176,8 @@ these first; the adversarial suite already contains skip-gated tests waiting on 
       latency (<2 µs target). GO/NO-GO gate for the rest of the phase.
   - LANDED: the 4 forwarders + typedefs/globals/symbol-resolution in
       `pyembed.zig` (CallMethod's real symbol is variadic C -- the forwarder pins
-      one format arg, which covers the "O"/"y#" round-trips the wire format needs).
+      exactly one trailing vararg, so callers use single-value formats ("O"/"s"/...);
+      a byte payload crosses as a PyBytes object + "O", never a two-arg "y#"/"s#").
       New `zig build pyembed` step compiles+places the shim standalone; all 4
       symbols verified exported (`nm -D`).
   - LANDED: `tests/runtimelib/client/test_pyinterop_spike.jac` -- an na host that
