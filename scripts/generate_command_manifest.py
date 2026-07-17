@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate jac/jaclang/cli/_manifest_data.py from the live command registry.
+"""Generate jac/jaclang/cli/_manifest_data.json from the live command registry.
 
 Run from the jac source tree after registry changes to refresh the canonical
 manifest. Requires a working jaclang import (dev or release).
@@ -7,11 +7,13 @@ manifest. Requires a working jaclang import (dev or release).
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "jac"
-OUT = ROOT / "jaclang" / "cli" / "_manifest_data.py"
+OUT = ROOT / "jaclang" / "cli" / "_manifest_data.json"
+LEGACY_OUT = ROOT / "jaclang" / "cli" / "_manifest_data.py"
 
 
 def _kind_name(kind: object) -> str:
@@ -66,23 +68,17 @@ def _collect() -> list[dict]:
     return out
 
 
-def _emit(data: list[dict]) -> str:
-    import pprint
-
-    body = pprint.pformat(data, width=120, sort_dicts=False)
-    return (
-        '"""Auto-generated command manifest. Do not edit by hand.\n\n'
-        "Regenerate with: python scripts/generate_command_manifest.py\n"
-        '"""\n\n'
-        "from __future__ import annotations\n\n"
-        f"COMMANDS: list[dict] = {body}\n"
-    )
-
-
 def main() -> int:
     data = _collect()
-    OUT.write_text(_emit(data), encoding="utf-8")
+    payload = {"commands": data}
+    OUT.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
     print(f"Wrote {len(data)} commands to {OUT}")
+    if LEGACY_OUT.exists():
+        LEGACY_OUT.unlink()
+        print(f"Removed legacy {LEGACY_OUT}")
     return 0
 
 

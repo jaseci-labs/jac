@@ -68,10 +68,16 @@ def _print_error(message: str) {
     sys.stderr.write(f"error: {message}\n");
 }
 
+def _use_color -> bool {
+    if os.environ.get('NO_COLOR') {
+        return False;
+    }
+    return sys.stdout?.isatty and sys.stdout.isatty();
+}
+
 impl handle_manifest_route(raw_argv: list[str]) -> bool {
     import from jaclang.cli.manifest { TOMBSTONED_VERBS, known_command_names }
     import from jaclang.cli.manifest_help {
-        _use_color,
         format_curated_help,
         format_logo,
         format_verbose_help
@@ -103,7 +109,22 @@ impl handle_manifest_route(raw_argv: list[str]) -> bool {
 
     first = _first_command_token(raw_argv);
     if first is None {
-        return False;
+        if '-h' in raw_argv or '--help' in raw_argv {
+            _write_stdout(format_verbose_help());
+            return True;
+        }
+        if '-V' in raw_argv or '--version' in raw_argv {
+            sys_info = f"{platform.system()} {platform.machine()}";
+            ver = _resolve_cli_version();
+            use_color = _use_color();
+            bold = '\033[1m' if use_color else '';
+            reset = '\033[0m' if use_color else '';
+            _write_stdout(f"{bold}jac{reset} {ver}  ({sys_info})");
+            return True;
+        }
+        sys.stderr.write('usage: jac [-h] [-V] COMMAND ...\n');
+        _print_error(f"unrecognized arguments: {' '.join(raw_argv)}");
+        sys.exit(2);
     }
 
     dispatchable = known_command_names(include_hidden=True);
