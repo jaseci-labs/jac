@@ -162,7 +162,7 @@ with entry {
 }
 ```
 
-## Regions: first-class `Region` handles and `in <handle> { }` opens
+## Regions: first-class `Region` handles and `in` opens
 
 A **`Region`** is an ownable, sendable, escape-checked allocation extent. A
 region is *opened* for allocation with the `in <handle> { ... }` statement:
@@ -260,22 +260,24 @@ obj Res {
 - **[Enforced headerless modules](native-pathway.md#zero-rc-ownership-compilation)** (`--enforce-nogc --gc none`): the compiler calls the hook from the statically inserted `__drop_<T>` at each drop point.
 - **Managed modes** (`rc` and the default `cycles`): the hook is invoked by the object's reference-count destructor when the last reference dies. For an unaliased local that is the same point the headerless build drops at, so program output is identical across modes.
 
-**Timing is last use, not scope end.** Drops are scheduled by liveness (NLL-style eager drop): a binding's value is destroyed after the statement containing its last use, which can be earlier than the end of the enclosing block. This is observable through `drop`:
+**Drops happen after last use, and no later than scope exit.** Drops are scheduled by liveness: a binding whose value the program will never read again can be reclaimed early -- a value whose last use is its own initialization is dropped right away, before later statements run. This eager case is observable through `drop`:
 
 ```jac
 def run {
     r: own Res = Res(tag=7);
     print("alive");
 }
-# prints 7, then "alive" -- r's last use is its declaration
+# prints 7, then "alive" -- r's last use is its declaration, so it drops first
 ```
+
+The current native backend does not yet place every drop at the *statement* granularity a full non-lexical-lifetime scheme would: a binding that is read partway through a frame is observed to drop at frame exit rather than immediately after that last read. Rely on the guarantee the compiler actually provides today -- a uniquely-owned value drops after its last use and no later than scope exit, at the same program point under every native gc mode -- rather than on exact statement-level timing.
 
 Two caveats:
 
 - Under `cycles`, objects that die as members of a reference cycle are destroyed by the collector; each member's `drop` still runs, but the order within the cycle is unspecified and sibling objects may already be gone -- don't traverse other heap objects from a cyclic `drop`.
 - There is no resurrection: `drop` must not store `self` anywhere; the object is freed as soon as the hook returns.
 
-The Python backend does not invoke `def drop` automatically yet -- rely on it only in native modules.
+Outside regions, the Python backend does not invoke `def drop` automatically yet -- rely on it only in native modules. Values allocated under an [`in <handle> { }` open](#regions-first-class-region-handles-and-in-opens) are the exception: their hooks fire at portable points on both backends -- LIFO at the closing brace for an anonymous open, at the handle's death for a named one. (Named-handle timing on the Python backend rides CPython reference death, which approximates but does not exactly equal the native static drop point; the anonymous case is exactly portable.)
 
 ## Zero-RC native builds
 

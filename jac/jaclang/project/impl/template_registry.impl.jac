@@ -235,13 +235,13 @@ def _register_core_templates(registry: TemplateRegistry) {
         'walker:pub PostMessage {\n'
         '    """Append a message and report the created node."""\n'
         '    has author: str,\n        text: str,\n        reports: list[Message] = [];\n\n'
-        '    can post with `root entry {\n'
+        '    can post with Root entry {\n'
         '        report here ++> Message(author=self.author, text=self.text);\n'
         '    }\n}\n\n'
         'walker:pub ListMessages {\n'
         '    """Report every message in the guestbook."""\n'
         '    has reports: list[Message] = [];\n\n'
-        '    can collect with `root entry {\n        visit [-->];\n    }\n\n'
+        '    can collect with Root entry {\n        visit [-->];\n    }\n\n'
         '    can gather with Message entry {\n        report here;\n    }\n}\n'
     );
 

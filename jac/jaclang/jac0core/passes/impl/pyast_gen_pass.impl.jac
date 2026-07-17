@@ -2504,7 +2504,7 @@ impl PyastGenPass.exit_binary_expr(nd: uni.BinaryExpr) -> None {
             keywords.append(
                 self.sync(
                     ast3.keyword(
-                        arg='EdgeDir',
+                        arg='dir',
                         value=self.sync(
                             ast3.Attribute(
                                 value=self.jaclib_obj('EdgeDir'),
@@ -2520,7 +2520,7 @@ impl PyastGenPass.exit_binary_expr(nd: uni.BinaryExpr) -> None {
             keywords.append(
                 self.sync(
                     ast3.keyword(
-                        arg='filter_on',
+                        arg='filter',
                         value=cast(
                             ast3.expr, self.py_ast_val(nd.op.edge_spec.filter_cond)
                         )
