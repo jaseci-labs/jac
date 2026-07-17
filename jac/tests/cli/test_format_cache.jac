@@ -23,13 +23,25 @@ import shutil;
 import tempfile;
 import from pathlib { Path }
 
+import time;
+
 import from jaclang.cli.format_cache {
     FormatCache,
     FORMAT_CACHE_SCHEMA_VERSION,
+    ENTRY_TTL_SECONDS,
+    PRUNE_INTERVAL_SECONDS,
+    PRUNE_SENTINEL,
     config_fingerprint,
     canonical_logical_path,
     formatter_pipeline_revision,
     frame_unit
+}
+
+
+"""Set a path's mtime to `seconds_ago` before now (best-effort test helper)."""
+def backdate(path: Path, seconds_ago: float) {
+    t = time.time() - seconds_ago;
+    os.utime(path, (t, t));
 }
 
 
@@ -264,6 +276,121 @@ test "schema version is namespaced so old entries cannot be misread" {
         assert FORMAT_CACHE_SCHEMA_VERSION in str(
             cache.entry_path(key).relative_to(d)
         ) , (f"cache path must carry the schema version; got {cache.entry_path(key)}");
+    } finally {
+        shutil.rmtree(d, ignore_errors=True);
+    }
+}
+
+test "stale entries are pruned on the next write after ttl expiry" {
+    (cache, d) = fresh_cache();
+    try {
+        ka = cache.make_key(b"old", lintfix=False, config_fingerprint="cfg");
+        cache.mark_clean(ka);
+        # Age the entry past the TTL and the sentinel past the throttle
+        # window, then any subsequent write must sweep the stale entry.
+        backdate(cache.entry_path(ka), ENTRY_TTL_SECONDS + 60.0);
+        backdate(cache.cache_root / PRUNE_SENTINEL, PRUNE_INTERVAL_SECONDS + 60.0);
+        kb = cache.make_key(b"new", lintfix=False, config_fingerprint="cfg");
+        cache.mark_clean(kb);
+        assert not cache.entry_path(ka).exists() , (
+            "an entry unused for longer than the TTL must be pruned on write"
+        );
+        assert cache.is_clean(kb) , "the entry just written must survive the prune";
+    } finally {
+        shutil.rmtree(d, ignore_errors=True);
+    }
+}
+
+test "hits refresh entry mtime so active entries survive pruning" {
+    (cache, d) = fresh_cache();
+    try {
+        ka = cache.make_key(b"hot", lintfix=False, config_fingerprint="cfg");
+        cache.mark_clean(ka);
+        backdate(cache.entry_path(ka), ENTRY_TTL_SECONDS + 60.0);
+        # A hit must reset the entry's age...
+        assert cache.is_clean(ka);
+        # ...so the next prune keeps it.
+        backdate(cache.cache_root / PRUNE_SENTINEL, PRUNE_INTERVAL_SECONDS + 60.0);
+        kb = cache.make_key(b"new", lintfix=False, config_fingerprint="cfg");
+        cache.mark_clean(kb);
+        assert cache.entry_path(ka).exists() , (
+            "an entry hit since its last write must never be pruned"
+        );
+        assert cache.is_clean(ka);
+    } finally {
+        shutil.rmtree(d, ignore_errors=True);
+    }
+}
+
+test "prune is throttled by the sentinel interval" {
+    (cache, d) = fresh_cache();
+    try {
+        ka = cache.make_key(b"old", lintfix=False, config_fingerprint="cfg");
+        cache.mark_clean(ka);
+        backdate(cache.entry_path(ka), ENTRY_TTL_SECONDS + 60.0);
+        # Sentinel is fresh (created by the first write), so this write
+        # must NOT rescan the store even though ka is past the TTL.
+        kb = cache.make_key(b"new", lintfix=False, config_fingerprint="cfg");
+        cache.mark_clean(kb);
+        assert cache.entry_path(ka).exists() , (
+            "prune must run at most once per interval, not on every write"
+        );
+    } finally {
+        shutil.rmtree(d, ignore_errors=True);
+    }
+}
+
+test "entry count is capped by evicting oldest first" {
+    d = Path(tempfile.mkdtemp(prefix="fmtcache-cap-"));
+    try {
+        cache = FormatCache(d, enabled=True, formatter_stamp="s", max_entries=3);
+        keys: list[str] = [];
+        for i in range(5) {
+            k = cache.make_key(
+                f"content-{i}".encode(), lintfix=False, config_fingerprint="cfg"
+            );
+            cache.mark_clean(k);
+            keys.append(k);
+        }
+        # Stagger ages: keys[0] oldest ... keys[4] newest, all within TTL.
+        for (i, k) in enumerate(keys) {
+            backdate(cache.entry_path(k), 3600.0 - i * 60.0);
+        }
+        backdate(cache.cache_root / PRUNE_SENTINEL, PRUNE_INTERVAL_SECONDS + 60.0);
+        k_new = cache.make_key(b"trigger", lintfix=False, config_fingerprint="cfg");
+        cache.mark_clean(k_new);
+        # 6 live entries, cap 3 -> the 3 oldest (keys[0..2]) must go.
+        for k in keys[:3] {
+            assert not cache.entry_path(k).exists() , (
+                "over the cap, the oldest entries must be evicted first"
+            );
+        }
+        for k in keys[3:] {
+            assert cache.entry_path(k).exists() , (
+                "under the cap, newer entries must be kept"
+            );
+        }
+        assert cache.is_clean(k_new);
+    } finally {
+        shutil.rmtree(d, ignore_errors=True);
+    }
+}
+
+test "orphaned temp files are swept by prune" {
+    (cache, d) = fresh_cache();
+    try {
+        ka = cache.make_key(b"x", lintfix=False, config_fingerprint="cfg");
+        cache.mark_clean(ka);
+        # A crashed writer leaves .<digest>.<pid>.tmp behind; prune must
+        # sweep it once it is old enough to be unambiguously dead.
+        orphan = cache.cache_root / ".deadbeef.99999.tmp";
+        orphan.write_bytes(b"partial");
+        backdate(orphan, PRUNE_INTERVAL_SECONDS + 60.0);
+        backdate(cache.cache_root / PRUNE_SENTINEL, PRUNE_INTERVAL_SECONDS + 60.0);
+        kb = cache.make_key(b"y", lintfix=False, config_fingerprint="cfg");
+        cache.mark_clean(kb);
+        assert not orphan.exists() , "stale writer temp files must be swept";
+        assert cache.is_clean(ka) , "fresh entries must survive the sweep";
     } finally {
         shutil.rmtree(d, ignore_errors=True);
     }

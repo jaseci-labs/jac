@@ -1,11 +1,16 @@
 import hashlib;
 import importlib;
 import os;
+import time;
 import from pathlib { Path }
 
 
 glob FORMAT_CACHE_SCHEMA_VERSION: str = "v1",
      _ENTRY_MARKER: bytes = b"JFMTCLEAN\n",
+     PRUNE_SENTINEL: str = ".last-prune",
+     PRUNE_INTERVAL_SECONDS: float = 86400.0,
+     ENTRY_TTL_SECONDS: float = 2592000.0,
+     MAX_ENTRIES: int = 20000,
      _FORMATTER_PIPELINE_MODULES: tuple[str, ...] = (
          "jaclang.compiler.passes.tool.jac_formatter_pass",
          "jaclang.compiler.passes.tool.jac_auto_lint_pass",
@@ -159,7 +164,10 @@ obj FormatCache {
     has cache_dir: (Path | str | None),
         enabled: bool = True,
         formatter_stamp: str = "",
-        cache_root: (Path | None) = None;
+        cache_root: (Path | None) = None,
+        entry_ttl: float = ENTRY_TTL_SECONDS,
+        prune_interval: float = PRUNE_INTERVAL_SECONDS,
+        max_entries: int = MAX_ENTRIES;
 
     def postinit {
         if bool(self.enabled) and self.cache_dir is not None {
@@ -206,6 +214,10 @@ obj FormatCache {
             } except OSError { }
             return False;
         }
+
+        try {
+            os.utime(path, None);
+        } except OSError { }
         return True;
     }
 
@@ -228,6 +240,74 @@ obj FormatCache {
             }
         } except OSError {
             return;
+        }
+        self._maybe_prune();
+    }
+
+    def _maybe_prune {
+        if self.cache_root is None {
+            return;
+        }
+        sentinel = self.cache_root / PRUNE_SENTINEL;
+        now = time.time();
+        try {
+            if now - sentinel.stat().st_mtime < self.prune_interval {
+                return;
+            }
+        } except OSError { }
+        try {
+            sentinel.touch();
+        } except OSError {
+            return;
+        }
+        self._prune(now);
+    }
+
+    def _prune(now: float) {
+        if self.cache_root is None {
+            return;
+        }
+        try {
+            candidates = list(self.cache_root.iterdir());
+        } except OSError {
+            return;
+        }
+        live: list[tuple[float, Path]] = [];
+        for p in candidates {
+            name = p.name;
+            if name == PRUNE_SENTINEL {
+                continue;
+            }
+            try {
+                if not p.is_file() {
+                    continue;
+                }
+                mtime = p.stat().st_mtime;
+                if name.startswith(".") {
+                    if now - mtime > self.prune_interval {
+                        p.unlink();
+                    }
+                    continue;
+                }
+                if now - mtime > self.entry_ttl {
+                    p.unlink();
+                    continue;
+                }
+                live.append((mtime, p));
+            } except OSError {
+                continue;
+            }
+        }
+        overflow = len(live) - self.max_entries;
+        if overflow > 0 {
+            live.sort();
+            for item in live[:overflow] {
+                try {
+                    item[1].unlink();
+                } except OSError {
+                    continue;
+                }
+            }
         }
     }
 }
