@@ -10,7 +10,7 @@ import sys;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
 import from jaclang.jac0core.sealed { python_tag }
-import from jaclang.project.config { get_config_for_path }
+import from jaclang.project.config { JacConfig, get_config_for_path }
 import from jaclang.project.providers { get_python_provider, resolve_plan }
 import from jaclang.runtimelib.jab_vendor {
     download_wheels,
@@ -19,18 +19,7 @@ import from jaclang.runtimelib.jab_vendor {
 }
 
 
-def main {
-    args = sys.argv[1:];
-    if not args {
-        console.error("usage: jac run vendor_wheels.jac <app_dir>");
-        sys.exit(2);
-    }
-    app_dir = Path(args[0]).resolve();
-    config = get_config_for_path(app_dir);
-    if config is None {
-        console.error(f"No jac.toml under {app_dir}; nothing to vendor.");
-        sys.exit(1);
-    }
+def vendor(config: JacConfig, app_dir: Path) {
     # Mirror the pod's plain `jac install` resolution.
     plan = resolve_plan(config, include_dev=False);
     py_deps = [
@@ -64,6 +53,23 @@ def main {
     wd = wheels_dir(app_dir);
     count = len(list(wd.glob("*.whl"))) if wd.is_dir() else 0;
     console.print(f"  Vendored {count} wheel(s) for {len(specs)} spec(s).");
+}
+
+
+def main {
+    args = sys.argv[1:];
+    if not args {
+        console.error("usage: jac run vendor_wheels.jac <app_dir>");
+        sys.exit(2);
+    }
+    app_dir = Path(args[0]).resolve();
+    config = get_config_for_path(app_dir);
+    if config is None {
+        console.error(f"No jac.toml under {app_dir}; nothing to vendor.");
+        sys.exit(1);
+    } else {
+        vendor(config, app_dir);
+    }
 }
 
 with entry:__main__ {
