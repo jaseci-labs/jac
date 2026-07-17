@@ -381,8 +381,7 @@ glob NODE_SPECS: tuple = (
                  FieldDesc(name="col_start", kind=1),
                  FieldDesc(name="col_end", kind=1),
                  FieldDesc(name="pos_start", kind=1),
-                 FieldDesc(name="pos_end", kind=1),
-                 FieldDesc(name="is_inline", kind=2)
+                 FieldDesc(name="pos_end", kind=1)
              )
          ),
          NodeSpec(

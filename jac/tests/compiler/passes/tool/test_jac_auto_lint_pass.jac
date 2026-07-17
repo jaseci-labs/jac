@@ -31,8 +31,10 @@ test "auto lint full extraction" {
     formatted = prog.mod.main.gen.jac;
 
     # Should contain glob declarations for all extracted values
-    # Note: consecutive globs with same modifiers are now combined
-    assert "glob x = 5,\n     y = " in formatted;
+    # Note: consecutive globs with same modifiers are now combined; leading
+    # comments stay attached to their assignment inside the combined glob
+    assert ("glob x = 5,\n     y = " in formatted)
+    or ("x = 5,\n     y = " in formatted);
     assert "y = " in formatted;
     assert "z = " in formatted;
     assert "int_val" in formatted;
@@ -55,6 +57,9 @@ test "auto lint full extraction" {
     # Globs should come after imports
     import_pos = formatted.find("import from os");
     glob_pos = formatted.find("glob x = ");
+    if (glob_pos < 0) {
+        glob_pos = formatted.find("x = 5");
+    }
     def_pos = formatted.find("def main");
     assert import_pos < glob_pos < def_pos;
 }

@@ -38,9 +38,6 @@ def _remove_pidfile(name: str) {
     _remove_portfile(name);
 }
 
-# The port is persisted beside the pid so a SIBLING process (e.g. `jac scale
-# status` run in another terminal) can find and health-check services it did
-# not spawn itself.
 def _portfile_path(name: str) -> _Path {
     return _Path(".jac/run") / f"{name}.port";
 }

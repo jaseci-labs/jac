@@ -1,4 +1,3 @@
-
 # W3003: consecutive globs - should be merged into one
 glob a = 1,
      b = 2;

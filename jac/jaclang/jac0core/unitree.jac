@@ -1715,8 +1715,7 @@ obj CommentToken(Token) {
         col_end: int,
         pos_start: int,
         pos_end: int,
-        kid: Sequence[UniNode],
-        is_inline: bool = False
+        kid: Sequence[UniNode]
     ) -> None;
 }
 

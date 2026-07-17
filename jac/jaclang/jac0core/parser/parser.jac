@@ -631,8 +631,7 @@ def parse(
                 col_end=cdata.col_end,
                 pos_start=cdata.pos_start,
                 pos_end=cdata.pos_end,
-                kid=[],
-                is_inline=False
+                kid=[]
             );
             module.source.comments.append(ct);
         }

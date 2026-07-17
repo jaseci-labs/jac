@@ -20,10 +20,7 @@ obj KubernetesRealizer {
         show_yaml: bool = False
     ) -> int {
         enabled = self.ms_config.get("enabled", None);
-        # Whether jac.toml genuinely declares [scale.microservices]. Resolved
-        # up front: the "go set [scale.microservices]" guidance below must only
-        # fire when the section is truly absent (issue #7434), and realize
-        # itself writes merged routes back into the loaded config later.
+
         ms_configured = get_scale_config().microservices_declared();
 
         if target == "kubernetes" and enabled is not False {
@@ -83,8 +80,6 @@ obj KubernetesRealizer {
             target, target_config, logger, dry_run=dry_run
         );
 
-        # --enable-tls issues certificates against the live cluster, so a dry
-        # run has to skip it and fall through to the plan.
         if enable_tls and dry_run {
             console.warning(
                 "--dry-run ignores --enable-tls: issuing certificates would "
@@ -122,9 +117,7 @@ obj KubernetesRealizer {
                 "jac at pod startup. Keep secrets in [scale.secrets] "
                 "(synced as a K8s Secret) or in .env, never inline in source."
             );
-            # Only nudge toward [scale.microservices] when it is genuinely
-            # absent: telling a user to set a section they already set makes a
-            # degraded-config failure indistinguishable from a healthy run.
+
             if not ms_configured {
                 console.warning(
                     "Set [scale.microservices] in jac.toml to configure "
