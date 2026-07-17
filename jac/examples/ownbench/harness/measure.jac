@@ -19,7 +19,7 @@ import subprocess;
 import sys;
 import from pathlib { Path }
 
-glob BENCH = Path(__file__).resolve().parent.parent,
+glob BENCH = Path(str(__file__)).resolve().parent.parent,
      KERNELS = ["binarytrees", "vecdot", "histogram", "vm", "rbtree", "deriv"],
      MODES = ["none", "rc", "cycles"],
      SIZES: dict[str, dict[str, list[str]]] = {
