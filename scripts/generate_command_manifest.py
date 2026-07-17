@@ -68,18 +68,68 @@ def _collect() -> list[dict]:
     return out
 
 
+def _serialize(data: list[dict]) -> str:
+    return json.dumps({"commands": data}, indent=2, ensure_ascii=False) + "\n"
+
+
 def main() -> int:
-    data = _collect()
-    payload = {"commands": data}
-    OUT.write_text(
-        json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help=(
+            "Verify the on-disk manifest matches a fresh regeneration; "
+            "exit nonzero on diff without writing."
+        ),
     )
+    args = parser.parse_args()
+
+    data = _collect()
+
+    if args.check:
+        return _check(data)
+
+    OUT.write_text(_serialize(data), encoding="utf-8")
     print(f"Wrote {len(data)} commands to {OUT}")
     if LEGACY_OUT.exists():
         LEGACY_OUT.unlink()
         print(f"Removed legacy {LEGACY_OUT}")
     return 0
+
+
+def _check(data: list[dict]) -> int:
+    """Fail if the committed manifest differs from a fresh regeneration."""
+    import difflib
+
+    if not OUT.exists():
+        print(
+            f"ERROR: {OUT} does not exist; "
+            "run `python scripts/generate_command_manifest.py` to create it.",
+            file=sys.stderr,
+        )
+        return 1
+
+    regenerated = _serialize(data)
+    committed = OUT.read_text(encoding="utf-8")
+    if regenerated == committed:
+        print(f"OK: {len(data)} commands; {OUT.name} is up to date.")
+        return 0
+
+    print(
+        f"ERROR: {OUT} is out of date with the live command registry.\n"
+        "Run `python scripts/generate_command_manifest.py` and commit the result.",
+        file=sys.stderr,
+    )
+    diff = difflib.unified_diff(
+        committed.splitlines(keepends=True),
+        regenerated.splitlines(keepends=True),
+        fromfile=f"{OUT.name} (committed)",
+        tofile=f"{OUT.name} (regenerated)",
+    )
+    sys.stderr.writelines(diff)
+    return 1
 
 
 if __name__ == "__main__":
