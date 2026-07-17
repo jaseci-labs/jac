@@ -814,6 +814,18 @@ these first; the adversarial suite already contains skip-gated tests waiting on 
       replacer loop; reentrant method → clean error; use-after-close → clean
       error. This suite is the Phase 0 exit gate.
 
+**Debt paydown (landed 2026-07-17, PR #7168)** -- fresh-checkout
+`rust_bridge` import:
+
+- [x] `_finder.jac` cold-cache import: the `_search_dirs` version-sort `key`
+      lambda used Python syntax (`lambda d : _ver_key(d.name)`) inside a `.jac`
+      file; because `rust_bridge` is imported eagerly via `__init__.jac`, the
+      whole package was unimportable on a fresh checkout until the compiler cache
+      warmed. Rewrote it as a Jac lambda (`lambda (d: Path) { _ver_key(d.name);
+      }`). Cold-cache `jac check
+      jac/jaclang/compiler/rust_bridge/_finder.jac` now passes 100%.
+      Prerequisite for running any phase's bridge tests from a clean environment.
+
 ### Phase 1 -- Trait flattening + small lanes
 
 **1.1 Flattening core (`bridges/jac-bridge-binder/src/`)**
@@ -1037,15 +1049,35 @@ these first; the adversarial suite already contains skip-gated tests waiting on 
       unknown-key/spec-unchanged (+4), emit_cargo_toml bare-vs-inline (+2).
       Follow-up: feature-aware LOCAL cache path + find needs import-site feature
       intent -- deferred (out of 2.4 scope).
-- [ ] 2.5 na msgpack codec: shared runtime `.na.jac` module (decoder ~150 lines:
-      lead-byte dispatch + fixed-literal `struct.unpack(">…")` reads → dict/list/
-      str/int/float/bool/None; encoder for the same subset; bounded recursion
-      depth; u64>i64::MAX documented). Import it from synthesized bridges.
-- [ ] 2.6 ctypes msgpack codec (~120 lines, `struct.unpack_from`, zero deps) in
-      `_ctypes_codegen.jac` or a sibling module.
-- [ ] 2.7 Differential fuzz test: generate value trees, encode with rmp-serde
-      (a tiny Rust test bin), decode with BOTH Jac decoders, assert identical
-      Jac values; plus round-trip through the encoders.
+- [x] 2.5 na msgpack codec: the na wide-lane decoder is the shared
+      `jac/jaclang/compiler/rust_bridge/_msgpack.jac` codec (NOT a standalone
+      `.na.jac` module as originally sketched -- see deviation note). `_synth`
+      embeds `_msgpack.jac` into the generated native bridge
+      (`_Synth._codec_source` reads the file and inlines it); the na return
+      marshaling calls `msgpack_decode(rb[0], rb[1])` and frees the buf. Decoder
+      covers dict/list/str/int/float/bool/None with bounded recursion depth;
+      `u64 > i64::MAX` is carried as raw bits (documented). STATUS: DONE;
+      proven AOT-linked end-to-end (WIDE-LANE-CONFORMANCE.md §6b, ALL PASS).
+      Deviation: plan said "shared runtime `.na.jac` module"; implemented as the
+      shared `_msgpack.jac` (`.jac`, reused by the na synth). The ctypes loader
+      has its own inline codec (2.6), so the two loaders do not literally share
+      one module -- but the wire format and `JacValue` value model are identical.
+- [x] 2.6 ctypes msgpack codec: `_ctypes_codegen.jac` carries the full
+      decoder/encoder inline -- `_mp_decode` / `_decode_map` / `_decode_list`
+      (lead-byte dispatch, bounded recursion) plus the encode side -- zero extra
+      deps. STATUS: DONE; exercised by `tests/compiler/test_rust_wide_ctypes.jac`
+      and the differential conformance (WIDE-LANE-CONFORMANCE.md §4 A/B/C, ALL
+      PASS). Shares the `JacValue` value model with the na codec (2.5) but is a
+      separate implementation.
+- [ ] 2.7 Differential fuzz harness: generate random value trees, encode with
+      rmp-serde (a tiny Rust test bin), decode with BOTH Jac decoders, assert
+      identical Jac values; plus round-trip through the encoders. STATUS: PARTIAL
+      -- a *deterministic* differential conformance test already exists
+      (WIDE-LANE-CONFORMANCE.md §3-4: rmp `to_vec_named` -> Jac `_mp_decode` ==
+      doc; Jac `_mp_encode` -> rmp `from_slice::<Widget>` count==3; echo
+      round-trip; all PASS via `test_rust_wide_lane.jac` /
+      `test_rust_wide_ctypes.jac`). The *randomized fuzz* generator/property
+      harness described in the task is NOT yet built -- still open.
 - [x] 2.8 Lane resolution in the binder. STATUS: DONE. `ScalarType::Wide(String)`
       / `BridgeReturn::Wide(String)` (inner = the Rust type re-declared inside the
       `Wide<…>` marker). Per-value rule wired by ORDERING: `classify_param_type` /
