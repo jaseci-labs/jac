@@ -32,7 +32,6 @@ jac_formatter_pass.jac
 jfast_api.jac
 kubernetes_utils.impl.jac
 kubernetes_utils.jac
-lang_tools.jac
 llm.jac
 macho_linker.impl.jac
 macho_linker.jac
@@ -73,7 +72,6 @@ server.jac
 sym_tab_build_pass.jac
 template_loader.impl.jac
 template_loader.jac
-template_registry.jac
 testing.impl.jac
 testing.jac
 tools.impl.jac
@@ -85,7 +83,6 @@ treeprinter.jac
 type_checker_pass.jac
 type_evaluator.jac
 types.jac
-type_utils.jac
 uni_pass.jac
 unitree.jac
 unparse_pass.jac
