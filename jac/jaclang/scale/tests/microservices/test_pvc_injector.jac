@@ -13,7 +13,6 @@ import from jaclang.scale.injector.bundle {
 import from jaclang.scale.injector.pvc_injector {
     PvcInjector,
     build_bundle_pvc,
-    build_loader_pod,
     BUNDLE_MOUNT_PATH,
     LOADER_UID,
     LOADER_GID
@@ -158,11 +157,62 @@ test "the bundle pvc fails fast when RWX is requested without a storage class" {
 }
 
 
-test "the loader pod keeps fsGroup for storage that honors it (#7432)" {
-    pod = build_loader_pod("orders-bundle-loader", "orders-bundles", "busybox:1.36");
+test "host_path mode emits no bundle PVC (#7433)" {
+    injector = PvcInjector(host_path="/mnt/jac/bundles");
+    assert injector.extra_manifests("orders", "prod") == [];
+}
+
+
+test "host_path mode mounts the host directory instead of a PVC claim (#7433)" {
+    injector = PvcInjector(host_path="/mnt/jac/bundles");
+    injector._object_key = "bundles/orders/aaa.jab";
+    injector._bundle_bytes = b"jab";
+    pod_spec: dict[str, any] = {
+        "_jac_meta": {"app_name": "orders", "namespace": "prod"},
+        "containers": [{"name": "app", "image": "python:3.12-slim"}]
+    };
+    result = injector.mutate_pod_spec(pod_spec, "python:3.12-slim");
+    bundle_vols = [
+        volume
+        for volume in result["volumes"]
+        if volume["name"] == "jac-bundles"
+    ];
+    assert len(bundle_vols) == 1;
+    assert bundle_vols[0]["hostPath"] == {
+        "path": "/mnt/jac/bundles",
+        "type": "DirectoryOrCreate"
+    };
+    assert bundle_vols[0].get("persistentVolumeClaim") is None;
+}
+
+
+test "the loader pod stages bundles onto the host directory in host_path mode (#7433)" {
+    injector = PvcInjector(host_path="/mnt/jac/bundles");
+    pod = injector._loader_pod_manifest("orders");
+    volumes = {volume["name"]: volume for volume in pod["spec"]["volumes"]};
+    assert volumes["bundles"]["hostPath"] == {
+        "path": "/mnt/jac/bundles",
+        "type": "DirectoryOrCreate"
+    };
+    # kubelet never chowns hostPath volumes (fsGroup does not apply) and creates
+    # missing directories root-owned, so the loader must run as root to write
+    # there - acceptable for a local-single-node-only mode. runAsUser is set
+    # explicitly (not left to the image default) so this is image-independent.
+    assert pod["spec"]["securityContext"].get("runAsNonRoot") is None;
+    assert pod["spec"]["securityContext"]["runAsUser"] == 0;
+    assert pod["spec"]["containers"][0]["securityContext"]["runAsUser"] == 0;
+    # A root loader writes the mount directly, so no bundle-perms init container.
+    assert pod["spec"].get("initContainers") is None;
+}
+
+
+test "the loader pod keeps fsGroup for storage that honors it in PVC mode (#7432)" {
+    injector = PvcInjector(storage_class="efs-sc");
+    pod = injector._loader_pod_manifest("orders");
     assert pod["kind"] == "Pod";
     assert pod["metadata"]["name"] == "orders-bundle-loader";
     spec = pod["spec"];
+    assert spec["securityContext"]["runAsNonRoot"];
     assert spec["securityContext"]["fsGroup"] == LOADER_GID;
     assert spec["securityContext"]["runAsUser"] == LOADER_UID;
     claims = [
@@ -174,13 +224,14 @@ test "the loader pod keeps fsGroup for storage that honors it (#7432)" {
 }
 
 
-test "the loader pod makes the bundle volume root writable without fsGroup (#7432)" {
+test "the loader pod makes the bundle volume root writable without fsGroup in PVC mode (#7432)" {
     # fsGroup alone is not enough: kubelet never applies it to hostPath or NFS
     # volumes, and CSI drivers with the default fsGroupPolicy skip ReadWriteMany
     # volumes -- exactly what the bundle PVC must be. On any such storage the
     # non-root loader hits "mkdir: Permission denied" at the root-owned volume
     # root. The pod must therefore hand the mount to the loader's uid/gid itself.
-    pod = build_loader_pod("orders-bundle-loader", "orders-bundles", "busybox:1.36");
+    injector = PvcInjector(storage_class="efs-sc");
+    pod = injector._loader_pod_manifest("orders");
     inits = pod["spec"].get("initContainers", []);
     assert len(inits) == 1 , (
         "the loader pod needs a volume-permission init container: fsGroup is "
@@ -204,6 +255,65 @@ test "the loader pod makes the bundle volume root writable without fsGroup (#743
     assert "chmod" in script;
     mounts = [m["mountPath"] for m in perms["volumeMounts"]];
     assert mounts == [BUNDLE_MOUNT_PATH];
+}
+
+
+test "bundle_storage_class and bundle_host_path are mutually exclusive" {
+    import from jaclang.scale.injector.binary_injector { select_injector }
+    raised = False;
+    with tempfile.TemporaryDirectory() as project {
+        try {
+            select_injector(
+                "efs-sc", "orders", "prod", str(project), host_path="/mnt/jac/bundles"
+            );
+        } except ValueError as e {
+            raised = True;
+            assert "bundle_storage_class" in str(e);
+            assert "bundle_host_path" in str(e);
+        }
+    }
+    assert raised , "Expected ValueError when both bundle stores are configured";
+}
+
+
+test "the missing-storage-class error points at bundle_host_path for local clusters" {
+    raised = False;
+    try {
+        build_bundle_pvc("orders", "prod", "5Gi", "");
+    } except ValueError as e {
+        raised = True;
+        assert "bundle_host_path" in str(e);
+    }
+    assert raised;
+}
+
+
+test "bundle_host_path flows from [scale.kubernetes] into the deploy config" {
+    import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
+        KubernetesConfig
+    }
+    cfg = KubernetesConfig.from_dict(
+        KubernetesConfig, {"bundle_host_path": "/mnt/jac/bundles"}
+    );
+    assert cfg.bundle_host_path == "/mnt/jac/bundles";
+    assert cfg.to_dict()["bundle_host_path"] == "/mnt/jac/bundles";
+    assert KubernetesConfig.from_dict(KubernetesConfig, {}).bundle_host_path == "";
+}
+
+
+test "a relative bundle_host_path is rejected at config-parse time" {
+    import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
+        KubernetesConfig
+    }
+    raised = False;
+    try {
+        KubernetesConfig.from_dict(KubernetesConfig, {"bundle_host_path": "bundles"});
+    } except ValueError as e {
+        raised = True;
+        assert "absolute path" in str(e);
+        assert "bundle_host_path" in str(e);
+    }
+    assert raised , "Expected ValueError for a relative bundle_host_path";
 }
 
 

@@ -458,7 +458,7 @@ host = { name = "rabbitmq-secret", key = "host" }
 
 ### Persistent Storage
 
-Controls the PersistentVolumeClaim (PVC) sizes for the application code volume, MongoDB, and Redis StatefulSets.
+Controls the PersistentVolumeClaim (PVC) sizes for the application code volume, MongoDB, and Redis StatefulSets, plus where the shared source-bundle store lives.
 
 **Defaults:**
 
@@ -466,6 +466,8 @@ Controls the PersistentVolumeClaim (PVC) sizes for the application code volume, 
 |----------|---------|-------------|
 | `pvc_size` | `5Gi` | Storage size for the application code PVC |
 | `mongodb_storage_size` | `1Gi` | Storage size for the MongoDB data PVC |
+| `bundle_storage_class` | (unset) | StorageClass for the shared bundle PVC. The PVC requests `ReadWriteMany`, so this must name an RWX-capable class (AWS `efs-sc`, GCP Filestore CSI, Azure Files). Required unless `bundle_host_path` is set: most cluster-default classes are `ReadWriteOnce` and the deploy fails fast rather than leaving the bundle-loader pod Pending. |
+| `bundle_host_path` | (unset) | Single-node local clusters (kind / k3d / minikube / Docker Desktop) only: stage bundles in this directory on the host node instead of a PVC. Mutually exclusive with `bundle_storage_class`. |
 
 **To change in `jac.toml`:**
 
@@ -474,6 +476,25 @@ Controls the PersistentVolumeClaim (PVC) sizes for the application code volume, 
 pvc_size = "20Gi"
 mongodb_storage_size = "10Gi"
 ```
+
+**Bundle storage on local clusters:**
+
+The bundle store defaults to a `ReadWriteMany` PVC so every pod can mount the
+seeded source bundles, and the deploy fails fast when no `bundle_storage_class`
+is set. Local clusters ship no RWX provisioner out of the box, so instead of
+hand-provisioning PVs, point the bundle store at a host directory:
+
+```toml
+[scale.kubernetes]
+bundle_host_path = "/mnt/jac/bundles"
+```
+
+On a single node every pod sees the same filesystem, so `ReadWriteMany`
+degenerates to a shared hostPath: no PVC or StorageClass is created or
+required. Two caveats: the bundle-loader pod runs as root in this mode (kubelet
+creates hostPath directories root-owned and never applies `fsGroup` to them),
+and pods scheduled on a *different* node would not see the seeded bundles, so
+never use `bundle_host_path` on a multi-node cluster.
 
 **MongoDB PVC resize behaviour:**
 
@@ -902,7 +923,10 @@ local cluster (MicroK8s, kind, k3d, Minikube, Docker Desktop) and a remote one
 Instead, a deploy:
 
 1. Packs the project source into a content-addressed bundle and copies it into
-   the cluster on a PVC.
+   the cluster's shared bundle store: a `ReadWriteMany` PVC
+   ([`bundle_storage_class`](#persistent-storage)) on multi-node clusters, or a
+   directory on the host node ([`bundle_host_path`](#persistent-storage)) on
+   single-node local clusters.
 2. Runs a bootstrap initContainer that unpacks the bundle and installs the
    pinned `jac` runtime into a shared volume.
 3. Starts every pod on a stock base image -- `jaseci/jaclang:latest` (or
@@ -1171,8 +1195,10 @@ kubectl logs <pod-name> -c jac-bootstrap
 kubectl get pvc                     # the bundle PVC must be Bound
 ```
 
-- A `Pending` PVC means the cluster has no usable StorageClass; set
-  `bundle_storage_class` (or a `host_path` volume) to one it does have.
+- A `Pending` bundle PVC means the cluster has no RWX-capable StorageClass; set
+  `bundle_storage_class` to one it does have, or, on a single-node local
+  cluster (kind / k3d / minikube), set `bundle_host_path` to stage bundles in a
+  host directory with no PVC at all.
 - `Permission denied` while the deploy seeds the bundle PVC means the volume
   root is not writable by the loader (uid 1000). The bundle-loader pod's
   `bundle-perms` init container chowns the mount root on startup (fsGroup is

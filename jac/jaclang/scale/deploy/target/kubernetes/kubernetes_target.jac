@@ -1026,16 +1026,21 @@ obj KubernetesTarget(DeploymentTarget) {
                 app_config.code_folder,
                 provisioned_database=(
                     "mongo" if self.k8s_config.mongodb_enabled else ""
-                )
+                ),
+                host_path=self.k8s_config.bundle_host_path
             );
-            ensure_pvc_exists(
-                core_v1,
-                namespace,
-                bundle_pvc_name(app_name),
-                injector.size,
-                storage_class=injector.storage_class or None,
-                access_mode='ReadWriteMany'
-            );
+            if not injector.host_path {
+                # hostPath mode has no PVC: bundles land directly in the
+                # host-node directory the loader and app pods both mount.
+                ensure_pvc_exists(
+                    core_v1,
+                    namespace,
+                    bundle_pvc_name(app_name),
+                    injector.size,
+                    storage_class=injector.storage_class or None,
+                    access_mode='ReadWriteMany'
+                );
+            }
             injector.seed(app_name, namespace);
             details["ship_source_bundle"] = "Successful";
 

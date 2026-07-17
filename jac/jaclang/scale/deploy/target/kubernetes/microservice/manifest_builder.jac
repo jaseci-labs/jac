@@ -118,6 +118,7 @@ obj MicroserviceManifestBuilder {
             self.k8s_config.namespace,
             proj,
             provisioned_database=("mongo" if self.k8s_config.mongodb_enabled else ""),
+            host_path=self.k8s_config.bundle_host_path,
             dry_run=self.dry_run
         );
         injector: PvcInjector = selection[0];
@@ -940,7 +941,8 @@ obj MicroserviceManifestBuilder {
 
         import from jaclang.scale.injector.binary_injector { BinaryInjector }
         injector: BinaryInjector = BinaryInjector(
-            storage_class=self.k8s_config.bundle_storage_class
+            storage_class=self.k8s_config.bundle_storage_class,
+            host_path=self.k8s_config.bundle_host_path
         );
         injector._toolchain_object_key = self._toolchain_object_key;
         injector._object_key = self._injector_object_key();
