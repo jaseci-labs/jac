@@ -96,9 +96,7 @@ glob DOC_CORPUS_ORDER: list[str] = [
              "End-to-end worked tutorials: full-stack, AI, native, "
              "production deployment"
          ),
-         "internals": (
-             "Compiler architecture, IR reference, and contributor " "orientation"
-         ),
+         "internals": ("Compiler architecture and contributor orientation"),
          "community": (
              "Breaking changes across releases and the contributor " "codebase guide"
          ),
@@ -111,15 +109,7 @@ glob _DOC_EXCLUDES: set[str] = {
          "quick-guide/jac-vs-traditional-stack",
 
      },
-     _DOC_DESCRIPTION_MAX: int = 180,
-     _DOC_DESCRIPTION_OVERRIDES: dict[str, str] = {
-         "internals/uniir_node": (
-             "Generated reference of every UniIR AST node class in the "
-             "compiler's unified IR: constructor signatures plus field "
-             "name/type diagrams."
-         ),
-
-     };
+     _DOC_DESCRIPTION_MAX: int = 180;
 
 impl guides_dir -> Path {
     import jaclang;
@@ -275,11 +265,7 @@ def _load_doc(path: Path, name: str) -> Guide | None {
     if g is None {
         return None;
     }
-    description = (
-        _DOC_DESCRIPTION_OVERRIDES.get(name)
-        or g.description
-        or _derive_description(g.body)
-    );
+    description = g.description or _derive_description(g.body);
     return Guide(name=name, description=description, body=g.body, path=g.path);
 }
 

@@ -53,7 +53,6 @@ test "bundled docs corpus ships namespaced, described, and non-trivial" {
         "reference/language/foundation",
         "quick-guide/syntax-cheatsheet",
         "tutorials/language/coding_primer",
-        "internals/uniir_node",
         "community/breaking-changes",
         "community/codebase-guide"
     ] {

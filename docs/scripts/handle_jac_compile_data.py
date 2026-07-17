@@ -4,28 +4,11 @@ This script is used  to handle the jac compile data for jac playground.
 """
 
 import os
-import time
 import zipfile
-
-from jaclang.utils.lang_tools import AstTool
 
 EXTRACTED_FOLDER = "docs/playground"
 PLAYGROUND_ZIP_PATH = os.path.join(EXTRACTED_FOLDER, "jaclang.zip")
 ZIP_FOLDER_NAME = "jaclang"
-# The internals corpus lives in the jaclang package tree (served offline by
-# `jac guide`, mounted into this site by scripts/bundled_docs.py).
-UNIIR_NODE_DOC = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "..",
-    "..",
-    "jac",
-    "jaclang",
-    "cli",
-    "docs",
-    "internals",
-    "uniir_node.md",
-)
-AST_TOOL = AstTool()
 # Directory basenames to exclude
 EXCLUDE_DIRS = {"__pycache__", ".pytest_cache", ".git", "tests"}
 EXCLUDE_EXTS = {".pyc", ".pyo", ".pyi"}
@@ -78,24 +61,6 @@ def pre_build_hook(**kwargs: dict) -> None:
         print(
             "Warning: failed to build playground zip; docs will ship WITHOUT a playground."
         )
-
-    if is_file_older_than_minutes(UNIIR_NODE_DOC, 5):
-        with open(UNIIR_NODE_DOC, "w") as f:
-            f.write(AST_TOOL.autodoc_uninode())
-    else:
-        print(f"File is recent: {UNIIR_NODE_DOC}. Skipping creation.")
-
-
-def is_file_older_than_minutes(file_path: str, minutes: int) -> bool:
-    """Check if a file is older than the specified number of minutes."""
-    if not os.path.exists(file_path):
-        return True
-
-    file_time = os.path.getmtime(file_path)
-    current_time = time.time()
-    time_diff_minutes = (current_time - file_time) / 60
-
-    return time_diff_minutes > minutes
 
 
 def should_exclude(path: str, jaclang_dir: str) -> bool:
