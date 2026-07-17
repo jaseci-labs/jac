@@ -49,6 +49,16 @@ mod b {
                 label,
             })
         }
+
+        /// A bulk wide param (`Vec<f64>`) reduced to a scalar return — the shape
+        /// the 2.11 perf backstop times. `Vec<f64>` is the whitelisted wide std
+        /// shape, so the whole vector crosses as one msgpack payload the shim
+        /// decodes with `rmp_serde::from_slice`; the scalar `i64` return leaves on
+        /// its own tag. Returns the element count so the caller can assert the
+        /// full payload was decoded (not truncated).
+        pub fn tally(&self, xs: Wide<Vec<f64>>) -> i64 {
+            xs.0.len() as i64
+        }
     }
 }
 
@@ -157,4 +167,53 @@ fn wide_bad_payload_is_status_1() {
         "error message should name the decode failure, got: {msg:?}"
     );
     unsafe { jac_widetest_error_drop(err) };
+}
+
+/// 2.11 perf gate (wall-clock backstop half): a bulk `Vec<f64>` wide param
+/// crossing the real macro-generated shim must stay well within a GENEROUS
+/// ceiling. This is deliberately coarse -- it exists to catch a pathological
+/// regression (an accidental per-element allocation, an O(n^2) decode, a
+/// double-copy), not to measure microbenchmarks, so the ceiling is ~100x the
+/// expected debug-build cost and the assertion only trips on a gross blow-up.
+/// The deterministic lane-selection guard (a scalar signature must never emit
+/// wide-lane calls) lives in the binder
+/// (`tests::wide_lane::scalar_signatures_never_emit_wide_lane_calls`).
+#[test]
+fn wide_bulk_vec_f64_under_ceiling() {
+    use std::time::Instant;
+
+    let handle = new_calc();
+
+    const N: usize = 10_000; // elements per payload
+    const ITERS: usize = 100; // round-trips timed
+
+    let xs: Vec<f64> = (0..N).map(|i| i as f64 * 0.5).collect();
+    let payload = rmp_serde::to_vec_named(&xs).expect("encode Vec<f64>");
+
+    let start = Instant::now();
+    for _ in 0..ITERS {
+        let mut out_int: u64 = 0;
+        let mut err: u64 = 0;
+        let st = unsafe {
+            jac_widetest_Calc_tally(
+                handle,
+                payload.as_ptr(),
+                payload.len() as u32,
+                &mut out_int,
+                &mut err,
+            )
+        };
+        assert_eq!(st, 0, "tally should succeed");
+        // The whole payload decoded -- not truncated at some fixed cap.
+        assert_eq!(out_int as usize, N, "tally must see every element");
+    }
+    let elapsed = start.elapsed();
+
+    // A generous ceiling: 100 round-trips of a 10k-element vector is a few
+    // milliseconds of real work even in a debug build. 10 s is ~1000x that
+    // headroom -- it fires only on a catastrophic regression, never on CI jitter.
+    assert!(
+        elapsed.as_secs() < 10,
+        "wide bulk round-trip too slow: {ITERS} x {N} f64 took {elapsed:?} (ceiling 10s)"
+    );
 }

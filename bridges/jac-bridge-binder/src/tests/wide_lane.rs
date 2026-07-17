@@ -135,3 +135,47 @@ fn non_wide_bridge_omits_serde_deps() {
     let toml = emit_cargo_toml(&s, "/path/to/jac-bridge");
     assert!(!toml.contains("rmp-serde"), "unexpected rmp-serde\n{toml}");
 }
+
+/// 2.11 perf gate (source-inspection half): a signature built ENTIRELY from
+/// scalar/handle lanes must never route through the wide lane. The wide lane
+/// msgpack-encodes every value (an allocation + a serde walk per call), so a
+/// scalar signature silently regressing onto it is a real, invisible perf cliff.
+/// This test pins lane selection by asserting the emitted source for an
+/// all-scalar bridge carries ZERO `Wide<…>` markers (and no serde deps). It is
+/// deterministic — no timing — so it is the CI-friendly guard; the wall-clock
+/// backstop lives in `jac-bridge/tests/wide.rs::wide_bulk_vec_f64_under_ceiling`.
+#[test]
+fn scalar_signatures_never_emit_wide_lane_calls() {
+    let mut s = spec();
+    // Every non-wide lane the binder can emit: int/uint/f64/bool/str/bytes,
+    // by value and by return, plus a handle ctor. None is serde.
+    s.types[0].ctor = Some(method("new", vec![], BridgeReturn::OwnSelf));
+    s.types[0].methods = vec![
+        method(
+            "scale",
+            vec![
+                BridgeParam { name: "n".into(), ty: ScalarType::Int("i64".into()) },
+                BridgeParam { name: "u".into(), ty: ScalarType::Uint("u64".into()) },
+                BridgeParam { name: "b".into(), ty: ScalarType::Bool },
+                BridgeParam { name: "s".into(), ty: ScalarType::Str },
+                BridgeParam { name: "raw".into(), ty: ScalarType::Bytes },
+            ],
+            BridgeReturn::Uint("u64".into()),
+        ),
+        method("name", vec![], BridgeReturn::Str),
+        method("digest", vec![], BridgeReturn::Bytes),
+        method("count", vec![], BridgeReturn::Int("i64".into())),
+        method("ok", vec![], BridgeReturn::Bool),
+    ];
+    s.records = vec![];
+    let src = emit(&s);
+    assert!(
+        !src.contains("Wide<") && !src.contains("Wide("),
+        "a scalar-only bridge must not emit any wide-lane marshaling\n{src}"
+    );
+    let toml = emit_cargo_toml(&s, "/path/to/jac-bridge");
+    assert!(
+        !toml.contains("rmp-serde") && !toml.contains("serde ="),
+        "a scalar-only bridge must not pull in serde/rmp-serde\n{toml}"
+    );
+}
