@@ -436,7 +436,20 @@ test "staged verify cache key covers tracked annex in the format unit" {
         f.write_text(CLEAN_MOD);
         annex.write_text(NEEDS_FMT_IMPL);
         subprocess.run(["git", "add", "mod.jac", "mod.impl.jac"], check=True, cwd=repo);
-        subprocess.run(["git", "commit", "-qm", "c0"], check=True, cwd=repo);
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.email=fmtcache-test@example.com",
+                "-c",
+                "user.name=fmtcache-test",
+                "commit",
+                "-qm",
+                "c0"
+            ],
+            check=True,
+            cwd=repo
+        );
         # Now the annex is tracked & clean-in-index but unformatted.
         # Stage ONLY the main file with a different clean content.
         f.write_text(CLEAN_MOD_V2);
