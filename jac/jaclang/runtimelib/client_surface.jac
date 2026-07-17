@@ -80,8 +80,8 @@ def with_runtime_globals(js_code: str, backend: (object | None) = None) -> str {
 }
 
 def prepend_active_runtime_globals(js_code: str) -> str {
-    import from jaclang.compiler.passes.ecmascript.backends.registry {
-        resolve_active_backend
+    import from jaclang.compiler.passes.ecmascript.js_runtime_globals {
+        finalize_js_for_emission
     }
-    return with_runtime_globals(js_code, resolve_active_backend());
+    return finalize_js_for_emission(js_code);
 }

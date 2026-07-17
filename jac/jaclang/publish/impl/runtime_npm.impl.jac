@@ -49,6 +49,9 @@ impl runtime_api_names(framework: str = "") -> set {
 
 def _compile_cl_to_js(src: Path) -> str {
     import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.compiler.passes.ecmascript.js_runtime_globals {
+        finalize_js_for_emission
+    }
     program = JacProgram();
     prev = len(program.errors_had);
     mod = program.compile(str(src));
@@ -57,7 +60,8 @@ def _compile_cl_to_js(src: Path) -> str {
         formatted = "\n".join(str(err) for err in new_errors);
         raise ValueError(f"Failed to compile {src.name}:\n{formatted}");
     }
-    return (mod.gen.js if mod and mod.gen else "") or "";
+    raw = (mod.gen.js if mod and mod.gen else "") or "";
+    return finalize_js_for_emission(raw);
 }
 
 impl compile_runtime_js(framework: str = "") -> str {

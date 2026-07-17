@@ -68,7 +68,12 @@ impl jac2js(filename: str) -> int {
                 console.error('ECMAScript code generation produced no output.');
                 return 1;
             }
-            console.print(js_output, markup=False, highlight=False);
+            import from jaclang.compiler.passes.ecmascript.js_runtime_globals {
+                finalize_js_for_emission
+            }
+            console.print(
+                finalize_js_for_emission(js_output), markup=False, highlight=False
+            );
             return 0;
         } except Exception as e {
             console.error(f"Generating JavaScript failed: {e}");

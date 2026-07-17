@@ -183,6 +183,10 @@ impl collect_npm_sources(
             if not js.strip() {
                 continue;
             }
+            import from jaclang.compiler.passes.ecmascript.js_runtime_globals {
+                finalize_js_for_emission
+            }
+            js = finalize_js_for_emission(js);
             if _crosses_server_boundary(mod) {
                 raise NpmBoundaryError(
                     f"'{rel}' crosses a server boundary and cannot be published as a "
