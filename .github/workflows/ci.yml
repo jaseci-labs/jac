@@ -1161,18 +1161,26 @@ jobs:
 
       - name: Verify pod DNS + egress (fail fast)
         run: |
-          kubectl run netcheck --image=busybox:1.36 --restart=Never --command -- \
-            sh -c 'nslookup deb.debian.org && wget -q --spider http://deb.debian.org/ && echo NETCHECK_OK'
-          if ! kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/netcheck --timeout=150s; then
-            echo "::error::Pod networking/egress is broken on this runner (DNS or CNI), so no app pod can bootstrap."
+          # kind can report the control plane ready before kube-dns accepts traffic.
+          kubectl -n kube-system rollout status deploy/coredns --timeout=180s
+          for attempt in 1 2 3; do
+            kubectl delete pod netcheck --ignore-not-found --wait=true
+            kubectl run netcheck --image=busybox:1.36 --restart=Never --command -- \
+              sh -c 'nslookup deb.debian.org && wget -q --spider http://deb.debian.org/ && echo NETCHECK_OK'
+            if kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/netcheck --timeout=60s; then
+              kubectl logs netcheck
+              kubectl delete pod netcheck --ignore-not-found
+              exit 0
+            fi
             kubectl logs netcheck || true
-            kubectl describe pod netcheck || true
-            kubectl get pods -n kube-system -o wide || true
-            kubectl delete pod netcheck --ignore-not-found
-            exit 1
-          fi
-          kubectl logs netcheck
+            echo "WARN: netcheck attempt ${attempt} failed; retrying..."
+            sleep 5
+          done
+          echo "::error::Pod networking/egress is broken on this runner (DNS or CNI), so no app pod can bootstrap."
+          kubectl describe pod netcheck || true
+          kubectl get pods -n kube-system -o wide || true
           kubectl delete pod netcheck --ignore-not-found
+          exit 1
 
       - name: Deploy ingress-nginx + metrics-server (kind, best-effort)
         continue-on-error: true
