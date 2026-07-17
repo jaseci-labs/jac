@@ -282,7 +282,7 @@ def patch_co_filenames_bytes(raw_bc: bytes, find: str, replace: str) -> bytes {
 obj _SetupProgress {
     has _banner_shown: bool = False,
         _compile_count: int = 0,
-        _seen_files: set[str] by postinit,
+        _seen_files: set[str] postinit,
         _jaclang_root: (str | None) = None;
 
     def postinit -> None;

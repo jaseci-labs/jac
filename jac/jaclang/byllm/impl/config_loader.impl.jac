@@ -118,7 +118,6 @@ impl JacByllmConfig.get_prompt_caching_config(self: JacByllmConfig) -> dict[str,
 
 """Get or create the global JacByllmConfig instance."""
 impl get_byllm_config(project_dir: Path | None = None) -> JacByllmConfig {
-    global _byllm_config_instance;
     # If project_dir is provided and differs from cached instance, recreate
     if (
         _byllm_config_instance is not None
@@ -199,6 +198,5 @@ impl JacByllmConfig.get_local_config(self: JacByllmConfig) -> dict[str, any] {
 
 """Reset the global config instance (useful for testing)."""
 impl reset_byllm_config -> None {
-    global _byllm_config_instance;
     _byllm_config_instance = None;
 }

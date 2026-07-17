@@ -245,7 +245,7 @@ RIGHT:
 
 ```jac
 self.name = "Alice";
-root() ++> node;
+root ++> node;
 def init() { }
 ```
 
@@ -421,7 +421,7 @@ visit [-->][?:B];      # visit only B-type nodes
 ### 21. Walker spawn syntax
 
 ```jac
-root() spawn MyWalker();
+root spawn MyWalker();
 ```
 
 ## File Organization
@@ -774,9 +774,9 @@ sv import from ...main { get_tasks, add_task }
 
 The `sv` prefix tells the compiler this is a server-side import to be called over HTTP.
 
-### 35. Calling walkers from client uses `root() spawn`, NOT `await func()`
+### 35. Calling walkers from client uses `root spawn`, NOT `await func()`
 
-Server walkers are called by spawning them on `root()`. The result contains `.reports` with the walker's reported values.
+Server walkers are called by spawning them on `root` (bare keyword - `root()` is an error). The result contains `.reports` with the walker's reported values.
 
 WRONG (function-call style):
 
@@ -798,7 +798,7 @@ cl {
         has tasks: list = [];
 
         async can with entry {
-            result = root() spawn get_tasks();
+            result = root spawn get_tasks();
             if result.reports and result.reports.length > 0 {
                 tasks = result.reports[0];
             }
@@ -818,7 +818,7 @@ sv import from ...main { add_task }
 
 cl {
     async def handle_add() -> None {
-        result = root() spawn add_task(title="New task");
+        result = root spawn add_task(title="New task");
         if result.reports and result.reports.length > 0 {
             new_task = result.reports[0];
             tasks = tasks + [new_task];
@@ -829,12 +829,12 @@ cl {
 
 ### 36. Walker reports are in `result.reports[0]`, NOT `result.data`
 
-The response from `root() spawn` has a `.reports` array containing values from the walker's `report` statements. The first report is at index `[0]`.
+The response from `root spawn` has a `.reports` array containing values from the walker's `report` statements. The first report is at index `[0]`.
 
 WRONG:
 
 ```
-result = root() spawn get_tasks();
+result = root spawn get_tasks();
 tasks = result.data;          # WRONG: no .data property
 tasks = result;               # WRONG: result is a response object, not the data
 tasks = result.reports;       # PARTIAL: this is the full array, usually you want [0]
@@ -843,7 +843,7 @@ tasks = result.reports;       # PARTIAL: this is the full array, usually you wan
 RIGHT:
 
 ```jac
-result = root() spawn get_tasks();
+result = root spawn get_tasks();
 if result.reports and result.reports.length > 0 {
     tasks = result.reports[0];
 }

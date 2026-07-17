@@ -31,7 +31,7 @@ import from jaclang.jac0core.diagnostics {
     E2023,
     E2028,
     W0060,
-    W0061,
+    E0048,
     W0063,
     DIAGNOSTICS
 }
@@ -105,12 +105,7 @@ import from jaclang.jac0core.unitree {
     DisengageStmt,
     ExprStmt
 }
-import from jaclang.jac0core.unitree {
-    TypedCtxBlock,
-    OpenStmt,
-    GlobalStmt,
-    NonLocalStmt
-}
+import from jaclang.jac0core.unitree { TypedCtxBlock, OpenStmt }
 import from jaclang.jac0core.unitree {
     BinaryExpr,
     UnaryExpr,
@@ -230,8 +225,6 @@ glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.KW_SEM: Tok.KW_SEM.value,
          TokenKind.KW_TEST: Tok.KW_TEST.value,
          TokenKind.KW_GLOBAL: Tok.KW_GLOBAL.value,
-         TokenKind.KW_GLOBAL_REF: Tok.GLOBAL_OP.value,
-         TokenKind.KW_NONLOCAL: Tok.NONLOCAL_OP.value,
          TokenKind.KW_IMPORT: Tok.KW_IMPORT.value,
          TokenKind.KW_INCLUDE: Tok.KW_INCLUDE.value,
          TokenKind.KW_FROM: Tok.KW_FROM.value,
@@ -240,7 +233,6 @@ glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.KW_ELIF: Tok.KW_ELIF.value,
          TokenKind.KW_ELSE: Tok.KW_ELSE.value,
          TokenKind.KW_FOR: Tok.KW_FOR.value,
-         TokenKind.KW_TO: Tok.KW_TO.value,
          TokenKind.KW_BY: Tok.KW_BY.value,
          TokenKind.KW_WHILE: Tok.KW_WHILE.value,
          TokenKind.KW_FOREVER: Tok.KW_FOREVER.value,
@@ -544,8 +536,6 @@ obj Parser {
     def parse_raise_stmt -> RaiseStmt;
     def parse_assert_stmt -> AssertStmt;
     def parse_delete_stmt -> DeleteStmt;
-    def parse_global_stmt -> GlobalStmt;
-    def parse_nonlocal_stmt -> NonLocalStmt;
     def parse_visit_stmt -> VisitStmt;
     def parse_report_stmt -> ReportStmt;
     def parse_assignment_with_target(

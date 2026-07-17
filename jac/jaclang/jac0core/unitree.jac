@@ -35,11 +35,11 @@ import from jaclang.jac0core.treeprinter {
 
 obj UniNode {
     has kid: Sequence[UniNode] = [],
-        parent: (UniNode | None) by postinit,
-        __sub_node_tab: (dict[(type, list[UniNode])] | None) by postinit,
-        _in_mod_nodes: list[UniNode] by postinit,
-        _gen: (CodeGenTarget | None) by postinit,
-        loc: CodeLocInfo by postinit;
+        parent: (UniNode | None) postinit,
+        __sub_node_tab: (dict[(type, list[UniNode])] | None) postinit,
+        _in_mod_nodes: list[UniNode] postinit,
+        _gen: (CodeGenTarget | None) postinit,
+        loc: CodeLocInfo postinit;
 
     def postinit -> None;
     def accept_enter(v: UniPass) -> None;
@@ -83,12 +83,12 @@ obj UniNode {
 }
 
 obj Symbol {
-    has defn: list[NameAtom] by postinit,
-        uses: list[NameAtom] by postinit,
-        access: SymbolAccess by postinit,
-        parent_tab: (UniScopeNode | None) by postinit,
-        imported: bool by postinit,
-        semstr: str by postinit,
+    has defn: list[NameAtom] postinit,
+        uses: list[NameAtom] postinit,
+        access: SymbolAccess postinit,
+        parent_tab: (UniScopeNode | None) postinit,
+        imported: bool postinit,
+        semstr: str postinit,
         ownership: OwnershipKind = OwnershipKind.NONE,
         param_rebound: bool = False,
         na_escapes: bool = False,
@@ -121,11 +121,12 @@ obj InheritedSymbolTable {
 }
 
 obj UniScopeNode(UniNode) {
-    has scope_name: str by postinit,
-        parent_scope: (UniScopeNode | None) by postinit,
-        kid_scope: list[UniScopeNode] by postinit,
-        names_in_scope: dict[(str, Symbol)] by postinit,
-        names_in_scope_overload: dict[(str, list[Symbol])] by postinit;
+    has scope_name: str postinit,
+        parent_scope: (UniScopeNode | None) postinit,
+        kid_scope: list[UniScopeNode] postinit,
+        names_in_scope: dict[(str, Symbol)] postinit,
+        names_in_scope_overload: dict[(str, list[Symbol])] postinit,
+        implicit_rebinds: dict[(str, Symbol)] postinit;
 
     def _init_scope(name: str, parent_scope: (UniScopeNode | None) = None) -> None;
     static def get_python_scoping_nodes -> tuple[(type[UniScopeNode], ...)] {
@@ -169,8 +170,8 @@ obj UniScopeNode(UniNode) {
 }
 
 obj AstSymbolNode(UniNode) {
-    has name_spec: NameAtom by postinit,
-        semstr: str by postinit;
+    has name_spec: NameAtom postinit,
+        semstr: str postinit;
 
     def _init_symbol(
         sym_name: str, name_spec: NameAtom, sym_category: SymbolType
@@ -194,7 +195,7 @@ obj AstAccessNode(UniNode) {
 }
 
 obj ContextAwareNode(UniNode) {
-    has code_context: CodeContext by postinit;
+    has code_context: CodeContext postinit;
 
     def postinit -> None;
     def _source_context_token -> (Token | None);
@@ -217,15 +218,15 @@ obj AstTypedVarNode(UniNode) {
 }
 
 obj WalkerStmtOnlyNode(UniNode) {
-    has from_walker: bool by postinit;
+    has from_walker: bool postinit;
 
     def postinit -> None;
 }
 
 obj UniCFGNode(UniNode) {
-    has bb_in: list[UniCFGNode] by postinit,
-        bb_out: list[UniCFGNode] by postinit,
-        affected_symbols: set[str] by postinit;
+    has bb_in: list[UniCFGNode] postinit,
+        bb_out: list[UniCFGNode] postinit,
+        affected_symbols: set[str] postinit;
 
     def postinit -> None;
     def get_head -> UniCFGNode;
@@ -240,9 +241,9 @@ obj ConditionalNode(UniCFGNode) {
 }
 
 obj Expr(UniNode) {
-    has _type_sym_tab: (UniScopeNode | None) by postinit,
-        type: (TypeBase | None) by postinit,
-        attached_tokens: (list[Token] | None) by postinit;
+    has _type_sym_tab: (UniScopeNode | None) postinit,
+        type: (TypeBase | None) postinit,
+        attached_tokens: (list[Token] | None) postinit;
 
     def postinit -> None;
 
@@ -281,11 +282,11 @@ obj AstImplNeedingNode[T](AstSymbolNode) {
 }
 
 obj NameAtom(AtomExpr, EnumBlockStmt) {
-    has name_of: AstSymbolNode by postinit,
-        _sym: (Symbol | None) by postinit,
-        _sym_name: str by postinit,
-        _sym_category: SymbolType by postinit,
-        _py_ctx_func: type[ast3.expr_context] by postinit,
+    has name_of: AstSymbolNode postinit,
+        _sym: (Symbol | None) postinit,
+        _sym_name: str postinit,
+        _sym_category: SymbolType postinit,
+        _py_ctx_func: type[ast3.expr_context] postinit,
         is_getattr_resolved: bool = False;
 
     def postinit -> None;
@@ -363,8 +364,8 @@ obj Module(AstDocNode, UniScopeNode) {
 
 obj ProgramModule(UniNode) {
     has main_mod: (Module | None) = None,
-        main: Module by postinit,
-        hub: dict[(str, Module)] by postinit;
+        main: Module postinit,
+        hub: dict[(str, Module)] postinit;
 
     def postinit -> None;
 }
@@ -472,7 +473,7 @@ obj Import(ContextAwareNode, ElementStmt, CodeBlockStmt) {
         is_absorb: bool,
         is_typed: bool = False,
         clib_decls: (Sequence[UniNode] | None) = None,
-        hint: (SubTag[Token] | None) by postinit;
+        hint: (SubTag[Token] | None) postinit;
 
     def postinit -> None;
 
@@ -487,7 +488,7 @@ obj ModulePath(UniNode) {
     has path: (Sequence[(Name | String)] | None),
         level: int,
         alias: (Name | None),
-        abs_path: (str | None) by postinit;
+        abs_path: (str | None) postinit;
 
     def postinit -> None;
 
@@ -506,7 +507,7 @@ obj ModuleItem(UniNode) {
 
     has name: (Name | Token),
         alias: (Name | None),
-        abs_path: (str | None) by postinit;
+        abs_path: (str | None) postinit;
 
     def postinit -> None;
 
@@ -645,7 +646,7 @@ obj ParamVar(AstSymbolNode, AstTypedVarNode) {
     has name: Name,
         unpack: (Token | None),
         value: (Expr | None),
-        param_kind: ParamKind by postinit;
+        param_kind: ParamKind postinit;
 
     def postinit -> None;
 
@@ -926,20 +927,6 @@ obj CastExpr(Expr) {
     def postinit -> None;
 }
 
-obj GlobalStmt(CodeBlockStmt) {
-    def accept_exit(v: UniPass) -> None;
-    def accept_enter(v: UniPass) -> None;
-
-    has target: Sequence[NameAtom];
-
-    def postinit -> None;
-}
-
-obj NonLocalStmt(GlobalStmt) {
-    def accept_enter(v: UniPass) -> None;
-    def accept_exit(v: UniPass) -> None;
-}
-
 obj Assignment(AstTypedVarNode, EnumBlockStmt, CodeBlockStmt) {
     def accept_exit(v: UniPass) -> None;
     def accept_enter(v: UniPass) -> None;
@@ -1202,7 +1189,7 @@ obj FuncCall(Expr) {
         params: (Sequence[(Expr | KWPair)] | None),
         genai_call: (Expr | None),
         call_kind: (str | None) = None,
-        callee_decl: (Ability | None) by postinit;
+        callee_decl: (Ability | None) postinit;
 
     def postinit -> None;
 }
@@ -1518,13 +1505,13 @@ obj Token(UniNode) {
     def accept_exit(v: UniPass) -> None;
     def accept_enter(v: UniPass) -> None;
 
-    has orig_src: Source by postinit,
-        line_no: int by postinit,
-        end_line: int by postinit,
-        c_start: int by postinit,
-        c_end: int by postinit,
-        pos_start: int by postinit,
-        pos_end: int by postinit,
+    has orig_src: Source postinit,
+        line_no: int postinit,
+        end_line: int postinit,
+        c_start: int postinit,
+        c_end: int postinit,
+        pos_start: int postinit,
+        pos_end: int postinit,
         _is_synthetic: bool = False;
 
     def init(
@@ -1584,7 +1571,7 @@ obj SpecialVarRef(Name) {
     def accept_exit(v: UniPass) -> None;
     def accept_enter(v: UniPass) -> None;
 
-    has orig: Name by postinit;
+    has orig: Name postinit;
 
     def init(var: Name, is_enum_stmt: bool = False) -> None;
     def py_resolve_name -> str;
@@ -1734,9 +1721,9 @@ obj CommentToken(Token) {
 }
 
 obj Source(EmptyToken) {
-    has comments: list[CommentToken] by postinit,
-        inline_suppressions: dict[int, set[str]] by postinit,
-        file_path: str by postinit;
+    has comments: list[CommentToken] postinit,
+        inline_suppressions: dict[int, set[str]] postinit,
+        file_path: str postinit;
 
     def init(source: str, mod_path: str) -> None;
 
@@ -1744,8 +1731,8 @@ obj Source(EmptyToken) {
 }
 
 obj PythonModuleAst(EmptyToken) {
-    has orig_src: Source by postinit,
-        file_path: str by postinit;
+    has orig_src: Source postinit,
+        file_path: str postinit;
 
     def init(ast: ast3.Module, orig_src: Source) -> None;
 }

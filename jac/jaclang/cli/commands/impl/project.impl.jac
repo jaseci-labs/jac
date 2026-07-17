@@ -52,6 +52,7 @@ impl create(
     }
     import from jaclang.project.config { find_project_root }
     import from jaclang.project.template_registry {
+        TemplateRegistry,
         get_template_registry,
         initialize_template_registry
     }
@@ -60,7 +61,7 @@ impl create(
         load_template_from_directory
     }
     import from jaclang.project.kinds { is_valid_kind, VALID_KINDS }
-    registry = get_template_registry();
+    registry: TemplateRegistry = get_template_registry();
 
     if registry.is_empty() {
         initialize_template_registry();
@@ -1227,14 +1228,17 @@ impl clean(
 }
 
 impl jacpack(action: str = "", path: str = "", output: str = "") -> int {
-    import from jaclang.project.template_registry { get_template_registry }
+    import from jaclang.project.template_registry {
+        TemplateRegistry,
+        get_template_registry
+    }
     import from jaclang.project.template_loader {
         load_template_from_directory,
         load_template_from_json,
         bundle_template
     }
     if not action or action == "list" {
-        registry = get_template_registry();
+        registry: TemplateRegistry = get_template_registry();
         templates = registry.list_templates();
         if not templates {
             console.print("No templates available.");

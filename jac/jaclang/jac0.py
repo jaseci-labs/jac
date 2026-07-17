@@ -82,8 +82,6 @@ KEYWORDS = {
     "break",
     "continue",
     "del",
-    "global",
-    "nonlocal",
     "yield",
     "as",
     "in",
@@ -560,16 +558,6 @@ class SwitchStmt:
 @dataclass
 class DeleteStmt:
     expr: str = ""
-
-
-@dataclass
-class GlobalStmt:
-    names: list = field(default_factory=list)
-
-
-@dataclass
-class NonlocalStmt:
-    names: list = field(default_factory=list)
 
 
 @dataclass
@@ -1216,10 +1204,6 @@ class Parser:
                 return self._parse_assert()
             if v == "del":
                 return self._parse_delete()
-            if v == "global":
-                return self._parse_global_stmt()
-            if v == "nonlocal":
-                return self._parse_nonlocal_stmt()
             if v == "break":
                 self._advance()
                 self._match(TT.SEMI)
@@ -1520,7 +1504,7 @@ class Parser:
         while True:
             name = self._expect(TT.NAME).value
             self._expect(TT.COLON)
-            type_ann = self._collect_type(stop_vals={"="}, stop_names={"by"})
+            type_ann = self._collect_type(stop_vals={"="}, stop_names={"postinit"})
             default = ""
             by_postinit = False
             accessors: list[Accessor] = []
@@ -1534,9 +1518,8 @@ class Parser:
                 break
             if self._match_op("="):
                 default = self._collect_until(TT.COMMA, TT.SEMI)
-            elif self._at(TT.NAME, "by"):
+            elif self._at(TT.NAME, "postinit"):
                 self._advance()
-                self._expect(TT.NAME, "postinit")
                 by_postinit = True
             vars_list.append(
                 HasVar(
@@ -1858,24 +1841,6 @@ class Parser:
         self._match(TT.SEMI)
         return DeleteStmt(expr=expr)
 
-    def _parse_global_stmt(self) -> GlobalStmt:
-        self._expect(TT.NAME, "global")
-        names: list[str] = []
-        names.append(self._expect(TT.NAME).value)
-        while self._match(TT.COMMA):
-            names.append(self._expect(TT.NAME).value)
-        self._match(TT.SEMI)
-        return GlobalStmt(names=names)
-
-    def _parse_nonlocal_stmt(self) -> NonlocalStmt:
-        self._expect(TT.NAME, "nonlocal")
-        names: list[str] = []
-        names.append(self._expect(TT.NAME).value)
-        while self._match(TT.COMMA):
-            names.append(self._expect(TT.NAME).value)
-        self._match(TT.SEMI)
-        return NonlocalStmt(names=names)
-
     def _parse_expr_stmt(self) -> ExprStmt:
         expr = self._collect_until(TT.SEMI)
         self._match(TT.SEMI)
@@ -2004,10 +1969,6 @@ class CodeGen:
             self._line(f"assert {node.expr}")
         elif isinstance(node, DeleteStmt):
             self._line(f"del {node.expr}")
-        elif isinstance(node, GlobalStmt):
-            self._line(f"global {', '.join(node.names)}")
-        elif isinstance(node, NonlocalStmt):
-            self._line(f"nonlocal {', '.join(node.names)}")
         elif isinstance(node, ExprStmt):
             if node.expr:
                 self._line(node.expr)

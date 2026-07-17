@@ -23,7 +23,7 @@ impl turn.check{
 
 impl GuessGame.start_game{
     end = here;
-    for i = 0 to i < 10 by i += 1 {
+    for i = 0 while i < 10 with i += 1 {
         end ++> (end := :> turn);
     }
     visit [-->];
