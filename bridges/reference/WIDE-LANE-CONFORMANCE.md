@@ -1,0 +1,131 @@
+# Wide Lane (serde / TAG_WIDE) -- Codec Conformance Findings
+
+Status of the serde wide lane (FFI-LANES-PLAN §2.5-2.7) and the differential
+evidence that the Jac-side MessagePack codec is wire-compatible with real
+`rmp_serde`. Written 2026-07-17.
+
+## 1. What the wide lane is (and is not)
+
+The binder resolves every value type to exactly **one** lane, per value, not per
+signature (§2.7):
+
+| Lane | Types | Jac representation | Static typing? |
+|---|---|---|---|
+| Tag lane | `{scalar, str, bytes, f64, bool}` | `int` / `str` / `float` / `bool` / `bytes` | full |
+| Handle lane | opaque-bridged types | typed Jac class (ctypes) / handle | full |
+| **Wide lane** (`TAG_WIDE=8`) | everything else: any `Serialize+Deserialize` document | see §2 | dynamic (by design) |
+
+So the wide lane is **not** "no typing" -- it is the *dynamic-document* lane. A
+value reaches it only when it is neither a scalar nor an opaque handle: e.g. a
+`serde_json::Value`-shaped payload, a record whose wire shape is set by a manual
+`Serialize` impl (chrono's `NaiveDate` -> ISO string), or fields invisible to
+rustdoc. For those, a dynamic value **is** the correct representation.
+
+The typed-record ergonomic (§2.6: synthesize a typed Jac `obj` with real fields
+when the `Serialize` impl is `#[automatically_derived]` and has no stripped
+fields) sits *in front of* the wide lane and is **not yet built** -- see §6.
+
+## 2. Two-sided codec
+
+The wire format is MessagePack via `rmp_serde::encode::to_vec_named` (structs as
+maps with field-name keys). Because na and CPython have different type systems,
+each side has its own decoder, from one shared wire contract:
+
+- **na** (`jac/jaclang/compiler/rust_bridge/_msgpack.jac`): no `any` type, so a
+  wide value is a `JacValue` tagged union (`kind + i/s/b/items/entries`). Floats
+  are carried as the f64 **bit pattern in an int field** (na truncates float
+  params/fields; only pure-local floats survive). Inlined into each synthesized
+  bridge by `_synth.jac` (cross-module na import of user symbols does not
+  resolve).
+- **ctypes** (`jac/jaclang/compiler/rust_bridge/_ctypes_codegen.jac`,
+  `_mp_encode` / `_mp_decode`): CPython is dynamically typed, so a wide value
+  decodes **straight to native** `dict`/`list`/`int`/`float`/`str`/`bool`/`None`
+  and encodes the same natives back. Floats stay native `float` -- no
+  bit-pattern dance.
+
+## 3. Differential methodology
+
+Two shims exercise the ctypes path end-to-end through the real `build_module`
+(no binder / rustdoc needed). Both live in the session scratchpad, not the repo.
+
+1. **`wide_smoke.c`** -- a hand-written C library speaking the jac-bridge ABI
+   (`JacBuf`, `free_buf`, opaque type drop/ctor, wide `echo`/`pack`/`tally`).
+   `echo` copies the payload bytes verbatim, so it proves the *Jac ctypes glue*
+   (`_wire` argtypes, `_call` encode/decode, `free_buf`) but **cannot** catch a
+   wire mismatch against rmp_serde.
+2. **`wide_rs`** -- a real Rust `cdylib` (`serde` derive + `rmp-serde 1.3.1`,
+   built offline) whose functions **deserialize the payload into a typed
+   `Widget` struct** and re-serialize with `to_vec_named`:
+   - `pack` (no param -> wide): `rmp_serde::to_vec_named(&Widget{..})`.
+   - `tally` (wide -> int): `rmp_serde::from_slice::<Widget>(..)`, returns a field.
+   - `echo` (wide -> wide): decode into `Widget` then re-encode.
+
+## 4. Results
+
+All green (drive scripts `wide_smoke.jac`, `wide_diff.jac` via `jaclang run`):
+
+| Leg | What it proves | Result |
+|---|---|---|
+| C `echo` round-trip of a nested doc | ctypes glue + codec self-consistency; native float/None/list preserved | PASS |
+| (A) `pack`: rmp `to_vec_named` -> `_mp_decode` == doc | **rmp encoder output is readable by the Jac decoder** | PASS |
+| (B) `tally`: `_mp_encode` -> rmp `from_slice::<Widget>`, count==3 | **Jac encoder output deserializes into a typed Rust struct** | PASS |
+| (C) `echo`: `_mp_encode` -> rmp decode -> rmp re-encode -> `_mp_decode` == doc | both directions in one call | PASS |
+
+**Byte-identity (strongest result):** for the doc
+`{name:"widget", count:3, ratio:3.14159, tags:["a","b"], nested:{ok:true, items:[1,2,3]}}`,
+the Jac `_mp_encode` output is **byte-for-byte identical** to
+`rmp_serde::to_vec_named(&Widget)`:
+
+```
+85 a4 6e616d65 a6 776964676574 a5 636f756e74 03 a5 726174696f
+cb 400921f9f01b866e a4 74616773 92 a161 a162 a6 6e6573746564
+82 a26f6b c3 a5 6974656d73 93 010203
+```
+
+(fixmap/5, fixstr keys, fixint ints, `cb`+f64 for `ratio`, fixarray/fixmap for
+the nested containers). Confirmed by reading `pack()`'s raw `JacBuf` before decode.
+
+## 5. Known-and-harmless divergences
+
+- **Non-minimal int widths (Jac encoder only).** `_mp_encode` emits `0xcf` (u64)
+  for positives >= 128 and `0xd3` (i64) for negatives < -32, where rmp uses the
+  minimal width (`0xcc`/`0xcd`/`0xce`/`0xd0`...). Both are valid MessagePack;
+  rmp's decoder and the Jac decoder each accept all widths, and serde narrows a
+  wider int into a smaller field. So this is **wire-compatible but not
+  byte-identical for out-of-fixint ints** -- intentional (the na codec made the
+  same choice; a lead-byte-literal encoder is simpler and rmp accepts it). The
+  §4 doc is byte-identical only because every int in it is a fixint.
+- **Float representation is per-side.** ctypes keeps native `float`; na carries
+  the f64 bit pattern in an int field. Same wire bytes (`0xcb`+8), different
+  in-language value model.
+- **u64 above i64::MAX** decodes to a Python `int` (ctypes) with no loss -- the
+  same exposure `TAG_UINT` already documents.
+
+## 6. Remaining gaps
+
+- **§2.6 typed-obj synthesis is unbuilt** on both sides: derived records still
+  cross as a `JacValue` union (na) / `dict` (ctypes) rather than a typed Jac
+  `obj` with checked fields. This is the "does the wide lane keep typing"
+  ergonomic and is the natural next piece.
+- **Sealed/wheel install:** `_synth._codec_source()` reads the sibling
+  `_msgpack.jac` `__file__`-relative; verified in dev source, not yet in a
+  packaged wheel.
+- **Full binder path:** the differential here loads a hand-authored `cdylib`; a
+  crate built through `_build_core.jac` (rustdoc -> classify -> macro -> cargo)
+  end-to-end is still untested, though the ABI and codec legs it depends on are
+  now proven live.
+
+## 7. Reproduce
+
+```sh
+# rmp_serde cdylib (offline; crates cached under ~/.cargo)
+cd <scratch>/wide_rs && CARGO_NET_OFFLINE=true cargo build --release --offline
+
+# drive the differential through the real build_module
+sed "s|__SO_PATH__|<scratch>/wide_rs/target/release/libwide_rs.so|" wide_diff.jac > run.jac
+PYTHONPATH=jac JAC_LLVM_SHIM=jac/zig-out/lib/libjacllvm.so \
+  .venv/bin/python -m jaclang run run.jac
+```
+
+Codec unit tests (committed): `jac/tests/compiler/test_rust_wide_ctypes.jac`
+(ctypes), `jac/tests/compiler/test_rust_wide_lane.jac` (na synth wiring).
