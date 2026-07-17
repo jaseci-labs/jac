@@ -428,10 +428,7 @@ impl CompilerBridge.jac_to_js(code: str) -> dict[str, any] {
         if not js_code.strip() {
             warnings.append("ECMAScript code generation produced no output.");
         }
-        import from jaclang.compiler.passes.ecmascript.js_runtime_globals {
-            finalize_js_for_emission
-        }
-        return {"js_code": finalize_js_for_emission(js_code), "warnings": warnings};
+        return {"js_code": js_code, "warnings": warnings};
     }
     (success, result) = run_with_timeout(
         _snippet_task(code, _do_jac2js, suffix=".cl.jac"), timeout=DEFAULT_TIMEOUT

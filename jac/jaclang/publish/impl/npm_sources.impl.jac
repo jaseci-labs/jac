@@ -28,27 +28,56 @@ def _top_level_decls(js: str) -> set {
     return names;
 }
 
+def _imported_from(js: str, src: str) -> set[str] {
+    names: set[str] = set();
+    norm = js.replace("'", '"');
+    pattern = 'import\\s*\\{([^}]*)\\}\\s*from\\s*"' + re.escape(src) + '"';
+    for m in re.finditer(pattern, norm) {
+        for part in m.group(1).split(",") {
+            piece = part.strip();
+            if piece {
+                names.add(piece.split()[-1]);
+            }
+        }
+    }
+    return names;
+}
+
+def _remap_jac_runtime_imports(js: str, runtime_pkg: str) -> str {
+    if runtime_pkg == "@jac/runtime" {
+        return js;
+    }
+    return (
+        js.replace('from "@jac/runtime"', f'from "{runtime_pkg}"').replace(
+            "from '@jac/runtime'", f"from '{runtime_pkg}'"
+        )
+    );
+}
+
 def _wire_externals(js: str, runtime_pkg: str) -> tuple[str, list[str]] {
     externals: list[str] = [];
-    local = _top_level_decls(js);
+    out = _remap_jac_runtime_imports(js, runtime_pkg);
+    local = _top_level_decls(out);
     api = runtime_api_names();
+    already_imported = _imported_from(out, runtime_pkg);
 
     used: list[str] = [];
     for name in sorted(api) {
-        if name in local {
+        if name in local or name in already_imported {
             continue;
         }
-        if re.search(r"\b" + re.escape(name) + r"\b", js) {
+        if re.search(r"\b" + re.escape(name) + r"\b", out) {
             used.append(name);
         }
     }
-    out = js;
     if used {
         out = f'import {{ {", ".join(used)} }} from "{runtime_pkg}";\n' + out;
+    }
+    if used or already_imported {
         externals.append(runtime_pkg);
     }
 
-    for m in re.finditer(r'from\s+["\']([^"\']+)["\']', js) {
+    for m in re.finditer(r'from\s+["\']([^"\']+)["\']', out) {
         spec = m.group(1);
         base = spec;
         if spec.startswith("react/") {
@@ -183,10 +212,6 @@ impl collect_npm_sources(
             if not js.strip() {
                 continue;
             }
-            import from jaclang.compiler.passes.ecmascript.js_runtime_globals {
-                finalize_js_for_emission
-            }
-            js = finalize_js_for_emission(js);
             if _crosses_server_boundary(mod) {
                 raise NpmBoundaryError(
                     f"'{rel}' crosses a server boundary and cannot be published as a "

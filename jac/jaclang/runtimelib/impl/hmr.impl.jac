@@ -531,9 +531,6 @@ impl HotReloader._recompile_client_code(
             return;
         }
 
-        import from jaclang.runtimelib.client_surface { prepend_active_runtime_globals }
-        js_code = prepend_active_runtime_globals(js_code);
-
         manifest = mod.gen.client_manifest if mod else None;
         if manifest and manifest.imports {
             for (import_key, import_path) in manifest.imports.items() {

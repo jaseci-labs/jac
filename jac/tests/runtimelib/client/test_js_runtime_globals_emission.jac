@@ -1,159 +1,235 @@
-"""Regression tests for the jac2js runtime-globals emission bug class (#7540).
+"""Regression tests for compiler-owned runtime import emission (#7546).
 
-Any surface that emits client JavaScript for loading as ESM must prepend
-required ``@jac/runtime`` imports (``__jacJsx``, ``__jacSpawn``) when the
-generated code references them. Missing imports cause ``ReferenceError`` in
-Node, Vite, and the desktop fused runtime.
-
-This file pins every known emission path so a new consumer cannot silently
-reintroduce the bug.
+Codegen must inject required ``@jac/runtime`` imports through the ESTree import
+mechanism so ``mod.gen.js`` is emission-ready without consumer-side finalizers.
 """
 
 import os;
-import subprocess;
-import sys;
+import re;
 import tempfile;
 import from pathlib { Path }
 import from tests.support { JAC_ROOT }
-import from jaclang.cli.mcp.compiler_bridge { CompilerBridge }
+import from jaclang.compiler.passes.ecmascript { EsastGenPass }
+import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
+import from jaclang.compiler.passes.ecmascript.backends.preact { PreactBackend }
+import from jaclang.compiler.passes.ecmascript.backends.solid { SolidBackend }
+import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
 import from jaclang.jac0core.program { JacProgram }
-import from jaclang.runtimelib.client_bundle { ClientBundleBuilder }
-import from jaclang.runtimelib.client.jac_to_js { JacToJSCompiler }
 
-glob FIXTURE = os.path.join(
-         JAC_ROOT,
-         "tests",
-         "compiler",
-         "passes",
-         "ecmascript",
-         "fixtures",
-         "client_jsx.jac"
+glob FIXTURES = os.path.join(
+         JAC_ROOT, "tests", "compiler", "passes", "ecmascript", "fixtures"
      ),
-     _MINIMAL_JSX = 'cl def:pub render(items: list) -> any {\n    return <div>{items}</div>;\n}\n',
-     _test_tmp_dir: str = tempfile.mkdtemp(prefix="jac_js_emission_");
+     _MINIMAL_JSX = 'cl def:pub render(items: list) -> any {\n    return <div>{items}</div>;\n}\n';
 
-"""Assert emission-ready JS includes required runtime globals."""
-def assert_emission_ready_js(js: str, path_label: str) {
-    assert js.strip() , f"{path_label}: expected non-empty JS output";
-    assert "__jacJsx(" in js , f"{path_label}: JSX lowering must reference __jacJsx";
-    assert "@jac/runtime" in js , (
-        f"{path_label}: missing @jac/runtime import for __jacJsx/__jacSpawn"
-    );
-    assert "import {" in js and "} from \"@jac/runtime\";" in js , (
-        f"{path_label}: expected ESM import from @jac/runtime, got:\n{js[:300]}"
-    );
+"""Count named import bindings for a runtime symbol."""
+def _count_runtime_imports(js: str, symbol: str) -> int {
+    pattern = 'import\\s*\\{[^}]*\\b' + re.escape(symbol) + '\\b';
+    return len(re.findall(pattern, js));
+}
+
+"""Compile a fixture through the production ``mod.gen.js`` path."""
+def _compile_raw_js(path: str) -> str {
+    prog = JacProgram();
+    mod = prog.compile(file_path=path);
+    assert not prog.errors_had , f"compile errors: {prog.errors_had}";
+    js = (mod.gen.js if mod and mod.gen else "") or "";
+    assert js.strip() , f"expected non-empty JS for {path}";
+    return js;
+}
+
+"""Compile a fixture with an explicit framework backend (no finalizer)."""
+def _compile_with_backend(path: str, backend: any) -> str {
+    prog = JacProgram();
+    ir = prog.compile(file_path=path, no_cgen=True);
+    fatal = [
+        e
+        for e in prog.errors_had
+        if not issubclass(e.from_pass, TypeCheckPass)
+    ];
+    assert not fatal , f"compile errors in {path}: {[str(e) for e in fatal]}";
+    es_pass = EsastGenPass(ir_in=ir, prog=prog, backend=backend);
+    return es_to_js(es_pass.ir_out.gen.es_ast);
 }
 
 """Write inline Jac to a temp file and return its path."""
 def _write_temp_jac(code: str) -> str {
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".cl.jac", delete=False, dir=_test_tmp_dir
-    ) as tmp {
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".cl.jac", delete=False) as tmp {
         tmp.write(code);
         return tmp.name;
     }
 }
 
-"""Run ``jac tool jac2js`` against a fixture path."""
-def _jac_tool_jac2js(fixture_path: str) -> str {
-    env = os.environ.copy();
-    env["PYTHONPATH"] = JAC_ROOT + (
-        os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else ""
-    );
-    result = subprocess.run(
-        [sys.executable, "-m", "jaclang.cli.cli", "tool", "jac2js", fixture_path],
-        capture_output=True,
-        text=True,
-        env=env,
-    );
-    assert result.returncode == 0 , (f"jac tool jac2js failed: {result.stderr}");
-    return result.stdout;
-}
-
-test "finalize_js_for_emission prepends @jac/runtime for JSX" {
-    import from jaclang.compiler.passes.ecmascript.js_runtime_globals {
-        finalize_js_for_emission
-    }
-    raw = 'function render(items) {\n  return __jacJsx("div", {}, [items]);\n}\n';
-    finalized = finalize_js_for_emission(raw);
-    assert_emission_ready_js(finalized, "finalize_js_for_emission");
-}
-
-test "jac tool jac2js CLI emits runtime globals" {
-    assert_emission_ready_js(_jac_tool_jac2js(FIXTURE), "jac tool jac2js");
-}
-
-test "JacProgram.compile gen.js path uses bundle finalize on emission" {
-    prog = JacProgram();
-    mod = prog.compile(file_path=FIXTURE);
-    assert not prog.errors_had , f"compile errors: {prog.errors_had}";
-    builder = ClientBundleBuilder();
-    (js, _) = builder._compile_to_js(Path(FIXTURE));
-    assert_emission_ready_js(js, "ClientBundleBuilder._compile_to_js");
-}
-
-test "MCP CompilerBridge.jac_to_js emits runtime globals" {
-    result = CompilerBridge.jac_to_js(_MINIMAL_JSX);
-    assert not result["warnings"] or result["js_code"].strip() , (
-        f"MCP jac_to_js warnings: {result['warnings']}"
-    );
-    assert_emission_ready_js(result["js_code"], "CompilerBridge.jac_to_js");
-}
-
-test "JacToJSCompiler add_runtime_imports matches finalize helper" {
-    temp_path = _write_temp_jac(_MINIMAL_JSX);
+test "raw React JSX imports __jacJsx from @jac/runtime" {
+    path = _write_temp_jac(_MINIMAL_JSX);
     try {
-        compiler = JacToJSCompiler(
-            compile_to_js_func=ClientBundleBuilder()._compile_to_js
+        js = _compile_raw_js(path);
+        assert "__jacJsx(" in js , "React JSX lowering must reference __jacJsx";
+        assert _count_runtime_imports(js, "__jacJsx") == 1 , (
+            "React JSX must import __jacJsx exactly once:\n" + js[:400]
         );
-        (module_js, _, _) = compiler.compile_module(Path(temp_path));
-        finalized = compiler.add_runtime_imports(module_js);
-        assert_emission_ready_js(finalized, "JacToJSCompiler desktop path");
-        # Idempotent: applying twice must not duplicate the import line.
-        again = compiler.add_runtime_imports(finalized);
-        assert again.count('from "@jac/runtime"') == finalized.count(
-            'from "@jac/runtime"'
-        ) , "runtime import injection must be idempotent";
+        assert 'from "@jac/runtime"' in js , (
+            "React JSX must import from @jac/runtime"
+        );
     } finally {
-        os.unlink(temp_path);
+        os.unlink(path);
     }
 }
 
-test "runtime modules that define __jacJsx inline skip prepend" {
-    # Runtime sources ship their own __jacJsx definition; prepending an import
-    # would be wrong and these modules must compile cleanly through jac2js.
+test "raw Preact JSX imports __jacJsx from @jac/runtime" {
+    path = _write_temp_jac(_MINIMAL_JSX);
+    try {
+        js = _compile_with_backend(path, PreactBackend());
+        assert "__jacJsx(" in js , "Preact JSX lowering must reference __jacJsx";
+        assert _count_runtime_imports(js, "__jacJsx") == 1 , (
+            "Preact JSX must import __jacJsx exactly once:\n" + js[:400]
+        );
+        assert 'from "@jac/runtime"' in js , (
+            "Preact JSX must import from @jac/runtime"
+        );
+    } finally {
+        os.unlink(path);
+    }
+}
+
+test "raw Solid JSX does not reference or import __jacJsx" {
+    path = _write_temp_jac(_MINIMAL_JSX);
+    try {
+        js = _compile_with_backend(path, SolidBackend());
+        assert "__jacJsx" not in js , (
+            "Solid JSX must not reference the React factory symbol"
+        );
+        assert "<" in js , "Solid JSX should lower to native JSX syntax";
+    } finally {
+        os.unlink(path);
+    }
+}
+
+test "Solid compiler-created fragments stay backend-native" {
+    js = _compile_with_backend(
+        os.path.join(FIXTURES, "view_basic.cl.jac"), SolidBackend()
+    );
+    assert "__jacJsx" not in js , (
+        "Solid slot fragments must not import the React JSX factory"
+    );
+    assert "<>" in js , (
+        "Solid compiler-created fragments must lower to native JSX fragments"
+    );
+}
+
+test "remote spawn imports __jacSpawn from @jac/runtime" {
+    js = _compile_raw_js(os.path.join(FIXTURES, "typed_walker_spawn.jac"));
+    assert "__jacSpawn(" in js , "spawn lowering must reference __jacSpawn";
+    assert _count_runtime_imports(js, "__jacSpawn") == 1 , (
+        "spawn must import __jacSpawn exactly once:\n" + js[:400]
+    );
+    assert 'from "@jac/runtime"' in js , (
+        "spawn must import __jacSpawn from @jac/runtime"
+    );
+}
+
+test "runtime source does not self-import @jac/runtime" {
     import importlib;
     plugin = importlib.import_module("jaclang.runtimelib.client");
     paths = list(getattr(plugin, "__path__", []) or []);
     assert paths , "jaclang.runtimelib.client must be importable";
     core_src = os.path.join(paths[0], "client_runtime_core.cl.jac");
-    if not os.path.isfile(core_src) {
-        return;
-    }
-    js = _jac_tool_jac2js(core_src);
+    assert os.path.isfile(core_src) , (
+        "client_runtime_core.cl.jac is part of jaclang and must be present"
+    );
+    js = _compile_raw_js(core_src);
     assert "function __jacJsx" in js , "runtime core must define __jacJsx";
-    assert 'import {__jacJsx' not in js , (
+    assert _count_runtime_imports(js, "__jacJsx") == 0 , (
         "runtime core must not import __jacJsx from itself"
+    );
+    assert _count_runtime_imports(js, "__jacSpawn") == 0 , (
+        "runtime core must not import __jacSpawn from itself"
+    );
+    assert "@jac/runtime" not in js , ("runtime core must not reference @jac/runtime");
+}
+
+test "runtime_peer_deps rejects @jac/runtime self-import" {
+    import from jaclang.publish.runtime_npm { runtime_peer_deps }
+    raised = False;
+    try {
+        runtime_peer_deps('import {__jacJsx} from "@jac/runtime";\n');
+    } except ValueError {
+        raised = True;
+    }
+    assert raised , (
+        "peer dependency collection must reject @jac/runtime self-imports"
     );
 }
 
-test "known emission surfaces call finalize_js_for_emission" {
-    # Static guard: every file that emits client JS must use the canonical
-    # finalizer so new paths cannot skip runtime-global injection.
-    jac_root = Path(JAC_ROOT);
-    required_snippet = "finalize_js_for_emission";
-    surfaces = [
-        jac_root / "jaclang" / "cli" / "commands" / "impl" / "transform.impl.jac",
-        jac_root / "jaclang" / "cli" / "mcp" / "impl" / "compiler_bridge.impl.jac",
-        jac_root / "jaclang" / "runtimelib" / "impl" / "client_bundle.impl.jac",
-        jac_root / "jaclang" / "publish" / "impl" / "runtime_npm.impl.jac",
-        jac_root / "jaclang" / "publish" / "impl" / "npm_sources.impl.jac",
-
-    ];
-    for path in surfaces {
-        text = path.read_text(encoding="utf-8");
-        assert required_snippet in text , (
-            f"{path.relative_to(jac_root)} must call {required_snippet}"
+test "build_runtime_tarball React runtime does not self-import @jac/runtime" {
+    import from jaclang.publish.runtime_npm { build_runtime_tarball }
+    data = build_runtime_tarball("1.2.3");
+    assert data , "expected non-empty React runtime tarball";
+    import io;
+    import json;
+    import tarfile;
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tf {
+        index_js = tf.extractfile("package/index.js").read().decode();
+        assert "@jac/runtime" not in index_js , (
+            "runtime package must not import from itself"
         );
+        pj = json.loads(tf.extractfile("package/package.json").read().decode());
+        assert "@jac/runtime" not in pj.get("peerDependencies", {}) , (
+            "runtime package must not list itself as a peer dependency"
+        );
+    }
+}
+
+test "build_runtime_tarball Solid runtime does not self-import @jac/runtime" {
+    import from jaclang.publish.runtime_npm { build_runtime_tarball }
+    data = build_runtime_tarball("1.2.3", framework="solid");
+    assert data , "expected non-empty Solid runtime tarball";
+    import io;
+    import json;
+    import tarfile;
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tf {
+        index_js = tf.extractfile("package/index.js").read().decode();
+        assert "@jac/runtime" not in index_js , (
+            "Solid runtime package must not import from itself"
+        );
+        pj = json.loads(tf.extractfile("package/package.json").read().decode());
+        assert "@jac/runtime" not in pj.get("peerDependencies", {}) , (
+            "Solid runtime package must not list itself as a peer dependency"
+        );
+    }
+}
+
+test "published npm JS remaps the runtime import exactly once" {
+    import from jaclang.project.config { JacConfig }
+    import from jaclang.publish.npm_sources { collect_npm_sources }
+    import from jaclang.publish.runtime_npm { RUNTIME_PKG_NAME }
+    tmpdir = tempfile.mkdtemp();
+    try {
+        pkg = Path(tmpdir) / "ui";
+        pkg.mkdir(parents=True, exist_ok=True);
+        (pkg / "index.cl.jac").write_text(
+            'def:pub Button(label: str) -> any {\n'
+            '    return <button class="btn">{label}</button>;\n'
+            '}\n'
+        );
+        cfg = JacConfig.from_toml_str(
+            '[project]\nname = "ui"\nversion = "1.0.0"\n\n'
+            '[project.include]\npackages = ["ui"]\n'
+        );
+        cfg.project_root = Path(tmpdir);
+        files = collect_npm_sources(cfg, project_root=Path(tmpdir));
+        assert len(files) == 1 , f"expected one npm source, got {len(files)}";
+        js = files[0].js;
+        assert _count_runtime_imports(js, "__jacJsx") == 1 , (
+            "published JSX must import __jacJsx exactly once:\n" + js[:400]
+        );
+        assert f'from "{RUNTIME_PKG_NAME}"' in js , (
+            f"published JSX must import from {RUNTIME_PKG_NAME}"
+        );
+        assert "@jac/runtime" not in js , (
+            "published JSX must not retain compiler-internal @jac/runtime"
+        );
+    } finally {
+        import shutil;
+        shutil.rmtree(tmpdir, ignore_errors=True);
     }
 }

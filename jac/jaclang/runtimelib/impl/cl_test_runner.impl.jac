@@ -329,12 +329,7 @@ impl _run_harness(
     work_dir = Path(tempfile.mkdtemp(prefix="jac_cl_test_"));
     try {
         if "@jac/runtime" in imports {
-            import from jaclang.runtimelib.client_surface {
-                prepend_active_runtime_globals
-            }
             runtime_js = _compile_runtime_js();
-
-            module_js = prepend_active_runtime_globals(module_js);
 
             module_js = module_js.replace('"@jac/runtime"', '"./jac_runtime.js"');
             module_js = module_js.replace("'@jac/runtime'", "'./jac_runtime.js'");
