@@ -6156,6 +6156,8 @@ impl EsastGenPass.enter_node(nd: uni.UniNode) -> None {
 }
 
 impl EsastGenPass.before_pass -> None {
+    import from jaclang.jac0core.compiler { ensure_callee_decl_restamped }
+    ensure_callee_decl_restamped(self.ir_in, self.prog);
     import from jaclang.jac0core.codeinfo { ClientManifest }
     self.child_passes = self._init_child_passes(EsastGenPass);
     self.client_manifest = ClientManifest();

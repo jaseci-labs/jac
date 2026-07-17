@@ -397,11 +397,6 @@ def read_debug_source(data: bytes) -> (str | None) {
 }
 
 def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
-    import from jaclang.jac0core.bccache {
-        discover_annex_files,
-        discover_variant_files,
-        discover_style_annex
-    }
     if not cache_path.exists() {
         return False;
     }
@@ -411,35 +406,6 @@ def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
         if header is None or not header.is_compatible() {
             return False;
         }
-        cache_mtime = os.path.getmtime(cache_path);
-
-        related = (
-            discover_annex_files(source_path, '.impl.jac') + discover_annex_files(
-                source_path, '.test.jac'
-            ) + discover_variant_files(source_path)
-        );
-        style = discover_style_annex(source_path);
-        if style is not None {
-            related.append(style);
-        }
-        fresh = cache_mtime > os.path.getmtime(source_path);
-        if fresh {
-            for f in related {
-                try {
-                    if cache_mtime <= os.path.getmtime(f) {
-                        fresh = False;
-                        break;
-                    }
-                } except OSError {
-                    fresh = False;
-                    break;
-                }
-            }
-        }
-        if fresh {
-            return True;
-        }
-
         return jir_matches_source(data, source_path);
     } except OSError {
         return False;

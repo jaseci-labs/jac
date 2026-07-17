@@ -90,6 +90,8 @@ impl NaIRGenPass.postinit -> None {
 }
 
 impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
+    import from jaclang.jac0core.compiler { ensure_callee_decl_restamped }
+    ensure_callee_decl_restamped(self.ir_in, self.prog);
     if (self.prog._auto_promote_native and self.ir_in.gen.native_compat) {
         mod_path = self.ir_in.loc.mod_path if self.ir_in.loc else "";
         main_target = self.prog._auto_promote_target;

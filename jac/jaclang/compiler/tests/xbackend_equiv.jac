@@ -28,7 +28,9 @@ import from jaclang.compiler.passes.ecmascript { EsastGenPass }
 import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
 import from jaclang.compiler.passes.ecmascript.estree { Node as EsNode }
 import from jaclang.jac0core.codeinfo { native_safe_sym }
+import from jaclang.jac0core.jir_passes { JirReader, JirWriter }
 import from jaclang.jac0core.program { JacProgram }
+import from jaclang.jac0core.unitree { Module }
 
 glob FIXTURES = str(
          Path(jaclang.__file__).parent / "compiler" / "tests" / "fixtures"
@@ -59,13 +61,13 @@ def run_py_fixture(fixture_stem: str, func_name: str) -> dict {
 # -----------------------------------------------------------------------
 # ES (ECMAScript / JavaScript) helpers
 # -----------------------------------------------------------------------
-def compile_fixture_to_js(fixture_name: str) -> str {
+def _compile_fixture_ir(fixture_name: str, no_cgen: bool = True) -> tuple {
     import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
     fixture_path = os.path.join(FIXTURES, fixture_name);
     prog = JacProgram();
     # type_check=True: EsastGenPass consumes core call facts (call_kind/
     # callee_decl) that only the inference schedule stamps.
-    ir = prog.compile(file_path=fixture_path, no_cgen=True, type_check=True);
+    ir = prog.compile(file_path=fixture_path, no_cgen=no_cgen, type_check=True);
     fatal = [
         e
         for e in prog.errors_had
@@ -74,7 +76,78 @@ def compile_fixture_to_js(fixture_name: str) -> str {
     assert not fatal , (
         f"Compilation errors in {fixture_name}: {[str(e) for e in fatal]}"
     );
+    return (ir, prog, fixture_path);
+}
+
+def _roundtrip_hub_via_jir(
+    cold_prog: JacProgram, fixture_path: str, main_ir: Module
+) -> tuple[Module, JacProgram] {
+    warm_prog = JacProgram();
+    reloaded_main: (Module | None) = None;
+    norm_fixture = os.path.normcase(os.path.abspath(fixture_path));
+    hub_items = list(cold_prog.mod.hub.items());
+    if not hub_items {
+        reloaded = JirReader(_source_path=fixture_path).read_module(
+            JirWriter().write_module(main_ir)
+        );
+        assert reloaded is not None , f"JIR reload failed for {fixture_path}";
+        warm_prog.mod.hub[fixture_path] = reloaded;
+        return (reloaded, warm_prog);
+    }
+    for (hub_path, hub_mod) in hub_items {
+        reloaded = JirReader(_source_path=hub_path).read_module(
+            JirWriter().write_module(hub_mod)
+        );
+        assert reloaded is not None , f"JIR reload failed for {hub_path}";
+        warm_prog.mod.hub[hub_path] = reloaded;
+        if hub_mod is main_ir {
+            reloaded_main = reloaded;
+        } elif os.path.normcase(os.path.abspath(hub_path)) == norm_fixture {
+            reloaded_main = reloaded;
+        }
+    }
+    if reloaded_main is None and len(warm_prog.mod.hub) == 1 {
+        reloaded_main = next(iter(warm_prog.mod.hub.values()));
+    }
+    assert reloaded_main is not None , (
+        f"fixture {fixture_path} not found in program hub"
+    );
+    return (reloaded_main, warm_prog);
+}
+
+def _warm_native_codegen(ir: Module, prog: JacProgram) {
+    import from jaclang.jac0core.compiler {
+        ensure_callee_decl_restamped,
+        expand_with_requirements,
+        get_boundary_analysis_sched,
+        get_cfg_sched,
+        get_type_check_sched
+    }
+    import from jaclang.compiler.passes.main.rc_facts_pass { RcFactsPass }
+    import from jaclang.compiler.passes.native { NaIRGenPass, NativeCompilePass }
+    compiler = prog._get_compiler();
+    ensure_callee_decl_restamped(ir, prog);
+    compiler.run_schedule(ir, prog, get_cfg_sched());
+    compiler.run_schedule(ir, prog, get_type_check_sched());
+    compiler.run_schedule(ir, prog, get_boundary_analysis_sched());
+    native_sched = expand_with_requirements(
+        [NaIRGenPass, NativeCompilePass], {'rc-facts': RcFactsPass}
+    );
+    compiler.run_schedule(ir, prog, native_sched);
+}
+
+def compile_fixture_to_js(fixture_name: str) -> str {
+    (ir, prog, _) = _compile_fixture_ir(fixture_name, no_cgen=True);
     es_pass = EsastGenPass(ir_in=ir, prog=prog);
+    es_ir = es_pass.ir_out;
+    assert isinstance(es_ir.gen.es_ast, EsNode) , "es_ast should be an EsNode";
+    return es_to_js(es_ir.gen.es_ast);
+}
+
+def compile_fixture_to_js_warm(fixture_name: str) -> str {
+    (ir, prog, fixture_path) = _compile_fixture_ir(fixture_name, no_cgen=True);
+    (reloaded, warm_prog) = _roundtrip_hub_via_jir(prog, fixture_path, ir);
+    es_pass = EsastGenPass(ir_in=reloaded, prog=warm_prog);
     es_ir = es_pass.ir_out;
     assert isinstance(es_ir.gen.es_ast, EsNode) , "es_ast should be an EsNode";
     return es_to_js(es_ir.gen.es_ast);
@@ -94,12 +167,26 @@ def run_js_function(js_code: str, func_name: str) -> dict {
 # -----------------------------------------------------------------------
 def compile_native(fixture: str) -> tuple {
     prog = JacProgram();
-    ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)));
+    fixture_path = str(os.path.join(FIXTURES, fixture));
+    ir = prog.compile(file_path=fixture_path);
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     eng = ir.gen.native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
     return (eng, ir);
+}
+
+def compile_native_warm(fixture: str) -> tuple {
+    fixture_path = str(os.path.join(FIXTURES, fixture));
+    prog = JacProgram();
+    ir = prog.compile(file_path=fixture_path);
+    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
+    assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
+    (reloaded, warm_prog) = _roundtrip_hub_via_jir(prog, fixture_path, ir);
+    _warm_native_codegen(reloaded, warm_prog);
+    eng = reloaded.gen.native_engine;
+    assert eng is not None , f"No native engine produced for warm {fixture}";
+    return (eng, reloaded);
 }
 
 def get_func(eng: object, name: str, restype: type, *argtypes: type) -> object {
@@ -322,4 +409,66 @@ def run_with_both(
             f"[{label}] na backend was required but produced no comparable data"
         );
     }
+}
+
+# -----------------------------------------------------------------------
+# JIR warm/cold codegen parity (jaseci#6666)
+# -----------------------------------------------------------------------
+def assert_jir_codegen_parity(
+    fixture: str, cl_fn: str, na_fn: str, require: (list | None) = None
+) {
+    # After a JIR roundtrip, ES/NA codegen must match the cold-build output.
+    reqd: list = require if require is not None else [];
+    label = fixture;
+    cl_ok = False;
+    try {
+        cold_js = compile_fixture_to_js(fixture);
+        warm_js = compile_fixture_to_js_warm(fixture);
+        cold_cl = run_js_function(cold_js, cl_fn);
+        warm_cl = run_js_function(warm_js, cl_fn);
+        compare_results(cold_cl, warm_cl, f"{label} [ES cold/warm]");
+        assert cold_js == warm_js , (
+            f"[{label}] warm ES codegen diverged from cold after JIR reload"
+        );
+        cl_ok = True;
+    } except Exception {
+        if "cl" in reqd {
+            raise;
+        }
+    }
+    if ("cl" in reqd) and not cl_ok {
+        raise AssertionError(
+            f"[{label}] cl backend was required but JIR parity was not verified"
+        );
+    }
+    na_ok = False;
+    try {
+        (cold_eng, cold_ir) = compile_native(fixture);
+        cold_na = run_native_function(cold_eng, na_fn, cold_ir);
+        (warm_eng, warm_ir) = compile_native_warm(fixture);
+        warm_na = run_native_function(warm_eng, na_fn, warm_ir);
+        compare_results(cold_na, warm_na, f"{label} [NA cold/warm]");
+        na_ok = True;
+    } except Exception {
+        if "na" in reqd {
+            raise;
+        }
+    }
+    if ("na" in reqd) and not na_ok {
+        raise AssertionError(
+            f"[{label}] na backend was required but JIR parity was not verified"
+        );
+    }
+}
+
+def run_with_both_and_jir_parity(
+    fixture: str,
+    py_fn: str,
+    cl_fn: str,
+    na_fn: str,
+    tolerance: float = 1e-9,
+    require: (list | None) = None
+) {
+    run_with_both(fixture, py_fn, cl_fn, na_fn, tolerance=tolerance, require=require);
+    assert_jir_codegen_parity(fixture, cl_fn, na_fn, require=require);
 }

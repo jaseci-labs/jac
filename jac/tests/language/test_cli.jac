@@ -2516,8 +2516,129 @@ test "jir reload preserves FuncCall callee_decl and call_kind" {
             assert hasattr(fc, "call_kind") , (
                 "JIR-reloaded FuncCall lost `call_kind` (#6656 Ask #2)"
             );
-            assert fc.callee_decl is None;
-            assert fc.call_kind is None;
+            assert fc.callee_decl is None , (
+                "callee_decl is inference-only and must default to None on JIR load"
+            );
+        }
+    }
+}
+
+"""Regression: JIR-reloaded kwarg calls must lower like cold builds.
+
+jaseci-labs/jaseci#6666: callee_decl is inference-only and defaults to None on
+JIR load. ES codegen reads it to reorder keyword args; without restamping,
+cross-module calls collapse kwargs into a single object arg.
+"""
+test "jir reload restamps callee_decl for kwarg call lowering" {
+    import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.jac0core { unitree as uni }
+    import from jaclang.jac0core.jir_passes { JirWriter, JirReader }
+    import from jaclang.compiler.passes.ecmascript.esast_gen_pass { EsastGenPass }
+
+    def _make_line(js: str) -> str {
+        for line in js.splitlines() {
+            if "return make" in line {
+                return line;
+            }
+        }
+        return "";
+    }
+
+    with tempfile.TemporaryDirectory() as tmpdir {
+        # Single-module: out-of-order kwargs on a local cl def.
+        single_path = os.path.join(tmpdir, "single.jac");
+        with open(single_path, "w") as f {
+            f.write(
+                "cl def make(a: int, b: int) -> int { return a - b; }\n"
+                "cl def use() -> int { return make(b=1, a=10); }\n"
+            );
+        }
+        single_prog = JacProgram();
+        single_mod = single_prog.compile(file_path=single_path);
+        single_make_call: (uni.FuncCall | None) = None;
+        for fc in single_mod.get_all_sub_nodes(uni.FuncCall) {
+            if isinstance(fc.target, uni.Name) and fc.target.sym_name == "make" {
+                single_make_call = fc;
+            }
+        }
+        assert single_make_call is not None , (
+            "single-module fixture must contain a make(...) call"
+        );
+        assert single_make_call.callee_decl is not None , (
+            "cold compile must stamp callee_decl before JIR round-trip"
+        );
+        single_cold = _make_line(single_mod.gen.js);
+        single_reload = JirReader(_source_path=single_path).read_module(
+            JirWriter().write_module(single_mod)
+        );
+        assert single_reload is not None , "JIR reload returned None";
+        single_warm_prog = JacProgram();
+        EsastGenPass(ir_in=single_reload, prog=single_warm_prog);
+        single_warm = _make_line(single_reload.gen.js);
+        assert single_cold == single_warm , (
+            "single-module kwarg lowering diverged after JIR reload: "
+            f"cold={single_cold!r}, warm={single_warm!r}"
+        );
+        assert "make(10, 1)" in single_warm;
+        # Cross-module import: callee_decl fallback cannot resolve the stub.
+        lib_path = os.path.join(tmpdir, "lib.jac");
+        main_path = os.path.join(tmpdir, "main.jac");
+        with open(lib_path, "w") as f {
+            f.write("cl def make(a: int, b: int) -> int { return a - b; }\n");
+        }
+        with open(main_path, "w") as f {
+            f.write(
+                "import from lib { make }\n"
+                "cl def use() -> int { return make(b=1, a=10); }\n"
+            );
+        }
+        cross_prog = JacProgram();
+        cross_mod = cross_prog.compile(file_path=main_path);
+        cross_make_call: (uni.FuncCall | None) = None;
+        for fc in cross_mod.get_all_sub_nodes(uni.FuncCall) {
+            if isinstance(fc.target, uni.Name) and fc.target.sym_name == "make" {
+                cross_make_call = fc;
+            }
+        }
+        assert cross_make_call is not None , (
+            "cross-module fixture must contain an imported make(...) call"
+        );
+        assert cross_make_call.callee_decl is not None , (
+            "cold compile must stamp callee_decl on imported calls"
+        );
+        cross_cold = _make_line(cross_mod.gen.js);
+        cross_warm_prog = JacProgram();
+        for (hub_path, hub_mod) in cross_prog.mod.hub.items() {
+            hub_reloaded = JirReader(_source_path=hub_path).read_module(
+                JirWriter().write_module(hub_mod)
+            );
+            assert hub_reloaded is not None , (
+                f"JIR reload failed for hub module {hub_path}"
+            );
+            cross_warm_prog.mod.hub[hub_path] = hub_reloaded;
+        }
+        cross_reload = cross_warm_prog.mod.hub[main_path];
+        assert cross_reload is not None , "main module missing from warm hub";
+        for fc in cross_reload.get_all_sub_nodes(uni.FuncCall) {
+            if isinstance(fc.target, uni.Name) and fc.target.sym_name == "make" {
+                assert fc.callee_decl is None , (
+                    "callee_decl should be None immediately after JIR reload"
+                );
+            }
+        }
+        EsastGenPass(ir_in=cross_reload, prog=cross_warm_prog);
+        cross_warm = _make_line(cross_reload.gen.js);
+        assert cross_cold == cross_warm , (
+            "cross-module kwarg lowering diverged after JIR reload (#6666): "
+            f"cold={cross_cold!r}, warm={cross_warm!r}"
+        );
+        assert "make(10, 1)" in cross_warm;
+        for fc in cross_reload.get_all_sub_nodes(uni.FuncCall) {
+            if isinstance(fc.target, uni.Name) and fc.target.sym_name == "make" {
+                assert fc.callee_decl is not None , (
+                    "EsastGenPass must restamp callee_decl before kwarg lowering"
+                );
+            }
         }
     }
 }

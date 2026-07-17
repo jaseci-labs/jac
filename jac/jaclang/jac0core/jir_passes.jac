@@ -151,6 +151,7 @@ obj JirReader {
 
     def read_module(data: bytes) -> (Module | None);
     def _wire_source(module: Module) -> None;
+    def _repair_module_loc(module: Module) -> None;
     def _fix_param_kinds -> None;
     def _init_caches -> None;
     def _resolve_node(node_id: int) -> (UniNode | None);
