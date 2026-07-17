@@ -49,6 +49,10 @@ exclude = [
     #  - uni_pass.jac carries the `# >>> generated visitor surface >>>` markers
     #    that `jac gen-uni-dispatch` uses to locate the region it rewrites.
     "uni_pass.jac",
+    #  - _msgpack.jac is the shared serde wide-lane codec; _synth inlines its
+    #    source verbatim into each wide bridge, and its comments document the na
+    #    value-representation constraints the codec encodes.
+    "_msgpack.jac",
 ]
 
 [byllm.model]

@@ -13,6 +13,7 @@ import from jaclang.compiler.rust_bridge._blob {
     TAG_UINT,
     TAG_F64,
     TAG_STR,
+    TAG_WIDE,
     TAG_VOID,
     tag_base,
     tag_is_opt,
@@ -322,6 +323,7 @@ class _Synth {
         self._needs_panic_syms = False;
         self._bridged_str_method = False;
         self._bridged_callback = False;
+        self._needs_codec = False;
     }
 
     def _shim_decl(self: _Synth, fd: FnDesc) -> str | None {
@@ -334,6 +336,9 @@ class _Synth {
             ps = classify(p.tag).kind;
             if ps == SlotKind.Str {
                 params.append(f"{pn}: str");
+                params.append(f"{pn}_len: int");
+            } elif ps == SlotKind.Wide {
+                params.append(f"{pn}: bytes");
                 params.append(f"{pn}_len: int");
             } elif ps == SlotKind.Bool
             or ps == SlotKind.Int
@@ -348,6 +353,8 @@ class _Synth {
         }
         rs = classify(fd.ret);
         if rs.kind == SlotKind.Map or rs.kind == SlotKind.List {
+            params.append("out_buf: bytes");
+        } elif rs.kind == SlotKind.Wide {
             params.append("out_buf: bytes");
         } elif rs.kind == SlotKind.Bool {
             params.append("out_bool: bytes");
@@ -490,10 +497,16 @@ class _Synth {
             f'            raise RuntimeError("{fd.name} called after close()");'
         );
         body_lines.append("        }");
+        body_lines.extend(self._wide_prelude(fd));
         rs = classify(fd.ret);
         if rs.kind == SlotKind.Map or rs.kind == SlotKind.List {
             body_lines.append('        out_buf = struct.pack("<QII", 0, 0, 0);');
             call.append("out_buf");
+        } elif rs.kind == SlotKind.Wide {
+            body_lines.append('        out_buf = struct.pack("<QII", 0, 0, 0);');
+            call.append("out_buf");
+            self._needs_codec = True;
+            self._bridged_str_method = True;
         } elif rs.kind == SlotKind.OpaqueRef {
             if rs.ref_index not in self.opaque {
                 return None;
@@ -529,6 +542,16 @@ class _Synth {
         body_lines.append("        }");
         if rs.kind == SlotKind.Map or rs.kind == SlotKind.List {
             body_lines.extend(self._na_decode_container(fd));
+        } elif rs.kind == SlotKind.Wide {
+            body_lines.append('        rb = struct.unpack("<QII", out_buf);');
+            body_lines.append("        if rb[0] == 0 {");
+            body_lines.append("            return jv_nil();");
+            body_lines.append("        }");
+            body_lines.append("        _wv = msgpack_decode(rb[0], rb[1]);");
+            body_lines.append(
+                f"        {self.free_buf}(rb[0], rb[1] | (rb[2] << 32));"
+            );
+            body_lines.append("        return _wv;");
         } elif rs.kind == SlotKind.OpaqueRef {
             target = self.opaque[rs.ref_index];
             body_lines.append('        rh = struct.unpack("<Q", out_h)[0];');
@@ -590,6 +613,33 @@ class _Synth {
         return body_lines;
     }
 
+    def _codec_source(self: _Synth) -> list[str] {
+        import os;
+        codec_path = os.path.join(os.path.dirname(__file__), "_msgpack.jac");
+        with open(codec_path, "r") as f {
+            raw = f.read();
+        }
+        lines = [];
+        for ln in raw.split("\n") {
+            if ln.strip() == "import struct;" {
+                continue;
+            }
+            lines.append(ln);
+        }
+        return lines;
+    }
+
+    def _wide_prelude(self: _Synth, fd: FnDesc) -> list[str] {
+        lines = [];
+        for p in fd.params {
+            if classify(p.tag).kind == SlotKind.Wide {
+                pn = self._pname(p);
+                lines.append(f"        _enc_{pn} = msgpack_encode({pn});");
+            }
+        }
+        return lines;
+    }
+
     def _call_args(self: _Synth, fd: FnDesc, call: list[str]) -> list[str] | None {
         for p in fd.params {
             pn = self._pname(p);
@@ -597,6 +647,10 @@ class _Synth {
             if pk == SlotKind.Str {
                 call.append(pn);
                 call.append(f"strlen({pn})");
+            } elif pk == SlotKind.Wide {
+                self._needs_codec = True;
+                call.append(f"_enc_{pn}");
+                call.append(f"len(_enc_{pn})");
             } elif pk == SlotKind.Bool {
                 call.append(f"({pn} and 1 or 0)");
             } elif pk == SlotKind.Int or pk == SlotKind.Uint {
@@ -621,6 +675,7 @@ class _Synth {
         if self._call_args(fd, call) is None {
             return None;
         }
+        body_lines.extend(self._wide_prelude(fd));
         body_lines.append('        out_h = struct.pack("<Q", 0);');
         body_lines.append('        out_e = struct.pack("<Q", 0);');
         call.append("out_h");
@@ -778,6 +833,11 @@ class _Synth {
         out.append("}");
         out.append("");
 
+        if self._needs_codec {
+            out.extend(self._codec_source());
+            out.append("");
+        }
+
         produces = {ti: set() for ti in self.opaque};
         for ti in self.opaque {
             for fd in methods_of.get(ti, []) {
@@ -923,6 +983,9 @@ class _Synth {
         if tag_base(p.tag) == TAG_F64 {
             return f"{pn}: float";
         }
+        if tag_base(p.tag) == TAG_WIDE {
+            return f"{pn}: JacValue";
+        }
         if tag_is_ref(p.tag) {
             return f"{pn}: {self.opaque.get(tag_ref_index(p.tag), 'object')}";
         }
@@ -969,6 +1032,9 @@ class _Synth {
         }
         if tag_base(fd.ret) == TAG_STR {
             return " -> str | None" if tag_is_opt(fd.ret) else " -> str";
+        }
+        if tag_base(fd.ret) == TAG_WIDE {
+            return " -> JacValue";
         }
         if tag_is_ref(fd.ret) {
             t = self.opaque.get(tag_ref_index(fd.ret), "object");

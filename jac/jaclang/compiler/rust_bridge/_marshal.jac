@@ -7,6 +7,7 @@ import from jaclang.compiler.rust_bridge._blob {
     TAG_F64,
     TAG_STR,
     TAG_BYTES,
+    TAG_WIDE,
     TAG_VOID,
     tag_base,
     tag_is_opt,
@@ -38,6 +39,7 @@ enum SlotKind {
     Callback,
     Map,
     List,
+    Wide,
     Unbridgeable
 }
 
@@ -109,6 +111,9 @@ def classify(tag: int) -> Slot {
     }
     if base == TAG_BYTES {
         return Slot(kind=SlotKind.Bytes, is_opt=opt);
+    }
+    if base == TAG_WIDE {
+        return Slot(kind=SlotKind.Wide, is_opt=opt);
     }
     if base == TAG_BOOL {
         return Slot(kind=SlotKind.Bool, is_opt=opt);
