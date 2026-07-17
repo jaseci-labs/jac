@@ -27,9 +27,17 @@ def _kind_name(kind: object) -> str:
 
 def _collect() -> list[dict]:
     sys.path.insert(0, str(ROOT))
-    import jaclang.cli.commands  # noqa: F401
-    from jaclang.cli.registry import get_registry, register_feature_commands
+    from jaclang.cli.registry import (
+        get_registry,
+        register_core_commands,
+        register_feature_commands,
+    )
 
+    # Build-time full registration: import every core command module from the
+    # authoritative _CORE_REGISTRATION_MODULES list, then the optional feature
+    # families. Production dispatch must NOT rely on package __init__ side
+    # effects -- jaclang/cli/commands/__init__.jac is intentionally empty.
+    register_core_commands()
     register_feature_commands()
     reg = get_registry()
     out: list[dict] = []

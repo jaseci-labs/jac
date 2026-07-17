@@ -1,13 +1,17 @@
 """Parity between manifest metadata and legacy registry CommandSpec values."""
 
 import from jaclang.cli.command { Arg, CommandSpec }
-import from jaclang.cli.registry { get_registry, register_feature_commands }
+import from jaclang.cli.registry {
+    get_registry,
+    register_core_commands,
+    register_feature_commands
+}
 import from jaclang.cli.registry_adapter { manifest_to_spec }
 import from jaclang.cli.manifest { ArgMeta, iter_command_meta, validate_manifest }
-import jaclang.cli.commands;
 
 
 def _registry_specs -> dict[str, CommandSpec] {
+    register_core_commands();
     register_feature_commands();
     reg = get_registry();
     return {spec.name: spec for spec in reg.get_all(include_hidden=True)};

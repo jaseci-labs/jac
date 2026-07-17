@@ -12,13 +12,17 @@ flags to existing verbs and contribute at most one top-level verb each
 `@registry.command` path as core.
 """
 
-import from jaclang.cli.registry { get_registry, register_feature_commands }
-import from jaclang.cli.cli { TOMBSTONED_VERBS }
-import jaclang.cli.commands;
+import from jaclang.cli.registry {
+    get_registry,
+    register_core_commands,
+    register_feature_commands
+}
+import from jaclang.cli.manifest { TOMBSTONED_VERBS }
 
 glob VERB_BUDGET: int = 28;
 
 def _all_specs(include_hidden: bool = False) -> list {
+    register_core_commands();
     register_feature_commands();
     return get_registry().get_all(include_hidden=include_hidden);
 }

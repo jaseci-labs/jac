@@ -226,6 +226,13 @@ impl _load_feature_modules(module_names: list[str]) -> None {
     }
 }
 
+impl register_core_commands -> None {
+    import importlib;
+    for module_name in _CORE_REGISTRATION_MODULES {
+        importlib.import_module(module_name);
+    }
+}
+
 impl register_feature_commands(raw_argv: list[str] | None = None) -> None {
     if raw_argv is None or not raw_argv or "-h" in raw_argv or "--help" in raw_argv {
         _load_feature_modules(list(FEATURE_COMMAND_MODULES.values()));

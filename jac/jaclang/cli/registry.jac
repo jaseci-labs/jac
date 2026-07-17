@@ -40,9 +40,26 @@ glob _registry: CommandRegistry | None = None,
          "retheme": "jaclang.cli.shadcn.cli",
          "scale": "jaclang.scale.plugin",
          "model": "jaclang.byllm.cli"
-     };
+     },
+     _CORE_REGISTRATION_MODULES: list[str] = [
+         "jaclang.cli.commands.execution",
+         "jaclang.cli.commands.analysis",
+         "jaclang.cli.commands.build",
+         "jaclang.cli.commands.transform",
+         "jaclang.cli.commands.project",
+         "jaclang.cli.commands.guide",
+         "jaclang.cli.commands.eject",
+         "jaclang.cli.commands.tools",
+         "jaclang.cli.commands.config",
+         "jaclang.cli.commands.db",
+         "jaclang.cli.commands.nacompile",
+         "jaclang.cli.commands.ai",
+         "jaclang.cli.commands.code",
+         "jaclang.cli.commands.browse"
+     ];
 
 def get_registry -> CommandRegistry;
 
+def register_core_commands -> None;
 def register_feature_commands(raw_argv: list[str] | None = None) -> None;
 def _load_feature_modules(module_names: list[str]) -> None;
