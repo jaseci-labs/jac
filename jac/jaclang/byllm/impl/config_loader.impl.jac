@@ -1,19 +1,9 @@
-"""Implementation of jac-byllm configuration loader.
-
-This module provides the implementation for JacByllmConfig, which inherits
-from PluginConfigBase for common configuration loading functionality.
-
-The base class handles: init, load, get_jac_config, deep_merge, get_section.
-This file only implements plugin-specific methods.
-"""
 import from pathlib { Path }
 
-"""Get the plugin section name for byllm."""
 impl JacByllmConfig.get_plugin_name(self: JacByllmConfig) -> str {
     return "byllm";
 }
 
-"""Get default configuration structure for byllm."""
 impl JacByllmConfig.get_default_config(self: JacByllmConfig) -> dict[str, any] {
     return {
         'model': {
@@ -55,7 +45,6 @@ impl JacByllmConfig.get_default_config(self: JacByllmConfig) -> dict[str, any] {
     };
 }
 
-"""Get model configuration from jac.toml."""
 impl JacByllmConfig.get_model_config(self: JacByllmConfig) -> dict[str, any] {
     config = self.load();
     model_config = config.get('model', {});
@@ -68,7 +57,6 @@ impl JacByllmConfig.get_model_config(self: JacByllmConfig) -> dict[str, any] {
     };
 }
 
-"""Get default call parameters configuration from jac.toml."""
 impl JacByllmConfig.get_call_params_config(self: JacByllmConfig) -> dict[str, any] {
     config = self.load();
     call_params = config.get('call_params', {});
@@ -76,18 +64,15 @@ impl JacByllmConfig.get_call_params_config(self: JacByllmConfig) -> dict[str, an
     max_tokens = call_params.get('max_tokens', 0);
     result: dict[str, any] = {
         'temperature': temperature,
-        # Retries after the first attempt to coax a valid typed/structured
-        # output (0 disables). See BaseLLM._invoke_typed_retry.
         'max_output_retries': int(call_params.get('max_output_retries', 3))
     };
-    # Only include max_tokens if it's set (non-zero)
+
     if max_tokens > 0 {
         result['max_tokens'] = max_tokens;
     }
     return result;
 }
 
-"""Get LiteLLM-specific configuration from jac.toml."""
 impl JacByllmConfig.get_litellm_config(self: JacByllmConfig) -> dict[str, any] {
     config = self.load();
     litellm_config = config.get('litellm', {});
@@ -98,7 +83,6 @@ impl JacByllmConfig.get_litellm_config(self: JacByllmConfig) -> dict[str, any] {
     };
 }
 
-"""Get fallback/resilience configuration from jac.toml."""
 impl JacByllmConfig.get_fallback_config(self: JacByllmConfig) -> dict[str, any] {
     config = self.load();
     fallback_config = config.get('fallback', {});
@@ -109,16 +93,13 @@ impl JacByllmConfig.get_fallback_config(self: JacByllmConfig) -> dict[str, any] 
     };
 }
 
-"""Get prompt caching configuration from jac.toml."""
 impl JacByllmConfig.get_prompt_caching_config(self: JacByllmConfig) -> dict[str, any] {
     config = self.load();
     pc_config = config.get('prompt_caching', {});
     return {'enabled': bool(pc_config.get('enabled', True))};
 }
 
-"""Get or create the global JacByllmConfig instance."""
 impl get_byllm_config(project_dir: Path | None = None) -> JacByllmConfig {
-    # If project_dir is provided and differs from cached instance, recreate
     if (
         _byllm_config_instance is not None
         and project_dir is not None
@@ -132,11 +113,10 @@ impl get_byllm_config(project_dir: Path | None = None) -> JacByllmConfig {
     return _byllm_config_instance;
 }
 
-"""Get parallel tool-calling configuration from jac.toml."""
 impl JacByllmConfig.get_parallel_config(self: JacByllmConfig) -> dict[str, any] {
     config = self.load();
     parallel_config = config.get('parallel', {});
-    # Also check env var BYLLM_PARALLEL_TOOL_CALLING as override
+
     import os;
     env_enabled = os.environ.get('BYLLM_PARALLEL_TOOL_CALLING', '').lower() in (
         'true',
@@ -147,9 +127,6 @@ impl JacByllmConfig.get_parallel_config(self: JacByllmConfig) -> dict[str, any] 
     return {'enabled': env_enabled or toml_enabled};
 }
 
-"""Streaming resilience config: inter-chunk read_timeout/connect_timeout (seconds)
-and the transient-error retry budget (num_retries after the first attempt, 0
-disables; retry_backoff base seconds)."""
 impl JacByllmConfig.get_streaming_config(self: JacByllmConfig) -> dict[str, any] {
     config = self.load();
     s = config.get('streaming', {});
@@ -163,13 +140,11 @@ impl JacByllmConfig.get_streaming_config(self: JacByllmConfig) -> dict[str, any]
     };
 }
 
-"""Get system prompt from jac.toml configuration."""
 impl JacByllmConfig.get_system_prompt(self: JacByllmConfig) -> str {
     config = self.load();
     return config.get('system_prompt', '');
 }
 
-"""Get compaction configuration from jac.toml."""
 impl JacByllmConfig.get_compaction_config(self: JacByllmConfig) -> dict[str, any] {
     config = self.load();
     c = config.get('compaction', {});
@@ -182,7 +157,6 @@ impl JacByllmConfig.get_compaction_config(self: JacByllmConfig) -> dict[str, any
     };
 }
 
-"""Get local-runtime configuration from jac.toml."""
 impl JacByllmConfig.get_local_config(self: JacByllmConfig) -> dict[str, any] {
     config = self.load();
     local_cfg = config.get('local', {});
@@ -196,7 +170,6 @@ impl JacByllmConfig.get_local_config(self: JacByllmConfig) -> dict[str, any] {
     };
 }
 
-"""Reset the global config instance (useful for testing)."""
 impl reset_byllm_config -> None {
     _byllm_config_instance = None;
 }

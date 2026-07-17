@@ -1,8 +1,6 @@
 cfg_build_pass.jac
 client_runtime.cl.jac
 codeinfo.jac
-comment_injection_pass.impl.jac
-comment_injection_pass.jac
 compiler.jac
 config.impl.jac
 jac/jaclang/cli/commands/config.jac
@@ -620,8 +618,9 @@ scripts/integration_tests.jac
 zig-pkg
 
 # Impl annexes of modules already baselined above by bare name (lang_tools.jac,
-# template_registry.jac). Scoped CI passes changed files explicitly, and an
-# .impl.jac arg resolves to its (baselined known-bad) module after ignore
-# filtering runs -- so the annex paths must be listed too.
+# template_registry.jac, type_utils.jac). Scoped CI passes changed files
+# explicitly, and an .impl.jac arg resolves to its (baselined known-bad) module
+# after ignore filtering runs -- so the annex paths must be listed too.
 jac/jaclang/utils/impl/lang_tools.impl.jac
 jac/jaclang/project/impl/template_registry.impl.jac
+jac/jaclang/compiler/type_system/impl/type_utils.impl.jac

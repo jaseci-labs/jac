@@ -1,13 +1,3 @@
-"""Implementation of JacAPIServerNetwork.
-
-Pure reshape helpers (tested with mocked `.to_dict()` payloads) + thin K8s
-list calls. Surfaces, for the pod's namespace:
-  - services with their ready backing endpoint count (so a service with 0
-    ready backends - the classic "no endpoints" 503 - is obvious),
-  - ingress rules resolved to host -> path -> service:port, plus the
-    load-balancer address,
-  - PVCs with bind phase + capacity + the pods currently mounting them.
-"""
 import asyncio;
 import logging;
 import from fastapi { Request }
@@ -25,7 +15,6 @@ import from jaclang.scale.admin.k8s_ops {
 glob logger = logging.getLogger(__name__);
 
 
-"""'' for None, else str(v)."""
 def _s(v: any) -> str {
     if v is None {
         return "";
@@ -34,11 +23,6 @@ def _s(v: any) -> str {
 }
 
 
-# =========================================================================
-# (a) PURE reshape helpers.
-# =========================================================================
-"""Count ready vs not-ready addresses across a V1Endpoints dict's
-subsets. Returns {ready, not_ready}."""
 def endpoint_ready_counts(ep: dict) -> dict {
     ready = 0;
     not_ready = 0;
@@ -50,7 +34,6 @@ def endpoint_ready_counts(ep: dict) -> dict {
 }
 
 
-"""Flatten a V1Service dict to {name, type, cluster_ip, ports[]}."""
 def summarize_service(svc: dict, ready_by_name: dict) -> dict {
     meta = svc.get("metadata", {}) or {};
     spec = svc.get("spec", {}) or {};
@@ -77,10 +60,6 @@ def summarize_service(svc: dict, ready_by_name: dict) -> dict {
 }
 
 
-"""Flatten a V1Ingress dict to {name, rules[], lb[]}.
-
-Each rule is {host, path, service, port}. `lb` is the resolved
-loadBalancer ingress (hostname or ip)."""
 def summarize_ingress(ing: dict) -> dict {
     meta = ing.get("metadata", {}) or {};
     spec = ing.get("spec", {}) or {};
@@ -115,7 +94,6 @@ def summarize_ingress(ing: dict) -> dict {
 }
 
 
-"""Map PVC name -> [pod names] that mount it, from a pod list dict."""
 def pvc_claimants(pods: list) -> dict {
     out: dict = {};
     for pod in pods {
@@ -139,8 +117,6 @@ def pvc_claimants(pods: list) -> dict {
 }
 
 
-"""Flatten a V1PersistentVolumeClaim dict to {name, phase, capacity,
-storage_class, volume, claimants}."""
 def summarize_pvc(pvc: dict, claimants_by_name: dict) -> dict {
     meta = pvc.get("metadata", {}) or {};
     spec = pvc.get("spec", {}) or {};
@@ -158,7 +134,6 @@ def summarize_pvc(pvc: dict, claimants_by_name: dict) -> dict {
 }
 
 
-"""Assemble the network/storage payload from already-listed dicts (pure)."""
 def build_network(
     namespace: str,
     services: list,
@@ -190,9 +165,6 @@ def build_network(
 }
 
 
-# =========================================================================
-# (b) Thin K8s list calls -> pure helpers.
-# =========================================================================
 def _collect_network -> dict {
     if not k8s_available() {
         return {"available": False, "detail": unavailable_detail()};

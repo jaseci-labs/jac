@@ -502,7 +502,7 @@ jac test main.jac -v
 Format Jac code according to style guidelines. For auto-linting (code corrections like combining consecutive `has` statements, converting `@staticmethod` to `static`), use `jac check --lint --fix` instead.
 
 ```bash
-jac fmt [-h] [-s] [-l] [-c] paths [paths ...]
+jac fmt [-h] [-s] [-l] [-c] [-C] paths [paths ...]
 ```
 
 | Option | Description | Default |
@@ -511,6 +511,7 @@ jac fmt [-h] [-s] [-l] [-c] paths [paths ...]
 | `-s, --to_screen` | Print to stdout instead of writing | `False` |
 | `-l, --lintfix` | Also apply auto-lint fixes in the same pass | `False` |
 | `-c, --check` | Check if files are formatted without modifying them (exit 1 if unformatted) | `False` |
+| `-C, --cache` | Skip files already known to be formatted (keyed on content + effective config + formatter version) | `False` |
 
 **Examples:**
 
@@ -526,9 +527,14 @@ jac fmt .
 
 # Check formatting without modifying (useful in CI)
 jac fmt . --check
+
+# Skip already-formatted files (biggest win in pre-commit / CI)
+jac fmt . --cache
 ```
 
 > **Note**: For auto-linting (code corrections), use `jac check --lint --fix` instead. See [`jac check`](#jac-check) above.
+>
+> **Format cache**: `--cache` records each file proven clean under `<build dir>/<cache dir>/fmt-v1/` (default `.jac/cache/fmt-v1/`, already git-ignored). Outside a project (no `jac.toml`), the same default path is created next to the formatted file. A later run skips such files entirely -- no parse, no format pass, no lint. An entry is only ever written for a fully successful, unchanged (or just-rewritten) result, so syntax errors, lint failures, and annex failures are never cached as clean. `--cache` is an explicit opt-in and enables the format cache regardless of [`[cache].enabled`](../config/index.md#cache) (that setting gates the bytecode cache). Caching is disabled when combined with `--to_screen` so preview always prints source. `jac precommit` enables the cache automatically; with `--staged --verify` it keys on the **staged blob bytes** of the full module unit (including tracked sibling `.impl.jac`/`.test.jac` annexes) while preserving the original logical path for config/lint discovery, so a clean staged file is a hit even over a dirty worktree. Ordinary `--staged` (without `--verify`) still formats worktree files. Changing the file content, the effective `[format]` / `[check]` settings, the logical path under `--lintfix`, or the formatter pipeline invalidates the relevant entries.
 >
 > **Safety**: If the formatter detects that comments were displaced (e.g., moved to the end of the file), it emits error `E5051` and refuses to save the file. Run `jac fmt <file> -s` to inspect the output without writing.
 

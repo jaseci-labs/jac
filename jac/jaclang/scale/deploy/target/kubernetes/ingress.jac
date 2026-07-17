@@ -11,16 +11,10 @@ import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
 }
 import from jaclang.scale.deploy.target.kubernetes.cluster_provider { ClusterProvider }
 
-"""Build one htpasswd line for the RedisInsight dashboard's basic-auth secret.
-
-bcrypt is imported here rather than at module scope: it is only reachable
-through the optional dashboard branch, and a top-level import made merely
-importing the deploy target -- which every deploy and every --dry-run does --
-fail with 'No module named bcrypt'."""
 def _htpasswd_line(username: str, password: str) -> str {
     require_optional("bcrypt", "deploy.k8s");
     import bcrypt;
-    # nginx reads $2y$; bcrypt emits the equivalent $2b$.
+
     pw_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode(
         'utf-8'
     ).replace(

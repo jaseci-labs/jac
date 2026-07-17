@@ -164,9 +164,6 @@ obj MicroserviceOrchestrator {
     }
 
     def _client_sources_newer_than(built_at: float) -> bool {
-        # Newest mtime among project source inputs (.jac incl. .cl.jac/.impl.jac,
-        # stylesheets, jac.toml) vs the built bundle. Build outputs (.jac/),
-        # hidden dirs, and node_modules are skipped so the walk stays cheap.
         import os;
         src_suffixes = (".jac", ".css", ".toml", ".ts", ".tsx", ".jsx");
         for (dirpath, dirnames, filenames) in os.walk(".") {
@@ -205,9 +202,6 @@ obj MicroserviceOrchestrator {
         index_file = dist_path / "index.html";
 
         if index_file.exists() {
-            # Existence alone is not enough: a client source edited after the
-            # last build must trigger a rebuild, or `jac start` silently
-            # serves a stale bundle.
             if not self._client_sources_newer_than(index_file.stat().st_mtime) {
                 logger.info("Client already built and up to date, skipping build");
                 return;
@@ -217,9 +211,6 @@ obj MicroserviceOrchestrator {
 
         console.print(f"  Building client from {client_entry}...");
         try {
-            # Generous ceiling: a cold first build compiles the client
-            # toolchain, installs deps, and emits na->wasm modules; 120s
-            # killed legitimate builds after their success banner printed.
             build_result = subprocess.run(
                 ["jac", "build", client_entry, "--client", "web"], timeout=600
             );
