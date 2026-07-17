@@ -7,6 +7,27 @@
 //! in jac-bridge-loader parses this file and fails CI if the two sides diverge.
 
 pub const MAGIC: &[u8; 8] = b"JACBRDG1";
+// ─── ABI v1 is FROZEN (Phase 2.12) ──────────────────────────────────────────
+//
+// As of the serde wide lane (Phase 2), the v1 wire format is declared FROZEN.
+// The scalar TypeTag space (1..=8: BOOL/INT/UINT/STR/FN/F64/BYTES/WIDE) is full
+// and no further scalar tag will be added; the top-6 flag bits
+// (REF/OPT/MAP/LIST/SHARED/BORROW) are likewise fixed. TAG_WIDE=8 is the
+// designated growth valve: any future Rust shape that needs to cross the
+// boundary rides the self-describing MessagePack payload behind that ONE tag
+// rather than earning a new tag. The typed-record table (below) is the pattern
+// every future extension follows — it added a whole typed-object capability
+// with ZERO new wire tags, purely by (a) reusing TAG_WIDE and (b) appending a
+// section located through a previously-reserved, zero-by-default header word.
+//
+// The evolution rule (D2) is therefore append-only WITHIN v1: new blob sections
+// hang off reserved/zero header slots that old loaders skip, and new semantics
+// ride TAG_WIDE's payload. Anything that cannot be expressed that way — a change
+// to an EXISTING field's meaning, a new scalar tag, a wider FnDesc/TypeDesc —
+// is a breaking change and MUST bump ABI_VERSION (and the MAGIC's trailing
+// digit). Both sides of the ABI (this file and the in-compiler Jac parser
+// jaclang/compiler/rust_bridge/_blob.jac) are kept in lockstep by
+// test_abi_drift.jac.
 pub const ABI_VERSION: u32 = 1;
 
 // TypeTag values (u32, stored in StrRef / tag fields)

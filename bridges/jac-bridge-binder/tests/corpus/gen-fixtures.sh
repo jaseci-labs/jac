@@ -27,6 +27,11 @@ CRATES=(
     "sha2@0.11.0"
     "base64@0.22.1"
     "chrono@0.4.45"
+    # A real derived-serde data crate (Phase 2.10). Default features (no serde
+    # feature needed -- semver's serde impls are hand-written, so enabling serde
+    # does not change coverage): guards serde DETECTION and the manual-impl gate
+    # on genuine rustdoc JSON. Reaches 50% via the opaque lane, not the wide lane.
+    "semver@1.0.27"
     # Feature-enabled fixtures (2.4 wide lane): serde impls are optional deps,
     # off by default, so the default-feature fixtures above contain ZERO serde
     # impls. These drive the binder serde-detection tests.

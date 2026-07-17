@@ -222,3 +222,23 @@ dropped = 1
 bridged = 54
 total = 186
 dropped = 0
+
+# semver@1.0.27 (Phase 2.10) is the corpus's first REAL derived-serde data crate,
+# added to guard serde detection + the "manual-impl != typed record" rule on
+# genuine rustdoc JSON (previously only the synthetic serde-DTO fixture exercised
+# them). Its number is honest and instructive: semver reaches 50% (4/8) entirely
+# through the OPAQUE-handle lane, NOT the wide serde lane. semver derives nothing
+# for serde -- it implements Serialize/Deserialize BY HAND, rendering a Version as
+# its string form ("1.2.3"), so `automatically_derived` is false and no typed
+# record is synthesized; the value never rides the wide lane. BuildMetadata and
+# Prerelease bridge as opaque handles (`as_str`/`is_empty` readers, +4); their
+# `new`/`from_str` are fallible `-> Result<Self, Error>` associated fns the single
+# ctor slot can't hold (recorded as honest skips). Version/VersionReq/Comparator
+# are plain public-field data structs with no opaque handle to hang methods on, so
+# they are not admitted -- exactly why real serde data crates need the wide lane
+# and why the SYNTHETIC serde-DTO fixture (opaque handle passing derived structs)
+# is what actually exercises typed-record synthesis. No overlay.
+[semver]
+bridged = 4
+total = 8
+dropped = 0
