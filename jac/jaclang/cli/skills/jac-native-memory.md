@@ -49,7 +49,7 @@ with entry {
 The old `region { }` block **no longer parses** (clean break). A `Region` is a first-class, ownable, sendable handle; the `in <handle> { }` statement opens it for allocation. Everything constructed under an open lives in the region and is reclaimed wholesale when the handle drops - on the native backend a bump arena torn down with one LIFO dtor-log walk plus a single bulk free.
 
 ```jac
-obj Buffer {}
+obj Buffer { has n: int = 0; }
 
 with entry {
     in Region() { tmp = Buffer(); }   # anonymous: extent is exactly the block
