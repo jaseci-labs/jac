@@ -35,7 +35,7 @@ A common walker pattern is *find-or-create*: look something up, create it only i
 ```jac
 walker ensure_profile {
     can go with Root entry {
-        profiles = [-->(?:UserProfile)];
+        profiles = [-->[?:UserProfile]];
         if profiles {
             report profiles[0];
         } else {
@@ -45,9 +45,9 @@ walker ensure_profile {
 }
 ```
 
-Under concurrency this is a race: two requests against the same `root` can both read an empty `[-->(?:UserProfile)]`, both take the create branch, and both attach a profile -- a duplicate that was meant to be unique. The runtime closes this race with **optimistic concurrency at the node level**, so the pattern above is safe without app-level locks.
+Under concurrency this is a race: two requests against the same `root` can both read an empty `[-->[?:UserProfile]]`, both take the create branch, and both attach a profile -- a duplicate that was meant to be unique. The runtime closes this race with **optimistic concurrency at the node level**, so the pattern above is safe without app-level locks.
 
-**How it works.** Every node carries a version. When a request reads an out-traversal from a node (the `[-->(?:UserProfile)]` above), it snapshots that node's version. At commit, an edge-list change to a node the request *read* is applied with a compare-and-swap on that version: if a concurrent request already changed the node, the swap misses and the commit raises a conflict. The first committer wins; the second is rejected before it can write a duplicate.
+**How it works.** Every node carries a version. When a request reads an out-traversal from a node (the `[-->[?:UserProfile]]` above), it snapshots that node's version. At commit, an edge-list change to a node the request *read* is applied with a compare-and-swap on that version: if a concurrent request already changed the node, the swap misses and the commit raises a conflict. The first committer wins; the second is rejected before it can write a duplicate.
 
 **Convergence (default).** A rejected request does not error. The server aborts its uncommitted work, reloads the node, and **replays the walker (or function) from the start**. The replay re-reads the graph -- now containing the winner's node -- takes the *find* branch, and returns normally. Two racing find-or-creates converge on one node; the client sees a normal `200`, not a duplicate and not an error.
 
@@ -63,7 +63,7 @@ Under concurrency this is a race: two requests against the same `root` can both 
 ```jac
 walker me {
     can go with Root entry {
-        if not [-->(?:UserProfile)] {
+        if not [-->[?:UserProfile]] {
             new = here ++> UserProfile(tier="free");
             on_commit(lambda { grant_signup_bonus(new); });   # once, post-commit
         }

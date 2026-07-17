@@ -1578,7 +1578,6 @@ impl TurnRenderer.render_stream(event_stream: any) -> dict {
     last_llm_tokens = 0;
     pend_result: any = None;
     def clear_think {
-        nonlocal think_on;
         if think_on and is_tty {
             out.write("\r" + (" " * _THINK_WIDTH) + "\r");
             out.flush();
@@ -1586,7 +1585,6 @@ impl TurnRenderer.render_stream(event_stream: any) -> dict {
         think_on = False;
     }
     def end_line {
-        nonlocal streamed;
         if streamed {
             out.write("\n");
             out.flush();
@@ -1594,7 +1592,6 @@ impl TurnRenderer.render_stream(event_stream: any) -> dict {
         }
     }
     def flush_result {
-        nonlocal pend_result;
         if pend_result is None {
             return;
         }
@@ -2159,8 +2156,6 @@ impl verify_and_continue(max_rounds: int = 3) {
 }
 
 impl run_agent(req: object) -> int {
-    global agent_model;
-
     r: any = req;
 
     agent.ws.cwd = os.path.normpath(str(r?.cwd or os.getcwd()));
@@ -2268,8 +2263,6 @@ impl run_agent(req: object) -> int {
 }
 
 impl ui_configure -> None {
-    global agent_model;
-
     proj = os.environ.get("JAC_AI_UI_PROJECT") or os.getcwd();
     agent.ws.cwd = os.path.normpath(proj);
 
@@ -2563,8 +2556,6 @@ impl ui_settings -> dict {
 impl ui_apply_settings(
     model: str, api_key: str, base_url: str, temperature: str, n_ctx: str
 ) -> dict {
-    global agent_model;
-
     if agent.bus.status == "running" or agent.bus.status == "stopping" {
         return {
             "ok": False,

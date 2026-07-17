@@ -19,7 +19,7 @@ obj _McpState {
         transport_ctx: object = None,
         tools_cache: list = [],
         connected: bool = False,
-        _lock: object by postinit;
+        _lock: object postinit;
 
     def postinit -> None;
     def start_loop -> None;

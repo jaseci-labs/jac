@@ -396,7 +396,10 @@ def scale_cmd(
         }
         return deploy_destroy(service_name, target, component);
     }
-    import from jaclang.scale.runtime.orchestrator.orchestrator { build_registry }
+    import from jaclang.scale.runtime.orchestrator.orchestrator {
+        ServiceRegistry,
+        build_registry
+    }
     import from jaclang.scale.runtime.orchestrator.local_deployer { LocalDeployer }
 
     scale_config = get_scale_config();
@@ -429,7 +432,7 @@ def scale_cmd(
         return 1;
     }
 
-    registry = build_registry(ms_config);
+    registry: ServiceRegistry = build_registry(ms_config);
     deployer = LocalDeployer(registry=registry, target="local");
 
     if action == "status" {

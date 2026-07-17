@@ -27,8 +27,8 @@ obj CommentInfo {
 obj CommentStore {
     has _inline: dict[(int, list[CommentInfo])],
         _standalone: list[CommentInfo],
-        _standalone_lines: list[int] by postinit,
-        _used: set by postinit;
+        _standalone_lines: list[int] postinit,
+        _used: set postinit;
 
     def postinit -> None;
     static def from_module(module: uni.Module) -> CommentStore;
@@ -40,7 +40,7 @@ obj CommentStore {
 }
 
 obj CommentInjectionPass(Transform[uni.Module, uni.Module]) {
-    has _token_cache: dict by postinit;
+    has _token_cache: dict postinit;
 
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;

@@ -166,7 +166,6 @@ impl HelpFormatter.format_curated_help(
 
 impl get_help_formatter -> HelpFormatter {
     import from jaclang.cli.help { HelpFormatter }
-    global _formatter;
     if _formatter is None {
         _formatter = HelpFormatter();
     }

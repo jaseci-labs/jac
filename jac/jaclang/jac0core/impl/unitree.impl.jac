@@ -415,6 +415,7 @@ impl UniScopeNode._init_scope(
     self.kid_scope: list[UniScopeNode] = [];
     self.names_in_scope: dict[(str, Symbol)] = {};
     self.names_in_scope_overload: dict[(str, list[Symbol])] = {};
+    self.implicit_rebinds: dict[(str, Symbol)] = {};
 }
 
 impl UniScopeNode.lookup(
@@ -1815,13 +1816,6 @@ impl AwaitExpr.postinit -> None {
 impl CastExpr.postinit -> None {
     UniNode.postinit(self);
     Expr.postinit(self);
-}
-
-
-impl GlobalStmt.postinit -> None {
-    self.target = `list(self.target);
-    UniNode.postinit(self);
-    CodeBlockStmt.postinit(self);
 }
 
 

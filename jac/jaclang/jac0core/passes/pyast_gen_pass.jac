@@ -78,16 +78,16 @@ glob T = TypeVar('T', bound=ast3.AST),
      };
 
 obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
-    has debuginfo: dict[str, list[str]] by postinit,
+    has debuginfo: dict[str, list[str]] postinit,
         already_added: list[str] = [],
-        jaclib_imports: set[str] by postinit,
-        builtin_imports: set[str] by postinit,
-        typing_imports: set[str] by postinit,
+        jaclib_imports: set[str] postinit,
+        builtin_imports: set[str] postinit,
+        typing_imports: set[str] postinit,
         _temp_name_counter: int = 0,
         _hoisted_funcs: list[ast3.FunctionDef | ast3.AsyncFunctionDef] = [],
-        child_passes: list[PyastGenPass] by postinit,
-        preamble: list[ast3.AST] by postinit,
-        jsx_processor: PyJsxProcessor by postinit;
+        child_passes: list[PyastGenPass] postinit,
+        preamble: list[ast3.AST] postinit,
+        jsx_processor: PyJsxProcessor postinit;
 
     with entry {
         _builtin_names: ClassVar[(set[str] | None)] = None;
@@ -216,8 +216,7 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
     def exit_disengage_stmt(nd: uni.DisengageStmt) -> None;
     def exit_await_expr(nd: uni.AwaitExpr) -> None;
     def exit_cast_expr(nd: uni.CastExpr) -> None;
-    def exit_global_stmt(nd: uni.GlobalStmt) -> None;
-    def exit_non_local_stmt(nd: uni.NonLocalStmt) -> None;
+    def scope_directive_stmts(scopes: list) -> list[ast3.AST];
     def exit_assignment(nd: uni.Assignment) -> None;
     def exit_binary_expr(nd: uni.BinaryExpr) -> None;
     def translate_jac_bin_op(nd: uni.BinaryExpr) -> list[ast3.AST];

@@ -351,7 +351,7 @@ cl {
 
 ### `for` and `while` loops
 
-`for it in items { <Row item={it} /> }` inside a slot lowers to a `JS` `for` loop that pushes each `<Row>` to the element's children -- not a comprehension over a `.map()`. Same shape for the `for x = 0 to n by 1 { ... }` form and for `while`.
+`for it in items { <Row item={it} /> }` inside a slot lowers to a `JS` `for` loop that pushes each `<Row>` to the element's children -- not a comprehension over a `.map()`. Same shape for the C-style `for x = 0; x < n; x += 1 { ... }` form and for `while`.
 
 ```jac
 cl {

@@ -140,10 +140,6 @@ impl EsastGenPass.exit_module_code(nd: uni.ModuleCode) -> None {
     nd.gen.es_ast = self._collect_body_stmts(nd.body);
 }
 
-impl EsastGenPass.exit_non_local_stmt(nd: uni.NonLocalStmt) -> None {
-    nd.gen.es_ast = [];
-}
-
 impl EsastGenPass.exit_global_vars(nd: uni.GlobalVars) -> None {
     if nd.code_context == CodeContext.CLIENT {
         self.client_manifest.has_client = True;
