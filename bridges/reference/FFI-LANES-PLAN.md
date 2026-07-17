@@ -1166,7 +1166,7 @@ these first; the adversarial suite already contains skip-gated tests waiting on 
 
 ### Phase 3 -- py-interop tier (parallel track; start any time after 0.6)
 
-- [ ] 3.0 Spike (timebox 1 wk): 4 new forwarders in `jac/launcher/pyembed.zig`
+- [~] 3.0 Spike (timebox 1 wk): 4 new forwarders in `jac/launcher/pyembed.zig`
       (`jpy_PyImport_ImportModule`, `jpy_PyObject_CallMethod`,
       `jpy_PyBytes_FromStringAndSize`, `jpy_PyBytes_AsStringAndSize`); na program
       boots `jac_engine_boot()`, imports orjson (pip-installed into the
@@ -1174,6 +1174,29 @@ these first; the adversarial suite already contains skip-gated tests waiting on 
       `read_csv`/`shape`; trailer-append via the `_bundle_runtime` snippet +
       patchelf `$ORIGIN`; run on a pythonless machine; measure scalar-call
       latency (<2 µs target). GO/NO-GO gate for the rest of the phase.
+  - LANDED: the 4 forwarders + typedefs/globals/symbol-resolution in
+      `pyembed.zig` (CallMethod's real symbol is variadic C -- the forwarder pins
+      one format arg, which covers the "O"/"y#" round-trips the wire format needs).
+      New `zig build pyembed` step compiles+places the shim standalone; all 4
+      symbols verified exported (`nm -D`).
+  - LANDED: `tests/runtimelib/client/test_pyinterop_spike.jac` -- an na host that
+      round-trips a `bytes` payload through the embedded CPython
+      (PyBytes_FromStringAndSize -> binascii.hexlify/unhexlify via CallMethod ->
+      PyBytes_AsStringAndSize) and times the boundary call. Uses the bundled stdlib
+      `binascii` (no wheel) so it runs wherever the fused runtime boots. na host
+      compiles + links against libjacpyembed locally (`nacompile`; all 4 forwarders
+      resolve as DT_NEEDED imports); correctness checked on the recovered byte
+      LENGTH (na rejects arithmetic/compare on raw struct.unpack tuple elements and
+      the synth-only `__jac_str_from_raw` here -- a non-NULL chain + exact-length
+      round-trip proves the marshaling). Latency loop uses libc `clock_gettime`.
+  - REMAINING (CI/fused-build gated -- local `jac` is a dev launcher with no
+      `__graftrt` trailer, so `_bundle_runtime` can't run here): (a) execute the
+      spike binary on a fused `zig build` jac and confirm the round-trip + read the
+      <2 µs latency number; (b) the orjson/polars external-wheel variety proof
+      (`pip install --target <materialized-site>` against the bundled interpreter),
+      which is the other half of the GO/NO-GO. na-side gotchas found: `obj` is a
+      reserved keyword (use `target`); arithmetic on struct.unpack elements needs a
+      typed-int rebind first.
 - [ ] 3.1 `jac/launcher/pyinterop.zig`: high-level surface (~15 fns) --
       `jac_py_import/getattr/call/from_*/to_*/decref` using jac-bridge
       status-code + JacBuf conventions; args to `jac_py_call` as a msgpack

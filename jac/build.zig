@@ -179,6 +179,11 @@ pub fn build(b: *std.Build) void {
         pyembed.getEmittedBin(),
         b.fmt("jaclang/runtimelib/client/targets/desktop/native/{s}", .{pyembed_basename}),
     );
+    // Standalone step: compile the shim and drop it in-tree without a full payload
+    // build. The editable dev loop and the py-interop spike both consume the
+    // in-tree shim; this lets either be refreshed on its own.
+    b.step("pyembed", "Build just the libjacpyembed shim and place it in-tree")
+        .dependOn(&pyembed_place.step);
 
     // --- unit tests (pure Zig, no libpython) -------------------------------
     addTests(b, target, optimize);
