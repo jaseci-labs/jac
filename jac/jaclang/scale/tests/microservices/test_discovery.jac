@@ -111,6 +111,7 @@ test "scan_markers returns multiple sv-import targets" {
 }
 
 test "discover registers .sv.jac services under their logical module stem" {
+    # base_stem applies to all variant suffixes (.sv/.cl/.na.jac), not only .sv.jac.
     tmp = tempfile.mkdtemp();
     (Path(tmp) / "main.jac").write_text("with entry { print(1); }\n");
     (Path(tmp) / "products_app.sv.jac").write_text(
@@ -169,6 +170,56 @@ test "discover excludes the entry module itself" {
     assert routes == {"worker_app": "/worker"};
 
     shutil.rmtree(tmp);
+}
+
+test "discover excludes variant-suffix entry module from routes" {
+    tmp = tempfile.mkdtemp();
+    (Path(tmp) / "main.sv.jac").write_text(
+        "sv {\nsv import from worker_app { run }\n}\n"
+    );
+    (Path(tmp) / "worker_app.jac").write_text("sv {\ndef:pub run -> None {}\n}\n");
+
+    try {
+        routes = discover_sv_services(str(Path(tmp) / "main.sv.jac"));
+        assert "main" not in routes , (
+            f"entry stem must use base_stem so main.sv.jac is excluded, got: {routes}"
+        );
+        assert routes == {"worker_app": "/worker"};
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "discover prefers matching codespace when stem paths collide" {
+    tmp = tempfile.mkdtemp();
+    (Path(tmp) / "main.jac").write_text("sv import from foo { bar }\n");
+    (Path(tmp) / "foo.jac").write_text("def helper() -> int { return 1; }\n");
+    (Path(tmp) / "foo.sv.jac").write_text("def:pub bar() -> int { return 2; }\n");
+
+    try {
+        files = discover_sv_service_files(str(Path(tmp) / "main.jac"));
+        assert files.get("foo") == "foo.sv.jac" , (
+            f"import-only target must prefer server codespace on stem collision, got: {files}"
+        );
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "discover prefers sv-block file when stem paths collide" {
+    tmp = tempfile.mkdtemp();
+    (Path(tmp) / "main.jac").write_text("sv import from foo { bar }\n");
+    (Path(tmp) / "foo.jac").write_text("sv {\ndef:pub bar() -> int { return 1; }\n}\n");
+    (Path(tmp) / "foo.sv.jac").write_text("def:pub other() -> int { return 2; }\n");
+
+    try {
+        files = discover_sv_service_files(str(Path(tmp) / "main.jac"));
+        assert files.get("foo") == "foo.jac" , (
+            f"sv-block owner must win stem collision over plain variant file, got: {files}"
+        );
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
 }
 
 test "discover detects sv-import-only targets even without a local sv-block file" {
