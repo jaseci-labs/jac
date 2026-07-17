@@ -2,7 +2,14 @@ import os;
 import jaclang.jac0core.unitree as uni;
 import from pathlib { Path }
 import from jaclang.jac0core.parser { parse }
-import from jaclang.jac0core.ext_registry { base_stem, codespace_of }
+import from jaclang.jac0core.ext_registry {
+    base_stem,
+    codespace_of,
+    is_annex,
+    SERVER,
+    CLIENT,
+    NATIVE
+}
 import from jaclang.jac0core.modresolver { find_jac_project_root }
 import from jaclang.scale.runtime.discovery.route_policy {
     derive_route_prefix,
@@ -62,19 +69,12 @@ def _stem_entry_rank(rel_path: str, is_service: bool) -> int {
         rank += 100;
     }
     cs = codespace_of(rel_path);
-    if cs == "server" {
+    if cs == SERVER {
         rank += 10;
-    } elif cs == "client" {
+    } elif cs == CLIENT {
         rank += 5;
-    } elif cs == "native" {
+    } elif cs == NATIVE {
         rank += 5;
-    }
-    if (
-        rel_path.endswith(".sv.jac")
-        or rel_path.endswith(".cl.jac")
-        or rel_path.endswith(".na.jac")
-    ) {
-        rank += 1;
     }
     return rank;
 }
@@ -126,7 +126,6 @@ def _scan_project(entry_file: str) -> tuple {
     scan_root_str = str(scan_root);
 
     services: set[str] = set();
-    service_files: dict[str, str] = {};
     all_stems: dict[str, str] = {};
     all_stems_service: dict[str, bool] = {};
 
@@ -146,7 +145,7 @@ def _scan_project(entry_file: str) -> tuple {
             dirnames.append(d);
         }
         for fn in sorted(filenames) {
-            if not fn.endswith(".jac") {
+            if not fn.endswith(".jac") or is_annex(fn) {
                 continue;
             }
             jac_path = os.path.join(cur_root, fn);
@@ -167,9 +166,6 @@ def _scan_project(entry_file: str) -> tuple {
                 is_svc = markers.is_service;
                 if is_svc {
                     services.add(stem);
-                    if stem not in service_files {
-                        service_files[stem] = rel_path;
-                    }
                 }
             }
             if stem in all_stems {
@@ -192,7 +188,7 @@ def _scan_project(entry_file: str) -> tuple {
 
     files: dict[str, str] = {};
     for name in services {
-        path = service_files.get(name) or all_stems.get(name);
+        path = all_stems.get(name);
         if path {
             files[name] = path;
         }

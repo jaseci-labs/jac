@@ -222,6 +222,40 @@ test "discover prefers sv-block file when stem paths collide" {
     }
 }
 
+test "discover prefers plain module over impl annex on stem collision" {
+    tmp = tempfile.mkdtemp();
+    (Path(tmp) / "main.jac").write_text("sv import from foo { bar }\n");
+    (Path(tmp) / "foo.jac").write_text("def:pub bar() -> int { return 1; }\n");
+    (Path(tmp) / "foo.impl.jac").write_text("def impl_helper() -> int { return 2; }\n");
+
+    try {
+        files = discover_sv_service_files(str(Path(tmp) / "main.jac"));
+        assert files.get("foo") == "foo.jac" , (
+            f"plain module must win stem collision over impl annex, got: {files}"
+        );
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "discover prefers server codespace when two service files collide" {
+    tmp = tempfile.mkdtemp();
+    (Path(tmp) / "main.jac").write_text("sv import from foo { bar }\n");
+    (Path(tmp) / "foo.jac").write_text("sv {\ndef:pub bar() -> int { return 1; }\n}\n");
+    (Path(tmp) / "foo.sv.jac").write_text(
+        "sv {\ndef:pub bar() -> int { return 2; }\n}\n"
+    );
+
+    try {
+        files = discover_sv_service_files(str(Path(tmp) / "main.jac"));
+        assert files.get("foo") == "foo.sv.jac" , (
+            f"server codespace must win when both files declare sv blocks, got: {files}"
+        );
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
 test "discover detects sv-import-only targets even without a local sv-block file" {
     tmp = tempfile.mkdtemp();
     (Path(tmp) / "main.jac").write_text("sv import from remote_app { f }\n");
