@@ -49,7 +49,7 @@ obj Message {
 obj ToolCallResultMsg(Message) {
     has tool_call_id: str,
         name: str,
-        role: MessageRole by postinit;
+        role: MessageRole postinit;
 
     def postinit -> None;
     def to_dict -> dict[str, object];

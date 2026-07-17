@@ -12,7 +12,6 @@ walker Probe {
     has seen: int = 0;
 
     def drop {
-        global dropped;
         dropped += 1;
     }
 
@@ -26,7 +25,6 @@ def read_dropped -> int {
 }
 
 def run(n: int) -> int {
-    global dropped;
     dropped = 0;
     total = 0;
     h = Hub(tag=3);

@@ -47,8 +47,9 @@ impl check(
         );
     }
 
+    total_files = failed_files=total_errors=total_warnings=0;
+
     def process_file_result(file_path: str, idx: int, total: int) {
-        nonlocal total_files , total_errors , total_warnings , failed_files;
         total_files += 1;
         (success, errs, warns, errors_list, warnings_list) = check_single_file(
             prog, file_path
@@ -149,7 +150,6 @@ impl check(
             prog.release_compile_closure();
         }
     }
-    total_files = failed_files=total_errors=total_warnings=0;
     prog = JacProgram();
     (all_files, had_path_errors) = _iter_jac_files(paths, ignore_list);
     total_to_check = len(all_files);

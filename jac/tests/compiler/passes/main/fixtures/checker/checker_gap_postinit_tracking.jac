@@ -1,11 +1,11 @@
 """Gap #50: postinit method not validated against by-postinit field declarations.
 
-When an obj declares fields with 'by postinit', the type checker should
+When an obj declares fields with 'postinit', the type checker should
 verify that the postinit method actually assigns to ALL such fields with
 compatible types. The semantic analysis pass already checks that a postinit
 method EXISTS, but the type checker should go further:
 
-  A) All 'by postinit' fields must be assigned in the postinit body
+  A) All 'postinit' fields must be assigned in the postinit body
   B) Assigned values must be compatible with the declared field types
 
 Currently, the type checker does not inspect postinit bodies to verify
@@ -24,8 +24,8 @@ No errors expected for:
 # --- Correct: all by-postinit fields assigned with correct types ---
 obj Complete {
     has a: int = 5,
-        b: int by postinit,
-        c: str by postinit;
+        b: int postinit,
+        c: str postinit;
 
     def postinit -> None;
 }
@@ -38,8 +38,8 @@ impl Complete.postinit {
 # --- Missing: postinit doesn't assign to all by-postinit fields ---
 obj Incomplete {
     has x: int = 1,
-        y: int by postinit,
-        z: str by postinit;
+        y: int postinit,
+        z: str postinit;
 
     def postinit -> None;
 }
@@ -51,8 +51,8 @@ impl Incomplete.postinit {
 
 # --- Wrong types: postinit assigns incompatible types ---
 obj WrongType {
-    has value: int by postinit,
-        label: str by postinit;
+    has value: int postinit,
+        label: str postinit;
 
     def postinit -> None;
 }

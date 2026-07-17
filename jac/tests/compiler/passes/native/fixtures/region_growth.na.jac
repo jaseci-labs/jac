@@ -8,7 +8,6 @@ node Spot {
     has v: int = 0;
 
     def drop {
-        global drop_log;
         drop_log += 1;
     }
 }
@@ -30,7 +29,6 @@ def read_log -> int {
 }
 
 def scenario -> int {
-    global drop_log;
     drop_log = 0;
     r: own Region = Region();
     made = 0;

@@ -21,7 +21,7 @@ obj McpClient {
         headers: dict[str, str] = {},
         transport: str = "auto",
         timeout: int = 30,
-        _id: str by postinit;
+        _id: str postinit;
 
     def postinit -> None;
     def connect -> None;
