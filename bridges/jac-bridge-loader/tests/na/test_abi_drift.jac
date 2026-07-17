@@ -32,7 +32,9 @@ import from jaclang.compiler.rust_bridge._blob {
     TAG_VOID,
     TAG_WIDE,
     TAG_WIDE_REC_MASK,
-    TAG_WIDE_REC_SHIFT
+    TAG_WIDE_REC_SHIFT,
+    RECORD_KIND_STRUCT,
+    RECORD_KIND_ENUM
 }
 
 
@@ -86,7 +88,9 @@ test "jac ABI constants mirror the canonical rust schema" {
         ("KIND_OPAQUE", KIND_OPAQUE),
         ("KIND_ERROR", KIND_ERROR),
         ("FN_CTOR", FN_CTOR),
-        ("FN_METHOD", FN_METHOD)
+        ("FN_METHOD", FN_METHOD),
+        ("RECORD_KIND_STRUCT", RECORD_KIND_STRUCT),
+        ("RECORD_KIND_ENUM", RECORD_KIND_ENUM)
     ];
     for (rust_name, jac_val) in pairs {
         assert rust_name in r , f"schema drift: rust lib.rs no longer defines {rust_name}";

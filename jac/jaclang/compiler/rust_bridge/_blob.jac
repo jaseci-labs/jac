@@ -23,7 +23,9 @@ glob MAGIC = b"JACBRDG1",
      KIND_ERROR = 3,
      FN_CTOR = 0,
      FN_METHOD = 1,
-     FN_STATIC = 2;
+     FN_STATIC = 2,
+     RECORD_KIND_STRUCT = 0,
+     RECORD_KIND_ENUM = 1;
 
 
 def abi_mismatch_error(crate: str, path: object, found: int) -> ImportError {
@@ -147,11 +149,17 @@ class FieldDesc {
 
 class RecordDesc {
     def init(
-        self: RecordDesc, index: int, name: str, fields: list[FieldDesc] | None = None
+        self: RecordDesc,
+        index: int,
+        name: str,
+        fields: list[FieldDesc] | None = None,
+        kind: int = 0
     ) {
         self.index = index;
         self.name = name;
+
         self.fields = fields if fields is not None else [];
+        self.kind = kind;
     }
 }
 
@@ -309,6 +317,8 @@ def parse(blob: bytes) -> BridgeMeta {
             rname = sref(off + 4);
             fld_off = u32(off + 12);
             fld_cnt = u32(off + 16);
+
+            rkind = u32(off + 20) if dsz >= 24 else RECORD_KIND_STRUCT;
             if fld_cnt > 0 and (fld_off < 56 or fld_off + fld_cnt * 12 > blob_len) {
                 raise ValueError(
                     f"RecordDesc[{i}] field section [{fld_off}:{fld_off + fld_cnt * 12}] " + f"out of bounds (blob_len={blob_len})"
@@ -322,7 +332,7 @@ def parse(blob: bytes) -> BridgeMeta {
                 fields.append(FieldDesc(name=fldname, tag=fldtag));
                 foff = foff + 12;
             }
-            records.append(RecordDesc(index=i, name=rname, fields=fields));
+            records.append(RecordDesc(index=i, name=rname, fields=fields, kind=rkind));
             off = off + dsz;
         }
     }

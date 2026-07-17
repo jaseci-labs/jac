@@ -3,7 +3,7 @@ use proc_macro::TokenStream;
 use proc_macro2::{Literal, Span, TokenStream as TS2};
 use quote::{format_ident, quote};
 use syn::{
-    parse_macro_input, Attribute, Error, FnArg, GenericArgument, Ident,
+    parse_macro_input, Attribute, Error, Fields, FnArg, GenericArgument, Ident,
     ImplItem, Item, ItemMod, LitStr, Pat, PathArguments, ReturnType, Token,
     Type, parse::Parse, parse::ParseStream, spanned::Spanned,
 };
@@ -15,12 +15,30 @@ enum TypeKind { Opaque, Error }
 
 struct TypeDef { name: Ident, kind: TypeKind }
 
+/// Whether a typed wide record is a plain struct (fields are `name: value` map
+/// entries) or a serde enum (each "field" is a variant: name + payload tag).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RecordKind { Struct, Enum }
+
+impl RecordKind {
+    fn as_u32(self) -> u32 {
+        match self {
+            RecordKind::Struct => schema::RECORD_KIND_STRUCT,
+            RecordKind::Enum => schema::RECORD_KIND_ENUM,
+        }
+    }
+}
+
 /// A typed wide record (2.9): a `#[jac_record]`-marked struct the binder emits for
 /// an `#[automatically_derived]` serde type whose rustdoc fields ARE the msgpack
 /// wire shape. Collected by [`analyze`] into the blob record table (name + field
 /// tags); never a real opaque `TypeDef`. Field order == declaration order ==
 /// msgpack map key order.
-struct RecordDef { name: Ident, fields: Vec<(String, Tag)> }
+// For a struct record, `fields` are `(field_name, field_tag)` in declaration order
+// (== msgpack map key order). For an enum record, each entry is a VARIANT:
+// `(variant_name, payload_tag)` where the payload tag is `Tag::Void` for a unit
+// variant, else the tag of the single newtype-variant field.
+struct RecordDef { name: Ident, kind: RecordKind, fields: Vec<(String, Tag)> }
 
 #[derive(Clone, PartialEq, Eq)]
 enum Tag { Bool, Int, Uint, F64, Str, Bytes, Void, Ref(usize), Opt(Box<Tag>), Callback, Map(Box<Tag>), List(Box<Tag>), Wide(u32) }
@@ -249,6 +267,14 @@ fn strip_bridge_attrs(item: &Item) -> TS2 {
             return quote! { #[allow(dead_code)] #s2 };
         }
     }
+    // A `#[jac_record]` enum (2.9-followup) is likewise pure record-table metadata.
+    if let Item::Enum(e) = item {
+        if has_attr(&e.attrs, "jac_record") {
+            let mut e2 = e.clone();
+            e2.attrs.retain(|a| !a.path().is_ident("jac_record"));
+            return quote! { #[allow(dead_code)] #e2 };
+        }
+    }
     // Strip the per-method `#[jac(...)]` ownership annotation from every method in
     // an inherent impl; it is consumed by `analyze_fn` (parse_ownership) and would
     // otherwise reach rustc as an unknown attribute.
@@ -279,20 +305,53 @@ fn analyze(
     items: &[Item],
     span: Span,
 ) -> Result<(Vec<TypeDef>, Vec<RecordDef>, Vec<FnDef>), Error> {
-    // A `#[jac_record]` struct is a typed wide record (2.9), never an opaque type:
-    // collect its fields as a record and skip the TypeDef. Fields cross by their own
-    // scalar tag — a non-scalar field type is a binder bug (it should have kept the
-    // shape dynamic), rejected here with a spanned error.
-    let mut records: Vec<RecordDef> = Vec::new();
+    // A `#[jac_record]` struct/enum is a typed wide record (2.9), never an opaque
+    // type. Record resolution is TWO passes because a record field may be ANOTHER
+    // record (a nested `Region { tl: Point }`), so every record name must be known
+    // before any field is resolved to a `Tag::Wide(id)`.
+    //
+    // Pass 1: collect opaque/error `types` and record STUBS (name + kind, no fields
+    // yet). Pass 2 (below) resolves each record's fields/variants against the full
+    // stub list so nested-record ids resolve.
     let mut types: Vec<TypeDef> = Vec::new();
+    let mut record_stubs: Vec<RecordDef> = Vec::new();
     for item in items {
-        if let Item::Struct(s) = item {
-            if has_attr(&s.attrs, "jac_record") {
-                records.push(analyze_record(s)?);
-                continue;
+        match item {
+            Item::Struct(s) => {
+                if has_attr(&s.attrs, "jac_record") {
+                    record_stubs.push(RecordDef {
+                        name: s.ident.clone(),
+                        kind: RecordKind::Struct,
+                        fields: vec![],
+                    });
+                } else {
+                    let kind = if has_attr(&s.attrs, "jac_error") { TypeKind::Error } else { TypeKind::Opaque };
+                    types.push(TypeDef { name: s.ident.clone(), kind });
+                }
             }
-            let kind = if has_attr(&s.attrs, "jac_error") { TypeKind::Error } else { TypeKind::Opaque };
-            types.push(TypeDef { name: s.ident.clone(), kind });
+            Item::Enum(e) if has_attr(&e.attrs, "jac_record") => {
+                record_stubs.push(RecordDef {
+                    name: e.ident.clone(),
+                    kind: RecordKind::Enum,
+                    fields: vec![],
+                });
+            }
+            _ => {}
+        }
+    }
+
+    // Pass 2: resolve each record's fields (nested-record ids resolve against the
+    // stub names collected in pass 1).
+    let mut records: Vec<RecordDef> = Vec::new();
+    for item in items {
+        match item {
+            Item::Struct(s) if has_attr(&s.attrs, "jac_record") => {
+                records.push(analyze_record_struct(s, &types, &record_stubs)?);
+            }
+            Item::Enum(e) if has_attr(&e.attrs, "jac_record") => {
+                records.push(analyze_record_enum(e, &types, &record_stubs)?);
+            }
+            _ => {}
         }
     }
 
@@ -342,11 +401,64 @@ fn analyze(
     Ok((types, records, fns))
 }
 
+/// The tag of a `#[jac_record]` FIELD type. Unlike a method param/return (where a
+/// value type is wrapped in `Wide<T>` by the binder), a record field spells its type
+/// directly, so this recurses the type structure itself:
+///   * `Option<T>` → `Tag::Opt(tag(T))`
+///   * `Vec<T>`    → `Tag::List(tag(T))`
+///   * `HashMap<String,V>` / `BTreeMap<String,V>` → `Tag::Map(tag(V))`
+///   * a scalar / `String`  → the scalar tag
+///   * a path naming another record → `Tag::Wide(id)` (a nested typed record)
+/// Anything else (a tuple, a foreign non-record type, a non-`String`-keyed map) is
+/// an error: the binder must keep such a record on the dynamic wide lane instead.
+fn field_ty_to_tag(ty: &Type, types: &[TypeDef], records: &[RecordDef]) -> Result<Tag, Error> {
+    if let Some(inner) = option_inner(ty) {
+        return Ok(Tag::Opt(Box::new(field_ty_to_tag(inner, types, records)?)));
+    }
+    if let Some(elem) = extract_vec(ty) {
+        return Ok(Tag::List(Box::new(field_ty_to_tag(elem, types, records)?)));
+    }
+    if let Some((k, v)) = extract_stringkey_map(ty) {
+        // A msgpack map crosses with string keys only; a non-`String` key can't be
+        // a typed record field.
+        let Type::Path(kp) = k else {
+            return Err(Error::new(k.span(), "#[jac_record] map field must have String keys"));
+        };
+        if kp.path.segments.last().map(|s| s.ident != "String").unwrap_or(true) {
+            return Err(Error::new(k.span(), "#[jac_record] map field must have String keys"));
+        }
+        return Ok(Tag::Map(Box::new(field_ty_to_tag(v, types, records)?)));
+    }
+    // A scalar / String / nested-record path.
+    if let Type::Path(tp) = ty {
+        if let Some(seg) = tp.path.segments.last() {
+            let id_str = seg.ident.to_string();
+            match id_str.as_str() {
+                "bool" => return Ok(Tag::Bool),
+                "String" => return Ok(Tag::Str),
+                _ => {
+                    if let Some(t) = int_tag_for(&id_str) { return Ok(t); }
+                    if let Some(t) = float_tag_for(&id_str) { return Ok(t); }
+                    if let Some(i) = records.iter().position(|r| r.name == seg.ident) {
+                        return Ok(Tag::Wide((i + 1) as u32));
+                    }
+                }
+            }
+        }
+    }
+    let _ = types;
+    Err(Error::new(ty.span(), format!(
+        "#[jac_record] field type `{}` is not a scalar/String, a nested #[jac_record], \
+         or a container of those; keep this record on the dynamic wide lane", quote!(#ty))))
+}
+
 /// Parse a `#[jac_record]` struct into a [`RecordDef`]: each named field becomes
-/// `(name, scalar tag)` in declaration order. Only a struct with named fields and
-/// scalar/str field types is a valid typed record; anything else is a binder bug.
-fn analyze_record(s: &syn::ItemStruct) -> Result<RecordDef, Error> {
-    let syn::Fields::Named(named) = &s.fields else {
+/// `(name, tag)` in declaration order (== msgpack map key order). Field types may be
+/// scalars/`String`, nested records, or `Option`/`Vec`/`Map` of those (2.9-followup).
+fn analyze_record_struct(
+    s: &syn::ItemStruct, types: &[TypeDef], records: &[RecordDef],
+) -> Result<RecordDef, Error> {
+    let Fields::Named(named) = &s.fields else {
         return Err(Error::new(s.ident.span(),
             "#[jac_record] requires a struct with named fields"));
     };
@@ -355,16 +467,34 @@ fn analyze_record(s: &syn::ItemStruct) -> Result<RecordDef, Error> {
         let fname = f.ident.as_ref()
             .ok_or_else(|| Error::new(f.span(), "#[jac_record] field must be named"))?
             .to_string();
-        let (tag, _) = ty_to_tag(&f.ty, &[], &[])?;
-        match tag {
-            Tag::Bool | Tag::Int | Tag::Uint | Tag::F64 | Tag::Str => {}
-            _ => return Err(Error::new(f.ty.span(),
-                "#[jac_record] field must be a scalar or String (bool/int/uint/f64/str); \
-                 a record with a non-scalar field must stay on the dynamic wide lane")),
-        }
-        fields.push((fname, tag));
+        fields.push((fname, field_ty_to_tag(&f.ty, types, records)?));
     }
-    Ok(RecordDef { name: s.ident.clone(), fields })
+    Ok(RecordDef { name: s.ident.clone(), kind: RecordKind::Struct, fields })
+}
+
+/// Parse a `#[jac_record]` enum into a [`RecordDef`] of kind [`RecordKind::Enum`]:
+/// each variant becomes `(variant_name, payload_tag)`. A unit variant carries
+/// `Tag::Void`; a newtype variant `V(T)` carries `tag(T)` (scalar / nested-record /
+/// container). Struct-payload (`V { .. }`) and multi-field tuple variants are
+/// rejected — the binder keeps such an enum on the dynamic lane (a later slice).
+fn analyze_record_enum(
+    e: &syn::ItemEnum, types: &[TypeDef], records: &[RecordDef],
+) -> Result<RecordDef, Error> {
+    let mut variants = Vec::new();
+    for v in &e.variants {
+        let vname = v.ident.to_string();
+        let tag = match &v.fields {
+            Fields::Unit => Tag::Void,
+            Fields::Unnamed(u) if u.unnamed.len() == 1 => {
+                field_ty_to_tag(&u.unnamed[0].ty, types, records)?
+            }
+            _ => return Err(Error::new(v.span(),
+                "#[jac_record] enum variant must be a unit or single-field (newtype) \
+                 variant; struct/tuple-payload variants keep the enum on the dynamic lane")),
+        };
+        variants.push((vname, tag));
+    }
+    Ok(RecordDef { name: e.ident.clone(), kind: RecordKind::Enum, fields: variants })
 }
 
 fn impl_type_name(imp: &syn::ItemImpl) -> Result<Ident, Error> {
@@ -675,6 +805,20 @@ fn extract_hashmap(ty: &Type) -> Option<(&Type, &Type)> {
     if tys.len() == 2 { Some((tys[0], tys[1])) } else { None }
 }
 
+/// The `(key, value)` type arguments of a `HashMap<K, V>` OR `BTreeMap<K, V>` path,
+/// if `ty` is one — the two string-keyed map shapes a typed record field admits
+/// (their msgpack image is identical: a map). Last segment ident is what counts.
+fn extract_stringkey_map(ty: &Type) -> Option<(&Type, &Type)> {
+    let Type::Path(tp) = ty else { return None };
+    let seg = tp.path.segments.last()?;
+    if seg.ident != "HashMap" && seg.ident != "BTreeMap" { return None; }
+    let PathArguments::AngleBracketed(args) = &seg.arguments else { return None };
+    let tys: Vec<_> = args.args.iter()
+        .filter_map(|a| if let GenericArgument::Type(t) = a { Some(t) } else { None })
+        .collect();
+    if tys.len() == 2 { Some((tys[0], tys[1])) } else { None }
+}
+
 /// The single element type argument of a `Vec<T>` path, if `ty` is one.
 /// Matches both the bare `Vec<..>` and a fully-qualified `std::vec::Vec<..>`
 /// (last segment ident is what counts).
@@ -965,7 +1109,9 @@ fn build_blob(module_name: &str, types: &[TypeDef], records: &[RecordDef], fns: 
         }
     }
 
-    // RecordDescs (20 bytes each) + FieldDescs (12 bytes each), 2.9 typed-obj table.
+    // RecordDescs (24 bytes each) + FieldDescs (12 bytes each), 2.9 typed-obj table.
+    // For an enum record each FieldDesc is a variant (name + payload tag); the +20
+    // kind word distinguishes struct from enum.
     let mut fcursor = fields_base;
     for (i, (r, (nsr, fsrs))) in records.iter().zip(record_srs.iter()).enumerate() {
         let off = records_base + i * rec_desc;
@@ -974,6 +1120,7 @@ fn build_blob(module_name: &str, types: &[TypeDef], records: &[RecordDef], fns: 
         let field_off = if r.fields.is_empty() { 0 } else { fcursor as u32 };
         put_u32(&mut buf, off + 12, field_off);
         put_u32(&mut buf, off + 16, r.fields.len() as u32);
+        put_u32(&mut buf, off + 20, r.kind.as_u32());
         for ((_, tag), &fsr) in r.fields.iter().zip(fsrs.iter()) {
             put_sr(&mut buf, fcursor, pool.abs(pb, fsr));
             put_u32(&mut buf, fcursor + 8, tag.as_u32());

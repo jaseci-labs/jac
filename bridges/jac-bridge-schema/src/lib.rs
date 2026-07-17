@@ -165,16 +165,46 @@ pub const FN_STATIC: u8 = 2;
 // still parsed correctly (records ignored) by an ABI-v1-only loader — the wide
 // values simply decode dynamically. Append-only (D2).
 //
-// RecordDesc — 20 bytes, one per typed record (1-based `record_id` = index+1):
-//   +0  u32   desc size (20; lets a future reader skip an enlarged desc)
+// RecordDesc — 24 bytes, one per typed record (1-based `record_id` = index+1):
+//   +0  u32   desc size (24; the reader strides by THIS, so the desc can grow
+//             append-only — a reader that only knows the 20-byte v1 layout still
+//             skips a 24-byte desc correctly. This is the sanctioned growth path.)
 //   +4  StrRef record name (the synthesized Jac obj / Python class name)
 //   +12 u32   field_off   (byte offset of this record's first FieldDesc)
-//   +16 u32   field_count
-// FieldDesc — 12 bytes, one per field (declaration order == msgpack map order):
-//   +0  StrRef field name
-//   +8  u32    field value tag (a scalar TAG_*; nested records are out of the
-//              v1 typed-obj slice and keep the dynamic lane)
-/// Byte size of one RecordDesc in the record table.
-pub const RECORD_DESC_SIZE: u32 = 20;
+//   +16 u32   field_count (for an enum record, the VARIANT count)
+//   +20 u32   record kind ([`RECORD_KIND_STRUCT`] or [`RECORD_KIND_ENUM`]).
+//             Appended in 2.9-follow-up; a desc with size 20 has no kind word and
+//             is read as a struct (back-compat within the 20-byte descs).
+//
+// FieldDesc — 12 bytes, one per field (declaration order == msgpack map order for
+// a struct; variant-declaration order for an enum):
+//   +0  StrRef field / variant name
+//   +8  u32    field value tag. As of 2.9-follow-up a field tag is no longer
+//              restricted to a bare scalar TAG_*; it is the SAME tag algebra used
+//              for a wide slot, composed append-only from existing bits:
+//                * scalar        — TAG_INT / TAG_UINT / TAG_STR / TAG_BOOL / TAG_F64
+//                * nested record — TAG_WIDE | (child_record_id << TAG_WIDE_REC_SHIFT)
+//                * list  of T    — TAG_LIST_BIT | tag(T)
+//                * optional T    — TAG_OPT_BIT  | tag(T)
+//                * map   String→T— TAG_MAP_BIT  | tag(T)
+//              These compose (e.g. `Option<Vec<Point>>` =
+//              TAG_OPT_BIT|TAG_LIST_BIT|TAG_WIDE|id<<8). No new tag was minted —
+//              this is pure reuse of the frozen ABI-v1 bits (2.12), so an
+//              ABI-v1-only reader that ignores the record table still decodes the
+//              identical msgpack dynamically.
+//              For an ENUM record each FieldDesc is a VARIANT: the name is the
+//              variant name and the tag is the variant's PAYLOAD tag — TAG_VOID for
+//              a unit variant, otherwise the tag of the newtype variant's inner
+//              type (scalar / nested-record / container). Struct- and tuple-payload
+//              variants keep the whole enum on the dynamic lane (a later slice).
+/// Byte size of one RecordDesc in the record table (24 as of 2.9-follow-up; the
+/// reader strides by each desc's own `+0` size word, so this may grow append-only).
+pub const RECORD_DESC_SIZE: u32 = 24;
 /// Byte size of one FieldDesc in the record table.
 pub const FIELD_DESC_SIZE: u32 = 12;
+/// [`RecordDesc`] kind: a plain struct (fields are `name: value` pairs, msgpack map).
+pub const RECORD_KIND_STRUCT: u32 = 0;
+/// [`RecordDesc`] kind: a serde enum (each FieldDesc is a variant; wire is either a
+/// bare string for a unit variant or a 1-entry `{variant: payload}` map, i.e.
+/// serde's default external tagging).
+pub const RECORD_KIND_ENUM: u32 = 1;
