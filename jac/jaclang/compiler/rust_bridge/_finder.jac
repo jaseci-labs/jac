@@ -144,7 +144,7 @@ def _search_dirs(crate: str, extra_dirs: object, constraint: object = None) -> l
                 for d in crate_root.iterdir()
                 if d.is_dir() and _matches(d.name, constraint)
             ],
-            key=lambda d : _ver_key(d.name),
+            key=lambda (d: Path) { _ver_key(d.name); },
             reverse=True
         );
         triple = _target_triple();
