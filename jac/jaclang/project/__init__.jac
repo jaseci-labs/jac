@@ -1,81 +1,3 @@
-import from jaclang.project.config {
-    BuildConfig,
-    CacheConfig,
-    CheckConfig,
-    DotConfig,
-    EnvironmentConfig,
-    FormatConfig,
-    JacConfig,
-    NativeBuildConfig,
-    ProjectConfig,
-    RunConfig,
-    ServeConfig,
-    TestConfig,
-    find_project_root,
-    get_config,
-    interpolate_env_vars,
-    is_in_project,
-    set_config
-}
-import from jaclang.project.kinds {
-    KIND_SPECS,
-    KindSpec,
-    RunPlan,
-    VALID_KINDS,
-    is_valid_kind,
-    kind_entry,
-    kind_spec,
-    plan_project_run,
-    resolve_entry,
-    resolve_project_kind
-}
-import from jaclang.project.providers {
-    DependencyPlan,
-    EcosystemProvider,
-    InstallContext,
-    ProviderRegistry,
-    PythonProvider,
-    ResolvedDependency,
-    capability_dependencies,
-    get_provider_registry,
-    get_python_provider,
-    initialize_provider_registry,
-    manifest_plugin_deps,
-    resolve_plan
-}
-import from jaclang.project.pyvenv {
-    get_venv_site_packages,
-    add_venv_to_path,
-    remove_venv_from_path,
-    is_venv_in_path
-}
-import from jaclang.project.capabilities {
-    Capability,
-    CapabilityClosure,
-    CAPABILITY_SPECS,
-    RUNTIME,
-    DEPLOY,
-    all_capability_names,
-    capability_for_package,
-    command_capabilities,
-    derive_capabilities,
-    get_capability,
-    get_capability_registry,
-    missing_capability_error,
-    package_missing_error,
-    resolve_closure,
-    resolve_closures,
-    resolve_config_closures,
-    scale_intent_from_config
-}
-import from jaclang.project.template_registry { ProjectTemplate }
-import from jaclang.project.template_loader {
-    load_template_from_directory,
-    load_template_from_json,
-    bundle_template,
-    resolve_post_create_hook
-}
-
 glob __all__ = [
          'JacConfig',
          'ProjectConfig',
@@ -142,4 +64,80 @@ glob __all__ = [
          'load_template_from_json',
          'bundle_template',
          'resolve_post_create_hook'
-     ];
+     ],
+     _LAZY_EXPORTS: dict[str, str] = {
+         'BuildConfig': 'jaclang.project.config',
+         'CacheConfig': 'jaclang.project.config',
+         'CheckConfig': 'jaclang.project.config',
+         'DotConfig': 'jaclang.project.config',
+         'EnvironmentConfig': 'jaclang.project.config',
+         'FormatConfig': 'jaclang.project.config',
+         'JacConfig': 'jaclang.project.config',
+         'NativeBuildConfig': 'jaclang.project.config',
+         'ProjectConfig': 'jaclang.project.config',
+         'RunConfig': 'jaclang.project.config',
+         'ServeConfig': 'jaclang.project.config',
+         'TestConfig': 'jaclang.project.config',
+         'find_project_root': 'jaclang.project.config',
+         'get_config': 'jaclang.project.config',
+         'interpolate_env_vars': 'jaclang.project.config',
+         'is_in_project': 'jaclang.project.config',
+         'set_config': 'jaclang.project.config',
+         'KIND_SPECS': 'jaclang.project.kinds',
+         'KindSpec': 'jaclang.project.kinds',
+         'RunPlan': 'jaclang.project.kinds',
+         'VALID_KINDS': 'jaclang.project.kinds',
+         'is_valid_kind': 'jaclang.project.kinds',
+         'kind_entry': 'jaclang.project.kinds',
+         'kind_spec': 'jaclang.project.kinds',
+         'plan_project_run': 'jaclang.project.kinds',
+         'resolve_entry': 'jaclang.project.kinds',
+         'resolve_project_kind': 'jaclang.project.kinds',
+         'DependencyPlan': 'jaclang.project.providers',
+         'EcosystemProvider': 'jaclang.project.providers',
+         'InstallContext': 'jaclang.project.providers',
+         'ProviderRegistry': 'jaclang.project.providers',
+         'PythonProvider': 'jaclang.project.providers',
+         'ResolvedDependency': 'jaclang.project.providers',
+         'capability_dependencies': 'jaclang.project.providers',
+         'get_provider_registry': 'jaclang.project.providers',
+         'get_python_provider': 'jaclang.project.providers',
+         'initialize_provider_registry': 'jaclang.project.providers',
+         'manifest_plugin_deps': 'jaclang.project.providers',
+         'resolve_plan': 'jaclang.project.providers',
+         'get_venv_site_packages': 'jaclang.project.pyvenv',
+         'add_venv_to_path': 'jaclang.project.pyvenv',
+         'remove_venv_from_path': 'jaclang.project.pyvenv',
+         'is_venv_in_path': 'jaclang.project.pyvenv',
+         'Capability': 'jaclang.project.capabilities',
+         'CapabilityClosure': 'jaclang.project.capabilities',
+         'CAPABILITY_SPECS': 'jaclang.project.capabilities',
+         'RUNTIME': 'jaclang.project.capabilities',
+         'DEPLOY': 'jaclang.project.capabilities',
+         'all_capability_names': 'jaclang.project.capabilities',
+         'capability_for_package': 'jaclang.project.capabilities',
+         'command_capabilities': 'jaclang.project.capabilities',
+         'derive_capabilities': 'jaclang.project.capabilities',
+         'get_capability': 'jaclang.project.capabilities',
+         'get_capability_registry': 'jaclang.project.capabilities',
+         'missing_capability_error': 'jaclang.project.capabilities',
+         'package_missing_error': 'jaclang.project.capabilities',
+         'resolve_closure': 'jaclang.project.capabilities',
+         'resolve_closures': 'jaclang.project.capabilities',
+         'resolve_config_closures': 'jaclang.project.capabilities',
+         'scale_intent_from_config': 'jaclang.project.capabilities',
+         'ProjectTemplate': 'jaclang.project.template_registry',
+         'load_template_from_directory': 'jaclang.project.template_loader',
+         'load_template_from_json': 'jaclang.project.template_loader',
+         'bundle_template': 'jaclang.project.template_loader',
+         'resolve_post_create_hook': 'jaclang.project.template_loader'
+     };
+
+def __getattr__(name: str) -> object {
+    mod_path = _LAZY_EXPORTS.get(name);
+    if mod_path is None {
+        raise AttributeError(f"module 'jaclang.project' has no attribute {name!r}");
+    }
+    import importlib;
+    return getattr(importlib.import_module(mod_path), name);
+}
