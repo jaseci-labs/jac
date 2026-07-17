@@ -4,7 +4,7 @@
 //! hand-built spec and asserts the generated `Wide<…>` shape — the same shape
 //! the runtime test (`jac-bridge/tests/wide.rs`) proves crosses the ABI.
 
-use crate::codegen::emit;
+use crate::codegen::{emit, emit_cargo_toml};
 use crate::types::{
     BridgeFn, BridgeParam, BridgeReturn, BridgeSpec, BridgeType, Ownership, Recv, ScalarType,
     SerdeInfo, TypeKind,
@@ -82,4 +82,31 @@ fn wide_param_and_return_emit_wide_marker() {
         src.contains("Wide(self.0.shift(p.0, dx))"),
         "wide body\n{src}"
     );
+}
+
+#[test]
+fn wide_bridge_cargo_toml_declares_serde_and_rmp() {
+    // The macro emits `::serde` / `::rmp_serde` paths for a wide slot, so the
+    // GENERATED crate must depend on both — jac-bridge lists them only as
+    // dev-deps, which do not flow downstream. Without this the bridge fails to
+    // compile with "could not find `rmp_serde`".
+    let toml = emit_cargo_toml(&spec(), "/path/to/jac-bridge");
+    assert!(toml.contains("serde = \"1\""), "missing serde\n{toml}");
+    assert!(toml.contains("rmp-serde = \"1\""), "missing rmp-serde\n{toml}");
+}
+
+#[test]
+fn non_wide_bridge_omits_serde_deps() {
+    // A scalar-only bridge stays minimal (byte-identical default-feature output).
+    let mut s = spec();
+    s.types[0].methods = vec![method(
+        "bump",
+        vec![BridgeParam {
+            name: "dx".into(),
+            ty: ScalarType::Int("i64".into()),
+        }],
+        BridgeReturn::Int("i64".into()),
+    )];
+    let toml = emit_cargo_toml(&s, "/path/to/jac-bridge");
+    assert!(!toml.contains("rmp-serde"), "unexpected rmp-serde\n{toml}");
 }

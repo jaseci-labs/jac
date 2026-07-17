@@ -16,6 +16,16 @@ pub fn emit_cargo_toml(spec: &BridgeSpec, jac_bridge_path: &str) -> String {
     } else {
         ""
     };
+    // A wide slot makes the macro emit `::serde` / `::rmp_serde` paths (the
+    // `Wide<T>` decode/encode helpers, 2.3), so the *generated* crate must carry
+    // both as direct deps — jac-bridge lists them only as dev-deps for its own
+    // tests, which do not flow to a downstream bridge. Omit for non-wide bridges
+    // so default-feature output stays minimal and byte-identical.
+    let wide_deps = if spec_has_wide(spec) {
+        "serde = \"1\"\nrmp-serde = \"1\"\n"
+    } else {
+        ""
+    };
     // Source-crate dependency line. Features from the overlay `[crate] features`
     // (2.4) MUST land here or the optional serde impls the wide lane depends on
     // are compiled out of the bridge, even though rustdoc documented them. A
@@ -52,11 +62,12 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 jac-bridge = {{ path = "{jac_bridge_path}" }}
 {crate_dep}
-{tokio_dep}"#,
+{wide_deps}{tokio_dep}"#,
         module = spec.module_name,
         crate_version = spec.crate_version,
         jac_bridge_path = jac_bridge_path,
         crate_dep = crate_dep,
+        wide_deps = wide_deps,
         tokio_dep = tokio_dep,
     )
 }
@@ -224,6 +235,18 @@ pub fn emit(spec: &BridgeSpec) -> String {
 /// constructs it and no method touches it, so it must not be emitted.
 /// True if any bridged ctor or method returns a `HashMap<String, V>` (needs the
 /// `HashMap` type in scope inside the generated module).
+/// True when any bridged fn has a wide param or a wide return — i.e. the macro
+/// will emit serde/rmp_serde codec helpers that need those crates in the
+/// generated Cargo.toml.
+fn spec_has_wide(spec: &BridgeSpec) -> bool {
+    spec.types.iter().any(|bt| {
+        bt.ctor.iter().chain(bt.methods.iter()).any(|f| {
+            matches!(f.ret, BridgeReturn::Wide(_))
+                || f.params.iter().any(|p| matches!(p.ty, ScalarType::Wide(_)))
+        })
+    })
+}
+
 fn spec_has_map_return(spec: &BridgeSpec) -> bool {
     spec.types.iter().any(|bt| {
         bt.ctor
