@@ -10,6 +10,9 @@ libraylib*.dylib
 /shooter
 /shooter_zig
 /shooter_zig.o
+/shooter_headless_none
+/shooter_headless_rc
+/shooter_headless_cycles
 /smoke
 
 # Benchmark scratch files (switch written by demo.sh, result by the binaries)
