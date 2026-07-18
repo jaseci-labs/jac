@@ -111,6 +111,55 @@ def compute_content_sha256(file_path: str) -> str {
     return h.hexdigest();
 }
 
+def _clib_header_deps(source_path: str) -> list[str] {
+    import re;
+    try {
+        with open(source_path, 'r', encoding='utf-8', errors='ignore') as f {
+            text = f.read();
+        }
+    } except OSError {
+        return [];
+    }
+    if 'clib' not in text {
+        return [];
+    }
+    base_dir = os.path.dirname(os.path.abspath(source_path));
+    hdr_pat = re.compile(
+        r"clib\s*\([^)]*?header\s*=\s*(['\"])(?P<hdr>.*?)\1", re.DOTALL
+    );
+    inc_pat = re.compile(r'^\s*#\s*include\s*"([^"]+)"', re.MULTILINE);
+    stack: list[str] = [];
+    for m in hdr_pat.finditer(text) {
+        hdr = m.group('hdr');
+        p = hdr if os.path.isabs(hdr) else os.path.join(base_dir, hdr);
+        stack.append(os.path.normpath(p));
+    }
+    seen: set = set();
+    out: list[str] = [];
+    while stack {
+        cur = stack.pop();
+        if cur in seen {
+            continue;
+        }
+        seen.add(cur);
+        out.append(cur);
+        try {
+            with open(cur, 'r', encoding='utf-8', errors='ignore') as f {
+                htext = f.read();
+            }
+        } except OSError {
+            continue;
+        }
+        hdir = os.path.dirname(cur);
+        for m in inc_pat.finditer(htext) {
+            inc = m.group(1);
+            ip = inc if os.path.isabs(inc) else os.path.join(hdir, inc);
+            stack.append(os.path.normpath(ip));
+        }
+    }
+    return sorted(out);
+}
+
 def _related_files(source_path: str) -> list[tuple[str, str]] {
     import from jaclang.jac0core.bccache {
         discover_annex_files,
@@ -131,6 +180,15 @@ def _related_files(source_path: str) -> list[tuple[str, str]] {
     for p in sorted(paths) {
         rel = os.path.relpath(p, str(base_dir)).replace(os.sep, '/');
         result.append((rel, compute_content_sha256(p)));
+    }
+    for hp in _clib_header_deps(source_path) {
+        rel = os.path.relpath(hp, str(base_dir)).replace(os.sep, '/');
+        try {
+            digest = compute_content_sha256(hp);
+        } except OSError {
+            digest = "<missing>";
+        }
+        result.append((rel, digest));
     }
     return result;
 }
@@ -422,6 +480,7 @@ def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
         if style is not None {
             related.append(style);
         }
+        related += _clib_header_deps(source_path);
         fresh = cache_mtime > os.path.getmtime(source_path);
         if fresh {
             for f in related {

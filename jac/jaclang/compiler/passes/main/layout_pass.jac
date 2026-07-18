@@ -84,6 +84,16 @@ def get_layout_registry(module: uni.Module, prog: any = None) -> LayoutRegistry 
     return module.gen.layout_registry or LayoutRegistry();
 }
 
+def get_shared_layout_registry(
+    modules: list[uni.Module], prog: any = None
+) -> LayoutRegistry {
+    if not modules {
+        return LayoutRegistry();
+    }
+    pass_inst = LayoutPass(ir_in=modules[0], prog=prog);
+    return pass_inst.build_shared_registry(modules);
+}
+
 obj LayoutRegistry {
     has layouts: dict[str, ArchetypeLayout] = {},
         class_parents: dict[str, list[str]] = {},
@@ -107,7 +117,13 @@ obj LayoutPass(Transform[uni.Module, uni.Module]) {
 
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;
+    def build_shared_registry(modules: list[uni.Module]) -> LayoutRegistry;
     def _collect_archetypes(module: uni.Module) -> dict[str, uni.Archetype];
+    def _merge_archetypes(
+        module: uni.Module, arch_map: dict[str, uni.Archetype]
+    ) -> None;
+
+    def _build_registry_over(arch_map: dict[str, uni.Archetype]) -> None;
     def _build_hierarchy(archetypes: dict[str, uni.Archetype]) -> None;
     def _compute_c3_mro(class_name: str) -> list[str];
     def _topo_sort(arch_map: dict[str, uni.Archetype]) -> list[str];
