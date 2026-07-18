@@ -460,6 +460,50 @@ pub enum BridgeReturn {
     /// An unsigned-integer return. The string is the concrete Rust type (`u32`,
     /// `u64`, `usize`, …); carried in a u64 slot tagged `TAG_UINT`.
     Uint(String),
+    /// A SELF-IDENTITY reference return (`&Self` / `&mut Self`) on a method with a
+    /// receiver - the builder-chain lane (`RegexBuilder::case_insensitive(&mut
+    /// self, bool) -> &mut Self`). Codegen emits `-> &Self` with a body that runs
+    /// the source call for its side effect and returns `self`; the macro's
+    /// self-identity arm (`is_self_borrow_ret`) lowers that to the receiver's own
+    /// handle and the loaders RC-pin it behind the runtime `rh == self` guard, so
+    /// Jac-side chaining (`b.case_insensitive(True).multi_line(True)`) works over
+    /// one shared box.
+    SelfRef,
+    /// A CROSS-TYPE fallible handle producer: `-> Result<Other, E>` where `Other`
+    /// is a DIFFERENT bridged opaque type (`RegexBuilder::build -> Result<Regex,
+    /// Error>`). The string is the target wrapper name. Codegen emits
+    /// `-> Result<{Name}, String>` with `.map({Name}).map_err(|e| e.to_string())`;
+    /// the macro's `extract_result` + `ret_tag` path already carries any
+    /// ref-taggable ok type, so the wire shape is `TAG_REF|idx` + the module's
+    /// `#[jac_error]` throw channel, exactly like `OwnSelfResult` for a non-`Self`
+    /// index. Requires a bridged error type (see `reconcile_fallible_returns`).
+    RefResult(String),
+    /// A plain nullable signed-integer return: `-> Option<i32>` etc. The string is
+    /// the concrete Rust type. Crosses `TAG_OPT_BIT | TAG_INT` as an 8-byte owned
+    /// JacBuf (`None` = null buffer pointer, the same in-band channel as
+    /// `Option<String>`), never a sentinel value. Codegen forwards the owned
+    /// `Option` verbatim.
+    OptIntValue(String),
+    /// The unsigned analogue of [`OptIntValue`]: `-> Option<usize>`
+    /// (`Regex::shortest_match`, `static_captures_len`). Crosses
+    /// `TAG_OPT_BIT | TAG_UINT` on the same null-JacBuf channel.
+    OptUintValue(String),
+    /// An in-crate iterator return whose `Item` is a scalar integer, eagerly
+    /// collected: `SetMatches::iter -> SetMatchesIter` (`Item = usize`) emits
+    /// `-> Vec<usize>` with `.collect()` appended, riding the existing
+    /// `TAG_LIST_BIT` list-return lane. The string is the full Vec type spelling.
+    CollectList(String),
+    /// An INLINE owning-wrapper producer (multi-param variant of `OptWrapper`):
+    /// `fn(&self, haystack: &str, start: usize) -> Option<Borrowed<'_>>`
+    /// (`Regex::find_at`, `captures_at`). The shared `wrap` ctor is keyed to ONE
+    /// root producer, so an additional producer with extra scalar params builds
+    /// the wrapper inline in its own body: own the FIRST (`&str`) param, forward
+    /// the rest, erase the lifetime. Fields mirror `OwningWrapper`.
+    OptWrapperInline {
+        wrapper: String,
+        borrowed_path: String,
+        lifetimes: usize,
+    },
     /// A `std::cmp::Ordering` return (`Version::cmp_precedence`). Ordering has no
     /// primitive spelling, but its three variants map cleanly onto an `i8`
     /// (`Less`/`Equal`/`Greater` → `-1`/`0`/`1`). Codegen emits a `-> i8` signature

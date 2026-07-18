@@ -21,8 +21,13 @@ pub fn emit_cargo_toml(spec: &BridgeSpec, jac_bridge_path: &str) -> String {
     // both as direct deps — jac-bridge lists them only as dev-deps for its own
     // tests, which do not flow to a downstream bridge. Omit for non-wide bridges
     // so default-feature output stays minimal and byte-identical.
+    // `derive` is required: the macro's rt module declares
+    // `#[derive(::serde::Serialize, ::serde::Deserialize)] pub struct Wide<T>`
+    // inside the GENERATED crate, and serde's derive macros are only re-exported
+    // behind its `derive` feature (jac-bridge is a proc-macro crate, so its own
+    // dev-dep features never unify into a downstream bridge).
     let wide_deps = if spec_has_wide(spec) {
-        "serde = \"1\"\nrmp-serde = \"1\"\n"
+        "serde = { version = \"1\", features = [\"derive\"] }\nrmp-serde = \"1\"\n"
     } else {
         ""
     };
@@ -648,6 +653,23 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
             );
             (" -> Result<Self, String>".into(), call)
         }
+        // Self-identity chain (builder setters): run the source call for its side
+        // effect, discard the `&mut Self` borrow, hand back the receiver. The
+        // macro's `is_self_borrow_ret` arm lowers `-> &Self` to the receiver's own
+        // handle, RC-pinned by the loaders' `rh == self` guard.
+        BridgeReturn::SelfRef => (
+            " -> &Self".into(),
+            format!("let _ = {};\n            self", base_call(&recv_expr)),
+        ),
+        // Cross-type fallible producer (`RegexBuilder::build -> Result<Regex,
+        // Error>`): map the ok value into the target newtype, stringify the error.
+        BridgeReturn::RefResult(name) => (
+            format!(" -> Result<{name}, String>"),
+            format!(
+                "{}.map({name}).map_err(|e| e.to_string())",
+                base_call(&recv_expr)
+            ),
+        ),
         // 1.2.4: a fresh owned instance of ANOTHER bridged type. Wrap the call in
         // that type's newtype (`NaiveDateTime(self.0.and_hms(…))`); the macro tags
         // the return `TAG_REF|idx` and the loader instantiates that type's wrapper.
@@ -701,11 +723,25 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
             }
             Recv::DrainNext => unreachable!("DrainNext yields OptStr, not OptWrapper"),
         },
-        // Non-nullable cursor/drain producer: build the wrapper via its `wrap` ctor.
-        BridgeReturn::Wrapper(wrapper) => {
-            let call = wrap_call(wrapper, &args_str);
-            (format!(" -> {}", wrapper), call)
-        }
+        // Non-nullable producer. On the owner (`recv: Field0`) a cursor/drain
+        // builds through its `wrap` ctor; on another wrapper (`recv: Inner`) it is
+        // the plain nested case (`Captures::get_match -> Match`, group 0 always
+        // present): build the child inline, sharing the owned buffer - the
+        // non-nullable twin of the `OptWrapper` nested arm.
+        BridgeReturn::Wrapper(wrapper) => match f.recv {
+            Recv::Inner => {
+                let call = format!(
+                    "let inner = self.inner.{}({});\n            \
+                     {} {{ inner, _input: std::sync::Arc::clone(&self._input) }}",
+                    fname, args_str, wrapper
+                );
+                (format!(" -> {}", wrapper), call)
+            }
+            _ => {
+                let call = wrap_call(wrapper, &args_str);
+                (format!(" -> {}", wrapper), call)
+            }
+        },
         // Drain pull: pop the next owned piece front-to-back. None ends the drain.
         BridgeReturn::OptStr => (" -> Option<String>".into(), "self.items.pop()".into()),
         // M6: a plain `-> Option<String>` method. The source already yields an owned
@@ -717,6 +753,46 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
         // forward it verbatim; the macro carries `None` in-band (null JacBuf
         // pointer) on the `TAG_OPT_BIT | TAG_BYTES` lane.
         BridgeReturn::OptBytesValue => (" -> Option<Vec<u8>>".into(), base_call(&recv_expr)),
+        // Option<int>: the source already yields an owned `Option<{int}>`; forward
+        // it verbatim. The macro carries `None` in-band as a null 8-byte JacBuf
+        // (`TAG_OPT_BIT | TAG_INT/UINT`), never a sentinel value.
+        BridgeReturn::OptIntValue(rust) | BridgeReturn::OptUintValue(rust) => {
+            (format!(" -> Option<{rust}>"), base_call(&recv_expr))
+        }
+        // Integer-iterator collect: eagerly drain the borrowed iterator into an
+        // owned Vec riding the list-return lane; no lifetime survives the call.
+        BridgeReturn::CollectList(rust) => (
+            format!(" -> {rust}"),
+            format!("{}.collect()", base_call(&recv_expr)),
+        ),
+        // Inline owning producer (`find_at`): own the first (&str) param, forward
+        // the extras, erase the borrow - the multi-param sibling of the shared
+        // `wrap` ctor, built in this method's own body.
+        BridgeReturn::OptWrapperInline {
+            wrapper,
+            borrowed_path,
+            lifetimes,
+        } => {
+            let input = f.params.first().map(|p| p.name.as_str()).unwrap_or("input");
+            let rest = f.params[1..]
+                .iter()
+                .map(|p| p.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let sep = if rest.is_empty() { "" } else { ", " };
+            let static_ty = format!("{}{}", borrowed_path, static_args(*lifetimes));
+            let body = format!(
+                "let owned = std::sync::Arc::new({input}.to_owned());\n            \
+                 let inner = {recv_expr}.{fname}(owned.as_str(){sep}{rest})?;\n            \
+                 // SAFETY: `inner` borrows the `String` inside `owned`, whose Arc is\n            \
+                 // stored beside it and never mutated or moved-out; the borrower drops\n            \
+                 // before the owner, so erasing to 'static is sound for the value's\n            \
+                 // whole life (same argument as the shared `wrap` ctor).\n            \
+                 let inner: {static_ty} = unsafe {{ std::mem::transmute(inner) }};\n            \
+                 Some({wrapper} {{ inner, _input: owned }})"
+            );
+            (format!(" -> Option<{wrapper}>"), body)
+        }
         // CALLBACK: replace_all with a JacCallback. Rust calls back into Jac once
         // per match; the callback returns each match's replacement. The closure
         // can't itself return a Result, so capture the first callback error and

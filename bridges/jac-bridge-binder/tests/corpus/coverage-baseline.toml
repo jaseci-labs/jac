@@ -69,9 +69,35 @@
 # guard, tallied as hidden surface rather than silently absent. `total` 84 -> 95
 # folds the newly-considered surface in. Generated crate still compiles under
 # `-D warnings` (roundtrip test).
+# The FULL-PARITY lanes then lifted regex 39 -> 77 (total 95 -> 96):
+#   * BUILDER CHAIN: the 22 `(&mut self, v) -> &mut Self` setters on RegexBuilder/
+#     RegexSetBuilder ride the self-identity `&Self` return (macro lowers it to the
+#     receiver's own handle, loader RC-pins behind the `rh == self` guard), and both
+#     `build` methods bridge via the CROSS-TYPE fallible producer
+#     (`-> Result<Regex, String>`, `TAG_REF|idx` + the `#[jac_error]` throw channel).
+#   * OPTION<INT>: shortest_match / shortest_match_at / static_captures_len return
+#     `Option<usize>` on a null-JacBuf None channel (`TAG_OPT_BIT | TAG_UINT`).
+#   * ITERATOR-OF-STRINGS PARAMS: `I: IntoIterator<Item = S>, S: AsRef<str>`
+#     monomorphizes to `Wide<Vec<String>>` (RegexSet::new as a static factory,
+#     RegexSetBuilder::new as THE ctor), reusing the msgpack wide lane.
+#   * REPLACER &str MONOMORPHIZATION: `replacen` pins `R: Replacer` to a literal
+#     `&str` replacement (`Cow<str>` -> owned String); replace/replace_all keep the
+#     stronger callback lane.
+#   * MULTI-PARAM WRAPPER SHAPES: splitn -> OwnedSplitN (drain with forwarded
+#     limit), find_at/captures_at as INLINE owning producers (own the first `&str`,
+#     forward the ints), Captures::get_match as a plain non-Option nested producer,
+#     SetMatches::iter collected to Vec<usize> on the list lane.
+# `total` 95 -> 96: OwnedSplitN's synthesized next() is one new bridged item with
+# no matching skip. The former overlay `find_str` inject is DELETED (the owned
+# `find` wrapper covers it); the 9 remaining skips are honest impossibles today:
+# Option<(usize,usize)> tuples (CaptureLocations::get), &mut String / const-generic
+# array params (Captures::expand/extract), Range returns (Match::range, covered by
+# start/end), Option<&str>-item iterators (capture_names - None for an unnamed
+# group has no in-band channel), &mut-handle params (captures_read/_read_at), a
+# std-trait extra ctor (from_str), and SubCaptureMatches (Captures::iter).
 [regex]
-bridged = 39
-total = 95
+bridged = 77
+total = 96
 dropped = 10
 
 # `total` 7 -> 11 and `dropped` 4: base64's four generic engine/config structs are
@@ -155,8 +181,13 @@ dropped = 4
 # — zero-field marker structs that carry inherent methods but no serde impl, so the
 # wide lane can't rescue them — as hidden surface (needs `treat_as = "opaque"`)
 # instead of dropping them silently.
+# The regex full-parity work's OPTION<INT> lane lifted chrono 147 -> 175 for
+# free: chrono's Parsed/DateTime surface is dense with `Option<i32>`/`Option<u32>`/
+# `Option<i64>` accessors (`year`, `month`, `timestamp`, `num_nanoseconds`, ...)
+# that now cross on the null-JacBuf None channel. Same proven arm, no
+# chrono-specific code.
 [chrono]
-bridged = 147
+bridged = 175
 total = 289
 dropped = 6
 

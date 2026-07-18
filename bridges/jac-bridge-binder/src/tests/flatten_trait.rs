@@ -112,9 +112,12 @@ fn flattening_lifts_chrono_coverage_without_regressing_regex() {
     // 1.2.5 (tuple-struct admission) lifted the count 31 -> 39: `SetMatches` and
     // `CaptureLocations` are single-field private tuple structs now bridged as
     // opaque handles, and `RegexSet::matches -> SetMatches` crosses as a ref-lane
-    // handle rather than a skip.
+    // handle rather than a skip. The regex-parity lanes (builder chain +
+    // cross-type fallible build, Option<int>, iterator-of-strings params,
+    // replacer-&str, splitn drain, inline find_at/captures_at, get_match,
+    // SetMatches::iter collect) then lifted 39 -> 77.
     let regex = coverage(&classify(&load("regex-1.12.4")));
-    assert_eq!(regex.bridged, 39, "regex bridged unchanged by flattening");
+    assert_eq!(regex.bridged, 77, "regex bridged unchanged by flattening");
 
     // chrono is trait-heavy (Datelike/Timelike): flattening lifts it well past the
     // pre-Track-A floor of 33.
