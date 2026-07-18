@@ -113,7 +113,9 @@ Four copies, three type systems, and one landmine: the fourth copy renames `disp
 
 </details>
 
-Jac's bet is that these boundaries are habits, not physics. One language spans frontend, backend, and native code, so one compiler sees both sides of every call: rename a field and every stale use -- server, client, or native -- is a **compile error**, not a production incident. And the boundaries that *are* physics stay visible on purpose: a cross-tier call is `async` because the network is real, write conflicts surface as typed errors, and sharing data across users takes an explicit `grant`. Jac deletes the paperwork, not the physics. The full argument, side by side with a conventional stack: [Jac vs a Traditional Stack](https://docs.jaseci.org/quick-guide/jac-vs-traditional-stack/) and [The Ideas Behind Jac](https://docs.jaseci.org/quick-guide/ideas-behind-jac/).
+Jac's bet is that these boundaries are habits, not physics. One language spans frontend, backend, and native code -- and inherits each one's ecosystem (PyPI, npm, the C world) through a plain `import` -- so one compiler sees both sides of every call: rename a field and every stale use -- server, client, or native -- is a **compile error**, not a production incident. And the boundaries that *are* physics stay visible on purpose: a cross-tier call is `async` because the network is real, write conflicts surface as typed errors, and sharing data across users takes an explicit `grant`. Jac deletes the paperwork, not the physics.
+
+We call a language with this property **synechic** (from the Greek *synecheia*, continuity): one continuous, checked medium across ecosystems, tiers, and toolchains. Building the first production synechic language is the whole point of Jac. The full argument, side by side with a conventional stack: [Jac vs a Traditional Stack](https://docs.jaseci.org/quick-guide/jac-vs-traditional-stack/) and [The Ideas Behind Jac](https://docs.jaseci.org/quick-guide/ideas-behind-jac/).
 
 ## For AI agents
 

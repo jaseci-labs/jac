@@ -72,12 +72,23 @@ Jac is one bet against each assumption.
 ## Bet one: one continuous language, checked end to end
 
 The first bet: a language can present **one continuous semantic medium**
-across the tiers, ecosystems, and toolchains that convention treats as
+across the ecosystems, tiers, and toolchains that convention treats as
 separate worlds -- so that crossing a boundary never requires glue, and the
-compiler that checks composition *within* a tier checks composition *across*
-one, because they are the same expression.
+compiler that checks composition *within* a substrate checks composition
+*across* one, because they are the same expression. We call a language with
+this property **synechic** (from the Greek *synecheia*, continuity): nothing
+about how a program point is written reveals which runtime, package
+ecosystem, or toolchain sits beneath it.
 
-Concretely, this is why:
+The ordering in that sentence -- ecosystems first -- is deliberate.
+Languages that unify the *tiers* of a web application have existed for two
+decades (the "tierless" research lineage); what no prior language does is
+make foreign *ecosystems* native territory, so that PyPI, npm, and the C
+world arrive through a plain `import` with no wrapper to find, generate, or
+maintain. Tiers are where the pain is most familiar; ecosystems are where
+the property earns its name.
+
+Concretely, being synechic is why:
 
 - **Placement is a modifier, not an architecture.** Where code runs is
   declared per-declaration (`cl { }`, `na { }`, a file suffix), never
@@ -119,8 +130,8 @@ Concretely, this is why:
 A famous 1994 critique of RPC systems observed that latency, partial failure,
 and concurrency make remote interaction *genuinely* different from local
 interaction -- and that systems which paper over the difference collapse when
-it asserts itself, at runtime, at the worst moment. Jac's answer is to treat
-that critique as a design rule rather than an objection:
+it asserts itself, at runtime, at the worst moment. The synechic answer is to
+treat that critique as a design rule rather than an objection:
 
 > Dissolve every boundary that is an artifact of representation. Surface every
 > boundary that is physics -- as typed, visible semantics at the point where
@@ -201,12 +212,12 @@ surface, and a fluent model drifts more plausibly than a tired human. Third,
 every generated serializer and manifest returns to the training corpus as
 evidence that this is what software is.
 
-A continuous, checked medium changes the terms for human and machine authors
-at once. A whole Jac application fits in one file that fits in a context
-window; every cross-tier invariant is a compile-time property, so an agent's
-mistake is a diagnostic, not a production incident; and a `sem` annotation is
-read three ways -- by the prompt synthesizer as specification, by the
-maintainer as documentation, by the coding agent as context. When authorship
+A synechic medium changes the terms for human and machine authors at once. A
+whole Jac application fits in one file that fits in a context window; every
+cross-tier invariant is a compile-time property, so an agent's mistake is a
+diagnostic, not a production incident; and a `sem` annotation is read three
+ways -- by the prompt synthesizer as specification, by the maintainer as
+documentation, by the coding agent as context. When authorship
 is abundant, the scarce resource is *jurisdiction*: the reach of the tools
 that can examine a change and say no. A language is where that reach is
 decided, and Jac is built to leave no program point where the only reviewer
@@ -242,7 +253,8 @@ defined here once for reference:
 |------|---------|
 | **Discontinuity** | A boundary where the representation of meaning must change and no verifier has jurisdiction over the change. |
 | **Glue** | Code or configuration whose sole purpose is to carry meaning across a discontinuity, adding no domain behavior. |
-| **Substrate transparency** | The identity of the runtime, ecosystem, and toolchain at any program point has no bearing on how the program is expressed. A language with this property end to end is called *synechic* (from the Greek for continuity). |
+| **Synechic** | The property introduced above: one continuous semantic medium across ecosystems, tiers, and toolchains, such that no program point needs glue to cross a substrate boundary. |
+| **Substrate transparency** | The formal statement beneath *synechic*: the identity of the runtime, ecosystem, and toolchain at any program point has no bearing on how the program is expressed. |
 | **Topokinetic** | The mobile locus of computation over a topology of data is a first-class semantic construct. Object-Spatial Programming is the paradigm that realizes it. |
 | **Meaning types** | Semantic annotations (`sem`, plus names and types) from which prompts are synthesized automatically, making LLM delegation a typed language feature rather than string engineering. |
 | **Scale invariance** | Program semantics are invariant under deployment-scale change: one user to N, one machine to M, transient to persistent -- same program text. |

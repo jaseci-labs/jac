@@ -431,7 +431,7 @@ tool can check is where the next bug comes from.
 | General-purpose languages | 3 (Python, TypeScript, SQL via the ORM) | 1 |
 | Auxiliary dialects | 5 (JSON ×2, TS config, HTML, `requirements.txt`) | 0 in this app (1 `jac.toml` in a full project) |
 | Copies of the `Todo` shape | 3 (SQLAlchemy model, Pydantic schema, TS interface) | 1 (`node Todo`) |
-| Files that exist only to cross a boundary | 5 (`database.py`, `types.ts`, `api.ts`, `vite.config.ts` proxy, CORS block) | 0 |
+| Boundary-only artifacts (files or config sections) | 5 (`database.py`, `types.ts`, `api.ts`, the `vite.config.ts` proxy section, the CORS block in `main.py`) | 0 |
 | Artifact pairs synced by discipline alone | at least 4 (model↔schema, schema↔interface, route↔client, proxy↔server port) | 0 -- one compiler sees every pair |
 
 That last row is the load-bearing one. Every "kept in sync by hand" pair is a
@@ -470,5 +470,7 @@ migrates by rule rather than by hand -- see
 
 This is the practical meaning of Jac's design bet: not that boundaries
 disappear, but that every boundary crossing lands inside the reach of the
-compiler. The full argument is on
-[The Ideas Behind Jac](ideas-behind-jac.md).
+compiler -- across tiers, as this page shows, and equally across the package
+ecosystems (PyPI, npm, C) a real application draws on, which enter through a
+plain `import` instead of a wrapper. The property has a name, *synechic*,
+and the full argument is on [The Ideas Behind Jac](ideas-behind-jac.md).
