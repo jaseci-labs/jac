@@ -2217,31 +2217,8 @@ impl JacAutoLintPass._infer_type_from_usestate_value(value: (uni.Expr | None)) -
 impl JacAutoLintPass._create_has_from_usestate(
     ref_node: uni.UniNode, var_name: str, type_str: str, init_value: (uni.Expr | None)
 ) -> uni.ArchHas {
-    name_node = uni.Name(
-        orig_src=ref_node.loc.orig_src,
-        name=Tok.NAME.value,
-        value=var_name,
-        line=ref_node.loc.first_line,
-        end_line=ref_node.loc.last_line,
-        col_start=ref_node.loc.col_start,
-        col_end=ref_node.loc.col_start + len(var_name),
-        pos_start=ref_node.loc.pos_start,
-        pos_end=ref_node.loc.pos_end,
-        is_kwesc=False
-    );
-
-    type_name_node = uni.Name(
-        orig_src=ref_node.loc.orig_src,
-        name=Tok.NAME.value,
-        value=type_str,
-        line=ref_node.loc.first_line,
-        end_line=ref_node.loc.last_line,
-        col_start=ref_node.loc.col_start,
-        col_end=ref_node.loc.col_start + len(type_str),
-        pos_start=ref_node.loc.pos_start,
-        pos_end=ref_node.loc.pos_end,
-        is_kwesc=False
-    );
+    name_node = self._make_name_node(ref_node, var_name);
+    type_name_node = self._make_name_node(ref_node, type_str);
     colon_tok = ref_node.gen_token(Tok.COLON);
     type_tag = uni.SubTag(tag=type_name_node, kid=[colon_tok, type_name_node]);
     has_var_kids: list[uni.UniNode] = [name_node, type_tag];
@@ -2341,18 +2318,7 @@ impl JacAutoLintPass.exit_expr_stmt(nd: uni.ExprStmt) -> None {
         return;
     }
     value_expr = call_node.params[0];
-    lhs_name = uni.Name(
-        orig_src=call_node.loc.orig_src,
-        name=Tok.NAME.value,
-        value=var_name,
-        line=call_node.loc.first_line,
-        end_line=call_node.loc.last_line,
-        col_start=call_node.loc.col_start,
-        col_end=call_node.loc.col_start + len(var_name),
-        pos_start=call_node.loc.pos_start,
-        pos_end=call_node.loc.pos_end,
-        is_kwesc=False
-    );
+    lhs_name = self._make_name_node(call_node, var_name);
     assign = uni.Assignment(
         target=[lhs_name],
         value=value_expr,
