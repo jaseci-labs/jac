@@ -735,9 +735,11 @@ def _compile_osp_kernel_ir -> (str | None) {
 }
 
 impl NativeCompilePass._references_undefined_osp_kernel(main_mod: object) -> bool {
+    import from jaclang.jac0core.codeinfo { native_safe_sym }
+    _kernel_init = f"__jac_glob_init_{native_safe_sym('osp_kernel')}";
     try {
         for _fn in main_mod.functions {
-            if _fn.name == "__jac_glob_init_osp_kernel" and _fn.is_declaration {
+            if _fn.name == _kernel_init and _fn.is_declaration {
                 return True;
             }
         }
@@ -748,16 +750,16 @@ impl NativeCompilePass._references_undefined_osp_kernel(main_mod: object) -> boo
 }
 
 impl NativeCompilePass._link_osp_kernel(main_mod: object) -> None {
+    import from jaclang.jac0core.codeinfo { native_safe_sym }
     ir_str = _compile_osp_kernel_ir();
     if ir_str is None {
         return;
     }
 
-    ir_str = ir_str.replace('@"__jac_glob_init"', '@"__jac_glob_init_osp_kernel"');
-    ir_str = ir_str.replace("@__jac_glob_init", "@__jac_glob_init_osp_kernel");
-    ir_str = ir_str.replace(
-        'name: "__jac_glob_init"', 'name: "__jac_glob_init_osp_kernel"'
-    );
+    _kernel_init = f"__jac_glob_init_{native_safe_sym('osp_kernel')}";
+    ir_str = ir_str.replace('@"__jac_glob_init"', f'@"{_kernel_init}"');
+    ir_str = ir_str.replace("@__jac_glob_init", f"@{_kernel_init}");
+    ir_str = ir_str.replace('name: "__jac_glob_init"', f'name: "{_kernel_init}"');
     try {
         kmod = llvm.parse_assembly(ir_str);
         kmod.verify();

@@ -542,10 +542,12 @@ impl NaIRGenPass._osp_emit_filter_fn(
 }
 
 impl NaIRGenPass._emit_osp_setup -> None {
+    import from jaclang.jac0core.codeinfo { native_safe_sym }
     _model = self.ir_in.gen.osp_model;
     if (_model is None) or (not self._osp_active()) {
         return;
     }
+    _kernel_init = f"__jac_glob_init_{native_safe_sym('osp_kernel')}";
 
     for _req in ["Slot", "WalkerDesc", "NodeDesc", "OspRuntime"] {
         if _req not in self.struct_types {
@@ -663,14 +665,12 @@ impl NaIRGenPass._emit_osp_setup -> None {
     _inited = ir.GlobalVariable(self.llvm_module, i8, name="__osp_inited");
     _inited.linkage = "internal";
     _inited.initializer = ir.Constant(i8, 0);
-    _kgi = self.func_symtab.get("__jac_glob_init_osp_kernel");
+    _kgi = self.func_symtab.get(_kernel_init);
     if _kgi is None {
         _kgi = ir.Function(
-            self.llvm_module,
-            ir.FunctionType(ir.VoidType(), []),
-            name="__jac_glob_init_osp_kernel"
+            self.llvm_module, ir.FunctionType(ir.VoidType(), []), name=_kernel_init
         );
-        self.func_symtab["__jac_glob_init_osp_kernel"] = _kgi;
+        self.func_symtab[_kernel_init] = _kgi;
     }
 
     self._osp_kernel_glob_init_fn = _kgi;
