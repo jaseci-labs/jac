@@ -21,7 +21,8 @@ def _use_color -> bool {
     if os.environ.get('NO_COLOR') {
         return False;
     }
-    return sys.stdout?.isatty and sys.stdout.isatty();
+    out = sys.stdout;
+    return bool(out is not None and out.isatty());
 }
 
 def _color(text: str, code: str) -> str {
@@ -52,7 +53,7 @@ impl format_verbose_help(prog: str = "jac") -> str {
     lines.append('          Print help');
     lines.append('');
 
-    grouped: dict[str, list] = {};
+    grouped: dict[str, list[CommandMeta]] = {};
     for cmd in commands {
         grouped.setdefault(cmd.group or 'general', []).append(cmd);
     }
@@ -109,7 +110,7 @@ impl format_curated_help(prog: str = "jac") -> str {
     );
     lines.append('');
 
-    by_tier: dict[str, list] = {};
+    by_tier: dict[str, list[CommandMeta]] = {};
     for cmd in commands {
         if cmd.tier {
             by_tier.setdefault(cmd.tier, []).append(cmd);

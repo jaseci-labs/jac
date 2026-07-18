@@ -23,7 +23,7 @@ def _discover_project_config {
     } except Exception { }
 }
 
-def _exit_on_malformed_jac_toml(exc: object) {
+def _exit_on_malformed_jac_toml(exc: any) {
     import from jaclang.cli.console { console }
 
     console.error(
@@ -148,7 +148,7 @@ def _apply_profile(args_dict: dict) {
     }
 }
 
-def _apply_config_defaults(config: object, args_dict: dict) {
+def _apply_config_defaults(config: any, args_dict: dict) {
     bridges: list = [
         ('port', 8000, config.serve.port, 'serve', 'port'),
         ('cache', True, config.run.cache, 'run', 'cache'),

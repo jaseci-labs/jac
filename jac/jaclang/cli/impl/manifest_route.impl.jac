@@ -72,7 +72,8 @@ def _use_color -> bool {
     if os.environ.get('NO_COLOR') {
         return False;
     }
-    return sys.stdout?.isatty and sys.stdout.isatty();
+    out = sys.stdout;
+    return bool(out is not None and out.isatty());
 }
 
 impl handle_manifest_route(raw_argv: list[str]) -> bool {
@@ -140,7 +141,7 @@ impl handle_manifest_route(raw_argv: list[str]) -> bool {
     if _has_script_file(raw_argv) and first not in dispatchable {
         sys.argv = [sys.argv[0], 'run'] + raw_argv;
         command_name = 'run';
-    } elif first in dispatchable {
+    } elif first is not None and first in dispatchable {
         command_name = first;
     } else {
         choices = "', '".join(sorted(visible));
