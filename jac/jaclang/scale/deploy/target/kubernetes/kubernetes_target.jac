@@ -53,9 +53,10 @@ import time;
 obj KubernetesTarget(DeploymentTarget) {
     has config: KubernetesConfig,
         logger: (Logger | None) = None,
-        k8s_config: KubernetesConfig by postinit,
+        k8s_config: KubernetesConfig postinit,
         env_list: list = [],
-        secrets: dict[str, str] = {};
+        secrets: dict[str, str] = {},
+        dry_run: bool = False;
 
     def postinit {
         self.k8s_config = self.config;
@@ -946,6 +947,10 @@ obj KubernetesTarget(DeploymentTarget) {
                 {'namespace': namespace}
             );
         }
+        import from jaclang.scale.injector.binary { resolve_pod_base_image }
+        self.k8s_config.python_image = resolve_pod_base_image(
+            app_config.code_folder, self.k8s_config.python_image
+        );
 
         try {
             validate_resource_limits(
@@ -1013,7 +1018,6 @@ obj KubernetesTarget(DeploymentTarget) {
 
             import from jaclang.scale.injector.binary_injector { select_injector }
             (injector, _tc_key) = select_injector(
-                app_config.channel,
                 self.k8s_config.bundle_storage_class,
                 app_name,
                 namespace,
@@ -1045,6 +1049,13 @@ obj KubernetesTarget(DeploymentTarget) {
                 needs_root=True
             );
             container_config['env'] = container_config['env'] + runtime_container_env();
+            import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
+                image_pull_policy
+            }
+            pull_policy = image_pull_policy(self.k8s_config.python_image);
+            if pull_policy {
+                container_config['imagePullPolicy'] = pull_policy;
+            }
 
             app_sa_name = f"{app_name}-sa";
             self._create_service_account(app_sa_name, app_name, namespace, core_v1);
@@ -1143,6 +1154,19 @@ obj KubernetesTarget(DeploymentTarget) {
                         }
                     )
                 ];
+
+                if self.k8s_config.memory_request {
+                    triggers.append(
+                        Trigger(
+                            type="memory",
+                            metadata={
+                                "averageUtilization": str(
+                                    self.k8s_config.memory_utilization_target
+                                )
+                            }
+                        )
+                    );
+                }
             }
             for raw in self.k8s_config.extra_triggers {
                 t = Trigger(
@@ -1150,6 +1174,16 @@ obj KubernetesTarget(DeploymentTarget) {
                     metadata=dict(raw.get("metadata", {})),
                     name=raw.get("name")
                 );
+                if t.type == "memory" and not self.k8s_config.memory_request {
+                    if self.logger {
+                        self.logger.warn(
+                            "Skipping 'memory' trigger: memory_request is unset; "
+                            "HPA cannot compute memory utilization without a "
+                            "request baseline"
+                        );
+                    }
+                    continue;
+                }
                 raw_auth = raw.get("auth");
                 if raw_auth {
                     t.auth = TriggerAuth(
@@ -1172,6 +1206,8 @@ obj KubernetesTarget(DeploymentTarget) {
                     polling_interval=self.k8s_config.autoscaler_polling_interval,
                     cooldown_period=self.k8s_config.autoscaler_cooldown,
                     initial_cooldown_period=self.k8s_config.autoscaler_initial_cooldown,
+                    scale_up_stabilization=self.k8s_config.autoscaler_scale_up_stabilization,
+                    scale_up_max_pods=self.k8s_config.autoscaler_scale_up_max_pods,
                     triggers=triggers
                 )
             );

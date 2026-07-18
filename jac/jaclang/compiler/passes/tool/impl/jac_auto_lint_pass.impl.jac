@@ -470,7 +470,60 @@ impl JacAutoLintPass.can_convert_to_glob(assignment: uni.Assignment) -> bool {
             return False;
         }
     }
+    if isinstance(assignment.value, uni.FuncCall)
+    or len(assignment.value.get_all_sub_nodes(uni.FuncCall)) > 0 {
+        return False;
+    }
     return True;
+}
+
+impl JacAutoLintPass.names_unsafe_to_globalize(module: uni.Module) -> set[str] {
+    counts: dict[str, int] = {};
+    for stmt in module.body {
+        target_lists: list = [];
+        if isinstance(stmt, uni.GlobalVars) {
+            for assign in stmt.assignments {
+                target_lists.append(assign.target);
+            }
+        } elif isinstance(stmt, uni.ModuleCode) and stmt.name is None {
+            for inner_stmt in stmt.body {
+                for assign in inner_stmt.get_all_sub_nodes(uni.Assignment) {
+                    target_lists.append(assign.target);
+                }
+                if isinstance(inner_stmt, uni.Assignment) {
+                    target_lists.append(inner_stmt.target);
+                }
+            }
+        }
+        for targets in target_lists {
+            for target in targets {
+                if isinstance(target, uni.Name) {
+                    counts[target.value] = counts.get(target.value, 0) + 1;
+                }
+            }
+        }
+    }
+    return {
+        name
+        for (name, count) in counts.items()
+        if count > 1
+    };
+}
+
+impl JacAutoLintPass.entry_written_names(module: uni.Module) -> set[str] {
+    written: set[str] = set();
+    for stmt in module.body {
+        if isinstance(stmt, uni.ModuleCode) and stmt.name is None {
+            for assign in stmt.get_all_sub_nodes(uni.Assignment) {
+                for target in assign.target {
+                    if isinstance(target, uni.Name) {
+                        written.add(target.value);
+                    }
+                }
+            }
+        }
+    }
+    return written;
 }
 
 impl JacAutoLintPass.enter_module(nd: uni.Module) -> None {
@@ -481,6 +534,8 @@ impl JacAutoLintPass.enter_module(nd: uni.Module) -> None {
     if self.main_module is None {
         self.main_module = module;
     }
+    unsafe_globalize = self.names_unsafe_to_globalize(module);
+    entry_written = self.entry_written_names(module);
     new_body: list[uni.UniNode] = [];
     for stmt in module.body {
         if self._is_future_annotations_import(stmt)
@@ -494,7 +549,18 @@ impl JacAutoLintPass.enter_module(nd: uni.Module) -> None {
                 extracted_stmt: uni.UniNode | None = None;
 
                 if isinstance(inner_stmt, uni.Assignment)
-                and self.can_convert_to_glob(inner_stmt) {
+                and self.can_convert_to_glob(inner_stmt)
+                and not any(
+                    target.value in unsafe_globalize for target in inner_stmt.target
+                )
+                and not (
+                    isinstance(inner_stmt.value, uni.Name)
+                    and inner_stmt.value.value in entry_written
+                )
+                and not any(
+                    nm.value in entry_written
+                    for nm in inner_stmt.value.get_all_sub_nodes(uni.Name)
+                ) {
                     extracted_stmt = self.create_glob_from_assignment(inner_stmt);
                 } elif self.is_module_level_construct(inner_stmt) {
                     extracted_stmt = inner_stmt;
@@ -1195,73 +1261,20 @@ impl JacAutoLintPass._is_future_annotations_import(stmt: uni.UniNode) -> bool {
 }
 
 impl JacAutoLintPass._fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> None {
+    if self._is_file_excluded(impl_node.loc.mod_path) {
+        return;
+    }
     decl: uni.Ability | None = None;
     if isinstance(impl_node.decl_link, uni.Ability) {
         decl = impl_node.decl_link;
     } else {
-        if not impl_node.target or len(impl_node.target) < 2 {
+        arch_node = self._impl_owner_archetype(impl_node);
+        if arch_node is None {
             return;
         }
-        root_arch_name = impl_node.target[0].sym_name if impl_node.target[0] else None;
         ability_name = impl_node.target[-1].sym_name if impl_node.target[-1] else None;
-        if not root_arch_name or not ability_name {
+        if not ability_name {
             return;
-        }
-        if self.main_module is None {
-            return;
-        }
-        arch_node: uni.Archetype | None = None;
-        if self.main_module.sym_tab {
-            arch_sym = self.main_module.sym_tab.lookup(root_arch_name);
-            if arch_sym and arch_sym.decl {
-                candidate = arch_sym.decl.name_of;
-                if isinstance(candidate, uni.Archetype) {
-                    arch_node = candidate;
-                }
-            }
-        }
-        if arch_node is None {
-            for stmt in self.main_module.body {
-                if isinstance(stmt, uni.Archetype) {
-                    if stmt.name_spec and stmt.name_spec.sym_name == root_arch_name {
-                        arch_node = stmt;
-                        break;
-                    }
-                }
-            }
-        }
-        if arch_node is None {
-            for stmt in self._base_decl_archetypes(impl_node.loc.mod_path) {
-                if stmt.name_spec and stmt.name_spec.sym_name == root_arch_name {
-                    arch_node = stmt;
-                    break;
-                }
-            }
-        }
-        if arch_node is None or not arch_node.body {
-            return;
-        }
-        for i in range(1, len(impl_node.target) - 1) {
-            nested_name = impl_node.target[i].sym_name if impl_node.target[i] else None;
-
-            if not nested_name {
-                return;
-            }
-            found_nested = False;
-
-            for member in arch_node.body {
-                if isinstance(member, uni.Archetype) {
-                    if member.name_spec and member.name_spec.sym_name == nested_name {
-                        arch_node = member;
-                        found_nested = True;
-                        break;
-                    }
-                }
-            }
-
-            if not found_nested or not arch_node.body {
-                return;
-            }
         }
         for member in arch_node.body {
             if isinstance(member, uni.Ability) {
@@ -1325,6 +1338,73 @@ impl JacAutoLintPass._fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> Non
     }
     impl_node.kid = new_kids;
     impl_node._invalidate_sub_node_tab();
+}
+
+impl JacAutoLintPass._impl_owner_archetype(
+    impl_node: uni.ImplDef
+) -> (uni.Archetype | None) {
+    if not impl_node.target or len(impl_node.target) < 2 {
+        return None;
+    }
+    root_arch_name = impl_node.target[0].sym_name if impl_node.target[0] else None;
+    if not root_arch_name or self.main_module is None {
+        return None;
+    }
+    arch_node: uni.Archetype | None = None;
+    if self.main_module.sym_tab {
+        arch_sym = self.main_module.sym_tab.lookup(root_arch_name);
+        if arch_sym and arch_sym.decl {
+            candidate = arch_sym.decl.name_of;
+            if isinstance(candidate, uni.Archetype) {
+                arch_node = candidate;
+            }
+        }
+    }
+    if arch_node is None {
+        for stmt in self.main_module.body {
+            if isinstance(stmt, uni.Archetype) {
+                if stmt.name_spec and stmt.name_spec.sym_name == root_arch_name {
+                    arch_node = stmt;
+                    break;
+                }
+            }
+        }
+    }
+
+    if arch_node is None {
+        for stmt in self._base_decl_archetypes(impl_node.loc.mod_path) {
+            if stmt.name_spec and stmt.name_spec.sym_name == root_arch_name {
+                arch_node = stmt;
+                break;
+            }
+        }
+    }
+    if arch_node is None or not arch_node.body {
+        return None;
+    }
+    for i in range(1, len(impl_node.target) - 1) {
+        nested_name = impl_node.target[i].sym_name if impl_node.target[i] else None;
+
+        if not nested_name {
+            return None;
+        }
+        nested: uni.Archetype | None = None;
+
+        for member in arch_node.body {
+            if isinstance(member, uni.Archetype) {
+                if member.name_spec and member.name_spec.sym_name == nested_name {
+                    nested = member;
+                    break;
+                }
+            }
+        }
+
+        if nested is None or not nested.body {
+            return None;
+        }
+        arch_node = nested;
+    }
+    return arch_node;
 }
 
 impl JacAutoLintPass._base_decl_archetypes(annex_path: str) -> list[uni.Archetype] {
@@ -2027,7 +2107,10 @@ impl JacAutoLintPass._body_has_return_stmt(body: list) -> bool {
                 }
             }
         }
-        if isinstance(stmt, uni.InForStmt) or isinstance(stmt, uni.WhileStmt) {
+        if isinstance(stmt, uni.InForStmt)
+        or isinstance(stmt, uni.IterForStmt)
+        or isinstance(stmt, uni.WhileStmt)
+        or isinstance(stmt, uni.ForeverStmt) {
             if self._body_has_return_stmt(list(stmt.body)) {
                 return True;
             }
@@ -2623,13 +2706,20 @@ impl JacAutoLintPass._property_role_of_ability(ab: uni.Ability) -> str {
     if not ab.decorators {
         return "";
     }
+    own_name = ab.name_ref.value if isinstance(ab.name_ref, uni.Name) else "";
     for dec in ab.decorators {
         if isinstance(dec, uni.Name) and dec.value == "property" {
             return "property";
         }
+
         if isinstance(dec, uni.AtomTrailer)
         and dec.is_attr
-        and isinstance(dec.right, uni.Name) {
+        and isinstance(dec.right, uni.Name)
+        and isinstance(dec.target, uni.Name)
+        and dec.target.value == own_name {
+            if dec.right.value == "getter" {
+                return "property";
+            }
             if dec.right.value == "setter" {
                 return "setter";
             }
@@ -2713,12 +2803,16 @@ impl JacAutoLintPass._build_property_has(
 }
 
 impl JacAutoLintPass._convert_properties(container: uni.Archetype) -> None {
+    if self._is_file_excluded(container.loc.mod_path) {
+        return;
+    }
     body = container.body;
     if not isinstance(body, list) {
         return;
     }
     groups: dict[str, dict[str, uni.Ability]] = {};
     group_indices: dict[str, list[int]] = {};
+    prop_types: dict[str, uni.Expr] = {};
     order: list[str] = [];
     for (idx, item) in enumerate(body) {
         if not isinstance(item, uni.Ability) {
@@ -2734,6 +2828,13 @@ impl JacAutoLintPass._convert_properties(container: uni.Archetype) -> None {
             group_indices[pname] = [];
             order.append(pname);
         }
+
+        if role == "property" and pname not in prop_types {
+            declared = item.signature.return_type if item.signature else None;
+            if declared is not None {
+                prop_types[pname] = declared;
+            }
+        }
         groups[pname][role] = item;
         group_indices[pname].append(idx);
     }
@@ -2746,6 +2847,9 @@ impl JacAutoLintPass._convert_properties(container: uni.Archetype) -> None {
         }
         getter_ab = g["property"];
         type_expr = getter_ab.signature.return_type if getter_ab.signature else None;
+        if type_expr is None {
+            type_expr = prop_types.get(pname);
+        }
         if type_expr is None {
             continue;
         }
@@ -2802,6 +2906,50 @@ impl JacAutoLintPass._convert_properties(container: uni.Archetype) -> None {
     self.recalculate_parents(container);
 }
 
+impl JacAutoLintPass._property_impl_roles(
+    arch: uni.Archetype, prop_name: str
+) -> dict[str, list[uni.Ability]] {
+    roles: dict[str, list[uni.Ability]] = {};
+
+    for member in arch.body {
+        if not isinstance(member, uni.ArchHas) {
+            continue;
+        }
+        for var in member.vars {
+            if var.name.sym_name != prop_name or not var.accessors {
+                continue;
+            }
+            for acc in var.accessors {
+                roles.setdefault(acc.accessor_kind, []).append(acc);
+            }
+        }
+    }
+    if roles {
+        return roles;
+    }
+    for member in arch.body {
+        if not isinstance(member, uni.Ability) {
+            continue;
+        }
+        if not member.name_ref or member.name_ref.sym_name != prop_name {
+            continue;
+        }
+        role = self._property_role_of_ability(member);
+        if role {
+            roles.setdefault(role, []).append(member);
+        }
+    }
+
+    for getter in roles.get("property", []) {
+        if getter.signature
+        and (getter.signature.return_type is not None)
+        and not self._is_suppressed(W3043, getter.loc) {
+            return roles;
+        }
+    }
+    return {};
+}
+
 impl JacAutoLintPass._impl_property_kind(nd: uni.ImplDef) -> str {
     if not nd.target {
         return "";
@@ -2815,17 +2963,62 @@ impl JacAutoLintPass._impl_property_kind(nd: uni.ImplDef) -> str {
         return self._property_role_of_ability(decl);
     }
 
-    dotted = ".".join(
-        [
-            t.value
-            for t in nd.target
-            if isinstance(t, uni.Name)
-        ]
-    );
-    return PROPERTY_IMPL_TARGETS.get(dotted, "");
+    arch = self._impl_owner_archetype(nd);
+    prop_name = last.sym_name if last else "";
+    if arch is None or not prop_name {
+        return "";
+    }
+    roles = self._property_impl_roles(arch, prop_name);
+    if "property" not in roles {
+        return "";
+    }
+
+    pending: dict[str, uni.Ability] = {};
+    for (role, accessors) in roles.items() {
+        for acc in accessors {
+            if acc.body is None and role not in pending {
+                pending[role] = acc;
+            }
+        }
+    }
+    if not pending {
+        return "";
+    }
+    if len(pending) == 1 {
+        return list(pending.keys())[0];
+    }
+
+    spec = nd.spec if isinstance(nd.spec, uni.FuncSignature) else None;
+    for role in ["property", "setter", "deleter"] {
+        acc = pending.get(role);
+        if (
+            (acc is not None)
+            and (acc.signature is not None)
+            and (spec is not None)
+            and self._signatures_match(acc.signature, spec)
+        ) {
+            return role;
+        }
+    }
+
+    takes_value = (spec is not None) and len(spec.params) > 0;
+    returns_value = (spec is not None) and (spec.return_type is not None);
+    if takes_value and "setter" in pending {
+        return "setter";
+    }
+    if not takes_value and not returns_value and "deleter" in pending {
+        return "deleter";
+    }
+    if "property" in pending {
+        return "property";
+    }
+    return list(pending.keys())[0];
 }
 
 impl JacAutoLintPass._convert_property_impl(nd: uni.ImplDef) -> None {
+    if self._is_file_excluded(nd.loc.mod_path) {
+        return;
+    }
     kind = self._impl_property_kind(nd);
     if kind == "" {
         return;
@@ -2839,6 +3032,12 @@ impl JacAutoLintPass._convert_property_impl(nd: uni.ImplDef) -> None {
     kw = "getter" if kind == "property" else kind;
     acc_name = self._make_name_node(last_target, kw);
     dot_tok = last_target.gen_token(Tok.DOT);
+
+    end_col = last_target.loc.col_end;
+    dot_tok.c_start = end_col;
+    dot_tok.c_end = end_col;
+    acc_name.c_start = end_col;
+    acc_name.c_end = end_col;
     nd.target = list(nd.target) + [acc_name];
     new_kid: list[uni.UniNode] = [];
     for k in nd.kid {

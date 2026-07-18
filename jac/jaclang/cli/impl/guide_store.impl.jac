@@ -7,6 +7,22 @@ glob _CODE_GUIDE_MAP: dict[str, str] = {
          "E1050": "jac-walker-patterns",
          "E1102": "jac-cl-components",
          "E1104": "jac-npm-packages",
+         "E1105": "jac-mobui",
+         "E1301": "jac-native-memory",
+         "E1302": "jac-native-memory",
+         "E1303": "jac-native-memory",
+         "E1304": "jac-native-memory",
+         "E1306": "jac-native-memory",
+         "E1307": "jac-native-memory",
+         "E1308": "jac-native-memory",
+         "E1309": "jac-native-memory",
+         "E1401": "jac-native-memory",
+         "E1402": "jac-native-memory",
+         "E1403": "jac-native-memory",
+         "E1404": "jac-native-memory",
+         "E1405": "jac-native-memory",
+         "E1406": "jac-native-memory",
+         "W1310": "jac-native-memory",
          "E2004": "jac-has-fields",
          "E2025": "jac-npm-packages",
          "W2075": "jac-sv-persistence",
@@ -44,6 +60,7 @@ glob GUIDE_GROUP_ORDER: list[str] = [
          "jac-shadcn-components": "Client & fullstack",
          "jac-desktop-app": "Client & fullstack",
          "jac-mobile-app": "Client & fullstack",
+         "jac-mobui": "Client & fullstack",
          "jac-scaffold": "Tooling & workflow",
          "jac-config": "Tooling & workflow",
          "jac-testing": "Tooling & workflow",
@@ -116,7 +133,7 @@ impl list_guides -> list[Guide] {
     }
     guides: list[Guide] = [];
 
-    for f in sorted(gdir.glob("*.md"), key=lambda p: Path : p.stem) {
+    for f in sorted(gdir.glob("*.md"), key=lambda (p: Path) { p.stem; }) {
         g = parse_guide(f);
         if g is not None {
             guides.append(g);
@@ -151,12 +168,11 @@ impl grouped_guides -> list[tuple[str, list[Guide]]] {
     start = buckets.get("Start here");
     if start is not None {
         start.sort(
-            key=lambda g: Guide :
-                (
-                    _START_HERE_ORDER.index(g.name)
-                        if g.name in _START_HERE_ORDER
-                        else len(_START_HERE_ORDER)
-                )
+            key=lambda (g: Guide) { (
+                _START_HERE_ORDER.index(g.name)
+                    if g.name in _START_HERE_ORDER
+                    else len(_START_HERE_ORDER)
+            ); }
         );
     }
     return [

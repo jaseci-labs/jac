@@ -132,7 +132,6 @@ as interface contracts:
 
 - `database_provider.jac` -- provider interface
 - `deployment_target.jac` -- deployment abstraction
-- `image_registry.jac` -- container registry interface
 - `logger.jac` -- logging abstraction
 - `metrics.jac` -- metrics interface
 - `models/` -- `deployment_result.jac`, `resource_status.jac`
@@ -183,7 +182,7 @@ holds everywhere, but the four library packages do not share a common shape:
 For someone learning the ecosystem, this means the surface for "what's
 importable from this package" is discovered differently for each package. If
 the goal is the blog post's vision of a uniform standard library, the gap
-worth closing is giving each plugin a `lib.jac` with a curated `__all__`
+worth closing is giving each subsystem a `lib.jac` with a curated `__all__`
 analogous to `jac0core/jaclib.jac`.
 
 ---

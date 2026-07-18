@@ -387,8 +387,7 @@ impl JacAPIServerStatic.register_graph_endpoint -> None {
 impl JacAPIServerStatic.serve_graph_page -> HTMLResponse {
     import jaclang.scale;
     import from pathlib { Path }
-    # jaclang.scale is a .jac package (custom loader), so importlib.resources
-    # can't resolve it; use the package __file__ to locate bundled templates.
+
     html_content = (
         Path(jaclang.scale.__file__).parent / 'templates' / 'graph.html'
     ).read_text(
@@ -432,9 +431,6 @@ impl JacAPIServerStatic.graph_data(Authorization: (str | None) = None) -> JSONRe
 
         collect_node_connections(user_root, visited_nodes, connections, edge_ids);
 
-        # jids, not id(obj): stable across processes and refreshes so the
-        # gateway can merge sibling services' fragments, and the same ref
-        # format walker payloads expose as _jac_id / jobj() accepts.
         nodes.append({'id': Jac.object_ref(user_root), 'label': 'root'});
         for node_arch in visited_nodes {
             if (node_arch != user_root) {

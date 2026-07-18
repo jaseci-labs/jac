@@ -254,6 +254,8 @@ const env = {
   malloc: (n) => { n = Number(n); const p = M.h; M.h = (M.h + n + 7) & ~7; return p; },
   calloc: (c, s) => { const n = Number(c) * Number(s); const p = M.h; M.h = (M.h + n + 7) & ~7;
                       new Uint8Array(M.mem.buffer).fill(0, p, p + n); return p; },
+  realloc: (p, n) => { p = Number(p); n = Number(n); const q = M.h; M.h = (M.h + n + 7) & ~7;
+                       if (p) { new Uint8Array(M.mem.buffer).copyWithin(q, p, p + n); } return q; },
   free: () => {}, malloc_usable_size: () => 0,
   memcpy: (d, s, n) => { new Uint8Array(M.mem.buffer).copyWithin(d, s, s + Number(n)); return d; },
   memcmp: (a, b, n) => { const m = new Uint8Array(M.mem.buffer); n = Number(n);

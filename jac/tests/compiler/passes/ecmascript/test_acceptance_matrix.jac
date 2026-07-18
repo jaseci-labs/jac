@@ -125,9 +125,10 @@ test "matrix #4/#6 solid: dynamic positions un-thunked, handler never view-wrapp
     assert "{count()}" in js , "dynamic child should be un-thunked";
     # Static literal attribute stays a plain string attribute.
     assert 'type="text"' in js;
-    # #6 — the event handler is emitted as-is, never wrapped in a view thunk.
-    assert "onClick={" in js;
-    assert "onClick={() => count()" not in js , "handler must not be view-wrapped";
+    # #6: the event handler is emitted as-is. The authored lambda's implicit
+    # return compiles to `() => count()`; a view wrap would add a second arrow.
+    assert "onClick={() => count()}" in js , "handler should be emitted as-is";
+    assert "onClick={() => () =>" not in js , "handler must not be view-wrapped";
 }
 
 # --- #5 Block / scope shadowing — KNOWN LIMITATION -----------------------------
@@ -187,8 +188,8 @@ test "matrix zero-diff: preact view output matches react (seams are no-ops)" {
     );
     # Preact differs only in import sources; the read/view seams are identity on
     # both, so the component body (JSX + reads) must be byte-identical.
-    react_body = react_js.split("function view_app")[1];
-    preact_body = preact_js.split("function view_app")[1];
+    react_body = react_js.split("function View_app")[1];
+    preact_body = preact_js.split("function View_app")[1];
     assert react_body == preact_body , (
         "Preact body must be byte-identical to React (seam no-op invariant)"
     );

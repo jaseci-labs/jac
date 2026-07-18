@@ -36,9 +36,10 @@ resolves no matter where the binary is launched from.
 ## Run it
 
 ```bash
-./demo.sh         # default: benchmark BOTH builds (8s each), print avg/max FPS
-./demo.sh --jac   # build & play only the Jac-native shooter, interactively
-./demo.sh --zig   # build & play only the Zig shooter, interactively
+./demo.sh            # default: benchmark BOTH builds (8s each), print avg/max FPS
+./demo.sh --jac      # build & play only the Jac-native shooter, interactively
+./demo.sh --zig      # build & play only the Zig shooter, interactively
+./demo.sh --headless # benchmark the borrow-checked headless sim (no window/GPU)
 ```
 
 > **Run it in the browser too:** [`web/`](web/) compiles the _same_ rlgl source to
@@ -92,6 +93,51 @@ skipped entirely and the game loop runs until you close the window, exactly as
 before. (The result travels through a file rather than stdout because the demos
 go through raylib's own I/O - no `print`, no libc - so the Jac and Zig twins stay
 byte-for-byte parallel.)
+
+### The borrow-checked headless twin
+
+`shooter_headless.na.jac` is the shooter's game loop with the ownership dial
+turned all the way up and the window removed. Every heap-holding binding is
+annotated (`w: own World`, `&World` / `&mut World` borrows, `f(&mut w)` call
+sites), so the whole program passes Jac's **enforced borrow checker** and
+compiles headerless with **no collector and machine-checked zero reference
+counting**:
+
+```bash
+jac nacompile shooter_headless.na.jac --enforce-nogc --gc none --assert-no-rc
+```
+
+It runs the exact per-frame pipeline of `shooter.na.jac` -- input, fire
+cooldown, bullet integration + hit tests, target respawn and bob -- at a fixed
+240 Hz tick, with two substitutions so it needs no window: the human is
+replaced by a deterministic scripted pilot built from the same turn/move
+constants as `handle_input`, and the rlgl render pass is replaced by a
+virtual renderer that folds the very vertex stream `draw_floor`/`draw_box`
+would emit (grid lines, six shaded quads per cube, camera pose) into an
+integer digest instead of calling `rlVertex3f`. The target/bullet pools live
+as parallel arrays inside one owned `World` -- the index-arena idiom from
+[ownbench](../ownbench/)'s rbtree kernel, the design-intended shape for pool
+mutation under whole-binding affine moves.
+
+`./demo.sh --headless` builds the _same unchanged source_ under all three of
+Jac's memory modes -- `none` (enforced ownership, headerless, zero RC), `rc`
+(reference counting), `cycles` (rc + cycle collector) -- runs each for
+`HEADLESS_FRAMES` frames (default 100000), and prints a table:
+
+```
+==== headless shooter benchmark (100000 frames, 240 Hz sim tick) ====
+  gc mode       sim FPS    ns/frame    score       digest
+  none           187442        5335       34    502241830
+  rc             191893        5211       34    502241830
+  cycles         188651        5301       34    502241830
+  digests identical across gc modes: OK
+```
+
+Byte-identical digests across the three builds are the executable witness
+that the fully-annotated, collector-free build is a semantics-preserving
+drop-in (the ownbench erasure/identity discipline applied to a real game
+loop). Because it needs no GPU, no display, and no raylib download, this
+mode runs anywhere -- including CI.
 
 ### The Zig twin
 

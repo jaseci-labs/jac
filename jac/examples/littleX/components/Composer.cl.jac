@@ -35,7 +35,7 @@ def:pub Composer(
                     className="min-h-0 resize-none border-0 bg-transparent px-0 py-1.5 text-lg shadow-none focus-visible:ring-0 dark:bg-transparent"
                     {placeholder}
                     {value}
-                    onChange={lambda e: ChangeEvent { onChange(e.target.value); }}
+                    onChange={lambda (e: ChangeEvent) { onChange(e.target.value); }}
                     {rows}
                 />
                 <div className="flex items-center justify-end gap-3">

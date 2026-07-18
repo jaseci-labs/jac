@@ -8,16 +8,14 @@
 
 | Mode | Command | Description |
 |------|---------|-------------|
-| **Development** | `jac start app.jac --scale` | Deploy without building a Docker image - fast iteration |
-| **Production** | `jac start app.jac --scale --build` | Build and push Docker image to registry, then deploy |
+| **Deploy** | `jac start app.jac --scale` | Ship the project source into the cluster and deploy |
+| **Preview** | `jac start app.jac --scale --dry-run` | Print the manifests that would be applied; change nothing |
 | **Enable HTTPS** | `jac start app.jac --scale --enable-tls` | Enable TLS on a live deployment (no redeploy, run after CNAME propagates) |
 
-**Production mode** requires Docker credentials in `.env`:
-
-```env
-DOCKER_USERNAME=your-dockerhub-username
-DOCKER_PASSWORD=your-dockerhub-password-or-token
-```
+There is no image-build step. `jac-scale` does not build, tag, or push a Docker
+image, and it needs no registry and no registry credentials: pods run a stock
+base image, and your source is shipped into the cluster (see
+[Source Distribution](#source-distribution) below).
 
 ---
 
@@ -44,6 +42,16 @@ Use this for air-gapped clusters, to pin an exact build, or to deploy a binary y
 
 ---
 
+### App Artifact (`.jab`)
+
+The app is packed on the deploy driver into a sealed **`.jab`** image, seeded to the bundle PVC, and extracted into the pod's `/app` volume. The `.jab` contains the project source, a `_precompiled/` sealed image (`MANIFEST.json` + content-keyed `.jir` modules built with the pod binary), and the sanitized `jac.toml`.
+
+Sealing is **mandatory**: if the app cannot be sealed into a valid image, the deploy fails rather than shipping a bundle that cold-compiles on the pod's first boot. When a pod starts, the compiler auto-loads the sibling `_precompiled/` image, so services run from precompiled modules with no on-pod compile step - for both single-app and microservice deployments.
+
+If a module in your project cannot be sealed (for example, a file that fails to compile), the deploy aborts with the seal error. Fix or exclude the offending module and redeploy.
+
+---
+
 ### Naming & Namespace
 
 Controls the application name used for all Kubernetes resource names and the namespace resources are created in.
@@ -52,7 +60,7 @@ Controls the application name used for all Kubernetes resource names and the nam
 
 | TOML Key  | Default | Description |
 |-----------|---------|-------------|
-| `app_name` | `jaseci` | Prefix for all K8s resource names (deployments, services, secrets, etc.) |
+| `app_name` | slug of `[project].name` | Prefix for all K8s resource names (deployments, services, secrets, etc.). Falls back to `jaseci` when no project name is usable |
 | `namespace`| `default` | Kubernetes namespace to deploy into |
 
 **To change in `jac.toml`:**
@@ -414,7 +422,7 @@ The `"keda"` engine creates a `ScaledObject` custom resource instead of an HPA. 
 |-----|---------|-------------|
 | `type` | (required) | KEDA trigger type (e.g. `"prometheus"`, `"redis"`, `"rabbitmq"`, `"kafka"`, `"http"`). See the [KEDA trigger catalogue](https://keda.sh/docs/latest/scalers/). |
 | `metadata` | `{}` | Dict of trigger-specific key/value pairs. All values are coerced to strings before being sent to KEDA. |
-| `name` | `null` | Name for this trigger. Required when using `auth.secret_refs`; used as the `TriggerAuthentication` resource name. |
+| `name` | `null` | Optional label for this trigger in KEDA. When using `auth.secret_refs`, set a unique `name` per trigger; it is included in the hash that generates the `TriggerAuthentication` resource name (e.g. `order-service-daa02e20-ta`), making each resource identifiable in the cluster. Without it, trigger position in the spec is used instead, which shifts if triggers are reordered. |
 | `auth.secret_refs` | `{}` | KEDA `TriggerAuthentication` bindings. Each key is a KEDA parameter name; the value is a table with `name` (Kubernetes Secret name) and `key` (key within that Secret). |
 
 **To configure in `jac.toml`:**
@@ -877,28 +885,45 @@ export OPENAI_API_KEY="sk-..."
 export MONGO_PASSWORD="secret123"
 export JWT_SECRET="my-jwt-key"
 
-jac start app.jac --scale --build
+jac start app.jac --scale
 ```
 
 This eliminates the need for manual `kubectl create secret` commands after deployment.
 
 ---
 
-## Remote Image Registry
+## Source Distribution
 
-Remote Kubernetes clusters (EKS, GKE, AKS, etc.) pull images from a registry rather than loading them from a local container runtime. Set `image_registry` in `jac.toml` to push there before manifest apply:
+`jac-scale` ships **no application image**, so there is no registry to configure
+and nothing to push. This is what makes a deploy work the same way against a
+local cluster (MicroK8s, kind, k3d, Minikube, Docker Desktop) and a remote one
+(EKS, GKE, AKS) -- neither needs to pull an image you built.
+
+Instead, a deploy:
+
+1. Packs the project source into a content-addressed bundle and copies it into
+   the cluster on a PVC.
+2. Runs a bootstrap initContainer that unpacks the bundle and installs the
+   pinned `jac` runtime into a shared volume.
+3. Starts every pod on a stock base image -- `jaseci/jaclang:latest` (or
+   `:dev` on the dev channel), falling back to `python:3.12-slim` when that tag
+   is unreachable.
+
+Override the base image with `python_image` if you need your own:
 
 ```toml
 [scale.kubernetes]
-image_registry = "${ECR_REGISTRY}"
+python_image = "my-registry/my-base:1.2.3"
 ```
 
-Behavior:
+That image only has to provide the interpreter; your code still arrives via the
+bundle, not baked into the image.
 
-- **Local clusters** (Minikube, Docker Desktop, k3d, kind): if `image_registry` is unset, the built image is loaded directly into the cluster's runtime (`minikube image load`, `k3d image import`, `kind load docker-image`).
-- **Remote clusters**: `image_registry` must be set. The image is tagged as `<image_registry>/<app_name>:dev-<sha12>` and pushed before `kubectl apply`. The `<sha12>` suffix is a content hash of the source tree -- rebuilds change the tag, which triggers an automatic rolling update.
-- The registry value supports `${ENV_VAR}` interpolation so you can keep registry URLs out of source control. The local environment is read at deploy time.
-- Authentication to the registry is up to you (`docker login`, ECR `get-login-password`, GCR service account, etc.). `jac-scale` does not manage registry credentials.
+!!! note
+    Earlier releases shipped a Docker build-and-push pipeline. It was removed,
+    along with its flags and config keys; see
+    [Breaking Changes](../../community/breaking-changes.md#kubernetes-image-build-pipeline-removed)
+    if you are migrating from it.
 
 ---
 
@@ -941,7 +966,7 @@ Each entry is an [array of tables](https://toml.io/en/v1.0.0#array-of-tables) (n
 | `size` | yes (PVC mode) | Requested storage, e.g. `10Gi`. |
 | `access_mode` | yes (PVC mode) | One of `ReadWriteMany` (most common for cross-pod), `ReadWriteOnce`, `ReadOnlyMany`. ReadWriteMany requires an RWX-capable storage class. |
 | `storage_class` | yes (PVC mode) | The StorageClass to bind to. Cloud providers' RWX classes: AWS `efs-sc`, GCP Filestore CSI, Azure Files. |
-| `host_path` | yes (hostPath mode) | Local-cluster-only alternative; binds the volume to a directory on the host node. Use only on k3d / kind / Minikube; will not survive a pod move on multi-node clusters. |
+| `host_path` | yes (hostPath mode) | Local-cluster-only alternative; binds the volume to a directory on the host node. Use only on MicroK8s / k3d / kind / Minikube; will not survive a pod move on multi-node clusters. |
 
 PVC mode and hostPath mode are mutually exclusive per entry. K-track applies PVCs before Deployments so pods do not crash-loop on "PVC not found".
 
@@ -999,6 +1024,26 @@ name = "order-queue"
 metadata = { serverAddress = "http://prometheus:9090", metricName = "pending_orders", threshold = "20", query = "sum(pending_orders_total)" }
 ```
 
+#### Gateway High Availability
+
+!!! warning "Gateway defaults to a single replica"
+    The gateway service (`__gateway__`) is configured like any other service under `[scale.microservices.services]` -- its HPA defaults to `min = 1`. Because the gateway is the single entry point for all external traffic, a pod restart (crash, rolling deploy, node drain) leaves no pod to serve requests until the replacement passes its readiness probe. With the default `readiness_initial_delay = 300`, that is a ~5 minute window of 503s for every user, regardless of which backend service they are calling.
+
+    Backend services don't have this exposure -- if one of several replicas restarts, the others keep serving. Give the gateway the same redundancy, either as a fixed count or as an autoscaler floor:
+
+    ```toml
+    # Fixed count, no autoscaling (same effect as the __gateway__ example above)
+    [scale.microservices.services.__gateway__]
+    replicas = 2
+    hpa = { enabled = false }
+
+    # Or, if you want the gateway to also scale up under load:
+    [scale.microservices.services.__gateway__.hpa]
+    min = 2
+    ```
+
+    Either config keeps a second pod ready to absorb traffic while the first restarts. The difference is whether the gateway can also scale beyond 2 under load (`hpa.enabled = true`) or stays fixed (`hpa.enabled = false`).
+
 ### Centralised Logs
 
 Microservice mode can deploy a Loki + Grafana Alloy log aggregation pipeline alongside the existing Prometheus + Grafana monitoring stack. Off by default.
@@ -1036,7 +1081,35 @@ A **Pod Logs** dashboard is added to Grafana automatically, with two panels: log
 
 ## Setting Up Kubernetes
 
-### Docker Desktop (Easiest)
+### MicroK8s (Recommended on Ubuntu)
+
+Official docs: [MicroK8s Getting Started](https://microk8s.io/docs/getting-started)
+
+```bash
+# Install MicroK8s
+sudo snap install microk8s --classic
+
+# Allow current user to run microk8s without sudo (re-login required)
+sudo usermod -a -G microk8s $USER
+newgrp microk8s
+
+# Wait until the cluster is ready
+microk8s status --wait-ready
+
+# Enable the addons the deploy needs
+microk8s enable dns hostpath-storage
+
+# Expose kubectl and the kubeconfig -- the deploy tooling needs both
+sudo snap alias microk8s.kubectl kubectl
+mkdir -p ~/.kube && microk8s config > ~/.kube/config
+chmod 600 ~/.kube/config
+```
+
+The last two steps are required, not cosmetic: `jac start --scale` reads `~/.kube/config` to reach the cluster and shells out to a real `kubectl` binary to seed the source bundle. A shell alias (`alias kubectl='microk8s kubectl'`) is not enough because subprocesses cannot see it. You do not need the MicroK8s `ingress` addon -- the deploy ships its own NGINX ingress controller.
+
+After `jac start --scale`, the app is reachable at `http://localhost:30080` (see [Ports](#ports)).
+
+### Docker Desktop
 
 1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 2. Open Settings > Kubernetes
@@ -1046,24 +1119,15 @@ A **Pod Logs** dashboard is added to Grafana automatically, with two panels: log
 ### Minikube
 
 ```bash
-# Install
+# Install -- see https://minikube.sigs.k8s.io/docs/start/
 brew install minikube  # macOS
-# or see https://minikube.sigs.k8s.io/docs/start/
 
-# Start cluster
+# Start cluster with the ingress addon
 minikube start
-
-# Access your app via minikube service
-minikube service jaseci -n default
+minikube addons enable ingress
 ```
 
-### MicroK8s (Linux)
-
-```bash
-sudo snap install microk8s --classic
-microk8s enable dns storage
-alias kubectl='microk8s kubectl'
-```
+With minikube the ingress NodePort is reachable on the VM's address, not localhost: use `http://$(minikube ip):30080`.
 
 ---
 
@@ -1078,8 +1142,8 @@ kubectl get pods
 # Check service
 kubectl get svc
 
-# For minikube, use tunnel
-minikube service jaseci
+# Default local ingress access (minikube: http://$(minikube ip):30080)
+# http://localhost:30080
 ```
 
 ### Database Connection Issues
@@ -1096,11 +1160,28 @@ kubectl logs -l app=mongodb
 kubectl logs -l app=redis
 ```
 
-### Build Failures (--build mode)
+### Pods Stuck in Init
 
-- Ensure Docker daemon is running
-- Verify `.env` has correct `DOCKER_USERNAME` and `DOCKER_PASSWORD`
-- Check disk space for image building
+The bootstrap initContainer unpacks the source bundle and installs the runtime
+before the app container starts, so a pod that never leaves `Init` usually means
+that step failed:
+
+```bash
+kubectl logs <pod-name> -c jac-bootstrap
+kubectl get pvc                     # the bundle PVC must be Bound
+```
+
+- A `Pending` PVC means the cluster has no usable StorageClass; set
+  `bundle_storage_class` (or a `host_path` volume) to one it does have.
+- `Permission denied` while the deploy seeds the bundle PVC means the volume
+  root is not writable by the loader (uid 1000). The bundle-loader pod's
+  `bundle-perms` init container chowns the mount root on startup (fsGroup is
+  not applied on hostPath/NFS or most ReadWriteMany CSI volumes), so this only
+  persists when the backend also rejects root `chown` -- for example a
+  root-squash NFS export. Make the export writable by uid/gid 1000 or disable
+  root squash.
+- `ImagePullBackOff` on the base image means the cluster cannot reach
+  `jaseci/jaclang`; set `python_image` to a base it can pull.
 
 ### General Debugging
 

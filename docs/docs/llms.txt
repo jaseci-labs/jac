@@ -1,0 +1,38 @@
+# Jac (the Jaseci stack)
+
+> Jac is a programming language designed for humans and AI to build together. It compiles one Python-like syntax to Python bytecode, JavaScript, and native machine code, with full access to the PyPI, npm, and C ecosystems. AI calls (`by llm()`), persistent graphs, REST APIs, React-style UIs (`cl` code), and Kubernetes deployment are language features delivered through one self-contained `jac` binary.
+
+Key facts: statements end with `;`, blocks use `{ }`, fields are declared with `has name: type;`, `node`/`edge`/`walker` archetypes model domains as graphs, the graph under `root` persists automatically, and `def f(...) -> T by llm();` delegates a function to an LLM with the return type as the enforced output schema.
+
+## Getting started
+
+- [What is Jac](https://docs.jaseci.org/quick-guide/): overview and positioning
+- [Install](https://docs.jaseci.org/quick-guide/install/): the self-contained binary, upgrading, IDE setup
+- [Core concepts](https://docs.jaseci.org/quick-guide/what-makes-jac-different/): what the language abstracts away
+- [One binary, build anything](https://docs.jaseci.org/quick-guide/one-binary/): the toolchain inside the jac binary
+- [Syntax cheatsheet](https://docs.jaseci.org/quick-guide/syntax-cheatsheet/): the whole language on one page
+- [Jac vs a traditional stack](https://docs.jaseci.org/quick-guide/jac-vs-traditional-stack/): comparison with assembling frameworks
+
+## Tutorials
+
+- [Jac fundamentals](https://docs.jaseci.org/tutorials/language/basics/): the language, for Python developers
+- [Graphs and walkers](https://docs.jaseci.org/tutorials/language/osp/): object-spatial programming
+- [Build an AI Day Planner](https://docs.jaseci.org/tutorials/first-app/build-ai-day-planner/): flagship full-stack tutorial
+- [Your first AI function](https://docs.jaseci.org/tutorials/ai/quickstart/): `by llm()` quickstart
+- [Full-stack web apps](https://docs.jaseci.org/build/fullstack-web/): frontend and backend in one file
+- [Backend APIs](https://docs.jaseci.org/build/backend-apis/): walkers as REST endpoints
+- [CLI tools and native binaries](https://docs.jaseci.org/build/cli-and-native/): the native compilation pathway
+- [AI agents and LLM apps](https://docs.jaseci.org/build/ai-agents/): agentic patterns in Jac
+
+## Reference
+
+- [Reference overview](https://docs.jaseci.org/reference/): language and stack reference index
+- [CLI reference](https://docs.jaseci.org/reference/cli/): every jac command and flag
+- [byllm plugin](https://docs.jaseci.org/reference/plugins/byllm/): AI integration and model configuration
+- [jac-scale](https://docs.jaseci.org/reference/plugins/jac-scale/): deployment and scaling subsystem
+
+## Optional
+
+- [GitHub repository](https://github.com/jaseci-labs/jaseci)
+- [Agent setup skill](https://raw.githubusercontent.com/jaseci-labs/jaseci/main/SKILL.md): step-by-step install and MCP setup for AI coding agents
+- [Jac Playground](https://playground.jaseci.org): run Jac in the browser, no install

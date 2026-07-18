@@ -1,8 +1,8 @@
 # Configuration Reference
 
-The `jac.toml` file is the central configuration for Jac projects -- similar to `pyproject.toml` in Python or `package.json` in Node.js. It defines project metadata (name, version, entry point), manages dependencies (both PyPI and npm packages), sets defaults for CLI commands (test verbosity, server port, lint rules), configures plugins (LLM models, deployment targets), and supports environment-specific profiles (development vs. production).
+The `jac.toml` file is the central configuration for Jac projects -- similar to `pyproject.toml` in Python or `package.json` in Node.js. It defines project metadata (name, version, entry point), manages dependencies (both PyPI and npm packages), sets defaults for CLI commands (test verbosity, server port, lint rules), configures built-in capabilities (LLM models, deployment targets), and supports environment-specific profiles (development vs. production).
 
-You typically don't need to edit `jac.toml` manually for basic projects. The `jac create` command generates one with sensible defaults, and commands like `jac add` and `jac config set` modify it for you. But understanding the full configuration surface is valuable when you need to customize build behavior, configure LLM providers, set up lint rules, or manage deployment settings.
+You typically don't need to edit `jac.toml` manually for basic projects. The `jac create` command generates one with sensible defaults, and commands like `jac install <pkg>` and `jac config set` modify it for you. But understanding the full configuration surface is valuable when you need to customize build behavior, configure LLM providers, set up lint rules, or manage deployment settings.
 
 `jac` commands locate `jac.toml` by walking up from the current working directory. The only exception is `jac install -e <path>`, which reads `jac.toml` from the resolved `<path>` so editable installs work from anywhere.
 
@@ -98,13 +98,13 @@ repository = "https://github.com/user/repo"
 | `maintainers` | list of `{name, email}` | Package maintainers |
 | `urls` | table | Links shown on PyPI (declared under `[project.urls]`) |
 
-> **Note:** `authors` and `maintainers` also accept a plain string form (`authors = ["Your Name"]`), but the `{ name, email }` table form is recommended -- it is what every plugin `jac.toml` uses and what PyPI renders. See [`[project.include]`](#projectinclude) for controlling which files land in the wheel.
+> **Note:** `authors` and `maintainers` also accept a plain string form (`authors = ["Your Name"]`), but the `{ name, email }` table form is recommended -- it is what published packages' `jac.toml` files use and what PyPI renders. See [`[project.include]`](#projectinclude) for controlling which files land in the wheel.
 
 ---
 
 ### [dependencies]
 
-Python/PyPI packages and Jac plugins:
+Python/PyPI packages:
 
 ```toml
 [dependencies]
@@ -134,7 +134,7 @@ ffmpeg = "*"
 | Range | `">=1.0,<2.0"` | 1.x only |
 | Compatible | `"~=1.4.2"` | 1.4.x |
 
-> **Default behavior:** When you run `jac add requests` without a version, the package is installed unconstrained and then the actual installed version is queried. A compatible-release spec (`~=X.Y`) is recorded -- e.g., if pip installs `2.32.5`, `jac.toml` gets `requests = "~=2.32"`. The `jac update` command also uses this format when writing updated versions back.
+> **Default behavior:** When you run `jac install requests` without a version, the package is installed unconstrained and then the actual installed version is queried. A compatible-release spec (`~=X.Y`) is recorded -- e.g., if pip installs `2.32.5`, `jac.toml` gets `requests = "~=2.32"`. The `jac update` command also uses this format when writing updated versions back.
 
 ---
 
@@ -239,6 +239,25 @@ The `dir` setting controls where all build artifacts are stored:
 
 ---
 
+### [gc]
+
+Memory-management defaults for **native** compilation (`jac nacompile`):
+
+```toml
+[gc]
+default = "cycles"    # gc mode emitted when --gc is not passed: "cycles", "rc", or "none"
+
+[gc.enforce]
+modules = []          # module-name patterns compiled under zero-RC nogc enforcement
+grandfathered = []    # patterns exempted from enforcement (checked before `modules`)
+```
+
+`default` selects the memory-management runtime the native backend emits when `jac nacompile` is invoked without an explicit `--gc`: `cycles` (reference counting plus the cycle collector), `rc` (reference counting only), or `none` (no retain/release call sites).
+
+`[gc.enforce] modules` lists `fnmatch`-style patterns matched against compiled module names; a native module matching one is compiled under **nogc enforcement**, which makes zero-RC ownership coverage a compile-time contract -- every heap-typed parameter, return type, and `has` field must be in the owned world, and violations are hard [`E1401`-`E1406`](../diagnostics.md#zero-rc-enforcement-errors) errors that block codegen. `grandfathered` patterns exempt matching modules, so a codebase can adopt enforcement incrementally. The `jac nacompile --enforce-nogc` flag enforces the compiled module regardless of these patterns. See [Zero-RC ownership compilation](../language/native-pathway.md#zero-rc-ownership-compilation).
+
+---
+
 ### [test]
 
 Defaults for `jac test`:
@@ -276,7 +295,10 @@ Defaults for `jac check`:
 ```toml
 [check]
 print_errs = true   # Print errors to console
+untyped-external = "warn"   # "error" escalates undeclared npm/PyPI imports to E1120
 ```
+
+`untyped-external` controls how `jac check` reports imports from external modules that ship no type information (no `.d.ts` for client npm packages, no `py.typed`/`.pyi` on the Python side). The default warns once per import with **`W1102`** and types the binding as foreign `any`. Set `untyped-external = "error"` to require declarations and emit **`E1120`** instead. See [npm import type checking](../plugins/jac-client.md#npm-import-type-checking-jac-check) in the jac-client reference.
 
 #### [check.lint]
 
@@ -391,6 +413,19 @@ dir = "cache"    # Cache subdirectory under the build dir (i.e. .jac/cache).
                  # An absolute path relocates the cache wholesale.
 ```
 
+The format cache (`jac fmt --cache` / `jac precommit`) also lives here, under
+`<cache dir>/fmt-v1/`. It stores one marker per file proven clean, keyed on the
+file's content digest, the `lintfix` mode, the effective `[format]` and
+`[check]` settings (including `suppress` / `suppress_categories` / nested
+`lint`), the logical path when `lintfix` is on, and a formatter-pipeline
+fingerprint -- so a content, config, path, or pipeline change automatically
+invalidates the relevant entries. Entries are written only for fully
+successful, unchanged (or just-rewritten) results; syntax errors, lint
+failures, and annex failures are never cached as clean. `--cache` / precommit
+enable this format cache explicitly and do **not** consult `[cache].enabled`
+(that flag gates the bytecode cache). The directory is git-ignored, so it is
+safe to delete at any time. See [`jac fmt --cache`](../cli/index.md#jac-fmt).
+
 ---
 
 ### [storage]
@@ -427,17 +462,12 @@ See [Storage Reference](../plugins/jac-scale-persistence.md#storage) for the ful
 
 ---
 
-### [plugins]
+### Capability settings
 
-Plugin configuration:
+Built-in capabilities (byLLM, scale, the client framework) are configured in top-level tables named after the capability:
 
 ```toml
-[plugins]
-discovery = "auto"      # "auto", "manual", or "disabled"
-enabled = ["byllm"] # Explicitly enabled
-disabled = []           # Explicitly disabled
-
-# Plugin-specific settings (byllm splits model identity from call params)
+# byLLM settings (model identity split from call params)
 [byllm.model]
 default_model = "gpt-4o"
 api_key = "${OPENAI_API_KEY}"
@@ -689,21 +719,17 @@ Simple patterns without a path separator (e.g. `"*.jac"`) are matched recursivel
 
 ### [entrypoints]
 
-Declare console scripts and plugin entry points. Maps directly to `entry_points.txt` in the wheel's `.dist-info`.
+Declare console scripts and other entry-point groups. Maps directly to `entry_points.txt` in the wheel's `.dist-info`.
 
 ```toml
 [entrypoints.scripts]
 # Installs a "mylib" CLI command pointing to mylib.cli:main
 mylib = "mylib.cli:main"
-
-[entrypoints.jac]
-# Declare a Jac plugin; discovered via entry_points(group="jac")
-mylib = "mylib.plugin:setup"
 ```
 
 The `[entrypoints.scripts]` group is written as `[console_scripts]` in `entry_points.txt`, which is the standard pip convention for installing CLI commands. After a user runs `pip install mylib`, the `mylib` command is available on their `PATH`.
 
-The `[entrypoints.jac]` group is the entry point group Jac's plugin system queries at startup (`entry_points(group="jac")`). Any package that declares an entry point here will be auto-discovered when the user has it installed.
+Any other `[entrypoints.<group>]` table is written through to the wheel metadata verbatim, for consumers that discover packages via `importlib.metadata.entry_points()`. (Jac itself no longer loads any entry-point group at startup -- the former `jac` plugin group is defunct.)
 
 ---
 
@@ -762,9 +788,6 @@ select = ["all"]
 ignore = []
 exclude = []
 
-[plugins]
-discovery = "auto"
-
 [byllm.model]
 default_model = "${LLM_MODEL:-gpt-4o-mini}"
 api_key = "${OPENAI_API_KEY}"
@@ -808,7 +831,6 @@ Each line is a filename or pattern that should be skipped during Jac compilation
 | `JAC_BASE_PATH` | Override base directory for data/storage |
 | `JAC_DATA_PATH` | Override the base directory for application data (graph storage, user db) |
 | `JACPATH` | Colon-separated extra search path for Jac module resolution (like `PYTHONPATH`) |
-| `JAC_DISABLED_PLUGINS` | Comma-separated plugins to disable: `*` for all, `package:*`, or `package:plugin` (same effect as `[plugins].disabled` in `jac.toml`) |
 | `JAC_SCHEMA_REPAIR` | Schema-drift handling on load: `repair` (default) or `strict` |
 | `JAC_STRICT_PERMISSIONS` | Enable strict permission checking for security-sensitive operations (`1`/`true`) |
 
@@ -868,7 +890,7 @@ Project ID vars (`FIREBASE_AUTH_PROJECT_ID`, `FIRESTORE_PROJECT_ID`, `JAC_STORAG
 
 ### Scale: Kubernetes
 
-Deployment settings (app name, namespace, node port, CPU/memory requests and limits, registry credentials) are configured in `jac.toml` under `[scale.kubernetes]` -- see the [Kubernetes reference](../plugins/jac-scale-kubernetes.md). At deploy time, jac-scale injects these variables into every pod:
+Deployment settings (app name, namespace, node port, CPU/memory requests and limits, health probes) are configured in `jac.toml` under `[scale.kubernetes]` -- see the [Kubernetes reference](../plugins/jac-scale-kubernetes.md). At deploy time, jac-scale injects these variables into every pod:
 
 | Variable | Description |
 |----------|-------------|
@@ -881,4 +903,3 @@ Deployment settings (app name, namespace, node port, CPU/memory requests and lim
 
 - [CLI Reference](../cli/index.md) - Command-line interface documentation
 - [Publishing Packages](../publishing.md) - Building and uploading wheels to PyPI
-- [Plugin Management](../cli/index.md#plugin-management) - Managing plugins

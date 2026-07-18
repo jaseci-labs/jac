@@ -23,7 +23,9 @@ obj ClassMember {
         overloads: list[Symbol];
 }
 
-def compute_mro_linearization(cls: types.ClassType) -> None;
+def compute_mro_linearization(
+    cls: types.ClassType, _visiting: (set | None) = None
+) -> None;
 
 def primitive_type_name_of(ty: (types.TypeBase | None)) -> (str | None);
 
@@ -49,7 +51,8 @@ obj ParamAssignmentTracker {
 obj CompletionItem {
     has label: str,
         kind: int,
-        detail: (str | None) = None;
+        detail: (str | None) = None,
+        documentation: (str | None) = None;
 }
 
 enum CompletionItemKind {
@@ -79,6 +82,10 @@ enum CompletionItemKind {
     Operator = 24,
     TypeParameter = 25,
 }
+
+def doc_of_sym(sym: Symbol) -> (str | None);
+
+def completion_item_from_sym(name: str, sym: Symbol) -> CompletionItem;
 
 def completion_kind_from_sym(sym: Symbol) -> int;
 

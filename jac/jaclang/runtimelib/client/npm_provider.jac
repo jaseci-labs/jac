@@ -21,7 +21,7 @@ glob CORE_RUNTIME_DEPS: dict[str, str] = {
      },
      CORE_DEV_DEPS: dict[str, str] = {
          "vite": "^6.4.1",
-         "@vitejs/plugin-react": "^4.2.1",
+         "@vitejs/plugin-react": "4.7.0",
          "typescript": "^5.3.3",
          "@types/react": "^18.2.0",
          "@types/react-dom": "^18.2.0"
@@ -194,6 +194,11 @@ obj NpmProvider(EcosystemProvider) {
         config: JacConfig, deps: list[ResolvedDependency], ctx: InstallContext
     ) -> bool {
         if not deps {
+            return True;
+        }
+
+        import os;
+        if os.environ.get("JAC_CLIENT_SKIP_NPM_INSTALL") {
             return True;
         }
         if config.project_root is None {

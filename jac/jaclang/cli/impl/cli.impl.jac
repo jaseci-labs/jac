@@ -4,6 +4,7 @@ import from importlib.metadata { version as pkg_version }
 import from pathlib { Path }
 
 glob TOMBSTONED_VERBS: dict[str, str] = {
+         "add": "jac install <pkg>",
          "format": "jac fmt",
          "lint": "jac check --lint",
          "deps": "jac install --plan",
@@ -82,8 +83,13 @@ impl start_cli -> None {
     }
 
     if args.version {
-        import from jaclang.cli.banners { print_version_banner }
-        print_version_banner(jac_version());
+        import platform;
+        sys_info = f"{platform.system()} {platform.machine()}";
+        ver = jac_version();
+        reset = "\033[0m";
+        bold = "\033[1m" if console.use_color else "";
+        r = reset if console.use_color else "";
+        console.print(f"{bold}jac{r} {ver}  ({sys_info})");
         return;
     }
 
@@ -112,7 +118,7 @@ impl start_cli -> None {
     if not command_spec {
         console.error(f"Unknown command: {args.command}");
         parser.print_help();
-        return;
+        sys.exit(2);
     }
 
     args_dict = vars(args);
@@ -248,13 +254,8 @@ def _load_project_config {
 
 
 def _exit_on_malformed_jac_toml(exc: 'Any') {
-    import sys;
-    sys.stderr.write(
-        f"\n\033[31mERROR: jac.toml is malformed: {exc.original}\033[0m\n"
-        f"  File: {exc.file_path}\n"
-        "  Fix the syntax error in jac.toml and re-run.\n"
-        "  Common causes: missing closing quote, unbalanced brackets, "
-        "trailing comma, missing `=`.\n\n"
+    console.error(
+        f"jac.toml is malformed: {exc.original}", hint=f"File: {exc.file_path}"
     );
     sys.exit(2);
 }
@@ -290,10 +291,7 @@ def _apply_profile(args_dict: dict) -> None {
         if not profile {
             jac_env = os.environ.get('JAC_ENV');
             if jac_env {
-                console.print(
-                    "Warning: JAC_ENV is deprecated, use JAC_PROFILE instead.",
-                    style="warning"
-                );
+                console.warning("JAC_ENV is deprecated, use JAC_PROFILE instead.");
                 profile = jac_env;
             }
         }
@@ -305,7 +303,7 @@ def _apply_profile(args_dict: dict) -> None {
 
         _apply_config_defaults(config, args_dict);
     } except (KeyError, ValueError, OSError) as e {
-        console.print(f"Warning: Failed to apply profile: {e}", style="warning");
+        console.warning(f"Failed to apply profile: {e}");
     }
 }
 

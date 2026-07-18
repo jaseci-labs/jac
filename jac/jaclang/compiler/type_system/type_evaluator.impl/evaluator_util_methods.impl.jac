@@ -498,6 +498,130 @@ impl TypeEvaluator._get_expected_kv_types(
     return None;
 }
 
+impl TypeEvaluator._infer_list_elem_from_mutations(
+    expr: uni.ListVal
+) -> TypeBase | None {
+    asg = expr.parent;
+    if (
+        not isinstance(asg, uni.Assignment)
+        or asg.value is not expr
+        or asg.aug_op is not None
+    ) {
+        return None;
+    }
+    refs: list[uni.NameAtom] = [];
+    for tgt in asg.target {
+        if isinstance(tgt, uni.Name) and tgt.sym is not None {
+            refs.extend(tgt.sym.uses);
+            refs.extend(tgt.sym.defn);
+        }
+    }
+    if not refs {
+        return None;
+    }
+    elem_types: list[types.TypeBase] = [];
+    seen_refs: set[int] = set();
+    saw_none = False;
+    for ref in refs {
+        if id(ref) in seen_refs {
+            continue;
+        }
+        seen_refs.add(id(ref));
+        contrib = self._list_mutation_elem_contrib(ref);
+        if contrib is None {
+            continue;
+        }
+        widened = self._widen_literal_for_declaration(contrib);
+        if (
+            isinstance(widened, types.ClassType)
+            and widened.is_builtin(["NoneType", "None"])
+        ) {
+            saw_none = True;
+            continue;
+        }
+        if not (
+            isinstance(widened, types.ClassType)
+            and widened.is_builtin(["int", "float", "str", "bool"])
+        ) {
+            return None;
+        }
+        if not self._type_in_list(widened, elem_types) {
+            elem_types.append(widened);
+        }
+    }
+    if not elem_types {
+        return None;
+    }
+    if len(elem_types) == 1 and not saw_none {
+        return elem_types[0];
+    }
+    if self.prefetch and self.prefetch.any_class {
+        return self._convert_to_instance(self.prefetch.any_class);
+    }
+    return None;
+}
+
+impl TypeEvaluator._list_mutation_elem_contrib(ref: uni.NameAtom) -> TypeBase | None {
+    tr = ref.parent;
+    if isinstance(tr, uni.AtomTrailer) and tr.target is ref {
+        if (
+            tr.is_attr
+            and isinstance(tr.right, uni.Name)
+            and isinstance(tr.parent, uni.FuncCall)
+            and tr.parent.target is tr
+        ) {
+            args = [
+                p
+                for p in (tr.parent.params or [])
+                if not isinstance(p, uni.KWPair)
+            ];
+            if tr.right.value in ("append", "insert") {
+                arg_idx = 0 if tr.right.value == "append" else 1;
+                if len(args) > arg_idx {
+                    return self.get_type_of_expression(args[arg_idx]);
+                }
+                return None;
+            }
+            if tr.right.value == "extend" and args {
+                if not (self.prefetch and self.prefetch.list_class) {
+                    return None;
+                }
+                return self._get_expected_element_type(
+                    self.get_type_of_expression(args[0]), self.prefetch.list_class
+                );
+            }
+            return None;
+        }
+        if (
+            not tr.is_attr
+            and isinstance(tr.right, uni.IndexSlice)
+            and not tr.right.is_range
+            and isinstance(tr.parent, uni.Assignment)
+            and tr.parent.aug_op is None
+            and tr.parent.value is not None
+            and any(t is tr for t in tr.parent.target)
+        ) {
+            return self.get_type_of_expression(tr.parent.value);
+        }
+        return None;
+    }
+    if (
+        isinstance(tr, uni.Assignment)
+        and tr.aug_op is not None
+        and tr.aug_op.name == Tok.ADD_EQ
+        and tr.value is not None
+        and any(t is ref for t in tr.target)
+    ) {
+        if not (self.prefetch and self.prefetch.list_class) {
+            return None;
+        }
+        return self._get_expected_element_type(
+            self.get_type_of_expression(tr.value), self.prefetch.list_class
+        );
+    }
+    return None;
+}
+
 impl TypeEvaluator._get_enclosing_class(nd: uni.UniNode) -> uni.Archetype | None {
     impl_ := nd.find_parent_of_type(uni.ImplDef);
     if impl_ and isinstance(impl_.decl_link, uni.Archetype) {
@@ -877,6 +1001,24 @@ impl TypeEvaluator._is_ability_classmethod(node_: uni.Ability) -> bool {
     return False;
 }
 
+impl TypeEvaluator._is_ability_staticmethod(node_: uni.Ability) -> bool {
+    if node_.is_static {
+        return True;
+    }
+    if node_.decorators {
+        for decorator in node_.decorators {
+            decor_type = self.get_type_of_expression(decorator);
+            if (
+                isinstance(decor_type, types.ClassType)
+                and decor_type.is_builtin("staticmethod")
+            ) {
+                return True;
+            }
+        }
+    }
+    return False;
+}
+
 impl TypeEvaluator._classify_property_symbol(
     symbol: uni.Symbol
 ) -> type_utils.PropertyWriteKind {
@@ -1219,6 +1361,12 @@ impl TypeEvaluator._is_fstring_all_literal(fstring: uni.FString) -> bool {
 impl TypeEvaluator._create_special_builtin_type(
     name: str, base_class: types.ClassType
 ) -> types.ClassType {
+    if base_class.shared._derived_special_types is not None {
+        cached = base_class.shared._derived_special_types.get(name);
+        if cached is not None {
+            return cached;
+        }
+    }
     shared = types.ClassType.ClassDetailsShared(
         class_name=name,
         symbol_table=base_class.shared.symbol_table,
@@ -1229,6 +1377,10 @@ impl TypeEvaluator._create_special_builtin_type(
     special_type = types.ClassType(_shared=shared, flags=base_class.flags);
 
     special_type.shared.mro = [special_type] + base_class.shared.mro;
+    if base_class.shared._derived_special_types is None {
+        base_class.shared._derived_special_types = {};
+    }
+    base_class.shared._derived_special_types[name] = special_type;
     return special_type;
 }
 
@@ -1513,6 +1665,18 @@ impl TypeEvaluator._infer_lambda_block_return_type(
     return_types: list[TypeBase] = [];
     always_returns = self._collect_return_types(body, return_types);
 
+    non_semi = [
+        s
+        for s in body
+        if not isinstance(s, uni.Semi)
+    ];
+    if (len(non_semi) == 1 and isinstance(non_semi[0], uni.ExprStmt)) {
+        return_types.append(
+            self._convert_to_instance(self.get_type_of_expression(non_semi[0].expr))
+        );
+        always_returns = True;
+    }
+
     if not return_types {
         return none_type;
     }
@@ -1634,16 +1798,32 @@ impl TypeEvaluator._collect_return_types(
             continue;
         }
 
-        if isinstance(stmt, (uni.IterForStmt, uni.InForStmt, uni.WhileStmt)) {
+        if isinstance(stmt, uni.OpenStmt) {
+            if self._collect_return_types(list(stmt.body), out) {
+                return True;
+            }
+            continue;
+        }
+
+        if isinstance(
+            stmt, (uni.IterForStmt, uni.InForStmt, uni.WhileStmt, uni.ForeverStmt)
+        ) {
             self._collect_return_types(list(stmt.body), out);
-            if (
+            _is_infinite_loop = isinstance(stmt, uni.ForeverStmt)
+            or (
                 isinstance(stmt, uni.WhileStmt)
                 and isinstance(stmt.condition, uni.Bool)
                 and stmt.condition.lit_value
-            ) {
+            );
+            if _is_infinite_loop {
                 _has_break = False;
                 import from jaclang.jac0core.constant { Tokens as _Tok }
-                _loop_types = (uni.WhileStmt, uni.IterForStmt, uni.InForStmt);
+                _loop_types = (
+                    uni.WhileStmt,
+                    uni.ForeverStmt,
+                    uni.IterForStmt,
+                    uni.InForStmt
+                );
                 for _ctrl in stmt.get_all_sub_nodes(uni.CtrlStmt) {
                     if _ctrl.ctrl.name != _Tok.KW_BREAK {
                         continue;

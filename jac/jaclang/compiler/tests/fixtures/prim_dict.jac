@@ -264,7 +264,7 @@ na {
         upd_c: int = de["c"];
         upd_d: int = de["d"];
         de3: dict[str, int] = {"x": 10, "y": 20};
-        v: list[int] = de3.values();
+        v: list[int] = list(de3.values());
 
         # dict_setdefault
         ds1: dict[str, int] = {"a": 1, "b": 2};

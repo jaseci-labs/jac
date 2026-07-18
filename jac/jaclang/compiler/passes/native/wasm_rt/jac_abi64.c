@@ -28,6 +28,8 @@ void *__jac64_malloc(i64 n) { return malloc((size_t)n); }
 
 void *__jac64_calloc(i64 a, i64 b) { return calloc((size_t)a, (size_t)b); }
 
+void *__jac64_realloc(void *p, i64 n) { return realloc(p, (size_t)n); }
+
 i64 __jac64_malloc_usable_size(void *p) { return (i64)malloc_usable_size(p); }
 
 void *__jac64_memcpy(void *d, const void *s, i64 n) {

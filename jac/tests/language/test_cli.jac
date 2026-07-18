@@ -1488,6 +1488,9 @@ test "jac install <pkg> routes package names to the project venv installer" {
             '[project]\nname = "host"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
         );
         os.chdir(_tmpdir);
+        # `install` now records to jac.toml, so discovery must resolve to this
+        # tmp project (not a config cached from an earlier test) before save.
+        _reset_config();
         captured: list = [];
         def fake_install_specs(
             self: object, config: object, specs: object, ctx: object
@@ -2167,8 +2170,8 @@ test "jac check nowarn flag suppresses warnings" {
     # Should still exit with code 0
     assert result == 0 , "check should exit with code 0 when warnings are suppressed";
 
-    # Should show PASSED status
-    assert "PASSED" in combined , "should show PASSED when warnings are suppressed";
+    # Should show ok status
+    assert "ok" in combined , "should show ok when warnings are suppressed";
 
     # Should NOT show detailed warning messages
     assert "defined but never used" not in combined , "should not display warning details when nowarn=True";
@@ -2315,9 +2318,11 @@ test "jir_registry is up to date" {
 test "jac check reports errors for files inside jaclang source tree" {
     # Regression: _resolve_program routed jaclang-internal files to
     # internal_program, so errors were invisible to the caller's JacProgram.
-    # force_target_program=True (set by jac check) fixes this.
+    # force_target_program=True (set by jac check) fixes this. The fixture
+    # is deliberately ill-typed so this test never depends on an incidental
+    # compiler bug in a shared fixture.
     internal_fixture = os.path.join(
-        JAC_ROOT, "jaclang", "compiler", "tests", "fixtures", "prim_float.jac"
+        JAC_ROOT, "jaclang", "compiler", "tests", "fixtures", "always_type_error.jac"
     );
     captured_stdout = io.StringIO();
     captured_stderr = io.StringIO();
@@ -2337,8 +2342,8 @@ test "jac check reports errors for files inside jaclang source tree" {
 
     combined = stdout + stderr;
 
-    # prim_float.jac has type errors (unary + returns Unknown) — check must
-    # report them even though the file lives inside the jaclang package.
+    # always_type_error.jac is deliberately ill-typed — check must report
+    # its errors even though the file lives inside the jaclang package.
     assert result == 1 , (
         "jac check should report errors for jaclang-internal files, "
         f"but returned exit code {result}. Output:\n{combined}"

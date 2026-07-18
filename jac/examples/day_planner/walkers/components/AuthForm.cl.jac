@@ -82,7 +82,7 @@ def:pub AuthForm(onAuth: Callable[[], None]) -> JsxElement {
                         <input
                             type="text"
                             value={username}
-                            onChange={lambda e: ChangeEvent { username = e.target.value; }}
+                            onChange={lambda (e: ChangeEvent) { username = e.target.value; }}
                             placeholder="Enter username"
                             class="auth-input"
                         />
@@ -92,7 +92,7 @@ def:pub AuthForm(onAuth: Callable[[], None]) -> JsxElement {
                         <input
                             type="password"
                             value={password}
-                            onChange={lambda e: ChangeEvent { password = e.target.value; }}
+                            onChange={lambda (e: ChangeEvent) { password = e.target.value; }}
                             placeholder="Enter password"
                             class="auth-input"
                         />
