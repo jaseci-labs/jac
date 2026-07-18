@@ -17,6 +17,12 @@ jac nacompile app.na.jac --gc none     # zero retain/release call sites emitted
 - Under `cycles` the collector machinery is emitted but idle until the binary runs with `JAC_GC_CYCLES` set in the env (or code calls `__rc_collect_cycles()` explicitly).
 - `--gc none` **without** ownership coverage means heap memory is never reclaimed (the compile-time analogue of running any managed binary with `JAC_NO_GC=1`). With nogc enforcement (below), statically inserted frees replace RC entirely.
 
+## Deep-release contract
+
+Releasing a managed value is **deep and synchronous**. When an object's refcount reaches zero its destructor releases every managed field (and, for containers, every managed element), and any field whose count in turn reaches zero is destructed immediately, so the entire acyclic subgraph rooted at a dropped value is reclaimed, in full, before the release call returns. There is no deferred or lazy teardown: acyclic finalization order stays deterministic (this is the property jacpython depends on for CPython-faithful `__del__` / file-close / weakref timing), and only cyclic garbage is ever handled asynchronously by the `--gc cycles` collector.
+
+Deep release is **O(1)-stack**. The transitive release is driven by an explicit heap worklist inside `__rc_release_simple`, not by C-stack recursion: the first release on an idle call becomes the drain driver, and any release re-entered from a destructor merely appends its pointer to the worklist and returns. A chain, deep AST, or other long acyclic graph therefore tears down in constant stack space regardless of depth, a million-node linked list is reclaimed under a sub-megabyte stack. (Reclaiming a **reference cycle** still requires `--gc cycles`; RC alone cannot, because each cycle member pins its neighbour's count.)
+
 ## Ownership surface (opt-in - unannotated code is untouched)
 
 The checker only tracks bindings tagged `own`/`imm`/`&`/`&mut` plus allocations under an `in <handle> { }` region open. Annotations are compile-time-only on every backend (`&x` compiles to exactly `x`).
