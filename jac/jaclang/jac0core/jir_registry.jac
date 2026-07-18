@@ -156,7 +156,8 @@ glob NODE_SPECS: tuple = (
                  FieldDesc(name="value", kind=6),
                  FieldDesc(name="mutable", kind=2),
                  FieldDesc(name="aug_op", kind=6),
-                 FieldDesc(name="na_move_lowerable", kind=2)
+                 FieldDesc(name="na_move_lowerable", kind=2),
+                 FieldDesc(name="na_overwrite_consumed", kind=2)
              )
          ),
          NodeSpec(

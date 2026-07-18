@@ -935,7 +935,8 @@ obj Assignment(AstTypedVarNode, EnumBlockStmt, CodeBlockStmt) {
         value: Expr | YieldExpr | None,
         mutable: bool = True,
         aug_op: (Token | None) = None,
-        na_move_lowerable: bool = False;
+        na_move_lowerable: bool = False,
+        na_overwrite_consumed: bool = False;
 
     def postinit -> None;
 }

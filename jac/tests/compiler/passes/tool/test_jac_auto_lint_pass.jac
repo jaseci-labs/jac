@@ -153,10 +153,13 @@ test "auto lint class entry not extracted" {
     assert "glob another_var" not in formatted;
     assert "glob list_var" not in formatted;
 
-    # Module-level with entry SHOULD be fully extracted (all assignments)
-    # Note: consecutive globs with same modifiers are now combined
-    # Format is now multiline with all assignments indented
-    assert "glob module_var = 100,\n     cls_obj = MyClass();" in formatted;
+    # Module-level literal assignments SHOULD be extracted; call-bearing
+    # initializers must stay in with entry (glob initializers run before all
+    # entry blocks on the native backend, so hoisting a call reorders its
+    # side effects relative to the surrounding entry statements)
+    assert "glob module_var = 100;" in formatted;
+    assert "glob cls_obj" not in formatted;
+    assert "cls_obj = MyClass();" in formatted;
 
     # Module-level with entry containing TYPE_CHECKING blocks should extract
     # assignments to glob while keeping if blocks in with entry (since if

@@ -1,8 +1,3 @@
-"""Convert a Python type to a JSON schema representation.
-
-Handles primitive types, Union types, lists, tuples, sets, dicts,
-dataclasses, enums, and functions.
-"""
 impl _type_to_schema(
     ty: type, title: str = "", desc: str = "", info: Info | None = None
 ) -> dict {
@@ -20,16 +15,16 @@ impl _type_to_schema(
         info_type = "";
     }
     semstr: str = ty?._jac_semstr or "";
-    semstr = semstr or ty?.__doc__ or "";  # type: ignore
+    semstr = semstr or ty?.__doc__ or "";
     semstr_inner: dict[str, str] = ty?._jac_semstr_inner or {};
-    # Raise on unsupported types
+
     if ty in (list, dict, set, tuple) {
         raise ConfigurationError(
             f"Untyped {ty.__name__} is not supported for schema generation. "
             f"Use {ty.__name__}[T, ...] instead."
         );
     }
-    # Handle primitive types
+
     if ty is type(None) {
         return {"type": "null"} | context;
     }
@@ -45,7 +40,7 @@ impl _type_to_schema(
     if ty is str {
         return {"type": "string"} | context;
     }
-    # Handle Union
+
     if get_origin(ty) in (Union, UnionType) {
         args = get_args(ty);
         return {
@@ -69,7 +64,7 @@ impl _type_to_schema(
 
         } | context;
     }
-    # Handle annotated list
+
     if get_origin(ty) is list {
         item_type: type = get_args(ty)[0];
         return {
@@ -80,9 +75,9 @@ impl _type_to_schema(
 
         } | context;
     }
-    # Handle annotated tuple/set
+
     if get_origin(ty) in (tuple, set) {
-        origin = get_origin(ty).__name__;  # type: ignore
+        origin = get_origin(ty).__name__;
         args = get_args(ty);
         if len(args) == 2 and args[1] is Ellipsis {
             item_type = args[0];
@@ -98,11 +93,11 @@ impl _type_to_schema(
             f"Unsupported {origin} type for schema generation: {ty}. Only {origin} of the form {origin}[T, ...] are supported."
         );
     }
-    # Handle annotated dictionaries
+
     if get_origin(ty) is dict {
         return _convert_dict_to_schema(ty) | context;
     }
-    # Handle dataclass
+
     if is_dataclass(ty) {
         fields: dict[str, type] = {
             name: type
@@ -115,9 +110,9 @@ impl _type_to_schema(
         } else {
             info_fields = info.fields if info else [];
         }
-        # Build a map of field info by name for quick lookup
+
         info_fields_map = {field.name: field for field in info_fields};
-        # Build properties for ALL fields (including inherited), using MTIR info when available
+
         properties = {
             field_name: _type_to_schema(
                 field_type,
@@ -138,9 +133,8 @@ impl _type_to_schema(
 
         };
     }
-    # Handle enums
+
     if isinstance(ty, type) and issubclass(ty, Enum) {
-        # Try to use EnumInfo from compiler pass if available
         enum_info_to_use = None;
         if isinstance(info, EnumInfo) {
             enum_info_to_use = info;
@@ -152,11 +146,6 @@ impl _type_to_schema(
             enum_names = [];
             enum_values = [];
             for member in enum_info_to_use.members {
-                # Skip MTIR members that aren't present at runtime — they
-                # come from stale bytecode or cross-module name collisions
-                # and would otherwise unbalance enum_names vs enum_values
-                # (causing an index shift like 5=FITNESS for an enum that
-                # actually maps 5=OTHER).
                 runtime_member = None;
                 try {
                     runtime_member = ty.__members__.get(member.name);
@@ -169,7 +158,6 @@ impl _type_to_schema(
                 enum_names.append(member.name);
                 enum_values.append(runtime_member.value);
 
-                # Determine type from type_info (can be "int", "str", "float", "bool", or None)
                 if member.type_info {
                     member_type_str = member.type_info;
                     if enum_type is None {
@@ -181,16 +169,16 @@ impl _type_to_schema(
                     }
                 }
             }
-            # Default to int if no type was determined
+
             enum_type = enum_type or "int";
-            # Validate supported types
+
             if enum_type not in ("int", "str") {
                 raise ConfigurationError(
                     f"Enum {ty.__name__} has unsupported type {enum_type}. "
                     "Only int and str enums are supported for schema generation."
                 );
             }
-            # Build description
+
             names_str = ", ".join(enum_names);
             if enum_values {
                 enum_desc = f"\nThe value *should* be one in this list: {enum_values} where the names are [{names_str}].";
@@ -218,16 +206,13 @@ impl _type_to_schema(
                 "type": "integer" if enum_type == "int" else "string",
 
             };
-            # Emit a JSON-Schema `enum` constraint so providers / GBNF grammars
-            # bind the value to the actual member set. Cloud frontier models
-            # infer the constraint from the prose description, but smaller
-            # local models (Qwen 3.5 4B, etc.) only honour `enum`.
+
             if enum_values {
                 schema_out["enum"] = enum_values;
             }
             return schema_out;
         }
-        # Fallback to runtime introspection if EnumInfo not available
+
         enum_type = None;
         enum_values = [];
         for member in ty.__members__.values() {
@@ -259,15 +244,11 @@ impl _type_to_schema(
         }
         return schema_fb;
     }
-    # Handle functions
+
     if isinstance(ty, (FunctionType, MethodType)) {
         hints = get_type_hints(ty);
         hints.pop("return", None);
-        # Use MTIR info if available, otherwise fall back to introspection.
-        # The function's own type hints are authoritative for *which* params
-        # exist, so iterate those and decorate with the MTIR semstring where
-        # the names line up - a mismatch between hints and info (e.g. a stale
-        # or mis-assigned info) must not crash schema generation.
+
         if info and info?.params and info.params {
             sem_by_name = {p.name: p for p in info.params};
             params = {
@@ -279,7 +260,6 @@ impl _type_to_schema(
                 ) for (param_name, param_type) in hints.items()
             };
         } else {
-            # Fall back to introspecting the function's type hints
             params = {
                 param_name: _type_to_schema(param_type, param_name)
                 for (param_name, param_type) in hints.items()
@@ -300,7 +280,6 @@ impl _type_to_schema(
     );
 }
 
-"""Get a string name for a type, handling Union types specially."""
 impl _name_of_type(ty: type, info: Info = None) -> str {
     if get_origin(ty) in (Union, UnionType) {
         names = [_name_of_type(arg) for arg in get_args(ty)];
@@ -312,7 +291,6 @@ impl _name_of_type(ty: type, info: Info = None) -> str {
     return "type";
 }
 
-"""Convert a dictionary type to a schema with key-value array structure."""
 impl _convert_dict_to_schema(ty_dict: type) -> dict {
     if get_origin(ty_dict) is not dict {
         raise ConfigurationError(f"Expected a dictionary type, got {ty_dict}.");
@@ -344,7 +322,6 @@ impl _convert_dict_to_schema(ty_dict: type) -> dict {
     };
 }
 
-"""Decode a JSON dictionary from wrapped key-value array format."""
 impl _decode_dict(json_obj: dict) -> dict {
     if not isinstance(json_obj, dict) {
         return json_obj;
@@ -356,7 +333,6 @@ impl _decode_dict(json_obj: dict) -> dict {
     return {key: _decode_dict(value) for (key, value) in json_obj.items()};
 }
 
-"""Wrap a non-object schema in an object wrapper for API compatibility."""
 impl _wrap_to_object(schema: dict[str, object]) -> dict[str, object] {
     if "type" in schema and schema["type"] == "object" {
         return schema;
@@ -371,7 +347,6 @@ impl _wrap_to_object(schema: dict[str, object]) -> dict[str, object] {
     };
 }
 
-"""Unwrap a JSON object from the object wrapper if present."""
 impl _unwrap_from_object(json_obj: dict) -> dict {
     if _SCHEMA_OBJECT_WRAPPER in json_obj {
         return json_obj[_SCHEMA_OBJECT_WRAPPER];
@@ -379,7 +354,6 @@ impl _unwrap_from_object(json_obj: dict) -> dict {
     return json_obj;
 }
 
-"""Return the JSON schema for a response type, formatted for LLM APIs."""
 impl type_to_schema(resp_type: type, info: Info) -> dict[str, object] {
     type_name = _name_of_type(resp_type, info=info);
     schema = _type_to_schema(resp_type, type_name, info=info);
@@ -391,16 +365,15 @@ impl type_to_schema(resp_type: type, info: Info) -> dict[str, object] {
     };
 }
 
-"""Return the JSON schema for a tool function, formatted for LLM APIs."""
 impl tool_to_schema(
     func: Callable, description: str, params_desc: dict[str, str], info: Info
 ) -> dict[str, object] {
-    schema = _type_to_schema(func, info=info);  # type: ignore
-    properties: dict[str, object] = schema.get("properties", {});  # type: ignore
-    required: list[str] = schema.get("required", []);  # type: ignore
+    schema = _type_to_schema(func, info=info);
+    properties: dict[str, object] = schema.get("properties", {});
+    required: list[str] = schema.get("required", []);
     for (param_name, param_info) in properties.items() {
-        param_info["description"] = params_desc.get(param_name, "");  # type: ignore
-        param_info.pop("title", None);  # type: ignore  # Gemini rejects 'title' in property schemas
+        param_info["description"] = params_desc.get(param_name, "");
+        param_info.pop("title", None);
     }
     return {
         "type": "function",
@@ -420,16 +393,12 @@ impl tool_to_schema(
     };
 }
 
-"""Convert a JSON dictionary to an instance of the given type."""
 impl json_to_instance(json_obj: dict, ty: type) -> object {
     json_obj = _unwrap_from_object(json_obj);
     json_obj = _decode_dict(json_obj);
     return TypeAdapter(ty).validate_python(json_obj);
 }
 
-# ---------------------------------------------------------------------------
-# Schema-side prompt augmentation (see byllm/schema.jac for rationale).
-# ---------------------------------------------------------------------------
 impl _format_enum_hint(values: list, names: list) -> str {
     if not values {
         return "";
@@ -455,9 +424,6 @@ impl _hints_from_schema(name: str, prop: dict) -> list[str] {
     ty = prop.get("type", "");
     label = name or "value";
     if isinstance(enum_vals, list) and enum_vals {
-        # If the description happens to also list names, weave them in.
-        # byllm's enum schema description encodes member names as a Python
-        # list (e.g. "the names are [WORK, PERSONAL, ...]") -- pull them out.
         names: list[str] = [];
         if isinstance(desc, str) and "names are [" in desc {
             chunk = desc.split("names are [", 1)[1];
@@ -478,7 +444,7 @@ impl _hints_from_schema(name: str, prop: dict) -> list[str] {
         suffix = ' -- ' + desc if isinstance(desc, str) and desc else '';
         out.append(f"- {label} ({ty}){suffix}");
     }
-    # Recurse into nested object properties.
+
     if prop.get("type") == "object" {
         nested = prop.get("properties");
         if isinstance(nested, dict) {
@@ -496,8 +462,7 @@ impl schema_to_hint_text(rf: dict | None) -> str {
     if not isinstance(rf, dict) {
         return "";
     }
-    # Both byllm/cloud (`json_schema`) and llama.cpp/Ollama (`json_object`)
-    # response_format shapes resolve to the same inner schema dict here.
+
     schema: dict | None = None;
     rf_type = rf.get("type");
     if rf_type == "json_schema" {
@@ -560,17 +525,15 @@ impl attach_schema_hint(messages: list, rf: dict | None) -> list {
     if isinstance(body, str) {
         body_str: str = body;
         if hint in body_str {
-            return messages;  # already injected -- idempotent
+            return messages;
         }
         target["content"] = body_str.rstrip() + "\n\n" + hint;
     } elif isinstance(body, list) {
-        # OpenAI multimodal content: append the hint as a final text part
-        # so image / audio parts continue to render.
         body_list: list = body;
         for part in body_list {
             if isinstance(part, dict) and part.get("type") == "text" {
                 if hint in str(part.get("text", "")) {
-                    return messages;  # already injected
+                    return messages;
                 }
             }
         }

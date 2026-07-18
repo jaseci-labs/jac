@@ -117,7 +117,9 @@ impl app.handleLike(tweetId: str) -> None {
         myProfile = profileResult.reports[0] if profileResult.reports else myProfile;
     }
     if selectedChannel {
-        detailResult = root spawn get_channel_detail(channel_id=selectedChannel.id);
+        detailResult = root spawn get_channel_detail(
+            channel_id=jid(selectedChannel.channel)
+        );
         detail = detailResult.reports[0] if detailResult.reports else None;
         if detail {
             selectedChannel = detail;
@@ -131,7 +133,9 @@ impl app.handleComment(tweetId: str, content: str) -> None {
     feedResult = root spawn load_feed(search_query=searchQuery);
     tweets = feedResult.reports[0] if feedResult.reports else [];
     if selectedChannel {
-        detailResult = root spawn get_channel_detail(channel_id=selectedChannel.id);
+        detailResult = root spawn get_channel_detail(
+            channel_id=jid(selectedChannel.channel)
+        );
         detail = detailResult.reports[0] if detailResult.reports else None;
         if detail {
             selectedChannel = detail;
@@ -170,7 +174,7 @@ impl app.handleUnfollow(profileId: str) -> None {
 }
 
 impl app.handleSaveBio -> None {
-    uname = myProfile.username if myProfile else "";
+    uname = myProfile.profile.username if myProfile else "";
     root spawn setup_profile(username=uname, bio=bioText);
     profileResult = root spawn get_profile();
     myProfile = profileResult.reports[0] if profileResult.reports else myProfile;
@@ -243,7 +247,7 @@ impl app.handleJoinChannel(channelId: str) -> None {
     root spawn join_channel(channel_id=channelId);
     result = root spawn get_channels();
     channels = result.reports[0] if result.reports else [];
-    if selectedChannel and selectedChannel.id == channelId {
+    if selectedChannel and jid(selectedChannel.channel) == channelId {
         detailResult = root spawn get_channel_detail(channel_id=channelId);
         detail = detailResult.reports[0] if detailResult.reports else None;
         if detail {
@@ -257,7 +261,7 @@ impl app.handleLeaveChannel(channelId: str) -> None {
     root spawn leave_channel(channel_id=channelId);
     result = root spawn get_channels();
     channels = result.reports[0] if result.reports else [];
-    if selectedChannel and selectedChannel.id == channelId {
+    if selectedChannel and jid(selectedChannel.channel) == channelId {
         detailResult = root spawn get_channel_detail(channel_id=channelId);
         detail = detailResult.reports[0] if detailResult.reports else None;
         if detail {
@@ -280,8 +284,12 @@ impl app.handleChannelPost(text: str) -> None {
     if not text.strip() or not selectedChannel {
         return;
     }
-    root spawn create_channel_tweet(channel_id=selectedChannel.id, content=text);
-    detailResult = root spawn get_channel_detail(channel_id=selectedChannel.id);
+    root spawn create_channel_tweet(
+        channel_id=jid(selectedChannel.channel), content=text
+    );
+    detailResult = root spawn get_channel_detail(
+        channel_id=jid(selectedChannel.channel)
+    );
     detail = detailResult.reports[0] if detailResult.reports else None;
     if detail {
         selectedChannel = detail;

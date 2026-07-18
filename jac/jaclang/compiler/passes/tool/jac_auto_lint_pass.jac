@@ -52,6 +52,7 @@ obj JacAutoLintPass(UniPass) {
     def enter_module(nd: uni.Module) -> None;
     def can_convert_to_glob(assignment: uni.Assignment) -> bool;
     def names_unsafe_to_globalize(module: uni.Module) -> set[str];
+    def entry_written_names(module: uni.Module) -> set[str];
     def is_module_level_construct(stmt: uni.UniNode) -> bool;
     def create_glob_from_assignment(assignment: uni.Assignment) -> uni.GlobalVars;
     def create_entry_block(stmts: list) -> uni.ModuleCode;

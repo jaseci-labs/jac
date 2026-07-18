@@ -1,5 +1,3 @@
-"""Guarded re-exports for pymongo and bson (install group: [data])."""
-
 with entry {
     try {
         import from pymongo { AsyncMongoClient, MongoClient, UpdateOne }

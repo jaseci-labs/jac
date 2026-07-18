@@ -1,9 +1,3 @@
-"""Type definitions for LLM interactions.
-
-This module defines the types used in the LLM interactions, including messages,
-tools, and tool calls. It provides a structured way to represent messages,
-tool calls, and tools that can be used in LLM requests and responses.
-"""
 import base64;
 import logging;
 import mimetypes;
@@ -24,11 +18,8 @@ import from jaclang.byllm.exceptions { ByLLMError, FinishToolError }
 import from jaclang.jac0core.mtp { Info }
 import from jaclang.byllm.mcp { McpTool }
 
-# The message can be a jaclang defined message or what ever the llm
-# returned object that was feed back to the llm as it was given (dict).
 glob MessageType: TypeAlias = 'Message | LiteLLMMessage';
 
-"""Enum for message roles in LLM interactions."""
 enum MessageRole(StrEnum) {
     SYSTEM = "system",
     USER = "user",
@@ -36,7 +27,6 @@ enum MessageRole(StrEnum) {
     TOOL = "tool"
 }
 
-"""Message class for LLM interactions."""
 obj Message {
     has role: MessageRole,
         content: str | list[Media];
@@ -45,7 +35,6 @@ obj Message {
     static def from_dict(d: dict) -> Message | LiteLLMMessage | dict;
 }
 
-"""Result of a tool call in LLM interactions."""
 obj ToolCallResultMsg(Message) {
     has tool_call_id: str,
         name: str,
@@ -55,11 +44,6 @@ obj ToolCallResultMsg(Message) {
     def to_dict -> dict[str, object];
 }
 
-"""Tool class for LLM interactions.
-
-Wraps a callable function to be used as a tool in LLM interactions.
-Provides JSON schema generation, argument parsing, and invocation capabilities.
-"""
 obj Tool {
     has func: Callable,
         description: str = "",
@@ -78,11 +62,6 @@ obj Tool {
     def parse_arguments(args_json: dict) -> dict;
 }
 
-"""Tool call class for LLM interactions.
-
-Represents an invocation of a tool with specific arguments.
-Created from LLM responses and can be executed to get results.
-"""
 obj ToolCall {
     has call_id: str,
         tool: Tool | McpTool,
@@ -94,10 +73,6 @@ obj ToolCall {
     def get_output -> object;
 }
 
-"""Mock tool call for testing purposes.
-
-Used with MockLLM to simulate tool calls in tests without actual LLM invocation.
-"""
 obj MockToolCall {
     has tool: Callable,
         args: dict;
@@ -105,52 +80,31 @@ obj MockToolCall {
     def to_tool_call -> ToolCall;
 }
 
-"""Raw text response for MockLLM that flows through parse_response.
-
-Use in a MockLLM `outputs` list to simulate the literal text a model emits for a
-structured return type: valid JSON parses to the typed object, malformed JSON
-raises OutputConversionError (triggering typed-output retries), and an empty
-string is returned verbatim. A bare string in `outputs` is still returned as-is.
-"""
 obj MockRawResponse {
     has content: str;
 }
 
-"""Error response for MockLLM: raises the wrapped exception when dispatched.
-
-Use in a MockLLM `outputs` list to simulate a model/dispatch failure, e.g. to
-verify that errors which are not OutputConversionError propagate without retry.
-"""
 obj MockError {
     has error: object;
 }
 
-"""Result of the completion from the LLM."""
 obj CompletionResult {
     has output: object,
         tool_calls: list[ToolCall],
         usage: dict = {};
 }
 
-"""Unified event type for streaming output from by llm() calls.
-
-Yielded by invoke() when logging=True is set in call_params.
-All intermediate steps (thoughts, tool calls, results) and final
-answer chunks share this single type.
-"""
 obj StreamEvent {
     has event_type: str,
         data: dict;
 }
 
-"""Control action returned by on_iteration callback."""
 enum IterationAction(StrEnum) {
     CONTINUE = "continue",
     ABORT = "abort",
     ABORT_WITH_SUMMARY = "abort_with_summary"
 }
 
-"""Loop state snapshot passed to on_iteration callback."""
 obj IterationContext {
     has iteration: int,
         messages: list,
@@ -159,31 +113,16 @@ obj IterationContext {
         total_tokens: int;
 }
 
-# -----------------------------------------------------------------------------
-# Media content types
-# -----------------------------------------------------------------------------
-"""Base class for message content.
-
-Abstract base for all media types that can be included in LLM messages.
-Subclasses must implement to_dict() for serialization.
-"""
 obj Media {
     def to_dict -> list[dict];
 }
 
-"""Text content in a message."""
 obj Text(Media) {
     has text: str;
 
     def to_dict -> list[dict];
 }
 
-"""Image content in a message.
-
-Supports various input formats including URLs, file paths, bytes, BytesIO,
-os.PathLike, and PIL Image objects. Normalizes input into a data URL or
-leaves remote/data URLs as-is.
-"""
 obj Image(Media) {
     has url:
         (
@@ -198,12 +137,6 @@ obj Image(Media) {
     def to_dict -> list[dict];
 }
 
-# Ref: https://cookbook.openai.com/examples/gpt_with_vision_for_video_understanding
-"""Video content in a message.
-
-Extracts frames at a specified FPS and encodes them as base64 images
-for LLM processing. See OpenAI cookbook for vision with video understanding.
-"""
 obj Video(Media) {
     has path: str,
         fps: int = 1,
@@ -215,12 +148,6 @@ obj Video(Media) {
 }
 
 
-"""Serialize message content into provider content blocks.
-
-Element shapes accepted: dict (already-serialized, passed through),
-`(media, semstring)` tuple (semstring emitted as a text prelude),
-and Media (via `to_dict()`).
-"""
 def serialize_media_content(content: list) -> list[dict] {
     blocks: list = [];
     for item in content {
@@ -242,12 +169,6 @@ def serialize_media_content(content: list) -> list[dict] {
 }
 
 
-"""Normalize a tool's return value into Message-compatible content.
-
-str → str (common case).  Media → `[Media]`.  `list[Media]` → unchanged.
-Anything else is stringified for back-compat with tools that return
-dicts, ints, etc.
-"""
 def normalize_tool_result(value: any) -> str | list {
     if isinstance(value, str) {
         return value;
@@ -266,12 +187,6 @@ def normalize_tool_result(value: any) -> str | list {
 }
 
 
-"""Build a length-bounded printable string from message content.
-
-Stream events and logging consumers expect `result` to be a string.
-Multimodal content (e.g. a screenshot returned by a tool) would otherwise
-leak ~30KB of base64 into every observability surface.
-"""
 def content_preview(content: any, max_len: int) -> str {
     if isinstance(content, str) {
         return content[:max_len];
@@ -294,15 +209,13 @@ def content_preview(content: any, max_len: int) -> str {
 }
 
 
-"""Move tool-result images into a trailing user message; images across consecutive tool messages batch into ONE message."""
 def reroute_tool_images_to_user_message(messages: list) -> list {
-    # Common case: no tool images → return the input untouched (no allocations).
     if not any(_tool_msg_has_image(m) for m in messages) {
         return messages;
     }
 
     out: list = [];
-    pending: list = [];  # image blocks buffered until the tool-result run ends
+    pending: list = [];
 
     for msg in messages {
         if _tool_msg_has_image(msg) {
@@ -315,7 +228,6 @@ def reroute_tool_images_to_user_message(messages: list) -> list {
             );
             pending.extend(images);
         } elif _is_tool_msg(msg) {
-            # Text-only tool - still inside the run; can't flush yet (Anthropic alternation).
             out.append(msg);
         } else {
             if pending {
@@ -354,7 +266,6 @@ def _tool_msg_has_image(msg: object) -> bool {
 }
 
 
-"""Split a tool message into (stripped_msg, image_blocks); no images → (msg, [])."""
 def _split_tool_msg_images(msg: dict) -> tuple {
     content = msg.get("content");
     if not isinstance(content, list) {
