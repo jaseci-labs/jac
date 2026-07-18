@@ -17,7 +17,7 @@ glob _RESET: str = "\033[0m",
      _PROG: str = "\033[1;35m",
      _TITLE: str = "\033[1m";
 
-def _use_color -> bool {
+impl _use_color -> bool {
     if os.environ.get('NO_COLOR') {
         return False;
     }

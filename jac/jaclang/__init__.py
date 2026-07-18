@@ -32,12 +32,12 @@ def _load_jac_runtime() -> None:
     # the jac0 bootstrap tier, not the full compiler), so we don't pull in
     # `jaclang.compiler` here -- doing so would re-introduce a heavy import on
     # the fast paths. `jaclang.compiler` stays available lazily via __getattr__.
-    import jaclang.jac0core.runtime as _runtime_mod
     from jaclang.jac0core.runtime import JacRuntime, JacRuntimeInterface
 
-    # Backwards-compatible import path for older code that imports
-    # `jaclang.runtimelib.runtime` (no real module lives there).
-    sys.modules.setdefault("jaclang.runtimelib.runtime", _runtime_mod)
+    # The legacy `jaclang.runtimelib.runtime` import path is served lazily by the
+    # `jaclang/runtimelib/runtime.py` shim (PEP 562 forwarder), so no eager
+    # sys.modules alias is registered here -- that would defeat the laziness this
+    # bootstrap exists to preserve.
     globals().update(
         {
             "JacRuntime": JacRuntime,

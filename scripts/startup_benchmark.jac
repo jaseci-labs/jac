@@ -366,7 +366,17 @@ def main -> int {
     if args.write_baseline {
         BASELINES.mkdir(parents=True, exist_ok=True);
         out = BASELINES / f"startup_{args.mode}.json";
-        out.write_text(json.dumps(rpt, indent=2) + "\n", encoding="utf-8");
+        # Baselines are committed, machine-independent artifacts: keep the
+        # import-budget structure (the gated signal) but strip machine-specific
+        # noise -- the absolute jac path and the informational wall-clock timing
+        # -- so committed diffs reflect real import-surface changes only.
+        scrubbed = dict(rpt);
+        scrubbed["jac"] = os.path.basename(jac);
+        scrubbed["cases"] = [
+            {k: v for (k, v) in c.items() if k != "timing"}
+            for c in results
+        ];
+        out.write_text(json.dumps(scrubbed, indent=2) + "\n", encoding="utf-8");
         print(f"\nWrote baseline {out}");
     }
 

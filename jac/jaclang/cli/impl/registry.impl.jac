@@ -257,9 +257,23 @@ impl register_core_commands -> None {
     }
 }
 
+impl feature_command_modules -> dict[str, str] {
+    import from jaclang.cli.manifest { iter_command_meta }
+
+    core = set(_CORE_REGISTRATION_MODULES);
+    modules: dict[str, str] = {};
+    for meta in iter_command_meta(include_hidden=True) {
+        if meta.handler_module and meta.handler_module not in core {
+            modules[meta.name] = meta.handler_module;
+        }
+    }
+    return modules;
+}
+
 impl register_feature_commands(raw_argv: list[str] | None = None) -> None {
+    feature_modules = feature_command_modules();
     if raw_argv is None or not raw_argv or "-h" in raw_argv or "--help" in raw_argv {
-        _load_feature_modules(list(FEATURE_COMMAND_MODULES.values()));
+        _load_feature_modules(list(feature_modules.values()));
         return;
     }
 
@@ -271,7 +285,7 @@ impl register_feature_commands(raw_argv: list[str] | None = None) -> None {
         }
     }
 
-    module_name: str | None = FEATURE_COMMAND_MODULES.get(command or "");
+    module_name: str | None = feature_modules.get(command or "");
     if module_name {
         _load_feature_modules([module_name]);
     }

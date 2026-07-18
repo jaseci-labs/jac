@@ -36,12 +36,6 @@ obj CommandRegistry {
 }
 
 glob _registry: CommandRegistry | None = None,
-     FEATURE_COMMAND_MODULES: dict[str, str] = {
-         "setup": "jaclang.runtimelib.client.cli",
-         "retheme": "jaclang.cli.shadcn.cli",
-         "scale": "jaclang.scale.plugin",
-         "model": "jaclang.byllm.cli"
-     },
      _CORE_REGISTRATION_MODULES: list[str] = [
          "jaclang.cli.commands.execution",
          "jaclang.cli.commands.analysis",
@@ -64,3 +58,5 @@ def get_registry -> CommandRegistry;
 def register_core_commands -> None;
 def register_feature_commands(raw_argv: list[str] | None = None) -> None;
 def _load_feature_modules(module_names: list[str]) -> None;
+
+def feature_command_modules -> dict[str, str];

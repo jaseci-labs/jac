@@ -68,15 +68,18 @@ def _print_error(message: str) {
     sys.stderr.write(f"error: {message}\n");
 }
 
-def _use_color -> bool {
-    if os.environ.get('NO_COLOR') {
-        return False;
-    }
-    out = sys.stdout;
-    return bool(out is not None and out.isatty());
+def _render_version_line -> str {
+    import from jaclang.cli.manifest_help { _use_color }
+
+    sys_info = f"{platform.system()} {platform.machine()}";
+    ver = _resolve_cli_version();
+    use_color = _use_color();
+    bold = '\033[1m' if use_color else '';
+    reset = '\033[0m' if use_color else '';
+    return f"{bold}jac{reset} {ver}  ({sys_info})";
 }
 
-impl handle_manifest_route(raw_argv: list[str]) -> bool {
+impl handle_manifest_route(raw_argv: list[str]) -> None {
     import from jaclang.cli.manifest { TOMBSTONED_VERBS, known_command_names }
     import from jaclang.cli.manifest_help {
         format_curated_help,
@@ -85,18 +88,13 @@ impl handle_manifest_route(raw_argv: list[str]) -> bool {
     }
 
     if raw_argv in (['-V'], ['--version']) {
-        sys_info = f"{platform.system()} {platform.machine()}";
-        ver = _resolve_cli_version();
-        use_color = _use_color();
-        bold = '\033[1m' if use_color else '';
-        reset = '\033[0m' if use_color else '';
-        _write_stdout(f"{bold}jac{reset} {ver}  ({sys_info})");
-        return True;
+        _write_stdout(_render_version_line());
+        return;
     }
 
     if raw_argv in (['-h'], ['--help']) {
         _write_stdout(format_verbose_help());
-        return True;
+        return;
     }
 
     if not raw_argv {
@@ -104,23 +102,18 @@ impl handle_manifest_route(raw_argv: list[str]) -> bool {
         _write_stdout(format_logo(ver));
         _write_stdout('');
         _write_stdout(format_curated_help());
-        return True;
+        return;
     }
 
     first = _first_command_token(raw_argv);
     if first is None {
         if '-h' in raw_argv or '--help' in raw_argv {
             _write_stdout(format_verbose_help());
-            return True;
+            return;
         }
         if '-V' in raw_argv or '--version' in raw_argv {
-            sys_info = f"{platform.system()} {platform.machine()}";
-            ver = _resolve_cli_version();
-            use_color = _use_color();
-            bold = '\033[1m' if use_color else '';
-            reset = '\033[0m' if use_color else '';
-            _write_stdout(f"{bold}jac{reset} {ver}  ({sys_info})");
-            return True;
+            _write_stdout(_render_version_line());
+            return;
         }
         sys.stderr.write('usage: jac [-h] [-V] COMMAND ...\n');
         _print_error(f"unrecognized arguments: {' '.join(raw_argv)}");
@@ -154,5 +147,4 @@ impl handle_manifest_route(raw_argv: list[str]) -> bool {
 
     import from jaclang.cli.dispatch { run_selected_command }
     run_selected_command(command_name);
-    return True;
 }

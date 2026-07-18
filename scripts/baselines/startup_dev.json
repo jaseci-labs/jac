@@ -1,6 +1,6 @@
 {
   "mode": "dev",
-  "jac": "/home/jac/.local/bin/jac",
+  "jac": "jac",
   "iterations": 1,
   "floor_case": "version",
   "floor_module_count": 263,
@@ -34,12 +34,6 @@
         "delta_count": 0,
         "total_modules": 263
       },
-      "timing": {
-        "median_ms": 85014.3154870002,
-        "p95_ms": 85014.3154870002,
-        "min_ms": 85014.3154870002,
-        "max_ms": 85014.3154870002
-      },
       "budget": {
         "max_commands": 0,
         "max_features": 0,
@@ -65,12 +59,6 @@
         "delta_count": 0,
         "total_modules": 263
       },
-      "timing": {
-        "median_ms": 1218.793392000407,
-        "p95_ms": 1218.793392000407,
-        "min_ms": 1218.793392000407,
-        "max_ms": 1218.793392000407
-      },
       "budget": {
         "max_commands": 0,
         "max_features": 0,
@@ -95,12 +83,6 @@
         "delta_modules": [],
         "delta_count": 0,
         "total_modules": 263
-      },
-      "timing": {
-        "median_ms": 986.69950600015,
-        "p95_ms": 986.69950600015,
-        "min_ms": 986.69950600015,
-        "max_ms": 986.69950600015
       },
       "budget": {
         "max_commands": 0,
@@ -128,12 +110,6 @@
         "delta_count": 0,
         "total_modules": 253
       },
-      "timing": {
-        "median_ms": 995.4988809995484,
-        "p95_ms": 995.4988809995484,
-        "min_ms": 995.4988809995484,
-        "max_ms": 995.4988809995484
-      },
       "budget": {
         "max_commands": 0,
         "max_features": 0,
@@ -159,12 +135,6 @@
         "delta_count": 0,
         "total_modules": 263
       },
-      "timing": {
-        "median_ms": 981.5678929999194,
-        "p95_ms": 981.5678929999194,
-        "min_ms": 981.5678929999194,
-        "max_ms": 981.5678929999194
-      },
       "budget": {
         "max_commands": 0,
         "max_features": 0,
@@ -189,12 +159,6 @@
         "delta_modules": [],
         "delta_count": 0,
         "total_modules": 263
-      },
-      "timing": {
-        "median_ms": 997.169901000234,
-        "p95_ms": 997.169901000234,
-        "min_ms": 997.169901000234,
-        "max_ms": 997.169901000234
       },
       "budget": {
         "max_commands": 0,
@@ -225,12 +189,6 @@
         "delta_count": 2,
         "total_modules": 265
       },
-      "timing": {
-        "median_ms": 1194.4141709991527,
-        "p95_ms": 1194.4141709991527,
-        "min_ms": 1194.4141709991527,
-        "max_ms": 1194.4141709991527
-      },
       "budget": {
         "max_commands": 0,
         "max_features": 0,
@@ -260,12 +218,6 @@
         "delta_count": 2,
         "total_modules": 265
       },
-      "timing": {
-        "median_ms": 990.5040009998629,
-        "p95_ms": 990.5040009998629,
-        "min_ms": 990.5040009998629,
-        "max_ms": 990.5040009998629
-      },
       "budget": {
         "max_commands": 0,
         "max_features": 0,
@@ -294,12 +246,6 @@
         ],
         "delta_count": 2,
         "total_modules": 265
-      },
-      "timing": {
-        "median_ms": 982.8745029999482,
-        "p95_ms": 982.8745029999482,
-        "min_ms": 982.8745029999482,
-        "max_ms": 982.8745029999482
       },
       "budget": {
         "max_commands": 0,
@@ -414,12 +360,6 @@
         ],
         "delta_count": 69,
         "total_modules": 332
-      },
-      "timing": {
-        "median_ms": 8201.047209000535,
-        "p95_ms": 8201.047209000535,
-        "min_ms": 8201.047209000535,
-        "max_ms": 8201.047209000535
       }
     }
   ]
