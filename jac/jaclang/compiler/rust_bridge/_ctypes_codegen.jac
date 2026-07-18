@@ -68,7 +68,9 @@ def _ret_bridgeable(s: Slot) -> bool {
     and s.kind != SlotKind.Str
     and s.kind != SlotKind.Bytes
     and s.kind != SlotKind.Wide
-    and s.kind != SlotKind.OpaqueRef {
+    and s.kind != SlotKind.OpaqueRef
+    and s.kind != SlotKind.Int
+    and s.kind != SlotKind.Uint {
         return False;
     }
     return True;
@@ -645,6 +647,8 @@ def _call(
     or ret.kind == SlotKind.Bytes
     or ret.kind == SlotKind.Wide {
         c_args.append(byref(out_buf));
+    } elif (ret.kind == SlotKind.Int or ret.kind == SlotKind.Uint) and ret.is_opt {
+        c_args.append(byref(out_buf));
     } elif ret.kind != SlotKind.Void {
         c_args.append(byref(out_h));
     }
@@ -712,6 +716,18 @@ def _call(
             return _rec_from_msg(decoded, rt.records[ret.record - 1], rt);
         }
         return decoded;
+    }
+    if (ret.kind == SlotKind.Int or ret.kind == SlotKind.Uint) and ret.is_opt {
+        if out_buf.ptr == 0 {
+            return None;
+        }
+        raw = string_at(out_buf.ptr, out_buf.len);
+        rt.free_buf(out_buf);
+        (v, ) = struct.unpack("<Q", raw[:8]);
+        if ret.kind == SlotKind.Int and v >= 0x8000000000000000 {
+            return v - 0x10000000000000000;
+        }
+        return v;
     }
     if ret.kind == SlotKind.Int {
         v = out_h.value;

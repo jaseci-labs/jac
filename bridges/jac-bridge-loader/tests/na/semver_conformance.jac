@@ -13,7 +13,10 @@
 # lane — scalar readers (`major`/`minor`/`patch`), a HANDLE reader (`Version.pre ->
 # Prerelease`, a produced handle whose `to_string` is read), and a FIELDLESS-ENUM
 # reader (`Comparator.op -> String`). `Comparator` is forced opaque too, so its
-# `parse` ctor / `matches` / `op` / `major` all cross.
+# `parse` ctor / `matches` / `op` / `major` all cross, and its `minor`/`patch`
+# `Option<u64>` fields exercise the OPTION<INT> lane (Some as an 8-byte JacBuf,
+# None as a null pointer) on both runtimes ("~1.2" has Some(2)/None; "^1" has
+# None/None; "<3.0.0" has Some(0)/Some(0)).
 #
 # The `#[jac(assoc)]` statics (`Version.parse`, and the `from_str` FromStr family)
 # are na-gated, so they are intentionally NOT exercised here — a static cannot cross
@@ -68,6 +71,8 @@ def cpython_side -> list {
         c = semver.Comparator(cstr);
         lines.append(f"comp {ci} op = {c.op()}");
         lines.append(f"comp {ci} major = {c.major()}");
+        lines.append(f"comp {ci} minor = {c.minor()}");
+        lines.append(f"comp {ci} patch = {c.patch()}");
         lines.append(f"comp {ci} m0 = {int(c.matches(vers[0]))}");
         c.close();
     }
@@ -124,6 +129,15 @@ def na_side -> list {
         parts.append(f"    c = Comparator({jac_str(cstr)});");
         parts.append(f"    print({jac_str(f'comp {ci} op = ')} + c.op());");
         parts.append(f"    print({jac_str(f'comp {ci} major = ')} + str(c.major()));");
+        for fld in ["minor", "patch"] {
+            label = f"comp {ci} {fld} = ";
+            parts.append(f"    ov = c.{fld}();");
+            parts.append("    if ov is None {");
+            parts.append(f"        print({jac_str(label + 'None')});");
+            parts.append("    } else {");
+            parts.append(f"        print({jac_str(label)} + str(ov));");
+            parts.append("    }");
+        }
         parts.append(f"    if c.matches(v0) {{");
         parts.append(f"        print({jac_str(f'comp {ci} m0 = 1')});");
         parts.append("    } else {");

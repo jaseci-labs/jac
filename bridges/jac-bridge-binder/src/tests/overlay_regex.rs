@@ -419,13 +419,15 @@ fn ownership_shared_is_rejected() {
 
 #[test]
 fn ownership_default_and_explicit_owned_emit_no_jac_attribute() {
-    // No ownership key: no ownership attribute is stamped. (A `#[jac(assoc)]` on a
-    // static — e.g. the FromStr `from_str` lane — is NOT an ownership attribute, so
-    // the check is scoped to the ownership classes, not any `#[jac(`.)
+    // No ownership key: no OWNERSHIP attribute anywhere. `#[jac(assoc)]` (the
+    // FN_STATIC marker, e.g. `RegexSet::new` or the FromStr `from_str` lane) is a
+    // kind marker, not an ownership class, so it is exempt.
     let spec_default = classify(&load_regex_doc());
     let src_default = emit(&spec_default);
     assert!(
-        !src_default.contains("#[jac(borrowed)]") && !src_default.contains("#[jac(shared)]"),
+        !src_default.contains("#[jac(borrowed)]")
+            && !src_default.contains("#[jac(owned)]")
+            && !src_default.contains("#[jac(shared)]"),
         "default codegen must not stamp any ownership attribute\n{src_default}"
     );
 

@@ -17,6 +17,7 @@ members = [
     "jac-bridge-async",
     "jac-bridge-inspect",
     "jac-bridge-semver",
+    "jac-bridge-regex-binder",
     "jac-bridge-binder",
 ]
 resolver = "2"

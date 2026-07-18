@@ -31,8 +31,7 @@ fn regex_bridge_compiles_clean() {
     let mut spec = jac_bridge_binder::classify(&doc);
 
     // Apply the adjacent example overlay so the generated crate also exercises
-    // inject (raw Rust source) and rename — proving both compile, not just the
-    // pure rule-set output.
+    // rename - proving it compiles, not just the pure rule-set output.
     let overlay_path = fixture("regex.overlay.toml");
     let overlay = jac_bridge_binder::parse_overlay(
         &std::fs::read_to_string(&overlay_path).expect("read overlay"),
@@ -80,14 +79,54 @@ fn regex_bridge_compiles_clean() {
         "generated regex bridge failed to compile:\n{stderr}\n\n--- lib.rs ---\n{lib_src}"
     );
 
-    // Overlay took effect: injected method + renamed export are in the source.
-    assert!(
-        lib_src.contains("pub fn find_str("),
-        "inject missing\n{lib_src}"
-    );
+    // Overlay took effect: the renamed export is in the source, and the retired
+    // `find_str` inject stays gone (the owned `find` wrapper covers it for real).
     assert!(
         lib_src.contains("pub fn matches(&self,"),
         "rename missing\n{lib_src}"
+    );
+    assert!(
+        !lib_src.contains("find_str"),
+        "the find_str inject hack must stay deleted\n{lib_src}"
+    );
+
+    // Full-parity lanes: builder chain setters ride the self-identity `&Self`
+    // return; `build` is a cross-type fallible handle producer.
+    assert!(
+        lib_src.contains("pub fn case_insensitive(&mut self, yes: bool) -> &Self"),
+        "builder chain setter missing\n{lib_src}"
+    );
+    assert!(
+        lib_src.contains("pub fn build(&self) -> Result<Regex, String>"),
+        "cross-type fallible build missing\n{lib_src}"
+    );
+    assert!(
+        lib_src.contains("pub fn build(&self) -> Result<RegexSet, String>"),
+        "RegexSetBuilder::build missing\n{lib_src}"
+    );
+    // Option<int> returns ride the null-JacBuf channel.
+    assert!(
+        lib_src.contains("pub fn shortest_match(&self, haystack: &str) -> Option<usize>"),
+        "Option<usize> lane missing\n{lib_src}"
+    );
+    // Iterator-of-strings generic params monomorphize to Wide<Vec<String>>.
+    assert!(
+        lib_src.contains("pub fn new(patterns: Wide<Vec<String>>) -> Self"),
+        "RegexSetBuilder::new Wide<Vec<String>> param missing\n{lib_src}"
+    );
+    // Replacer &str monomorphization (replacen) + splitn drain + int collect.
+    assert!(
+        lib_src
+            .contains("pub fn replacen(&self, haystack: &str, limit: usize, rep: &str) -> String"),
+        "replacen &str monomorphization missing\n{lib_src}"
+    );
+    assert!(
+        lib_src.contains("pub fn splitn(&self, haystack: &str, limit: usize) -> OwnedSplitN"),
+        "splitn drain missing\n{lib_src}"
+    );
+    assert!(
+        lib_src.contains("pub fn iter(&self) -> Vec<usize>"),
+        "SetMatches::iter collect missing\n{lib_src}"
     );
 
     // Ownership overlay took effect: `find` carries the borrowed attribute (which
@@ -124,8 +163,15 @@ fn regex_bridge_compiles_clean() {
     for want in [
         "jac_regex_Regex_new",
         "jac_regex_Regex_matches",     // is_match, renamed by the overlay
-        "jac_regex_Regex_find_str",    // injected by the overlay
         "jac_regex_Regex_find",        // producer of the synthesized wrapper
+        "jac_regex_Regex_shortest_match", // Option<usize> null-JacBuf lane
+        "jac_regex_Regex_replacen",    // replacer &str monomorphization
+        "jac_regex_Regex_splitn",      // multi-param drain
+        "jac_regex_Regex_find_at",     // inline owning producer
+        "jac_regex_RegexBuilder_case_insensitive", // chain setter (&Self identity)
+        "jac_regex_RegexBuilder_build", // cross-type fallible handle producer
+        "jac_regex_RegexSetBuilder_new", // Wide<Vec<String>> param ctor
+        "jac_regex_SetMatches_iter",   // int-iterator collect (list return)
         "jac_regex_OwnedMatch_as_str", // wrapper reader
         "jac_regex_OwnedMatch_is_empty",
         "jac_regex_OwnedMatch_drop",    // wrapper is an opaque handle
@@ -382,6 +428,12 @@ fn semver_bridge_compiles_clean() {
             && lib_src.contains("_ => \"unknown\","),
         "Comparator.op fieldless-enum reader must map variants to names\n{lib_src}"
     );
+    // Option<int> lane on a FIELD: `Comparator.minor: Option<u64>` reads directly
+    // (the field is Copy) and crosses the null-JacBuf None channel.
+    assert!(
+        lib_src.contains("pub fn minor(&self) -> Option<u64> {\n            self.0.minor"),
+        "Comparator.minor must ride the Option<int> field-reader lane\n{lib_src}"
+    );
     // No unresolvable std-trait `use` leaked (the FromStr call is fully-qualified).
     assert!(
         !lib_src.contains("use semver::core::") && !lib_src.contains("use semver::std::"),
@@ -430,6 +482,7 @@ fn semver_bridge_compiles_clean() {
         "jac_semver_Version_drop",  // Version is now an opaque handle
         "jac_semver_Comparator_matches", // Comparator forced opaque: its methods bridge
         "jac_semver_Comparator_op", // fieldless-enum field reader (-> String)
+        "jac_semver_Comparator_minor", // Option<u64> field reader (Option<int> lane)
         "jac_semver_BuildMetadata_cmp", // Ord lane on a naturally-opaque type
         "jac_bridge_init_semver",
     ] {

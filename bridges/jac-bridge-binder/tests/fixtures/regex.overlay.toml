@@ -1,16 +1,9 @@
-# Example overlay for the regex bridge — a sparse exception file (D6).
+# Overlay for the regex bridge - a sparse exception file (D6).
 #
-# The binder skips `Regex::find` because it returns `Match<'h>` (a lifetime
-# borrow the owning-wrapper rule will rescue in M4 Phase B). Until then, the
-# inject escape hatch adds an owned-String convenience by hand. This file is
-# compiled by the round-trip test, so it can never silently rot.
-
-[type."Regex"]
-inject = """
-        pub fn find_str(&self, haystack: &str) -> String {
-            self.0.find(haystack).map(|m| m.as_str().to_string()).unwrap_or_default()
-        }
-"""
+# The former `find_str` inject is gone: the real owned-wrapper lane bridges
+# `Regex::find -> Option<OwnedMatch>` (as_str/start/end readers), so the
+# hand-written convenience would only shadow the honest surface. Compiled by the
+# round-trip test, so this file can never silently rot.
 
 # Give Regex::is_match a nicer Jac-side name without touching the Rust call.
 [fn."Regex::is_match"]

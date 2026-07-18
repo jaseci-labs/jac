@@ -72,6 +72,14 @@ mod bridge_impl {
             self.0.major
         }
 
+        pub fn minor(&self) -> Option<u64> {
+            self.0.minor
+        }
+
+        pub fn patch(&self) -> Option<u64> {
+            self.0.patch
+        }
+
         pub fn pre(&self) -> Prerelease {
             Prerelease(self.0.pre.clone())
         }

@@ -943,13 +943,18 @@ fn ret_tag(ty: &Type, types: &[TypeDef], records: &[RecordDef], self_i: usize) -
                 "Option must have a single concrete type argument"))?;
             let inner = ret_tag(inner_ty, types, records, self_i)?;
             match inner {
-                // Only Ref (null handle), Str, and Bytes (null JacBuf.ptr) have an
-                // in-band None channel. Option<bool>/Option<int>/Option<Option<_>>
-                // would need a separate presence flag — not in the v1 ABI.
-                Tag::Ref(_) | Tag::Str | Tag::Bytes => Ok(Tag::Opt(Box::new(inner))),
+                // Ref (null handle), Str, and Bytes (null JacBuf.ptr) signal None
+                // in-band on their own channels. Option<int> rides the SAME
+                // null-JacBuf channel as Option<String>: Some crosses as an owned
+                // 8-byte little-endian buffer, None as a null pointer - never a
+                // sentinel value. Option<bool>/Option<Option<_>> stay out.
+                Tag::Ref(_) | Tag::Str | Tag::Bytes | Tag::Int | Tag::Uint => {
+                    Ok(Tag::Opt(Box::new(inner)))
+                }
                 _ => Err(Error::new(ty.span(),
                     "unsupported Option return: only Option<&OpaqueType>, \
-                     Option<String>, and Option<Vec<u8>> can signal None in-band")),
+                     Option<String>, Option<Vec<u8>>, and Option<integer> can \
+                     signal None in-band")),
             }
         }
         Type::Path(tp) if tp.path.segments.len() == 1 => {
@@ -2001,8 +2006,25 @@ fn out_param_tokens(ret: &Tag, rt: &Ident) -> (TS2, TS2, TS2) {
                 },
                 quote! { *out_buf = #rt::JacBuf { ptr: ::std::ptr::null_mut(), len: 0, cap: 0 }; },
             ),
-            // ret_tag guarantees Opt only wraps Ref, Str, or Bytes.
-            _ => unreachable!("Tag::Opt wraps only Ref, Str, or Bytes"),
+            // Option<int>: None is a null JacBuf.ptr (the Option<String> channel);
+            // Some crosses as an owned 8-byte little-endian buffer. `x as u64`
+            // sign-extends a signed value and zero-extends an unsigned one - the
+            // loader reads the 8 bytes back per the inner tag, mirroring the
+            // scalar out_int discipline.
+            Tag::Int | Tag::Uint => (
+                quote! { out_buf: *mut #rt::JacBuf, },
+                quote! {
+                    *out_buf = match val {
+                        ::std::option::Option::Some(x) =>
+                            #rt::vec_to_jacbuf((x as u64).to_le_bytes().to_vec()),
+                        ::std::option::Option::None =>
+                            #rt::JacBuf { ptr: ::std::ptr::null_mut(), len: 0, cap: 0 },
+                    };
+                },
+                quote! { *out_buf = #rt::JacBuf { ptr: ::std::ptr::null_mut(), len: 0, cap: 0 }; },
+            ),
+            // ret_tag guarantees Opt only wraps Ref, Str, Bytes, or an integer.
+            _ => unreachable!("Tag::Opt wraps only Ref, Str, Bytes, or an integer"),
         },
         // HashMap<String, V> → one owned JacBuf holding the whole map serialized
         // little-endian: [u32 count] then per entry [u32 key_len][key bytes][value].

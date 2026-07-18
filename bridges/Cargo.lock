@@ -158,6 +158,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "jac-bridge-regex-binder"
+version = "0.1.0"
+dependencies = [
+ "jac-bridge",
+ "regex",
+ "rmp-serde",
+ "serde",
+]
+
+[[package]]
 name = "jac-bridge-regex-v2"
 version = "0.1.0"
 dependencies = [

@@ -115,11 +115,14 @@ fn inherent_ctor_beats_a_flattened_trait_ctor() {
 fn flattening_lifts_chrono_coverage_without_regressing_regex() {
     // regex is inherent-heavy. 1.2.5 (tuple-struct admission) put its bridged count
     // at 39 (`SetMatches`/`CaptureLocations` opaque handles + the `RegexSet::matches
-    // -> SetMatches` ref-lane handle). The Display/Ord/FromStr synth lanes then add
-    // the two `from_str` statics (`Regex`/`RegexSet` both impl FromStr), lifting it
-    // to 41. (regex's opaque types carry no Display/Ord, so only FromStr fires.)
+    // -> SetMatches` ref-lane handle). The regex-parity lanes (builder chain +
+    // cross-type fallible build, Option<int>, iterator-of-strings params,
+    // replacer-&str, splitn drain, inline find_at/captures_at, get_match,
+    // SetMatches::iter collect) lifted 39 -> 77, and the Display/Ord/FromStr synth
+    // lanes then add the `from_str` statics (`Regex`/`RegexSet` impl FromStr) and
+    // any Display readers, for the unified-rule-set count asserted here.
     let regex = coverage(&classify(&load("regex-1.12.4")));
-    assert_eq!(regex.bridged, 41, "regex bridged: 39 + 2 FromStr statics");
+    assert_eq!(regex.bridged, 79, "regex bridged on the unified lanes");
 
     // chrono is trait-heavy (Datelike/Timelike): flattening lifts it well past the
     // pre-Track-A floor of 33.

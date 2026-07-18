@@ -333,7 +333,9 @@ fn collect_root_glob_modules(doc: &Crate, module_name: &str) -> HashSet<String> 
 /// never dangle, so they are `None` here.
 fn ref_return_target(ret: &BridgeReturn) -> Option<&str> {
     match ret {
-        BridgeReturn::Ref(n) | BridgeReturn::OptRef(n) => Some(n.as_str()),
+        BridgeReturn::Ref(n) | BridgeReturn::OptRef(n) | BridgeReturn::RefResult(n) => {
+            Some(n.as_str())
+        }
         _ => None,
     }
 }
@@ -411,7 +413,10 @@ fn reconcile_ref_returns(types: &mut [BridgeType], skips: &mut Vec<Skip>) {
 
 /// A fallible return the macro can only lower when a `#[jac_error]` type exists.
 fn is_fallible_return(ret: &BridgeReturn) -> bool {
-    matches!(ret, BridgeReturn::OwnSelfResult)
+    matches!(
+        ret,
+        BridgeReturn::OwnSelfResult | BridgeReturn::RefResult(_)
+    )
 }
 
 /// Demote every `Result<Self, E>` ctor/method to a skip when the crate has NO
@@ -2054,11 +2059,27 @@ impl<'a> Ctx<'a> {
                     let enum_path = self.accessible_type_path(rp.id.0, &[], rp_name(&rp.path));
                     return Ok(BridgeReturn::EnumName(enum_path, variants));
                 }
-                // `Option<int>` has no in-band None channel in the v1 ABI, and a
-                // `Vec<Handle>` has no list-of-handle lane; both are honest skips.
+                // An `Option<int>` field (`Comparator.minor: Option<u64>`) rides
+                // the Option<int> return lane: Some crosses as an 8-byte JacBuf,
+                // None as a null pointer (`TAG_OPT_BIT | TAG_INT/UINT`). The field
+                // is `Copy`, so the reader forwards it by value with no clone.
+                // A `Vec<Handle>` field still has no list-of-handle lane.
+                if rp_name(&rp.path) == "Option" {
+                    if let Some(Type::Primitive(p)) = vec_first_type_arg(rp) {
+                        match p.as_str() {
+                            "u8" | "u16" | "u32" | "u64" | "usize" => {
+                                return Ok(BridgeReturn::OptUintValue(p.clone()));
+                            }
+                            "i8" | "i16" | "i32" | "i64" | "isize" => {
+                                return Ok(BridgeReturn::OptIntValue(p.clone()));
+                            }
+                            _ => {}
+                        }
+                    }
+                }
                 match rp_name(&rp.path) {
                     "Option" => Err(SkipReason::UnsupportedType(
-                        "Option<scalar> field: no in-band None channel in the v1 ABI".into(),
+                        "Option<non-integer> field: no in-band None channel in the v1 ABI".into(),
                     )),
                     "Vec" => Err(SkipReason::UnsupportedType(
                         "Vec<handle> field: no list-of-handle lane".into(),
@@ -2250,6 +2271,8 @@ impl<'a> Ctx<'a> {
                     .or_else(|| self.try_cursor_wrapper(&method_name, f, bt, self_aliases))
                     .or_else(|| self.try_vec_drain(method_id.0, &method_name, f, bt, self_aliases))
                     .or_else(|| self.try_callback_wrapper(&method_name, f, bt, self_aliases))
+                    .or_else(|| self.try_replacer_str(&method_name, f, self_aliases))
+                    .or_else(|| self.try_int_collect(&method_name, f, self_aliases))
                 {
                     Some((producer, pendings)) => {
                         if seen_names.insert(producer.exposed().to_string()) {
@@ -2344,10 +2367,26 @@ impl<'a> Ctx<'a> {
     ) -> Result<BridgeFn, SkipReason> {
         let mut params = vec![];
 
+        // Iterator-of-strings monomorphization: a generic param `I` bounded
+        // `I: IntoIterator<Item = S>, S: AsRef<str>` (`RegexSet::new`,
+        // `RegexSetBuilder::new`) is pinned to the concrete `Vec<String>` and
+        // crosses on the existing wide (msgpack) lane as `Wide<Vec<String>>` -
+        // `Vec<String>` satisfies the bound, so the inner call compiles verbatim.
+        let strings_iter = strings_iter_generic(f);
+
         for (pname, pty) in &f.sig.inputs {
             // Skip `self` / `&self` / `&mut self` receivers.
             if pname == "self" {
                 continue;
+            }
+            if let Type::Generic(g) = pty {
+                if Some(g) == strings_iter.as_ref() {
+                    params.push(BridgeParam {
+                        name: pname.clone(),
+                        ty: ScalarType::Wide("Vec<String>".into()),
+                    });
+                    continue;
+                }
             }
             let scalar = self.classify_param_type(pty, self_aliases)?;
             params.push(BridgeParam {
@@ -2357,6 +2396,13 @@ impl<'a> Ctx<'a> {
         }
 
         let ret = self.classify_return(&f.sig.output, bt, self_aliases)?;
+        // A `&Self` return without a receiver has no handle to be identical TO -
+        // the self-identity lane is method-only (the macro rejects it likewise).
+        if ret == BridgeReturn::SelfRef && !f.sig.inputs.iter().any(|(n, _)| n == "self") {
+            return Err(SkipReason::UnsupportedType(
+                "&Self return on an associated fn".into(),
+            ));
+        }
 
         // 1.2.2: the receiver's mutability/consumption drives codegen. `&mut self`
         // emits a mutable wrapper (routed through the macro's busy-latch);
@@ -2607,6 +2653,21 @@ impl<'a> Ctx<'a> {
                             return Ok(BridgeReturn::OptBytesValue);
                         }
                     }
+                    // Option<int>: a nullable scalar integer (`Regex::shortest_match
+                    // -> Option<usize>`). Crosses `TAG_OPT_BIT | TAG_INT/UINT` as an
+                    // 8-byte JacBuf whose null pointer signals None in-band - the
+                    // same channel discipline as Option<String>, never a sentinel.
+                    if let Some(Type::Primitive(p)) = vec_first_type_arg(rp) {
+                        match p.as_str() {
+                            "u8" | "u16" | "u32" | "u64" | "usize" => {
+                                return Ok(BridgeReturn::OptUintValue(p.clone()));
+                            }
+                            "i8" | "i16" | "i32" | "i64" | "isize" => {
+                                return Ok(BridgeReturn::OptIntValue(p.clone()));
+                            }
+                            _ => {}
+                        }
+                    }
                 }
                 // 1.2.4: a bare cross-type return naming another bridged (non-mono)
                 // type is a fresh owned handle (`and_hms -> NaiveDateTime`). `Self`
@@ -2629,6 +2690,20 @@ impl<'a> Ctx<'a> {
                     return Ok(BridgeReturn::Wide(inner));
                 }
                 Err(SkipReason::UnsupportedType(rp.path.clone()))
+            }
+            // A `&Self` / `&mut Self` return on a method with a receiver is the
+            // SELF-IDENTITY lane (builder-chain setters: `case_insensitive(&mut
+            // self, bool) -> &mut Self`). Checked before the lifetime guard - the
+            // borrow IS the receiver, so no lifetime ever escapes. The caller
+            // (`classify_fn`) rejects a receiver-less `&Self` return.
+            Type::BorrowedRef { type_, .. }
+                if match type_.as_ref() {
+                    Type::Generic(g) => g == "Self" || self_aliases.contains(&g.as_str()),
+                    Type::ResolvedPath(rp) => returns_self(bt, rp, self_aliases),
+                    _ => false,
+                } =>
+            {
+                Ok(BridgeReturn::SelfRef)
             }
             Type::BorrowedRef {
                 lifetime: Some(_), ..
@@ -2687,6 +2762,19 @@ impl<'a> Ctx<'a> {
             Some(Type::Generic(g)) if g == "Self" || self_aliases.contains(&g.as_str()) => {
                 Ok(BridgeReturn::OwnSelfResult)
             }
+            // A CROSS-TYPE fallible producer: `Result<Other, E>` whose ok type is a
+            // DIFFERENT live bridged opaque type (`RegexBuilder::build ->
+            // Result<Regex, Error>`). Mirrors the 1.2.4 `Ref` rule for the ok slot;
+            // the error crosses Display-stringified through the module's
+            // `#[jac_error]` channel exactly like `OwnSelfResult` (and is demoted by
+            // `reconcile_fallible_returns` when the crate has no error type).
+            Some(Type::ResolvedPath(ok_rp))
+                if self.ref_type_names.contains(&ok_rp.path)
+                    && !has_lifetime_args(ok_rp)
+                    && !inner_has_lifetime(ok_rp, self.doc) =>
+            {
+                Ok(BridgeReturn::RefResult(ok_rp.path.clone()))
+            }
             _ => Err(SkipReason::UnsupportedType(format!("{args:?}"))),
         }
     }
@@ -2729,7 +2817,18 @@ impl<'a> Ctx<'a> {
                 Err(_) => return None,
             }
         }
-        if params.len() != 1 || params[0].ty != ScalarType::Str {
+        // The FIRST param must be the `&str` the wrapper owns; any extras must be
+        // plain integer scalars forwarded verbatim (`find_at`'s `start: usize`).
+        // A single-`&str` producer becomes THE root (the shared `wrap` ctor); a
+        // multi-param producer builds the wrapper INLINE in its own body, since
+        // `wrap` is keyed to exactly one root call.
+        if params.is_empty() || params[0].ty != ScalarType::Str {
+            return None;
+        }
+        if !params[1..]
+            .iter()
+            .all(|p| matches!(p.ty, ScalarType::Int(_) | ScalarType::Uint(_)))
+        {
             return None;
         }
 
@@ -2748,11 +2847,22 @@ impl<'a> Ctx<'a> {
         }
 
         let wrapper_name = format!("Owned{borrowed_name}");
+        let borrowed_path = format!("{}::{}", self.module_name, borrowed_name);
+        let is_root = params.len() == 1;
+        let ret = if is_root {
+            BridgeReturn::OptWrapper(wrapper_name.clone())
+        } else {
+            BridgeReturn::OptWrapperInline {
+                wrapper: wrapper_name.clone(),
+                borrowed_path: borrowed_path.clone(),
+                lifetimes,
+            }
+        };
         let producer = BridgeFn {
             name: method_name.to_string(),
             export_name: None,
             params,
-            ret: BridgeReturn::OptWrapper(wrapper_name.clone()),
+            ret,
             throws: None,
             recv: Recv::Field0,
             is_async: false,
@@ -2768,9 +2878,11 @@ impl<'a> Ctx<'a> {
             wrapper_name,
             borrowed_id,
             wrapper: OwningWrapper {
-                borrowed_path: format!("{}::{}", self.module_name, borrowed_name),
+                borrowed_path,
                 lifetimes,
-                root: Some(RootProducer {
+                // An inline producer builds its instances itself; only the
+                // single-`&str` shape supplies the shared root `wrap` ctor.
+                root: is_root.then(|| RootProducer {
                     owner_inner_path: bt.inner_path.clone(),
                     producer_call: method_name.to_string(),
                 }),
@@ -2840,6 +2952,85 @@ impl<'a> Ctx<'a> {
         Some((reader, pendings))
     }
 
+    /// The NON-NULLABLE twin of [`Self::try_nested_wrapper`]: a wrapper reader
+    /// returning a BARE in-crate lifetime struct (`Captures::get_match ->
+    /// Match<'h>` - group 0 always exists, so no `Option`). The child wrapper is
+    /// built inline exactly like the nested case, only without the `?`; the
+    /// producer's return is `Wrapper(name)` (`recv: Inner`).
+    fn try_nested_wrapper_plain(
+        &self,
+        reader_name: &str,
+        params: &[BridgeParam],
+        output: &Option<Type>,
+        seen: &mut Vec<u32>,
+    ) -> Option<(BridgeFn, Vec<PendingWrapper>)> {
+        let (borrowed_id, borrowed_name, lifetimes) = self.plain_borrowed_struct(output)?;
+        let (readers, reader_skips, deeper) =
+            self.discover_readers(borrowed_id, &borrowed_name, seen);
+        if readers.is_empty() {
+            return None;
+        }
+        let wrapper_name = format!("Owned{borrowed_name}");
+        let reader = BridgeFn {
+            name: reader_name.to_string(),
+            export_name: None,
+            params: params.to_vec(),
+            ret: BridgeReturn::Wrapper(wrapper_name.clone()),
+            throws: None,
+            recv: Recv::Inner,
+            is_async: false,
+            ret_ownership: Ownership::Owned,
+            via_trait: None,
+            self_mut: false,
+            consumes_self: false,
+            is_static: false,
+            field_read: None,
+            std_from_str: false,
+        };
+        let pending = PendingWrapper {
+            wrapper_name,
+            borrowed_id,
+            wrapper: OwningWrapper {
+                borrowed_path: format!("{}::{}", self.module_name, borrowed_name),
+                lifetimes,
+                root: None,
+                kind: WrapperKind::Owning,
+            },
+            readers,
+            reader_skips,
+        };
+        let mut pendings = vec![pending];
+        pendings.extend(deeper);
+        Some((reader, pendings))
+    }
+
+    /// If `output` is a BARE own-crate struct with ≥1 lifetime param, return
+    /// `(id, name, lifetime_count)` - the non-`Option` sibling of
+    /// [`Self::option_borrowed_struct`].
+    fn plain_borrowed_struct(&self, output: &Option<Type>) -> Option<(u32, String, usize)> {
+        let Some(Type::ResolvedPath(rp)) = output else {
+            return None;
+        };
+        if rp_name(&rp.path) == "Option" {
+            return None;
+        }
+        let item = self.doc.index.get(&rp.id)?;
+        let ItemEnum::Struct(s) = &item.inner else {
+            return None;
+        };
+        let lifetimes = s
+            .generics
+            .params
+            .iter()
+            .filter(|p| matches!(p.kind, rustdoc_types::GenericParamDefKind::Lifetime { .. }))
+            .count();
+        if lifetimes == 0 {
+            return None;
+        }
+        let name = item.name.clone()?;
+        Some((rp.id.0, name, lifetimes))
+    }
+
     /// Attempt to rescue an ITERATOR return via a cursor or a Vec-as-drain wrapper.
     ///
     /// The rule: an owner method `fn(&self, input: &str) -> Iter<'_,…>` where `Iter`
@@ -2866,7 +3057,11 @@ impl<'a> Ctx<'a> {
         if !f.sig.inputs.iter().any(|(n, _)| n == "self") {
             return None;
         }
-        // Exactly one non-self `&str` param — the buffer the wrapper owns.
+        // The first non-self param must be the `&str` buffer the wrapper owns.
+        // Extra integer scalars (`splitn`'s `limit: usize`) are forwarded - legal
+        // for a DRAIN (which collects eagerly, so no lifetime survives) but not for
+        // a CURSOR, whose hardcoded `wrap(owner, input)` owns exactly one buffer;
+        // the cursor arm below re-checks the single-param shape.
         let mut params = vec![];
         for (pname, pty) in &f.sig.inputs {
             if pname == "self" {
@@ -2880,7 +3075,13 @@ impl<'a> Ctx<'a> {
                 Err(_) => return None,
             }
         }
-        if params.len() != 1 || params[0].ty != ScalarType::Str {
+        if params.is_empty() || params[0].ty != ScalarType::Str {
+            return None;
+        }
+        if !params[1..]
+            .iter()
+            .all(|p| matches!(p.ty, ScalarType::Int(_) | ScalarType::Uint(_)))
+        {
             return None;
         }
 
@@ -2928,6 +3129,11 @@ impl<'a> Ctx<'a> {
             }
             // Item = in-crate lifetime struct with readers → cursor of nested wrappers.
             Type::ResolvedPath(item_rp) => {
+                // A cursor's `wrap(owner, input)` owns exactly one buffer; a
+                // multi-param iterator producer has no cursor shape yet.
+                if params.len() != 1 {
+                    return None;
+                }
                 let item_name = item_rp.path.clone();
                 let item_id = item_rp.id.0;
                 // The item type must itself be a readable in-crate lifetime struct.
@@ -3199,6 +3405,145 @@ impl<'a> Ctx<'a> {
         Some((producer, vec![]))
     }
 
+    /// The REPLACER `&str` MONOMORPHIZATION: a `fn(&self, …, rep: R) -> Cow<str>`
+    /// where `R: Replacer` and every OTHER param is a plain scalar. The callback
+    /// rule (which is stronger - Rust calls back into Jac per match) claims the
+    /// exact `(haystack, R)` shape first; this rule catches what it declines
+    /// (`replacen`, whose extra `limit: usize` the closure vertical can't carry)
+    /// by pinning `R` to the literal `&str` replacement - `&str: Replacer` in the
+    /// source crate, so the inner call compiles verbatim. The `Cow<'h, str>`
+    /// return lowers to the owned `Str` lane (`.to_string()` via Display).
+    fn try_replacer_str(
+        &self,
+        method_name: &str,
+        f: &rustdoc_types::Function,
+        self_aliases: &[&str],
+    ) -> Option<(BridgeFn, Vec<PendingWrapper>)> {
+        if !f.sig.inputs.iter().any(|(n, _)| n == "self") {
+            return None;
+        }
+        let rep_generic = self.replacer_generic_param(f)?;
+
+        let mut params = vec![];
+        for (pname, pty) in &f.sig.inputs {
+            if pname == "self" {
+                continue;
+            }
+            if matches!(pty, Type::Generic(g) if *g == rep_generic) {
+                params.push(BridgeParam {
+                    name: pname.clone(),
+                    ty: ScalarType::Str,
+                });
+                continue;
+            }
+            match self.classify_param_type(pty, self_aliases) {
+                Ok(scalar) => params.push(BridgeParam {
+                    name: pname.clone(),
+                    ty: scalar,
+                }),
+                Err(_) => return None,
+            }
+        }
+
+        // Return must be `Cow<'_, str>` - the owned-or-borrowed string every
+        // replace-family method yields. The bytes variant (`Cow<[u8]>`) stays out.
+        let Some(Type::ResolvedPath(rp)) = &f.sig.output else {
+            return None;
+        };
+        if rp_name(&rp.path) != "Cow"
+            || !matches!(vec_first_type_arg(rp), Some(Type::Primitive(p)) if p == "str")
+        {
+            return None;
+        }
+
+        let producer = BridgeFn {
+            name: method_name.to_string(),
+            export_name: None,
+            params,
+            ret: BridgeReturn::Str,
+            throws: None,
+            recv: Recv::Field0,
+            is_async: false,
+            ret_ownership: Ownership::Owned,
+            via_trait: None,
+            self_mut: false,
+            consumes_self: false,
+            is_static: false,
+            field_read: None,
+            std_from_str: false,
+        };
+        Some((producer, vec![]))
+    }
+
+    /// An INTEGER-ITERATOR COLLECT: `fn(&self, …) -> Iter<'_>` where `Iter` is an
+    /// in-crate iterator whose `Item` is a scalar integer (`SetMatches::iter ->
+    /// SetMatchesIter`, `Item = usize`). No cursor is synthesized - the sequence is
+    /// eagerly collected into a `Vec<{int}>` riding the existing list-return lane
+    /// (`TAG_LIST_BIT`), so no lifetime survives the call.
+    fn try_int_collect(
+        &self,
+        method_name: &str,
+        f: &rustdoc_types::Function,
+        self_aliases: &[&str],
+    ) -> Option<(BridgeFn, Vec<PendingWrapper>)> {
+        if !f.sig.inputs.iter().any(|(n, _)| n == "self") {
+            return None;
+        }
+        let mut params = vec![];
+        for (pname, pty) in &f.sig.inputs {
+            if pname == "self" {
+                continue;
+            }
+            match self.classify_param_type(pty, self_aliases) {
+                Ok(scalar) => params.push(BridgeParam {
+                    name: pname.clone(),
+                    ty: scalar,
+                }),
+                Err(_) => return None,
+            }
+        }
+        let Some(Type::ResolvedPath(rp)) = &f.sig.output else {
+            return None;
+        };
+        let item = self.iterator_item(rp.id.0)?;
+        let elem = match &item {
+            Type::Primitive(p)
+                if matches!(
+                    p.as_str(),
+                    "u8" | "u16"
+                        | "u32"
+                        | "u64"
+                        | "usize"
+                        | "i8"
+                        | "i16"
+                        | "i32"
+                        | "i64"
+                        | "isize"
+                ) =>
+            {
+                p.clone()
+            }
+            _ => return None,
+        };
+        let producer = BridgeFn {
+            name: method_name.to_string(),
+            export_name: None,
+            params,
+            ret: BridgeReturn::CollectList(format!("Vec<{elem}>")),
+            throws: None,
+            recv: Recv::Field0,
+            is_async: false,
+            ret_ownership: Ownership::Owned,
+            via_trait: None,
+            self_mut: false,
+            consumes_self: false,
+            is_static: false,
+            field_read: None,
+            std_from_str: false,
+        };
+        Some((producer, vec![]))
+    }
+
     /// The name of a generic type param bounded (inline or via a where-clause) by
     /// a trait whose path ends in `Replacer`, if any.
     fn replacer_generic_param(&self, f: &rustdoc_types::Function) -> Option<String> {
@@ -3438,7 +3783,11 @@ impl<'a> Ctx<'a> {
                     // skip — it's a NESTED producer of another owning wrapper, so
                     // long as that borrowed type is itself readable. Recurse.
                     Err(reason) => {
-                        match self.try_nested_wrapper(&mname, &params, &f.sig.output, seen) {
+                        match self
+                            .try_nested_wrapper(&mname, &params, &f.sig.output, seen)
+                            .or_else(|| {
+                                self.try_nested_wrapper_plain(&mname, &params, &f.sig.output, seen)
+                            }) {
                             Some((reader, pendings)) => {
                                 readers.push(reader);
                                 nested_pendings.extend(pendings);
@@ -3535,6 +3884,98 @@ fn returns_self(bt: &BridgeType, rp: &rustdoc_types::Path, self_aliases: &[&str]
         }
         _ => false,
     }
+}
+
+/// All trait bounds on a fn's generic type param `name`, unioned from the inline
+/// declaration (`fn f<S: AsRef<str>>`) and the where clause (`where S: AsRef<str>`).
+fn generic_param_bounds<'f>(
+    f: &'f rustdoc_types::Function,
+    name: &str,
+) -> Vec<&'f rustdoc_types::GenericBound> {
+    use rustdoc_types::{GenericParamDefKind, WherePredicate};
+    let mut out = vec![];
+    for p in &f.generics.params {
+        if p.name == name {
+            if let GenericParamDefKind::Type { bounds, .. } = &p.kind {
+                out.extend(bounds.iter());
+            }
+        }
+    }
+    for wp in &f.generics.where_predicates {
+        if let WherePredicate::BoundPredicate {
+            type_: Type::Generic(g),
+            bounds,
+            ..
+        } = wp
+        {
+            if g == name {
+                out.extend(bounds.iter());
+            }
+        }
+    }
+    out
+}
+
+/// True when the bound list contains `AsRef<str>`.
+fn bounds_have_asref_str(bounds: &[&rustdoc_types::GenericBound]) -> bool {
+    bounds.iter().any(|b| {
+        matches!(b, rustdoc_types::GenericBound::TraitBound { trait_, .. }
+            if rp_name(&trait_.path) == "AsRef"
+                && angle_type_args(trait_)
+                    .iter()
+                    .any(|t| matches!(t, Type::Primitive(p) if p == "str")))
+    })
+}
+
+/// The name of a fn generic type param that is an ITERATOR OF STRINGS - bounded
+/// `I: IntoIterator<Item = S>` with `S: AsRef<str>` (or `Item = &str` / `Item =
+/// String` directly). The `RegexSet::new` / `RegexSetBuilder::new` shape; the
+/// binder monomorphizes it to `Vec<String>` on the wide lane. `None` when no
+/// param matches.
+fn strings_iter_generic(f: &rustdoc_types::Function) -> Option<String> {
+    use rustdoc_types::{AssocItemConstraintKind, GenericBound, GenericParamDefKind, Term};
+    let item_is_stringish = |item: &Type| -> bool {
+        match item {
+            // Item = S where S: AsRef<str>.
+            Type::Generic(s) => bounds_have_asref_str(&generic_param_bounds(f, s)),
+            // Item = &str.
+            Type::BorrowedRef { type_, .. } => {
+                matches!(type_.as_ref(), Type::Primitive(p) if p == "str")
+            }
+            // Item = String.
+            Type::ResolvedPath(rp) => rp_name(&rp.path) == "String",
+            _ => false,
+        }
+    };
+    for p in &f.generics.params {
+        if !matches!(p.kind, GenericParamDefKind::Type { .. }) {
+            continue;
+        }
+        for b in generic_param_bounds(f, &p.name) {
+            let GenericBound::TraitBound { trait_, .. } = b else {
+                continue;
+            };
+            if rp_name(&trait_.path) != "IntoIterator" {
+                continue;
+            }
+            let Some(args) = &trait_.args else { continue };
+            let rustdoc_types::GenericArgs::AngleBracketed { constraints, .. } = args.as_ref()
+            else {
+                continue;
+            };
+            let item_ok = constraints.iter().any(|c| {
+                c.name == "Item"
+                    && matches!(
+                        &c.binding,
+                        AssocItemConstraintKind::Equality(Term::Type(t)) if item_is_stringish(t)
+                    )
+            });
+            if item_ok {
+                return Some(p.name.clone());
+            }
+        }
+    }
+    None
 }
 
 /// Classify a return type into a drain collection shape, or `None` if it is not

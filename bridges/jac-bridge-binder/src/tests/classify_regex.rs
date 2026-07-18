@@ -447,12 +447,20 @@ fn replace_all_rescued_as_callback() {
         ra.ret
     );
 
-    // `replacen` (an extra usize `limit` param) is NOT a callback shape — it stays
-    // an honest skip, proving the rule is specific, not a blanket generic-rescue.
-    assert!(
-        spec.skips.iter().any(|s| s.item == "Regex::replacen"),
-        "Regex::replacen should remain a skip (extra usize param)"
-    );
+    // `replacen` (an extra usize `limit` param) is NOT a callback shape - the
+    // callback rule declines it, and the replacer-`&str` monomorphization catches
+    // it instead: the `R: Replacer` param pins to a literal `&str` replacement and
+    // the `Cow<str>` return lowers to the owned Str lane.
+    let rn = regex
+        .methods
+        .iter()
+        .find(|m| m.name == "replacen")
+        .expect("replacen bridged via the replacer-&str monomorphization");
+    assert_eq!(rn.params.len(), 3, "replacen takes haystack + limit + rep");
+    assert_eq!(rn.params[0].ty, ScalarType::Str);
+    assert_eq!(rn.params[1].ty, ScalarType::Uint("usize".into()));
+    assert_eq!(rn.params[2].ty, ScalarType::Str, "R: Replacer pinned to &str");
+    assert_eq!(rn.ret, BridgeReturn::Str, "Cow<str> lowers to owned String");
 }
 
 #[test]

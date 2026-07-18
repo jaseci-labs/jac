@@ -24,6 +24,7 @@ mod tests {
     mod opt_str;
     mod overlay_regex;
     mod ref_lane;
+    mod regex_parity;
     mod self_alias;
     mod string_return;
     mod tuple_struct;

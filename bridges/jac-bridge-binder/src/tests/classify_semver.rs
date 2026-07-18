@@ -164,6 +164,17 @@ fn field_reader_lane_scalar_handle_and_enum() {
         assert_eq!(f.field_read.as_deref(), Some(m));
     }
 
+    // Option<u64> field readers ride the Option<int> lane (Comparator.minor/.patch).
+    for m in ["minor", "patch"] {
+        let f = method(&spec, "Comparator", m);
+        assert_eq!(
+            f.ret,
+            BridgeReturn::OptUintValue("u64".into()),
+            "Comparator::{m} rides the Option<int> lane"
+        );
+        assert_eq!(f.field_read.as_deref(), Some(m));
+    }
+
     // Handle field readers — an owned-clone producer of another bridged handle.
     let pre = method(&spec, "Version", "pre");
     assert_eq!(pre.ret, BridgeReturn::Ref("Prerelease".into()));
@@ -208,9 +219,6 @@ fn honest_skips_for_unbridgeable_fields() {
             .map(|s| format!("{:?}", s.reason))
             .unwrap_or_else(|| panic!("{item} must be a recorded skip"))
     };
-    // Option<u64> fields: no in-band None channel for an int in the v1 ABI.
-    assert!(skip_reason("Comparator::minor").contains("no in-band None channel"));
-    assert!(skip_reason("Comparator::patch").contains("no in-band None channel"));
     // Vec<Comparator>: no list-of-handle lane.
     assert!(skip_reason("VersionReq::comparators").contains("list-of-handle"));
     // FromIterator is generic.
