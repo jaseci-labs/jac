@@ -1214,6 +1214,10 @@ test "vite config generation" {
             assert "/assets" in dev_config_content;  # Project assets/ dir proxy
             assert "tailwindcss()" in dev_config_content;  # Tailwind plugin
             assert "@tailwindcss/vite" in dev_config_content;  # Tailwind import
+            # Runtime state must be excluded from the polling watcher or a
+            # --dev app that touches its SQLite anchor store reloads in a loop
+            assert "**/.jac/data/**" in dev_config_content;
+            assert "**/*.db-wal" in dev_config_content;
 
             # Verify configs are different (dev vs build)
             assert build_config_content != dev_config_content;
