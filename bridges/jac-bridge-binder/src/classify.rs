@@ -2120,6 +2120,27 @@ impl<'a> Ctx<'a> {
                     if let Some(target) = self.option_ref_target(rp, bt, self_aliases) {
                         return Ok(BridgeReturn::OptRef(target));
                     }
+                    // M6: `Option<String>` — a nullable owned string. Crosses the
+                    // `Str` JacBuf lane with `TAG_OPT_BIT` set; the macro signals
+                    // `None` in-band as a null buffer pointer. Only owned `String`
+                    // qualifies (an `Option<&str>` inner carries a lifetime); checked
+                    // after the owned-handle arm so a bridged inner isn't shadowed.
+                    if let Some(Type::ResolvedPath(inner)) = vec_first_type_arg(rp) {
+                        if rp_name(&inner.path) == "String" {
+                            return Ok(BridgeReturn::OptStrValue);
+                        }
+                        // M6: `Option<Vec<u8>>` (or `Option<Array<u8, _>>`) — a
+                        // nullable owned byte string. The byte analogue of
+                        // `Option<String>`: crosses the `Bytes` JacBuf lane with
+                        // `TAG_OPT_BIT` set, `None` as a null buffer pointer. Mirror
+                        // the plain-`Bytes` return arm's `Vec<u8>` / `Array<u8, _>`
+                        // recognition on the Option's inner path.
+                        if matches!(rp_name(&inner.path), "Vec" | "Array" | "GenericArray")
+                            && first_type_arg_is_u8(inner)
+                        {
+                            return Ok(BridgeReturn::OptBytesValue);
+                        }
+                    }
                 }
                 // 1.2.4: a bare cross-type return naming another bridged (non-mono)
                 // type is a fresh owned handle (`and_hms -> NaiveDateTime`). `Self`

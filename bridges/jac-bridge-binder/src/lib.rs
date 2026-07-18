@@ -20,6 +20,7 @@ mod tests {
     mod flatten_trait;
     mod fn_static;
     mod monomorphize_chrono;
+    mod opt_str;
     mod overlay_regex;
     mod ref_lane;
     mod self_alias;

@@ -13,6 +13,7 @@ import from jaclang.compiler.rust_bridge._blob {
     TAG_UINT,
     TAG_F64,
     TAG_STR,
+    TAG_BYTES,
     TAG_WIDE,
     TAG_VOID,
     tag_base,
@@ -466,6 +467,9 @@ class _Synth {
         if base == TAG_STR {
             return "str";
         }
+        if base == TAG_BYTES {
+            return "bytes";
+        }
         if base == TAG_BOOL {
             return "bool";
         }
@@ -491,7 +495,7 @@ class _Synth {
             if ps == SlotKind.Str {
                 params.append(f"{pn}: str");
                 params.append(f"{pn}_len: int");
-            } elif ps == SlotKind.Wide {
+            } elif ps == SlotKind.Wide or ps == SlotKind.Bytes {
                 params.append(f"{pn}: bytes");
                 params.append(f"{pn}_len: int");
             } elif ps == SlotKind.Bool
@@ -514,7 +518,7 @@ class _Synth {
             params.append("out_bool: bytes");
         } elif rs.kind == SlotKind.OpaqueRef {
             params.append("out_handle: bytes");
-        } elif rs.kind == SlotKind.Str {
+        } elif rs.kind == SlotKind.Str or rs.kind == SlotKind.Bytes {
             params.append("out_buf: bytes");
         } elif rs.kind == SlotKind.Int or rs.kind == SlotKind.Uint {
             params.append("out_int: bytes");
@@ -670,7 +674,7 @@ class _Synth {
         } elif rs.kind == SlotKind.Bool and not rs.is_opt {
             body_lines.append('        out_b = struct.pack("<B", 0);');
             call.append("out_b");
-        } elif rs.kind == SlotKind.Str {
+        } elif rs.kind == SlotKind.Str or rs.kind == SlotKind.Bytes {
             body_lines.append('        out_buf = struct.pack("<QII", 0, 0, 0);');
             call.append("out_buf");
             self._bridged_str_method = True;
@@ -763,6 +767,20 @@ class _Synth {
                 f"        {self.free_buf}(rb[0], rb[1] | (rb[2] << 32));"
             );
             body_lines.append("        return rs;");
+        } elif rs.kind == SlotKind.Bytes {
+            body_lines.append('        rb = struct.unpack("<QII", out_buf);');
+            body_lines.append("        if rb[0] == 0 {");
+            if rs.is_opt {
+                body_lines.append("            return None;");
+            } else {
+                body_lines.append('            return b"";');
+            }
+            body_lines.append("        }");
+            body_lines.append("        rby = __jac_bytes_from_raw(rb[0], rb[1]);");
+            body_lines.append(
+                f"        {self.free_buf}(rb[0], rb[1] | (rb[2] << 32));"
+            );
+            body_lines.append("        return rby;");
         } elif rs.kind == SlotKind.Int {
             body_lines.append('        iv = struct.unpack("<Q", out_int)[0];');
             body_lines.append("        if iv >= 0x8000000000000000 {");
@@ -996,6 +1014,9 @@ class _Synth {
             if pk == SlotKind.Str {
                 call.append(pn);
                 call.append(f"strlen({pn})");
+            } elif pk == SlotKind.Bytes {
+                call.append(pn);
+                call.append(f"len({pn})");
             } elif pk == SlotKind.Wide {
                 self._needs_codec = True;
                 call.append(f"_enc_{pn}");
@@ -1331,6 +1352,9 @@ class _Synth {
         if p.tag == TAG_STR {
             return f"{pn}: str";
         }
+        if tag_base(p.tag) == TAG_BYTES {
+            return f"{pn}: bytes";
+        }
         if p.tag == TAG_BOOL {
             return f"{pn}: bool";
         }
@@ -1387,6 +1411,9 @@ class _Synth {
         }
         if tag_base(fd.ret) == TAG_STR {
             return " -> str | None" if tag_is_opt(fd.ret) else " -> str";
+        }
+        if tag_base(fd.ret) == TAG_BYTES {
+            return " -> bytes | None" if tag_is_opt(fd.ret) else " -> bytes";
         }
         if tag_is_wide(fd.ret) {
             tn = self._wide_typed_name(fd.ret);

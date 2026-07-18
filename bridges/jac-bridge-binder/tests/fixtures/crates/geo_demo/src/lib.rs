@@ -83,4 +83,25 @@ impl Canvas {
     pub fn origin_shape(&self) -> Shape {
         Shape::Dot(self.origin.clone())
     }
+
+    /// A plain `-> Option<String>` return (M6 nullable-String lane): the `Tag`
+    /// variant carries a name, every other shape is anonymous. `None` crosses the
+    /// boundary in-band as a null JacBuf pointer, distinct from a present `""`.
+    pub fn shape_name(&self, s: Shape) -> Option<String> {
+        match s {
+            Shape::Tag(t) => Some(t),
+            _ => None,
+        }
+    }
+
+    /// A plain `-> Option<Vec<u8>>` return (M6 nullable-bytes lane): the `Tag`
+    /// variant's name as its raw UTF-8 bytes, every other shape is anonymous.
+    /// `None` crosses in-band as a null JacBuf pointer, distinct from a present
+    /// empty `b""` — the byte analogue of `shape_name`.
+    pub fn shape_name_bytes(&self, s: Shape) -> Option<Vec<u8>> {
+        match s {
+            Shape::Tag(t) => Some(t.into_bytes()),
+            _ => None,
+        }
+    }
 }

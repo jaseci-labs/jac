@@ -686,6 +686,15 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
         }
         // Drain pull: pop the next owned piece front-to-back. None ends the drain.
         BridgeReturn::OptStr => (" -> Option<String>".into(), "self.items.pop()".into()),
+        // M6: a plain `-> Option<String>` method. The source already yields an owned
+        // `Option<String>`, so forward it verbatim; the macro carries `None` in-band
+        // (null JacBuf pointer) on the `TAG_OPT_BIT | TAG_STR` lane.
+        BridgeReturn::OptStrValue => (" -> Option<String>".into(), base_call(&recv_expr)),
+        // M6: a plain `-> Option<Vec<u8>>` method — the byte analogue of
+        // `OptStrValue`. The source already yields an owned `Option<Vec<u8>>`, so
+        // forward it verbatim; the macro carries `None` in-band (null JacBuf
+        // pointer) on the `TAG_OPT_BIT | TAG_BYTES` lane.
+        BridgeReturn::OptBytesValue => (" -> Option<Vec<u8>>".into(), base_call(&recv_expr)),
         // CALLBACK: replace_all with a JacCallback. Rust calls back into Jac once
         // per match; the callback returns each match's replacement. The closure
         // can't itself return a Result, so capture the first callback error and

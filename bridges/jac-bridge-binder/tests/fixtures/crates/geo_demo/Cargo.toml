@@ -5,3 +5,8 @@ edition = "2021"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
+
+# Standalone package: this fixture crate lives under the binder workspace tree but
+# is not a workspace member, so an empty `[workspace]` table keeps `cargo rustdoc`
+# (via tests/corpus/gen-fixtures.sh) from trying to fold it into the parent workspace.
+[workspace]

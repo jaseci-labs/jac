@@ -86,6 +86,10 @@ fn canvas_handle_bridges_ctor_and_all_wide_methods() {
     let spec = geo_demo_spec();
     let canvas = spec.types.iter().find(|t| t.name == "Canvas").expect("Canvas type");
     assert!(canvas.ctor.is_some(), "Canvas::new should be the constructor");
-    assert_eq!(canvas.methods.len(), 5, "translate/trace/make_path/describe/origin_shape");
+    assert_eq!(
+        canvas.methods.len(),
+        7,
+        "translate/trace/make_path/describe/origin_shape/shape_name/shape_name_bytes"
+    );
     assert!(spec.skips.is_empty(), "geo_demo should bridge with zero skips, got {:?}", spec.skips);
 }

@@ -74,6 +74,35 @@ test "integer methods are not skipped" {
 }
 
 
+test "bytes params and returns bridge on na (TAG_BYTES)" {
+    src = render_na_source(_META, _NAME).source;
+    # `&[u8]` param + `Vec<u8>` return, `Vec<u8>` return, `Option<Vec<u8>>` return.
+    assert "def xor(data: bytes) -> bytes {" in src;
+    assert "def seed_bytes() -> bytes {" in src;
+    assert "def maybe_bytes(want: bool) -> bytes | None {" in src;
+    # A bytes param crosses as (data ptr, byte length) — na lowers the `bytes` arg
+    # to its data pointer, and `len()` is the exact byte count (not strlen).
+    assert "jac_scalar_Calc_xor(self.__handle, data, len(data), out_buf, out_e);" in src;
+    # The shim declares the bytes param as `bytes` + an int length, and the return
+    # as a JacBuf out-slot (same lane as a str return).
+    assert "data: bytes," in src;
+    assert "data_len: int," in src;
+    # A bytes return is read length-explicit (embedded NULs survive), then freed.
+    assert "rby = __jac_bytes_from_raw(rb[0], rb[1]);" in src;
+    # The nullable return signals None in-band via a null buffer pointer.
+    assert "if rb[0] == 0 {" in src;
+}
+
+
+test "bytes methods are not skipped on na" {
+    res = render_na_source(_META, _NAME);
+    items = {s.item for s in res.skips};
+    for name in ["Calc.seed_bytes", "Calc.xor", "Calc.maybe_bytes"] {
+        assert name not in items , f"{name} was skipped: {items}";
+    }
+}
+
+
 test "FN_STATIC associated fns are honestly skipped on na (gated)" {
     res = render_na_source(_META, _NAME);
     items = {s.item for s in res.skips};

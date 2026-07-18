@@ -209,46 +209,178 @@ test "na skips f64-param methods, keeps f64-return methods" {
 }
 
 
-# Byte-string (TAG_BYTES) lane. The full param+return+Option<bytes> vertical is
-# bridged and byte-identical on the CPYTHON loader (proven in test_scalar.jac,
-# including embedded NULs -- a `Vec<u8>` return carries an explicit length that
-# survives leading/interior NULs a strlen decode would truncate).
+# Byte-string (TAG_BYTES) lane -- na <-> CPython conformance. A `&[u8]` param
+# crosses as (data ptr, byte length); a `Vec<u8>` / `Option<Vec<u8>>` return
+# crosses as an owned JacBuf read length-explicit (embedded NULs survive -- a
+# strlen decode would truncate). Both na-backend gaps that once blocked this are
+# fixed (a `bytes` arg lowers to its data pointer for a `bytes`-typed foreign
+# param, and a `-> bytes` method call is typed as a bytes object), so `_synth`
+# now emits the lane and na is observationally identical to the CPython loader.
 #
-# na SKIPS the entire bytes lane (both directions), so there is no na<->CPython
-# bytes conformance -- na does not emit these methods at all. Two independent na
-# gaps make bytes unbridgeable today; each mirrors the f64 skip-on-gap discipline:
+# Content cases (`want_content=True`: seed_bytes, xor) compare a NUL-safe decimal
+# descriptor ("len:b0,b1,.."), built by subscripting -- never by concatenating
+# the bytes into a str, which would drop interior NULs on na. `seed_bytes`
+# returns [0x00, 0x01, seed, 0x00, 0xff], so its content check already exercises
+# leading/interior NUL survival on the length-explicit return.
 #
-#   * bytes PARAM: a na `bytes` value lowers to a `{i64 len, data}` STRUCT pointer,
-#     but the bridge shim declares the arg as `*const u8` (a raw DATA pointer). na
-#     only coerces a bytes value to its data pointer for a *foreign* call whose arg
-#     is typed `i8*`; the shim arg is typed `bytes`, so na would hand the struct
-#     pointer straight through and the Rust side would read the na header as data.
-#   * bytes RETURN: na types a method call whose declared return is `bytes` as a
-#     bare i64 at the CALL SITE (the return pointer as an integer), NOT a `bytes`
-#     object -- so `len`/`==`/subscript on the result all misbehave (two calls
-#     returning identical content compare unequal: address, not content). This is
-#     a general na method-return gap, reproducible on a plain non-bridge class, and
-#     distinct from na's working str-return path (owning_conformance `.as_str()`).
-#     Emitting such a method would silently yield an unusable value, so it is a
-#     visible skip, not a broken bridge.
-#
-# Flip na on -- and add na<->CPython bytes conformance here -- when na (a) coerces
-# a `bytes` arg to its data pointer at the shim boundary and (b) types a `-> bytes`
-# method call as a bytes object at the call site.
-#
-# Proven on the synthesized source shape so it runs without the LLVM shim.
-test "na skips the whole bytes lane (param and return)" {
+# Option cases (`want_content=False`: maybe_bytes) compare only presence + length
+# ("None" vs "some:N"), NOT content: na cannot yet narrow a `bytes | None` value
+# to `bytes` to subscript it (a general na union-narrowing gap, unrelated to the
+# bridge -- `len()` on the union works, only `v[i]` does not). The in-band None
+# channel (null JacBuf ptr) and the Some length are what this case proves; the
+# byte content of a nullable return rides the same decoder as `seed_bytes`.
+glob BYTES_CASES = [
+         (5, "seed_bytes", None, True),
+         (255, "seed_bytes", None, True),
+         (15, "xor", [16, 32, 48], True),
+         (7, "maybe_bytes", True, False),
+         (7, "maybe_bytes", False, False)
+     ];
+
+
+def _bytes_label(seed: int, method: str, arg: object) -> str {
+    a = "" if arg is None else str(arg);
+    return f"{seed} {method}({a}) = ";
+}
+
+
+def _bytes_desc(v: object, want_content: bool) -> str {
+    if v is None {
+        return "None";
+    }
+    if not want_content {
+        return "some:" + str(len(v));
+    }
+    # NUL-safe: render each byte as a decimal int, joined with commas.
+    d = str(len(v)) + ":";
+    for i in range(len(v)) {
+        if i > 0 {
+            d = d + ",";
+        }
+        d = d + str(v[i]);
+    }
+    return d;
+}
+
+
+def _bytes_lit(data: list) -> str {
+    # A Jac/na `b"\xHH.."` literal for a list of byte values.
+    s = "b\"";
+    for x in data {
+        s = s + f"\\x{x:02x}";
+    }
+    return s + "\"";
+}
+
+
+def cpython_bytes_side -> list {
+    mod = load_bridge(str(SO));
+    calc = mod.Calc;
+    lines = [];
+    for case in BYTES_CASES {
+        seed = case[0];
+        method = case[1];
+        arg = case[2];
+        want_content = case[3];
+        label = _bytes_label(seed, method, arg);
+        c = calc(seed);
+        if method == "seed_bytes" {
+            r = c.seed_bytes();
+        } elif method == "xor" {
+            r = c.xor(bytes(arg));
+        } else {
+            r = c.maybe_bytes(arg);
+        }
+        lines.append(label + _bytes_desc(r, want_content));
+        c.close();
+    }
+    return lines;
+}
+
+
+def na_bytes_side -> list {
+    probe = ["\nwith entry {"];
+    # Per-case variable suffixes: na types a local by its FIRST assignment and the
+    # checker enforces reassign-compat, so a `bytes` result (seed_bytes/xor) and a
+    # `bytes | None` result (maybe_bytes) must NOT share a name across cases.
+    k = 0;
+    for case in BYTES_CASES {
+        seed = case[0];
+        method = case[1];
+        arg = case[2];
+        want_content = case[3];
+        label = _bytes_label(seed, method, arg);
+        if method == "seed_bytes" {
+            call = "c.seed_bytes()";
+        } elif method == "xor" {
+            call = "c.xor(" + _bytes_lit(arg) + ")";
+        } else {
+            call = "c.maybe_bytes(" + ("True" if arg else "False") + ")";
+        }
+        r = f"_r{k}";
+        d = f"_d{k}";
+        ix = f"_i{k}";
+        probe.append("    c = Calc(" + na_int_literal(seed) + ");");
+        probe.append("    " + r + " = " + call + ";");
+        probe.append("    if " + r + " is None {");
+        probe.append("        print(" + jac_str(label) + " + \"None\");");
+        probe.append("    } else {");
+        if want_content {
+            # Full NUL-safe content descriptor (subscripts a definitely-`bytes`
+            # value). Every literal separator is wrapped in `str(..)`: na infers a
+            # bare `str + ":"` as `LiteralString` and then refuses to reassign a
+            # computed `str` to it, so `str(len(..)) + str(":")` keeps the accumulator
+            # honestly typed `str`.
+            probe.append("        " + d + " = str(len(" + r + ")) + str(\":\");");
+            probe.append("        " + ix + " = 0;");
+            probe.append("        while " + ix + " < len(" + r + ") {");
+            probe.append("            if " + ix + " > 0 {");
+            probe.append("                " + d + " = " + d + " + str(\",\");");
+            probe.append("            }");
+            probe.append(
+                "            " + d + " = " + d + " + str(" + r + "[" + ix + "]);"
+            );
+            probe.append("            " + ix + " += 1;");
+            probe.append("        }");
+            probe.append("        print(" + jac_str(label) + " + " + d + ");");
+        } else {
+            # Presence + length only: na cannot subscript a `bytes | None`, but
+            # `len()` on the union is well-typed. Proves the Some/None channel.
+            probe.append(
+                "        print(" + jac_str(label) + " + \"some:\" + str(len(" + r + ")));"
+            );
+        }
+        probe.append("    }");
+        probe.append("    c.close();");
+        k += 1;
+    }
+    probe.append("}");
+    return run_na_probe(
+        SO, probe, "scalar_bytes_conf.na.jac", "scalar_bytes_conf", strip_blank=True
+    );
+}
+
+
+test "bytes na cpython conformance" {
+    if skip_gate(SO, SHIM) {
+        return;
+    }
+    assert cpython_bytes_side() == na_bytes_side();
+}
+
+
+# Structural guard (runs without the shim): the bytes vertical is bridged on na,
+# not skipped -- `xor` (&[u8] param + Vec<u8> return), `seed_bytes` (Vec<u8>
+# return), `maybe_bytes` (Option<Vec<u8>> return, nullable).
+test "na bridges the whole bytes lane (param and return)" {
     if not SO.is_file() {
         return;
     }
     src = synthesize_source(SO);
-    # Every bytes-touching method is skipped: `xor` (&[u8] param + Vec<u8> return),
-    # `seed_bytes` (Vec<u8> return), `maybe_bytes` (Option<Vec<u8>> return).
-    assert "def xor(" not in src;
-    assert "def seed_bytes(" not in src;
-    assert "def maybe_bytes(" not in src;
-    # Sanity: non-bytes scalar methods on the same type ARE still bridged, so the
-    # skips above are bytes-specific and not a wholesale failure to synthesize.
-    assert "def seed(" in src;
-    assert "def echo_u64(" in src;
+    assert "def xor(data: bytes) -> bytes {" in src;
+    assert "def seed_bytes() -> bytes {" in src;
+    assert "def maybe_bytes(want: bool) -> bytes | None {" in src;
+    # bytes param passes (data ptr, byte length); return reads length-explicit.
+    assert "len(data)" in src;
+    assert "__jac_bytes_from_raw(rb[0], rb[1]);" in src;
 }

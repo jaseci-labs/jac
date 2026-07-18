@@ -30,6 +30,30 @@ policy - see IMPLEMENTATION.md / PLAN.md). Updated 2026-07.
       (likely cold-cache). If it resurfaces in CI, capture the exact rendered source + cache
       state -- the intrinsic's `-> str` is declared in `type_registry.jac` +
       `na_builtins.pyi` and gated on `_in_native_context()`.
+- [x] **ROOT-CAUSED + FIXED (2026-07-18) — it was a TEST-HARNESS BUG, not a na-backend
+      resolver bug.** `na/conformance.jac` (regex) failed `E1001: Cannot assign <Unknown>
+      to str` at `emsg = __jac_str_from_raw(mb[0], mb[1])`. The earlier "resolver
+      import-order priming" diagnosis was WRONG. Real cause: `conformance.jac` named its
+      synthesized temp module `"conf.jac"` (line 79), while EVERY other conformance
+      (`scalar_conf.na.jac`, …) uses a `.na.jac` name. `__jac_str_from_raw`'s `-> str`
+      signature (na_builtins.pyi) is only consulted when the type checker's
+      `_in_native_context()` is true — and that predicate keys off the module being a
+      `.na.jac` file (`is_native_module` / `UniNode.codespace`). A plain `.jac`
+      auto-promoted by `nacompile` is NOT seen as native context by the checker, so the
+      intrinsic fell back to the plain-builtins name entry (no signature → `<Unknown>`),
+      and reassigning `emsg` (already `str`) tripped E1001. Fix: `"conf.jac"` →
+      `"conf.na.jac"`. Verified: conformance now PASSES, and the na regex bridge runs
+      end-to-end (`is_match("foo42")`→1, `is_match("bar")`→0). Rendered scalar source ALSO
+      E1001s if you nacompile it as a bare `.jac` — confirming the trigger is the filename,
+      not the module shape. **Compiler HARDENED (2026-07-18):** `_in_native_context`
+      (`type_evaluator.impl.jac`) now also returns true when the current module is the
+      program's `_auto_promote_native` target (mirrors `BoundaryAnalysisPass._in_native_module`),
+      so ANY `.jac` compiled via `nacompile` resolves na builtins — the `.na.jac` naming is no
+      longer load-bearing. Verified: reverting the test back to bare `conf.jac` now passes too;
+      guard is scoped (a normal `jac check` of a server module still sees the intrinsic as
+      Unknown); type-checker tests (`test_global_narrowing`, `test_prim_equivalence`,
+      `test_subscript_assignment`, `test_shared_types_equivalence`) green. The test keeps the
+      `.na.jac` name for hygiene (matches sibling conformances).
 - [x] **Parenthesized-lambda syntax updated in na tests (2026-07-17).** Fixed in
       `owning_conformance.jac`, `aliasing_conformance.jac`, `adversarial_conformance.jac`,
       `test_callback_leak.jac` (19 lambdas + 2 prose comments). NOTE: the earlier fix
@@ -50,7 +74,8 @@ policy - see IMPLEMENTATION.md / PLAN.md). Updated 2026-07.
 | M6.1 na closures (`{call, ctx}`) | ✅ Done | |
 | M6.2 integers + `HashMap→dict` / `Vec→list` returns | ✅ Done | flat `V ∈ {bool, int, str}` only |
 | M6.3 `async fn` as blocking | ✅ Done | module-owned Tokio runtime + block_on shim (`jac-bridge-async`); CI: workspace binder tests + `test_async.jac` loader + `async_conformance.jac` na vertical |
-| `Option<String>` on na | ❌ Open | `_synth.jac` skips pure `Option<str>` returns; CPython works |
+| `Option<String>` on na | ✅ Done | binder `classify_return` now emits `OptStrValue` for a plain `-> Option<String>` (was skipped); macro (`Tag::Opt(Str)`), na `_synth` (`-> str \| None`, null-ptr → None), and ctypes all already decoded the `TAG_OPT_BIT \| TAG_STR` lane. Fixture: geo_demo `Canvas::shape_name`; binder classify+codegen tests + emitted-wrapper macro-compile verified 2026-07-18 |
+| `Option<Vec<u8>>` on na | ✅ Done | binder `classify_return` now emits `OptBytesValue` for a plain `-> Option<Vec<u8>>` (byte analogue of `OptStrValue`; also `Option<Array<u8, _>>`); macro (`Tag::Opt(Bytes)`, in-band null `JacBuf`), na `_synth` (`-> bytes \| None`, null-ptr → None), and ctypes all already decoded the lane. Fixture: geo_demo `Canvas::shape_name_bytes`; binder classify+emit tests + emitted-wrapper macro-compile verified 2026-07-18 |
 | Callback `retain`/`release` | ⏸ Deferred | only when Rust **stores** a callback past the call |
 
 ---
@@ -83,8 +108,8 @@ These are **not** “finish M6” items - they need the Lanes Plan (`bridges/ref
 
 | Gap | Example |
 |-----|---------|
-| Floats | `f32` / `f64` - macro rejects |
-| Bytes | `Vec<u8>`, `&[u8]` |
+| Floats | `f32` / `f64` - macro rejects; f64-return works, f64-PARAM still na-broken |
+| ~~Bytes~~ | **DONE** all 3 runtimes: `Vec<u8>` / `&[u8]` / `Option<Vec<u8>>` - wire+CPython+binder, and na as of 2026-07-18 (both na-backend bytes bugs fixed; `_synth` emits the lane; scalar na↔CPython conformance green) |
 | Collection **params** | pass `Vec` / `HashMap` **into** Rust |
 | Nested containers | `list[list]`, `dict[str, list]` |
 | Nullable scalars | `Option<bool>`, `Option<int>` |

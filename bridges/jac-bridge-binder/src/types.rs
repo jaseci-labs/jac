@@ -423,6 +423,24 @@ pub enum BridgeReturn {
     /// A drain cursor's pull method: `-> Option<String>`, body `self.items.pop()`
     /// (`recv: DrainNext`). None terminates the drain, distinct from a present "".
     OptStr,
+    /// A plain nullable owned-`String` return (M6): a source method whose signature
+    /// is `-> Option<String>` (`chrono::NaiveDate::…` shapes, `Regex`-adjacent
+    /// lookups). Crosses on the SAME JacBuf lane as `Str`, only `TAG_OPT_BIT`-tagged
+    /// so `None` signals in-band via a null buffer pointer (`Tag::Opt(Str)`). Codegen
+    /// emits `-> Option<String>` and forwards the value verbatim — the source is
+    /// already owned, so no `.to_string()`/`.map` transform is needed. Distinct from
+    /// [`OptStr`] (the drain pull, whose body pops an internal buffer).
+    OptStrValue,
+    /// A plain nullable owned-`Vec<u8>` return (M6): a source method whose
+    /// signature is `-> Option<Vec<u8>>` (also `Option<Array<u8, _>>` digest
+    /// shapes). The byte analogue of [`OptStrValue`]: crosses on the SAME JacBuf
+    /// lane as [`Bytes`], only `TAG_OPT_BIT`-tagged so `None` signals in-band via
+    /// a null buffer pointer (`Tag::Opt(Bytes)` in the macro), distinct from a
+    /// present empty `b""`. Codegen emits `-> Option<Vec<u8>>` and forwards the
+    /// owned value verbatim — no `.to_vec()`/`.map` transform.
+    ///
+    /// [`Bytes`]: BridgeReturn::Bytes
+    OptBytesValue,
     /// The CALLBACK vertical (`Regex::replace_all` with a closure `Replacer`):
     /// emit `-> Result<String, String>` whose body calls the owner's replacer
     /// method with a closure that invokes the `JacCallback` param on each match's
