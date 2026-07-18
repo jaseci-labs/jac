@@ -4,14 +4,17 @@ import from jaclang.cli.commands.cli_helpers { proc_file as _proc_file }
 
 impl tool(tool: str, args: list = []) -> int {
     import from jaclang.utils.lang_tools { AstTool }
-    if tool in ("jac2py", "py2jac", "jac2js") {
-        import from jaclang.cli.commands.transform { jac2py, py2jac, jac2js }
+    if tool in ("jac2py", "py2jac", "jac2js", "jac2c") {
+        import from jaclang.cli.commands.transform { jac2py, py2jac, jac2js, jac2c }
         if not args {
             console.error(f"Usage: jac tool {tool} <file>");
             return 1;
         }
-        fwd = {"jac2py": jac2py, "py2jac": py2jac, "jac2js": jac2js};
+        fwd = {"jac2py": jac2py, "py2jac": py2jac, "jac2js": jac2js, "jac2c": jac2c};
         return fwd[tool](args[0]);
+    }
+    if tool in ("c2jac", "cbindgen") {
+        return _run_c_transform(tool, args);
     }
     if tool == "grammar" {
         import from jaclang.cli.commands.analysis { grammar }
@@ -53,6 +56,120 @@ impl tool(tool: str, args: list = []) -> int {
         console.error(f"Ast tool {tool} not found.");
         return 1;
     }
+}
+
+def _run_c_transform(tool: str, args: list) -> int {
+    import from jaclang.cli.commands.transform { c2jac, cbindgen }
+    positional: list = [];
+    incs: list = [];
+    defs: list = [];
+    undefs: list = [];
+    forces: list = [];
+    allows: list = [];
+    blocks: list = [];
+    nostdinc = False;
+    strict_c = False;
+    lib: str | None = None;
+    output: str | None = None;
+    i = 0;
+    n = len(args);
+    while i < n {
+        a = args[i];
+        eqval: str | None = None;
+        if a.startswith("--") and "=" in a {
+            (a, eqval) = a.split("=", 1);
+        }
+
+        val: str | None = None;
+        wants_val = a in (
+            "-I",
+            "--incdir",
+            "-D",
+            "--define",
+            "-U",
+            "--undef",
+            "--force-include",
+            "--lib",
+            "--allow",
+            "--block",
+            "-o",
+            "--output"
+        );
+        short_glued = len(a) > 2 and a[:2] in ("-I", "-D", "-U", "-o");
+        if short_glued {
+            val = a[2:];
+            a = a[:2];
+        } elif wants_val {
+            if eqval is not None {
+                val = eqval;
+            } elif i + 1 < n {
+                i += 1;
+                val = args[i];
+            } else {
+                console.error(f"jac tool {tool}: option {a} needs a value");
+                return 1;
+            }
+        }
+        if a in ("-I", "--incdir") {
+            incs.append(val);
+        } elif a in ("-D", "--define") {
+            defs.append(val);
+        } elif a in ("-U", "--undef") {
+            undefs.append(val);
+        } elif a == "--force-include" {
+            forces.append(val);
+        } elif a == "--nostdinc" {
+            nostdinc = True;
+        } elif a == "--strict-c" and tool == "c2jac" {
+            strict_c = True;
+        } elif a == "--lib" and tool == "cbindgen" {
+            lib = val;
+        } elif a == "--allow" and tool == "cbindgen" {
+            allows.append(val);
+        } elif a == "--block" and tool == "cbindgen" {
+            blocks.append(val);
+        } elif a in ("-o", "--output") and tool == "cbindgen" {
+            output = val;
+        } elif a.startswith("-") {
+            console.error(f"jac tool {tool}: unknown argument '{a}'");
+            return 1;
+        } else {
+            positional.append(a);
+        }
+        i += 1;
+    }
+    if len(positional) != 1 {
+        console.error(f"Usage: jac tool {tool} <file> [options]");
+        return 1;
+    }
+    filename = positional[0];
+    incdir = [incs] if incs else None;
+    define = [defs] if defs else None;
+    undef = [undefs] if undefs else None;
+    force_include = [forces] if forces else None;
+    if tool == "c2jac" {
+        return c2jac(
+            filename,
+            incdir=incdir,
+            define=define,
+            undef=undef,
+            force_include=force_include,
+            nostdinc=nostdinc,
+            strict_c=strict_c
+        );
+    }
+    return cbindgen(
+        filename,
+        lib=lib,
+        incdir=incdir,
+        define=define,
+        undef=undef,
+        force_include=force_include,
+        nostdinc=nostdinc,
+        allow=[allows] if allows else None,
+        block=[blocks] if blocks else None,
+        output=output
+    );
 }
 
 impl dot(

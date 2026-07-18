@@ -7,8 +7,12 @@ description = "Jac programming language - Python-like syntax, compiles to Python
 license = "MIT"
 readme = "README.md"
 requires_python = ">=3.14"
-# No runtime PyPI deps: native LLVM is the in-tree LLVMPY_* shim, statically
-# linked by Zig (jac/native + `zig build fetch-llvm`), not the llvmlite wheel.
+# Native LLVM is the in-tree LLVMPY_* shim, statically linked by Zig
+# (jac/native + `zig build fetch-llvm`), not the llvmlite wheel — no llvmlite dep.
+# The c2jac C front-end is fully vendored in-tree — the parser (pycparser) at
+# jaclang/vendor/pycparser and the preprocessor (pcpp) at jaclang/vendor/pcpp —
+# so the core install carries no third-party runtime dependency. See each dir's
+# README.vendor.md.
 dependencies = []
 
 [project.urls]

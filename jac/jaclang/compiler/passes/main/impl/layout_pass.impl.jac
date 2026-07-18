@@ -18,6 +18,44 @@ impl LayoutPass.transform(ir_in: uni.Module) -> uni.Module {
         return ir_in;
     }
 
+    self._build_registry_over(arch_map);
+
+    for name in self.registry.topo_order {
+        if name in arch_map {
+            self._validate_obj_fields(arch_map[name], arch_map);
+        }
+    }
+
+    module.gen.layout_registry = self.registry;
+    return ir_in;
+}
+
+impl LayoutPass._collect_archetypes(module: uni.Module) -> dict[str, uni.Archetype] {
+    arch_map: dict[str, uni.Archetype] = {};
+    self._merge_archetypes(module, arch_map);
+    return arch_map;
+}
+
+impl LayoutPass._merge_archetypes(
+    module: uni.Module, arch_map: dict[str, uni.Archetype]
+) -> None {
+    for nd in UniPass.get_all_sub_nodes(module, uni.Archetype) {
+        aname = nd.name.value if nd.name else None;
+        if aname is None {
+            continue;
+        }
+
+        if aname not in arch_map or nd.body is not None {
+            arch_map[aname] = nd;
+        }
+    }
+}
+
+impl LayoutPass._build_registry_over(arch_map: dict[str, uni.Archetype]) -> None {
+    if not arch_map {
+        return;
+    }
+
     self._build_hierarchy(arch_map);
 
     topo_order = self._topo_sort(arch_map);
@@ -37,30 +75,16 @@ impl LayoutPass.transform(ir_in: uni.Module) -> uni.Module {
     }
 
     self._compute_acyclicity();
-
-    for name in topo_order {
-        if name in arch_map {
-            self._validate_obj_fields(arch_map[name], arch_map);
-        }
-    }
-
-    module.gen.layout_registry = self.registry;
-    return ir_in;
 }
 
-impl LayoutPass._collect_archetypes(module: uni.Module) -> dict[str, uni.Archetype] {
+impl LayoutPass.build_shared_registry(modules: list[uni.Module]) -> LayoutRegistry {
+    self.registry = LayoutRegistry();
     arch_map: dict[str, uni.Archetype] = {};
-    for nd in UniPass.get_all_sub_nodes(module, uni.Archetype) {
-        aname = nd.name.value if nd.name else None;
-        if aname is None {
-            continue;
-        }
-
-        if aname not in arch_map or nd.body is not None {
-            arch_map[aname] = nd;
-        }
+    for m in modules {
+        self._merge_archetypes(m, arch_map);
     }
-    return arch_map;
+    self._build_registry_over(arch_map);
+    return self.registry;
 }
 
 impl LayoutPass._build_hierarchy(archetypes: dict[str, uni.Archetype]) -> None {
@@ -585,6 +609,14 @@ impl LayoutRegistry.get_mro(name: str) -> list[str] {
 
 impl LayoutRegistry.get_topo_order -> list[str] {
     return self.topo_order;
+}
+
+impl LayoutRegistry.get_method_slot(class_name: str, method_name: str) -> (int | None) {
+    layout = self.layouts.get(class_name);
+    if layout is None {
+        return None;
+    }
+    return layout.method_index.get(method_name);
 }
 
 impl LayoutRegistry.is_primary_ancestor(child: str, ancestor: str) -> bool {
