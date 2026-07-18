@@ -1755,7 +1755,7 @@ impl ESBuiltinEmitter.emit_zip(self, ctx: ESEmitCtx, args: list[str]) -> (str | 
 
 impl ESBuiltinEmitter.emit_map(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
     if len(args) == 2 {
-        return _mcall(args[1], "map", [args[0]]);
+        return _one_arg_cb(args[0], args[1], "map", "_f(_v)");
     }
     return _rt("builtin", "map", args);
 }
@@ -1764,7 +1764,7 @@ impl ESBuiltinEmitter.emit_filter(
     self, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     if len(args) == 2 {
-        return _mcall(args[1], "filter", [args[0]]);
+        return _one_arg_cb(args[0], args[1], "filter", "_f ? _f(_v) : _v");
     }
     return _rt("builtin", "filter", args);
 }

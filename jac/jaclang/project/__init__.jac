@@ -18,9 +18,13 @@ import from jaclang.project.config {
     set_config
 }
 import from jaclang.project.kinds {
+    KIND_SPECS,
+    KindSpec,
     RunPlan,
     VALID_KINDS,
     is_valid_kind,
+    kind_entry,
+    kind_spec,
     plan_project_run,
     resolve_entry,
     resolve_project_kind
@@ -90,6 +94,16 @@ glob __all__ = [
          'find_project_root',
          'is_in_project',
          'interpolate_env_vars',
+         'KIND_SPECS',
+         'KindSpec',
+         'RunPlan',
+         'VALID_KINDS',
+         'is_valid_kind',
+         'kind_entry',
+         'kind_spec',
+         'plan_project_run',
+         'resolve_entry',
+         'resolve_project_kind',
          'DependencyPlan',
          'EcosystemProvider',
          'InstallContext',

@@ -21,6 +21,7 @@ the canonical heterogeneous layout `loads()` produces (`list[any]` /
   NA-8  str(True)/str(False) -> "True"/"False"
   NA-9  str.strip/lstrip/rstrip(chars)
   NA-10 empty-string truthiness in a ternary (`x if "" else y`)
+  NA-11 None-valued `any` on consume: is None / truthiness / == None (#6957)
 """
 
 # --- NA-1 / NA-8 / NA-9 / NA-10: scalar + string congruence with CPython ---
@@ -305,6 +306,334 @@ na {
             "ext": "-".join(ext),
             "ins0": ins[0],
             "mixed_n": len(mixed)
+        };
+    }
+}
+
+# --- NA-11 (#6957): a None-valued `any` on the consume side. `x is None`,
+#     bare truthiness, and `x == None` must reduce the boxed value to i1
+#     (they emitted invalid IR); isinstance against a None-any must fall
+#     through as False (pinned; fixed by the dedicated None tag); and
+#     `isinstance(x, type(None))` is the explicit detection route. The
+#     recursive dumps with nulls is the issue's acceptance shape. ---
+def none_probe_py(x: any) -> str {
+    if x is None {
+        return "null";
+    }
+    return "val";
+}
+
+def notnone_probe_py(x: any) -> int {
+    if x is not None {
+        return 1;
+    }
+    return 0;
+}
+
+def eqnone_probe_py(x: any) -> int {
+    if x == None {
+        return 1;
+    }
+    return 0;
+}
+
+def nenone_probe_py(x: any) -> int {
+    if x != None {
+        return 1;
+    }
+    return 0;
+}
+
+def truthy_probe_py(x: any) -> str {
+    if x {
+        return "T";
+    }
+    return "F";
+}
+
+def isint_probe_py(x: any) -> int {
+    if isinstance(x, int) {
+        return 1;
+    }
+    return 0;
+}
+
+def typenone_probe_py(x: any) -> int {
+    if isinstance(x, type(None)) {
+        return 1;
+    }
+    return 0;
+}
+
+def dumps_probe_py(val: any) -> str {
+    if val is None {
+        return "null";
+    }
+    if isinstance(val, bool) {
+        bv: bool = val;
+        if bv {
+            return "true";
+        }
+        return "false";
+    }
+    if isinstance(val, int) {
+        iv: int = val;
+        return str(iv);
+    }
+    if isinstance(val, str) {
+        sv: str = val;
+        return "\"" + sv + "\"";
+    }
+    if isinstance(val, list) {
+        lst: list[any] = val;
+        out: str = "[";
+        first: int = 1;
+        for e in lst {
+            if first == 0 {
+                out += ",";
+            }
+            out += dumps_probe_py(e);
+            first = 0;
+        }
+        return out + "]";
+    }
+    if isinstance(val, dict) {
+        d: dict[str, any] = val;
+        out2: str = "{";
+        f2: int = 1;
+        for k in d {
+            if f2 == 0 {
+                out2 += ",";
+            }
+            out2 += "\"" + k + "\":" + dumps_probe_py(d[k]);
+            f2 = 0;
+        }
+        return out2 + "}";
+    }
+    return "?";
+}
+
+def none_consume_check_py -> dict {
+    n: any = None;
+    i0: any = 0;
+    i5: any = 5;
+    se: any = "";
+    ss: any = "s";
+    f0: any = 0.0;
+    f2: any = 2.5;
+    bt: any = True;
+    bf: any = False;
+    fnan: any = float("nan");
+    le: list[any] = [];
+    ln: list[any] = [];
+    ln.append(1);
+    la: any = le;
+    lb: any = ln;
+    de: dict[str, any] = {};
+    dn: dict[str, any] = {};
+    dn["a"] = 1;
+    da: any = de;
+    db: any = dn;
+    arr: list[any] = [];
+    arr.append(1);
+    arr.append("two");
+    arr.append(False);
+    arr.append(None);
+    payload: dict[str, any] = {};
+    payload["name"] = "jac";
+    payload["n"] = 42;
+    payload["ok"] = True;
+    payload["nil"] = None;
+    payload["arr"] = arr;
+    pa: any = payload;
+    return {
+        "is_none": none_probe_py(n),
+        "is_val": none_probe_py(i5),
+        "isnot_none": notnone_probe_py(n),
+        "isnot_val": notnone_probe_py(i5),
+        "eq_none": eqnone_probe_py(n),
+        "eq_val": eqnone_probe_py(i5),
+        "ne_none": nenone_probe_py(n),
+        "ne_val": nenone_probe_py(i5),
+        "t_none": truthy_probe_py(n),
+        "t_i0": truthy_probe_py(i0),
+        "t_i5": truthy_probe_py(i5),
+        "t_se": truthy_probe_py(se),
+        "t_ss": truthy_probe_py(ss),
+        "t_f0": truthy_probe_py(f0),
+        "t_f2": truthy_probe_py(f2),
+        "t_bt": truthy_probe_py(bt),
+        "t_bf": truthy_probe_py(bf),
+        "t_fnan": truthy_probe_py(fnan),
+        "t_le": truthy_probe_py(la),
+        "t_ln": truthy_probe_py(lb),
+        "t_de": truthy_probe_py(da),
+        "t_dn": truthy_probe_py(db),
+        "isinst_none_int": isint_probe_py(n),
+        "tn_none": typenone_probe_py(n),
+        "tn_val": typenone_probe_py(i5),
+        "dumps": dumps_probe_py(pa)
+    };
+}
+
+na {
+    def none_probe_na(x: any) -> str {
+        if x is None {
+            return "null";
+        }
+        return "val";
+    }
+
+    def notnone_probe_na(x: any) -> int {
+        if x is not None {
+            return 1;
+        }
+        return 0;
+    }
+
+    def eqnone_probe_na(x: any) -> int {
+        if x == None {
+            return 1;
+        }
+        return 0;
+    }
+
+    def nenone_probe_na(x: any) -> int {
+        if x != None {
+            return 1;
+        }
+        return 0;
+    }
+
+    def truthy_probe_na(x: any) -> str {
+        if x {
+            return "T";
+        }
+        return "F";
+    }
+
+    def isint_probe_na(x: any) -> int {
+        if isinstance(x, int) {
+            return 1;
+        }
+        return 0;
+    }
+
+    def typenone_probe_na(x: any) -> int {
+        if isinstance(x, type(None)) {
+            return 1;
+        }
+        return 0;
+    }
+
+    def dumps_probe_na(val: any) -> str {
+        if val is None {
+            return "null";
+        }
+        if isinstance(val, bool) {
+            bv: bool = val;
+            if bv {
+                return "true";
+            }
+            return "false";
+        }
+        if isinstance(val, int) {
+            iv: int = val;
+            return str(iv);
+        }
+        if isinstance(val, str) {
+            sv: str = val;
+            return "\"" + sv + "\"";
+        }
+        if isinstance(val, list) {
+            lst: list[any] = val;
+            out: str = "[";
+            first: int = 1;
+            for e in lst {
+                if first == 0 {
+                    out += ",";
+                }
+                out += dumps_probe_na(e);
+                first = 0;
+            }
+            return out + "]";
+        }
+        if isinstance(val, dict) {
+            d: dict[str, any] = val;
+            out2: str = "{";
+            f2: int = 1;
+            for k in d {
+                if f2 == 0 {
+                    out2 += ",";
+                }
+                out2 += "\"" + k + "\":" + dumps_probe_na(d[k]);
+                f2 = 0;
+            }
+            return out2 + "}";
+        }
+        return "?";
+    }
+
+    def none_consume_check_na -> dict[str, any] {
+        n: any = None;
+        i0: any = 0;
+        i5: any = 5;
+        se: any = "";
+        ss: any = "s";
+        f0: any = 0.0;
+        f2: any = 2.5;
+        bt: any = True;
+        bf: any = False;
+        fnan: any = float("nan");
+        le: list[any] = [];
+        ln: list[any] = [];
+        ln.append(1);
+        la: any = le;
+        lb: any = ln;
+        de: dict[str, any] = {};
+        dn: dict[str, any] = {};
+        dn["a"] = 1;
+        da: any = de;
+        db: any = dn;
+        arr: list[any] = [];
+        arr.append(1);
+        arr.append("two");
+        arr.append(False);
+        arr.append(None);
+        payload: dict[str, any] = {};
+        payload["name"] = "jac";
+        payload["n"] = 42;
+        payload["ok"] = True;
+        payload["nil"] = None;
+        payload["arr"] = arr;
+        pa: any = payload;
+        return {
+            "is_none": none_probe_na(n),
+            "is_val": none_probe_na(i5),
+            "isnot_none": notnone_probe_na(n),
+            "isnot_val": notnone_probe_na(i5),
+            "eq_none": eqnone_probe_na(n),
+            "eq_val": eqnone_probe_na(i5),
+            "ne_none": nenone_probe_na(n),
+            "ne_val": nenone_probe_na(i5),
+            "t_none": truthy_probe_na(n),
+            "t_i0": truthy_probe_na(i0),
+            "t_i5": truthy_probe_na(i5),
+            "t_se": truthy_probe_na(se),
+            "t_ss": truthy_probe_na(ss),
+            "t_f0": truthy_probe_na(f0),
+            "t_f2": truthy_probe_na(f2),
+            "t_bt": truthy_probe_na(bt),
+            "t_bf": truthy_probe_na(bf),
+            "t_fnan": truthy_probe_na(fnan),
+            "t_le": truthy_probe_na(la),
+            "t_ln": truthy_probe_na(lb),
+            "t_de": truthy_probe_na(da),
+            "t_dn": truthy_probe_na(db),
+            "isinst_none_int": isint_probe_na(n),
+            "tn_none": typenone_probe_na(n),
+            "tn_val": typenone_probe_na(i5),
+            "dumps": dumps_probe_na(pa)
         };
     }
 }

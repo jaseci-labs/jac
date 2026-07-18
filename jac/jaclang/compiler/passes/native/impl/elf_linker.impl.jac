@@ -3093,7 +3093,7 @@ impl ElfLinker.link(
         symmap_path = output_path + ".symmap";
         with open(symmap_path, "w") as smf {
             for (sname, va) in sorted(
-                linker.sym_vaddrs.items(), key=lambda kv : kv[1]
+                linker.sym_vaddrs.items(), key=lambda (kv) { kv[1]; }
             ) {
                 smf.write(f"{sname} 0x{va:016x}\n");
             }

@@ -121,7 +121,7 @@ obj TernaryTest {
 
     def get_or_default -> int {
         # Comment before ternary that should become or
-        x = self.val if self.val else 0;  # Inline on ternary
+        x: int = self.val if self.val else 0;  # Inline on ternary
         # Comment after ternary
         return x;  # Return comment
 

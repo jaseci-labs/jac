@@ -1,5 +1,3 @@
-"""Guarded re-exports for kubernetes (install group: [deploy])."""
-
 with entry {
     try {
         import from kubernetes { client, config }

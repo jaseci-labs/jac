@@ -218,7 +218,7 @@ def _flatten_loki_response(payload: dict, ascending: bool = True) -> list[dict] 
         }
     }
 
-    out.sort(key=lambda line : line.get("ts_ns", ""), reverse=not ascending);
+    out.sort(key=lambda (line) { line.get("ts_ns", ""); }, reverse=not ascending);
     return out;
 }
 

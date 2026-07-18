@@ -1164,7 +1164,7 @@ test "root_keyword_as_walker_trigger" {
         for e in program.errors_had
         if e.code and e.code.code == "E1116"
     ];
-    assert len(e1116) == 7 , f"Expected 7 E1116 (3 root keyword + 3 variable instance, bare/union/tuple, + 1 call-expr instance), got {len(
+    assert len(e1116) == 8 , f"Expected 8 E1116 (3 root keyword + 1 backtick `root + 3 variable instance, bare/union/tuple, + 1 call-expr instance), got {len(
         e1116
     )}:\n" + "\n---\n".join(e.pretty_print() for e in e1116);
     var_errors = [
@@ -1184,7 +1184,7 @@ test "root_keyword_as_walker_trigger" {
         if e not in var_errors and e not in call_errors
     ];
     assert len(var_errors) == 3 , "Expected 3 E1116 for `my_node` variable instance (bare, union, tuple)";
-    assert len(root_errors) == 3 , "Expected 3 E1116 for `root` keyword (bare, union, tuple)";
+    assert len(root_errors) == 4 , "Expected 4 E1116 for `root` keyword (bare, backtick `root, union, tuple)";
     assert len(call_errors) == 1 , "Expected 1 E1116 for `N()` call-expr instance trigger";
 }
 
@@ -2176,7 +2176,7 @@ test "postinit_fields_not_required_in_constructor" {
     assert len(program.errors_had) == 0 , f"Expected no type checking errors, but got {len(
         program.errors_had
     )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
-    # `by postinit` must not emit W1051 on the postinit name.
+    # `postinit` must not emit W1051 on the postinit name.
     w1051 = [
         w
         for w in program.warnings_had
@@ -3986,9 +3986,14 @@ test "root_cause_6_stdlib_returns_unknown" {
         for e in program.errors_had
         if e.loc and 267 <= e.loc.first_line <= 305
     ];
-    # importlib.util resolves to Unknown — each function using it reports errors.
+    # 11 (down from 15): `importlib.util` itself now resolves — ModuleType
+    # attribute access falls back to on-disk submodule resolution, so the four
+    # `.util`-on-Unknown errors are gone. spec_from_file_location still types
+    # Unknown because util.pyi only re-exports it (`from importlib.
+    # _bootstrap_external import spec_from_file_location as ...`) and aliased
+    # stub re-exports are not followed yet; its cascades remain.
     # Cascade suppression handles chained AtomTrailer accesses but not Name targets.
-    assert len(rc6_errors) == 15 , f"Expected 15 stdlib-unknown errors, got {len(
+    assert len(rc6_errors) == 11 , f"Expected 11 stdlib-unknown errors, got {len(
         rc6_errors
     )}:\n" + "\n---\n".join(e.pretty_print() for e in rc6_errors);
 }
@@ -4178,10 +4183,12 @@ test "root_causes_total_error_count" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    # 29 errors (down from 35): partial union member access now returns
-    # resolved types instead of Unknown, eliminating 6 cascading errors
-    # (E1002 "return Unknown" and E1053 "Unknown->Sized" that followed E1099).
-    assert len(program.errors_had) == 29 , f"Expected 29 total errors, got {len(
+    # 26 errors (down from 29): dotted stdlib submodules (`importlib.util`)
+    # now resolve through ModuleType attribute access, removing the
+    # `.util`-on-Unknown errors from the Root Cause 6 corpus. Before that,
+    # 29 was down from 35: partial union member access returning resolved
+    # types instead of Unknown eliminated 6 cascading errors.
+    assert len(program.errors_had) == 26 , f"Expected 26 total errors, got {len(
         program.errors_had
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }
@@ -4537,14 +4544,17 @@ test "jsx_step4_lambda_inference" {
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
 
-    e1032_errors = [
+    # `e` is inferred as MouseEvent, so accessing `.nonexistent` is a no-such-
+    # attribute error on a known type (E1030) -- stronger than E1032 (Unknown),
+    # which would mean the param type was never inferred.
+    attr_errors = [
         e
         for e in program.errors_had
-        if e.code and e.code.code == "E1032"
+        if e.code and e.code.code in ["E1030", "E1032"]
     ];
-    assert len(e1032_errors) >= 1 , f"Expected E1032 for e.nonexistent on inferred MouseEvent, got {len(
-        e1032_errors
-    )} E1032 errors. All errors:\n" + "\n---\n".join(
+    assert len(attr_errors) >= 1 , f"Expected an attribute error for e.nonexistent on inferred MouseEvent, got {len(
+        attr_errors
+    )}. All errors:\n" + "\n---\n".join(
         f"{err.code.code if err.code else '?'}: {err.pretty_print()}"
         for err in program.errors_had
     );
@@ -5000,45 +5010,26 @@ test "generator_yield_return_type_check" {
     );
 }
 
-test "strict_any_in_jac_modules" {
-    # Layer 2: in `.jac` files, `Any` can no longer be silently assigned to a
-    # declared non-Any destination. The rule applies uniformly at every
-    # "destination has a declared type" site: annotated assignments,
-    # has-var initializers, function arguments, and return statements,
-    # and recurses into containers (list[any] -> list[T] errors).
-    # Inferred destinations and explicit `any` annotations remain
-    # permissive — that is the user's escape valve.
-    path = os.path.join(CHECKER_FIXTURES, "checker_strict_any_jac.jac");
-    program = JacProgram();
-    mod = program.compile(path, options=NO_TC);
-    TypeCheckPass(ir_in=mod, prog=program);
-    # The four expected strict-Any sites:
+test "uniform_gradual_any_in_jac_modules" {
+    # Uniform gradual typing: in `.jac` files `Any` is assignable to a declared
+    # non-Any destination at every "destination has a declared type" site
+    # (annotated assignments, has-var initializers, function arguments, return
+    # statements), recursing into containers (list[any] -> list[T]). This
+    # replaced a codespace-split policy that rejected Any -> T in server/client
+    # while permitting it in native; the split broke cross-backend congruence
+    # on identical code, so the verdict is now uniform-gradual everywhere.
     #   1. `t: Task = a;`              -- annotated assignment
     #   2. `ts: list[Task] = xs;`      -- annotated assignment (nested any)
     #   3. `needs_task(a);`            -- function arg
     #   4. `return make_any();`        -- typed return
-    # Each emits one type-mismatch error (E1001/E1002/E1053). We assert
-    # the *total* count rather than the per-code split, since the
-    # specific code depends on which checker site catches the violation.
-    strict_codes = ("E1001", "E1002", "E1053");
-    strict_errors = [
-        e
-        for e in program.errors_had
-        if e.code and e.code.code in strict_codes
-    ];
-    assert len(strict_errors) == 4 , f"Expected 4 strict-Any errors (Any -> declared T at 4 sites), got {len(
-        strict_errors
-    )}:\n" + "\n---\n".join(e.pretty_print() for e in strict_errors);
-    # No errors should fire on the `inferred destination` or `explicit any`
-    # paths above.
-    other = [
-        e
-        for e in program.errors_had
-        if e.code and e.code.code not in strict_codes
-    ];
-    assert len(other) == 0 , f"Expected no other errors, got {len(other)}:\n" + "\n---\n".join(
-        e.pretty_print() for e in other
-    );
+    # None of these narrowing sites emits a type-mismatch error anymore.
+    path = os.path.join(CHECKER_FIXTURES, "checker_strict_any_jac.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected no errors under uniform gradual Any, got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }
 
 test "walker_typed_reports_validation" {

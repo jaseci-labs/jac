@@ -3,7 +3,7 @@
 glob x: int = 10;
 
 def foo() -> None {
-    x = 20;  # <-- Warning W2027: shadows module-level x
+    x: int = 20;  # <-- Warning W2027: shadows module-level x
     print(x);
 }
 

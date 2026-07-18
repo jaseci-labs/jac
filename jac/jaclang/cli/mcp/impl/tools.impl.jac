@@ -519,8 +519,8 @@ impl explain_error(error_message: str) -> dict[str, any] {
 }
 
 impl list_examples(category: str | None = None) -> dict[str, any] {
-    import from jaclang.cli.mcp.resources { ResourceProvider }
-    rp = ResourceProvider();
+    import from jaclang.cli.mcp.resources { get_resource_provider }
+    rp = get_resource_provider();
     rp.index_resources();
     examples: list[dict[str, str]] = [];
     for (uri, info) in rp._resources.items() {
@@ -552,12 +552,12 @@ impl list_examples(category: str | None = None) -> dict[str, any] {
             }
         }
     }
-    return {"examples": sorted(examples, key=lambda x : x["name"])};
+    return {"examples": sorted(examples, key=lambda (x) { x["name"]; })};
 }
 
 impl get_example(name: str) -> dict[str, any] {
-    import from jaclang.cli.mcp.resources { ResourceProvider }
-    rp = ResourceProvider();
+    import from jaclang.cli.mcp.resources { get_resource_provider }
+    rp = get_resource_provider();
     rp.index_resources();
     uri = f"jac://examples/{name}";
     content = rp.read_resource(uri);
@@ -568,8 +568,8 @@ impl get_example(name: str) -> dict[str, any] {
 }
 
 impl search_docs(query: str, limit: int = 5) -> dict[str, any] {
-    import from jaclang.cli.mcp.resources { ResourceProvider }
-    rp = ResourceProvider();
+    import from jaclang.cli.mcp.resources { get_resource_provider }
+    rp = get_resource_provider();
     rp.index_resources();
     keywords = [
         w.lower()
@@ -631,7 +631,7 @@ impl search_docs(query: str, limit: int = 5) -> dict[str, any] {
             );
         }
     }
-    scored.sort(key=lambda x : -x[0]);
+    scored.sort(key=lambda (x) { -x[0]; });
     results = [item[1] for item in scored[:limit]];
     return {"results": results};
 }
@@ -694,7 +694,7 @@ impl list_commands -> dict[str, any] {
             );
         }
 
-        commands.sort(key=lambda c : (c["group"], c["name"]));
+        commands.sort(key=lambda (c) { (c["group"], c["name"]); });
 
         return {
             "commands": commands,
@@ -800,8 +800,8 @@ impl execute_command(
 }
 
 impl understand_jac_and_jaseci -> dict[str, any] {
-    import from jaclang.cli.mcp.resources { ResourceProvider }
-    rp = ResourceProvider();
+    import from jaclang.cli.mcp.resources { get_resource_provider }
+    rp = get_resource_provider();
     rp.index_resources();
     content = rp.read_resource("jac://guide/understand");
     if content.startswith("Error:") {
@@ -811,8 +811,8 @@ impl understand_jac_and_jaseci -> dict[str, any] {
 }
 
 impl get_resource(uri: str) -> dict[str, any] {
-    import from jaclang.cli.mcp.resources { ResourceProvider }
-    rp = ResourceProvider();
+    import from jaclang.cli.mcp.resources { get_resource_provider }
+    rp = get_resource_provider();
     rp.index_resources();
     content = rp.read_resource(uri);
     if content.startswith("Error:") {

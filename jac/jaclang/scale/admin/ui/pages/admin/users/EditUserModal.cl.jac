@@ -41,7 +41,7 @@ def:pub EditUserModal(
                 <Select
                     label="Role"
                     value={editRole}
-                    onChange={lambda e: any { editRole = e.target.value; }}
+                    onChange={lambda (e: any) { editRole = e.target.value; }}
                     options={ROLE_OPTIONS}
                     className="mb-3"
                 />
@@ -50,7 +50,7 @@ def:pub EditUserModal(
                         <input
                             type="checkbox"
                             checked={editResetPassword}
-                            onChange={lambda e: any { editResetPassword = e.target.checked; }}
+                            onChange={lambda (e: any) { editResetPassword = e.target.checked; }}
                             className="w-4 h-4 rounded border-line bg-bg text-accent focus:ring-accent focus:ring-offset-0"
                         />
                         <span className="text-xs text-muted">

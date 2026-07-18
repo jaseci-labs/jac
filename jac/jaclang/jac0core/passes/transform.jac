@@ -30,8 +30,8 @@ obj BaseTransform[T_in, T_out](ABC) {
         errors_had: list[Alert] = [],
         warnings_had: list[Alert] = [],
         time_taken: float = 0.0,
-        logger: any by postinit,
-        ir_out: T_out by postinit;
+        logger: any postinit,
+        ir_out: T_out postinit;
 
     def postinit -> None;
     def timed_transform(ir_in: T_in) -> T_out;
@@ -45,13 +45,16 @@ obj BaseTransform[T_in, T_out](ABC) {
 }
 
 obj Transform[T: UniNode, R: UniNode](BaseTransform[T, R]) {
-    has cur_node: UniNode by postinit,
+    has cur_node: UniNode postinit,
         _project_config: any = None,
         _cached_check_suppress_tokens: list[str] = field(default_factory=`list),
         _cached_check_suppress_codes: list[str] = field(default_factory=`list),
         _cached_inline_suppressions: dict[((str, int), list[str])] = field(
             default_factory=`dict
         );
+
+    static has PROVIDES: tuple = (),
+        REQUIRES: tuple = ();
 
     def postinit -> None;
     def emit(

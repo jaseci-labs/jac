@@ -551,8 +551,16 @@ impl TypeEvaluator._get_type_of_expression_core(
                     );
                 }
 
-                if seeded_param and isinstance(expr.body, uni.Expr) {
-                    self._invalidate_expr_type_cache(expr.body);
+                if seeded_param {
+                    seed_body_expr: uni.Expr | None = None;
+                    if isinstance(expr.body, uni.Expr) {
+                        seed_body_expr = expr.body;
+                    } else {
+                        seed_body_expr = expr.tail_return_expr();
+                    }
+                    if seed_body_expr is not None {
+                        self._invalidate_expr_type_cache(seed_body_expr);
+                    }
                 }
             }
 
@@ -714,6 +722,13 @@ impl TypeEvaluator._get_type_of_expression_core(
                         sym.add_use(expr.right);
                         expr.right.type = sym_type;
                         return sym_type;
+                    }
+
+                    if submod_type := self._resolve_submodule_attr(
+                        base_type, expr.right.value
+                    ) {
+                        expr.right.type = submod_type;
+                        return submod_type;
                     }
                     return types.UnknownType();
                 } elif base_type.is_instantiable_class() {
@@ -1680,6 +1695,12 @@ impl TypeEvaluator._get_type_of_expression_core(
 
         case uni.UnaryExpr():
             if isinstance(expr.op, uni.Token) {
+                if expr.op.name == Tok.BW_AND {
+                    return self.get_type_of_expression(expr.operand);
+                }
+                if expr.ownership == OwnershipKind.OWN {
+                    return self.get_type_of_expression(expr.operand);
+                }
                 if expr.op.name == Tok.NOT {
                     operand_type = self.get_type_of_expression(expr.operand);
                     if (
@@ -1691,9 +1712,11 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                     return operand_type;
                 }
-                if expr.op.name in (Tok.MINUS, Tok.BW_NOT) {
+                if expr.op.name in (Tok.MINUS, Tok.BW_NOT, Tok.PLUS) {
                     operand_type = self.get_type_of_expression(expr.operand);
-                    op_name = "__neg__" if expr.op.name == Tok.MINUS else "__invert__";
+                    op_name = "__neg__"
+                        if expr.op.name == Tok.MINUS
+                        else ("__pos__" if expr.op.name == Tok.PLUS else "__invert__");
 
                     if isinstance(operand_type, types.TypeVarType) {
                         if operand_type.constraints {
@@ -2394,8 +2417,12 @@ impl TypeEvaluator._assign_callable(
     }
 
     if dest_func.return_type and src_func.return_type {
-        src_ret = self._convert_to_instance(src_func.return_type);
         dest_ret = self._convert_to_instance(dest_func.return_type);
+
+        if self.is_none_type(dest_ret) {
+            return True;
+        }
+        src_ret = self._convert_to_instance(src_func.return_type);
         if not self.assign_type(src_ret, dest_ret, strict) {
             return False;
         }
@@ -2817,20 +2844,7 @@ impl TypeEvaluator.assign_type(
     }
 
     if self.is_explicit_any(src_type) {
-        if not strict {
-            return True;
-        }
-        if isinstance(dest_type, types.TypeVarType) {
-            return True;
-        }
-
-        if self._in_native_context() {
-            return True;
-        }
-        if isinstance(src_type, types.AnyType) and src_type.is_foreign {
-            return True;
-        }
-        return False;
+        return True;
     }
 
     if self.prefetch

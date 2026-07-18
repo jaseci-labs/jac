@@ -38,6 +38,6 @@ impl ServiceRegistry.health_summary -> dict[str, dict] {
 
 impl ServiceRegistry._rebuild_prefix_index -> None {
     pairs: list[tuple[str, str]] = [(e.prefix, e.name) for e in self.entries.values()];
-    pairs.sort(key=lambda p : -len(p[0]));
+    pairs.sort(key=lambda (p) { -len(p[0]); });
     self._sorted_prefixes = pairs;
 }

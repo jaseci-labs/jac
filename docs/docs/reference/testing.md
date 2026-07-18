@@ -118,10 +118,12 @@ test "none checking" {
 
 ### Float Comparison
 
+Jac has no `almostEqual` helper -- compare within a tolerance using `abs()`:
+
 ```jac
 test "float comparison" {
     result = 0.1 + 0.2;
-    assert almostEqual(result, 0.3, 10);
+    assert abs(result - 0.3) < 1e-10;
 }
 ```
 
@@ -666,7 +668,7 @@ with entry {
         "parse values",
         ["500m", "2", "250"],
         _test_parse,
-        id_fn=lambda p: str -> str { return f"input_{p}"; }
+        id_fn=lambda (p: str) -> str { return f"input_{p}"; }
     );
 }
 ```
