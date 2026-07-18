@@ -490,7 +490,7 @@ impl ProcessTools.run_jac_cli(subcommand: str, path: str) -> str {
     }
 }
 
-sem ProcessTools.run_command = "Run a shell command in the project directory and return its combined output. Use this to scaffold a new project (`jac create --kind web-app <name>`), install dependencies (`jac install`), run a file (`jac run <file>`), run tests, or any other shell task. `jac create --kind <kind>` kinds: cli (default), web-app, service, native-binary, py-package, and more (run `jac create --list_jacpacks` for the full list).";
+sem ProcessTools.run_command = "Run a shell command in the project directory and return its combined output. Use this to scaffold a new project (`jac create --kind web-app <name>`), install dependencies (`jac install`), run a file (`jac run <file>`), run tests, or any other shell task. `jac create --kind <kind>` kinds: cli (default), web-app, service, native-binary, py-package, and more (run `jac create --list` for the full list).";
 sem ProcessTools.run_command.command = "The shell command to run.";
 impl ProcessTools.run_command(command: str) -> str {
     stripped = command.strip();
@@ -614,6 +614,31 @@ impl ProcessTools.start_app(entry_file: str) -> str {
 sem ProcessTools.serve = "Start the web/full-stack dev server and wait until it is actually serving, returning the URL to open. The first start can take a while because it installs the client dependencies and builds the client; this tool blocks until the server is ready (or fails) so you do not have to guess. On success, call browse_open on the returned URL. On failure it returns the server log tail -- read it, go back to Build to fix the cause, and do not conclude the app works.";
 sem ProcessTools.serve.entry_file = "Entry .jac file to serve; empty string means 'main.jac'.";
 
+def _poll_for_server_url(proc: object, log_path: str, timeout: float) -> str {
+    url_re = re.compile(
+        "https?://(?:localhost|127\\.0\\.0\\.1|0\\.0\\.0\\.0)(?::\\d+)?\\S*"
+    );
+    deadline = time.time() + timeout;
+    url = "";
+    while time.time() < deadline {
+        if proc.poll() is not None {
+            break;
+        }
+        try {
+            log_text = Path(log_path).read_text();
+        } except Exception {
+            log_text = "";
+        }
+        m = url_re.search(log_text);
+        if m {
+            url = m.group(0).rstrip("/");
+            break;
+        }
+        time.sleep(1.0);
+    }
+    return url;
+}
+
 impl ProcessTools.serve(entry_file: str) -> str {
     entry_path = entry_file or "main.jac";
     abs_entry = self.ws.resolve(entry_path);
@@ -659,27 +684,7 @@ impl ProcessTools.serve(entry_file: str) -> str {
         _ = e;
     }
 
-    url_re = re.compile(
-        "https?://(?:localhost|127\\.0\\.0\\.1|0\\.0\\.0\\.0)(?::\\d+)?\\S*"
-    );
-    deadline = time.time() + timeout;
-    url = "";
-    while time.time() < deadline {
-        if self.serve_proc.poll() is not None {
-            break;
-        }
-        try {
-            log_text = Path(log_path).read_text();
-        } except Exception {
-            log_text = "";
-        }
-        m = url_re.search(log_text);
-        if m {
-            url = m.group(0).rstrip("/");
-            break;
-        }
-        time.sleep(1.0);
-    }
+    url = _poll_for_server_url(self.serve_proc, log_path, timeout);
     if url {
         return (
             f"OK: server ready at {url} (logs: {log_path}). "
@@ -879,7 +884,7 @@ sem BrowseTools.browse_open.url = "URL to open, e.g. 'http://localhost:8000'. Em
 impl BrowseTools.browse_open(url: str) -> str {
     return self._browse(
         f"open a browser at {url}" if url else "",
-        lambda : br_open(self.session_id, url or None)
+        lambda { br_open(self.session_id, url or None); }
     );
 }
 
@@ -887,20 +892,20 @@ sem BrowseTools.browse_navigate = "Navigate the open browser to a different URL 
 sem BrowseTools.browse_navigate.url = "The URL to navigate to.";
 impl BrowseTools.browse_navigate(url: str) -> str {
     return self._browse(
-        f"navigate the browser to {url}", lambda : br_navigate(self.session_id, url)
+        f"navigate the browser to {url}", lambda { br_navigate(self.session_id, url); }
     );
 }
 
 sem BrowseTools.browse_snapshot = "Read the current page as an accessibility tree. Interactive elements are tagged with @e1/@e2 refs that you pass to browse_click, browse_type, and browse_fill. Call this after navigating, and again after any action that changes the page, to see the new state.";
 impl BrowseTools.browse_snapshot -> str {
-    return self._browse("", lambda : br_snapshot(self.session_id), clip=True);
+    return self._browse("", lambda { br_snapshot(self.session_id); }, clip=True);
 }
 
 sem BrowseTools.browse_click = "Click an element with a real, trusted mouse event. Pass an @ref from browse_snapshot (e.g. '@e5') or a CSS selector (e.g. '#submit').";
 sem BrowseTools.browse_click.target = "An @ref from browse_snapshot, or a CSS selector.";
 impl BrowseTools.browse_click(target: str) -> str {
     return self._browse(
-        f"click {target} in the browser", lambda : br_click(self.session_id, target)
+        f"click {target} in the browser", lambda { br_click(self.session_id, target); }
     );
 }
 
@@ -910,7 +915,7 @@ sem BrowseTools.browse_type.text = "The text to type.";
 impl BrowseTools.browse_type(target: str, text: str) -> str {
     return self._browse(
         f"type into {target} in the browser",
-        lambda : br_type(self.session_id, target, text)
+        lambda { br_type(self.session_id, target, text); }
     );
 }
 
@@ -919,7 +924,8 @@ sem BrowseTools.browse_fill.target = "An @ref from browse_snapshot, or a CSS sel
 sem BrowseTools.browse_fill.text = "The text to set the field to.";
 impl BrowseTools.browse_fill(target: str, text: str) -> str {
     return self._browse(
-        f"fill {target} in the browser", lambda : br_fill(self.session_id, target, text)
+        f"fill {target} in the browser",
+        lambda { br_fill(self.session_id, target, text); }
     );
 }
 
@@ -927,7 +933,7 @@ sem BrowseTools.browse_press = "Press a single key in the browser, e.g. 'Enter',
 sem BrowseTools.browse_press.key = "The key or chord to press.";
 impl BrowseTools.browse_press(key: str) -> str {
     return self._browse(
-        f"press {key} in the browser", lambda : br_press(self.session_id, key)
+        f"press {key} in the browser", lambda { br_press(self.session_id, key); }
     );
 }
 
@@ -936,7 +942,7 @@ sem BrowseTools.browse_get.what = "One of 'url', 'title', or 'text'.";
 sem BrowseTools.browse_get.selector = "CSS selector for 'text'; empty string for 'url' or 'title'.";
 impl BrowseTools.browse_get(what: str, selector: str) -> str {
     return self._browse(
-        "", lambda : br_get(self.session_id, what, selector or None), clip=True
+        "", lambda { br_get(self.session_id, what, selector or None); }, clip=True
     );
 }
 
@@ -945,14 +951,14 @@ sem BrowseTools.browse_eval.expression = "A JavaScript expression to evaluate.";
 impl BrowseTools.browse_eval(expression: str) -> str {
     return self._browse(
         f"run JavaScript in the browser: {expression}",
-        lambda : br_eval(self.session_id, expression),
+        lambda { br_eval(self.session_id, expression); },
         clip=True
     );
 }
 
 sem BrowseTools.browse_close = "Close the browser and free its resources. Call this when finished with browser QA.";
 impl BrowseTools.browse_close -> str {
-    return self._browse("", lambda : br_close(self.session_id));
+    return self._browse("", lambda { br_close(self.session_id); });
 }
 
 impl BrowseTools._browse_shutdown{
@@ -1572,7 +1578,6 @@ impl TurnRenderer.render_stream(event_stream: any) -> dict {
     last_llm_tokens = 0;
     pend_result: any = None;
     def clear_think {
-        nonlocal think_on;
         if think_on and is_tty {
             out.write("\r" + (" " * _THINK_WIDTH) + "\r");
             out.flush();
@@ -1580,7 +1585,6 @@ impl TurnRenderer.render_stream(event_stream: any) -> dict {
         think_on = False;
     }
     def end_line {
-        nonlocal streamed;
         if streamed {
             out.write("\n");
             out.flush();
@@ -1588,7 +1592,6 @@ impl TurnRenderer.render_stream(event_stream: any) -> dict {
         }
     }
     def flush_result {
-        nonlocal pend_result;
         if pend_result is None {
             return;
         }
@@ -2153,8 +2156,6 @@ impl verify_and_continue(max_rounds: int = 3) {
 }
 
 impl run_agent(req: object) -> int {
-    global agent_model;
-
     r: any = req;
 
     agent.ws.cwd = os.path.normpath(str(r?.cwd or os.getcwd()));
@@ -2262,8 +2263,6 @@ impl run_agent(req: object) -> int {
 }
 
 impl ui_configure -> None {
-    global agent_model;
-
     proj = os.environ.get("JAC_AI_UI_PROJECT") or os.getcwd();
     agent.ws.cwd = os.path.normpath(proj);
 
@@ -2557,8 +2556,6 @@ impl ui_settings -> dict {
 impl ui_apply_settings(
     model: str, api_key: str, base_url: str, temperature: str, n_ctx: str
 ) -> dict {
-    global agent_model;
-
     if agent.bus.status == "running" or agent.bus.status == "stopping" {
         return {
             "ok": False,
@@ -2660,9 +2657,6 @@ impl _run_ui_server(r: any) -> int {
         console.error(f"failed to launch the UI server: {e}");
         return 1;
     }
-    url_re = re.compile(
-        "https?://(?:localhost|127\\.0\\.0\\.1|0\\.0\\.0\\.0)(?::\\d+)?\\S*"
-    );
     timeout = 180.0;
     try {
         raw = os.environ.get("JAC_AI_UI_TIMEOUT");
@@ -2670,24 +2664,7 @@ impl _run_ui_server(r: any) -> int {
             timeout = float(raw);
         }
     } except Exception { }
-    deadline = time.time() + timeout;
-    url = "";
-    while time.time() < deadline {
-        if proc.poll() is not None {
-            break;
-        }
-        try {
-            log_text = Path(log_path).read_text();
-        } except Exception {
-            log_text = "";
-        }
-        m = url_re.search(log_text);
-        if m {
-            url = m.group(0).rstrip("/");
-            break;
-        }
-        time.sleep(1.0);
-    }
+    url = _poll_for_server_url(proc, log_path, timeout);
     if not url {
         tail = "";
         try {

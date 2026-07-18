@@ -1,12 +1,44 @@
 impl HPAAutoscaler._build_manifests{
     hpa_name = spec.autoscaler_name or f"{spec.scale_target_name}-hpa";
-    cpu_target = int(
-        spec.triggers[0].metadata.get(
-            "averageUtilization", str(DEFAULT_CPU_UTILIZATION_TARGET)
-        )
-    )
-        if spec.triggers
-        else DEFAULT_CPU_UTILIZATION_TARGET;
+    metrics: list[dict[str, any]] = [];
+    for trigger in spec.triggers {
+        if trigger.type not in ["cpu", "memory"] {
+            continue;
+        }
+        default_target = DEFAULT_CPU_UTILIZATION_TARGET
+            if trigger.type == "cpu"
+            else DEFAULT_MEMORY_UTILIZATION_TARGET;
+        metrics.append(
+            {
+                "type": "Resource",
+                "resource": {
+                    "name": trigger.type,
+                    "target": {
+                        "type": "Utilization",
+                        "averageUtilization": int(
+                            trigger.metadata.get(
+                                "averageUtilization", str(default_target)
+                            )
+                        )
+                    }
+                }
+            }
+        );
+    }
+    if not metrics {
+        metrics.append(
+            {
+                "type": "Resource",
+                "resource": {
+                    "name": "cpu",
+                    "target": {
+                        "type": "Utilization",
+                        "averageUtilization": DEFAULT_CPU_UTILIZATION_TARGET
+                    }
+                }
+            }
+        );
+    }
     return {
         "apiVersion": "autoscaling/v2",
         "kind": "HorizontalPodAutoscaler",
@@ -23,18 +55,8 @@ impl HPAAutoscaler._build_manifests{
             },
             "minReplicas": spec.min_replicas,
             "maxReplicas": spec.max_replicas,
-            "metrics": [
-                {
-                    "type": "Resource",
-                    "resource": {
-                        "name": "cpu",
-                        "target": {
-                            "type": "Utilization",
-                            "averageUtilization": cpu_target
-                        }
-                    }
-                }
-            ]
+            "metrics": metrics,
+            "behavior": Autoscaler._build_behavior(spec)
         }
     };
 }
@@ -44,7 +66,7 @@ impl HPAAutoscaler.apply{
         if trigger.type not in ["cpu", "memory"] {
             raise ValueError(
                 f"Trigger '{trigger.name or trigger.type}' (type='{trigger.type}') requires KEDA. "
-                "Set autoscaler_engine = \"keda\" in [plugins.scale.kubernetes] in jac.toml."
+                "Set autoscaler_engine = \"keda\" in [scale.kubernetes] in jac.toml."
             );
         }
     }

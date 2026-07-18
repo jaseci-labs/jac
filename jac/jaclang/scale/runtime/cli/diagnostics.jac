@@ -124,7 +124,7 @@ obj PlanValidator {
                     message=(
                         f"route name '{GATEWAY_NAME}' is reserved for the internal "
                         "gateway sentinel; rename this microservice in "
-                        "[plugins.scale.microservices.routes]"
+                        "[scale.microservices.routes]"
                     )
                 )
             );
@@ -186,8 +186,18 @@ obj PlanValidator {
                 )
             );
         }
+        hpa_mem = iget(hpa, "memory_target", 80);
+        if hpa_mem < 1 or hpa_mem > 100 {
+            out.append(
+                Diagnostic(
+                    severity="error",
+                    service=svc_name,
+                    message=f"HPA memory_target={hpa_mem}; must be 1-100"
+                )
+            );
+        }
 
-        (cpu_req, _, _, _) = effective_resources(deployment);
+        (cpu_req, _, mem_req, _) = effective_resources(deployment);
         if cpu_req is None {
             out.append(
                 Diagnostic(
@@ -195,6 +205,18 @@ obj PlanValidator {
                     service=svc_name,
                     message=(
                         f"HPA targets {hpa_cpu}% CPU but cpu_request is unset; "
+                        "HPA can't compute utilization without a request baseline"
+                    )
+                )
+            );
+        }
+        if mem_req is None {
+            out.append(
+                Diagnostic(
+                    severity="warn",
+                    service=svc_name,
+                    message=(
+                        f"HPA targets {hpa_mem}% memory but memory_request is unset; "
                         "HPA can't compute utilization without a request baseline"
                     )
                 )
@@ -325,7 +347,7 @@ obj PlanValidator {
                 service=svc_name,
                 message=(
                     "no base image resolved for this service; apply will fail. "
-                    "Check [plugins.scale.kubernetes].python_image"
+                    "Check [scale.kubernetes].python_image"
                 )
             )
         );

@@ -591,7 +591,6 @@ test "admin ui includes jac.toml and styles for build" {
 
 test "admin UI build emits admin based assets and keeps useEffect lambda" {
     import os;
-    import sys;
     import shutil;
     import subprocess;
     import tempfile;
@@ -601,12 +600,8 @@ test "admin UI build emits admin based assets and keeps useEffect lambda" {
     ui_dir = Path(jaclang.scale.admin.__file__).parent / "ui";
     assert (ui_dir / "main.jac").exists() , "admin UI source missing";
 
-    # Use the `jac` that matches the running interpreter, not whatever a
-    # bare `jac` resolves to on PATH (which may be an unrelated old env).
-    jac_bin = os.path.join(os.path.dirname(sys.executable), "jac");
-    if not os.path.exists(jac_bin) {
-        jac_bin = "jac";
-    }
+    import from jaclang.scale.runtime.context.util { jac_executable }
+    jac_bin = jac_executable();
 
     tmp = tempfile.mkdtemp(prefix="admin_ui_build_");
     try {
@@ -616,7 +611,7 @@ test "admin UI build emits admin based assets and keeps useEffect lambda" {
         shutil.rmtree(os.path.join(build_dir, ".jac"), ignore_errors=True);
 
         result = subprocess.run(
-            [jac_bin, "build", "main.jac"],
+            [jac_bin, "build", "main.jac", "--client", "web"],
             cwd=build_dir,
             capture_output=True,
             text=True,

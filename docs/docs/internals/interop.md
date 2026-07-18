@@ -550,20 +550,21 @@ built into `jaclang` core (`jac/jaclang/runtimelib/client/targets/desktop/`).
 > **Status note.** Older release notes mention a "PyTauri shell +
 > PyInstaller sidecar" and a `jac desktop` CLI -- those are **stale**. The
 > shipping architecture is a native host binary + the OS webview, and there
-> is no dedicated `jac desktop` command. Wiring the `sv` walkers onto the
-> *embedded* interpreter is still in progress (issue #6436); today the UI
-> talks to a backend `sv` server reached via `api_base`, while the embedded
-> CPython runs a stdlib loopback broker that serves the bundle and brokers
-> SSO.
+> is no dedicated `jac desktop` command. The `sv` walkers and functions run
+> **in-process** on the embedded CPython (shipped via #7045): the webview
+> binds `__jac_invoke` to `inprocess_dispatch`, so walker/function calls
+> never leave the binary. A stdlib loopback broker still serves the bundle
+> and brokers SSO/session/logout over `/__jac`. Only per-OS packaging and
+> code-signing remain open (issue #6436, phase 5).
 
 ### Developer workflow
 
 Configuration is declarative in `jac.toml`:
 
 ```toml
-[plugins.desktop]
+[desktop]
 name = "my-app"
-[plugins.desktop.window]
+[desktop.window]
 title  = "My App"
 width  = 1000
 height = 700
@@ -572,6 +573,7 @@ height = 700
 ```bash
 jac build --client desktop   # -> .jac/client/desktop/<app> (binary + dist/ + libwebview.so)
 jac start --client desktop   # build if needed, then launch the native window
+jac start --client desktop --dev   # HMR: Vite on 127.0.0.1 + recompile on .jac saves
 (cd .jac/client/desktop && ./my-app)   # or run the binary directly
 ```
 
@@ -587,8 +589,8 @@ core `build`/`start` commands delegate to the target.
 | UI | `cl` (Vite/React bundle) | `NativeDesktopTarget` subclasses `WebTarget`; reuses the standard `.jac/client/dist/` bundle |
 | Host binary | `na` (LLVM, pure-Jac linker) | A generated `host.na.jac`, compiled by `jac nacompile`; records `libwebview.so` as `DT_NEEDED` with an `$ORIGIN` runpath |
 | Window | C FFI → `libwebview` | OS-native webview: WebKitGTK (Linux), WKWebView (macOS), WebView2 (Windows) |
-| Local runtime | C FFI → `libpython` | Embedded CPython runs a stdlib loopback HTTP server (the OAuth/bundle broker) |
-| Backend | `sv` over HTTP | Reached via `api_base` (currently remote; in-process embedding is the goal of #6436) |
+| Local runtime | C FFI → `libpython` | Embedded CPython runs `inprocess_dispatch` (walker/function invokes) **and** a stdlib loopback HTTP broker (bundle + SSO/session) |
+| Backend | `sv` in-process | Walker/function calls route through the embedded runtime via `__jac_invoke`; a remote `api_base` is optional for external backends |
 
 The generated host wires it all together (paraphrasing
 `native_desktop_target.impl.jac`):

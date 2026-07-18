@@ -246,7 +246,7 @@ jac mcp --inspect
 Add to your project's `jac.toml` to customize the server:
 
 ```toml
-[plugins.mcp]
+[mcp]
 # Transport settings
 transport = "stdio"          # "stdio", "sse", or "streamable-http"
 port = 3001                  # Port for SSE/HTTP transports
@@ -530,7 +530,7 @@ Convert Python code to Jac.
 
 ```json
 {
-  "jac_code": "can greet(name: str) -> str {\n    return f\"Hello, {name}!\";\n}\n",
+  "jac_code": "def greet(name: str) -> str {\n    return f\"Hello, {name}!\";\n}\n",
   "warnings": []
 }
 ```

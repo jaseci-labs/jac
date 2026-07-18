@@ -89,6 +89,10 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
             continue;
         }
 
+        if mod.parent_scope and name_nd.value in mod.parent_scope.names_in_scope {
+            continue;
+        }
+
         if name_nd.value.startswith("__") and name_nd.value.endswith("__") {
             continue;
         }
@@ -224,6 +228,7 @@ impl StaticAnalysisPass._check_unreachable_code(mod: uni.Module) -> None {
         uni.ElseStmt,
         uni.ElseIf,
         uni.WhileStmt,
+        uni.ForeverStmt,
         uni.InForStmt,
         uni.IterForStmt
     ];

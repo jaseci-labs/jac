@@ -19,6 +19,10 @@ impl JacProgram.init(
 
     self._auto_promote_native: bool = False;
     self._auto_promote_target: str = "";
+
+    self._inferred_mods: set = set();
+
+    self._analyses_run: dict = {};
 }
 
 impl JacProgram.hub_cache_stamp(self: JacProgram, resolved_path: str) -> None {
@@ -180,13 +184,30 @@ impl JacProgram.clear_type_system(self: JacProgram, clear_hub: bool = False) -> 
     }
 }
 
-impl JacProgram.release_compile_closure(self: JacProgram) -> None {
+impl JacProgram.release_compile_closure(
+    self: JacProgram, keep_stubs: bool = False
+) -> None {
     import os;
     if os.environ.get("JAC_NO_UNIT_EVICT") {
         return;
     }
-    self.mod.hub.clear();
+
+    retained_stubs: dict = {};
+    retained_times: dict[str, float] = {};
+    if keep_stubs {
+        for path in self.mod.hub.keys() {
+            if path.endswith(".pyi") {
+                retained_stubs[path] = self.mod.hub[path];
+                if path in self._hub_cache_times {
+                    retained_times[path] = self._hub_cache_times[path];
+                }
+            }
+        }
+    }
+    self.mod = uni.ProgramModule();
+    self.mod.hub.update(retained_stubs);
     self._hub_cache_times.clear();
+    self._hub_cache_times.update(retained_times);
     self._dependents.clear();
     self.type_evaluator = None;
     self.errors_had.clear();

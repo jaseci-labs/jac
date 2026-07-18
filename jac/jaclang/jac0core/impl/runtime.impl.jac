@@ -11,23 +11,23 @@ impl JacAccessValidation._resolve_anchor(
 }
 
 impl JacAccessValidation._check_access(
-    `to: Anchor, min_level: AccessLevel, operation: str
+    to: Anchor, min_level: AccessLevel, operation: str
 ) -> bool {
-    actual = JacRuntimeInterface.check_access_level(`to);
+    actual = JacRuntimeInterface.check_access_level(to);
     granted = actual.value > min_level.value;
     if not granted {
         logger.info(
-            "Current root doesn't have " + operation + " access to " + `to.__class__.__name__ + " " + `to.archetype.__class__.__name__ + "[" + str(
-                `to.id
+            "Current root doesn't have " + operation + " access to " + to.__class__.__name__ + " " + to.archetype.__class__.__name__ + "[" + str(
+                to.id
             ) + "]"
         );
         if operation != "read" {
             required = AccessLevel(min_level.value + 1);
             diag = PermissionDenied(
                 operation=operation,
-                target_id=str(`to.id),
-                target_type=`to.archetype.__class__.__name__,
-                target_owner=str(`to.root) if `to.root else None,
+                target_id=str(to.id),
+                target_type=to.archetype.__class__.__name__,
+                target_owner=str(to.root) if to.root else None,
                 required=required,
                 actual=actual
             );
@@ -97,26 +97,26 @@ impl JacAccessValidation.perm_revoke(archetype: Archetype) -> None {
     }
 }
 
-impl JacAccessValidation.check_read_access(`to: Anchor) -> bool {
-    return JacAccessValidation._check_access(`to, AccessLevel.NO_ACCESS, "read");
+impl JacAccessValidation.check_read_access(to: Anchor) -> bool {
+    return JacAccessValidation._check_access(to, AccessLevel.NO_ACCESS, "read");
 }
 
 impl JacAccessValidation.check_connect_access(
-    `to: Anchor, op_hint: str = "connect"
+    to: Anchor, op_hint: str = "connect"
 ) -> bool {
-    return JacAccessValidation._check_access(`to, AccessLevel.READ, op_hint);
+    return JacAccessValidation._check_access(to, AccessLevel.READ, op_hint);
 }
 
 impl JacAccessValidation.check_write_access(
-    `to: Anchor, op_hint: str = "write"
+    to: Anchor, op_hint: str = "write"
 ) -> bool {
-    return JacAccessValidation._check_access(`to, AccessLevel.CONNECT, op_hint);
+    return JacAccessValidation._check_access(to, AccessLevel.CONNECT, op_hint);
 }
 
 impl JacAccessValidation.check_access_level(
-    `to: Anchor, no_custom: bool = False
+    to: Anchor, no_custom: bool = False
 ) -> AccessLevel {
-    if (not `to.persistent or (`to.hash == 0)) {
+    if (not to.persistent or (to.hash == 0)) {
         return AccessLevel.WRITE;
     }
     jctx = JacRuntimeInterface.get_context();
@@ -125,19 +125,19 @@ impl JacAccessValidation.check_access_level(
         return AccessLevel.NO_ACCESS;
     }
     jroot: NodeAnchor = _jroot;
-    if ((jroot == jctx.system_root) or (jroot.id == `to.root) or (jroot == `to)) {
+    if ((jroot == jctx.system_root) or (jroot.id == to.root) or (jroot == to)) {
         return AccessLevel.WRITE;
     }
     if (
-        not no_custom and ((custom_level := `to.archetype.__jac_access__()) is not None)
+        not no_custom and ((custom_level := to.archetype.__jac_access__()) is not None)
     ) {
         return access_level_cast(custom_level);
     }
     access_level = AccessLevel.NO_ACCESS;
-    if ((to_access := `to.access).all.value > AccessLevel.NO_ACCESS.value) {
+    if ((to_access := to.access).all.value > AccessLevel.NO_ACCESS.value) {
         access_level = to_access.all;
     }
-    if (`to.root and isinstance((to_root := jctx.mem.get(`to.root)), Anchor)) {
+    if (to.root and isinstance((to_root := jctx.mem.get(to.root)), Anchor)) {
         if (to_root.access.all.value > access_level.value) {
             access_level = to_root.access.all;
         }
@@ -563,7 +563,6 @@ impl JacBuiltin.printgraph(
     return output;
 }
 
-impl JacCmd.create_cmd -> None { }
 
 impl JacCmd.run_ai_agent(req: object) -> int {
     try {
@@ -1083,7 +1082,7 @@ impl JacGraph.refs(
             last.nd = post_filter;
         } else {
             orig_nd = last.nd;
-            last.nd = lambda i: any : (orig_nd(i) and post_filter(i));
+            last.nd = lambda (i: any) { orig_nd(i) and post_filter(i); };
         }
     }
 
@@ -1407,11 +1406,23 @@ impl JacBuiltin.get_console -> ConsoleImpl {
 }
 
 impl JacServe.get_api_server_class -> type {
+    _sp = _scale_provider();
+    if _sp is not None {
+        _scaled = _sp.get_api_server_class();
+        if _scaled is not None {
+            return _scaled;
+        }
+    }
     import from jaclang.runtimelib.server { JacAPIServer }
     return JacAPIServer;
 }
 
 impl JacServe.ensure_sv_service(module_name: str, base_path: str) -> None {
+    _sp = _scale_provider();
+    if _sp is not None {
+        _sp.ensure_sv_service(module_name, base_path);
+        return;
+    }
     import os;
     import socket;
     import time;
@@ -1481,6 +1492,10 @@ impl JacServe.ensure_sv_service(module_name: str, base_path: str) -> None {
 }
 
 impl JacServe.sv_service_call(module_name: str, func_name: str, args: dict) -> any {
+    _sp = _scale_provider();
+    if _sp is not None {
+        return _sp.sv_service_call(module_name, func_name, args);
+    }
     import from jaclang.runtimelib { sv_client }
 
     import from jaclang.runtimelib.sv_sse {
@@ -1541,6 +1556,10 @@ impl JacServe.sv_service_call(module_name: str, func_name: str, args: dict) -> a
 impl JacServe.sv_walker_call(
     module_name: str, walker_name: str, args: dict, stub_cls: any
 ) -> any {
+    _sp = _scale_provider();
+    if _sp is not None {
+        return _sp.sv_walker_call(module_name, walker_name, args, stub_cls);
+    }
     import from jaclang.runtimelib { sv_client }
     import from jaclang.runtimelib.sv_sse { sv_http_post }
 
@@ -1587,6 +1606,10 @@ impl JacServe.sv_walker_call(
 
 
 impl JacServe.get_sv_registry -> dict[str, str] {
+    _sp = _scale_provider();
+    if _sp is not None {
+        return _sp.get_sv_registry();
+    }
     import from jaclang.runtimelib { sv_client }
     return dict(sv_client._registry);
 }
@@ -1594,6 +1617,13 @@ impl JacServe.get_sv_registry -> dict[str, str] {
 impl JacServe.create_server(
     jac_server: JacServer, host: str, port: int, max_retries: int = 10
 ) -> HTTPServer {
+    _sp = _scale_provider();
+    if _sp is not None {
+        _scaled = _sp.create_server(jac_server, host, port);
+        if _scaled is not None {
+            return _scaled;
+        }
+    }
     import from http.server { ThreadingHTTPServer }
     handler_class = jac_server.create_handler();
     current_port = port;
@@ -1673,7 +1703,9 @@ impl JacLLM.get_mtir(
     args: dict[((int | str), object)],
     call_params: dict[(str, object)]
 ) -> MTRuntime {
-    return MTIR(caller=caller, args=args, call_params=call_params).runtime;
+    import from jaclang.jac0core.mtp { fetch_mtir }
+    import from jaclang.byllm.mtir { MTIR }
+    return MTIR(caller, args, call_params, fetch_mtir(caller)).runtime;
 }
 
 impl JacLLM.`sem(semstr: str, inner_semstr: dict[(str, str)]) -> Callable {
@@ -1686,60 +1718,18 @@ impl JacLLM.`sem(semstr: str, inner_semstr: dict[(str, str)]) -> Callable {
 }
 
 impl JacLLM.call_llm(model: LLMModel, mt_run: MTRuntime) -> any {
-    import from jaclang.utils { NonGPT }
-    try {
-        random_value_for_type = cast(
-            Callable[([any], Any)], NonGPT.random_value_for_type
-        );
-    } except AttributeError {
-        def random_value_for_type(_t: object) -> object {
-            return None;
-        }
-    }
-    try {
-        type_hints = get_type_hints(
-            mt_run.caller,
-            globalns=getattr(mt_run.caller, '__globals__', {}),
-            localns=None,
-            include_extras=True
-        );
-    } except Exception {
-        type_hints = getattr(mt_run.caller, '__annotations__', {});
-    }
-    return_type = type_hints.get('return', Any);
-    return random_value_for_type(return_type);
+    return model.invoke(mt_run=mt_run);
 }
 
 impl JacLLM.acall_llm(model: LLMModel, mt_run: MTRuntime) -> any {
-    import asyncio;
-    import from jaclang.utils { NonGPT }
-    await asyncio.sleep(0);
-    try {
-        random_value_for_type = cast(
-            Callable[([any], Any)], NonGPT.random_value_for_type
-        );
-    } except AttributeError {
-        def random_value_for_type(_t: object) -> object {
-            return None;
-        }
-    }
-    try {
-        type_hints = get_type_hints(
-            mt_run.caller,
-            globalns=getattr(mt_run.caller, '__globals__', {}),
-            localns=None,
-            include_extras=True
-        );
-    } except Exception {
-        type_hints = getattr(mt_run.caller, '__annotations__', {});
-    }
-    return_type = type_hints.get('return', Any);
-    return random_value_for_type(return_type);
+    return await model.ainvoke(mt_run=mt_run);
 }
 
 impl JacLLM.`by(model: LLMModel) -> Callable {
     def _decorator(caller: Callable) -> Callable {
         def _wrapped_caller(*args: object, **kwargs: object) -> object {
+            import from jaclang.jac0core.mtp { fetch_mtir }
+            import from jaclang.byllm.mtir { MTIR }
             invoke_args: dict[((int | str), object)] = {};
             for (i, arg) in enumerate(args) {
                 invoke_args[i] = arg;
@@ -1747,64 +1737,96 @@ impl JacLLM.`by(model: LLMModel) -> Callable {
             for (key, value) in kwargs.items() {
                 invoke_args[key] = value;
             }
-            mt_run = JacRuntime.get_mtir(
-                caller=caller, args=invoke_args, call_params=model?.call_params or {}
-            );
-            return JacRuntime.call_llm(model, mt_run);
+            mt_run = MTIR(
+                caller, invoke_args, model.call_params, fetch_mtir(caller)
+            ).runtime;
+            return model.invoke(mt_run=mt_run);
         }
         return _wrapped_caller;
     }
     return _decorator;
 }
 
-impl JacLLM.filter_visitable_by(
-    connected_nodes: list[NodeArchetype], model: LLMModel, descriptions: str = ''
-) -> list[NodeArchetype] {
-    import from jaclang.jac0core.helpers { _describe_nodes_list }
-    visitable_list: list = [];
-    """
-        Determine which connected nodes are visitable using an LLM.
-
-        The input represents structurally reachable nodes. This function
-applies
-        semantic reasoning to decide which of those nodes a walker is
-allowed
-        or intended to visit, returning their indexes in priority order.
-
-        Returns an empty list if no nodes are deemed visitable.
-        """;
-    @JacLLM.by (model=model)
-    def _filter_visitable_by(
-        connected_nodes: list[NodeArchetype], descriptions: str = ''
-    ) -> list[int] {
-        return [];
-    }
-    descriptions = _describe_nodes_list(connected_nodes);
-    indexes = _filter_visitable_by(connected_nodes, descriptions);
-    for idx in indexes {
-        visitable_list.append(connected_nodes[idx]);
-    }
-    return visitable_list;
-}
-
 impl JacLLM.by_operator(lhs: any, rhs: any) -> any {
+    import from jaclang.byllm.llm { BaseLLM }
+    import from jaclang.jac0core.archetype { NodeArchetype, EdgeArchetype }
+
+    lhs_list = lhs if isinstance(lhs, list) else [lhs];
+    if all(isinstance(element, (NodeArchetype, EdgeArchetype)) for element in lhs_list)
+    and isinstance(rhs, BaseLLM) {
+        import from jaclang.byllm.visit_routing { route_visit }
+        return route_visit(lhs_list, rhs);
+    }
     raise NotImplementedError(
-        "The 'by' operator is not yet implemented. This feature is reserved for future use."
+        "The 'by' operator requires visitable nodes on the left and an LLM model on the right."
     );
 }
 
 impl JacLLM.default_llm -> LLMModel {
+    import os;
     _cache = JacLLM?._default_llm_instance;
     if (_cache is not None) {
         return _cache;
     }
-    def _stub_call(_self: object, **kwargs: object) -> object {
-        return _self;
+    import from jaclang.byllm.llm { Model }
+    import from jaclang.byllm.config_loader { get_byllm_config }
+    import from jaclang.byllm.exceptions { ConfigurationError }
+    config = get_byllm_config();
+    model_config = config.get_model_config();
+    call_params_config = config.get_call_params_config();
+    local_config = config.get_local_config();
+
+    configured = model_config.get("default_model", "");
+    env_override = os.environ.get("BYLLM_DEFAULT_MODEL", "");
+    chosen = env_override or configured;
+    if not chosen {
+        has_cloud_key = any(
+            bool(os.environ.get(k))
+            for k in (
+                "OPENAI_API_KEY",
+                "ANTHROPIC_API_KEY",
+                "GEMINI_API_KEY",
+                "GOOGLE_API_KEY",
+                "MISTRAL_API_KEY",
+                "GROQ_API_KEY",
+                "TOGETHER_API_KEY",
+                "DEEPSEEK_API_KEY"
+            )
+        );
+        if has_cloud_key {
+            chosen = "openai/gpt-4o-mini";
+        } else {
+            try {
+                import llama_cpp;
+                local_alias = local_config.get("default_alias", "gemma-4-e4b");
+                chosen = f"local:{local_alias}";
+            } except ImportError {
+                raise ConfigurationError(
+                    "byLLM has no model configured and no provider API key "
+                    "is set. Pick one of:\n"
+                    "  - Set OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY / etc.\n"
+                    "  - Run a local model via Ollama (recommended for "
+                    "local-first deployments): install Ollama, then set "
+                    "[byllm.model].default_model = \"ollama/<model>\" "
+                    "in jac.toml.\n"
+                    "  - Use byLLM's bundled in-process runtime: "
+                    "pip install 'byllm[local]'  then "
+                    "default_model = \"local:gemma-4-e4b\"."
+                );
+            }
+        }
     }
-    _StubCls = `type(
-        '_DefaultLLM', (object, ), {'call_params': {}, '__call__': _stub_call}
+
+    merged_config: dict = dict(model_config);
+    if chosen.startswith("local:") {
+        for (k, v) in local_config.items() {
+            merged_config[k] = v;
+        }
+    }
+
+    instance = Model(
+        model_name=chosen, config=merged_config, call_params=call_params_config
     );
-    instance = _StubCls();
     JacLLM._default_llm_instance = instance;
     return instance;
 }
@@ -1831,6 +1853,13 @@ impl JacContext.create_j_context(
     base_path_dir: (str | None) = None,
     full_target_path: (str | None) = None
 ) -> ExecutionContext {
+    _sp = _scale_provider();
+    if _sp is not None {
+        _scaled = _sp.create_j_context(user_root, base_path_dir, full_target_path);
+        if _scaled is not None {
+            return _scaled;
+        }
+    }
     import from jaclang.runtimelib.context { ExecutionContext }
     ctx = ExecutionContext(
         base_path_dir=base_path_dir, full_target_path=full_target_path
@@ -1843,10 +1872,6 @@ impl JacContext.create_j_context(
 
 impl JacContext.attach_program(jac_program: JacProgram) -> None {
     JacRuntime.program = jac_program;
-}
-
-impl JacContext.attach_compiler(jac_compiler: JacCompiler) -> None {
-    JacRuntime.compiler = jac_compiler;
 }
 
 impl JacModule.load_module(
@@ -1862,58 +1887,36 @@ impl JacIntrospection.list_modules -> list[str] {
     return `list(JacRuntime.loaded_modules.keys());
 }
 
-impl JacIntrospection.list_walkers(module_name: str) -> list[str] {
+impl JacIntrospection._list_members_of(
+    module_name: str, archetype_cls: type
+) -> list[str] {
     module = JacRuntime.loaded_modules.get(module_name);
     if module {
-        walkers = [];
+        members = [];
         for (name, `obj) in inspect.getmembers(module) {
             if (
                 isinstance(`obj, `type)
-                and issubclass(`obj, WalkerArchetype)
+                and issubclass(`obj, archetype_cls)
                 and (`obj.__module__ == module_name)
             ) {
-                walkers.append(name);
+                members.append(name);
             }
         }
-        return walkers;
+        return members;
     }
     return [];
+}
+
+impl JacIntrospection.list_walkers(module_name: str) -> list[str] {
+    return JacIntrospection._list_members_of(module_name, WalkerArchetype);
 }
 
 impl JacIntrospection.list_nodes(module_name: str) -> list[str] {
-    module = JacRuntime.loaded_modules.get(module_name);
-    if module {
-        nodes = [];
-        for (name, `obj) in inspect.getmembers(module) {
-            if (
-                isinstance(`obj, `type)
-                and issubclass(`obj, NodeArchetype)
-                and (`obj.__module__ == module_name)
-            ) {
-                nodes.append(name);
-            }
-        }
-        return nodes;
-    }
-    return [];
+    return JacIntrospection._list_members_of(module_name, NodeArchetype);
 }
 
 impl JacIntrospection.list_edges(module_name: str) -> list[str] {
-    module = JacRuntime.loaded_modules.get(module_name);
-    if module {
-        edges = [];
-        for (name, `obj) in inspect.getmembers(module) {
-            if (
-                isinstance(`obj, `type)
-                and issubclass(`obj, EdgeArchetype)
-                and (`obj.__module__ == module_name)
-            ) {
-                edges.append(name);
-            }
-        }
-        return edges;
-    }
-    return [];
+    return JacIntrospection._list_members_of(module_name, EdgeArchetype);
 }
 
 impl JacModule.create_archetype_from_source(
@@ -2048,14 +2051,6 @@ impl JacContext.thread_wait(future: any) -> None {
     return future.result();
 }
 
-impl JacConfig.get_plugin_metadata -> (dict[(str, Any)] | None) {
-    return None;
-}
-
-impl JacConfig.get_config_schema -> (dict[(str, Any)] | None) {
-    return None;
-}
-
 impl JacConfig.on_config_loaded(config: dict[(str, Any)]) -> None {
     ;
 }
@@ -2064,15 +2059,14 @@ impl JacConfig.validate_config(config: dict[(str, Any)]) -> list[str] {
     return [];
 }
 
-impl JacConfig.register_dependency_type -> (dict[(str, Any)] | None) {
-    return None;
-}
-
-impl JacConfig.register_project_template -> (dict[(str, Any)] | None) {
-    return None;
-}
-
 impl JacPersistence.get_user_manager(base_path: str) -> UserManager {
+    _sp = _scale_provider();
+    if _sp is not None {
+        _scaled = _sp.get_user_manager(base_path);
+        if _scaled is not None {
+            return _scaled;
+        }
+    }
     import from jaclang.runtimelib.server { UserManager }
     return UserManager(base_path=base_path);
 }
@@ -2080,12 +2074,24 @@ impl JacPersistence.get_user_manager(base_path: str) -> UserManager {
 impl JacPersistence.store(
     base_path: str = './storage', create_dirs: bool = True
 ) -> any {
+    _sp = _scale_provider();
+    if _sp is not None {
+        return _sp.store(base_path, create_dirs);
+    }
     import from jaclang.runtimelib.storage { LocalStorage }
     return LocalStorage(base_path=base_path, create_dirs=create_dirs);
 }
 
 impl JacPersistence.get_persistent_memory(config: dict) -> any {
+    provider = _persistent_memory_provider[0];
+    if provider is not None {
+        return provider(config);
+    }
     return None;
+}
+
+impl JacPersistence.set_persistent_memory_provider(provider: Callable | None) -> None {
+    _persistent_memory_provider[0] = provider;
 }
 
 impl JacRuntime.get_compiler(cls: any) -> JacCompiler {

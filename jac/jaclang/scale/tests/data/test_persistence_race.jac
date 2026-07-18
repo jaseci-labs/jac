@@ -13,9 +13,6 @@ Expected outcome after CAS/versioning fix: PASSES.
 import contextlib;
 import gc;
 import os;
-import socket;
-import subprocess;
-import sys;
 import time;
 import from pathlib { Path }
 import from typing { cast }
@@ -26,20 +23,15 @@ import requests;
 import from pymongo { MongoClient }
 import from testcontainers.mongodb { MongoDbContainer }
 import from testcontainers.redis { RedisContainer }
-import from jaclang.scale.tests.server_support { get_free_port }
+import from jaclang.scale.tests.server_support {
+    call_walker,
+    extract,
+    get_free_port,
+    start_server
+}
 
 glob FIXTURES_DIR = Path(__file__).parent.parent / "fixtures",
      JAC_FILE = FIXTURES_DIR / "race_app.jac";
-
-def extract(json_response: any) -> any {
-    if isinstance(json_response, list) and len(json_response) == 2 {
-        json_response = json_response[1];
-    }
-    if isinstance(json_response, dict) and "data" in json_response {
-        return json_response["data"];
-    }
-    return json_response;
-}
 
 def register_user(base_url: str, username: str) -> str {
     res = requests.post(
@@ -61,46 +53,6 @@ def register_user(base_url: str, username: str) -> str {
     );
     assert login.status_code == 200 , f"login failed: {login.status_code} {login.text}";
     return cast(dict, extract(login.json()))["token"];
-}
-
-def call_walker(
-    base_url: str, walker_name: str, token: str, payload: dict | None = None
-) -> any {
-    res = requests.post(
-        f"{base_url}/walker/{walker_name}",
-        json=payload or {},
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=15
-    );
-    return res.json();
-}
-
-def start_server(fixtures_dir: Path, jac_file: Path, port: int) -> subprocess.Popen {
-    import shutil;
-    jac_executable = shutil.which("jac") or str(Path(sys.executable).parent / "jac");
-    cmd = [str(jac_executable), "start", str(jac_file.name), "--port", str(port)];
-    env = os.environ.copy();
-    server = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        cwd=str(fixtures_dir),
-        env=env
-    );
-    base_url = f"http://localhost:{port}";
-    for _ in range(30) {
-        try {
-            r = requests.get(f"{base_url}/healthz", timeout=1);
-            if r.status_code == 200 {
-                return server;
-            }
-        } except Exception {
-            time.sleep(1);
-        }
-    }
-    (stdout, stderr) = server.communicate(timeout=2);
-    raise RuntimeError(f"server failed to start\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}");
 }
 
 test "concurrent writes to same root must not lose edges (race condition proof)" {

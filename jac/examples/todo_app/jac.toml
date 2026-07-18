@@ -26,14 +26,14 @@ watchdog = ">=3.0.0"
 [serve]
 base_route_app = "app"
 
-[plugins.client]
+[client]
 
-[plugins.desktop]
+[desktop]
 name = "todo-app"
 identifier = "org.jaseci.examples.todo-app"
 version = "0.1.0"
 
-[plugins.desktop.window]
+[desktop.window]
 title = "Todo App"
 width = 900
 height = 800

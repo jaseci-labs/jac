@@ -48,14 +48,12 @@ def _endpoint_effects(page_html: str) -> dict {
     return data.get("endpointEffects", {});
 }
 
-"""A configured `[plugins.client.api] base_url` is baked into the bundle."""
+"""A configured `[client.api] base_url` is baked into the bundle."""
 test "configurable api base url in bundle" {
     with TemporaryDirectory() as temp_dir {
         project_path = copy_fixture("fullstack", temp_dir);
         base_url = "http://my-custom-backend:9000";
-        _append_toml(
-            project_path, f'\n[plugins.client.api]\nbase_url = "{base_url}"\n'
-        );
+        _append_toml(project_path, f'\n[client.api]\nbase_url = "{base_url}"\n');
         server: Popen | None = None;
         try {
             (server, port) = start_app_server(project_path);
@@ -127,7 +125,7 @@ test "vite define and env values reach the bundle" {
         app_name = "Vite Define Probe";
         _append_toml(
             project_path,
-            f'\n[plugins.client.vite.define]\n'
+            f'\n[client.vite.define]\n'
             f'"globalThis.APP_BUILD_TIME" = "{build_time}"\n',
         );
         with open(os.path.join(project_path, ".env"), "w") as f {

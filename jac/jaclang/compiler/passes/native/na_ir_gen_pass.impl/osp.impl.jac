@@ -70,20 +70,20 @@ impl NaIRGenPass._compute_osp_model(archetypes: list[uni.Archetype]) -> None {
             self.arch_ast_map[_n] = arch;
         }
     }
-    _model = OspAnalysis.compute(
+    import from jaclang.jac0core.osp_model { get_osp_model }
+    _model = get_osp_model(
         self.ir_in,
-        list(archetypes) + list(self.arch_ast_map.values()),
-        CodeContext.NATIVE
+        archetypes=(list(archetypes) + list(self.arch_ast_map.values())),
+        context=CodeContext.NATIVE
     );
     for (_name, _other) in _model.collisions {
         self.emit(
-            E5090,
+            E5092,
             node_override=self.arch_ast_map.get(_name),
             kind="archetype",
             name=f"{_name} (OSP type-tag hash collides with '{_other}')"
         );
     }
-    self.ir_in.gen.osp_model = _model;
 }
 
 impl NaIRGenPass._osp_active -> bool {
@@ -719,6 +719,22 @@ impl NaIRGenPass._osp_generic_edge -> (ir.Value | None) {
         return None;
     }
     i64 = ir.IntType(64);
+    if self.region_stack {
+        return self._region_alloc(ir.Constant(i64, 8), name="osp.gedge.rgn");
+    }
+    if "here" in self.local_vars {
+        self._emit_arena_helpers();
+        _i8p_ge = ir.IntType(8).as_pointer();
+        _here_v = self.builder.load(self.local_vars["here"], name="gedge.here");
+        _here_i8 = self.builder.bitcast(_here_v, _i8p_ge, name="gedge.here.i8");
+        _gedge = self.builder.call(
+            self.osp_anchor_alloc_fn,
+            [_here_i8, ir.Constant(i64, 8), ir.Constant(_i8p_ge, None)],
+            name="osp.gedge.anch"
+        );
+        self._osp_make_immortal(_gedge);
+        return _gedge;
+    }
     _raw = self._rc_call_with_ctx(
         self.rc_alloc_fn, [ir.Constant(i64, 8)], op="osp", loc="", name="osp.gedge"
     );
@@ -741,7 +757,7 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
     _xhelp = self._xmod_osp_help(_xnames);
     if (osp_conn_fn is None) or (_xhelp is not None) {
         self.emit(
-            E5090,
+            E5092,
             node_override=nd,
             kind="binary operator",
             name="ConnectOp",
@@ -811,7 +827,7 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
 ) -> (ir.Value | None) {
     osp_refs_fn = self.func_symtab.get("osp_refs");
     if (osp_refs_fn is None) or (not nd.chain) {
-        self.emit(E5090, node_override=nd, kind="expression", name="EdgeRefTrailer");
+        self.emit(E5092, node_override=nd, kind="expression", name="EdgeRefTrailer");
         return None;
     }
     i64 = ir.IntType(64);
@@ -823,7 +839,7 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
         _here = self.local_vars.get("here");
         if _here is None {
             self.emit(
-                E5090, node_override=nd, kind="expression", name="EdgeRefTrailer"
+                E5092, node_override=nd, kind="expression", name="EdgeRefTrailer"
             );
             return None;
         }
@@ -836,7 +852,7 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
     if (origin_val is None)
     or (_idx >= len(chain))
     or (not isinstance(chain[_idx], uni.EdgeOpRef)) {
-        self.emit(E5090, node_override=nd, kind="expression", name="EdgeRefTrailer");
+        self.emit(E5092, node_override=nd, kind="expression", name="EdgeRefTrailer");
         return None;
     }
     step = chain[_idx];
@@ -865,7 +881,7 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
 
             if _edge_tag < 0 {
                 self.emit(
-                    E5090,
+                    E5092,
                     node_override=nd,
                     kind="expression",
                     name="EdgeRefTrailer",
@@ -892,7 +908,7 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
         _ntag = _er_tags.get(_node_filter, -1);
         if (_ntag < 0) or (self._osp_filter_fn is None) {
             self.emit(
-                E5090,
+                E5092,
                 node_override=nd,
                 kind="expression",
                 name="EdgeRefTrailer",
@@ -935,7 +951,7 @@ impl NaIRGenPass._osp_visit_targets(target: uni.UniNode) -> (ir.Value | None) {
 impl NaIRGenPass._codegen_visit(nd: uni.VisitStmt) -> None {
     osp_visit_fn = self.func_symtab.get("osp_visit");
     if osp_visit_fn is None {
-        self.emit(E5090, node_override=nd, kind="statement", name="VisitStmt");
+        self.emit(E5092, node_override=nd, kind="statement", name="VisitStmt");
         return;
     }
     _targets = self._osp_visit_targets(nd.target);
@@ -989,7 +1005,7 @@ impl NaIRGenPass._codegen_visit(nd: uni.VisitStmt) -> None {
 impl NaIRGenPass._codegen_disengage(nd: uni.DisengageStmt) -> None {
     osp_disengage_fn = self.func_symtab.get("osp_disengage");
     if osp_disengage_fn is None {
-        self.emit(E5090, node_override=nd, kind="statement", name="DisengageStmt");
+        self.emit(E5092, node_override=nd, kind="statement", name="DisengageStmt");
         return;
     }
     self.builder.call(osp_disengage_fn, []);
@@ -1002,7 +1018,7 @@ impl NaIRGenPass._codegen_disengage(nd: uni.DisengageStmt) -> None {
 impl NaIRGenPass._codegen_report(nd: uni.ReportStmt) -> None {
     osp_report_fn = self.func_symtab.get("osp_report");
     if osp_report_fn is None {
-        self.emit(E5090, node_override=nd, kind="statement", name="ReportStmt");
+        self.emit(E5092, node_override=nd, kind="statement", name="ReportStmt");
         return;
     }
     _val = self._codegen_expr(nd.expr);

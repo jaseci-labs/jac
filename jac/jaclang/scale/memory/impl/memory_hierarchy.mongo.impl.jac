@@ -339,9 +339,6 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
                 else None
         );
         if cls_resolved is None {
-            # A sibling service pod is EXPECTED to lack peer services'
-            # archetype classes in a shared store -- skip without mutating the
-            # shared collection; quarantining would poison it for the owner.
             if os.environ.get("JAC_SV_SIBLING") == "1" {
                 logger.debug(
                     f"MongoBackend: class {arch_module}.{arch_type} not "
@@ -528,7 +525,7 @@ impl MongoBackend.execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None]
     }
     (filt, skip_n, limit_n) = _plan_to_mongo_filter(plan);
     try {
-        cursor = self.collection.find(filt);
+        cursor = self.collection.find(filt).sort('_id', 1);
         if skip_n {
             cursor = cursor.skip(skip_n);
         }
@@ -543,33 +540,6 @@ impl MongoBackend.execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None]
     } except Exception as e {
         logger.debug(f"MongoDB execute_plan failed ({filt}): {e}");
     }
-}
-
-impl MongoBackend.find(
-    ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
-) -> Generator[Anchor, None, None] {
-    id_list = [ids] if isinstance(ids, UUID) else list(ids);
-    for id in id_list {
-        if (anchor := self.get(id)) {
-            if filter is None or filter(anchor) {
-                yield anchor;
-            }
-        }
-    }
-}
-
-impl MongoBackend.find_one(
-    ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
-) -> (Anchor | None) {
-    id_list = [ids] if isinstance(ids, UUID) else list(ids);
-    for id in id_list {
-        if (anchor := self.get(id)) {
-            if filter is None or filter(anchor) {
-                return anchor;
-            }
-        }
-    }
-    return None;
 }
 
 impl MongoBackend.commit(anchor: (Anchor | None) = None) -> None { }
@@ -1181,7 +1151,7 @@ impl MongoBackend.recover_all -> tuple {
         return (0, []);
     }
 
-    docs.sort(key=lambda d : 0 if d.get('type') == 'NodeAnchor' else 1);
+    docs.sort(key=lambda (d) { 0 if d.get('type') == 'NodeAnchor' else 1; });
     recovered = 0;
     still_stuck: list = [];
     for d in docs {
@@ -1449,7 +1419,7 @@ impl MongoBackend._auto_retry_quarantine(limit: int = 500) -> tuple {
         return (0, 0);
     }
 
-    docs.sort(key=lambda d : 0 if d.get('type') == 'NodeAnchor' else 1);
+    docs.sort(key=lambda (d) { 0 if d.get('type') == 'NodeAnchor' else 1; });
     attempted = 0;
     recovered = 0;
     for d in docs {

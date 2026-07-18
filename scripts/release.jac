@@ -14,7 +14,7 @@ import argparse;
 import from pathlib { Path }
 import tomlkit;
 import from collect_release_notes { assemble_package }
-import from release_utils { DEPENDENTS, PACKAGES, bump_version, set_output }
+import from release_utils { PACKAGES, bump_version, set_output }
 """Read the version string from a jac.toml file."""
 def read_version(jac_toml_path: Path) -> str {
     data = tomlkit.loads(jac_toml_path.read_text());
@@ -26,56 +26,6 @@ def update_jac_toml_version(jac_toml_path: Path, new_version: str) {
     data = tomlkit.loads(jac_toml_path.read_text());
     data["project"]["version"] = new_version;
     jac_toml_path.write_text(tomlkit.dumps(data));
-}
-
-"""Update an internal dependency version in a jac.toml file.
-
-    Returns True if a change was made, False otherwise.
-    """
-def update_dependency_version(
-    jac_toml_path: Path, dep_pypi_name: str, new_version: str
-) -> bool {
-    data = tomlkit.loads(jac_toml_path.read_text());
-    dependencies = data["dependencies"];
-    modified = False;
-    if dep_pypi_name in dependencies {
-        dependencies[dep_pypi_name] = f">={new_version}";
-        modified = True;
-    }
-    if modified {
-        jac_toml_path.write_text(tomlkit.dumps(data));
-    }
-    return modified;
-}
-
-"""Update packages that depend on pkg_pypi_name (only if they are also being released).
-
-    Args:
-        repo_root: Path to repository root.
-        pkg_pypi_name: PyPI name of the package whose version changed.
-        new_version: The new version of the package.
-        releasing_packages: Set of package keys being released in this run.
-
-    Returns list of modified file paths (relative to repo root).
-    """
-def sync_dependents(
-    repo_root: Path, pkg_pypi_name: str, new_version: str, releasing_packages: set[str]
-) -> list[str] {
-    modified: list[str] = [];
-    for dep_key in DEPENDENTS.get(pkg_pypi_name, []) {
-        if (dep_key not in releasing_packages) {
-            continue;
-        }
-        dep_info = PACKAGES[dep_key];
-        jac_toml_rel = f"{dep_info.dir}/jac.toml";
-        dep_jac_toml = repo_root / jac_toml_rel;
-        if dep_jac_toml.exists()
-        and update_dependency_version(dep_jac_toml, pkg_pypi_name, new_version) {
-            modified.append(jac_toml_rel);
-            print(f"  Updated {pkg_pypi_name}>={new_version} in {jac_toml_rel}");
-        }
-    }
-    return modified;
 }
 
 """Collect release note fragments and assemble into the release notes file.
@@ -162,19 +112,6 @@ def main -> None {
                     f"[dry-run] Would update {rel['jac_toml']} -> version {new_version}"
                 );
             }
-            for dep_key in DEPENDENTS.get(rel["pypi_name"], []) {
-                if (dep_key in releasing_packages) {
-                    dep_info = PACKAGES[dep_key];
-                    dep_jac_toml = f"{dep_info.dir}/jac.toml";
-                    if (repo_root / dep_jac_toml).exists() {
-                        print(
-                            f"[dry-run] Would update {dep_jac_toml} -> {rel[
-                                'pypi_name'
-                            ]}>={new_version}"
-                        );
-                    }
-                }
-            }
             if rel["release_notes"] {
                 print(f"[dry-run] Would collect fragments for {rel['name']}");
                 update_release_notes(repo_root, rel["name"], new_version, dry_run=True);
@@ -187,14 +124,6 @@ def main -> None {
             update_jac_toml_version(jac_toml_path, new_version);
             if (rel["jac_toml"] not in modified_files) {
                 modified_files.append(rel["jac_toml"]);
-            }
-        }
-        print("Syncing dependents...");
-        for dep_file in sync_dependents(
-            repo_root, rel["pypi_name"], new_version, releasing_packages
-        ) {
-            if (dep_file not in modified_files) {
-                modified_files.append(dep_file);
             }
         }
         if rel["release_notes"] {
@@ -226,9 +155,6 @@ def main -> None {
         pr_body += f"### {name}\n";
         pr_body += f"- Version: {old} → {new_ver}\n";
         pr_body += f"- Bump type: {rel['bump']}\n\n";
-    }
-    if any(DEPENDENTS.get(rel["pypi_name"]) for rel in releases) {
-        pr_body += "- Updated internal dependency versions in dependent packages\n";
     }
     pr_body += "- Updated release notes\n";
     set_output("branch_name", branch_name);

@@ -1,7 +1,8 @@
+import os;
 import logging;
 import from jaclang.scale.injector.injector { Injector }
 import from jaclang.scale.injector.bundle {
-    pack_source,
+    pack_jab,
     content_address,
     bundle_object_key,
     ensure_jac_toml_cmd,
@@ -13,6 +14,9 @@ glob logger = logging.getLogger(__name__);
 
 glob BUNDLE_VOLUME_NAME: str = "jac-bundles",
      BUNDLE_MOUNT_PATH: str = "/jac-bundles";
+
+glob LOADER_UID: int = 1000,
+     LOADER_GID: int = 1000;
 
 
 def bundle_pvc_name(app_name: str) -> str {
@@ -36,7 +40,7 @@ def build_bundle_pvc(
             "the cluster default StorageClass. Most cloud defaults (e.g. EKS gp3 / "
             "ebs.csi.aws.com) are ReadWriteOnce and cannot provision a "
             "ReadWriteMany volume, leaving the bundle-loader pod Pending. Set "
-            "'bundle_storage_class' under [plugins.scale.kubernetes] to a "
+            "'bundle_storage_class' under [scale.kubernetes] to a "
             "RWX-capable StorageClass (e.g. 'efs-sc')."
         );
     }
@@ -56,6 +60,80 @@ def build_bundle_pvc(
             "labels": {"managed": "jac-scale", "jac-scale.role": "bundle-store"}
         },
         "spec": spec
+    };
+}
+
+
+def build_loader_perms_init_container(loader_image: str) -> dict[str, any] {
+    script = (
+        f"chown -R {LOADER_UID}:{LOADER_GID} {BUNDLE_MOUNT_PATH} "
+        f"&& chmod 0775 {BUNDLE_MOUNT_PATH} "
+        "|| echo 'bundle-perms: chown/chmod not permitted by the storage "
+        "backend; relying on the volume permissions as provisioned' >&2"
+    );
+    return {
+        "name": "bundle-perms",
+        "image": loader_image,
+        "command": ["sh", "-c", script],
+        "securityContext": {
+            "runAsNonRoot": False,
+            "runAsUser": 0,
+            "readOnlyRootFilesystem": True,
+            "allowPrivilegeEscalation": False,
+            "capabilities": {
+                "drop": ["ALL"],
+                "add": ["CHOWN", "FOWNER", "DAC_OVERRIDE"]
+            },
+            "seccompProfile": {"type": "RuntimeDefault"}
+        },
+        "volumeMounts": [{"name": "bundles", "mountPath": BUNDLE_MOUNT_PATH}]
+    };
+}
+
+
+def build_loader_pod(
+    loader_pod: str, pvc_name: str, loader_image: str
+) -> dict[str, any] {
+    return {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "metadata": {
+            "name": loader_pod,
+            "labels": {"managed": "jac-scale", "jac-scale.role": "bundle-loader"}
+        },
+        "spec": {
+            "restartPolicy": "Never",
+            "securityContext": {
+                "runAsNonRoot": True,
+                "runAsUser": LOADER_UID,
+                "fsGroup": LOADER_GID,
+                "seccompProfile": {"type": "RuntimeDefault"}
+            },
+            "initContainers": [build_loader_perms_init_container(loader_image)],
+            "containers": [
+                {
+                    "name": "loader",
+                    "image": loader_image,
+                    "command": ["sh", "-c", "sleep 3600"],
+                    "securityContext": {
+                        "runAsNonRoot": True,
+                        "runAsUser": LOADER_UID,
+                        "readOnlyRootFilesystem": True,
+                        "allowPrivilegeEscalation": False,
+                        "capabilities": {"drop": ["ALL"]},
+                        "seccompProfile": {"type": "RuntimeDefault"}
+                    },
+                    "volumeMounts": [
+                        {"name": "bundles", "mountPath": BUNDLE_MOUNT_PATH},
+                        {"name": "tmp", "mountPath": "/tmp"}
+                    ]
+                }
+            ],
+            "volumes": [
+                {"name": "bundles", "persistentVolumeClaim": {"claimName": pvc_name}},
+                {"name": "tmp", "emptyDir": {}}
+            ]
+        }
     };
 }
 
@@ -111,7 +189,11 @@ obj PvcInjector(Injector) {
     }
 
     def prepare(app_name: str, namespace: str, project_dir: str) {
-        raw = pack_source(project_dir, self.provisioned_database);
+        raw = pack_jab(
+            project_dir,
+            self.provisioned_database,
+            getattr(self, "_pod_binary_bytes", b"")
+        );
         digest = content_address(raw);
         self._object_key = bundle_object_key(app_name, digest);
         self._bundle_bytes = raw;
@@ -137,49 +219,7 @@ obj PvcInjector(Injector) {
         pvc_name = bundle_pvc_name(app_name);
         loader_pod = f"{app_name}-bundle-loader";
 
-        pod_body = {
-            "apiVersion": "v1",
-            "kind": "Pod",
-            "metadata": {
-                "name": loader_pod,
-                "labels": {"managed": "jac-scale", "jac-scale.role": "bundle-loader"}
-            },
-            "spec": {
-                "restartPolicy": "Never",
-                "securityContext": {
-                    "runAsNonRoot": True,
-                    "runAsUser": 1000,
-                    "fsGroup": 1000,
-                    "seccompProfile": {"type": "RuntimeDefault"}
-                },
-                "containers": [
-                    {
-                        "name": "loader",
-                        "image": self.loader_image,
-                        "command": ["sh", "-c", "sleep 3600"],
-                        "securityContext": {
-                            "runAsNonRoot": True,
-                            "runAsUser": 1000,
-                            "readOnlyRootFilesystem": True,
-                            "allowPrivilegeEscalation": False,
-                            "capabilities": {"drop": ["ALL"]},
-                            "seccompProfile": {"type": "RuntimeDefault"}
-                        },
-                        "volumeMounts": [
-                            {"name": "bundles", "mountPath": BUNDLE_MOUNT_PATH},
-                            {"name": "tmp", "mountPath": "/tmp"}
-                        ]
-                    }
-                ],
-                "volumes": [
-                    {
-                        "name": "bundles",
-                        "persistentVolumeClaim": {"claimName": pvc_name}
-                    },
-                    {"name": "tmp", "emptyDir": {}}
-                ]
-            }
-        };
+        pod_body = build_loader_pod(loader_pod, pvc_name, self.loader_image);
         try {
             core_v1.create_namespaced_pod(namespace, pod_body);
         } except ApiException as exc {
@@ -198,12 +238,35 @@ obj PvcInjector(Injector) {
             for (object_key, raw) in self._seed_artifacts() {
                 bundle_path = bundle_pvc_path(object_key);
                 parent_dir = str(Path(bundle_path).parent);
-                with tempfile.NamedTemporaryFile(
-                    suffix=".tar.gz", delete=False
-                ) as tmp {
+
+                try {
+                    run_kubectl_command(
+                        [
+                            "exec",
+                            "-n",
+                            namespace,
+                            loader_pod,
+                            "--",
+                            "sh",
+                            "-c",
+                            f"test -f '{bundle_path}'"
+                        ]
+                    );
+                    logger.info(
+                        f"pvc-injector: {object_key} already seeded "
+                        f"(content-addressed hit); skipping upload."
+                    );
+                    continue;
+                } except RuntimeError as probe_err {
+                    logger.debug(f"pvc-injector: presence probe: {probe_err}");
+                }
+
+                with tempfile.NamedTemporaryFile(delete=False) as tmp {
                     tmp.write(raw);
                     tmp_path = Path(tmp.name);
                 }
+
+                staging_path = f"{bundle_path}.{os.getpid()}.part";
                 try {
                     run_kubectl_command(
                         [
@@ -223,9 +286,22 @@ obj PvcInjector(Injector) {
                             "-n",
                             namespace,
                             tmp_path.name,
-                            f"{loader_pod}:{bundle_path}"
+                            f"{loader_pod}:{staging_path}"
                         ],
                         cwd=tmp_path.parent
+                    );
+
+                    run_kubectl_command(
+                        [
+                            "exec",
+                            "-n",
+                            namespace,
+                            loader_pod,
+                            "--",
+                            "sh",
+                            "-c",
+                            "mv -f '" + staging_path + "' '" + bundle_path + "'"
+                        ]
                     );
                     logger.info(
                         f"pvc-injector: seeded {len(raw)} bytes to "

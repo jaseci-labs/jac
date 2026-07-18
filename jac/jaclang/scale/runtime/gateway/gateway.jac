@@ -2,7 +2,7 @@ import from jaclang.scale.runtime.middleware.middleware { MiddlewareRegistry }
 
 
 obj Gateway {
-    has middleware: MiddlewareRegistry by postinit;
+    has middleware: MiddlewareRegistry postinit;
 
     def postinit {
         self.middleware = MiddlewareRegistry();

@@ -81,7 +81,7 @@ impl JacDesktopConfig.validate(self: JacDesktopConfig) -> None {
     name = str(config.get('name', ''));
     if not name {
         raise ValueError(
-            "Desktop configuration error: 'name' is required in [plugins.desktop]"
+            "Desktop configuration error: 'name' is required in [desktop]"
         );
     }
     window = config.get('window', {});
@@ -138,7 +138,7 @@ def _validate_plugin_keys(plugins: dict[str, any]) -> None {
             valid = ", ".join(sorted(known.keys()));
             raise ValueError(
                 f"Desktop configuration error: unknown plugin "
-                f"'[plugins.desktop.plugins.{plugin_name}]'. Valid plugins: {valid}."
+                f"'[desktop.plugins.{plugin_name}]'. Valid plugins: {valid}."
             );
         }
         sub_schema = known[plugin_name].nested;
@@ -148,7 +148,7 @@ def _validate_plugin_keys(plugins: dict[str, any]) -> None {
                     valid = ", ".join(sorted(sub_schema.keys()));
                     raise ValueError(
                         f"Desktop configuration error: unknown option '{sub_key}' "
-                        f"under [plugins.desktop.plugins.{plugin_name}]. "
+                        f"under [desktop.plugins.{plugin_name}]. "
                         f"Valid options: {valid}."
                     );
                 }
@@ -158,7 +158,6 @@ def _validate_plugin_keys(plugins: dict[str, any]) -> None {
 }
 
 impl get_desktop_config(project_dir: Path | None = None) -> JacDesktopConfig {
-    global _desktop_config_instance;
     if (
         _desktop_config_instance is not None
         and project_dir != _desktop_config_instance.project_dir
@@ -172,7 +171,6 @@ impl get_desktop_config(project_dir: Path | None = None) -> JacDesktopConfig {
 }
 
 impl reset_desktop_config -> None {
-    global _desktop_config_instance;
     _desktop_config_instance = None;
 }
 

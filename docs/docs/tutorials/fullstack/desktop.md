@@ -27,14 +27,14 @@ macOS, WebView2 on Windows) or Chromium Embedded Framework (CEF).
 
 ## 1. Configure the window
 
-Add a `[plugins.desktop]` section to your `jac.toml` (all fields optional):
+Add a `[desktop]` section to your `jac.toml` (all fields optional):
 
 ```toml
-[plugins.desktop]
+[desktop]
 name = "my-app"
 engine = "native"  # "native" or "cef"
 
-[plugins.desktop.window]
+[desktop.window]
 title = "My App"
 width = 1000
 height = 700
@@ -73,7 +73,7 @@ To build with Chromium Embedded Framework instead of the OS webview, set
 `engine = "cef"` and use the CEF target:
 
 ```toml
-[plugins.desktop]
+[desktop]
 engine = "cef"
 ```
 

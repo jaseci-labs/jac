@@ -13,11 +13,3 @@ impl Jdb.has_breakpoint(self: Jdb, bytecode: bytes) -> bool {
         ) for instruction in instructions
     );
 }
-
-impl DistFacade.project_name.getter -> str {
-    return self._dist.name if (self._dist and self._dist?.name) else 'unknown';
-}
-
-impl DistFacade.version.getter -> str {
-    return self._dist.version if (self._dist and self._dist?.version) else '0.0.0';
-}

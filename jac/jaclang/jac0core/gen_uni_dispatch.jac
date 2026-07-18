@@ -120,7 +120,7 @@ def apply_surface_block(src: str, block: str) -> str {
     import re;
     if SURFACE_BEGIN in src {
         pat = re.escape(SURFACE_BEGIN) + r"[\s\S]*?" + re.escape(SURFACE_END);
-        return re.sub(pat, lambda m: any : block , src);
+        return re.sub(pat, lambda (m: any) { block; }, src);
     }
     idx = src.rfind("\n}");
     return src[:idx] + "\n\n" + block + src[idx:];
