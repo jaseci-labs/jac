@@ -35,9 +35,9 @@ def _load_jac_runtime() -> None:
     from jaclang.jac0core.runtime import JacRuntime, JacRuntimeInterface
 
     # The legacy `jaclang.runtimelib.runtime` import path is served lazily by the
-    # `jaclang/runtimelib/runtime.py` shim (PEP 562 forwarder), so no eager
-    # sys.modules alias is registered here -- that would defeat the laziness this
-    # bootstrap exists to preserve.
+    # forwarder module installed in `_install_runtime_shim()`, so no eager
+    # sys.modules alias to the heavy runtime is registered here -- that would
+    # defeat the laziness this bootstrap exists to preserve.
     globals().update(
         {
             "JacRuntime": JacRuntime,
@@ -59,6 +59,57 @@ def _load_jac_runtime() -> None:
             schedule_native_acceleration()
     except Exception:
         pass  # Config not available or acceleration failed — continue normally
+
+
+def _install_runtime_shim() -> None:
+    # Preserve the legacy `import jaclang.runtimelib.runtime` /
+    # `from jaclang.runtimelib.runtime import JacRuntime` surface without a
+    # `runtime.py`/`runtime.jac` module on disk (the codebase forbids new .py
+    # files) and without eagerly importing the heavy runtime.
+    #
+    # A meta-path finder is used rather than a pre-registered sys.modules entry:
+    # pre-registering the leaf short-circuits CPython's parent-package import, so
+    # `import jaclang.runtimelib.runtime` would then fail to bind `runtimelib` on
+    # `jaclang`. The finder is consulted only after the parent package is
+    # imported, and it synthesizes a forwarder module whose PEP 562 __getattr__
+    # pulls the real `jaclang.jac0core.runtime` only on first attribute access --
+    # so the `jac --version` / `--help` / `purge` fast paths stay cheap.
+    import importlib.abc
+    import importlib.machinery
+    from types import ModuleType
+
+    target = "jaclang.runtimelib.runtime"
+
+    class _RuntimeAliasFinder(importlib.abc.MetaPathFinder, importlib.abc.Loader):
+        def find_spec(
+            self, name: str, path: object = None, target_mod: object = None
+        ) -> object:
+            if name != target:
+                return None
+            return importlib.machinery.ModuleSpec(name, self)
+
+        def create_module(self, spec: object) -> object:
+            shim = ModuleType(target)
+            shim.__doc__ = "Lazy alias for jaclang.jac0core.runtime."
+
+            def _forward(attr: str) -> object:
+                import jaclang.jac0core.runtime as _runtime_mod
+
+                return getattr(_runtime_mod, attr)
+
+            shim.__getattr__ = _forward  # type: ignore[attr-defined]
+            return shim
+
+        def exec_module(self, module: object) -> None:
+            pass
+
+    # Append (not insert) so the JacMetaImporter's real-file lookup wins first;
+    # this finder only catches the (now file-less) runtime alias.
+    if not any(isinstance(f, _RuntimeAliasFinder) for f in sys.meta_path):
+        sys.meta_path.append(_RuntimeAliasFinder())
+
+
+_install_runtime_shim()
 
 
 def __getattr__(name: str) -> object:
