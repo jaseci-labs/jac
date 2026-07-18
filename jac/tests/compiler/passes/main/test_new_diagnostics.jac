@@ -462,6 +462,32 @@ test "E0063: glob inside a function produces no runnable bytecode" {
     assert not mod.gen.py_bytecode;
 }
 
+test "E0063: glob inside a separate impl annex gates codegen (no ICE)" {
+    # Regression for #7555: a `glob` inside an impl-annex function body
+    # (declared in a separate `<mod>.impl.jac`) is flagged E0063 by the
+    # ASTValidationPass, but the error is attributed to the annex path.
+    # Codegen gating must count annex-origin blocking errors so the base
+    # module is not lowered — otherwise PyastGenPass ICEs (E9001) on the
+    # un-lowered GlobalVars node with no actionable diagnostic.
+    import tempfile;
+    tmpdir = tempfile.mkdtemp();
+    decl_path = os.path.join(tmpdir, "annex_glob.jac");
+    impl_path = os.path.join(tmpdir, "annex_glob.impl.jac");
+    with open(decl_path, "w") as f {
+        f.write("glob _cfg: dict = {};\n\ndef invalidate(k: str) -> None;\n");
+    }
+    with open(impl_path, "w") as f {
+        f.write(
+            "impl invalidate(k: str) -> None {\n    glob _cfg;\n    _cfg.pop(k, None);\n}\n"
+        );
+    }
+    prog = JacProgram();
+    mod = prog.compile(file_path=decl_path);
+    assert has_diagnostic_code(prog, "E0063");
+    assert not has_diagnostic_code(prog, "E9001") , "codegen must be gated, not ICE";
+    assert not mod.gen.py_bytecode;
+}
+
 # ══════════════════════════════════════════════════════════════════
 #  PHASE 3: NAME RESOLUTION / SCOPE DIAGNOSTICS (E/W 2020-2037)
 #  Infrastructure: INFRA-5 (shadowing), INFRA-6 (imports), INFRA-1 (def-use)
