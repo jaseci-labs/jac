@@ -1,6 +1,6 @@
 obj SomeObj {
     has a: int = 5,
-        b: int by postinit;
+        b: int postinit;
 
     def postinit {
         self.b = self.a * 3;

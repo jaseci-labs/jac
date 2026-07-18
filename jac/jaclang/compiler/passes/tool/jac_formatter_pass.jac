@@ -1,10 +1,16 @@
 import from collections { deque }
 import jaclang.compiler.passes.tool.doc_ir as doc;
 import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.diagnostics { W5050, E5051 }
 import from jaclang.jac0core.passes { Transform }
 
 obj JacFormatPass(Transform[uni.Module, uni.Module]) {
+    has _pending_suffixes: list[str] = [],
+        _line_has_content: bool = False,
+        _rendering_suffix: bool = False;
+
     def pre_transform -> None;
+    def _flush_suffixes -> str;
     def _probe_fits(
         nd: doc.DocType,
         indent_level: int,

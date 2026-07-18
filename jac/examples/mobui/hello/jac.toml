@@ -5,7 +5,7 @@ client_kind = "mobui"
 description = "mobUI walking skeleton: View + Text from @jac/mobui, one source for web and native"
 entry-point = "main.jac"
 
-[plugins.client]
+[client]
 
 [dependencies.npm]
 react = "^18.2.0"

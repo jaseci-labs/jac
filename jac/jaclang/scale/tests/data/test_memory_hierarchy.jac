@@ -154,8 +154,8 @@ def post_request(
 }
 
 def start_server(fixtures_dir: Path, jac_file: Path, port: int) -> subprocess.Popen {
-    jac_executable = Path(sys.executable).parent / "jac";
-    cmd = [str(jac_executable), "start", str(jac_file.name), "--port", str(port)];
+    import from jaclang.scale.runtime.context.util { jac_executable }
+    cmd = [jac_executable(), "start", str(jac_file.name), "--port", str(port)];
 
     env = os.environ.copy();
 
@@ -1283,6 +1283,38 @@ test "acommit leaves _committed False when commit() raises" {
         assert mem._committed is False , (
             "_committed must stay False when commit() raises — "
             "the middleware safety net must still be able to retry"
+        );
+    }
+}
+
+test "commit() re-arms _committed so an earlier clean commit cannot mask a later failure" {
+    import from unittest.mock { patch }
+    import from jaclang.scale.memory.memory_hierarchy { ScaleTieredMemory }
+    import from jaclang.runtimelib.memory { TieredMemory, PersistentMemory }
+    import from jaclang.runtimelib.changeset { ChangeSet }
+
+    mem = object.__new__(ScaleTieredMemory);
+    mem.changes = ChangeSet();
+    mem.l3 = None;
+    mem.commit();
+    assert mem._committed is True , "a clean full commit must mark _committed True";
+
+    def failing_collect(self: TieredMemory, changes: any) {
+        raise RuntimeError("simulated apply failure mid-commit");
+    }
+
+    mem.l3 = cast(PersistentMemory, object());
+    with patch.object(TieredMemory, '_collect_into', failing_collect) {
+        raised = False;
+        try {
+            mem.commit();
+        } except Exception {
+            raised = True;
+        }
+        assert raised , "commit() must propagate the failure";
+        assert mem._committed is False , (
+            "a failing commit must clear _committed on entry so it cannot inherit "
+            "the stale clean flag from the earlier commit and mask the failure"
         );
     }
 }

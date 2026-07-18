@@ -8,7 +8,7 @@ import from .dialog {
     DialogHeader,
     DialogTitle
 }
-import from ".input-group" { InputGroup, InputGroupAddon }
+import from ".input_group" { InputGroup, InputGroupAddon }
 import from ...lib.utils { cn }
 
 def:pub Command(props: any) -> JsxElement {

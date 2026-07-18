@@ -44,9 +44,12 @@ exclude = [
     #    native bridge extractor reads.
     "jir_registry.jac",
     "plugin_bridge.na.jac",
+    #  - uni_pass.jac carries the `# >>> generated visitor surface >>>` markers
+    #    that `jac gen-uni-dispatch` uses to locate the region it rewrites.
+    "uni_pass.jac",
 ]
 
-[plugins.byllm.model]
+[byllm.model]
 default_model = "anthropic/claude-sonnet-4-6"
 #default_model = "ollama/gemma4:31b"
 #default_model = "ollama/qwen3-coder"

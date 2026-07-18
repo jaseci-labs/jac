@@ -303,27 +303,6 @@ impl ViteBundler._format_config_object(
     return '\n'.join(items);
 }
 
-impl ViteBundler._format_plugin_options(self: ViteBundler, options: dict) -> str {
-    if not options {
-        return '';
-    }
-    items = [];
-    for (key, value) in options.items() {
-        if isinstance(value, str) {
-            items.append(f"{key}: '{value}'");
-        } elif isinstance(value, bool) {
-            items.append(f"{key}: {str(value).lower()}");
-        } elif isinstance(value, (int, float)) {
-            items.append(f"{key}: {value}");
-        } elif isinstance(value, list) {
-            items.append(f"{key}: [{', '.join(repr(v) for v in value)}]");
-        } else {
-            items.append(f"{key}: {repr(value)}");
-        }
-    }
-    return '{ ' + ', '.join(items) + ' }';
-}
-
 impl ViteBundler._resolve_api_base_url(
     self: ViteBundler, api_base_url_override: str = ""
 ) -> str {
@@ -333,13 +312,6 @@ impl ViteBundler._resolve_api_base_url(
     return toml_base_url or api_base_url_override or env_override;
 }
 
-
-impl ViteBundler._get_plugin_var_name(self: ViteBundler, plugin_name: str) -> str {
-    name = plugin_name.split('/')[-1];
-    name = name.replace('-', '_').replace('.', '_');
-    name = name.lstrip('@');
-    return name;
-}
 
 def _to_js_expr(value: any) -> str {
     if value is None {
@@ -392,7 +364,9 @@ impl ViteBundler._generate_vite_config_content(
     api_port: int = 8000,
     for_mobile_dev: bool = False,
     mobile_hmr_host: str = "",
-    mobile_hmr_port: int = 0
+    mobile_hmr_port: int = 0,
+    for_desktop_dev: bool = False,
+    desktop_broker_port: int = 0
 ) -> str {
     build_dir = self._get_client_dir();
     vite_config_data = self.config_loader.get_vite_config();
@@ -515,20 +489,40 @@ impl ViteBundler._generate_vite_config_content(
             if (isinstance(server_config, dict) and server_config)
             else '';
 
+        reload_enabled: bool = for_mobile_dev or for_desktop_dev;
         if for_mobile_dev and mobile_hmr_host {
             hmr_host = mobile_hmr_host;
             hmr_port = mobile_hmr_port or 5173;
             mobile_hmr_str = (
                 f'\n    hmr: {{ protocol: "ws", host: "{hmr_host}", port: {hmr_port}, clientPort: {hmr_port}, overlay: false }},'
             );
-        } elif for_mobile_dev {
+        } elif reload_enabled {
             mobile_hmr_str = "\n    hmr: { overlay: false },";
         } else {
             mobile_hmr_str = "";
         }
-        mobile_plug_in: str = "\n    jacMobileCompiledReload(),"
-            if for_mobile_dev
+        compiled_reload_plug_in: str = "\n    jacCompiledReload(),"
+            if reload_enabled
             else "";
+        if for_mobile_dev and mobile_hmr_host {
+            host_value = f'"{mobile_hmr_host}"';
+        } elif for_desktop_dev {
+            host_value = '"127.0.0.1"';
+        } else {
+            host_value = 'true';
+        }
+        desktop_server_extras: str = "";
+        desktop_proxy_str: str = "";
+        if for_desktop_dev {
+            desktop_server_extras = "\n    strictPort: true,";
+            broker_port: int = desktop_broker_port or 8000;
+            desktop_proxy_str = (
+                f'\n      "/__jac": {{'
+                f'\n        target: "http://127.0.0.1:{broker_port}",'
+                '\n        changeOrigin: true,'
+                '\n      },'
+            );
+        }
 
         mobile_compiled_block: str = (
             r'''
@@ -539,7 +533,7 @@ function sendFullReload(server) {
   // Broadcast over the websocket first (works for both Vite 5 and Vite 6 clients).
   try {
     if (server.ws && typeof server.ws.send === "function") {
-      server.ws.send({ type: "full-reload", path: "*" });
+      server.ws.send({ type: "full-reload", path: "*", jacTriggered: true });
       sent = true;
     }
   } catch (e) {}
@@ -550,7 +544,7 @@ function sendFullReload(server) {
       for (const k of Object.keys(envs)) {
         const env = envs[k];
         if (env && env.hot && typeof env.hot.send === "function") {
-          env.hot.send({ type: "full-reload", path: "*" });
+          env.hot.send({ type: "full-reload", path: "*", jacTriggered: true });
           sent = true;
         }
       }
@@ -559,9 +553,9 @@ function sendFullReload(server) {
   return sent;
 }
 
-function jacMobileCompiledReload() {
+function jacCompiledReload() {
   return {
-    name: "jac-mobile-compiled-reload",
+    name: "jac-compiled-reload",
     configureServer(server) {
       const compiled = path.resolve(buildDir, "compiled");
       try { server.watcher.add(compiled); } catch (e) {}
@@ -589,7 +583,7 @@ function jacMobileCompiledReload() {
   };
 }
 '''
-                if for_mobile_dev
+                if reload_enabled
                 else ""
         );
         config_content = f'''import {{ defineConfig }} from "vite";
@@ -599,8 +593,10 @@ import {{ fileURLToPath }} from "url";
 {imports_section}const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const buildDir = path.resolve(__dirname, "..");
 const projectRoot = path.resolve(__dirname, "../../..");
+import jacFastRefresh from "./jac-fast-refresh.js";
+import jacDevStatus, {{ reportClientLoad }} from "./jac-dev-status.js";
 
-// Vite plugin: forward client-side runtime errors to the terminal via WebSocket
+// Vite plugin: forward client-side runtime errors to the terminal and browser overlay
 function jacErrorReporter() {{
   const seen = new Map();
   return {{
@@ -623,7 +619,21 @@ function jacErrorReporter() {{
             loc += ")";
           }} catch(e) {{}}
         }}
-        console.error("Client error: " + data.type + ": " + data.message + loc);
+        // Timestamped: the log is append-only, so a fixed error otherwise reads as live.
+        console.error("[" + new Date(now).toISOString() + "] Client error: " + data.type + ": " + data.message + loc);
+        if (data.phase === "load") {{
+          try {{ reportClientLoad(data); }} catch (e) {{}}
+          server.ws.send({{
+            type: "error",
+            err: {{
+              message: data.message,
+              stack: data.stack || "",
+              id: data.source || "compiled/_entry.js",
+              frame: "",
+              plugin: "jac-error-reporter",
+            }},
+          }});
+        }}
       }});
     }},
   }};
@@ -640,6 +650,37 @@ function jacPortReporter() {{
           fs.writeFileSync(path.resolve(buildDir, ".dev-port"), String(addr.port));
         }}
       }});
+    }},
+  }};
+}}
+
+// Vite plugin: full-reload on demand. Fast Refresh boundaries swallow edits
+// that change a module's export set (e.g. removing `:pub`), running stale code
+// with no signal. The jac dev server detects the change and bumps
+// .jac-force-reload; this reload re-runs the app so the real link error
+// surfaces at load (overlay). jacTriggered keeps the dev-status vite slot intact.
+function jacForceReload() {{
+  const signalFile = path.resolve(buildDir, ".jac-force-reload");
+  return {{
+    name: "jac-force-reload",
+    configureServer(server) {{
+      // Create the file so the watch attaches to an existing path; each reload
+      // request bumps its contents, firing a "change" the watcher delivers.
+      // Reloads fire only when the nonce content actually advances, so a
+      // watcher replay of the boot-time value can never cause a spurious reload.
+      let lastNonce = "0";
+      try {{ fs.writeFileSync(signalFile, lastNonce); }} catch (e) {{}}
+      try {{ server.watcher.add(signalFile); }} catch (e) {{}}
+      const onSig = (f) => {{
+        if (path.resolve(f) !== signalFile) return;
+        let nonce;
+        try {{ nonce = fs.readFileSync(signalFile, "utf-8"); }} catch (e) {{ return; }}
+        if (nonce === lastNonce) return;
+        lastNonce = nonce;
+        server.ws.send({{ type: "full-reload", path: "*", jacTriggered: true }});
+      }};
+      server.watcher.on("add", onSig);
+      server.watcher.on("change", onSig);
     }},
   }};
 }}
@@ -668,7 +709,7 @@ function jacBuildErrorOverlay() {{
         // CURRENT state instead).
         if (server.ws.clients && server.ws.clients.size === 0) return;
         if (!raw) {{
-          server.ws.send({{ type: "full-reload", path: "*" }});
+          server.ws.send({{ type: "full-reload", path: "*", jacTriggered: true }});
           return;
         }}
         let file = "", message = raw;
@@ -709,7 +750,7 @@ function jacBuildErrorOverlay() {{
               server.moduleGraph.invalidateModule(mod);
             }}
             if (hadImporters) {{
-              server.ws.send({{ type: "full-reload", path: "*" }});
+              server.ws.send({{ type: "full-reload", path: "*", jacTriggered: true }});
             }}
           }}
         }} catch (e) {{}}
@@ -735,7 +776,10 @@ export default defineConfig({{
   plugins: [
     jacErrorReporter(),
     jacPortReporter(),
-    jacBuildErrorOverlay(),{mobile_plug_in}{(
+    jacBuildErrorOverlay(),
+    jacDevStatus(),
+    jacForceReload(),
+    jacFastRefresh(),{compiled_reload_plug_in}{(
             newline + plugins_str + newline + '  '
         )
             if plugins_str
@@ -748,9 +792,7 @@ export default defineConfig({{
     sourcemap: true, // Enable source maps for better error messages{build_overrides_str}
   }},
   server: {{
-    host: {f'"{mobile_hmr_host}"'
-            if (for_mobile_dev and mobile_hmr_host)
-            else 'true'},
+    host: {host_value},
     watch: {{
       usePolling: true,
       interval: 100,
@@ -800,9 +842,9 @@ export default defineConfig({{
       "/assets": {{
         target: "http://localhost:{api_port}",
         changeOrigin: true,
-      }},
+      }},{desktop_proxy_str}
     }},
-{server_config_str}{mobile_hmr_str}
+{server_config_str}{mobile_hmr_str}{desktop_server_extras}
   }},
   resolve: {{
     alias: {{
@@ -946,7 +988,9 @@ impl ViteBundler.create_vite_config(
     api_port: int = 8000,
     for_mobile_dev: bool = False,
     mobile_hmr_host: str = "",
-    mobile_hmr_port: int = 0
+    mobile_hmr_port: int = 0,
+    for_desktop_dev: bool = False,
+    desktop_broker_port: int = 0
 ) -> Path {
     build_dir = self._get_client_dir();
     build_dir.mkdir(parents=True, exist_ok=True);
@@ -964,14 +1008,16 @@ impl ViteBundler.create_vite_config(
         api_port=api_port,
         for_mobile_dev=for_mobile_dev,
         mobile_hmr_host=mobile_hmr_host,
-        mobile_hmr_port=mobile_hmr_port
+        mobile_hmr_port=mobile_hmr_port,
+        for_desktop_dev=for_desktop_dev,
+        desktop_broker_port=desktop_broker_port
     );
     config_path.write_text(config_content, encoding='utf-8');
+    if is_dev {
+        self._write_fast_refresh_plugin(configs_dir);
+        self._write_dev_status_plugin(configs_dir);
+    }
     return config_path;
-}
-
-impl ViteBundler._has_typescript_support(self: ViteBundler) -> bool {
-    return True;
 }
 
 impl ViteBundler.read_bundle(self: ViteBundler) -> tuple[str, str] {
@@ -1259,7 +1305,6 @@ impl ViteBundler._ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> N
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/compiled/_entry.js"></script>
     <script type="module">
     if (import.meta.hot) {
       function report(d) {
@@ -1284,12 +1329,182 @@ impl ViteBundler._ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> N
           source: null, line: null, column: null
         });
       });
+      // react-refresh's global hook must install before React loads
+      import("/@react-refresh").then(function(RefreshRuntime) {
+        RefreshRuntime.injectIntoGlobalHook(window);
+        window.$RefreshReg$ = function() {};
+        window.$RefreshSig$ = function() { return function(type) { return type; }; };
+        window.__jac_refresh_installed__ = true;
+        return import("/compiled/_entry.js");
+      }).then(function() {
+        // entry loaded cleanly: clears the client slot in /__build_status
+        try { import.meta.hot.send("jac:client-ready"); } catch(e) {}
+      }).catch(function(err) {
+        report({
+          type: err instanceof Error ? err.constructor.name : "Error",
+          message: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : null,
+          source: null, line: null, column: null,
+          phase: "load"
+        });
+      });
+    } else {
+      import("/compiled/_entry.js").catch(function() {});
     }
     </script>
   </body>
 </html>
 ''';
     index_html.write_text(index_content, encoding='utf-8');
+}
+
+impl ViteBundler._write_fast_refresh_plugin(
+    self: ViteBundler, configs_dir: Path
+) -> None {
+    plugin_js = r'''// jac-fast-refresh.js (generated) - React Fast Refresh for Jac's compiled modules.
+export default function jacFastRefresh() {
+  return {
+    name: "jac-fast-refresh",
+    apply: "serve",
+    transform(code, id) {
+      const clean = id.split("?")[0];
+      if (!clean.includes("/compiled/")) return null;
+      if (!clean.endsWith(".js")) return null;
+      if (code.indexOf("/*jac-fr*/") !== -1) return null;
+      // The compiler stamps modules whose every export is a component; anything
+      // unstamped (globs, helpers, router wiring) keeps full-reload semantics.
+      if (code.indexOf("/*jac:refresh-boundary*/") === -1) return null;
+
+      const modId = JSON.stringify(clean);
+      // same self-accepting boundary @vitejs/plugin-react appends to JSX modules
+      const header = '/*jac-fr*/import * as RefreshRuntime from "/@react-refresh";\n';
+
+      const footer =
+        "\nif (import.meta.hot) {" +
+        "RefreshRuntime.__hmr_import(import.meta.url).then(function (currentExports) {" +
+        "RefreshRuntime.registerExportsForReactRefresh(" + modId + ", currentExports);" +
+        "import.meta.hot.accept(function (nextExports) {" +
+        "if (!nextExports) return;" +
+        "const inv = RefreshRuntime.validateRefreshBoundaryAndEnqueueUpdate(" + modId + ", currentExports, nextExports);" +
+        "if (inv) import.meta.hot.invalidate(inv);" +
+        "});" +
+        "});" +
+        "}\n";
+
+      // header is exactly one line, so one empty mapping row keeps the sourcemap chain
+      let map = null;
+      try {
+        map = this.getCombinedSourcemap();
+        map.mappings = ";" + map.mappings;
+      } catch (e) {
+        map = null;
+      }
+      return { code: header + code + footer, map: map };
+    }
+  };
+}
+''';
+    (configs_dir / 'jac-fast-refresh.js').write_text(plugin_js, encoding='utf-8');
+}
+
+impl ViteBundler._write_dev_status_plugin(
+    self: ViteBundler, configs_dir: Path
+) -> None {
+    plugin_js = r'''// jac-dev-status.js (generated) - Vite-layer + browser-load-layer build health.
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const statusFile = path.resolve(__dirname, "..", ".jac-dev-status.json");
+
+const state = { vite: null, client: null };
+
+function flush() {
+  try {
+    if (!state.vite && !state.client) {
+      if (fs.existsSync(statusFile)) fs.unlinkSync(statusFile);
+      return;
+    }
+    fs.writeFileSync(statusFile, JSON.stringify(state), "utf-8");
+  } catch (e) {}
+}
+
+// Called by jacErrorReporter when the browser reports a load-phase failure
+// (module link/eval errors that Vite serves with 200 and never sees).
+export function reportClientLoad(data) {
+  state.client = {
+    message: String((data && data.message) || "client module load failed"),
+    file: String((data && data.source) || ""),
+  };
+  flush();
+}
+
+export default function jacDevStatus() {
+  return {
+    name: "jac-dev-status",
+    apply: "serve",
+    configureServer(server) {
+      flush(); // both slots start null: removes stale state from a prior run
+
+      // Vite announces every transform/resolve failure on its HMR channel
+      // (the payload that drives its own error overlay), and update/full-reload
+      // on recovery. Mirror exactly those semantics into the vite slot.
+      const wrap = (chan) => {
+        if (!chan || typeof chan.send !== "function" || chan.__jacDevStatus) return;
+        chan.__jacDevStatus = true;
+        const orig = chan.send.bind(chan);
+        chan.send = (...args) => {
+          try {
+            const payload = args[0];
+            if (payload && payload.type === "error" && payload.err) {
+              // jac* payloads are the Jac and browser layers, tracked elsewhere
+              if (!String(payload.err.plugin || "").startsWith("jac")) {
+                state.vite = {
+                  message: String(payload.err.message || "Vite error"),
+                  file: String(payload.err.id || ""),
+                };
+                flush();
+              }
+            } else if (
+              payload
+              && (payload.type === "update" || payload.type === "full-reload")
+              && state.vite
+              // Jac-recovery reloads (jacBuildErrorOverlay) say nothing about
+              // the Vite layer; with no client connected nothing will re-arm
+              // a still-broken module, so keep the error latched.
+              && !payload.jacTriggered
+              && server.ws.clients
+              && server.ws.clients.size > 0
+            ) {
+              state.vite = null;
+              flush();
+            }
+          } catch (e) {}
+          return orig(...args);
+        };
+      };
+      wrap(server.ws);
+      wrap(server.hot);
+
+      // The dev index.html sends this after the entry module loads cleanly:
+      // the only reliable "browser recovered" signal a server can get.
+      const onReady = () => {
+        if (state.client) {
+          state.client = null;
+          flush();
+        }
+      };
+      server.ws.on("jac:client-ready", onReady);
+      // mirror wrap(): register on the HMR channel too if it is distinct
+      if (server.hot && server.hot !== server.ws && typeof server.hot.on === "function") {
+        try { server.hot.on("jac:client-ready", onReady); } catch (e) {}
+      }
+    },
+  };
+}
+''';
+    (configs_dir / 'jac-dev-status.js').write_text(plugin_js, encoding='utf-8');
 }
 
 impl ViteBundler._ensure_dev_dependencies(self: ViteBundler, build_dir: Path) -> None {

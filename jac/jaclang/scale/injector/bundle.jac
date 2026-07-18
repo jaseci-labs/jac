@@ -1,7 +1,12 @@
 import io;
+import os;
+import gzip;
 import hashlib;
 import logging;
+import shutil;
+import subprocess;
 import tarfile;
+import tempfile;
 import tomllib;
 import from pathlib { Path }
 
@@ -55,6 +60,10 @@ def is_excluded(rel: Path) -> bool {
     ) {
         return False;
     }
+
+    if len(parts) >= 2 and parts[0] == ".jac" and parts[1] == "admin" {
+        return False;
+    }
     for part in parts {
         if part in _EXCLUDE_DIRS {
             return True;
@@ -87,13 +96,6 @@ def _is_dev_section(name: str) -> bool {
 }
 
 
-"""Materialize the database backend the deploy provisions into the shipped
-manifest. The deployer injects the connection URI (e.g. MONGODB_URI) into
-every service pod, so the pod's `jac install` must close over the matching
-data capability; a project with no declared [plugins.scale.*] intent would
-otherwise boot straight into an ImportError (#7137). scale_intent_from_config
-prefers a top-level [scale] table over [plugins.scale], so the appended
-section follows whichever form the project uses."""
 def bake_database_intent(toml_text: str, backend: str) -> str {
     if not backend {
         return toml_text;
@@ -168,29 +170,119 @@ def sanitized_jac_toml(base: Path, provisioned_database: str = "") -> (str | Non
 }
 
 
-def pack_source(project_dir: str, provisioned_database: str = "") -> bytes {
-    base = Path(project_dir).resolve();
-    buf = io.BytesIO();
-    with tarfile.open(fileobj=buf, mode="w:gz") as tar {
+def det_tar_member(info: tarfile.TarInfo) -> tarfile.TarInfo {
+    info.mtime = 0;
+    info.uid = 0;
+    info.gid = 0;
+    info.uname = "";
+    info.gname = "";
+    return info;
+}
+
+
+def open_det_tar(buf: io.BytesIO) -> tuple[tarfile.TarFile, any] {
+    gz = gzip.GzipFile(fileobj=buf, mode="wb", mtime=0);
+    return (tarfile.open(fileobj=gz, mode="w"), gz);
+}
+
+
+def _precompile_app(base: Path, pod_binary: bytes) -> Path {
+    stage_root = Path(tempfile.mkdtemp(prefix="jac-app-precompile-"));
+    stage = stage_root / "app";
+    try {
         for path in sorted(base.rglob("*")) {
-            if not path.is_file() {
+            if not path.is_file() or is_excluded(path.relative_to(base)) {
                 continue;
             }
-            rel = path.relative_to(base);
-            if is_excluded(rel) {
-                continue;
-            }
-            tar.add(str(path), arcname=str(rel));
+            dest = stage / path.relative_to(base);
+            dest.parent.mkdir(parents=True, exist_ok=True);
+            shutil.copy2(str(path), str(dest));
         }
-        sanitized = sanitized_jac_toml(base, provisioned_database);
-        if sanitized is not None {
-            data = sanitized.encode("utf-8");
-            info = tarfile.TarInfo(name="jac.toml");
-            info.size = len(data);
-            tar.addfile(info, io.BytesIO(data));
+
+        marker = stage / "__init__.jac";
+        if not marker.exists() {
+            marker.write_text("");
         }
+        jac_path = stage_root / ".pod-jac";
+        jac_path.write_bytes(pod_binary);
+        jac_path.chmod(0o755);
+        script = Path(str(__file__)).parent.parent.parent / "utils" / "precompile_bytecode.jac";
+
+        result = subprocess.run(
+            [str(jac_path), "run", str(script), str(stage_root), "--seal"],
+            capture_output=True,
+            text=True,
+            timeout=600
+        );
+        jac_path.unlink();
+        if (
+            result.returncode != 0
+            or not (stage / "_precompiled" / "MANIFEST.json").is_file()
+        ) {
+            raise RuntimeError(
+                f"App seal did not complete, so the deploy cannot produce a "
+                f".jab: {(result.stderr or result.stdout).strip()[-300:]}"
+            );
+        }
+        return stage;
+    } except Exception {
+        shutil.rmtree(str(stage_root), ignore_errors=True);
+        raise;
     }
-    return buf.getvalue();
+}
+
+
+def pack_jab(project_dir: str, provisioned_database: str, pod_binary: bytes) -> bytes {
+    if not pod_binary {
+        raise ValueError(
+            "pack_jab requires the pod binary to seal the app image; none given."
+        );
+    }
+    base = Path(project_dir).resolve();
+    staged = _precompile_app(base, pod_binary);
+
+    try {
+        buf = io.BytesIO();
+        (tar, gz) = open_det_tar(buf);
+        try {
+            with tar {
+                for path in sorted(base.rglob("*")) {
+                    if not path.is_file() {
+                        continue;
+                    }
+                    rel = path.relative_to(base);
+                    if is_excluded(rel) {
+                        continue;
+                    }
+                    tar.add(str(path), arcname=str(rel), filter=det_tar_member);
+                }
+                pre = staged / "_precompiled";
+                count = 0;
+                for path in sorted(pre.rglob("*")) {
+                    if path.is_file() {
+                        rel = path.relative_to(staged);
+                        tar.add(str(path), arcname=str(rel), filter=det_tar_member);
+                        count += 1;
+                    }
+                }
+                logger.info(
+                    f"Sealed {count} precompiled app-module artifacts into the .jab."
+                );
+                sanitized = sanitized_jac_toml(base, provisioned_database);
+                if sanitized is not None {
+                    data = sanitized.encode("utf-8");
+                    info = tarfile.TarInfo(name="jac.toml");
+                    info.size = len(data);
+                    tar.addfile(info, io.BytesIO(data));
+                }
+            }
+        } finally {
+            gz.close();
+        }
+        return buf.getvalue();
+    } finally {
+        shutil.rmtree(str(staged.parent), ignore_errors=True);
+    }
 }
 
 
@@ -200,7 +292,7 @@ def content_address(raw: bytes) -> str {
 
 
 def bundle_object_key(app_name: str, digest: str) -> str {
-    return f"bundles/{app_name}/{digest}.tar.gz";
+    return f"bundles/{app_name}/{digest}.jab";
 }
 
 

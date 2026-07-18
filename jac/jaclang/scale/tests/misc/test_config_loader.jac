@@ -1,5 +1,29 @@
 import os;
 import from jaclang.scale.config.config_loader { JacScaleConfig }
+import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
+    KubernetesConfig
+}
+
+
+test "get_default_config kubernetes probe timings match KubernetesConfig defaults" {
+    # get_default_config() is deep-merged over jac.toml, so its values are what
+    # actually take effect when the user sets no probe keys. If these drift from
+    # the KubernetesConfig struct defaults, the struct defaults become dead code
+    # and users silently get different probe timings than documented (#6394).
+    defaults = JacScaleConfig().get_default_config()["kubernetes"];
+    struct_defaults = KubernetesConfig();
+    for key in [
+        "readiness_initial_delay",
+        "readiness_period",
+        "liveness_initial_delay",
+        "liveness_period",
+        "liveness_failure_threshold"
+    ] {
+        expected = getattr(struct_defaults, key);
+        actual = defaults[key];
+        assert actual == expected , f"{key}: get_default_config has {actual}, expected {expected}";
+    }
+}
 
 
 test "get_microservices_config returns ingress block" {

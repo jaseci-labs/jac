@@ -6,7 +6,6 @@ import from jaclang.jac0core.jir_registry {
     FieldKind,
     IDX_TO_SPEC,
     NAME_TO_IDX,
-    NodeSpec,
     get_class_mapping
 }
 import type from jaclang.jac0core.unitree {
@@ -47,8 +46,8 @@ def _read_varint(data: (bytes | memoryview), pos: int) -> tuple[int, int] {
 }
 
 obj _StringPool {
-    has _strings: list[str] by postinit,
-        _index: dict[str, int] by postinit;
+    has _strings: list[str] postinit,
+        _index: dict[str, int] postinit;
 
     def postinit {
         self._strings = [];
@@ -101,14 +100,14 @@ def _deserialize_string_pool(
 }
 
 obj JirWriter {
-    has _pool: _StringPool by postinit,
-        _node_ids: dict[int, int] by postinit,
-        _nodes: list[object] by postinit,
-        _buf: bytearray by postinit,
-        _parent_scope_links: list[tuple[int, int]] by postinit,
-        _name_of_links: list[tuple[int, int]] by postinit,
-        _overload_entries: list[tuple[int, str, list[int]]] by postinit,
-        _inherited_scope_entries: list[tuple[int, int, bool, list[str]]] by postinit;
+    has _pool: _StringPool postinit,
+        _node_ids: dict[int, int] postinit,
+        _nodes: list[object] postinit,
+        _buf: bytearray postinit,
+        _parent_scope_links: list[tuple[int, int]] postinit,
+        _name_of_links: list[tuple[int, int]] postinit,
+        _overload_entries: list[tuple[int, str, list[int]]] postinit,
+        _inherited_scope_entries: list[tuple[int, int, bool, list[str]]] postinit;
 
     def postinit {
         self._pool = _StringPool();
@@ -141,21 +140,16 @@ obj JirReader {
     has _skip_loc: bool = True,
         _source_path: str = "",
         _pool: (_StringPool | None) = None,
-        _nodes: list[object] by postinit,
+        _nodes: list[object] postinit,
         _class_map: (dict[str, type] | None) = None,
         _uni_types: (tuple[type, ...] | None) = None,
-        _enum_cache: (dict[str, dict[str, object]] | None) = None,
-        bytecode_section: (bytes | None) = None,
-        mtir_section: (bytes | None) = None,
-        llvm_ir_section: (bytes | None) = None,
-        interop_section: (bytes | None) = None;
+        _enum_cache: (dict[str, dict[str, object]] | None) = None;
 
     def postinit {
         self._nodes = [];
     }
 
     def read_module(data: bytes) -> (Module | None);
-    def _read_trailing_sections(data: bytes) -> dict[int, bytes];
     def _wire_source(module: Module) -> None;
     def _fix_param_kinds -> None;
     def _init_caches -> None;

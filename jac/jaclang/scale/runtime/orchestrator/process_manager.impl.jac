@@ -35,6 +35,44 @@ def _remove_pidfile(name: str) {
     } except OSError {
         ;
     }
+    _remove_portfile(name);
+}
+
+def _portfile_path(name: str) -> _Path {
+    return _Path(".jac/run") / f"{name}.port";
+}
+
+def _write_portfile(name: str, port: int) {
+    run_dir = _Path(".jac/run");
+    run_dir.mkdir(parents=True, exist_ok=True);
+    _portfile_path(name).write_text(str(port));
+}
+
+def _read_portfile(name: str) -> int | None {
+    path = _portfile_path(name);
+    try {
+        if not path.exists() {
+            return None;
+        }
+        content: str = path.read_text().strip();
+        if not content {
+            return None;
+        }
+        return int(content);
+    } except (ValueError, OSError) {
+        return None;
+    }
+}
+
+def _remove_portfile(name: str) {
+    path = _portfile_path(name);
+    try {
+        if path.exists() {
+            path.unlink();
+        }
+    } except OSError {
+        ;
+    }
 }
 
 def _log_tail(name: str, lines: int = 8) -> str {
@@ -97,8 +135,8 @@ impl ServiceProcessManager.start_service(name: str) -> bool {
     entry = self.registry.entries[name];
     port = self._assign_port(entry);
 
-    import from jaclang.scale.runtime.context.util { resolve_jac_binary }
-    jac_bin: str = resolve_jac_binary();
+    import from jaclang.scale.runtime.context.util { jac_executable }
+    jac_bin: str = jac_executable();
 
     cmd = [jac_bin, "start", entry.file, "--port", str(port), "--no_client"];
     logger.info(f"Starting {name}: {' '.join(cmd)}");
@@ -134,6 +172,7 @@ impl ServiceProcessManager.start_service(name: str) -> bool {
         self._failure_counts[name] = 0;
 
         _write_pidfile(name, proc.pid);
+        _write_portfile(name, port);
 
         import from jaclang.runtimelib { sv_client }
         sv_client.register(name, entry.url);
@@ -164,7 +203,7 @@ impl ServiceProcessManager.start_all -> None {
         proc = self.processes.get(name);
         if proc and entry.url {
             ok = wait_for_health(
-                entry.url, lambda : proc.poll() is None, timeout=timeout
+                entry.url, lambda { proc.poll() is None; }, timeout=timeout
             );
             if not ok {
                 exit_code = proc.poll();

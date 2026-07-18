@@ -1,5 +1,4 @@
 import inspect;
-import from pathlib { Path }
 
 glob MANUAL_FIELDS: dict[str, list] = {
          "CModuleAst": [
@@ -37,7 +36,13 @@ glob MANUAL_FIELDS: dict[str, list] = {
          "OPT_NODE_LIST": 11,
 
      },
-     ENUM_TYPES: set = {"SymbolType", "SymbolAccess", "EdgeDir", "CodeContext"},
+     ENUM_TYPES: set = {
+         "SymbolType",
+         "SymbolAccess",
+         "EdgeDir",
+         "CodeContext",
+         "OwnershipKind"
+     },
      SKIP_PARAMS: set = {"self", "kid", "parent"};
 
 def classify_type(ann_str: str) -> int {
@@ -93,7 +98,7 @@ def generate -> str {
         ContextAwareNode as _CtxNode
     }
 
-    all_classes: list = [];
+    all_classes: list[tuple[str, type]] = [];
     for name in sorted(dir(ut_mod)) {
         attr = getattr(ut_mod, name);
         if isinstance(attr, type)

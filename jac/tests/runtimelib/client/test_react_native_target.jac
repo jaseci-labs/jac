@@ -806,7 +806,7 @@ test "client config supports target-scoped npm table for react native" {
             "[dependencies.npm.react_native]\n"
             "react-native = \"0.76.6\"\n"
             "\"expo-secure-store\" = \"~14.0.1\"\n\n"
-            "[plugins.client]\n"
+            "[client]\n"
             "target = \"react_native\"\n"
         );
         (project_dir / "jac.toml").write_text(jac_toml, encoding="utf-8");
@@ -844,9 +844,9 @@ test "client config getters expose mobile and react-native tables" {
             "name = \"cfg-getters\"\n"
             "version = \"1.0.0\"\n"
             "entry-point = \"main.jac\"\n\n"
-            "[plugins.client.mobile]\n"
+            "[client.mobile]\n"
             "app_name = \"MobileName\"\n\n"
-            "[plugins.client.react_native]\n"
+            "[client.react_native]\n"
             "project_dir = \"mobile-rn-alt\"\n"
             "platform = \"ios\"\n"
         );
@@ -1323,7 +1323,7 @@ test "resolve_rn_project_dir honors project_dir config override" {
         toml_content = (
             "[project]\nname = \"test\"\nversion = \"1.0\"\n"
             "entry-point = \"main.jac\"\n\n"
-            "[plugins.client.react_native]\n"
+            "[client.react_native]\n"
             'project_dir = "native-app"\n'
         );
         (project_dir / "jac.toml").write_text(toml_content, encoding="utf-8");
@@ -1336,7 +1336,7 @@ test "resolve_rn_project_dir honors project_dir config override" {
         toml_abs = (
             "[project]\nname = \"test\"\nversion = \"1.0\"\n"
             "entry-point = \"main.jac\"\n\n"
-            "[plugins.client.react_native]\n"
+            "[client.react_native]\n"
             f'project_dir = "{abs_path}"\n'
         );
         (project_dir / "jac.toml").write_text(toml_abs, encoding="utf-8");
@@ -1419,7 +1419,7 @@ test "config helpers support ios_builder and release" {
         toml_content = (
             "[project]\nname = \"test\"\nversion = \"1.0\"\n"
             "entry-point = \"main.jac\"\n\n"
-            "[plugins.client.react_native]\n"
+            "[client.react_native]\n"
             "release = true\n"
             'ios_builder = "eas"\n'
             'android_builder = "eas"\n'

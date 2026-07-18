@@ -12,25 +12,25 @@ SSO configuration is managed via the `jac.toml` file in your project root.
 Add the following configuration to your `jac.toml`:
 
 ```toml
-[plugins.scale.jwt]
+[scale.jwt]
 secret = "your_jwt_secret_key"
 algorithm = "HS256"
 exp_delta_days = 7
 
-[plugins.scale.sso]
+[scale.sso]
 host = "http://localhost:8000"
 client_auth_callback_url = ""  # Optional: frontend URL to redirect after SSO (e.g., "https://myapp.com/auth-done")
 
 # Configure specific providers
-[plugins.scale.sso.google]
+[scale.sso.google]
 client_id = "${GOOGLE_CLIENT_ID}"
 client_secret = "${GOOGLE_CLIENT_SECRET}"
 
-[plugins.scale.sso.apple]
+[scale.sso.apple]
 client_id = "${APPLE_CLIENT_ID}"
 client_secret = "${APPLE_CLIENT_SECRET}"
 
-[plugins.scale.sso.github]
+[scale.sso.github]
 client_id = "${GITHUB_CLIENT_ID}"
 client_secret = "${GITHUB_CLIENT_SECRET}"
 ```
@@ -226,17 +226,16 @@ if platform == Platforms.MICROSOFT.value {
 
 ## 7. UserManager Extension Pattern
 
-Jac Scale allows you to override the core `UserManager` using the plugin hook system.
+Jac Scale replaces the core `UserManager` through its built-in persistence provider.
 
 ### How it works
 
-1. **Hook Definition**: The core `jac` runtime defines a hook spec `get_user_manager()`.
-2. **Implementation**: `jac-scale` provides an implementation in `plugin.jac`:
+1. **Provider Method**: The core `jac` runtime defines `get_user_manager()`, which delegates to the scale provider when jac-scale is installed.
+2. **Implementation**: `jac-scale` provides the override in `plugin.jac`:
 
     ```jac
-    @hookimpl
-    def get_user_manager() -> Type[UserManager] {
-        return JacScaleUserManager;
+    static def get_user_manager(base_path: str) -> UserManager {
+        return JacScaleUserManager(base_path=base_path);
     }
     ```
 

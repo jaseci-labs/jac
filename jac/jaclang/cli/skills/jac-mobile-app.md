@@ -1,6 +1,6 @@
 ---
 name: jac-mobile-app
-description: Shipping a Jac client as a native Android/iOS app via Capacitor - `jac setup mobile`, dev loop with live reload and auto adb reverse, `jac build --client mobile`, `[plugins.client.mobile]` config, Capacitor plugins, on-device debugging. Load when targeting phones or tablets.
+description: Shipping a Jac client as a native Android/iOS app via Capacitor - `jac setup mobile`, dev loop with live reload and auto adb reverse, `jac build --client mobile`, `[client.mobile]` config, Capacitor plugins, on-device debugging. Load when targeting phones or tablets.
 ---
 
 The mobile target wraps your web bundle in a native shell via [Capacitor](https://capacitorjs.com/), producing an Android APK or iOS app from the same `.cl.jac` codebase. **Architecture first: the mobile app is FRONTEND ONLY.** The native shell is a webview running your `cl` bundle; every walker/`def:pub` call goes over HTTP to a Jac server you deploy separately (see `jac-sv-deploy`). There is no embedded backend - plan the server deployment before shipping the app.
@@ -19,12 +19,12 @@ The mobile target wraps your web bundle in a native shell via [Capacitor](https:
 jac setup mobile --platform android   # or ios (macOS only), or all
 ```
 
-Installs Capacitor deps, creates `capacitor.config.json`, scaffolds `android/` (and/or `ios/`), checks for the required tools, and adds `[plugins.client.mobile]` to `jac.toml`. With no `--platform` it uses `[plugins.client.mobile].default_platform`, else the host default (`ios` on macOS, `android` elsewhere).
+Installs Capacitor deps, creates `capacitor.config.json`, scaffolds `android/` (and/or `ios/`), checks for the required tools, and adds `[client.mobile]` to `jac.toml`. With no `--platform` it uses `[client.mobile].default_platform`, else the host default (`ios` on macOS, `android` elsewhere).
 
-## Configuration - `[plugins.client.mobile]`
+## Configuration - `[client.mobile]`
 
 ```toml
-[plugins.client.mobile]
+[client.mobile]
 app_name = "My Jac App"        # display name           (default "Jac App")
 app_id = "com.example.myapp"   # reverse-DNS id, both stores (default "com.jac.app")
 release = false                # true = release variant instead of debug
@@ -62,7 +62,7 @@ Android release signing needs a keystore configured in `android/app/build.gradle
 ## Capacitor plugins (camera, geolocation, push, ...)
 
 ```bash
-jac add --npm @capacitor/camera
+jac install --npm @capacitor/camera
 npx cap sync                       # re-sync native projects after ANY plugin change
 ```
 

@@ -1,11 +1,11 @@
 """`get_persistent_memory` L3-backend seam (#6619, piece 2b).
 
-`get_persistent_memory` is a plain direct method on the runtime interface (not
-a plugin hook): core `TieredMemory._resolve_l3_backend` consults
-`JacRuntimeInterface.get_persistent_memory` before falling back to
-`SqliteMemory`, so a returned backend wins and `None` (the core default) falls
-through unchanged. The method can be swapped at the class level (as the second
-test does) but is no longer a `plugin_manager` dispatch point.
+`get_persistent_memory` is a plain direct method on the runtime interface: core
+`TieredMemory._resolve_l3_backend` consults `JacRuntimeInterface.get_persistent_memory`
+before falling back to `SqliteMemory`, so a returned backend wins and `None`
+(the core default) falls through unchanged. A custom L3 backend is injected via
+`set_persistent_memory_provider` (used by ejected standalone backends); the
+method can also be swapped at the class level (as the second test does).
 """
 
 import from pathlib { Path }
@@ -32,7 +32,7 @@ test "TieredMemory.postinit uses a hook-provided L3 backend, else SqliteMemory" 
         original = JacRuntimeInterface.get_persistent_memory;
         try {
             JacRuntimeInterface.get_persistent_memory = (
-                lambda config : (captured.append(config) or sentinel)
+                lambda (config) { (captured.append(config) or sentinel); }
             );
             tm = TieredMemory(
                 base_path=tmpdir, target_path=str(Path(tmpdir) / "hooked.jac")

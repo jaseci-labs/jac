@@ -208,7 +208,7 @@ Jac keywords are reserved and cannot be used as identifiers:
 |----------|----------|
 | **Archetypes** | `obj`, `node`, `edge`, `walker`, `class`, `enum` |
 | **Abilities** | `can`, `def`, `init`, `postinit` |
-| **Access** | `pub`, `priv`, `protect`, `static`, `override`, `abs`, `Self` |
+| **Access** | `pub`, `priv`, `protect`, `static`, `override`, `abst`, `Self` |
 | **Control** | `if`, `elif`, `else`, `while`, `for`, `match`, `case`, `switch`, `default` |
 | **Loop** | `break`, `continue` |
 | **Return** | `return`, `yield`, `report`, `skip` |
@@ -218,7 +218,7 @@ Jac keywords are reserved and cannot be used as identifiers:
 | **Blocks** | `cl` (client), `sv` (server), `na` (native) |
 | **Other** | `with`, `test`, `impl`, `sem`, `by`, `del`, `in`, `is`, `and`, `or`, `not`, `async`, `await`, `flow`, `wait`, `lambda`, `props` |
 
-**Note:** The abstract modifier keyword is `abs`, not `abstract`.
+**Note:** The abstract modifier keyword is `abst`, not `abstract` (and not `abs`, which is the built-in absolute-value function).
 
 **Note:** `entry` and `exit` are *contextual* keywords -- they have special meaning only in entry/exit clauses (`with entry`, `can ... with Root exit`) and remain valid as ordinary identifiers (`entry = 5;` is fine).
 
@@ -230,7 +230,7 @@ To use a reserved keyword as an identifier, escape it with a backtick prefix:
 
 ```jac
 obj Example {
-    has `class: str;  # Backtick-escaped keyword used as identifier
+    has `edge: str;  # Backtick-escaped Jac keyword used as identifier
 }
 ```
 
@@ -238,7 +238,7 @@ obj Example {
     Because `any` is a built-in type in Jac, the backtick escape is used as a convention to refer to the Python/Jac built-in **`any()` function**. Always use `` `any `` when you want to call the function and `any` (without a backtick) when referring to the type.
 
 !!! danger
-    Backtick-escaped keywords in `has` declarations **do not work** -- they cause a `SyntaxError` in Python's dataclass machinery at runtime. Choose a non-keyword identifier instead (e.g., `has cls: str;` or `has kind: str;`).
+    Backtick escaping cannot smuggle **Python reserved words** (`class`, `lambda`, `import`, `def`, ...) into `has`-field or parameter names -- the compiler rejects them with error **E0067**, because they would break the generated Python underneath. Choose a non-keyword identifier instead (e.g., `has cls: str;` or `has kind: str;`).
 
 !!! note "Special variable references don't need backtick escaping"
     The following are **built-in references**, not regular identifiers. Use them directly without backticks: `self`, `Self`, `super`, `root`, `here`, `visitor`, `init`, `postinit`. `self` is the current instance; `Self` is the enclosing type. For example, write `self.name`, `root ++> node`, and `def init()` -- never `` `self ``, `` `root ``, or `` `init ``.
@@ -452,10 +452,14 @@ with entry {
 }
 ```
 
-Two current limitations to be aware of:
+One current limitation to be aware of:
 
 - **Type-parameter defaults don't apply at subscripted construction.** `Result(value=42)` and `Result[int, ValueError](value=42)` work, but `Result[int](value=42)` -- leaving `E` to its default -- passes `jac check` and raises a `TypeError` at runtime. When in doubt, construct without the subscript.
-- **Type-parameter inference is conservative.** The checker treats a returned `T` opaquely in some positions (e.g. `first([1, 2]) + 1` is rejected with E1010). Recover the concrete type with the [`as` cast operator](#10-the-as-cast-operator): `n = first(nums) as int;`.
+
+Type-parameter inference now flows through: the checker infers the concrete
+return type, so `first([1, 2]) + 1` checks clean and `s = first(["a", "b"]); s.upper()`
+resolves. If you ever need to override the checker's inference, the
+[`as` cast operator](#10-the-as-cast-operator) re-types an expression: `n = first(nums) as int;`.
 
 !!! tip "Remember the backtick"
     If you need to use the built-in function to check if any item is truthy, use `` `any ``:
@@ -739,13 +743,13 @@ obj Person {
 
 **Deferred Initialization:**
 
-Use `by postinit` when a field depends on other fields:
+Use the `postinit` field modifier when a field depends on other fields:
 
 ```jac
 obj Rectangle {
     has width: float;
     has height: float;
-    has area: float by postinit;
+    has area: float postinit;
 
     def postinit {
         self.area = self.width * self.height;
@@ -759,10 +763,10 @@ obj Rectangle {
 
 ### 3 Global Variables (glob)
 
-The `glob` keyword declares module-level variables, replacing Python's convention of bare global assignments.
+The `glob` keyword declares module-level variables, replacing Python's convention of bare global assignments. It is Jac's only globals keyword -- there is no `global` or `nonlocal` statement.
 
 !!! tip "Coming from Python"
-    Python uses plain global assignment (`DEBUG = True`) and the `global` keyword inside functions. Jac uses `glob` for declarations (`glob DEBUG: bool = True;`) and still uses `global` inside functions to modify them.
+    Python uses plain global assignment (`DEBUG = True`) and the `global` keyword inside functions. Jac uses `glob` for declarations (`glob DEBUG: bool = True;`), and assignments inside functions rebind the `glob` directly -- no declaration statement needed.
 
 ```jac
 glob PI: float = 3.14159;
@@ -788,10 +792,10 @@ When Jac looks up a name, it searches in this order:
 glob x = "global";
 
 def outer {
-    x = "enclosing";
+    x: str = "enclosing";   # Typed declaration = new local shadowing the glob
 
     def inner {
-        x = "local";
+        x: str = "local";   # Typed declaration = new local shadowing outer's x
         print(x);  # "local" - found in Local scope
     }
 
@@ -800,26 +804,48 @@ def outer {
 }
 ```
 
-**Modifying outer scope variables:**
+**Assignment binds to the nearest enclosing binding:**
+
+A bare assignment (including augmented forms like `+=`) inside a function does not automatically create a new local. It binds to the nearest enclosing binding of that name -- a local of an enclosing function, or a module-level `glob`. A new local is created only when no such binding exists. Jac has no `global` or `nonlocal` statements; they are not needed.
 
 ```jac
 glob counter: int = 0;
 
 def increment {
-    global counter;    # Declares intent to modify global
-    counter += 1;
+    counter += 1;      # Rebinds the module-level glob directly
 }
 
 def outer {
-    x = 10;
+    x = 10;            # New local (no enclosing binding named x)
     def inner {
-        nonlocal x;    # Declares intent to modify enclosing
-        x += 1;
+        x += 1;        # Rebinds outer's x
     }
     inner();
     print(x);  # 11
 }
 ```
+
+Only `glob`-declared variables are implicitly rebindable this way. Module-level names bound by imports, function definitions, or archetype declarations are not -- assigning to such a name inside a function creates an ordinary local.
+
+**Shadowing requires a typed declaration:**
+
+To create a fresh local that shadows an outer binding instead of rebinding it, declare it with a type annotation before its first use in the scope:
+
+```jac
+glob counter: int = 0;
+
+def local_count {
+    counter: int = 100;   # New local; the glob is untouched
+    counter += 1;         # Local becomes 101
+}
+```
+
+Placing the typed declaration *after* the name has already been assigned or read in the same scope is an error (**E0064**) -- the earlier statements already bound to the outer variable.
+
+Loop targets (`for x in ...`), `except ... as e`, and `with ... as f` always bind fresh locals; they never rebind an outer variable.
+
+!!! tip "No UnboundLocalError gotcha"
+    In Python, `counter += 1` inside a function raises `UnboundLocalError` unless you first write `global counter`. In Jac, the augmented assignment simply rebinds the `glob` -- the gotcha is gone.
 
 **Block scope behavior:**
 
@@ -925,16 +951,13 @@ def example() {
     a = True;
     b = False;
 
-    # Word form (preferred)
     result = a and b;
     result = a or b;
     result = not a;
-
-    # Symbol form (also valid)
-    result = a && b;
-    result = a || b;
 }
 ```
+
+Jac uses the word forms only -- there are no `&&`/`||` symbol operators.
 
 ### 4 Bitwise Operators
 
@@ -1285,29 +1308,37 @@ def example() {
 
 **Atomic Pipes (`:>`, `<:`):**
 
-Atomic pipes are used with spawn operations and affect traversal order:
+Atomic pipes feed a value into a callable, like `|>`/`<|`, but bind more tightly
+(higher precedence). `:>` pipes left-to-right and `<:` right-to-left:
 
 ```jac
-node Item {
-    has value: int = 0;
-}
-
-walker Visitor {
-    can visit with Item entry {
-        print(here.value);
-    }
-}
+def double(x: int) -> int { return x * 2; }
 
 with entry {
-    start = Item(value=1);
-
-    # Atomic pipe forward - depth-first traversal
-    start spawn :> Visitor();
-
-    # Standard pipe with spawn - breadth-first traversal
-    start spawn |> Visitor();
+    r  = 5 :> double;    # 10
+    r2 = double <: 5;    # 10
+    print(r, r2);
 }
 ```
+
+!!! warning "`spawn` combined with a pipe operator does not currently work"
+    Older material documents piping into a spawn to pick a traversal order --
+    `start spawn :> Visitor()` or `start spawn |> Visitor()`. Both forms currently
+    fail at runtime with `'Visitor' object is not callable`. Spawn a walker with
+    the plain form instead (it works and runs the walker's entry abilities):
+
+    ```jac
+    node Item { has value: int = 0; }
+
+    walker Visitor {
+        can visit_item with Item entry { print(here.value); }
+    }
+
+    with entry {
+        start = Item(value=1);
+        start spawn Visitor();   # runs Visitor on `start`
+    }
+    ```
 
 **Dot Pipes (`.>`, `<.`):**
 
@@ -1344,8 +1375,8 @@ def example() {
 
     # Using lambdas in pipe chains
     result = numbers
-        |> (lambda x: list : [i * 2 for i in x])
-        |> (lambda x: list : [i for i in x if i > 10])
+        |> (lambda (x: list) { [i * 2 for i in x]; })
+        |> (lambda (x: list) { [i for i in x if i > 10]; })
         |> sum;
 }
 ```
@@ -1356,8 +1387,8 @@ def example() {
 |----------|------|-----------|----------|
 | `\|>` | Forward pipe | Left to right | Function composition |
 | `<\|` | Backward pipe | Right to left | Reverse composition |
-| `:>` | Atomic forward | Left to right | Depth-first spawn |
-| `<:` | Atomic backward | Right to left | Reverse atomic |
+| `:>` | Atomic forward | Left to right | Tight-binding forward pipe |
+| `<:` | Atomic backward | Right to left | Tight-binding backward pipe |
 | `.>` | Dot forward | Left to right | Method chaining |
 | `<.` | Dot backward | Right to left | Reverse method chain |
 
@@ -1454,8 +1485,8 @@ Complete precedence table from **lowest** (evaluated last) to **highest** (evalu
 | 3 | `as` | Left | Type cast |
 | 4 | `by` | Right | By operator (LLM delegation) |
 | 5 | `:=` | Right | Walrus operator |
-| 6 | `or`, `\|\|` | Left | Logical OR |
-| 7 | `and`, `&&` | Left | Logical AND |
+| 6 | `or` | Left | Logical OR |
+| 7 | `and` | Left | Logical AND |
 | 8 | `not` | - | Logical NOT (unary) |
 | 9 | `in`, `not in`, `is`, `is not`, `<`, `<=`, `>`, `>=`, `!=`, `==` | Left | Comparison/membership |
 | 10 | `\|` | Left | Bitwise OR |
@@ -1548,7 +1579,7 @@ def example() {
 
 ## Control Flow
 
-Jac's control flow is familiar to Python developers with a few enhancements: braces instead of indentation, semicolons to end statements, and additional constructs like C-style for loops (`for i = 0 to i < 10 by i += 1`) and `switch` statements. Jac also supports Python's pattern matching (`match/case`) for destructuring complex data.
+Jac's control flow is familiar to Python developers with a few enhancements: braces instead of indentation, semicolons to end statements, and additional constructs like C-style for loops (`for i = 0 while i < 10 with i += 1`) and `switch` statements. Jac also supports Python's pattern matching (`match/case`) for destructuring complex data.
 
 ### 1 Conditional Statements
 
@@ -1593,7 +1624,7 @@ def example() {
 
 ### 3 For Loops
 
-Jac supports Python-style iteration and also adds C-style for loops with explicit initialization, condition, and update expressions. The C-style syntax uses `to` for the condition and `by` for the update step -- useful when you need precise control over loop variables.
+Jac supports Python-style iteration and also adds C-style for loops with explicit initialization, condition, and update expressions separated by semicolons, exactly as in C -- useful when you need precise control over loop variables. The condition may be any expression.
 
 ```jac
 def example() {
@@ -1609,8 +1640,8 @@ def example() {
         print(f"{i}: {item}");
     }
 
-    # C-style for loop: for INIT to CONDITION by UPDATE
-    for i = 0 to i < 10 by i += 1 {
+    # C-style for loop: for INIT; CONDITION; UPDATE
+    for i = 0 while i < 10 with i += 1 {
         print(i);
     }
 

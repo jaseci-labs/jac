@@ -490,7 +490,7 @@ cl {
         return <form>
             <input
                 value={email}
-                onChange={lambda e: ChangeEvent { email = e.target.value; }}
+                onChange={lambda (e: ChangeEvent) { email = e.target.value; }}
             />
             <button onClick={lambda -> None { handle_login(); }}>
                 Login
