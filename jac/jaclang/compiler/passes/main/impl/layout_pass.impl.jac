@@ -18,6 +18,60 @@ impl LayoutPass.transform(ir_in: uni.Module) -> uni.Module {
         return ir_in;
     }
 
+    self._build_registry_over(arch_map);
+
+    for name in self.registry.topo_order {
+        if name in arch_map {
+            self._validate_obj_fields(arch_map[name], arch_map);
+        }
+    }
+
+    module.gen.layout_registry = self.registry;
+    return ir_in;
+}
+
+impl LayoutPass._collect_archetypes(module: uni.Module) -> dict[str, uni.Archetype] {
+    arch_map: dict[str, uni.Archetype] = {};
+    self._merge_archetypes(module, arch_map);
+    return arch_map;
+}
+
+impl LayoutPass.arch_tid(arch: uni.Archetype) -> str {
+    if self.tid_index is not None {
+        return self.tid_index.tid_of_arch(arch);
+    }
+    return arch.name.value if arch.name else "unknown";
+}
+
+impl LayoutPass.resolve_ref(arch: uni.Archetype, name: str) -> str {
+    if self.tid_index is not None {
+        mp = arch.loc.mod_path if arch.loc else "";
+        scope = self.mod_scopes.get(mp, {});
+        return scope.get(name, name);
+    }
+    return name;
+}
+
+impl LayoutPass._merge_archetypes(
+    module: uni.Module, arch_map: dict[str, uni.Archetype]
+) -> None {
+    for nd in UniPass.get_all_sub_nodes(module, uni.Archetype) {
+        if nd.name is None {
+            continue;
+        }
+        akey = self.arch_tid(nd);
+
+        if akey not in arch_map or nd.body is not None {
+            arch_map[akey] = nd;
+        }
+    }
+}
+
+impl LayoutPass._build_registry_over(arch_map: dict[str, uni.Archetype]) -> None {
+    if not arch_map {
+        return;
+    }
+
     self._build_hierarchy(arch_map);
 
     topo_order = self._topo_sort(arch_map);
@@ -37,30 +91,25 @@ impl LayoutPass.transform(ir_in: uni.Module) -> uni.Module {
     }
 
     self._compute_acyclicity();
-
-    for name in topo_order {
-        if name in arch_map {
-            self._validate_obj_fields(arch_map[name], arch_map);
-        }
-    }
-
-    module.gen.layout_registry = self.registry;
-    return ir_in;
 }
 
-impl LayoutPass._collect_archetypes(module: uni.Module) -> dict[str, uni.Archetype] {
-    arch_map: dict[str, uni.Archetype] = {};
-    for nd in UniPass.get_all_sub_nodes(module, uni.Archetype) {
-        aname = nd.name.value if nd.name else None;
-        if aname is None {
-            continue;
-        }
+impl LayoutPass.build_shared_registry(modules: list[uni.Module]) -> LayoutRegistry {
+    self.registry = LayoutRegistry();
 
-        if aname not in arch_map or nd.body is not None {
-            arch_map[aname] = nd;
-        }
+    import from jaclang.compiler.passes.main.type_facts_pass { build_type_id_index }
+    idx = build_type_id_index(modules);
+    self.tid_index = idx;
+    self.mod_scopes = {};
+    for m in modules {
+        mp = m.loc.mod_path if m.loc else "";
+        self.mod_scopes[mp] = idx.scope_for(m);
     }
-    return arch_map;
+    arch_map: dict[str, uni.Archetype] = {};
+    for m in modules {
+        self._merge_archetypes(m, arch_map);
+    }
+    self._build_registry_over(arch_map);
+    return self.registry;
 }
 
 impl LayoutPass._build_hierarchy(archetypes: dict[str, uni.Archetype]) -> None {
@@ -77,7 +126,7 @@ impl LayoutPass._build_hierarchy(archetypes: dict[str, uni.Archetype]) -> None {
                     pname = base_expr.sym_name;
                 }
                 if pname is not None {
-                    parents.append(pname);
+                    parents.append(self.resolve_ref(arch, pname));
                 }
             }
             if parents {
@@ -195,7 +244,7 @@ impl LayoutPass._topo_sort(arch_map: dict[str, uni.Archetype]) -> list[str] {
 
 impl LayoutPass._build_layout(arch: uni.Archetype) -> ArchetypeLayout {
     reg = self.registry;
-    aname = arch.name.value if arch.name else "unknown";
+    aname = self.arch_tid(arch);
     mro = reg.mro_order.get(aname, [aname]);
     parents = reg.class_parents.get(aname, []);
 
@@ -278,6 +327,7 @@ impl LayoutPass._build_layout(arch: uni.Archetype) -> ArchetypeLayout {
         if var.type_tag and var.type_tag.tag {
             type_node = var.type_tag.tag;
             type_tag = var.type_tag.tag?.unparse() or str(var.type_tag.tag);
+            type_tag = self.resolve_ref(arch, type_tag);
         }
         is_fn_ptr = type_node is not None and isinstance(type_node, uni.FuncSignature);
         new_field = FieldInfo(
@@ -585,6 +635,14 @@ impl LayoutRegistry.get_mro(name: str) -> list[str] {
 
 impl LayoutRegistry.get_topo_order -> list[str] {
     return self.topo_order;
+}
+
+impl LayoutRegistry.get_method_slot(class_name: str, method_name: str) -> (int | None) {
+    layout = self.layouts.get(class_name);
+    if layout is None {
+        return None;
+    }
+    return layout.method_index.get(method_name);
 }
 
 impl LayoutRegistry.is_primary_ancestor(child: str, ancestor: str) -> bool {

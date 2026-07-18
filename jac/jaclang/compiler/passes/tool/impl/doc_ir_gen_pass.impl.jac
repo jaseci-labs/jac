@@ -1253,7 +1253,7 @@ impl DocIRGenPass.exit_with_stmt(nd: uni.WithStmt) -> None {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [self.hard_line()];
     for i in nd.kid {
-        if (isinstance(nd.body, Sequence) and self.is_within(i, nd.body)) {
+        if (isinstance(nd.body, Sequence) and self.is_body_member(i, nd.body)) {
             if (i == nd.body[0]) {
                 parts.append(self.indent(self.concat(body_parts), ast_node=nd));
                 parts.append(self.hard_line());
@@ -1656,7 +1656,9 @@ impl DocIRGenPass.exit_if_stmt(nd: uni.IfStmt) -> None {
             } elif (isinstance(i, uni.Token) and (i.name == Tok.RBRACE)) {
                 parts.append(self.line());
                 parts.append(i.gen.doc_ir);
-            } elif (isinstance(nd.body, Sequence) and self.is_within(i, nd.body)) {
+            } elif (
+                isinstance(nd.body, Sequence) and self.is_body_member(i, nd.body)
+            ) {
                 if not body_placed {
                     parts.append(
                         self.indent(
@@ -1677,7 +1679,7 @@ impl DocIRGenPass.exit_if_stmt(nd: uni.IfStmt) -> None {
     body_parts: list[doc.DocType] = [self.hard_line()];
     prev_body_item: (uni.UniNode | None) = None;
     for i in nd.kid {
-        if (isinstance(nd.body, Sequence) and self.is_within(i, nd.body)) {
+        if (isinstance(nd.body, Sequence) and self.is_body_member(i, nd.body)) {
             if (i == nd.body[0]) {
                 parts.append(self.indent(self.concat(body_parts), ast_node=nd));
                 parts.append(self.hard_line());
@@ -2031,6 +2033,10 @@ impl DocIRGenPass.exit_module_item(nd: uni.ModuleItem) -> None {
 }
 
 impl DocIRGenPass.exit_import(nd: uni.Import) -> None {
+    if nd.clib_header is not None and nd.from_loc {
+        self._gen_clib_import(nd);
+        return;
+    }
     parts: list[doc.DocType] = [];
     mod_items: list[doc.DocType] = [];
     is_in_items: bool = False;
@@ -2050,7 +2056,9 @@ impl DocIRGenPass.exit_import(nd: uni.Import) -> None {
             parts.append(i.gen.doc_ir);
         } elif (isinstance(i, uni.Token) and (i.name == Tok.RBRACE)) {
             is_in_items = False;
-            mod_items.pop();
+            if mod_items {
+                mod_items.pop();
+            }
             parts.append(
                 self.group(
                     self.concat(
@@ -2074,6 +2082,65 @@ impl DocIRGenPass.exit_import(nd: uni.Import) -> None {
         }
     }
     nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
+}
+
+impl DocIRGenPass._gen_clib_import(nd: uni.Import) -> None {
+    strings = [
+        k
+        for k in nd.kid
+        if isinstance(k, uni.Token) and k.name == Tok.STRING
+    ];
+    lib_doc = strings[0].gen.doc_ir if strings else self.text('""');
+    hdr_doc = strings[1].gen.doc_ir if len(strings) > 1 else self.text('""');
+    head = self.concat(
+        [
+            self.text("import"),
+            self.space(),
+            self.text("from"),
+            self.space(),
+            self.text("clib"),
+            self.text("("),
+            lib_doc,
+            self.text(","),
+            self.space(),
+            self.text("header"),
+            self.text("="),
+            hdr_doc,
+            self.text(")"),
+            self.space(),
+            self.text("{")
+        ]
+    );
+    mod_items: list[doc.DocType] = [];
+    seen_lbrace = False;
+    for i in nd.kid {
+        if isinstance(i, uni.Token) and i.name == Tok.LBRACE {
+            seen_lbrace = True;
+            continue;
+        }
+        if not seen_lbrace or (isinstance(i, uni.Token) and i.name == Tok.RBRACE) {
+            continue;
+        }
+        if isinstance(i, uni.Token) and i.name == Tok.COMMA {
+            if mod_items {
+                mod_items.pop();
+            }
+            mod_items.append(i.gen.doc_ir);
+            mod_items.append(self.line());
+        } else {
+            mod_items.append(i.gen.doc_ir);
+            mod_items.append(self.space());
+        }
+    }
+    if mod_items {
+        mod_items.pop();
+    }
+    items_block = self.group(
+        self.concat([self.indent(self.concat([self.line(), *mod_items])), self.line()])
+    );
+    nd.gen.doc_ir = self.group(
+        self.concat([head, items_block, self.text("}")], ast_node=nd), ast_node=nd
+    );
 }
 
 impl DocIRGenPass.exit_module(nd: uni.Module) -> None {
@@ -2257,6 +2324,20 @@ impl DocIRGenPass.is_within(
     return (first and last);
 }
 
+impl DocIRGenPass.is_body_member(
+    kid_node: uni.UniNode, block: Sequence[uni.UniNode]
+) -> bool {
+    if not block {
+        return False;
+    }
+    for member in block {
+        if kid_node is member {
+            return True;
+        }
+    }
+    return False;
+}
+
 impl DocIRGenPass.add_body_stmt_with_spacing(
     body_parts: list[doc.DocType], current: uni.UniNode, previous: (uni.UniNode | None)
 ) -> None {
@@ -2311,7 +2392,7 @@ impl DocIRGenPass.format_simple_stmt_with_body(
     body_parts: list[doc.DocType] = [self.hard_line()];
     prev_body_item: (uni.UniNode | None) = None;
     for i in nd.kid {
-        if (isinstance(body, Sequence) and self.is_within(i, body)) {
+        if (isinstance(body, Sequence) and self.is_body_member(i, body)) {
             if (body and (i == body[0])) {
                 parts.append(self.indent(self.concat(body_parts), ast_node=nd));
                 parts.append(self.hard_line());
@@ -2390,7 +2471,7 @@ impl DocIRGenPass._assign_else_doc_ir(
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [self.hard_line()];
     for i in nd.kid {
-        if (isinstance(body, Sequence) and self.is_within(i, body)) {
+        if (isinstance(body, Sequence) and self.is_body_member(i, body)) {
             if (i == body[0]) {
                 parts.append(self.indent(self.concat(body_parts), ast_node=nd));
                 parts.append(self.hard_line());

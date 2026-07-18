@@ -50,6 +50,20 @@ glob _UNTYPED_BODY: str = (
          "    print(resp.headers);\n"
          "    return resp.json();\n"
          "}\n"
+     ),
+     _PROPAGATION_SRC: str = (
+         "import untyped_client;\n"
+         "\n"
+         "def inspect_external -> None {\n"
+         "    values = untyped_client.values();\n"
+         "    for value in values {\n"
+         "        print(value.payload);\n"
+         "    }\n"
+         "    (first, second) = values;\n"
+         "    print(first.payload);\n"
+         "    print(values[0].payload);\n"
+         "    print(values + 1);\n"
+         "}\n"
      );
 
 
@@ -106,6 +120,35 @@ test "from-import of an untyped third-party name degrades to foreign any" {
 
         warns = [str(w) for w in prog.warnings_had];
         assert any("untyped_client" in w for w in warns) , warns;
+    } finally {
+        shutil.rmtree(base_dir, ignore_errors=True);
+    }
+}
+
+
+test "foreign any remains permissive through iteration destructuring and operators" {
+    base_dir = tempfile.mkdtemp(prefix="jac_tp_");
+    try {
+        sp = os.path.join(base_dir, "site-packages");
+        _write_pkg(sp, "untyped_client", "def values():\n    return []\n");
+
+        prog = _check(_PROPAGATION_SRC, sp);
+        errors = [str(e) for e in prog.errors_had];
+        assert errors == [] , errors;
+    } finally {
+        shutil.rmtree(base_dir, ignore_errors=True);
+    }
+}
+
+
+test "project-local untyped module rejects foreign any propagation" {
+    base_dir = tempfile.mkdtemp(prefix="jac_tp_");
+    try {
+        _write_pkg(base_dir, "untyped_client", "def values():\n    return []\n");
+
+        prog = _check(_PROPAGATION_SRC, base_dir);
+        errors = [str(e) for e in prog.errors_had];
+        assert errors != [] , "project-local Unknown must not become permissive Any";
     } finally {
         shutil.rmtree(base_dir, ignore_errors=True);
     }

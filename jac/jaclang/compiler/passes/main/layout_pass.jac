@@ -4,6 +4,8 @@ import from jaclang.jac0core.passes.transform { Transform }
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.diagnostics { E5030, W5031, W5032 }
 
+import type from jaclang.compiler.passes.main.type_facts_pass { TypeIdIndex }
+
 glob LAYOUT_COMPATIBLE_PRIMITIVES: set[str] = {
          "int",
          "float",
@@ -84,6 +86,16 @@ def get_layout_registry(module: uni.Module, prog: any = None) -> LayoutRegistry 
     return module.gen.layout_registry or LayoutRegistry();
 }
 
+def get_shared_layout_registry(
+    modules: list[uni.Module], prog: any = None
+) -> LayoutRegistry {
+    if not modules {
+        return LayoutRegistry();
+    }
+    pass_inst = LayoutPass(ir_in=modules[0], prog=prog);
+    return pass_inst.build_shared_registry(modules);
+}
+
 obj LayoutRegistry {
     has layouts: dict[str, ArchetypeLayout] = {},
         class_parents: dict[str, list[str]] = {},
@@ -96,6 +108,7 @@ obj LayoutRegistry {
     def resolve_method_owner(arch_name: str, method_name: str) -> (str | None);
     def get_mro(name: str) -> list[str];
     def get_topo_order -> list[str];
+    def get_method_slot(class_name: str, method_name: str) -> (int | None);
     def is_primary_ancestor(child: str, ancestor: str) -> bool;
 }
 
@@ -103,11 +116,21 @@ obj LayoutPass(Transform[uni.Module, uni.Module]) {
     has ir_in: uni.Module,
         prog: any,
         cancel_token: any = None,
+        tid_index: (TypeIdIndex | None) = None,
+        mod_scopes: dict[str, dict[str, str]] = {},
         registry: LayoutRegistry postinit;
 
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;
+    def build_shared_registry(modules: list[uni.Module]) -> LayoutRegistry;
+    def arch_tid(arch: uni.Archetype) -> str;
+    def resolve_ref(arch: uni.Archetype, name: str) -> str;
     def _collect_archetypes(module: uni.Module) -> dict[str, uni.Archetype];
+    def _merge_archetypes(
+        module: uni.Module, arch_map: dict[str, uni.Archetype]
+    ) -> None;
+
+    def _build_registry_over(arch_map: dict[str, uni.Archetype]) -> None;
     def _build_hierarchy(archetypes: dict[str, uni.Archetype]) -> None;
     def _compute_c3_mro(class_name: str) -> list[str];
     def _topo_sort(arch_map: dict[str, uni.Archetype]) -> list[str];
