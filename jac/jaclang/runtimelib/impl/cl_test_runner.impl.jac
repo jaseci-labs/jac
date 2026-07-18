@@ -341,8 +341,6 @@ impl _run_harness(
                 runtime_js = runtime_js.replace(
                     core_specifier, "./client_runtime_core.js"
                 );
-                core_js = core_js.replace('"@jac/runtime"', '"./jac_runtime.js"');
-                core_js = core_js.replace("'@jac/runtime'", "'./jac_runtime.js'");
             }
 
             sources = [module_js, runtime_js];
