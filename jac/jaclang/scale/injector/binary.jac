@@ -256,11 +256,7 @@ def resolve_pod_base_image(
         );
         return fallback;
     }
-    # Pin the mutable channel tag to its current digest so every pod of this
-    # deploy runs identical bytes: dev/latest move under running previews, and
-    # a pod re-created after a republish would otherwise pull a different
-    # runtime than the .jab was sealed against. Experimental tags stay in tag
-    # form (per-PR, and downstream logic keys on the tag name).
+
     if channel == Channel.EXPERIMENTAL {
         return image;
     }
