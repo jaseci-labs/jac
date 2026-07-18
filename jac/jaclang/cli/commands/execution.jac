@@ -1,5 +1,5 @@
 import from pathlib { Path }
-import from jaclang.cli.command { Arg, ArgKind }
+import from jaclang.cli.command { Arg, ArgKind, ArgType }
 import from jaclang.cli.registry { get_registry }
 
 glob registry = get_registry();
@@ -17,20 +17,28 @@ glob registry = get_registry();
         ),
         Arg.create(
             "show",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Print the resolved project-kind run plan without executing it",
             short="s"
         ),
         Arg.create(
-            "main", typ=bool, default=True, help="Treat module as __main__", short="m"
+            "main",
+            typ=ArgType.BOOL,
+            default=True,
+            help="Treat module as __main__",
+            short="m"
         ),
         Arg.create(
-            "cache", typ=bool, default=True, help="Enable compilation cache", short="c"
+            "cache",
+            typ=ArgType.BOOL,
+            default=True,
+            help="Enable compilation cache",
+            short="c"
         ),
         Arg.create(
             "autonative",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Auto-promote compatible modules to native execution (experimental)",
             short="N"
@@ -71,7 +79,7 @@ glob registry = get_registry();
         Arg.create(
             "debug",
             dest="debug_mode",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             short="",
             help="Run under the Python debugger (absorbs 'jac debug')"
@@ -126,10 +134,12 @@ def run(
             default="",
             help="Entry .jac file (default: [project] entry-point from jac.toml)"
         ),
-        Arg.create("port", typ=int, default=8000, help="Port to serve on", short="p"),
+        Arg.create(
+            "port", typ=ArgType.INT, default=8000, help="Port to serve on", short="p"
+        ),
         Arg.create(
             "api_port",
-            typ=int,
+            typ=ArgType.INT,
             default=0,
             short="",
             help="Backend API port for client dev servers (0 = auto)"
@@ -165,31 +175,35 @@ def enter(
             default="main.jac",
             help="Path to .jac file (default: main.jac)"
         ),
-        Arg.create("port", typ=int, default=8000, help="Server port", short="p"),
-        Arg.create("main", typ=bool, default=True, help="Treat as __main__", short="m"),
+        Arg.create(
+            "port", typ=ArgType.INT, default=8000, help="Server port", short="p"
+        ),
+        Arg.create(
+            "main", typ=ArgType.BOOL, default=True, help="Treat as __main__", short="m"
+        ),
         Arg.create(
             "faux",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Print docs only (no server)",
             short="f"
         ),
         Arg.create(
             "dev",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Enable HMR (Hot Module Replacement) mode",
             short="d"
         ),
         Arg.create(
             "api_port",
-            typ=int,
+            typ=ArgType.INT,
             default=0,
             help="Separate API port for HMR mode (0=same as port)"
         ),
         Arg.create(
             "no-client",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Skip client bundling/serving (API only)"
         ),
@@ -201,7 +215,7 @@ def enter(
         ),
         Arg.create(
             "client",
-            typ=str,
+            typ=ArgType.STR,
             default="web",
             help=(
                 "Client build target for dev server (web, pwa, mobile, desktop). "
@@ -212,7 +226,7 @@ def enter(
         ),
         Arg.create(
             "host",
-            typ=str,
+            typ=ArgType.STR,
             default="",
             help=(
                 "Mobile dev (--client mobile --dev): optional host/IP override for "
@@ -222,7 +236,7 @@ def enter(
         ),
         Arg.create(
             "platform",
-            typ=str,
+            typ=ArgType.STR,
             default="auto",
             help=(
                 "Mobile start/dev: android or ios (auto = use [client.mobile] "
@@ -233,34 +247,34 @@ def enter(
         ),
         Arg.create(
             "scale",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Deploy to a target platform instead of running locally",
             short=""
         ),
         Arg.create(
             "target",
-            typ=str,
+            typ=ArgType.STR,
             default="kubernetes",
             help="Deployment target (kubernetes, aws, gcp, etc.)"
         ),
         Arg.create(
             "enable-tls",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Enable HTTPS via Let's Encrypt (run after pointing your domain CNAME to the NLB)",
             short=""
         ),
         Arg.create(
             "dry-run",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Print the manifests that would be applied; touch nothing (no cluster contact, no downloads, no client build, no DB provisioning, no TLS issuance, no deploy tooling installed)",
             short=""
         ),
         Arg.create(
             "show-yaml",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="With --dry-run: dump the raw YAML stream",
             short=""
@@ -317,7 +331,7 @@ def run_jab_image(
         ),
         Arg.create(
             "global",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Resolve from the jac-owned global site only, ignoring the project venv",
             short="g",
@@ -325,7 +339,7 @@ def run_jab_image(
         ),
         Arg.create(
             "node",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Resolve from the project's npm tools (node_modules/.bin) only",
             short="n",
@@ -333,7 +347,7 @@ def run_jab_image(
         ),
         Arg.create(
             "list_tools",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="List the CLI tools available to run here",
             short="l"

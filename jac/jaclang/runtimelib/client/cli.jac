@@ -1,5 +1,5 @@
 import from jaclang.cli.registry { get_registry }
-import from jaclang.cli.command { Arg, ArgKind }
+import from jaclang.cli.command { Arg, ArgKind, ArgType }
 import from jaclang.project.config { JacConfig }
 import from jaclang.runtimelib.client.mobile_setup_env {
     mobile_setup_platform_env_restore,
@@ -30,7 +30,7 @@ with entry {
         ),
         Arg.create(
             "platform",
-            typ=str,
+            typ=ArgType.STR,
             default=None,
             help="Platform for mobile setup (android, ios, all)",
             choices=["android", "ios", "all"],

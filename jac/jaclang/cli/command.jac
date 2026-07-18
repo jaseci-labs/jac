@@ -9,10 +9,16 @@ enum ArgKind {
     APPEND = 6,
 }
 
+enum ArgType { STR = 1, INT = 2, FLOAT = 3, BOOL = 4, }
+
+def argtype_to_pytype(t: ArgType) -> type;
+
+def argtype_name(t: ArgType) -> str;
+
 obj Arg {
     has name: str,
         kind: ArgKind = ArgKind.OPTION,
-        typ: any = str,
+        typ: ArgType = ArgType.STR,
         `default: any = None,
         help: str = "",
         short: str | None = None,
@@ -24,7 +30,7 @@ obj Arg {
     static def create(
         name: str,
         kind: ArgKind = ArgKind.OPTION,
-        typ: any = str,
+        typ: ArgType = ArgType.STR,
         `default: any = None,
         help: str = "",
         short: str | None = None,

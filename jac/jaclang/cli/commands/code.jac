@@ -1,4 +1,4 @@
-import from jaclang.cli.command { Arg, ArgKind }
+import from jaclang.cli.command { Arg, ArgKind, ArgType }
 import from jaclang.cli.registry { get_registry }
 
 glob registry = get_registry();
@@ -22,13 +22,13 @@ glob registry = get_registry();
         Arg.create(
             "text",
             kind=ArgKind.FLAG,
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Human-readable text instead of the default JSON"
         ),
         Arg.create(
             "depth",
-            typ=int,
+            typ=ArgType.INT,
             default=1,
             help="Type-dependency depth for `slice` (default 1)",
             short="d"

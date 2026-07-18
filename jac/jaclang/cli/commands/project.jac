@@ -1,4 +1,4 @@
-import from jaclang.cli.command { Arg, ArgKind }
+import from jaclang.cli.command { Arg, ArgKind, ArgType }
 import from jaclang.cli.registry { get_registry }
 
 glob registry = get_registry();
@@ -16,7 +16,7 @@ glob registry = get_registry();
         ),
         Arg.create(
             "force",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Overwrite existing jac.toml",
             short="f"
@@ -35,7 +35,7 @@ glob registry = get_registry();
         ),
         Arg.create(
             "list",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="List available project kinds and named variants",
             short="l"
@@ -54,55 +54,55 @@ glob registry = get_registry();
         ),
         Arg.create(
             "skip",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Skip npm package installation (when creating client kinds: web-app/web-static/mobile)"
         ),
         Arg.create(
             "style",
-            typ=str,
+            typ=ArgType.STR,
             default=None,
             help="shadcn style preset (nova|vega|maia|lyra|mira)",
             short=""
         ),
         Arg.create(
             "baseColor",
-            typ=str,
+            typ=ArgType.STR,
             default=None,
             help="shadcn base palette (neutral|stone|zinc|gray)",
             short=""
         ),
         Arg.create(
             "theme",
-            typ=str,
+            typ=ArgType.STR,
             default=None,
             help="shadcn accent theme (e.g. rose, emerald)",
             short=""
         ),
         Arg.create(
             "font",
-            typ=str,
+            typ=ArgType.STR,
             default=None,
             help="shadcn font family (e.g. inter, outfit)",
             short=""
         ),
         Arg.create(
             "radius",
-            typ=str,
+            typ=ArgType.STR,
             default=None,
             help="shadcn border radius (none|small|medium|large)",
             short=""
         ),
         Arg.create(
             "menuAccent",
-            typ=str,
+            typ=ArgType.STR,
             default=None,
             help="shadcn menu accent (subtle|bold)",
             short=""
         ),
         Arg.create(
             "menuColor",
-            typ=str,
+            typ=ArgType.STR,
             default=None,
             help="shadcn menu color scheme",
             short=""
@@ -171,7 +171,7 @@ def create(
         ),
         Arg.create(
             "dev",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Include dev dependencies, or record named package(s) as dev dependencies",
             short="d"
@@ -185,7 +185,7 @@ def create(
         ),
         Arg.create(
             "no-save",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Install named package(s) without recording them in jac.toml",
             short=""
@@ -198,67 +198,71 @@ def create(
         ),
         Arg.create(
             "npm",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Install npm (client-side) package(s); with no names, install all npm deps from jac.toml"
         ),
         Arg.create(
             "shadcn",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Install shadcn UI component(s) from the bundled registry"
         ),
         Arg.create(
-            "verbose", typ=bool, default=False, help="Verbose output", short="v"
+            "verbose", typ=ArgType.BOOL, default=False, help="Verbose output", short="v"
         ),
         Arg.create(
             "force-reinstall",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Reinstall all packages even if they are already up-to-date",
             short=""
         ),
         Arg.create(
             "no-cache-dir",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Disable the pip download cache",
             short=""
         ),
         Arg.create(
             "pre",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Include pre-release and development versions",
             short=""
         ),
         Arg.create(
             "dry-run",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Show what would be installed without actually installing anything",
             short=""
         ),
         Arg.create(
             "no-deps",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Don't install package dependencies",
             short=""
         ),
         Arg.create(
-            "quiet", typ=bool, default=False, help="Suppress pip output", short=""
+            "quiet",
+            typ=ArgType.BOOL,
+            default=False,
+            help="Suppress pip output",
+            short=""
         ),
         Arg.create(
             "prefer-binary",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Prefer wheel files over source distributions",
             short=""
         ),
         Arg.create(
             "global",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Install into the jac-owned global site (importable from any project), not the project venv",
             short="",
@@ -266,21 +270,21 @@ def create(
         ),
         Arg.create(
             "scale",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Materialize the deploy-time capability closure (adds deploy-only clients like kubernetes/docker) instead of just the runtime closure",
             short=""
         ),
         Arg.create(
             "plan",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             short="",
             help="Show the fully resolved dependency plan instead of installing (absorbs 'jac deps')"
         ),
         Arg.create(
             "json",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             short="",
             dest="as_json",
@@ -363,16 +367,22 @@ def install(
         ),
         Arg.create(
             "dev",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Remove from dev dependencies",
             short="d"
         ),
         Arg.create(
-            "npm", typ=bool, default=False, help="Remove npm (client-side) dependency"
+            "npm",
+            typ=ArgType.BOOL,
+            default=False,
+            help="Remove npm (client-side) dependency"
         ),
         Arg.create(
-            "shadcn", typ=bool, default=False, help="Remove shadcn UI component(s)"
+            "shadcn",
+            typ=ArgType.BOOL,
+            default=False,
+            help="Remove shadcn UI component(s)"
         ),
 
     ],
@@ -400,10 +410,14 @@ def remove(
             help="Packages to update (all if empty)"
         ),
         Arg.create(
-            "dev", typ=bool, default=False, help="Include dev dependencies", short="d"
+            "dev",
+            typ=ArgType.BOOL,
+            default=False,
+            help="Include dev dependencies",
+            short="d"
         ),
         Arg.create(
-            "verbose", typ=bool, default=False, help="Verbose output", short="v"
+            "verbose", typ=ArgType.BOOL, default=False, help="Verbose output", short="v"
         ),
 
     ],
@@ -427,35 +441,35 @@ def script(name: str = "", list_scripts: bool = False) -> int;
     args=[
         Arg.create(
             "all",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Clean all .jac artifacts (data, cache, packages, client)",
             short="a"
         ),
         Arg.create(
             "data",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Clean data directory (.jac/data)",
             short="d"
         ),
         Arg.create(
             "cache",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Clean cache directory (.jac/cache)",
             short="c"
         ),
         Arg.create(
             "packages",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Clean virtual environment (.jac/venv)",
             short="p"
         ),
         Arg.create(
             "force",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Force clean without confirmation",
             short="f"

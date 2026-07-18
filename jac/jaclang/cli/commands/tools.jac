@@ -1,4 +1,4 @@
-import from jaclang.cli.command { Arg, ArgKind }
+import from jaclang.cli.command { Arg, ArgKind, ArgType }
 import from jaclang.cli.registry { get_registry }
 
 glob registry = get_registry();
@@ -30,9 +30,15 @@ def tool(tool: str, args: list = []) -> int;
         Arg.create("filename", kind=ArgKind.POSITIONAL, help="Path to .jac file"),
         Arg.create("session", default="", help="Session identifier", short="s"),
         Arg.create("initial", default="", help="Initial node ID", short="i"),
-        Arg.create("depth", typ=int, default=-1, help="Max traversal depth", short="d"),
         Arg.create(
-            "traverse", typ=bool, default=False, help="Enable traversal mode", short="t"
+            "depth", typ=ArgType.INT, default=-1, help="Max traversal depth", short="d"
+        ),
+        Arg.create(
+            "traverse",
+            typ=ArgType.BOOL,
+            default=False,
+            help="Enable traversal mode",
+            short="t"
         ),
         Arg.create(
             "connection",
@@ -42,13 +48,25 @@ def tool(tool: str, args: list = []) -> int;
             short="c"
         ),
         Arg.create(
-            "bfs", typ=bool, default=False, help="Use breadth-first search", short="b"
+            "bfs",
+            typ=ArgType.BOOL,
+            default=False,
+            help="Use breadth-first search",
+            short="b"
         ),
-        Arg.create("edge_limit", typ=int, default=512, help="Max edges", short="e"),
-        Arg.create("node_limit", typ=int, default=512, help="Max nodes", short="n"),
+        Arg.create(
+            "edge_limit", typ=ArgType.INT, default=512, help="Max edges", short="e"
+        ),
+        Arg.create(
+            "node_limit", typ=ArgType.INT, default=512, help="Max nodes", short="n"
+        ),
         Arg.create("saveto", default="", help="Output file path", short="o"),
         Arg.create(
-            "to_screen", typ=bool, default=False, help="Print to stdout", short="p"
+            "to_screen",
+            typ=ArgType.BOOL,
+            default=False,
+            help="Print to stdout",
+            short="p"
         ),
         Arg.create("format", default="dot", help="Output format", short="f"),
 
@@ -101,14 +119,14 @@ def ninja -> int;
     args=[
         Arg.create(
             "shell",
-            typ=str,
+            typ=ArgType.STR,
             default="bash",
             help="Shell to generate completions for (bash, zsh, fish)",
             short="s"
         ),
         Arg.create(
             "install",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Install completions to shell config file (~/.bashrc, ~/.zshrc, etc.)",
             short="i"
@@ -135,7 +153,7 @@ def completions(shell: str = "bash", install: bool = False) -> int;
     args=[
         Arg.create(
             "verify",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Check that jir_registry.jac is up to date; exit 1 if not",
             short="v"
@@ -158,7 +176,7 @@ def gen_jir_registry(verify: bool = False) -> int;
     args=[
         Arg.create(
             "verify",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Check that dispatch annexes are up to date; exit 1 if not",
             short="v"
@@ -173,3 +191,26 @@ def gen_jir_registry(verify: bool = False) -> int;
     group="tools"
 )
 def gen_uni_dispatch(verify: bool = False) -> int;
+
+@registry.command(
+    name="gen-cli-dispatch",
+    hidden=True,
+    help="Regenerate command_dispatch.jac from the registered CLI commands",
+    args=[
+        Arg.create(
+            "verify",
+            typ=ArgType.BOOL,
+            default=False,
+            help="Check that command_dispatch.jac is up to date; exit 1 if not",
+            short="v"
+        ),
+
+    ],
+    examples=[
+        ("jac gen-cli-dispatch", "Regenerate command_dispatch.jac"),
+        ("jac gen-cli-dispatch --verify", "Check dispatch is up to date (for CI)"),
+
+    ],
+    group="tools"
+)
+def gen_cli_dispatch(verify: bool = False) -> int;

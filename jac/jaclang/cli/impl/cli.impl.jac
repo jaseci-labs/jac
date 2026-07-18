@@ -41,6 +41,14 @@ impl start_cli -> None {
 
     _load_project_config();
 
+    fast_rc = _try_fast_path(sys.argv[1:]);
+    if fast_rc is not None {
+        if fast_rc != 0 {
+            sys.exit(fast_rc);
+        }
+        return;
+    }
+
     register_feature_commands();
 
     registry = get_registry();
@@ -134,9 +142,6 @@ impl start_cli -> None {
     executor = get_executor();
     result = executor.execute(command_spec, args_dict);
 
-    if result.error {
-        console.error(f"{result.error}");
-    }
     if result.return_code != 0 {
         sys.exit(result.return_code);
     }
@@ -158,7 +163,7 @@ impl jac_version -> str {
 }
 
 def _extract_script_args(registry: object) -> list {
-    import from jaclang.cli.command { ArgKind }
+    import from jaclang.cli.command { ArgKind, ArgType }
 
     raw = sys.argv[1:];
     if len(raw) < 2 {
@@ -188,7 +193,7 @@ def _extract_script_args(registry: object) -> list {
         if arg.kind in (ArgKind.POSITIONAL, ArgKind.MULTI, ArgKind.REMAINDER) {
             continue;
         }
-        if arg.kind == ArgKind.FLAG or arg.typ == bool {
+        if arg.kind == ArgKind.FLAG or arg.typ == ArgType.BOOL {
             continue;
         }
         value_flags.add(f"--{arg.name}");
@@ -329,4 +334,70 @@ def _apply_config_defaults(config: object, args_dict: dict) {
             args_dict[arg_name] = config_value;
         }
     }
+}
+
+def _try_fast_path(raw_argv: list) -> int | None {
+    import from jaclang.cli.console { console }
+
+    if not raw_argv {
+        return None;
+    }
+
+    if raw_argv == ["-V"] or raw_argv == ["--version"] {
+        import from jaclang.cli.banners { print_version_banner }
+        print_version_banner(jac_version());
+        return 0;
+    }
+
+    if raw_argv[0] == "run" {
+        rest = raw_argv[1:];
+    } elif (
+        not raw_argv[0].startswith("-")
+        and raw_argv[0].lower().endswith((".jac", ".py"))
+    ) {
+        rest = raw_argv;
+    } else {
+        return None;
+    }
+
+    if not rest or rest[0].startswith("-") {
+        return None;
+    }
+    filename = rest[0];
+    if not filename.lower().endswith((".jac", ".py")) {
+        return None;
+    }
+
+    tail = rest[1:];
+    if tail and tail[0] == "--" {
+        script_args = tail[1:];
+    } elif any(tok.startswith("-") for tok in tail) {
+        return None;
+    } else {
+        script_args = tail;
+    }
+
+    args_dict: dict = {
+        "filename": filename,
+        "cache": True,
+        "main": True,
+        "autonative": False,
+        "args": script_args
+    };
+    _apply_profile(args_dict);
+
+    import traceback;
+    import from jaclang.cli.command_dispatch { dispatch_command }
+
+    try {
+        rc = dispatch_command("run", args_dict);
+    } except Exception as e {
+        console.error(f"Error executing 'run': {e}");
+        if sys?.exc_info() {
+            traceback.print_exc();
+        }
+        return 1;
+    }
+
+    return rc;
 }

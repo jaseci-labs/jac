@@ -1,7 +1,7 @@
 import os;
 import pathlib;
 import from jaclang.cli.registry { get_registry }
-import from jaclang.cli.command { Arg, ArgKind }
+import from jaclang.cli.command { Arg, ArgKind, ArgType }
 import from jaclang.cli.console { console }
 import from jaclang.runtimelib.context { ExecutionContext }
 import from jaclang.runtimelib.server { JacAPIServer as JacServer }
@@ -321,19 +321,19 @@ def deploy_status(file_path: str, target: str = "kubernetes") -> int {
         ),
         Arg.create(
             "lines",
-            typ=int,
+            typ=ArgType.INT,
             default=50,
             help="Number of log lines to show (for 'logs' action)"
         ),
         Arg.create(
             "target",
-            typ=str,
+            typ=ArgType.STR,
             default="kubernetes",
             help="Platform target for .jac app status/destroy (kubernetes, aws, gcp, etc.)"
         ),
         Arg.create(
             "component",
-            typ=str,
+            typ=ArgType.STR,
             default="",
             help="Platform destroy: component to remove (application, database, cache, monitoring, dashboard; default: entire deployment)"
         ),

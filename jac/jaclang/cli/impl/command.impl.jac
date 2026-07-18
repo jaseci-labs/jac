@@ -1,7 +1,7 @@
 impl Arg.create(
     name: str,
     kind: ArgKind = ArgKind.OPTION,
-    typ: any = str,
+    typ: ArgType = ArgType.STR,
     `default: any = None,
     help: str = "",
     short: str | None = None,
@@ -34,4 +34,30 @@ impl Arg.create(
 
 impl CommandSpec.get_all_args -> list[Arg] {
     return self.args;
+}
+
+impl argtype_to_pytype(t: ArgType) -> type {
+    if t == ArgType.INT {
+        return int;
+    }
+    if t == ArgType.FLOAT {
+        return float;
+    }
+    if t == ArgType.BOOL {
+        return bool;
+    }
+    return str;
+}
+
+impl argtype_name(t: ArgType) -> str {
+    if t == ArgType.INT {
+        return "int";
+    }
+    if t == ArgType.FLOAT {
+        return "float";
+    }
+    if t == ArgType.BOOL {
+        return "bool";
+    }
+    return "str";
 }

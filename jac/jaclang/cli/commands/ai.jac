@@ -1,4 +1,4 @@
-import from jaclang.cli.command { Arg, ArgKind }
+import from jaclang.cli.command { Arg, ArgKind, ArgType }
 import from jaclang.cli.registry { get_registry }
 
 glob registry = get_registry();
@@ -21,21 +21,21 @@ glob registry = get_registry();
         ),
         Arg.create(
             "n_ctx",
-            typ=int,
+            typ=ArgType.INT,
             default=0,
             help="Context-window size for local models (tokens)"
         ),
         Arg.create(
             "safe",
             kind=ArgKind.FLAG,
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Confirm every file write and code execution (off by default)"
         ),
         Arg.create(
             "quiet",
             kind=ArgKind.FLAG,
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Compact output: hide live reasoning, timings, and step detail",
             short="q"
@@ -43,7 +43,7 @@ glob registry = get_registry();
         Arg.create(
             "ui",
             kind=ArgKind.FLAG,
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Open the agent in a web UI with a live phase-graph visualizer"
         ),

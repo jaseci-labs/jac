@@ -130,7 +130,7 @@ impl CommandRegistry._build_subparser(
 }
 
 impl CommandRegistry._add_argument(parser: argparse.ArgumentParser, arg: Arg) -> None {
-    import from jaclang.cli.command { Arg, ArgKind }
+    import from jaclang.cli.command { Arg, ArgKind, ArgType, argtype_to_pytype }
     kwargs: dict = {"help": arg.help};
     if arg.choices {
         kwargs["choices"] = arg.choices;
@@ -180,7 +180,7 @@ impl CommandRegistry._add_argument(parser: argparse.ArgumentParser, arg: Arg) ->
     } elif arg.kind == ArgKind.REMAINDER {
         kwargs["nargs"] = argparse.REMAINDER;
         parser.add_argument(arg.name, **kwargs);
-    } elif arg.kind == ArgKind.FLAG or arg.typ == bool {
+    } elif arg.kind == ArgKind.FLAG or arg.typ == ArgType.BOOL {
         kwargs["action"] = "store_true";
         kwargs["default"] = arg.default if arg.default is not None else False;
         shared_dest: str = kwargs.get("dest") or arg.name.replace("-", "_");
@@ -197,7 +197,7 @@ impl CommandRegistry._add_argument(parser: argparse.ArgumentParser, arg: Arg) ->
         };
         parser.add_argument(f"--no-{arg.name}", **no_kwargs);
     } else {
-        kwargs["type"] = arg.typ;
+        kwargs["type"] = argtype_to_pytype(arg.typ);
         kwargs["default"] = arg.default;
         if arg.required {
             kwargs["required"] = True;

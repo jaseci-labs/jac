@@ -17,7 +17,7 @@ impl CommandExecutor.execute(
         return_code = 1;
 
         console.error(f"Error executing '{spec.name}': {e}");
-        if sys?.exc_info {
+        if sys?.exc_info() {
             traceback.print_exc();
         }
     }
@@ -26,37 +26,15 @@ impl CommandExecutor.execute(
 }
 
 impl CommandExecutor.run_handler(spec: CommandSpec, args: dict[str, any]) -> int {
-    import inspect;
     import from jaclang.cli.command { CommandSpec }
-    if spec.handler is None {
+    import from jaclang.cli.command_dispatch { dispatch_command }
+
+    rc = dispatch_command(spec.name, args);
+    if rc is None {
         console.error(f"No handler registered for command '{spec.name}'");
         return 1;
     }
-
-    sig = inspect.signature(spec.handler);
-    has_var_keyword = any(
-        p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
-    );
-    if has_var_keyword {
-        filtered_args = args;
-    } else {
-        filtered_args = {
-            k: v
-            for (k, v) in args.items()
-            if k in sig.parameters
-        };
-    }
-    result = spec.handler(**filtered_args);
-
-    if result is None {
-        return 0;
-    } elif isinstance(result, int) {
-        return result;
-    } elif isinstance(result, bool) {
-        return 0 if result else 1;
-    } else {
-        return 0;
-    }
+    return rc;
 }
 
 impl get_executor -> CommandExecutor {

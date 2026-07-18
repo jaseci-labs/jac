@@ -1,4 +1,4 @@
-import from jaclang.cli.command { Arg, ArgKind }
+import from jaclang.cli.command { Arg, ArgKind, ArgType }
 import from jaclang.cli.registry { get_registry }
 
 glob registry = get_registry();
@@ -13,7 +13,7 @@ glob registry = get_registry();
         ),
         Arg.create(
             "print_errs",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=True,
             help="Print detailed error messages",
             short="e"
@@ -32,28 +32,28 @@ glob registry = get_registry();
         ),
         Arg.create(
             "parse_only",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Only check syntax (skip type checking)",
             short="p"
         ),
         Arg.create(
             "nowarn",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Suppress warning output (warnings are still counted)"
         ),
         Arg.create(
             "lint",
             dest="lint_only",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             short="",
             help="Report lint violations only (absorbs 'jac lint')"
         ),
         Arg.create(
             "fix",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             short="",
             help="With --lint: auto-fix violations"
@@ -103,21 +103,21 @@ def lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int;
         ),
         Arg.create(
             "to_screen",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Print to stdout instead of writing",
             short="s"
         ),
         Arg.create(
             "lintfix",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Also apply auto-lint fixes in the same pass",
             short="l"
         ),
         Arg.create(
             "check",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Check if files are formatted without modifying them (exit 1 if unformatted)",
             short="c"
@@ -164,24 +164,27 @@ def format(
             help="Paths to .jac files or directories (default: project root)"
         ),
         Arg.create(
-            "staged", typ=bool, default=False, help="Only process git-staged .jac files"
+            "staged",
+            typ=ArgType.BOOL,
+            default=False,
+            help="Only process git-staged .jac files"
         ),
         Arg.create(
             "verify",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Verify only: do not rewrite files (exit 1 if unformatted)",
             short="v"
         ),
         Arg.create(
             "install",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Install a git pre-commit hook that runs this command"
         ),
         Arg.create(
             "force",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="With --install: replace an existing foreign hook (a backup is kept)"
         ),
@@ -229,14 +232,22 @@ def precommit(
             "filter", default="", help="Filter test files (Unix patterns)", short="f"
         ),
         Arg.create(
-            "xit", typ=bool, default=False, help="Stop on first failure", short="x"
+            "xit",
+            typ=ArgType.BOOL,
+            default=False,
+            help="Stop on first failure",
+            short="x"
         ),
         Arg.create(
-            "maxfail", typ=int, default=None, help="Stop after N failures", short="m"
+            "maxfail",
+            typ=ArgType.INT,
+            default=None,
+            help="Stop after N failures",
+            short="m"
         ),
         Arg.create("directory", default="", help="Test directory", short="d"),
         Arg.create(
-            "verbose", typ=bool, default=False, help="Verbose output", short="v"
+            "verbose", typ=ArgType.BOOL, default=False, help="Verbose output", short="v"
         ),
         Arg.create(
             "ignore",
