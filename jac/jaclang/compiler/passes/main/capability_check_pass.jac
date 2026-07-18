@@ -1,6 +1,6 @@
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.transform { Transform }
-import from jaclang.jac0core.diagnostics { E5090, W6001, W6002, W6003, W6004 }
+import from jaclang.jac0core.diagnostics { E5090, W6001, W6002, W6003, W6004, W6005 }
 
 glob NATIVE_SUPPORTED_STDLIB: set[str] = {
          "sys",
@@ -78,4 +78,5 @@ obj NativeCapabilityCheckPass(Transform[uni.Module, uni.Module]) {
 
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;
+    def _check_str_nul_concat(mod: uni.Module) -> None;
 }

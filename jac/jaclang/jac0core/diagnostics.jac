@@ -1386,6 +1386,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Use of JS-specific property '.{prop}' — use '{alternative}' for cross-codespace portability",
          help="Use Jac common builtins instead of JS-specific properties."
      ),
+     W6005 = _warn(
+         "W6005",
+         Category.CODEGEN,
+         "Embedded NUL from `chr(0)` in native `str` concatenation is dropped",
+         help="Native `str` is a NUL-terminated C string (`i8*`), so `+` measures operands with `strlen` and truncates at the first NUL. To pack binary buffers with embedded zero bytes, use `bytes` (length-aware, preserves NULs) or `calloc` + `memset`/`memcpy`."
+     ),
      E9001 = _err("E9001", Category.ICE, "ICE: Pass {pass_name} -- {details}"),
      E9002 = _err(
          "E9002",
