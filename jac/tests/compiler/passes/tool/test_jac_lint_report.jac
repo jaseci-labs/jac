@@ -8,12 +8,37 @@ mutation pass would — otherwise `jac lint` would silently under-report.
 """
 import os;
 import tempfile;
+import from tests.support { JAC_ROOT }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.compiler { JacCompiler, get_lint_sched }
 import from jaclang.compiler.passes.tool.jac_auto_lint_pass {
     JacAutoLintPass,
     JacLintCheckPass
 }
+
+# SECOND_ORDER_FIXTURES are fixtures where the report path is a *strict subset*
+# of the mutation pass. The mutation pass surfaces some warnings only *after* it
+# has rewritten the tree, i.e. follow-on autofixes on nodes it synthesized:
+#   - combine-glob on `glob`s extracted from `with entry` assignments
+#     (`class_entry`, `extractable`),
+#   - simplify-ternary that only appears once `hasattr(...)` conditions are
+#     rewritten to null-safe access (`hasattr_conversion`),
+#   - combine-has on `has` declarations synthesized from `useState` hooks
+#     (`usestate_to_has`).
+# The report path never mutates, so it emits the *primary* warning (extract /
+# hasattr-to-null-ok / usestate-to-has) and the follow-on surfaces on the next
+# lint once the primary autofix is applied. This is normal iterative linting.
+# These fixtures are exempt from exact parity but still held to the subset
+# invariant (report must never emit a warning the full pass would not).
+glob AUTO_LINT_FIXTURES = os.path.join(
+         JAC_ROOT, "tests", "compiler", "passes", "tool", "fixtures", "auto_lint"
+     ),
+     SECOND_ORDER_FIXTURES = {
+         "class_entry.jac",
+         "extractable.jac",
+         "hasattr_conversion.jac",
+         "usestate_to_has.jac"
+     };
 
 def _warn_keys(prog: JacProgram) -> list[str] {
     keys: list[str] = [];
@@ -41,6 +66,37 @@ def _write_tmp(src: str) -> str {
     return path;
 }
 
+def _report_and_full(
+    path: str, source: str | None = None
+) -> tuple[list[str], list[str]] {
+    src = source;
+    if src is None {
+        with open(path) as f {
+            src = f.read();
+        }
+    }
+    prog = JacProgram.jac_file_linter(path);
+    rep_keys = _warn_keys(prog);
+    full_keys = _full_pass_warnings(src, path);
+    return (rep_keys, full_keys);
+}
+
+def _assert_report_matches_full(path: str, source: str | None = None) {
+    (rep_keys, full_keys) = _report_and_full(path, source);
+    assert rep_keys == full_keys , (
+        f"warning set diverged for {path}: " f"report={rep_keys} full={full_keys}"
+    );
+}
+
+def _assert_report_subset_of_full(path: str, source: str | None = None) {
+    (rep_keys, full_keys) = _report_and_full(path, source);
+    extra = sorted(set(rep_keys) - set(full_keys));
+    assert not extra , (
+        f"report path over-reported for {path}: "
+        f"warnings not emitted by the full pass: {extra}"
+    );
+}
+
 test "lint report scheduler uses JacLintCheckPass" {
     sched = get_lint_sched();
     assert len(sched) == 1;
@@ -63,12 +119,30 @@ test "lint report path preserves every warning the mutation pass emits" {
     ];
     for src in sources {
         path = _write_tmp(src);
-        prog = JacProgram.jac_file_linter(path);
-        rep_keys = _warn_keys(prog);
-        full_keys = _full_pass_warnings(src, path);
-        assert rep_keys == full_keys , (
-            f"warning set diverged for {path}: " f"report={rep_keys} full={full_keys}"
-        );
-        os.remove(path);
+        try {
+            _assert_report_matches_full(path, src);
+        } finally {
+            os.remove(path);
+        }
+    }
+}
+
+test "lint report path matches mutation pass on auto_lint fixtures" {
+    fixture_names = sorted(
+        name
+        for name in os.listdir(AUTO_LINT_FIXTURES)
+        if name.endswith(".jac")
+    );
+    assert "empty_parens.jac" in fixture_names;
+    for name in fixture_names {
+        path = os.path.join(AUTO_LINT_FIXTURES, name);
+        # The report path must never emit a warning the full pass would not,
+        # on any fixture (no spurious or wrong warnings).
+        _assert_report_subset_of_full(path);
+        # And it must match the full pass exactly, except on fixtures whose
+        # only divergence is a documented follow-on autofix warning.
+        if name not in SECOND_ORDER_FIXTURES {
+            _assert_report_matches_full(path);
+        }
     }
 }
