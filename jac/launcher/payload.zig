@@ -1788,17 +1788,10 @@ fn zstdCompressAlloc(gpa: Allocator, bytes: []const u8) ![]u8 {
     return gpa.realloc(dst, n) catch dst[0..n];
 }
 
-/// On-disk mode of `sub_path` (within `dir`), or 0 when unreadable / on a
-/// platform without real executable bits (Windows/WASI). `tarZstDir` feeds
-/// this to `writeFileBytes` so executable files survive pack/extract;
-/// returning 0 falls through to the tar Writer's 0o664 default.
-///
-/// Guarded on `has_executable_bit`, not `@hasDecl(Permissions, "toMode")`:
-/// WASI selects the POSIX Permissions variant (so `toMode` exists) yet sets
-/// `has_executable_bit = false`, so a `toMode` guard would archive a
-/// meaningless mode there. `has_executable_bit` is a comptime `pub const` on
-/// every variant, and the untaken branch is elided before `toMode()` is
-/// analyzed.
+/// On-disk mode of `sub_path`, or 0 (tar Writer's 0o664 default) when
+/// unreadable or on a platform without real exec bits. Guarded on
+/// `has_executable_bit` rather than `@hasDecl(Permissions, "toMode")` because
+/// WASI has `toMode` but `has_executable_bit = false`.
 fn sourceFileMode(io: Io, dir: Dir, sub_path: []const u8) u32 {
     const Perm = Io.File.Permissions;
     if (Perm.has_executable_bit) {
@@ -1828,12 +1821,9 @@ fn tarZstDir(io: Io, gpa: Allocator, a: Allocator, stage: []const u8, out: []con
             else => {
                 const bytes = try stage_dir.readFileAlloc(io, entry.path, a, .unlimited);
                 defer a.free(bytes);
-                // Preserve the on-disk mode so executable scripts
-                // (build_libwebview.sh et al.) keep their exec bit across the
-                // pack -> extract pipeline. writeFileBytes treats `mode = 0`
-                // as "use the header default 0o664", stripping IXUSR so the
-                // runtime spawn fails EACCES. The matching extract-side fix is
-                // runtime.zig extractPayload's .executable_bit_only.
+                // Carry the real on-disk mode so executable scripts keep their
+                // exec bit; `mode = 0` would strip IXUSR (see runtime.zig
+                // extractPayload's matching .executable_bit_only).
                 try tw.writeFileBytes(entry.path, bytes, .{ .mode = sourceFileMode(io, stage_dir, entry.path) });
             },
         }
@@ -1919,10 +1909,8 @@ test "tarZstDir round-trips through the launcher's payload decoder" {
         .sub_path = try std.fmt.allocPrint(a, "{s}/python/bin/python", .{stage}),
         .data = text,
     });
-    // An executable script committed 0o755: it must survive pack/extract with
-    // its exec bit intact (the regression this test guards). Guarded on
-    // `has_executable_bit` so the test compiles on Windows/WASI (WASI exposes
-    // `toMode` but lacks executable-bit semantics).
+    // A 0o755 script must survive pack/extract with its exec bit intact.
+    // Guarded on `has_executable_bit` so the test compiles on Windows/WASI.
     const exec_script = "#!/bin/sh\necho hi\n";
     const has_mode = Io.File.Permissions.has_executable_bit;
     if (has_mode) {
@@ -1955,10 +1943,8 @@ test "tarZstDir round-trips through the launcher's payload decoder" {
     try Dir.cwd().createDirPath(io, dest);
     var dest_dir = try Dir.cwd().openDir(io, dest, .{});
     defer dest_dir.close(io);
-    // Extract through the SAME mode_mode constant production uses, so this
-    // test also covers the extract side: reverting runtime.zig's
-    // `payload_extract_mode_mode` to `.ignore` flattens the exec bit here and
-    // fails the IXUSR assertion below.
+    // Extract through the same mode_mode production uses, so this test covers
+    // the extract side too (reverting it to `.ignore` fails the IXUSR check).
     try std.tar.extract(io, dest_dir, &dec.reader, .{ .mode_mode = runtime.payload_extract_mode_mode, .strip_components = 0 });
 
     try testing.expectEqualStrings(text, try dest_dir.readFileAlloc(io, "python/bin/python", a, .unlimited));
@@ -1973,8 +1959,8 @@ test "tarZstDir round-trips through the launcher's payload decoder" {
         try testing.expect(sst.permissions.toMode() & 0o100 != 0); // IXUSR preserved
     }
 
-    // Symmetric guard: a plain non-executable source file must STAY non-exec,
-    // so the mode fix can't be over-broad (e.g. unconditionally 0o777).
+    // Symmetric guard: a non-executable file must stay non-exec, so the fix
+    // can't be over-broad.
     if (has_mode) {
         const pf = try dest_dir.openFile(io, "python/bin/python", .{});
         defer pf.close(io);
