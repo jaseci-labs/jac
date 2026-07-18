@@ -1,3 +1,8 @@
+# devenv / direnv
+.devenv/
+devenv.local.nix
+.direnv/
+
 # Django #
 *.log
 *.pot
