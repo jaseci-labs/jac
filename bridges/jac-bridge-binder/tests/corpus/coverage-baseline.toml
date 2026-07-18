@@ -320,9 +320,10 @@ dropped = 0
 # (`major`/`minor`/`patch` scalars, `pre`/`build` handles, `op` enum-name string)
 # and their own Display/Ord/FromStr/`matches` surface; with the Option<int> lane,
 # `Comparator.minor`/`.patch` (`Option<u64>`) field readers cross too, for 36/39
-# (92%). The remaining honest skips are `VersionReq.comparators`
-# (`Vec<Comparator>` -- no list-of-handle lane) and `*::from_iter`
-# (`FromIterator` is generic).
+# (92%); the VEC-OF-HANDLE lane then bridges `VersionReq.comparators`
+# (`Vec<Comparator>` as a list of owned element handles on
+# TAG_LIST_BIT|TAG_REF) for 37/39 (95%). The remaining honest skips are the
+# two `*::from_iter` (`FromIterator` is generic).
 [semver]
 bridged = 12
 total = 15

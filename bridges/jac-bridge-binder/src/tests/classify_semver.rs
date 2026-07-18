@@ -181,6 +181,15 @@ fn field_reader_lane_scalar_handle_and_enum() {
     let build = method(&spec, "Version", "build");
     assert_eq!(build.ret, BridgeReturn::Ref("BuildMetadata".into()));
 
+    // Vec-of-handle field reader (`VersionReq.comparators: Vec<Comparator>`).
+    let comps = method(&spec, "VersionReq", "comparators");
+    assert_eq!(
+        comps.ret,
+        BridgeReturn::HandleList("Comparator".into()),
+        "VersionReq::comparators rides the Vec-of-handle lane"
+    );
+    assert_eq!(comps.field_read.as_deref(), Some("comparators"));
+
     // Fieldless-enum field reader (`Comparator.op: semver::Op`) -> variant-name str.
     let op = method(&spec, "Comparator", "op");
     match &op.ret {
@@ -219,8 +228,6 @@ fn honest_skips_for_unbridgeable_fields() {
             .map(|s| format!("{:?}", s.reason))
             .unwrap_or_else(|| panic!("{item} must be a recorded skip"))
     };
-    // Vec<Comparator>: no list-of-handle lane.
-    assert!(skip_reason("VersionReq::comparators").contains("list-of-handle"));
     // FromIterator is generic.
     assert!(skip_reason("VersionReq::from_iter")
         .to_lowercase()

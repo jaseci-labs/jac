@@ -372,6 +372,31 @@ def _decode_list(raw: bytes, vtag: int) -> list {
 }
 
 
+def _decode_handle_list(
+    raw: bytes, vtag: int, rt: object, classes: dict[int, type]
+) -> list {
+    out = [];
+    (count, ) = struct.unpack_from("<I", raw, 0);
+    off = 4;
+    cls = classes.get(tag_ref_index(vtag));
+    for _ in range(count) {
+        (h, ) = struct.unpack_from("<Q", raw, off);
+        off += 8;
+        if cls is None {
+            out.append(h);
+            continue;
+        }
+        stub = object.__new__(cls);
+        stub._handle = h;
+        stub._closed = False;
+        stub._rt = rt;
+        stub._finalizer = None;
+        out.append(stub);
+    }
+    return out;
+}
+
+
 def _mp_read(raw: bytes, off: int, depth: int) -> tuple {
     if depth > 64 {
         raise ValueError("msgpack decode: recursion depth exceeded");
@@ -682,7 +707,11 @@ def _call(
         }
         raw = string_at(out_buf.ptr, out_buf.len) if out_buf.ptr != 0 else b"";
         rt.free_buf(out_buf);
-        return _decode_list(raw, tag_list_value(fd.ret));
+        vtag = tag_list_value(fd.ret);
+        if tag_is_ref(vtag) {
+            return _decode_handle_list(raw, vtag, rt, classes);
+        }
+        return _decode_list(raw, vtag);
     }
     if ret.kind == SlotKind.Void {
         return None;

@@ -434,6 +434,16 @@ fn semver_bridge_compiles_clean() {
         lib_src.contains("pub fn minor(&self) -> Option<u64> {\n            self.0.minor"),
         "Comparator.minor must ride the Option<int> field-reader lane\n{lib_src}"
     );
+    // Vec-of-handle lane: `VersionReq.comparators: Vec<Comparator>` clones each
+    // element into its own owned handle box (TAG_LIST_BIT | TAG_REF wire).
+    assert!(
+        lib_src.contains("pub fn comparators(&self) -> Vec<Comparator>"),
+        "VersionReq.comparators must ride the Vec-of-handle lane\n{lib_src}"
+    );
+    assert!(
+        lib_src.contains(".iter().map(|x| Comparator(x.clone())).collect()"),
+        "comparators body must clone each element into the newtype\n{lib_src}"
+    );
     // No unresolvable std-trait `use` leaked (the FromStr call is fully-qualified).
     assert!(
         !lib_src.contains("use semver::core::") && !lib_src.contains("use semver::std::"),
@@ -483,6 +493,7 @@ fn semver_bridge_compiles_clean() {
         "jac_semver_Comparator_matches", // Comparator forced opaque: its methods bridge
         "jac_semver_Comparator_op", // fieldless-enum field reader (-> String)
         "jac_semver_Comparator_minor", // Option<u64> field reader (Option<int> lane)
+        "jac_semver_VersionReq_comparators", // Vec-of-handle field reader
         "jac_semver_BuildMetadata_cmp", // Ord lane on a naturally-opaque type
         "jac_bridge_init_semver",
     ] {

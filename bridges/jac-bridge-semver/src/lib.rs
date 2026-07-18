@@ -177,5 +177,9 @@ mod bridge_impl {
         pub fn from_str(text: &str) -> Result<Self, String> {
             <semver::VersionReq as ::std::str::FromStr>::from_str(text).map(Self).map_err(|e| e.to_string())
         }
+
+        pub fn comparators(&self) -> Vec<Comparator> {
+            self.0.comparators.iter().map(|x| Comparator(x.clone())).collect()
+        }
     }
 }

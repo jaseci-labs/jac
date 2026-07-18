@@ -791,6 +791,22 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
         BridgeReturn::OptIntValue(rust) | BridgeReturn::OptUintValue(rust) => {
             (format!(" -> Option<{rust}>"), base_call(&recv_expr))
         }
+        // Vec-of-handle: wrap every element in the target newtype. A FIELD
+        // reader borrows the Vec through `&self`, so it clones each element out
+        // (elements verified `Clone` in the classifier); an owned method return
+        // moves them. The macro boxes each wrapped element into its own fresh
+        // owned handle (`TAG_LIST_BIT | TAG_REF`).
+        BridgeReturn::HandleList(name) => {
+            let body = if f.field_read.is_some() {
+                format!(
+                    "{}.iter().map(|x| {name}(x.clone())).collect()",
+                    base_call(&recv_expr)
+                )
+            } else {
+                format!("{}.into_iter().map({name}).collect()", base_call(&recv_expr))
+            };
+            (format!(" -> Vec<{name}>"), body)
+        }
         // Integer-iterator collect: eagerly drain the borrowed iterator into an
         // owned Vec riding the list-return lane; no lifetime survives the call.
         BridgeReturn::CollectList(rust) => (

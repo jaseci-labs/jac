@@ -16,7 +16,9 @@
 # `parse` ctor / `matches` / `op` / `major` all cross, and its `minor`/`patch`
 # `Option<u64>` fields exercise the OPTION<INT> lane (Some as an 8-byte JacBuf,
 # None as a null pointer) on both runtimes ("~1.2" has Some(2)/None; "^1" has
-# None/None; "<3.0.0" has Some(0)/Some(0)).
+# None/None; "<3.0.0" has Some(0)/Some(0)). The VEC-OF-HANDLE lane is exercised
+# via `VersionReq.comparators()`: a list of per-element OWNED Comparator handles
+# (each read via to_string/op and closed individually).
 #
 # The `#[jac(assoc)]` statics (`Version.parse`, and the `from_str` FromStr family)
 # are na-gated, so they are intentionally NOT exercised here — a static cannot cross
@@ -76,6 +78,15 @@ def cpython_side -> list {
         lines.append(f"comp {ci} m0 = {int(c.matches(vers[0]))}");
         c.close();
     }
+    # Vec-of-handle: comparators() -> a list of owned Comparator handles.
+    vr = semver.VersionReq(">=1.2, <2.0");
+    comps = vr.comparators();
+    lines.append(f"vr ncomps = {len(comps)}");
+    for (ki, c) in enumerate(comps) {
+        lines.append(f"vr comp {ki} = {c.to_string()} op={c.op()}");
+        c.close();
+    }
+    vr.close();
     for v in vers {
         v.close();
     }
@@ -145,6 +156,20 @@ def na_side -> list {
         parts.append("    }");
         parts.append("    c.close();");
     }
+    parts.append(f"    vr = VersionReq({jac_str('>=1.2, <2.0')});");
+    parts.append("    comps = vr.comparators();");
+    parts.append(f"    print({jac_str('vr ncomps = ')} + str(len(comps)));");
+    parts.append("    ki = 0;");
+    parts.append("    for c in comps {");
+    parts.append(
+        f"        print({jac_str('vr comp ')} + str(ki) + {jac_str(
+            ' = '
+        )} + c.to_string() + {jac_str(' op=')} + c.op());"
+    );
+    parts.append("        c.close();");
+    parts.append("        ki += 1;");
+    parts.append("    }");
+    parts.append("    vr.close();");
     probe.extend(parts);
     probe.append("}");
     return run_na_probe(
