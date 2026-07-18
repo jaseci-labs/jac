@@ -236,6 +236,7 @@ obj CodeGenTarget {
         _doc_ir: (Doc | None) = None,
         js: str = '',
         css: str = '',
+        c_src: str = '',
         _client_manifest: (ClientManifest | None) = None,
         py_ast: list = field(default_factory=`list),
         py_bytecode: (bytes | None) = None,
