@@ -297,6 +297,9 @@ sem request_needs_code_changes.objective = "The user's original request for this
 sem request_needs_code_changes.plan = "The plan and findings produced by the Plan phase so far.";
 
 
+def is_conversational_prompt(objective: str) -> bool;
+
+
 edge Flow {}
 
 node PhaseState {

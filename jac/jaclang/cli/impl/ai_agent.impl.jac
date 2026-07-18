@@ -1891,12 +1891,102 @@ impl QA.directive -> str {
 
 sem run_phase.directive = "A short instruction kicking off the current phase.";
 
+impl is_conversational_prompt(objective: str) -> bool {
+    text = objective.strip().lower();
+    while text and text[-1] in "!.?,;:" {
+        text = text[:-1].strip();
+    }
+    if not text {
+        return True;
+    }
+    GREETINGS = {
+        "hi",
+        "hii",
+        "hiya",
+        "hey",
+        "hello",
+        "helo",
+        "yo",
+        "sup",
+        "howdy",
+        "gm",
+        "thanks",
+        "thank you",
+        "thankyou",
+        "thx",
+        "ty",
+        "ok",
+        "okay",
+        "k",
+        "cool",
+        "nice",
+        "great",
+        "awesome",
+        "bye",
+        "goodbye",
+        "cya"
+    };
+    if text in GREETINGS {
+        return True;
+    }
+    words = text.split();
+    if len(words) <= 3 {
+        SIMPLE = {
+            "hi",
+            "hii",
+            "hiya",
+            "hey",
+            "hello",
+            "helo",
+            "yo",
+            "sup",
+            "howdy",
+            "there",
+            "gm",
+            "good",
+            "morning",
+            "afternoon",
+            "evening",
+            "night",
+            "thanks",
+            "thank",
+            "you",
+            "thankyou",
+            "thx",
+            "ty",
+            "ok",
+            "okay",
+            "cool",
+            "nice",
+            "great",
+            "awesome",
+            "bye",
+            "goodbye",
+            "cya",
+            "please"
+        };
+        if all(w in SIMPLE for w in words) {
+            return True;
+        }
+    }
+    return False;
+}
+
 impl Plan.run with AgentSession entry {
     if agent.bus.cancel_requested {
         return;
     }
     self.step(visitor);
     if self.halt(visitor) {
+        return;
+    }
+
+    if is_conversational_prompt(visitor.objective) {
+        console.print(
+            "  ↳ conversational prompt -- answered in Plan, skipping Build/QA",
+            style="green"
+        );
+        visit [->:Flow:->][?:Done];
         return;
     }
 
@@ -1929,7 +2019,9 @@ impl Build.run with AgentSession entry {
     if self.halt(visitor) {
         return;
     }
-    if int(result.get("n_write", 0) or 0) == 0 and visitor.build_nudges < 2 {
+    if int(result.get("n_write", 0) or 0) == 0
+    and visitor.build_nudges < 2
+    and not is_conversational_prompt(visitor.objective) {
         visitor.build_nudges += 1;
         self.ctx.append(
             {

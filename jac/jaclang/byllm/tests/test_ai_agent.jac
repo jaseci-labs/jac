@@ -324,6 +324,59 @@ test "a scripted MockLLM drives the AgentSession walker through its phases" {
 }
 
 
+test "the conversational fast-path recognises greetings but not code requests" {
+    # Bare greetings / pleasantries are conversational (route Plan -> Done).
+    for g in [
+        "hi",
+        "Hi!",
+        "  hello  ",
+        "hey there",
+        "thanks",
+        "ok",
+        "Good morning",
+        ""
+    ] {
+        assert ai.is_conversational_prompt(g) , g;
+    }
+    # Real work is not conversational (must still reach the classifier / Build).
+    for r in [
+        "add a greeting endpoint",
+        "fix the bug in model.jac",
+        "hello, add a User node",
+        "build me a calculator"
+    ] {
+        assert not ai.is_conversational_prompt(r) , r;
+    }
+}
+
+
+test "a greeting routes Plan -> Done and never enters Build/QA" {
+    proj = make_project();
+    events: list = [];
+    arm(proj, events);
+
+    # Only the Plan phase runs the model (one conversational reply). The
+    # deterministic fast-path then routes Plan -> Done, so no classifier output
+    # is consumed and Build/QA never run.
+    ai.agent_model = Model(
+        model_name="mockllm",
+        config={
+            "outputs": ["Hi! I'm the Jac coding agent -- what can I build for you?"]
+        }
+    );
+
+    out = capturing(lambda { AgentSessionSpawn("hi"); });
+
+    assert "conversational prompt" in out , out;
+    assert "Done" in out , out;
+    # A greeting must not enter Build/QA, and must not write any project files.
+    assert "Build wrote no files" not in out , out;
+    assert not list(Path(proj).glob("*.py")) , out;
+
+    shutil.rmtree(proj, ignore_errors=True);
+}
+
+
 """Spawn an AgentSession bounded to two steps so the walk halts after QA."""
 def AgentSessionSpawn(objective: str) {
     ai.AgentSession(
