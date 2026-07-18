@@ -26,6 +26,7 @@ import from jaclang.runtimelib.client.targets.react_native.build {
     run_eas_update_opt_in,
     run_xcodebuild_ios,
     stage_native_image_assets,
+    entry_module_for,
     stage_compiled_entry,
     strip_css_imports,
     write_native_entry
@@ -170,7 +171,7 @@ impl ReactNativeTarget.build(
     lint_native_incompatible_usage(compiled_dir, sources=js_sources);
     strip_css_imports(compiled_dir);
 
-    entry_module: str = entry_file.stem;
+    entry_module: str = entry_module_for(entry_file, project_dir);
     stage_compiled_entry(compiled_dir, rn_dir, entry_module);
     stage_native_image_assets(rn_dir / "jac-src", rn_dir);
     write_native_entry(rn_dir);
@@ -273,7 +274,7 @@ impl ReactNativeTarget.dev(
     lint_native_incompatible_usage(compiled_dir, sources=js_sources);
     strip_css_imports(compiled_dir);
 
-    entry_module: str = entry_file.stem;
+    entry_module: str = entry_module_for(entry_file, project_dir);
     stage_compiled_entry(compiled_dir, rn_dir, entry_module);
     stage_native_image_assets(rn_dir / "jac-src", rn_dir);
     write_native_entry(rn_dir);

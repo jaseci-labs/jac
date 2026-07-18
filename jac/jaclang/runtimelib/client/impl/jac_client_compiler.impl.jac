@@ -52,6 +52,7 @@ impl JacClientCompiler.compile(
         visited=visited,
         collected_exports=collected_exports,
         collected_globals=collected_globals,
+        source_root=self.project_dir,
         target_name=target_name
     );
     self._has_pages = self._scan_and_compile_pages(

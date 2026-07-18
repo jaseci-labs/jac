@@ -124,7 +124,7 @@ def _scan_project(entry_file: str) -> tuple {
                 continue;
             }
             for target in markers.sv_import_targets {
-                services.add(target);
+                services.add(target.split(".")[-1]);
             }
             if markers.is_service {
                 services.add(stem);

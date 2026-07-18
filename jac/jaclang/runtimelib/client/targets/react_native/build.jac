@@ -112,6 +112,16 @@ def write_native_entry(rn_dir: Path) {
     console.print("  ✔ Wrote native entry (index.ts)", style="success");
 }
 
+def entry_module_for(entry_file: Path, project_dir: Path) -> str {
+    try {
+        rel = entry_file.resolve().relative_to(project_dir.resolve());
+        return str(rel.with_suffix("")).replace(os.sep, "/");
+    } except ValueError {
+        return entry_file.stem;
+    }
+}
+
+
 def stage_compiled_entry(compiled_dir: Path, rn_dir: Path, entry_module: str) -> Path {
     src = compiled_dir / f"{entry_module}.js";
     if not src.exists() {
