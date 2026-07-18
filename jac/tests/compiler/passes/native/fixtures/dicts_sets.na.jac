@@ -302,6 +302,29 @@ def global_dict_get_notfound_method() -> int {
     return LOOKUP.get(99, -42);
 }
 
+# ── empty-container literal in a RETURN position ──
+# `return {}` has no element type of its own; it must be lowered from the
+# function's declared dict return type. This used to error with
+# "Native pathway does not yet support expression 'DictVal'".
+def make_empty_dict_ret() -> dict[int, int] {
+    return {};
+}
+
+def empty_dict_return_len() -> int {
+    d: dict[int, int] = make_empty_dict_ret();
+    return len(d);
+}
+
+# ── empty-container literal in a CALL-ARGUMENT position ──
+# `f({})` lowers the empty dict from the callee's parameter slot type.
+def take_dict_len(d: dict[int, int]) -> int {
+    return len(d);
+}
+
+def empty_dict_call_arg() -> int {
+    return take_dict_len({});
+}
+
 with entry {
     _init_done = 1;
 }

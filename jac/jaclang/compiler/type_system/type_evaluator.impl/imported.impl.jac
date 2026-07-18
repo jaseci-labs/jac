@@ -220,6 +220,11 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
         ) {
             return last_type;
         }
+
+        bridge_ty = self._try_resolve_rust_bridge(node_);
+        if bridge_ty is not None {
+            return bridge_ty;
+        }
         path_list = node_.resolve_relative_path_list();
 
         offset = 0;
@@ -298,6 +303,59 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
         return node_.path[-1].type;
     }
     return types.UnknownType();
+}
+
+impl TypeEvaluator._try_resolve_rust_bridge(
+    node_: uni.ModulePath
+) -> types.TypeBase | None {
+    if len(node_.path) != 2 {
+        return None;
+    }
+    if node_.path[0].value != "rust" {
+        return None;
+    }
+    import from jaclang.compiler.rust_bridge._finder { is_bridge_module }
+    crate = node_.path[1].value;
+    mod_name = node_.path[0].value + "." + crate;
+    if not is_bridge_module(mod_name) {
+        return None;
+    }
+
+    import from jaclang.compiler.rust_bridge { materialize_bridge }
+
+    bridge_path = materialize_bridge(mod_name);
+    if bridge_path is None {
+        return None;
+    }
+
+    mod = self._import_module_from_path(
+        bridge_path, importer_path=self._resolve_importer_path(node_)
+    );
+
+    flags = type_utils.compute_module_source_flags(bridge_path);
+    mod_type = types.ModuleType(
+        mod_name=crate,
+        file_uri=Path(bridge_path),
+        symbol_table=mod,
+        is_stub_file=flags.is_stub_file,
+        is_stdlib_stub=flags.is_stdlib_stub,
+        is_typing_stub=flags.is_typing_stub,
+        is_builtin_stub=flags.is_builtin_stub,
+    );
+
+    ns_type = types.ModuleType(
+        mod_name="rust", file_uri=Path("rust"), symbol_table=None, is_external=True
+    );
+    node_.path[0].type = ns_type;
+    node_.path[0]._sym_category = SymbolType.MODULE;
+    node_.path[1].type = mod_type;
+    node_.path[1]._sym_category = SymbolType.MODULE;
+    self._module_type_cache[bridge_path] = mod_type;
+    if node_.alias {
+        node_.alias.type = mod_type;
+        node_.alias._sym_category = SymbolType.MODULE;
+    }
+    return node_.path[-1].type;
 }
 
 impl TypeEvaluator._resolve_submodule_attr(

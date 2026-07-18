@@ -1,0 +1,159 @@
+name: Rust Bridge Artifacts
+
+# M5.4 registry-as-cache: build publishable bridge cdylibs for every supported
+# target triple, checksum them, and merge a single static index.json that the
+# resolver (jaclang/compiler/rust_bridge/_registry.jac) fetches on a cache miss.
+#
+# Each matrix leg builds NATIVELY on a runner of the matching architecture — no
+# cross-linkers — mirroring the local _builder.jac pipeline (cargo add → nightly
+# rustdoc JSON → jac-bridge-binder → cargo build). The merge job folds every
+# leg's manifest fragment into index.json and uploads the whole tree as one
+# artifact; on a tagged release it also publishes to the `bridge-registry`
+# branch, which any static host (GitHub Pages, S3, a CDN) can serve as-is.
+#
+# JAC_BRIDGE_REGISTRY then points a consumer at that base URL and `jac add
+# rust:<crate>` / `jac install` resolve straight from it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      crates:
+        description: "Space-separated crate specs (crate or crate@version)"
+        default: "regex"
+        type: string
+      publish:
+        description: "Publish index to the bridge-registry branch"
+        default: false
+        type: boolean
+  push:
+    tags:
+      - "bridges-v*"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Seed set for tag builds (workflow_dispatch overrides via inputs.crates).
+  # Extend as the binder gains coverage for more crates; a crate that fails to
+  # bind fails only its own leg record, never the whole index.
+  DEFAULT_CRATES: "regex"
+
+jobs:
+  build:
+    name: build ${{ matrix.triple }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            triple: x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm
+            triple: aarch64-unknown-linux-gnu
+          - os: macos-13
+            triple: x86_64-apple-darwin
+          - os: macos-14
+            triple: aarch64-apple-darwin
+          - os: windows-latest
+            triple: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable + nightly)
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup toolchain install nightly --profile minimal
+          rustup default stable
+        shell: bash
+
+      # Install jaclang FROM THE CHECKOUT (the branch under review), not a
+      # published PyPI wheel. The bridge build tools import branch-only compiler
+      # modules (jaclang.compiler.rust_bridge.*) that a released jaclang does not
+      # ship, so a `pip install jaclang` is dead on arrival. setup-jac builds the
+      # `jac` binary from this tree (bundled CPython, so no separate setup-python
+      # step is needed) and puts it on PATH.
+      - name: Set up jac from the checkout
+        uses: ./.github/actions/setup-jac
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            bridges/target
+          key: artifacts-${{ matrix.triple }}-${{ hashFiles('bridges/**/Cargo.toml') }}
+          restore-keys: artifacts-${{ matrix.triple }}-
+
+      - name: Build the binder
+        working-directory: bridges
+        run: cargo build -p jac-bridge-binder --release
+
+      - name: Build bridge artifacts
+        shell: bash
+        run: |
+          CRATES="${{ github.event.inputs.crates || env.DEFAULT_CRATES }}"
+          jac run bridges/tools/build_bridge_artifacts.jac \
+            --workspace bridges \
+            --out dist \
+            --triple "${{ matrix.triple }}" \
+            $CRATES
+
+      - name: Upload manifest + artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bridge-dist-${{ matrix.triple }}
+          path: dist/
+          if-no-files-found: error
+
+  merge:
+    name: merge index
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Install jaclang FROM THE CHECKOUT (the branch under review), not a
+      # published PyPI wheel. The bridge build tools import branch-only compiler
+      # modules (jaclang.compiler.rust_bridge.*) that a released jaclang does not
+      # ship, so a `pip install jaclang` is dead on arrival. setup-jac builds the
+      # `jac` binary from this tree (bundled CPython, so no separate setup-python
+      # step is needed) and puts it on PATH.
+      - name: Set up jac from the checkout
+        uses: ./.github/actions/setup-jac
+
+      - name: Download all target artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: bridge-dist-*
+          path: staging
+          merge-multiple: true
+
+      - name: Merge into index.json
+        run: |
+          jac run bridges/tools/merge_registry_index.jac --out staging/index.json staging
+          echo "----- index.json -----"
+          cat staging/index.json
+
+      - name: Upload registry tree
+        uses: actions/upload-artifact@v4
+        with:
+          name: bridge-registry
+          path: staging/
+          if-no-files-found: error
+
+      # On a tag (or an explicit publish request) push the whole tree — index.json
+      # plus the crate/version/triple/*.{so,dylib,dll} layout — to an orphan
+      # branch that a static host serves verbatim.
+      - name: Publish to bridge-registry branch
+        if: startsWith(github.ref, 'refs/tags/bridges-v') || github.event.inputs.publish == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan bridge-registry
+          git rm -rf --quiet . || true
+          cp -r staging/* .
+          git add -A
+          git commit -m "Publish bridge registry ${{ github.ref_name }}"
+          git push --force origin bridge-registry

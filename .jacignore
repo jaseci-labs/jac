@@ -572,6 +572,20 @@ scripts/release.jac
 scripts/release_utils.jac
 scripts/validate_release.jac
 
+# Rust bridge loader + regex bridge — ctypes CDLL dynamic attribute access
+# (jac_regex_*, jac_bridge_init_regex) and argtypes list covariance are not
+# expressible in the current type system. Full paths to avoid false matches.
+bridges/jac-bridge-regex/jac/regex.jac
+bridges/jac-bridge-regex/jac/regex_native.jac
+bridges/jac-bridge-regex/jac/test_regex.jac
+jac/jaclang/compiler/rust_bridge/__init__.jac
+jac/jaclang/compiler/rust_bridge/_blob.jac
+jac/jaclang/compiler/rust_bridge/_ctypes_codegen.jac
+jac/jaclang/compiler/rust_bridge/_elf.jac
+jac/jaclang/compiler/rust_bridge/_finder.jac
+jac/jaclang/compiler/rust_bridge/_importer.jac
+jac/jaclang/compiler/rust_bridge/_msgpack.jac
+jac/jaclang/compiler/rust_bridge/_synth.jac
 # External-library glue failing the full-repo jac check since ~2026-07-14
 # (stricter Unknown discipline). These files bind SQLAlchemy, ctypes, llvmlite
 # and other untyped third-party APIs whose values the checker sees as

@@ -11,7 +11,9 @@ impl build(
     check_only: bool = False,
     client: str = "",
     platform: str | None = None,
-    fat: bool = False
+    fat: bool = False,
+    with_py_interop: bool = False,
+    py: str = ""
 ) -> int {
     import from jaclang.project.config { get_config }
     import from jaclang.project.kinds { resolve_entry }
@@ -65,7 +67,13 @@ impl build(
 
     if projection in ["jab", "sealed", "binary", "wheel", "npm"] {
         import from jaclang.cli.commands.project { bundle }
-        return bundle(output=output, target=projection, fat=fat);
+        return bundle(
+            output=output,
+            target=projection,
+            fat=fat,
+            with_py_interop=with_py_interop,
+            py=py
+        );
     }
     if projection == "source" {
         import from jaclang.cli.commands.eject { eject }

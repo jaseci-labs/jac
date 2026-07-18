@@ -350,6 +350,81 @@ pub fn graftRuntime(
     try host_file.writePositionalAll(io, suffix, end);
 }
 
+/// Locate this binary's base runtime payload (stepping over any appended `.jab`
+/// overlay, exactly like `materialize`) and return the compressed `.tar.zst`
+/// slice in a freshly allocated buffer the caller owns. The trailer digest is
+/// verified. Backs the py-interop bundler's `__extractrt`, which needs a
+/// WRITABLE copy of the base tree to pip-install wheels into.
+pub fn readBasePayload(io: Io, gpa: Allocator, self_path: []const u8) ![]u8 {
+    var file = try Io.Dir.cwd().openFile(io, self_path, .{});
+    defer file.close(io);
+    const full_total = try file.length(io);
+    const total = if (try peekOverlay(io, &file, full_total)) |o| o.off else full_total;
+    if (total < TRAILER_LEN) return Error.BinaryTooSmall;
+    var traw: [TRAILER_LEN]u8 = undefined;
+    if (try file.readPositionalAll(io, &traw, total - TRAILER_LEN) != TRAILER_LEN)
+        return Error.ShortTrailer;
+    const trailer = try parseTrailer(&traw);
+    const poff = std.math.sub(u64, total, TRAILER_LEN + trailer.payload_len) catch
+        return Error.PayloadOffsetUnderflow;
+    const zbuf = try gpa.alloc(u8, trailer.payload_len);
+    errdefer gpa.free(zbuf);
+    if (try file.readPositionalAll(io, zbuf, poff) != trailer.payload_len)
+        return Error.ShortPayloadRead;
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(zbuf, &digest, .{});
+    if (!std.mem.eql(u8, &hexDigest(&digest), &trailer.hash))
+        return Error.PayloadHashMismatch;
+    return zbuf;
+}
+
+/// Extract this binary's base runtime payload straight into `dest` (created if
+/// missing). Unlike `materialize` there is NO cache key / atomic-rename / `.ok`
+/// marker: this is the py-interop bundler materializing a plain, writable base
+/// tree it will pip-install into and then repack. Honours the source exec bit
+/// so the extracted `python3.14` stays spawnable for pip.
+pub fn extractPayloadTo(io: Io, gpa: Allocator, self_path: []const u8, dest: []const u8) !void {
+    const zbuf = try readBasePayload(io, gpa, self_path);
+    defer gpa.free(zbuf);
+    try Io.Dir.cwd().createDirPath(io, dest);
+    var dest_dir = try Io.Dir.cwd().openDir(io, dest, .{});
+    defer dest_dir.close(io);
+    const dctx = ZSTD_createDCtx() orelse return Error.MaterializeFailed;
+    defer _ = ZSTD_freeDCtx(dctx);
+    const buf = try gpa.alloc(u8, DECODE_BUF_LEN);
+    defer gpa.free(buf);
+    var dec = PayloadDecoder.init(dctx, zbuf, buf);
+    try std.tar.extract(io, dest_dir, &dec.reader, .{
+        .mode_mode = .executable_bit_only,
+        .strip_components = 0,
+    });
+}
+
+/// Graft a CUSTOM runtime payload (a `.tar.zst` the py-interop bundler produced
+/// with pip-installed wheels) onto `host`, appending `[ payload ][ trailer ]`
+/// at EOF exactly like the build-time `pack`. Unlike `graftRuntime`, the
+/// payload is a file, not this binary's own suffix -- so the grafted host boots
+/// a DIFFERENT tree (its own `rt/<hash16>-...` key, no eviction of the base
+/// jac's). Appends without truncating: a partial write leaves an invalid
+/// trailer on a regenerable build intermediate, never a corrupt host.
+pub fn graftRuntimeFrom(io: Io, gpa: Allocator, payload_path: []const u8, host_path: []const u8) !void {
+    const payload = try Io.Dir.cwd().readFileAlloc(io, payload_path, gpa, .unlimited);
+    defer gpa.free(payload);
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(payload, &digest, .{});
+    const hex = hexDigest(&digest);
+    var lenle: [8]u8 = undefined;
+    std.mem.writeInt(u64, &lenle, payload.len, .little);
+
+    var host_file = try Io.Dir.cwd().openFile(io, host_path, .{ .mode = .read_write });
+    defer host_file.close(io);
+    const end = try host_file.length(io);
+    try host_file.writePositionalAll(io, payload, end);
+    try host_file.writePositionalAll(io, MAGIC, end + payload.len);
+    try host_file.writePositionalAll(io, &lenle, end + payload.len + MAGIC_LEN);
+    try host_file.writePositionalAll(io, &hex, end + payload.len + MAGIC_LEN + 8);
+}
+
 /// Resolve the global cache root, mirroring jaclang's `cache_paths.py`:
 /// `$XDG_CACHE_HOME` -> `$HOME/.cache`, then `/jac`. Falls back to a per-uid
 /// temp dir when the preferred root is not writable (read-only `$HOME`).
@@ -507,8 +582,14 @@ fn extractPayload(
         defer gpa.free(buf);
 
         var dec = PayloadDecoder.init(dctx, zbuf, buf);
+        // `.executable_bit_only` honours the source exec bit that `tarZstDir`
+        // now records in each header, so a materialized tree's `python3.14`
+        // and any bundled wheel tools stay spawnable (pip during py-interop
+        // bundle assembly). Non-exec files still land 0o644. Replaces the old
+        // `.ignore` + per-consumer chmod workaround (get_bun et al., which stay
+        // as harmless redundancy). See [[desktop-payload-execbit-drop]].
         try std.tar.extract(io, dest, &dec.reader, .{
-            .mode_mode = .ignore,
+            .mode_mode = .executable_bit_only,
             .strip_components = 0,
         });
 
@@ -923,4 +1004,76 @@ test "graftRuntime fuses the runtime suffix onto a host binary" {
     try testing.expectEqual(host_before.len + suffix.len, grafted.len);
     try testing.expectEqualStrings(host_before, grafted[0..host_before.len]);
     try testing.expectEqualSlices(u8, suffix, grafted[host_before.len..]);
+}
+
+// The py-interop bundler's two verbs: extractPayloadTo materializes a plain
+// writable base tree (to pip-install into), and graftRuntimeFrom fuses a CUSTOM
+// payload onto a native host so it boots that tree (its own rt key, distinct
+// from the base jac's).
+test "extractPayloadTo unpacks the base payload into a plain tree" {
+    const io = testing.io;
+    const payload = try @import("tests/fixture.zig").payloadAlloc(testing.allocator);
+    defer testing.allocator.free(payload);
+    var fake = try buildFakeBinary(payload);
+    defer fake.bin.deinit();
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(io, .{ .sub_path = "selfjac", .data = fake.bin.items });
+    var sb: [MAX_PATH]u8 = undefined;
+    var db: [MAX_PATH]u8 = undefined;
+    const self_p = try tmpJoin(io, &tmp, "selfjac", &sb);
+    const dest_p = try tmpJoin(io, &tmp, "base-tree", &db);
+
+    try extractPayloadTo(io, testing.allocator, self_p, dest_p);
+
+    var dir = try Io.Dir.cwd().openDir(io, dest_p, .{});
+    defer dir.close(io);
+    var fbuf: [64]u8 = undefined;
+    try testing.expectEqualStrings("pybytecode-marker\n", try dir.readFile(io, "python/lib/marker.txt", &fbuf));
+    try testing.expectEqualStrings("nested-ok\n", try dir.readFile(io, "site/nested/deep.txt", &fbuf));
+}
+
+test "graftRuntimeFrom fuses a custom payload that materialize can boot" {
+    const io = testing.io;
+    const payload = try @import("tests/fixture.zig").payloadAlloc(testing.allocator);
+    defer testing.allocator.free(payload);
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(payload, &digest, .{});
+    const hex = hexDigest(&digest);
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var pbuf: [MAX_PATH]u8 = undefined;
+    const home = pbuf[0..try tmp.dir.realPath(io, &pbuf)];
+
+    const host_before = "NACOMPILED-ELF-HOST";
+    try tmp.dir.writeFile(io, .{ .sub_path = "payload.tar.zst", .data = payload });
+    try tmp.dir.writeFile(io, .{ .sub_path = "host", .data = host_before });
+    var yb: [MAX_PATH]u8 = undefined;
+    var hb: [MAX_PATH]u8 = undefined;
+    const payload_p = try tmpJoin(io, &tmp, "payload.tar.zst", &yb);
+    const host_p = try tmpJoin(io, &tmp, "host", &hb);
+
+    try graftRuntimeFrom(io, testing.allocator, payload_p, host_p);
+
+    // Structure: host ++ payload ++ [ MAGIC | len LE | sha256 hex ].
+    const grafted = try Io.Dir.cwd().readFileAlloc(io, host_p, testing.allocator, .unlimited);
+    defer testing.allocator.free(grafted);
+    try testing.expectEqual(host_before.len + payload.len + TRAILER_LEN, grafted.len);
+    try testing.expectEqualStrings(host_before, grafted[0..host_before.len]);
+    const traw = grafted[grafted.len - TRAILER_LEN ..][0..TRAILER_LEN];
+    const t = try parseTrailer(traw);
+    try testing.expectEqual(payload.len, t.payload_len);
+    try testing.expectEqualStrings(hex[0..16], &t.hash16);
+
+    // And the grafted host is a bootable fused binary: materialize extracts its
+    // tree under the CUSTOM payload's key.
+    var rtbuf: [MAX_PATH]u8 = undefined;
+    const rt = try materialize(io, testing.allocator, host_p, home, null, null, 1000, 9, &rtbuf);
+    try testing.expect(std.mem.indexOf(u8, rt, hex[0..16]) != null);
+    var dir = try Io.Dir.cwd().openDir(io, rt, .{});
+    defer dir.close(io);
+    var fbuf: [64]u8 = undefined;
+    try testing.expectEqualStrings("pybytecode-marker\n", try dir.readFile(io, "python/lib/marker.txt", &fbuf));
 }

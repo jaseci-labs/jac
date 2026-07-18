@@ -1,0 +1,299 @@
+# Wide Lane (serde / TAG_WIDE) -- Codec Conformance Findings
+
+Status of the serde wide lane (FFI-LANES-PLAN §2.5-2.7) and the differential
+evidence that the Jac-side MessagePack codec is wire-compatible with real
+`rmp_serde`. Written 2026-07-17.
+
+## 1. What the wide lane is (and is not)
+
+The binder resolves every value type to exactly **one** lane, per value, not per
+signature (§2.7):
+
+| Lane | Types | Jac representation | Static typing? |
+|---|---|---|---|
+| Tag lane | `{scalar, str, bytes, f64, bool}` | `int` / `str` / `float` / `bool` / `bytes` | full |
+| Handle lane | opaque-bridged types | typed Jac class (ctypes) / handle | full |
+| **Wide lane** (`TAG_WIDE=8`) | everything else: any `Serialize+Deserialize` document | see §2 | dynamic (by design) |
+
+So the wide lane is **not** "no typing" -- it is the *dynamic-document* lane. A
+value reaches it only when it is neither a scalar nor an opaque handle: e.g. a
+`serde_json::Value`-shaped payload, a record whose wire shape is set by a manual
+`Serialize` impl (chrono's `NaiveDate` -> ISO string), or fields invisible to
+rustdoc. For those, a dynamic value **is** the correct representation.
+
+The typed-record ergonomic (§2.6: synthesize a typed Jac `obj` with real fields
+when the `Serialize` impl is `#[automatically_derived]` and has no stripped
+fields) sits *in front of* the wide lane and is **built** for flat scalar/String
+records -- see §6c. A manual-impl or stripped-field type stays on the dynamic
+lane.
+
+## 2. Two-sided codec
+
+The wire format is MessagePack via `rmp_serde::encode::to_vec_named` (structs as
+maps with field-name keys). Because na and CPython have different type systems,
+each side has its own decoder, from one shared wire contract:
+
+- **na** (`jac/jaclang/compiler/rust_bridge/_msgpack.jac`): no `any` type, so a
+  wide value is a `JacValue` tagged union (`kind + i/s/b/items/entries`). Floats
+  are carried as the f64 **bit pattern in an int field** (na truncates float
+  params/fields; only pure-local floats survive). Inlined into each synthesized
+  bridge by `_synth.jac` (cross-module na import of user symbols does not
+  resolve).
+- **ctypes** (`jac/jaclang/compiler/rust_bridge/_ctypes_codegen.jac`,
+  `_mp_encode` / `_mp_decode`): CPython is dynamically typed, so a wide value
+  decodes **straight to native** `dict`/`list`/`int`/`float`/`str`/`bool`/`None`
+  and encodes the same natives back. Floats stay native `float` -- no
+  bit-pattern dance.
+
+## 3. Differential methodology
+
+Two shims exercise the ctypes path end-to-end through the real `build_module`
+(no binder / rustdoc needed). Both live in the session scratchpad, not the repo.
+
+1. **`wide_smoke.c`** -- a hand-written C library speaking the jac-bridge ABI
+   (`JacBuf`, `free_buf`, opaque type drop/ctor, wide `echo`/`pack`/`tally`).
+   `echo` copies the payload bytes verbatim, so it proves the *Jac ctypes glue*
+   (`_wire` argtypes, `_call` encode/decode, `free_buf`) but **cannot** catch a
+   wire mismatch against rmp_serde.
+2. **`wide_rs`** -- a real Rust `cdylib` (`serde` derive + `rmp-serde 1.3.1`,
+   built offline) whose functions **deserialize the payload into a typed
+   `Widget` struct** and re-serialize with `to_vec_named`:
+   - `pack` (no param -> wide): `rmp_serde::to_vec_named(&Widget{..})`.
+   - `tally` (wide -> int): `rmp_serde::from_slice::<Widget>(..)`, returns a field.
+   - `echo` (wide -> wide): decode into `Widget` then re-encode.
+
+## 4. Results
+
+All green (drive scripts `wide_smoke.jac`, `wide_diff.jac` via `jaclang run`):
+
+| Leg | What it proves | Result |
+|---|---|---|
+| C `echo` round-trip of a nested doc | ctypes glue + codec self-consistency; native float/None/list preserved | PASS |
+| (A) `pack`: rmp `to_vec_named` -> `_mp_decode` == doc | **rmp encoder output is readable by the Jac decoder** | PASS |
+| (B) `tally`: `_mp_encode` -> rmp `from_slice::<Widget>`, count==3 | **Jac encoder output deserializes into a typed Rust struct** | PASS |
+| (C) `echo`: `_mp_encode` -> rmp decode -> rmp re-encode -> `_mp_decode` == doc | both directions in one call | PASS |
+
+**Byte-identity (strongest result):** for the doc
+`{name:"widget", count:3, ratio:3.14159, tags:["a","b"], nested:{ok:true, items:[1,2,3]}}`,
+the Jac `_mp_encode` output is **byte-for-byte identical** to
+`rmp_serde::to_vec_named(&Widget)`:
+
+```
+85 a4 6e616d65 a6 776964676574 a5 636f756e74 03 a5 726174696f
+cb 400921f9f01b866e a4 74616773 92 a161 a162 a6 6e6573746564
+82 a26f6b c3 a5 6974656d73 93 010203
+```
+
+(fixmap/5, fixstr keys, fixint ints, `cb`+f64 for `ratio`, fixarray/fixmap for
+the nested containers). Confirmed by reading `pack()`'s raw `JacBuf` before decode.
+
+## 5. Known-and-harmless divergences
+
+- **Non-minimal int widths (Jac encoder only).** `_mp_encode` emits `0xcf` (u64)
+  for positives >= 128 and `0xd3` (i64) for negatives < -32, where rmp uses the
+  minimal width (`0xcc`/`0xcd`/`0xce`/`0xd0`...). Both are valid MessagePack;
+  rmp's decoder and the Jac decoder each accept all widths, and serde narrows a
+  wider int into a smaller field. So this is **wire-compatible but not
+  byte-identical for out-of-fixint ints** -- intentional (the na codec made the
+  same choice; a lead-byte-literal encoder is simpler and rmp accepts it). The
+  §4 doc is byte-identical only because every int in it is a fixint.
+- **Float representation is per-side.** ctypes keeps native `float`; na carries
+  the f64 bit pattern in an int field. Same wire bytes (`0xcb`+8), different
+  in-language value model.
+- **u64 above i64::MAX** decodes to a Python `int` (ctypes) with no loss -- the
+  same exposure `TAG_UINT` already documents.
+
+## 6. Full binder path -- PROVEN end-to-end (2026-07-17)
+
+A real serde crate was run through the **entire production pipeline** and a wide
+method called from Jac -- nothing hand-authored past the source crate:
+
+1. `demo` source crate: an opaque `Shifter` handle with
+   `shift(&self, p: Point, dx, dy) -> Point`, where `Point{x:i64, y:i64,
+   label:String}` derives `Serialize + Deserialize`.
+2. `cargo +nightly rustdoc --output-format json` (format_version 60, matches the
+   binder's `rustdoc-types 0.60`).
+3. `jac-bridge-binder` classified `Point` into the wide lane and emitted
+   `shift(&self, p: Wide<demo::Point>, dx: i64, dy: i64) -> Wide<demo::Point>`
+   (100% of public API bridged, 0 skips) -- **the lane conflict rule fired
+   correctly**: `Point` is not opaque-bridged, so it is wide, not a handle.
+4. `#[bridge]` macro + `cargo build --release` produced `libjac_bridge_demo.so`
+   with the real rmp_serde codec.
+5. Jac read the ABI blob from the `.so` (`read_jac_bridge_section` -> `parse`),
+   `build_module`, and called `Shifter(100).shift({"x":1,"y":2,"label":"origin"},
+   5, 7)` -> `{"x":106, "y":9, "label":"origin"}`. State (the handle's `base`)
+   persisted across a second call. **PASS.**
+
+**Gap found and fixed by this exercise (commit `fix(binder): ... serde +
+rmp-serde`):** the `#[bridge]` macro expands wide slots to `::serde` /
+`::rmp_serde` *absolute* paths, so the generated crate must depend on both
+directly. `jac-bridge` declared them only as **dev-dependencies** (for its own
+tests), which do not flow downstream, so the first real wide bridge failed to
+compile with `could not find`rmp_serde``. `emit_cargo_toml` now adds
+`serde`/`rmp-serde` whenever `spec_has_wide(spec)` (mirroring the tokio-for-async
+rule); non-wide bridges stay minimal. Pinned by
+`jac-bridge-binder/src/tests/wide_lane.rs`
+(`wide_bridge_cargo_toml_declares_serde_and_rmp`, `non_wide_bridge_omits_serde_deps`).
+
+Only accommodation for the local/offline run: the generated `Cargo.toml`'s source
+dep was retargeted from the crates.io pin (`demo = "=0.1.0"`) to a path dep --
+an environment concern, not binder logic (classification/codegen are unmodified).
+
+## 6b. na wide e2e -- PROVEN end-to-end, AOT-linked (2026-07-17)
+
+The §6 run drove the *ctypes* loader. The **na** side is now proven natively too:
+`render_na_source(widget_meta, libwide_rs.so)` was emitted, a `with entry` driver
+appended, and the module `jac nacompile`d to a **standalone ELF that DT_NEEDED-links
+the real rmp_serde `.so`** (`readelf -d` shows `NEEDED libwide_rs.so`, `RUNPATH
+$ORIGIN`). Running it:
+
+- **pack** (wide return): rmp `to_vec_named` -> na `msgpack_decode` -> the full
+  nested doc (`count=3`, `ratio~3.14159` via the f64-bits carry, `nested.ok=True`,
+  `nested.items[2]=3`, `tags` len 2).
+- **echo** (wide param + wide return): na `msgpack_encode` -> rmp deserialize into
+  the typed `Widget` struct -> re-serialize -> na `msgpack_decode`; round-trips.
+- **tally** (wide param -> int): na encode -> rmp `from_slice::<Widget>` -> count 3.
+
+**All PASS.** This exercises the na consumer surface (`JacValue` obj + inlined codec
+
+- shim out-buffer decode + `#7472` bytes-payload param) against a genuine
+`serde`/`rmp_serde` export -- the na analogue of §6.
+
+**Execution-path finding:** na foreign bridges must be **AOT-linked**, not
+JIT-run. The in-process JIT engine (`ir.gen.native_engine`, MCJIT) *cannot* execute
+a module that both allocates heap objects and carries the full foreign-import
+block: once the `Widget` FFI/panic surface is present, MCJIT object finalization
+poisons the whole module and even a non-FFI `JacValue()` allocation segfaults on a
+null call (a minimal `obj` + single `import from "…so"` decl survives; the full
+generated bridge does not). This matches how na foreign is validated everywhere
+else -- `test_shared_lib.jac` loads a *produced* `.so`, it does not JIT-call one.
+The AOT recipe (nacompile -> ELF -> run) is therefore the supported path and is
+what the e2e above uses. Local build note: nacompile's compile-time
+`_register_bridge_metadata` imports `rust_bridge._elf` through the runtime
+meta-importer, which needs the module pre-seeded in `sys.modules` locally (the
+`_finder.jac`-no-bytecode quirk); driving `nacompile()` in-process after seeding
+`_elf` sidesteps it (CI has the bytecode cached).
+
+## 6c. Typed-obj synthesis (§2.6/2.9) -- BUILT + PROVEN end-to-end (2026-07-17)
+
+A derived-serde record now crosses as a **typed object** with checked fields, not
+a dynamic document. The wire is unchanged (still one `TAG_WIDE` msgpack blob); a
+1-based **record id** rides the wide tag's upper bits (`TAG_WIDE | id << 8`) and
+indexes a NEW blob **record table** (name + scalar/String field schema), appended
+after the ParamDescs and located via the previously reserved header u64 at offset
+32 -- additive, ABI v1 append-only (no new wire tag, §2.12 intact).
+
+Pipeline: the binder gates on `automatically_derived && !has_stripped_fields`,
+walks the plain-struct fields (scalar/String only in v1), and emits a
+`#[jac_record]` struct; the `#[bridge]` macro collects those into the record table
+and links each `Wide<foreign::T>` slot to its record by leaf name; the Jac reader
+(`_blob.jac`) parses the table and `_marshal` carries `Slot.record`. Then:
+
+- **na** (`_synth`): emits `obj Point { has x:int; has y:int; has label:str; }`
+  plus `_Point_to_jv` / `_jv_to_Point` converters over the shared codec; the
+  na-facing signature is `shift(p: Point) -> Point`. A record with an f64 field
+  stays dynamic on na (obj float-field truncation); ctypes still types it.
+- **ctypes** (`_ctypes_codegen`): a value class per record (ctor / `==` / `repr`),
+  exposed as `mod.Point`; a typed instance or a dict may be passed in.
+
+**Safety rule enforced:** a MANUAL serde impl (chrono's `NaiveDate` -> ISO string)
+synthesizes NO record and stays dynamic -- rustdoc's private fields are never
+trusted as the wire shape (binder test `manual_serde_impl_is_not_a_typed_record`).
+
+Proven on the real `demo` crate (`Point{x:i64,y:i64,label:String}` derives
+Serialize+Deserialize): binder -> `#[jac_record]` + record table in the built
+`.so`'s blob (`RECORD[0] Point{x,y,label}`, `shift` slots tagged `0x108` = rec 1)
+-> Jac reader parses it -> **na AOT binary**: `Shifter(100).shift(Point(1,2,
+"origin"),5,7) == Point(106,9,"origin")` with typed field access -> **ctypes**:
+same, `mod.Point` instance in and out (+ dict-in compat). Tests: binder
+`typed_record_emits_jac_record_struct` + the manual guard; jac
+`test_rust_wide_lane` (na typed emission) + `test_rust_wide_ctypes` (typed class
+round-trip). Recipe: render the na bridge against the `.so`, `nacompile`, run
+(as §8's na e2e); ctypes via `build_module` + `mod.Point`.
+
+## 6d. Nested / container / enum typed records (§2.9-followup) -- BUILT + PROVEN e2e (2026-07-17)
+
+Typed-obj synthesis now reaches beyond flat scalar/String records:
+
+- **Nested records** -- a field whose type is another derived record
+  (`Region { tl: Point, br: Point }`). The field tag is `TAG_WIDE | (child_id<<8)`,
+  and both loaders recurse the converters.
+- **Containers** -- `Vec<T>`, `Option<T>`, `HashMap|BTreeMap<String, T>` of a
+  scalar or nested record. Field tags compose the existing `TAG_LIST_BIT` /
+  `TAG_OPT_BIT` / `TAG_MAP_BIT` with the inner tag (no new wire tag).
+- **Enums** -- a derived-serde enum with unit + newtype variants. A `RecordDesc`
+  gains a `kind` word (`RECORD_KIND_STRUCT|ENUM`, RecordDesc 20->24 via the
+  desc-size stride); each FieldDesc of an enum record is a VARIANT (name + payload
+  tag, `TAG_VOID` = unit). Wire = serde external tagging: a bare string for a unit
+  variant, a 1-entry `{variant: payload}` map otherwise.
+
+**Loader parity:** the CPython/ctypes loader types ALL of the above (nested classes,
+list/opt/map, enum tagged-union `.variant`+`.value`). The **na** loader types nested
+records + containers, but keeps ENUM records on the dynamic (JacValue) lane -- na
+has no `any` to statically type a per-variant payload (the same conservatism as na's
+f64-in-record fields). na container converters emit STATEMENT loops, not
+comprehensions: na cannot type a comprehension loop var for a bare `_v.i` attribute
+access, and a na dict comprehension building `dict[str, JacValue]` silently yielded
+an empty map.
+
+**Proof:** the checked-in `geo_demo` fixture crate (`jac-bridge-binder/tests/fixtures/
+crates/geo_demo`) -- an opaque `Canvas` handle whose methods pass `Point` (flat),
+`Region` (nested), `Path` (`Vec<Point>` + `Option<String>` + `HashMap<String,i64>`),
+and `Shape` (enum). Classified 100% (6/6) zero-overlay; the FULL generated bridge
+compiles through the macro; driven e2e against a real rmp_serde `.so` on BOTH loaders
+(ctypes in-process via `build_module`; na via a `nacompile`d ELF linking the `.so`)
+-- nested/container round-trip typed on both, enum typed on ctypes. Tests:
+`typed_records.rs` (binder), `wide_records.rs` (macro blob table),
+`test_rust_wide_ctypes.jac` (ctypes converters), `test_rust_wide_lane.jac` (na
+render). Struct-payload and multi-field tuple enum variants remain a later slice.
+
+## 7. Remaining gaps
+
+- **na enum records stay dynamic** (JacValue), not a typed obj -- na's type system
+  has no `any` for a per-variant payload. ctypes types them. They still cross
+  correctly.
+- **Enum struct/tuple-payload variants** keep the whole enum dynamic on both loaders
+  (only unit + newtype variants type). A later slice.
+- **Sealed/wheel install: CONFIRMED (2026-07-17).** `_synth._codec_source()` reads
+  the sibling `_msgpack.jac` `__file__`-relative. Both packaging paths ship it: the
+  setuptools wheel packs `.jac` via a recursive glob (`Root-Is-Purelib` -> real
+  files, so `os.path.dirname(__file__)`+`open()` resolves -- verified reading the
+  codec from an install-like tree outside the dev checkout), and mkpayload's
+  `skipJaclang` copies every `.jac` (no extension filter) into the sealed payload.
+  `_codec_source()` itself runs at synth/build time, not in the final sealed binary.
+
+## 8. Reproduce
+
+```sh
+# rmp_serde cdylib (offline; crates cached under ~/.cargo)
+cd <scratch>/wide_rs && CARGO_NET_OFFLINE=true cargo build --release --offline
+
+# drive the differential through the real build_module
+sed "s|__SO_PATH__|<scratch>/wide_rs/target/release/libwide_rs.so|" wide_diff.jac > run.jac
+PYTHONPATH=jac JAC_LLVM_SHIM=jac/zig-out/lib/libjacllvm.so \
+  .venv/bin/python -m jaclang run run.jac
+
+# full binder end-to-end (demo source crate -> bridge -> .so -> live wide call)
+cargo build --release -p jac-bridge-binder --offline
+cd <scratch>/demo && RUSTC_BOOTSTRAP=1 cargo +nightly rustdoc --lib --offline \
+  -- -Zunstable-options --output-format json
+bridges/target/release/jac-bridge-binder <scratch>/demo/target/doc/demo.json \
+  --out <scratch>/demo_bridge --jac-bridge bridges/jac-bridge
+# offline-only: retarget the crates.io pin to a path dep, then build + call
+sed -i 's|^demo = "=0.1.0"|demo = { path = "<scratch>/demo" }|' <scratch>/demo_bridge/Cargo.toml
+cd <scratch>/demo_bridge && cargo build --release --offline
+sed "s|__SO_PATH__|<scratch>/demo_bridge/target/release/libjac_bridge_demo.so|" \
+  wide_e2e.jac > e2e.jac
+PYTHONPATH=jac JAC_LLVM_SHIM=jac/zig-out/lib/libjacllvm.so \
+  .venv/bin/python -m jaclang run e2e.jac
+
+# na wide e2e (AOT): render the na bridge against the live .so, append a
+# `with entry` driver, nacompile to an ELF that DT_NEEDED-links it, run.
+#   render.py     -> render_na_source(widget_meta, libwide_rs.so) -> wide_e2e_aot.na.jac
+#   build_aot.py  -> seed rust_bridge._elf into sys.modules, then nacompile() in-process
+PYTHONPATH=jac JAC_LLVM_SHIM=jac/zig-out/lib/libjacllvm.so .venv/bin/python build_aot.py
+LD_LIBRARY_PATH=<scratch> <scratch>/wide_e2e_aot   # -> pack/echo/tally OK; ALL PASS
+```
+
+Codec unit tests (committed): `jac/tests/compiler/test_rust_wide_ctypes.jac`
+(ctypes), `jac/tests/compiler/test_rust_wide_lane.jac` (na synth wiring).

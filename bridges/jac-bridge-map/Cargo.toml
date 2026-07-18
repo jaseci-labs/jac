@@ -1,0 +1,16 @@
+# HashMap→dict bridge demo (M6.2). Hand-written to exercise the map return tag
+# (TAG_MAP_BIT | value_tag) end-to-end: HashMap<String, V> returns marshaled as a
+# real Jac dict[str, V] for V in {int, uint, str, bool}, including a Result-wrapped
+# map, an empty map, unicode keys, and a full-range u64 value. The workspace CI
+# compiles + round-trips it like any other bridge crate.
+[package]
+name = "jac-bridge-map"
+version = "0.1.0"
+edition = "2021"
+description = "HashMap->dict bridge demo — exercises the TAG_MAP_BIT return marshaling"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+jac-bridge = { path = "../jac-bridge" }

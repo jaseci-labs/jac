@@ -1,0 +1,5 @@
+error: unsupported HashMap value type: only bool, integer, and String values are bridgeable
+  --> tests/ui/unsupported_map_value.rs:10:64
+   |
+10 |         pub fn bad(&self) -> std::collections::HashMap<String, f64> {
+   |                                                                ^^^

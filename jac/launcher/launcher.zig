@@ -121,6 +121,7 @@ pub fn main(init: std.process.Init) !void {
         if (isInternalVerb(init, "__hasruntime")) std.process.exit(0);
         if (isInternalVerb(init, "__appjab")) runAppjab(init, exe_path);
         if (isInternalVerb(init, "__graftrt")) runGraftRt(init, exe_path);
+        if (isInternalVerb(init, "__extractrt")) runExtractRt(init, exe_path);
     }
 
     // 2. Shared bring-up: materialize the runtime and dlopen the bundled
@@ -228,15 +229,34 @@ fn runAppjab(init: std.process.Init, exe_path: []const u8) noreturn {
     std.process.exit(0);
 }
 
-/// `jac __graftrt <host>`: append this binary's `[ payload ][ trailer ]` runtime
-/// suffix onto `host` in place, fusing the bundled runtime into the desktop host
-/// binary. Pure Zig, no interpreter.
+/// `jac __graftrt <host> [<payload.tar.zst>]`: append `[ payload ][ trailer ]`
+/// onto `host` in place, fusing a bundled runtime into a native host binary.
+/// With no payload arg the payload is THIS binary's own runtime suffix (the
+/// desktop path). With a payload arg it is that file -- the py-interop bundler's
+/// slim tree with pip-installed wheels. Pure Zig, no interpreter.
 fn runGraftRt(init: std.process.Init, exe_path: []const u8) noreturn {
     var it = init.minimal.args.iterate();
     _ = it.next(); // argv[0]
     _ = it.next(); // "__graftrt"
     const host = it.next() orelse die("__graftrt: missing <host>");
-    runtime.graftRuntime(init.io, init.gpa, exe_path, host) catch |e| diePackVerb("__graftrt", e);
+    if (it.next()) |payload| {
+        runtime.graftRuntimeFrom(init.io, init.gpa, payload, host) catch |e| diePackVerb("__graftrt", e);
+    } else {
+        runtime.graftRuntime(init.io, init.gpa, exe_path, host) catch |e| diePackVerb("__graftrt", e);
+    }
+    std.process.exit(0);
+}
+
+/// `jac __extractrt <dest>`: extract this binary's base runtime payload into
+/// `<dest>` as a plain writable tree (no cache key / atomic publish). The
+/// py-interop bundler pip-installs wheels into the extracted `site-packages`,
+/// slims it, then repacks. Pure Zig, no interpreter.
+fn runExtractRt(init: std.process.Init, exe_path: []const u8) noreturn {
+    var it = init.minimal.args.iterate();
+    _ = it.next(); // argv[0]
+    _ = it.next(); // "__extractrt"
+    const dest = it.next() orelse die("__extractrt: missing <dest>");
+    runtime.extractPayloadTo(init.io, init.gpa, exe_path, dest) catch |e| diePackVerb("__extractrt", e);
     std.process.exit(0);
 }
 

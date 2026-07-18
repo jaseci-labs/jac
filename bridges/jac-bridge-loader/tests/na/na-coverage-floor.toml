@@ -1,0 +1,79 @@
+# na-runtime coverage floor for the loader's bridge fixtures (D6 ratchet).
+#
+# The sibling of the binder's tests/corpus/coverage-baseline.toml, but for the na
+# (native/AOT) synthesizer (`_na_codegen.render_na_source`) instead of the Rust
+# binder.  It answers a DIFFERENT question than the binder floor: not "how much of
+# a real crate's API does the binder emit", but "how much of each hand-built bridge
+# .so's public surface does na actually REALIZE as callable native code".  The
+# counts are proven by the na conformance suite compiling + running the emitted
+# source against the same .so (owning_conformance.py / conformance.py).
+#
+# The gate (`test_na_coverage_floor.py`) fails if the na synthesizer bridges FEWER
+# items than the floor here.  Raise these as na gains verticals; never lower one
+# without a recorded reason (a genuine fixture API change on a rebuild).
+#
+#   bridged = constructors + methods emitted into the na bridge source
+#   total   = bridged + skipped (every public item render_na_source considered)
+#
+# A synthesized adopt-ctor and the error type's consumed message() fn are NOT
+# counted here — neither is a standalone public surface item.
+#
+# Keyed by .so basename (regex and regex_v2 share module `regex` but are distinct
+# fixtures).  A .so absent from a checkout is skipped by the gate, not failed.
+
+# owning: the Option<Ref> owning-wrapper + Option<Str> + NESTED-wrapper verticals are
+# fully realized on na — Regex.new/is_match/find/captures + OwnedMatch.as_str +
+# OwnedCaptures.name + OwnedCaptures.name_match, 0 skips.  find/captures/name_match
+# return `T | None` via adopt-ctor; name returns `str | None` with a null JacBuf.ptr
+# crossing in-band as None (distinct from a present "").  name_match is the nested
+# case: a reader on OwnedCaptures produces an OwnedMatch — the synthesizer emits
+# OwnedMatch before OwnedCaptures (dependency order) so the child adopt-ctor resolves.
+#
+# The CURSOR + Vec-as-DRAIN verticals then added 4 more surface fns (7 -> 11):
+# Regex.find_iter -> OwnedMatches (a cursor) + OwnedMatches.next -> OwnedMatch|None
+# (a pull-queue; each item a nested share), and Regex.split -> OwnedSplit (a drain) +
+# OwnedSplit.next -> str|None (draining an owned Vec<String>).  Both `next` methods
+# are ordinary Opt(Ref)/Opt(Str) returns — no new na machinery, just more handles +
+# methods — and the topological emit-order already places each product before its
+# producing cursor.  Still 0 skips; proven by owning_conformance.py (22 observations
+# identical na≡CPython, incl. empty streams and empty drain pieces kept distinct
+# from the None that terminates each pull).
+#
+# The CALLBACK vertical then added Regex.replace_all (11 -> 12): a TAG_FN param
+# crosses as a C-ABI callback fn pointer (an int) that na FORWARDS to Rust, which
+# calls BACK into a Jac `def:pub` thunk once per match — the na trampoline, proven
+# natively without any backend change (the thunk's address is taken with `as int`;
+# it hands its replacement back through the bridge's make_buf).  Still 0 skips;
+# owning_conformance.py now runs 29 observations identical na≡CPython (the 7 new
+# replace cases across two distinct callbacks, incl. no-match/empty passthrough).
+[libjac_bridge_owning_so]
+bridged = 12
+total = 12
+
+# regex: the M3 golden-spike surface — Regex.new + is_match (message() is consumed
+# into raised-exception text, not a surface method), 0 skips.
+[libjac_bridge_regex_so]
+bridged = 2
+total = 2
+
+[libjac_bridge_regex_v2_so]
+bridged = 2
+total = 2
+
+# list: the Vec<V>->list[V] tail (M6). na now REALIZES every Vec return as a real
+# native list[V] -- ctor + counts/big/labels/flags/none/checked, 0 skips. The synth
+# emits a decode loop that reads `[u32 count]` then per-element `[value]` straight
+# off the owned JacBuf via __jac_bytes_from_raw / __jac_str_from_raw, no list ABI
+# helper. Proven by na/list_conformance.jac (na==CPython for int/uint/str/bool
+# elements, incl. empty list and the fallible Ok path).
+[libjac_bridge_list_so]
+bridged = 7
+total = 7
+
+# map: the HashMap<String,V>->dict[str,V] tail (M6.2). na now REALIZES every map
+# return as a real native dict[str, V] -- ctor + counts/big/labels/flags/none/
+# checked, 0 skips. Same decoder as list plus a `[u32 klen][key]` prefix per entry.
+# Proven by na/map_conformance.jac (na==CPython as a sorted key=value set).
+[libjac_bridge_map_so]
+bridged = 7
+total = 7

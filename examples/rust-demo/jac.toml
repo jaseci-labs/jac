@@ -1,0 +1,4 @@
+[project]
+name = "rust-demo"
+version = "0.1.0"
+description = "Demo of Jac + Rust FFI bridge"

@@ -42,9 +42,14 @@ suppress-none-returning = true
 [lint.per-file-ignores]
 # Allow print in tests (for debugging output), scripts, and test fixtures
 "**/tests/**/*.py" = ["T201"]
+# Bridge test fixtures/params mirror the loaded Rust classes (Regex, RegexError,
+# PanicError), which are correctly PascalCase; N802/N803 would force un-Pythonic names.
+"bridges/jac-bridge-loader/tests/**/*.py" = ["N802", "N803"]
 "**/fixtures/**/*.py" = ["T201"]
 "scripts/**/*.py" = ["T201"]
 "docs/scripts/**/*.py" = ["T201"]
+# Rust-bridge CI helpers are standalone build scripts (registry artifact matrix)
+"bridges/tools/**/*.py" = ["T201"]
 # Bootstrap/low-level files that run before console is available
 "jac/jaclang/compiler/__init__.py" = ["T201"]
 "jac/jaclang/pycore/tsparser.py" = ["T201"]

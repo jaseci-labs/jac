@@ -1,0 +1,12 @@
+[package]
+name = "wide_fuzz_gen"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+serde_json = "1"
+rmp-serde = "1"
+
+[[bin]]
+name = "wide_fuzz_gen"
+path = "src/main.rs"

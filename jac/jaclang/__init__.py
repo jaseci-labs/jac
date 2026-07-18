@@ -13,6 +13,19 @@ if not any(isinstance(f, JacMetaImporter) for f in sys.meta_path):
 # Prefer `jaclang.jac0core.runtime` going forward.
 import jaclang.jac0core.runtime as _runtime_mod  # noqa: E402
 from jaclang import compiler as _compiler  # noqa: E402, F401
+
+# M3: install the `rust.` namespace meta-importer so `import from rust.<crate>`
+# resolves a compiled Rust bridge library on the CPython runtime (the na/AOT
+# path is wired separately via codeinfo.resolve_native_module). Self-contained
+# in jaclang — the same D2 metadata parser and .so search order the na compiler
+# step uses. Best-effort so a broken/absent toolchain never blocks `import
+# jaclang`; the eventual home is an entry-point "jac" plugin (M4).
+try:
+    from jaclang.compiler.rust_bridge import install_rust_namespace as _install_rust_ns
+
+    _install_rust_ns()
+except Exception:  # noqa: BLE001 — never let bridge wiring break `import jaclang`
+    pass
 from jaclang.jac0core.runtime import (  # noqa: E402
     JacRuntime,
     JacRuntimeInterface,

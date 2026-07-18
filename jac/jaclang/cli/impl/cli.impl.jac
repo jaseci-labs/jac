@@ -265,6 +265,14 @@ def _initialize_provider_registry {
         import from jaclang.project.providers { initialize_provider_registry }
         initialize_provider_registry();
     } except Exception { }
+    try {
+        import from jaclang.cli.commands.project { RustProvider }
+        import from jaclang.project.providers { get_provider_registry }
+        registry = get_provider_registry();
+        if not registry.has("rust") {
+            registry.register(RustProvider());
+        }
+    } except Exception { }
 }
 
 def _initialize_template_registry {

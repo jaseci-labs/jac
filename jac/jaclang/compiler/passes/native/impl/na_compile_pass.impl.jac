@@ -398,6 +398,22 @@ impl NativeCompilePass._compile_and_link_native_imports(
         }
 
         if not os.path.exists(full_path) {
+            import from jaclang.jac0core.codeinfo {
+                resolve_native_module,
+                is_bundled_native_module
+            }
+            _bridge_name = source_mod_path[:-3]
+                if source_mod_path.endswith(".na")
+                else source_mod_path;
+            if is_bundled_native_module(_bridge_name) {
+                (_bsrc, _bpath) = resolve_native_module(_bridge_name, cur_base_dir);
+                if _bpath and os.path.exists(_bpath) {
+                    full_path = _bpath;
+                }
+            }
+        }
+
+        if not os.path.exists(full_path) {
             self.emit(W5023, path=full_path);
             continue;
         }

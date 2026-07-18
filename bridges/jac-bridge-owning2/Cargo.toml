@@ -1,0 +1,17 @@
+# Second callback-bearing bridge crate (Phase 0.0.1). Its sole purpose is to
+# exist ALONGSIDE jac-bridge-owning in one na module so the per-crate allocator
+# keying (task 0.1.1) can be proven: each crate's callback return buffer must be
+# minted+freed by ITS OWN `jac_<module>_make_buf`/`free_buf`, never the other's.
+# Deliberately minimal — one opaque type, one callback method.
+[package]
+name = "jac-bridge-owning2"
+version = "0.1.0"
+edition = "2021"
+description = "Second callback crate (distinct allocator) for the two-crate per-crate-allocator conformance gate"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+jac-bridge = { path = "../jac-bridge" }
+regex = "1"

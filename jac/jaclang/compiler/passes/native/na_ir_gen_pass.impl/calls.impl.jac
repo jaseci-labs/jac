@@ -43,6 +43,126 @@ impl NaIRGenPass._default_arg_fallback(t: ir.Type) -> ir.Value {
     return ir.Constant(t, 0);
 }
 
+impl NaIRGenPass._resolve_bridge_lib_path(path: str) -> (str | None) {
+    import os;
+    if os.path.isfile(path) {
+        return path;
+    }
+    base = os.path.basename(path);
+    for var in ["JAC_RUST_BRIDGES_PATH", "LD_LIBRARY_PATH"] {
+        env = os.environ.get(var);
+        if not env {
+            continue;
+        }
+        for d in env.split(os.pathsep) {
+            if d {
+                cand = os.path.join(d, base);
+                if os.path.isfile(cand) {
+                    return cand;
+                }
+            }
+        }
+    }
+    return None;
+}
+
+impl NaIRGenPass._register_bridge_metadata(path: str) -> None {
+    import from jaclang.compiler.rust_bridge._elf { read_jac_bridge_section }
+    import from jaclang.compiler.rust_bridge._blob {
+        parse,
+        TAG_FN,
+        TAG_VOID,
+        FN_CTOR,
+        FN_METHOD,
+        tag_is_ref,
+        tag_ref_index
+    }
+    resolved = self._resolve_bridge_lib_path(path);
+    if resolved is None {
+        return;
+    }
+    try {
+        blob = read_jac_bridge_section(resolved);
+    } except Exception {
+        return;
+    }
+    if not blob {
+        return;
+    }
+    try {
+        meta = parse(blob);
+    } except Exception as e {
+        self.log_info(
+            f"warning: bridge metadata in {resolved} present but unparseable " + f"({e}); callbacks for this crate will not be lowered"
+        );
+        return;
+    }
+    self._bridge_make_buf_syms.add(
+        f"jac_{meta.module_name}_{RUST_BRIDGE_MAKE_BUF_STEM}"
+    );
+
+    for tdesc in meta.types {
+        tname = tdesc?.name;
+        if tname {
+            self._bridge_type_crate[tname] = meta.module_name;
+        }
+    }
+
+    n_types = len(meta.types);
+    for fd in meta.fns {
+        wrapper_name: (str | None) = None;
+        if fd.kind == FN_METHOD
+        and fd.self_type != TAG_VOID
+        and fd.self_type < n_types {
+            wrapper_name = f"{meta.types[fd.self_type].name}.{fd.name}";
+        } elif fd.kind == FN_CTOR and tag_is_ref(fd.ret) {
+            ti = tag_ref_index(fd.ret);
+            if ti < n_types {
+                wrapper_name = f"{meta.types[ti].name}.init";
+            }
+        }
+        if wrapper_name is None {
+            continue;
+        }
+        cb_idxs: set[int] = set();
+        for (pix, pdesc) in enumerate(fd.params) {
+            if pdesc.tag == TAG_FN {
+                cb_idxs.add(pix);
+            }
+        }
+        self._bridge_fn_callback_params[wrapper_name] = cb_idxs;
+    }
+}
+
+impl NaIRGenPass._bridge_callback_param(func: (ir.Function | None), pix: int) -> bool {
+    if func is None {
+        return False;
+    }
+    idxs = self._bridge_fn_callback_params.get(func.name);
+    return idxs is not None and pix in idxs;
+}
+
+impl NaIRGenPass._note_bridge_sink(name: str, fn: ir.Function) -> None {
+    if name in self._bridge_make_buf_syms {
+        self._bridge_make_buf_fns[name] = fn;
+        self._callback_make_buf = fn;
+    }
+}
+
+impl NaIRGenPass._callback_make_buf_for(func: ir.Function) -> (ir.Function | None) {
+    nm = func.name;
+    tname = nm.split(".")[0] if "." in nm else None;
+    crate = self._bridge_type_crate.get(tname) if tname is not None else None;
+    if crate is not None {
+        sym = f"jac_{crate}_{RUST_BRIDGE_MAKE_BUF_STEM}";
+        fn = self._bridge_make_buf_fns.get(sym);
+        if fn is not None {
+            return fn;
+        }
+    }
+    return self._callback_make_buf;
+}
+
 impl NaIRGenPass._codegen_bound_args(
     nd: uni.FuncCall, func: ir.Function, self_offset: int = 0
 ) -> list {
@@ -63,9 +183,16 @@ impl NaIRGenPass._codegen_bound_args(
     callee_sig = self._callee_sig_of(nd);
     args: list = [];
 
+    active_mb = self._callback_make_buf_for(func);
+
     if callee_sig is None {
-        for p in positional {
-            v = self._codegen_expr(p);
+        for (pix, p) in enumerate(positional) {
+            _slot = self_offset + len(args);
+            _exp = func.args[_slot].type if _slot < len(func.args) else None;
+            v = self._codegen_callback_arg(p, active_mb)
+                if isinstance(p, uni.LambdaExpr)
+                and self._bridge_callback_param(func, pix)
+                else self._codegen_expr(p, expected_type=_exp);
             if v is not None {
                 args.append(v);
             }
@@ -96,7 +223,15 @@ impl NaIRGenPass._codegen_bound_args(
                 chosen = None;
             }
         }
-        val = self._codegen_expr(chosen) if chosen is not None else None;
+        if chosen is not None
+        and isinstance(chosen, uni.LambdaExpr)
+        and self._bridge_callback_param(func, pix) {
+            val = self._codegen_callback_arg(chosen, active_mb);
+        } else {
+            val = self._codegen_expr(chosen, expected_type=expected_type)
+                if chosen is not None
+                else None;
+        }
         if val is not None {
             args.append(val);
         } else {
@@ -105,12 +240,198 @@ impl NaIRGenPass._codegen_bound_args(
     }
 
     for pix in range(len(sig_params), len(positional)) {
-        v = self._codegen_expr(positional[pix]);
+        p = positional[pix];
+        _slot = self_offset + len(args);
+        _exp = func.args[_slot].type if _slot < len(func.args) else None;
+        v = self._codegen_callback_arg(p, active_mb)
+            if isinstance(p, uni.LambdaExpr) and self._bridge_callback_param(func, pix)
+            else self._codegen_expr(p, expected_type=_exp);
         if v is not None {
             args.append(v);
         }
     }
     return args;
+}
+
+impl NaIRGenPass._owned_jac_str_from_raw(
+    src: ir.Value,
+    dlen: ir.Value,
+    name_prefix: str = "jbuf",
+    rc_op: str = "str_from_raw"
+) -> ir.Value {
+    _i8 = ir.IntType(8);
+    _i8p = ir.IntType(8).as_pointer();
+    _i64 = ir.IntType(64);
+    bufsz = self.builder.add(dlen, ir.Constant(_i64, 1), name=f"{name_prefix}.bufsz");
+    self._set_rc_ctx(rc_op, "");
+    raw = self._rc_alloc(bufsz, name=f"{name_prefix}.raw");
+    self._clear_rc_ctx();
+    memcpy_fn = self._get_or_declare_extern("memcpy", _i8p, [_i8p, _i8p, _i64]);
+    self.builder.call(memcpy_fn, [raw, src, dlen]);
+    self.builder.store(
+        ir.Constant(_i8, 0), self.builder.gep(raw, [dlen], name=f"{name_prefix}.nul")
+    );
+    self._emit_set_type_tag(self.builder, raw, "str");
+    self._mark_owned(raw);
+    return raw;
+}
+
+impl NaIRGenPass._codegen_callback_arg(
+    nd: uni.LambdaExpr, make_buf: (ir.Function | None) = None
+) -> (ir.Value | None) {
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+
+    _sig = nd.signature;
+    _declared_params = _sig.params if (_sig is not None and _sig.params) else [];
+    if len(_declared_params) != 1 {
+        self.emit(
+            E5090,
+            node_override=nd,
+            kind="Rust bridge callback",
+            name=f"lambda declaring {len(_declared_params)} parameters",
+            help_text="A Rust bridge callback lambda must declare exactly one `str` parameter and return `str`, e.g. `lambda (m: str) -> str : ...`."
+        );
+        return None;
+    }
+    _ret_ir = self._resolve_jac_type(_sig.return_type)
+        if (_sig is not None and _sig.return_type is not None)
+        else None;
+    if _ret_ir is None or not isinstance(_ret_ir, ir.PointerType) {
+        self.emit(
+            E5090,
+            node_override=nd,
+            kind="Rust bridge callback",
+            name="lambda with a non-`str` return type",
+            help_text="A Rust bridge callback lambda must return `str`, e.g. `lambda (m: str) -> str : ...`."
+        );
+        return None;
+    }
+
+    if make_buf is None {
+        make_buf = self._callback_make_buf;
+    }
+    if make_buf is None {
+        return self._codegen_expr(nd);
+    }
+
+    anon_fn = self._codegen_lambda(nd);
+    if anon_fn is None or not isinstance(anon_fn, ir.Function) {
+        self.emit(E5090, node_override=nd, kind="expression", name="callback lambda");
+        return None;
+    }
+    captures = self._pending_lambda_captures or [];
+    self._pending_lambda_captures = None;
+    cap_types: list = [cap[1].type.pointee for cap in captures];
+
+    self._str_count += 1;
+    tramp_ty = ir.FunctionType(i32, [i8p, i8p, i32, i8p, i8p]);
+    tramp = ir.Function(
+        self.llvm_module, tramp_ty, name=f"__jac_cb_tramp_{self._str_count}"
+    );
+    tramp.linkage = "internal";
+    tramp.args[0].name = "ctx";
+    tramp.args[1].name = "arg_ptr";
+    tramp.args[2].name = "arg_len";
+    tramp.args[3].name = "out_buf";
+    tramp.args[4].name = "out_err";
+
+    saved_builder = self._builder;
+    self._builder = ir.IRBuilder(tramp.append_basic_block("entry"));
+
+    dlen = self.builder.zext(tramp.args[2], i64, name="cb.len");
+    raw = self._owned_jac_str_from_raw(
+        tramp.args[1], dlen, name_prefix="cb", rc_op="callback_str"
+    );
+
+    call_args: list = [self._coerce_type(raw, anon_fn.function_type.args[0])];
+    if cap_types {
+        ctx_struct_ty = ir.LiteralStructType(cap_types);
+        ctx_typed = self.builder.bitcast(
+            tramp.args[0], ctx_struct_ty.as_pointer(), name="cb.ctx.typed"
+        );
+        for (ci, ct) in enumerate(cap_types) {
+            fld = self.builder.gep(
+                ctx_typed,
+                [ir.Constant(i32, 0), ir.Constant(i32, ci)],
+                name=f"cb.ctx.{ci}"
+            );
+            call_args.append(
+                self._coerce_type(
+                    self.builder.load(fld, name=f"cb.cap.{ci}"),
+                    anon_fn.function_type.args[1 + ci]
+                )
+            );
+        }
+    }
+    result = self.builder.call(anon_fn, call_args, name="cb.result");
+    result_p = self._coerce_type(result, i8p);
+    strlen_fn = self._get_or_declare_extern("strlen", i64, [i8p]);
+    rlen = self.builder.call(strlen_fn, [result_p], name="cb.rlen");
+    out_i = self.builder.ptrtoint(tramp.args[3], i64, name="cb.out.int");
+    self.builder.call(
+        make_buf,
+        [
+            self._coerce_type(result_p, make_buf.args[0].type),
+            self._coerce_type(rlen, make_buf.args[1].type),
+            self._coerce_type(out_i, make_buf.args[2].type)
+        ]
+    );
+
+    self._emit_rc_release_simple(result, op="callback_result", loc="");
+    _res_i = self.builder.ptrtoint(result_p, i64, name="cb.res.addr");
+    _raw_i = self.builder.ptrtoint(raw, i64, name="cb.raw.addr");
+    _distinct = self.builder.icmp_unsigned("!=", _res_i, _raw_i, name="cb.distinct");
+    _rel_bb = tramp.append_basic_block("cb.rel_raw");
+    _cont_bb = tramp.append_basic_block("cb.cont");
+    self.builder.cbranch(_distinct, _rel_bb, _cont_bb);
+    self.builder.position_at_start(_rel_bb);
+    self._emit_rc_release_simple(raw, op="callback_str", loc="");
+    self.builder.branch(_cont_bb);
+    self.builder.position_at_start(_cont_bb);
+
+    _out_err_p = self.builder.bitcast(
+        tramp.args[4], i64.as_pointer(), name="cb.outerr.p"
+    );
+    self.builder.store(ir.Constant(i64, 0), _out_err_p);
+    self.builder.ret(ir.Constant(i32, 0));
+
+    self._builder = saved_builder;
+
+    ctx_i: ir.Value = ir.Constant(i64, 0);
+    if cap_types {
+        ctx_struct_ty = ir.LiteralStructType(cap_types);
+        ctx_alloca = self._entry_alloca(ctx_struct_ty, "cb.ctx.env");
+        for (ci, cap) in enumerate(captures) {
+            alloca = cap[1];
+            self.builder.store(
+                self.builder.load(alloca, name="cb.env.src"),
+                self.builder.gep(
+                    ctx_alloca,
+                    [ir.Constant(i32, 0), ir.Constant(i32, ci)],
+                    name=f"cb.env.{ci}"
+                )
+            );
+        }
+        ctx_i = self.builder.ptrtoint(ctx_alloca, i64, name="cb.ctx.addr");
+    }
+
+    rec_ty = ir.LiteralStructType([i64, i64]);
+    rec_alloca = self._entry_alloca(rec_ty, "cb.rec");
+    self.builder.store(
+        self.builder.ptrtoint(tramp, i64, name="cb.call.addr"),
+        self.builder.gep(
+            rec_alloca, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="cb.rec.call"
+        )
+    );
+    self.builder.store(
+        ctx_i,
+        self.builder.gep(
+            rec_alloca, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="cb.rec.ctx"
+        )
+    );
+    return self.builder.ptrtoint(rec_alloca, i64, name="cb.rec.addr");
 }
 
 impl NaIRGenPass._codegen_call_args(nd: uni.FuncCall) -> list {
@@ -257,6 +578,42 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 }
             }
             return ir.Constant(ir.DoubleType(), 0.0);
+        }
+
+        if func_name == "__jac_str_from_raw" {
+            params_l = nd.params or [];
+            if len(params_l) < 2 {
+                return self._make_global_string("", name_prefix=".jbuf.empty");
+            }
+            ptr_v = self._codegen_expr(params_l[0]);
+            len_v = self._codegen_expr(params_l[1]);
+            if ptr_v is None or len_v is None {
+                return self._make_global_string("", name_prefix=".jbuf.empty");
+            }
+            _i8p = ir.IntType(8).as_pointer();
+            _i64 = ir.IntType(64);
+            src_i = self._coerce_type(ptr_v, _i64);
+            src = self.builder.inttoptr(src_i, _i8p, name="jbuf.src");
+            dlen = self._coerce_type(len_v, _i64);
+            return self._owned_jac_str_from_raw(src, dlen, name_prefix="jbuf");
+        }
+
+        if func_name == "__jac_bytes_from_raw" {
+            params_l = nd.params or [];
+            if len(params_l) < 2 {
+                return self._make_global_bytes(b"");
+            }
+            ptr_v = self._codegen_expr(params_l[0]);
+            len_v = self._codegen_expr(params_l[1]);
+            if ptr_v is None or len_v is None {
+                return self._make_global_bytes(b"");
+            }
+            _i8p = ir.IntType(8).as_pointer();
+            _i64 = ir.IntType(64);
+            src_i = self._coerce_type(ptr_v, _i64);
+            src = self.builder.inttoptr(src_i, _i8p, name="jbb.src");
+            dlen = self._coerce_type(len_v, _i64);
+            return self._bytes_from_raw(src, dlen);
         }
 
         if func_name == "isinstance" {

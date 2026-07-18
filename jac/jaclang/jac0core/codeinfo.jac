@@ -111,10 +111,22 @@ def native_stdlib_root -> (str | None) {
     return root if os.path.isdir(root) else None;
 }
 
+def _is_rust_bridge_module(module_name: str) -> bool {
+    clean = module_name.lstrip(".");
+    return clean.startswith("rust.") and clean.count(".") == 1;
+}
+
 def is_bundled_native_module(module_name: str) -> bool {
     import os;
+    if not module_name {
+        return False;
+    }
+
+    if _is_rust_bridge_module(module_name) {
+        return True;
+    }
     root = native_stdlib_root();
-    if root is None or not module_name {
+    if root is None {
         return False;
     }
     path_name = module_name.lstrip('.').replace('.', os.sep);
@@ -126,6 +138,15 @@ def resolve_native_module(
 ) -> tuple[(str | None, str | None)] {
     import os;
     clean = module_name.lstrip('.');
+
+    if _is_rust_bridge_module(clean) {
+        import from jaclang.compiler.rust_bridge { materialize_bridge }
+        path = materialize_bridge(clean);
+        if path {
+            return (f"{clean}.na", path);
+        }
+        return (None, None);
+    }
 
     na_jac = os.path.join(base_dir, f"{clean}.na.jac");
     if os.path.exists(na_jac) {

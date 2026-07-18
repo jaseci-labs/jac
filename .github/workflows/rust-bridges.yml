@@ -1,0 +1,131 @@
+name: Rust Bridges
+
+# Builds and tests the Rust→Jac FFI bridge crates (bridges/): the jac-bridge
+# proc macro, the seed bridge crates, and the deterministic auto-binder — plus
+# the north-star coverage gate that blocks merges on a coverage regression (D6).
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'bridges/**'
+      - '.github/workflows/rust-bridges.yml'
+      # The na bridge job exercises the native callback trampoline, so a change to
+      # the native codegen must also re-run this workflow's leak regression.
+      - 'jac/jaclang/compiler/passes/native/**'
+      - 'jac/jaclang/compiler/rust_bridge/**'
+  push:
+    branches:
+      - main
+    paths:
+      - 'bridges/**'
+      - '.github/workflows/rust-bridges.yml'
+      # The na bridge job exercises the native callback trampoline, so a change to
+      # the native codegen must also re-run this workflow's leak regression.
+      - 'jac/jaclang/compiler/passes/native/**'
+      - 'jac/jaclang/compiler/rust_bridge/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  bridges:
+    name: Build, test, and gate coverage
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bridges
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            bridges/target
+          key: bridges-${{ runner.os }}-${{ hashFiles('bridges/**/Cargo.toml') }}
+          restore-keys: bridges-${{ runner.os }}-
+
+      # Fast suite: unit tests, overlay, determinism, and the corpus coverage
+      # gate (coverage_does_not_regress fails the build on a regression).
+      - name: Test workspace
+        run: cargo test --workspace --release
+
+      # Round-trip: generate a full bridge crate from the regex fixture and
+      # compile it under -D warnings, proving the binder's output is real code.
+      - name: Round-trip compile (generated bridge must build clean)
+        run: cargo test -p jac-bridge-binder --release -- --ignored
+
+  # The na (native) side: the in-compiler .jac generators lower each bridged
+  # method to native IR, and the loader nacompiles a probe against a real .so.
+  # This job needs the LLVM shim (via the jac binary) plus the built owning .so,
+  # so it is separate from the Rust-only job above.
+  bridges-na:
+    name: na bridge conformance + leak
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            bridges/target
+          key: bridges-${{ runner.os }}-${{ hashFiles('bridges/**/Cargo.toml') }}
+          restore-keys: bridges-${{ runner.os }}-
+
+      # The na tests marshal against the real bridge .so files (metadata section
+      # + symbols), so build EVERY bridge cdylib in the workspace before running
+      # any probe. A whole-workspace build (rather than a hand-picked `-p` list)
+      # means a newly added bridge crate's .so is always present for a newly
+      # added test -- there is no parallel "crate build list" to keep in sync
+      # with test discovery below. This also builds jac-bridge-regex (the
+      # flagship end-to-end path) and the adversarial suite's owning2/owning3/
+      # reentrant crates.
+      - name: Build every bridge .so (release)
+        working-directory: bridges
+        run: cargo build --release
+
+      # Provides the `jac` binary (bundled LLVM shim) on PATH and places the shim
+      # in-tree at jac/jaclang/compiler/passes/native/llvm/libjacllvm.so.
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/setup-jac
+
+      # Point the shim gate at the in-tree shim setup-jac just placed (the tests'
+      # own zig-out path is not populated by a binary build).
+      - name: Export the in-tree LLVM shim
+        run: echo "JAC_LLVM_SHIM=$GITHUB_WORKSPACE/jac/jaclang/compiler/passes/native/llvm/libjacllvm.so" >> "$GITHUB_ENV"
+
+      # Discover-and-run EVERY .jac test suite under the loader tests tree by
+      # directory: `-d` marks the whole tree a Jac `[test]` root, so the collector
+      # runs the `test` blocks of every `.jac` file beneath it regardless of name
+      # (issue #7151), not just a hand-enumerated list. This one step therefore
+      # covers the CPython-loader suites, the na conformance verticals
+      # (owning/scalar/map/list/async), the callback RC-leak regression, the ABI
+      # drift guard, the na coverage-floor ratchet (test_na_coverage_floor.jac),
+      # AND the Phase 0 adversarial exit gate (adversarial_conformance.jac) -- and
+      # any test file added later is picked up automatically with nothing to edit
+      # here. Serial (JAC_TEST_JOBS=0): each na vertical nacompiles a probe and
+      # the parallel xdist runner OOMs the GitHub runner.
+      - name: Run the rust-bridge loader suites (auto-discovered by directory)
+        env:
+          JAC_TEST_JOBS: "0"
+          LD_LIBRARY_PATH: ${{ github.workspace }}/bridges/target/release
+        run: jac test -d bridges/jac-bridge-loader/tests

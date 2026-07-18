@@ -1,0 +1,24 @@
+[package]
+name = "jac-bridge"
+version = "0.1.0"
+edition = "2021"
+description = "Proc macro: #[jac_bridge::bridge] — generate C-ABI shims and D2 metadata from annotated Rust impl blocks"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn  = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"
+jac-bridge-schema = { path = "../jac-bridge-schema" }
+
+[dev-dependencies]
+trybuild = "1"
+jac-bridge-schema = { path = "../jac-bridge-schema" }
+# The serde wide lane (Phase 2): generated `#rt` helpers reference `::serde` and
+# `::rmp_serde`, so a bridge that uses `Wide<T>` needs both in scope. Real
+# binder-generated crates get these from `emit_cargo_toml` (2.4); the wide runtime
+# test here gets them as dev-deps.
+serde = { version = "1", features = ["derive"] }
+rmp-serde = "1"

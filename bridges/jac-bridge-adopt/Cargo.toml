@@ -1,0 +1,18 @@
+# Adopt-shell reference crate (handle-soundness lane). The only crate whose
+# bridge has a method returning a CONSTRUCTOR-BEARING opaque type: `Snapshot` has
+# its own `new`, yet is also produced by `Counter::snapshot`. On the na loader
+# such a type cannot reuse `init(raw)` (its ctor slot holds the real `init(v)`),
+# so the synth emits a static adopt shell `_adopt(raw) { s = Snapshot.__new__(
+# Snapshot); s.__handle = raw; ... }`. This crate exists to drive that shell
+# end-to-end through a real .so, proving NaIRGenPass lowers `T.__new__(T)`.
+[package]
+name = "jac-bridge-adopt"
+version = "0.1.0"
+edition = "2021"
+description = "Adopt-shell reference crate: a method returning a constructor-bearing opaque type, for the na `_adopt` (T.__new__) lowering gate"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+jac-bridge = { path = "../jac-bridge" }

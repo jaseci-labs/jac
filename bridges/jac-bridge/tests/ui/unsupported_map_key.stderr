@@ -1,0 +1,5 @@
+error: unsupported HashMap key type: only HashMap<String, V> is bridgeable (keys marshal as Jac str)
+  --> tests/ui/unsupported_map_key.rs:10:56
+   |
+10 |         pub fn bad(&self) -> std::collections::HashMap<u32, i64> {
+   |                                                        ^^^

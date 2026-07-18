@@ -74,6 +74,9 @@ demo/
 
 node_modules
 
+# Cargo build artifacts
+bridges/target/
+
 # Zig build artifacts. jac/.gitignore covers the in-tree binary build under jac/,
 # but `jac run` invoking the native backend emits a .zig-cache/ at the *repo
 # root* (its cwd) too -- and a release `git add -A` (release.yml) will
@@ -103,3 +106,10 @@ jactastic/**
 
 # Zig 0.16 project-local package cache (fetched, hash-pinned deps)
 zig-pkg/
+
+# Local reference checkout of upstream rust-ndarray/ndarray (own .git remote);
+# kept for bridge-authoring reference, not part of this tree.
+ndarray/
+
+# Agent tooling scratch
+.pi-subagents/

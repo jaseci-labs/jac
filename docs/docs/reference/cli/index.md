@@ -1313,6 +1313,59 @@ jac scale destroy app.jac
 
 ## Package Management
 
+### jac add
+
+Add packages to your project's dependencies. Requires at least one package argument (use `jac install` to install all existing dependencies). When no version is specified, the package is installed unconstrained and then the installed version is queried to record a `~=X.Y` compatible-release spec in `jac.toml`.
+
+```bash
+jac add [-h] [-d] [-g GIT] [-v] [packages ...]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `packages` | Package specifications (required) | None |
+| `-d, --dev` | Add as dev dependency | `False` |
+| `-g, --git` | Git repository URL | None |
+| `-v, --verbose` | Show detailed output | `False` |
+
+**With the built-in client framework:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--npm` | Add as client-side (npm) package | `False` |
+
+**Examples:**
+
+```bash
+# Add a package (records ~=2.32 based on installed version)
+jac add requests
+
+# Add with explicit version constraint
+jac add "numpy>=1.24"
+
+# Add multiple packages
+jac add numpy pandas scipy
+
+# Add as dev dependency
+jac add pytest --dev
+
+# Add from git repository
+jac add --git https://github.com/user/package.git
+
+# Add npm package (client framework built into jaclang core)
+jac add react --npm
+
+# Add a Rust crate bridge (recorded under [rust-bridges])
+jac add rust:regex@1.12
+jac add rust:uuid
+```
+
+For private packages from custom registries (e.g., GitHub Packages), configure scoped registries and auth tokens in `jac.toml` under `[client.npm]`. See [NPM Registry Configuration](../plugins/jac-client.md#npm-registry-configuration).
+
+A package prefixed with `rust:` is a [Rust crate bridge](../language/rust-bridges.md) rather than a PyPI package. It is recorded under the `[rust-bridges]` table with a version **constraint** (`@1.12` or `==1.12` pins the `1.12.x` series; omitting it records `*`), and resolved by `jac install` from the local cache, a registry, or a local build. See the [Rust Crate Bridges](../language/rust-bridges.md) reference for resolution order and requirements.
+
+---
+
 ### jac install
 
 `jac install` has two modes depending on whether package names are passed. Pass `--plan` (optionally with `--json`) to preview the resolved dependency plan without installing anything -- this absorbs the former `jac deps`.

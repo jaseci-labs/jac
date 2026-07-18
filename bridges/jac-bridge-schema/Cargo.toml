@@ -1,0 +1,5 @@
+[package]
+name = "jac-bridge-schema"
+version = "0.1.0"
+edition = "2021"
+description = "D2 ABI schema constants — single source of truth shared across jac-bridge crates and tooling"

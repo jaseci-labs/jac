@@ -230,7 +230,7 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
 impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
     func_ret_type = self.builder.function.return_value.type;
     if nd.expr is not None {
-        val = self._codegen_required(nd.expr);
+        val = self._codegen_required(nd.expr, expected_type=func_ret_type);
         if val is not None {
             val = self._coerce_type(val, func_ret_type);
 
@@ -740,9 +740,76 @@ impl NaIRGenPass._bind_match_pattern(pat: uni.MatchPattern, subj: ir.Value) -> N
     }
 }
 
+impl NaIRGenPass._emit_empty_container_for_type(
+    cont_t: (ir.Type | None), nd: uni.UniNode
+) -> (ir.Value | None) {
+    if cont_t is None or not isinstance(cont_t, ir.PointerType) {
+        return None;
+    }
+    _loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+        if nd.loc
+        else 0}";
+    for (_spec, _dt) in self.dict_types.items() {
+        if cont_t == _dt.as_pointer() {
+            _h = self.dict_helpers.get(_spec);
+            if _h is not None {
+                return self._rc_call_with_ctx(
+                    _h["new"], [], op="new", loc=_loc, name="dict.empty"
+                );
+            }
+            return None;
+        }
+    }
+    for (_spec, _lt) in self.list_types.items() {
+        if cont_t == _lt.as_pointer() {
+            _h = self.list_helpers.get(_spec);
+            if _h is not None {
+                return self._rc_call_with_ctx(
+                    _h["new"], [], op="new", loc=_loc, name="list.empty"
+                );
+            }
+            return None;
+        }
+    }
+    return None;
+}
+
+impl NaIRGenPass._try_empty_container(
+    nd: (uni.UniNode | None), expected_type: (ir.Type | None)
+) -> (ir.Value | None) {
+    if expected_type is None or not isinstance(expected_type, ir.PointerType) {
+        return None;
+    }
+    _empty = (
+        (isinstance(nd, uni.DictVal) and not nd.kv_pairs)
+        or (isinstance(nd, uni.ListVal) and not nd.values)
+    );
+    if not _empty {
+        return None;
+    }
+    return self._emit_empty_container_for_type(expected_type, nd);
+}
+
 impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
     _rhs_errs_before = len(self.errors_had);
-    value = self._codegen_expr(nd.value) if nd.value else None;
+
+    value: (ir.Value | None) = None;
+    _empty_lit = (
+        nd.type_tag is not None
+        and nd.type_tag.tag is not None
+        and isinstance(nd.value, (uni.DictVal, uni.ListVal))
+        and (
+            (isinstance(nd.value, uni.DictVal) and not nd.value.kv_pairs)
+            or (isinstance(nd.value, uni.ListVal) and not nd.value.values)
+        )
+    );
+    if _empty_lit {
+        _cont_t = self._resolve_container_annotation(nd.type_tag.tag);
+        value = self._emit_empty_container_for_type(_cont_t, nd);
+    }
+    if value is None {
+        value = self._codegen_expr(nd.value) if nd.value else None;
+    }
 
     if value is None and isinstance(nd.value, uni.FuncCall) {
         func_name = self._get_name(nd.value.target);

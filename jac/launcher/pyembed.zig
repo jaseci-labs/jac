@@ -31,6 +31,10 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const embed = @import("embed.zig");
+// Phase 3.1: the high-level `jac_py_*` surface. Imported (not just re-declared)
+// so its `export fn`s land in this same libjacpyembed; it resolves its own C-API
+// pointers via `pyinterop.resolve(&emb)` in `jac_engine_boot` below.
+const pyinterop = @import("pyinterop.zig");
 
 const MAX_PATH = std.Io.Dir.max_path_bytes;
 
@@ -52,6 +56,18 @@ const PyObjectCallOneArg_t = *const fn (callable: ?*anyopaque, arg: ?*anyopaque)
 const PyUnicodeFromString_t = *const fn (s: [*:0]const u8) callconv(.c) ?*anyopaque;
 const PyUnicodeAsUTF8_t = *const fn (o: ?*anyopaque) callconv(.c) ?[*:0]const u8;
 const PyDecRef_t = *const fn (o: ?*anyopaque) callconv(.c) void;
+// Phase 3.0 py-interop spike surface. ImportModule reaches beyond __main__ so na
+// can pull in a pip-installed wheel (orjson/polars) by name; CallMethod is the
+// generic method-dispatch primitive (real symbol is variadic C -- the forwarder
+// pins EXACTLY ONE trailing vararg, so only single-value Py_BuildValue formats
+// work through it: "O", "s", "i", "l", ... NOT two-arg forms like "y#"/"s#", which
+// would read a second vararg that was never pushed. Marshal a bytes payload as a
+// PyBytes object + "O" instead); the PyBytes pair builds/reads those byte payloads
+// (msgpack/JSON) that cross the boundary in both directions.
+const PyImportImportModule_t = *const fn (name: [*:0]const u8) callconv(.c) ?*anyopaque;
+const PyObjectCallMethod_t = *const fn (obj: ?*anyopaque, name: [*:0]const u8, fmt: [*:0]const u8, ...) callconv(.c) ?*anyopaque;
+const PyBytesFromStringAndSize_t = *const fn (v: [*]const u8, len: isize) callconv(.c) ?*anyopaque;
+const PyBytesAsStringAndSize_t = *const fn (o: ?*anyopaque, buf: *?[*]const u8, len: *isize) callconv(.c) c_int;
 
 // ── Boot state ──────────────────────────────────────────────────────────────
 // `rt_buf` backs the materialized-tree slice and must outlive boot (the
@@ -73,6 +89,10 @@ var p_call_one: PyObjectCallOneArg_t = undefined;
 var p_uni_from: PyUnicodeFromString_t = undefined;
 var p_uni_utf8: PyUnicodeAsUTF8_t = undefined;
 var p_decref: PyDecRef_t = undefined;
+var p_import_module: PyImportImportModule_t = undefined;
+var p_call_method: PyObjectCallMethod_t = undefined;
+var p_bytes_from: PyBytesFromStringAndSize_t = undefined;
+var p_bytes_as: PyBytesAsStringAndSize_t = undefined;
 
 fn fail(comptime msg: []const u8) c_int {
     std.debug.print("libjacpyembed: {s}\n", .{msg});
@@ -144,9 +164,22 @@ export fn jac_engine_boot() c_int {
     p_uni_from = emb.symOrErr(PyUnicodeFromString_t, "PyUnicode_FromString") catch return fail("missing PyUnicode_FromString");
     p_uni_utf8 = emb.symOrErr(PyUnicodeAsUTF8_t, "PyUnicode_AsUTF8") catch return fail("missing PyUnicode_AsUTF8");
     p_decref = emb.symOrErr(PyDecRef_t, "Py_DecRef") catch return fail("missing Py_DecRef");
+    p_import_module = emb.symOrErr(PyImportImportModule_t, "PyImport_ImportModule") catch return fail("missing PyImport_ImportModule");
+    p_call_method = emb.symOrErr(PyObjectCallMethod_t, "PyObject_CallMethod") catch return fail("missing PyObject_CallMethod");
+    p_bytes_from = emb.symOrErr(PyBytesFromStringAndSize_t, "PyBytes_FromStringAndSize") catch return fail("missing PyBytes_FromStringAndSize");
+    p_bytes_as = emb.symOrErr(PyBytesAsStringAndSize_t, "PyBytes_AsStringAndSize") catch return fail("missing PyBytes_AsStringAndSize");
+
+    // Phase 3.1: resolve the high-level surface's own C-API pointers. A missing
+    // symbol here is the same packaging bug class as above -- fail cleanly.
+    if (!pyinterop.resolve(&emb)) return fail("missing py-interop C-API symbol");
 
     booted = true;
     return 0;
+}
+
+// Force the pyinterop `export fn`s to be analyzed and emitted into this library.
+comptime {
+    _ = pyinterop;
 }
 
 /// `std.posix.getenv`-style lookup returning an optional slice for embed.open.
@@ -197,4 +230,21 @@ export fn jpy_PyUnicode_AsUTF8(o: ?*anyopaque) ?[*:0]const u8 {
 }
 export fn jpy_Py_DecRef(o: ?*anyopaque) void {
     p_decref(o);
+}
+
+// Phase 3.0 py-interop forwarders. `na` declares each with fixed arity; the
+// CallMethod forwarder pins exactly one trailing vararg over the real variadic C
+// symbol, so callers must use single-value formats ("O", "s", ...) -- a byte
+// payload crosses as a PyBytes object + "O", never a two-arg "y#"/"s#".
+export fn jpy_PyImport_ImportModule(name: [*:0]const u8) ?*anyopaque {
+    return p_import_module(name);
+}
+export fn jpy_PyObject_CallMethod(obj: ?*anyopaque, name: [*:0]const u8, fmt: [*:0]const u8, arg: ?*anyopaque) ?*anyopaque {
+    return p_call_method(obj, name, fmt, arg);
+}
+export fn jpy_PyBytes_FromStringAndSize(v: [*]const u8, len: isize) ?*anyopaque {
+    return p_bytes_from(v, len);
+}
+export fn jpy_PyBytes_AsStringAndSize(o: ?*anyopaque, buf: *?[*]const u8, len: *isize) c_int {
+    return p_bytes_as(o, buf, len);
 }

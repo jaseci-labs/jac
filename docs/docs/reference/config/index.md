@@ -171,6 +171,34 @@ Third-party extras syntax (e.g. `"testcontainers[mongodb,redis]"`) passes throug
 
 ---
 
+### [rust-bridges]
+
+Declares [Rust crate bridges](../language/rust-bridges.md) the project imports
+under the `rust.` namespace. Each key is a crate name; each value is a version
+**constraint**, not an exact pin.
+
+```toml
+[rust-bridges]
+regex = "1.12"     # matches the 1.12.x series, highest wins
+uuid = "*"         # any available version
+base64 = "0.22"    # matches the 0.22.x series
+```
+
+| Value form | Meaning |
+|------------|---------|
+| `"1.12"` | Any version in the `1.12.x` series; the highest match (compared numerically) is selected. |
+| `"*"` or `""` | No constraint; the highest available version is selected. |
+
+Add entries with `jac add rust:<crate>[@version]` rather than editing the table
+by hand. `jac install` resolves every declared bridge from the local cache, a
+registry (`JAC_BRIDGE_REGISTRY`), or a local build (`JAC_BRIDGE_WORKSPACE` plus
+the Rust toolchain), in that order; an unresolved bridge is reported as
+not-installed with a non-zero exit. See the
+[Rust Crate Bridges](../language/rust-bridges.md) reference for the full
+resolution order, environment variables, and bundling behavior.
+
+---
+
 ### [run]
 
 Defaults for `jac run`:

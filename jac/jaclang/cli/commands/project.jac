@@ -355,6 +355,39 @@ def install(
 ) -> int;
 
 @registry.command(
+    name="add",
+    help="Add a dependency to the project",
+    args=[
+        Arg.create(
+            "packages", kind=ArgKind.MULTI, default=[], help="Package specifications"
+        ),
+        Arg.create(
+            "dev", typ=bool, default=False, help="Add as dev dependency", short="d"
+        ),
+        Arg.create("git", default="", help="Git repository URL", short="g"),
+        Arg.create(
+            "verbose", typ=bool, default=False, help="Verbose output", short="v"
+        ),
+
+    ],
+    examples=[
+        ("jac add requests", "Add a package"),
+        ('jac add "numpy>=1.24" pandas', "Add multiple packages with version"),
+        ("jac add pytest --dev", "Add dev dependency"),
+        ("jac add --git https://github.com/user/plugin.git", "Add from git"),
+        ("jac add rust:regex", "Add a Rust bridge crate to [rust-bridges]"),
+        ("jac add rust:regex@1.11", "Add a Rust bridge crate at a version"),
+        ("jac add py:polars", "Add a py-interop wheel to [py-interop]"),
+        ("jac add py:polars@1.2.3", "Add a py-interop wheel pinned to a version"),
+
+    ],
+    group="project"
+)
+def add(
+    packages: list = [], dev: bool = False, git: str = "", verbose: bool = False
+) -> int;
+
+@registry.command(
     name="remove",
     help="Remove a dependency from the project",
     args=[
@@ -481,4 +514,10 @@ def clean(
 
 def jacpack(action: str = "", path: str = "", output: str = "") -> int;
 
-def bundle(output: str = "dist", target: str = "wheel", fat: bool = False) -> int;
+def bundle(
+    output: str = "dist",
+    target: str = "wheel",
+    fat: bool = False,
+    with_py_interop: bool = False,
+    py: str = ""
+) -> int;

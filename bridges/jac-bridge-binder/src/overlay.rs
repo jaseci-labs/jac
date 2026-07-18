@@ -1,0 +1,401 @@
+//! `<crate>.overlay.toml` — the sparse exception file the binder consumes
+//! alongside its rules (D6). Every entry is a *decision*; the binder still does
+//! all the work. The shape is bindgen/autocxx-style directives, never a UDL
+//! that restates the whole interface.
+//!
+//! ```toml
+//! [fn."Regex::shortest_match"]
+//! rename = "find_end"          # nicer Jac-side name
+//!
+//! [fn."Regex::is_match_at"]
+//! skip = true                  # hide a method
+//! reason = "unsound aliasing"  # optional rationale, shown in the coverage report
+//!
+//! [type."SetMatchesIntoIter"]
+//! skip = true                  # hide a type
+//! inject = """
+//!     pub fn as_str(&self) -> String { self.0.as_str().to_string() }
+//! """
+//! ```
+//!
+//! The full directive set is honoured (M4 Phase B): `skip`/`rename`/`inject`
+//! plus `fn.treat_as` (reclassify a method or force it off — applied during
+//! `classify_with_overlay`), `type.treat_as` (force a type's `error`/`opaque`
+//! classification when neither the `impl std::error::Error` signal nor the
+//! `*Error` name heuristic gets it right), `type.wide` (force/forbid the wide
+//! msgpack lane, overriding serde detection — 2.3), `monomorphize` (pin a generic
+//! struct's concrete instantiations — also classify-time), and `[module."m"]
+//! skip` (drop a whole submodule by provenance). A `skip = true` may carry an
+//! optional `reason` string that surfaces verbatim in the coverage report (the
+//! skip-with-reason contract for deliberately-refused, e.g. Rust-level-unsound,
+//! APIs); a skip is always recorded as a visible skip, never a silent removal.
+//! An unknown value, an empty
+//! `monomorphize` set, or a contradictory `treat_as` + `skip`/`rename` pairing is
+//! rejected with a precise reason — an overlay entry is a decision the author
+//! expects to take effect, never a silent no-op.
+//!
+//! `[crate] features = ["serde"]` (2.4) is the one crate-wide table: the cargo
+//! features to enable when documenting and building the bridge. Unlike the
+//! per-symbol tables it does not touch the bound interface; it steers the build
+//! (`_build_core.jac` rustdoc + cargo) and is part of the registry artifact
+//! identity. The binder records it but acts on an already-rendered rustdoc JSON.
+
+use std::collections::BTreeMap;
+
+use serde::Deserialize;
+
+use crate::types::{BridgeSpec, Ownership, Skip, SkipReason};
+
+/// Parsed overlay. Maps are `BTreeMap` so iteration is deterministic (the D6
+/// byte-identical-output guarantee must not depend on hash order).
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Overlay {
+    /// Keyed by `"Type::method"`.
+    #[serde(rename = "fn", default)]
+    pub fns: BTreeMap<String, FnOverlay>,
+    /// Keyed by type name.
+    #[serde(rename = "type", default)]
+    pub types: BTreeMap<String, TypeOverlay>,
+    /// Keyed by submodule name.
+    #[serde(rename = "module", default)]
+    pub modules: BTreeMap<String, ModuleOverlay>,
+    /// Crate-wide build inputs (`[crate]`). `crate` is a Rust keyword, so the
+    /// field is `krate`; the TOML key is `crate`.
+    #[serde(rename = "crate", default)]
+    pub krate: CrateOverlay,
+}
+
+impl Overlay {
+    /// Cargo features this overlay pins for the crate build (2.4). Empty when
+    /// no `[crate] features` is declared — the default-feature build.
+    pub fn features(&self) -> &[String] {
+        &self.krate.features
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FnOverlay {
+    #[serde(default)]
+    pub skip: bool,
+    /// Nicer Jac-side name; the Rust call target is unchanged.
+    pub rename: Option<String>,
+    /// Override auto-classification (applied at classify time). `"skip"` forces
+    /// the method off the bridge; `"owning"` / `"cursor"` / `"drain"` /
+    /// `"callback"` pin it to exactly that rule regardless of what detection would
+    /// pick. A pinned rule whose preconditions the method fails records an honest
+    /// skip. Exclusive with `skip`/`rename` on the same entry.
+    pub treat_as: Option<String>,
+    /// Force the ownership class of an opaque-handle return (Phase S, Track B):
+    /// `"owned"` (default — same as omitting), `"shared"` (the return is one
+    /// reference on an RC'd inner), or `"borrowed"` (a live view that RC-pins its
+    /// `&self` owner). The binder defaults every handle return to `owned` because
+    /// rustdoc cannot prove otherwise; this key is the escape hatch where the
+    /// crate's contract is `shared`/`borrowed`. Exclusive with `skip` (a skipped
+    /// method has no return) and with `treat_as` (a reclassified method's return
+    /// shape is decided at classify time, not here).
+    pub ownership: Option<String>,
+    /// Human rationale recorded against a `skip = true` (the skip-with-reason
+    /// contract). Surfaces verbatim in the coverage report so a deliberately
+    /// refused method — e.g. a Rust-level-unsound aliasing API — is visible with
+    /// its justification, not silently absent. Only meaningful with `skip = true`.
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TypeOverlay {
+    #[serde(default)]
+    pub skip: bool,
+    pub rename: Option<String>,
+    /// Raw Rust `impl`-body source appended verbatim after generated methods —
+    /// the documented-last-resort escape hatch (8-space indentation expected).
+    pub inject: Option<String>,
+    /// Pin the concrete instantiations of a generic struct the rules can't infer
+    /// (applied at classify time). Each entry is a concrete type substituted for
+    /// the struct's single type param, yielding one opaque bridged type named
+    /// `T<Suffix>` wrapping `crate::T<concrete>` — e.g. `["chrono::Utc"]` on
+    /// `DateTime` emits `DateTimeUtc(pub chrono::DateTime<chrono::Utc>)`. An empty
+    /// list is rejected.
+    pub monomorphize: Option<Vec<String>>,
+    /// Force this type's error/opaque classification when neither an
+    /// `impl std::error::Error` nor the `*Error` name heuristic gets it right
+    /// (applied at classify time). `"error"` bridges it as an error type;
+    /// `"opaque"` bridges a `*Error`-named domain type as an ordinary resource.
+    /// Exclusive with `skip` (a removed type has nothing to reclassify).
+    pub treat_as: Option<String>,
+    /// Force or forbid the wide (msgpack) lane for this type, overriding serde
+    /// detection (2.3). `true` crosses the type as an encoded value even when
+    /// rustdoc showed no serde impl (a manual impl behind a `cfg`, or an external
+    /// type the structural whitelist misses); `false` keeps it an opaque handle
+    /// even though it is `Serialize`/`Deserialize`. Omit to follow detection.
+    /// Exclusive with `skip` (a removed type crosses nothing).
+    pub wide: Option<bool>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModuleOverlay {
+    #[serde(default)]
+    pub skip: bool,
+}
+
+/// The `[crate]` table — crate-wide build inputs, not per-symbol decisions
+/// (2.4 feature plumbing). Distinct from `[fn]`/`[type]`/`[module]` because it
+/// steers how the crate is *documented and compiled* rather than how a bound
+/// symbol is treated.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CrateOverlay {
+    /// Cargo features to enable when rendering rustdoc JSON and building the
+    /// bridge for this crate (`features = ["serde"]`). Serde impls and other
+    /// wide-lane surface live behind optional dependency-features that are off
+    /// by default, so a default-feature build documents ZERO of them; this list
+    /// is the single source of truth threaded into the build-on-miss pipeline
+    /// (`_build_core.jac` rustdoc + cargo build) and into the registry artifact
+    /// manifest (features are part of the artifact identity — a bridge built
+    /// with different features is a different artifact). NOT `--all-features`:
+    /// mutually-exclusive features (e.g. chrono's rkyv size features) break the
+    /// build. The binder itself consumes an already-rendered rustdoc JSON, so it
+    /// only records this list; it does not act on it.
+    #[serde(default)]
+    pub features: Vec<String>,
+}
+
+/// Parse an overlay from a TOML string.
+pub fn parse_overlay(src: &str) -> Result<Overlay, toml::de::Error> {
+    toml::from_str(src)
+}
+
+/// Apply `overlay` to `spec` in-place. Returns an error naming any directive
+/// the current rule set cannot honour, so overlays fail loud, never silently.
+pub fn apply_overlay(spec: &mut BridgeSpec, overlay: &Overlay) -> Result<(), String> {
+    // ── [module."m"] skip = true ─────────────────────────────────────────────
+    // Drop every bridged type whose module provenance contains `m`, along with
+    // the method skips recorded against those types. classify tracks provenance
+    // on `BridgeType::module_path` (crate root + type name stripped), so a
+    // `[module."bytes"]` skip removes the whole `bytes` submodule surface.
+    for (name, m) in &overlay.modules {
+        if !m.skip {
+            continue;
+        }
+        let removed: Vec<String> = spec
+            .types
+            .iter()
+            .filter(|bt| bt.module_path.iter().any(|seg| seg == name))
+            .map(|bt| bt.name.clone())
+            .collect();
+        spec.types
+            .retain(|bt| !bt.module_path.iter().any(|seg| seg == name));
+        spec.skips.retain(|s| {
+            !removed
+                .iter()
+                .any(|t| s.item.starts_with(&format!("{t}::")))
+        });
+    }
+
+    // ── [type."T"] ───────────────────────────────────────────────────────────
+    for (name, t) in &overlay.types {
+        // `treat_as` (error/opaque reclassification) is consumed at classify time;
+        // here we only validate the value and its exclusivity so a typo or a
+        // contradictory `skip` fails loud instead of silently doing nothing.
+        if let Some(kind) = &t.treat_as {
+            const ALLOWED: &[&str] = &["error", "opaque"];
+            if !ALLOWED.contains(&kind.as_str()) {
+                return Err(format!(
+                    "overlay: [type.\"{name}\"] treat_as = \"{kind}\" is not a known \
+                     reclassification — expected one of {ALLOWED:?}"
+                ));
+            }
+            if t.skip {
+                return Err(format!(
+                    "overlay: [type.\"{name}\"] treat_as is exclusive with skip = true \
+                     — a removed type has nothing to reclassify"
+                ));
+            }
+        }
+        // `wide` overrides the wide-lane decision; it is exclusive with `skip`
+        // (a removed type crosses nothing) and with `monomorphize` (whose concrete
+        // instantiations are separate types the `monomorphize` branch below
+        // `continue`s past, so a `wide` here would silently no-op — fail loud).
+        if t.wide.is_some() {
+            if t.skip {
+                return Err(format!(
+                    "overlay: [type.\"{name}\"] wide is exclusive with skip = true \
+                     — a removed type crosses nothing"
+                ));
+            }
+            if t.monomorphize.is_some() {
+                return Err(format!(
+                    "overlay: [type.\"{name}\"] wide is not supported alongside \
+                     monomorphize — set wide on each concrete `T<Suffix>` instead"
+                ));
+            }
+        }
+        // `monomorphize` is honoured during classification (see
+        // `classify_with_overlay`), which expands the generic struct into concrete
+        // `T<Suffix>` types. Here we only validate it and move on — the original
+        // generic name `T` is intentionally absent from the spec afterwards, so the
+        // usual "no such bridged type" lookup below must not run for it.
+        if let Some(set) = &t.monomorphize {
+            if set.is_empty() {
+                return Err(format!(
+                    "overlay: [type.\"{name}\"] monomorphize = [] pins no \
+                     instantiation — list at least one concrete type"
+                ));
+            }
+            continue;
+        }
+        if t.skip {
+            spec.types.retain(|bt| bt.name != *name);
+            // A skipped type's method skips are noise; drop them too.
+            spec.skips
+                .retain(|s| !s.item.starts_with(&format!("{name}::")));
+            continue;
+        }
+        let Some(bt) = spec.types.iter_mut().find(|bt| bt.name == *name) else {
+            return Err(format!("overlay: [type.\"{name}\"] — no such bridged type"));
+        };
+        if let Some(new) = &t.rename {
+            bt.name = new.clone();
+        }
+        if let Some(src) = &t.inject {
+            bt.injected_source.push(src.clone());
+        }
+        if let Some(w) = t.wide {
+            bt.force_wide = Some(w);
+        }
+    }
+
+    // ── [fn."T::m"] ──────────────────────────────────────────────────────────
+    for (key, f) in &overlay.fns {
+        let (type_name, method) = key
+            .split_once("::")
+            .ok_or_else(|| format!("overlay: [fn.\"{key}\"] — key must be \"Type::method\""))?;
+
+        // `treat_as` is honoured during classification (see
+        // `classify_with_overlay`), not here — this pass only validates the value
+        // so a typo fails loud instead of silently pinning nothing.
+        if let Some(kind) = &f.treat_as {
+            const ALLOWED: &[&str] = &["skip", "owning", "cursor", "drain", "callback"];
+            if !ALLOWED.contains(&kind.as_str()) {
+                return Err(format!(
+                    "overlay: [fn.\"{key}\"] treat_as = \"{kind}\" is not a known \
+                     reclassification — expected one of {ALLOWED:?}"
+                ));
+            }
+            // A treat_as directive fully determines the method's fate at classify
+            // time, so it is exclusive with skip/rename/ownership on the same
+            // entry — combining them would silently drop the other directive.
+            // Fail loud.
+            if f.skip || f.rename.is_some() || f.ownership.is_some() || f.reason.is_some() {
+                return Err(format!(
+                    "overlay: [fn.\"{key}\"] treat_as is exclusive with skip/rename/ownership/reason \
+                     on the same entry — split them into separate directives"
+                ));
+            }
+            continue;
+        }
+
+        // A `reason` only annotates a skip; standing alone it would record nothing.
+        if f.reason.is_some() && !f.skip {
+            return Err(format!(
+                "overlay: [fn.\"{key}\"] reason requires skip = true — a reason with no \
+                 skip annotates nothing"
+            ));
+        }
+
+        // Validate the ownership value early (before the type lookup) so a typo
+        // fails loud regardless of whether the target type survived earlier
+        // skips. `owned` is the default and is accepted as an explicit no-op.
+        let forced_ownership = match f.ownership.as_deref() {
+            None | Some("owned") => None,
+            // `shared` is RETIRED (Phase 1.2.4): a shared handle asked the loader
+            // to `retain` on adopt unconditionally, but the macro boxes every
+            // return fresh (rc = 1), so a retained-but-single-owner box leaks (its
+            // one close drops rc 2→1, never 0). The only alias the toolchain can
+            // PROVE is a `&self -> &Self` return, RC-pinned behind the loader's
+            // runtime `rh == self` guard. So a co-owned handle is expressed by the
+            // crate returning `&Self`, never forced through an overlay key.
+            Some("shared") => {
+                return Err(format!(
+                    "overlay: [fn.\"{key}\"] ownership = \"shared\" is retired — an \
+                     unconditional retain-on-adopt leaks a fresh handle box. Have the \
+                     crate method return `&Self` for a co-owned (self-identity) handle; \
+                     the loader RC-pins it behind a runtime `rh == self` guard that \
+                     proves the alias instead of trusting the overlay"
+                ));
+            }
+            Some("borrowed") => Some(Ownership::Borrowed),
+            Some(other) => {
+                return Err(format!(
+                    "overlay: [fn.\"{key}\"] ownership = \"{other}\" is not a known class — \
+                     expected \"owned\" or \"borrowed\""
+                ));
+            }
+        };
+        if forced_ownership.is_some() && f.skip {
+            return Err(format!(
+                "overlay: [fn.\"{key}\"] ownership is exclusive with skip = true — a skipped \
+                 method has no return to classify"
+            ));
+        }
+
+        let Some(bt) = spec.types.iter_mut().find(|bt| bt.name == type_name) else {
+            // The type may itself have been skipped above — tolerate silently
+            // only if it is genuinely absent; otherwise the author mistyped.
+            return Err(format!(
+                "overlay: [fn.\"{key}\"] — type `{type_name}` is not a bridged type"
+            ));
+        };
+
+        if f.skip {
+            bt.methods.retain(|m| m.name != method);
+            if bt.ctor.as_ref().map(|c| c.name == method).unwrap_or(false) {
+                bt.ctor = None;
+            }
+            // Record the removal as a visible skip-with-reason so a deliberately
+            // refused method stays counted in coverage instead of silently
+            // vanishing (which would flatter the ratio). `bt`'s borrow of
+            // `spec.types` ends above; `spec.skips` is a disjoint field.
+            spec.skips.push(Skip {
+                item: key.clone(),
+                reason: SkipReason::OverlaySkip(f.reason.clone()),
+            });
+            continue;
+        }
+        if let Some(new) = &f.rename {
+            let target = bt
+                .methods
+                .iter_mut()
+                .chain(bt.ctor.iter_mut())
+                .find(|m| m.name == method);
+            match target {
+                Some(m) => m.export_name = Some(new.clone()),
+                None => {
+                    return Err(format!(
+                        "overlay: [fn.\"{key}\"] rename — no bridged method `{method}` on `{type_name}`"
+                    ))
+                }
+            }
+        }
+        if let Some(own) = forced_ownership {
+            let target = bt
+                .methods
+                .iter_mut()
+                .chain(bt.ctor.iter_mut())
+                .find(|m| m.name == method);
+            match target {
+                Some(m) => m.ret_ownership = own,
+                None => {
+                    return Err(format!(
+                        "overlay: [fn.\"{key}\"] ownership — no bridged method `{method}` on `{type_name}`"
+                    ))
+                }
+            }
+        }
+    }
+
+    Ok(())
+}

@@ -1,0 +1,5 @@
+error: function returns Result but the bridge module has no #[jac_error] type; add a #[jac_error] struct so callers can retrieve the error message
+  --> tests/ui/result_without_jac_error.rs:10:26
+   |
+10 |         pub fn make() -> Result<Self, String> {
+   |                          ^^^^^^

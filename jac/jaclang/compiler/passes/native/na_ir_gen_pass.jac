@@ -15,6 +15,8 @@ import from jaclang.jac0core.osp_model { OspAnalysis, OspModel, stable_osp_tag }
 
 import from jaclang.compiler.passes.main.layout_pass { VTABLE_HEADER_SLOTS }
 
+glob RUST_BRIDGE_MAKE_BUF_STEM: str = "make_buf";
+
 glob NATIVE_TIME_FUNCS: set[str] = {
          "time",
          "monotonic",
@@ -275,8 +277,22 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_open_stmt(nd: uni.OpenStmt) -> None;
     def _codegen_forever(nd: uni.ForeverStmt) -> None;
     def _codegen_assignment(nd: uni.Assignment) -> None;
-    def _codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None);
-    def _codegen_required(nd: (uni.UniNode | None)) -> (ir.Value | None);
+    def _emit_empty_container_for_type(
+        cont_t: (ir.Type | None), nd: uni.UniNode
+    ) -> (ir.Value | None);
+
+    def _try_empty_container(
+        nd: (uni.UniNode | None), expected_type: (ir.Type | None)
+    ) -> (ir.Value | None);
+
+    def _codegen_expr(
+        nd: (uni.UniNode | None), expected_type: (ir.Type | None) = None
+    ) -> (ir.Value | None);
+
+    def _codegen_required(
+        nd: (uni.UniNode | None), expected_type: (ir.Type | None) = None
+    ) -> (ir.Value | None);
+
     def _codegen_name(nd: uni.Name) -> (ir.Value | None);
     def _codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None);
     def _codegen_pipe_fwd(nd: uni.BinaryExpr) -> (ir.Value | None);
@@ -293,7 +309,24 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _emit_unsupported_builtin_call(nd: uni.FuncCall, func_name: str) -> None;
 
     has lambda_captures: dict[str, list[tuple]] = {},
-        _pending_lambda_captures: (list[tuple] | None) = None;
+        _pending_lambda_captures: (list[tuple] | None) = None,
+        _callback_make_buf: (ir.Function | None) = None,
+        _bridge_make_buf_syms: set[str] = set(),
+        _bridge_make_buf_fns: dict[str, ir.Function] = {},
+        _bridge_type_crate: dict[str, str] = {},
+        _bridge_fn_callback_params: dict[str, set[int]] = {};
+
+    def _resolve_bridge_lib_path(path: str) -> (str | None);
+    def _register_bridge_metadata(path: str) -> None;
+    def _note_bridge_sink(name: str, fn: ir.Function) -> None;
+    def _callback_make_buf_for(func: ir.Function) -> (ir.Function | None);
+    def _bridge_callback_param(func: (ir.Function | None), pix: int) -> bool;
+    def _owned_jac_str_from_raw(
+        src: ir.Value,
+        dlen: ir.Value,
+        name_prefix: str = "jbuf",
+        rc_op: str = "str_from_raw"
+    ) -> ir.Value;
 
     def _codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None);
     def _get_or_declare_extern(
@@ -312,12 +345,21 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _get_fmt_string(fmt: str) -> ir.GlobalVariable;
     def _get_snprintf_fmt(fmt: str) -> ir.GlobalVariable;
     def _resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type;
+    def _resolve_container_annotation(ann: (uni.UniNode | None)) -> (ir.Type | None);
+    def _resolve_container_ast(ann: (uni.UniNode | None)) -> (ir.Type | None);
+    def _spec_for_val_llvm(elem: ir.Type) -> str;
+    def _prim_ir_types -> dict;
     def _try_resolve_field_type(var: uni.UniNode) -> tuple;
     def _type_base_is_unknown(tb: any) -> bool;
     def _emit_unlowerable_type(type_expr: uni.UniNode, tb: any) -> ir.Type;
     def _lower_type(t: any) -> (ir.Type | None);
     def _lower_class_type(t: any) -> (ir.Type | None);
     def _lower_function_type(t: any) -> ir.Type;
+    def _lower_type_arg_ast(ann: (uni.UniNode | None)) -> (ir.Type | None);
+    def _lower_container_ir(cname: str, elem_types: list) -> (ir.Type | None);
+    def _lower_list_from_elem(elem: ir.Type) -> ir.Type;
+    def _lower_dict_from_kv(k: ir.Type, v: ir.Type) -> ir.Type;
+    def _lower_set_from_elem(elem: ir.Type) -> ir.Type;
     def _type_key_of(expr: (uni.UniNode | None)) -> (str | None);
     def _enum_name_of(expr: (uni.UniNode | None)) -> (str | None);
     def _tuple_key_of(expr: (uni.UniNode | None)) -> (str | None);
@@ -328,6 +370,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         expr: (uni.UniNode | None), names: tuple, registry: dict
     ) -> (str | None);
 
+    def _spec_of_local(expr: (uni.UniNode | None), registry: dict) -> (str | None);
     def _struct_name_of(expr: (uni.UniNode | None)) -> (str | None);
     def _struct_ptr_pointee_name(val: ir.Value) -> (str | None);
     def _struct_array_elem_ptr(ptr: ir.Value, idx_val: ir.Value) -> ir.Value;
@@ -345,6 +388,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_bound_args(
         nd: uni.FuncCall, func: ir.Function, self_offset: int = 0
     ) -> list;
+
+    def _codegen_callback_arg(
+        nd: uni.LambdaExpr, make_buf: (ir.Function | None) = None
+    ) -> (ir.Value | None);
 
     def _default_arg_fallback(t: ir.Type) -> ir.Value;
     def _get_name(nd: (uni.UniNode | None)) -> (str | None);
@@ -472,7 +519,12 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _osp_generic_edge -> (ir.Value | None);
     def _spawn_operand_name(nd: uni.UniNode) -> (str | None);
     def _is_walker_arch(name: str) -> bool;
-    def _codegen_instantiation(nd: (uni.FuncCall | uni.Name)) -> (ir.Value | None);
+    def _codegen_instantiation(
+        nd: (uni.FuncCall | uni.Name),
+        type_name_override: (str | None) = None,
+        call_init: bool = True
+    ) -> (ir.Value | None);
+
     def _codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None);
     def _emit_obj_str(val: ir.Value) -> (ir.Value | None);
     def _emit_default_obj_repr(val: ir.Value, type_name: str) -> ir.Value;

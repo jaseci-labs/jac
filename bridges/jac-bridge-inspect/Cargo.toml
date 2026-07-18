@@ -1,0 +1,13 @@
+[package]
+name = "jac-bridge-inspect"
+version = "0.1.0"
+edition = "2021"
+description = "Diagnostic tool: parse .jac_bridge metadata from bridge shared libraries"
+
+[[bin]]
+name = "jac-bridge-inspect"
+path = "src/main.rs"
+
+[dependencies]
+object = { version = "0.36", default-features = false, features = ["read", "elf", "macho", "pe", "std"] }
+jac-bridge-schema = { path = "../jac-bridge-schema" }

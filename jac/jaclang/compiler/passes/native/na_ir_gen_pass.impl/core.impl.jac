@@ -525,6 +525,11 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         self._process_clib_imports(imported_mod);
     }
 
+    if self._clib_paths {
+        self.ir_in.gen._clib_paths = self._clib_paths;
+        self.ir_in.gen._clib_symbol_lib = self._clib_symbol_lib;
+    }
+
     for (_, imported_mod) in imported_mods {
         self._walk_imported_module_type_names(imported_mod);
     }
@@ -816,6 +821,10 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
         _cur_lib = self._clib_paths[-1]
             if len(self._clib_paths) > _paths_before
             else None;
+
+        for _lib_path in self._clib_paths[_paths_before:] {
+            self._register_bridge_metadata(_lib_path);
+        }
 
         for decl in stmt.clib_decls {
             if isinstance(decl, uni.Archetype) {

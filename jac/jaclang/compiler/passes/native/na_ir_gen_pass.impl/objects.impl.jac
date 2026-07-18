@@ -822,10 +822,14 @@ impl NaIRGenPass._stack_alloc_target_ok(nd: uni.UniNode) -> bool {
 }
 
 impl NaIRGenPass._codegen_instantiation(
-    nd: (uni.FuncCall | uni.Name)
+    nd: (uni.FuncCall | uni.Name),
+    type_name_override: (str | None) = None,
+    call_init: bool = True
 ) -> (ir.Value | None) {
     _is_call = isinstance(nd, uni.FuncCall);
-    type_name = self._get_name(nd.target if _is_call else nd);
+    type_name = type_name_override
+        if type_name_override is not None
+        else self._get_name(nd.target if _is_call else nd);
     if type_name is None or type_name not in self.struct_types {
         return None;
     }
@@ -1052,7 +1056,11 @@ impl NaIRGenPass._codegen_instantiation(
     opaque_fields = self.struct_field_opaque.get(type_name, set());
 
     set_fields: set[str] = set();
-    params = (nd.params or []) if _is_call else [];
+    params = (
+        []
+            if type_name_override is not None
+            else ((nd.params or []) if _is_call else [])
+    );
     for param in params {
         if isinstance(param, uni.KWPair) {
             key_name = param.key.sym_name if param.key else None;
@@ -1226,7 +1234,7 @@ impl NaIRGenPass._codegen_instantiation(
             break;
         }
     }
-    if init_fn is not None {
+    if init_fn is not None and call_init {
         init_args: list[ir.Value] = [obj_ptr];
         init_sig = self._arch_init_sig_of(type_name) if _is_call else None;
         if init_sig is not None {
@@ -1296,11 +1304,13 @@ impl NaIRGenPass._codegen_instantiation(
         self.builder.call(init_fn, coerced_args, name="call.init");
     }
 
-    for pname in [f"{type_name}.__post_init__", f"{type_name}.postinit"] {
-        if pname in self.method_funcs {
-            postinit_fn = self.method_funcs[pname];
-            self.builder.call(postinit_fn, [obj_ptr]);
-            break;
+    if call_init {
+        for pname in [f"{type_name}.__post_init__", f"{type_name}.postinit"] {
+            if pname in self.method_funcs {
+                postinit_fn = self.method_funcs[pname];
+                self.builder.call(postinit_fn, [obj_ptr]);
+                break;
+            }
         }
     }
     return obj_ptr;
@@ -1315,6 +1325,17 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     method_name = self._get_name(trailer.right);
     if method_name is None {
         return None;
+    }
+
+    if (
+        method_name == "__new__"
+        and target_name is not None
+        and target_name in self.struct_types
+        and target_name not in self.local_vars
+    ) {
+        return self._codegen_instantiation(
+            nd, type_name_override=target_name, call_init=False
+        );
     }
 
     if (

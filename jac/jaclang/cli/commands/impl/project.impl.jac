@@ -6,8 +6,23 @@ import tempfile;
 import shlex;
 import base64;
 import importlib.metadata;
+import from enum { StrEnum }
 import from pathlib { Path }
 import from jaclang.cli.console { console }
+import from jaclang.project.config { JacConfig }
+import from jaclang.project.providers {
+    EcosystemProvider,
+    InstallContext,
+    ResolvedDependency
+}
+
+enum BridgeStatus(StrEnum) {
+    CACHED = "cached",
+    DOWNLOADED = "downloaded",
+    BUILT = "built",
+    RECORDED = "recorded",
+    FAILED = "failed"
+}
 
 impl create(
     name: str = '',
@@ -840,10 +855,14 @@ impl install(
         }
         console.print(f"\n  Installing {provider.name} dependencies", style="muted");
         try {
-            provider.install_all(config, provider_deps, ctx);
-            console.print(
-                f"  ✔ {provider.name} dependencies installed", style="success"
-            );
+            ok = provider.install_all(config, provider_deps, ctx);
+            if ok {
+                console.print(
+                    f"  ✔ {provider.name} dependencies installed", style="success"
+                );
+            } else {
+                plugin_failed = True;
+            }
         } except Exception as e {
             console.error(f"  ✗ {provider.name} dependencies failed: {e}");
             plugin_failed = True;
@@ -858,6 +877,341 @@ impl install(
     }
 }
 
+def _parse_rust_spec(spec: str) -> tuple {
+    body = spec[len("rust:"):].strip();
+    for sep in ("@", "==") {
+        if sep in body {
+            parts = body.split(sep, 1);
+            return (parts[0].strip(), parts[1].strip());
+        }
+    }
+    return (body, "*");
+}
+
+
+def _ensure_rust_bridge(name: str, version: str, verbose: bool) -> BridgeStatus {
+    import from jaclang.compiler.rust_bridge._finder { find_bridge_lib }
+    import from jaclang.compiler.rust_bridge._builder {
+        build_bridge,
+        toolchain_available,
+        workspace_root
+    }
+    import from jaclang.compiler.rust_bridge._registry { registry_url, fetch_bridge }
+    lib = find_bridge_lib(name, constraint=version);
+    if lib is not None {
+        console.print(f"  ✔ rust:{name} ({version})", style="success");
+        if verbose {
+            console.print(f"    cached: {lib}", style="muted");
+        }
+        return BridgeStatus.CACHED;
+    }
+    if registry_url() is not None {
+        try {
+            with console.status(
+                f"Fetching rust:{name} ({version}) from registry...", spinner="dots"
+            ) as _status {
+                dest = fetch_bridge(name, version, verbose);
+            }
+        } except Exception as e {
+            console.error(f"  ✗ rust:{name}: registry fetch failed — {e}");
+            dest = None;
+        }
+        if dest is not None {
+            console.print(f"  ✔ rust:{name} ({version}) — downloaded", style="success");
+            if verbose {
+                console.print(f"    installed: {dest}", style="muted");
+            }
+            return BridgeStatus.DOWNLOADED;
+        }
+    }
+    if not toolchain_available() or workspace_root() is None {
+        console.print(f"  • rust:{name} ({version})", style="muted");
+        console.print(
+            "    not cached — set JAC_BRIDGE_REGISTRY to fetch, or install the " + "Rust toolchain + JAC_BRIDGE_WORKSPACE to build locally",
+            style="muted"
+        );
+        return BridgeStatus.RECORDED;
+    }
+    try {
+        with console.status(
+            f"Building rust:{name} ({version})...", spinner="dots"
+        ) as _status {
+            dest = build_bridge(name, version);
+        }
+        console.print(f"  ✔ rust:{name} ({version}) — built", style="success");
+        if verbose {
+            console.print(f"    installed: {dest}", style="muted");
+        }
+        return BridgeStatus.BUILT;
+    } except Exception as e {
+        console.error(f"  ✗ rust:{name}: {e}");
+        return BridgeStatus.FAILED;
+    }
+}
+
+
+obj RustProvider(EcosystemProvider) {
+    has name: str = "rust",
+        manifest_key: str = "rust-bridges",
+        cli_flag: str = "";
+
+    override def resolve(
+        config: JacConfig, include_dev: bool = False
+    ) -> list[ResolvedDependency] {
+        resolved: list[ResolvedDependency] = [];
+        for (crate, version) in config.rust_bridges.items() {
+            resolved.append(
+                ResolvedDependency(
+                    name=crate,
+                    version=version,
+                    ecosystem="rust",
+                    source="rust-bridge",
+                    origin="manifest"
+                )
+            );
+        }
+        return resolved;
+    }
+
+    override def install_all(
+        config: JacConfig, deps: list[ResolvedDependency], ctx: InstallContext
+    ) -> bool {
+        any_failed = False;
+        any_recorded = False;
+        for dep in deps {
+            status = _ensure_rust_bridge(dep.name, dep.version, ctx.verbose);
+            if status == BridgeStatus.FAILED {
+                any_failed = True;
+            } elif status == BridgeStatus.RECORDED {
+                any_recorded = True;
+            }
+        }
+        if any_recorded and not any_failed {
+            console.warning(
+                "Some Rust bridges are declared but not installed — set "
+                "JAC_BRIDGE_REGISTRY to fetch them, or install the Rust toolchain + "
+                "JAC_BRIDGE_WORKSPACE to build them locally."
+            );
+        }
+        return not (any_failed or any_recorded);
+    }
+
+    override def add_package(
+        config: JacConfig, name: str, version: str, dev: bool, ctx: InstallContext
+    ) -> str | None {
+        ver = version or "*";
+        config.add_dependency(name, ver, dep_type="rust");
+        if _ensure_rust_bridge(name, ver, ctx.verbose) == BridgeStatus.FAILED {
+            return None;
+        }
+        return ver;
+    }
+
+    override def remove_package(
+        config: JacConfig, name: str, dev: bool, ctx: InstallContext
+    ) -> bool {
+        return config.remove_dependency(name, dep_type="rust");
+    }
+}
+
+
+def _add_rust_bridges(config: any, specs: list, verbose: bool) -> int {
+    import from jaclang.project.providers { InstallContext, get_provider_registry }
+    rust = get_provider_registry().get("rust");
+    if rust is None {
+        console.error("Rust bridge provider not registered");
+        return 1;
+    }
+    console.print(f"\n🦀 Adding {len(specs)} Rust bridge(s)", style="bold");
+    ctx = InstallContext(verbose=verbose);
+    failed = False;
+    for spec in specs {
+        (name, version) = _parse_rust_spec(spec);
+        if not name {
+            console.error(f"Invalid rust bridge spec: '{spec}'");
+            return 1;
+        }
+        if rust.add_package(config, name, version, False, ctx) is None {
+            failed = True;
+        }
+    }
+    try {
+        config.save();
+        console.print("\n  ✔ Updated jac.toml [rust-bridges]", style="muted");
+    } except Exception as e {
+        console.error(f"Could not save jac.toml: {e}");
+        return 1;
+    }
+    return 1 if failed else 0;
+}
+
+
+def _parse_py_spec(spec: str) -> tuple {
+    body = spec[len("py:"):].strip();
+    if "@" in body {
+        parts = body.split("@", 1);
+        return (parts[0].strip(), "==" + parts[1].strip());
+    }
+    for op in (">=", "<=", "==", "~=", "!=", ">", "<") {
+        if op in body {
+            idx = body.find(op);
+            return (body[:idx].strip(), body[idx:].strip());
+        }
+    }
+    return (body, "*");
+}
+
+
+def _pyinterop_wheel_specs(config: any) -> list {
+    specs: list = [];
+    for (name, ver) in config.py_interop.items() {
+        if not ver or ver == "*" {
+            specs.append(name);
+        } elif ver[0] in ("=", ">", "<", "~", "!") {
+            specs.append(f"{name}{ver}");
+        } else {
+            specs.append(f"{name}=={ver}");
+        }
+    }
+    return specs;
+}
+
+
+def _add_py_interop(config: any, specs: list, verbose: bool) -> int {
+    console.print(f"\n🐍 Adding {len(specs)} py-interop package(s)", style="bold");
+    for spec in specs {
+        (name, version) = _parse_py_spec(spec);
+        if not name {
+            console.error(f"Invalid py-interop spec: '{spec}'");
+            return 1;
+        }
+        config.add_dependency(name, version, dep_type="py");
+        console.print(f"  ✔ py:{name} ({version})", style="success");
+    }
+    console.print(
+        "  Wheels resolve at bundle time (jac build --as binary "
+        "--with_py_interop), host platform tag only in v1.",
+        style="muted"
+    );
+    try {
+        config.save();
+        console.print("\n  ✔ Updated jac.toml [py-interop]", style="muted");
+    } except Exception as e {
+        console.error(f"Could not save jac.toml: {e}");
+        return 1;
+    }
+    return 0;
+}
+
+
+impl add(
+    packages: list = [], dev: bool = False, git: str = '', verbose: bool = False
+) -> int {
+    import from jaclang.project.config { get_config }
+    import from jaclang.project.pyvenv { make_git_spec }
+    import from jaclang.project.providers { InstallContext, get_python_provider }
+    config = get_config();
+    if config is None {
+        console.error(
+            "No jac.toml found", hint="Run 'jac create' to create a project first."
+        );
+        return 1;
+    }
+    if not packages and not git {
+        console.error(
+            "No packages specified",
+            hint="Use 'jac add <package>' to add a package, or 'jac install' to install all dependencies."
+        );
+        return 1;
+    }
+    rust_specs = [
+        p
+        for p in packages
+        if isinstance(p, str) and p.startswith("rust:")
+    ];
+    if rust_specs {
+        packages = [
+            p
+            for p in packages
+            if p not in rust_specs
+        ];
+        rust_rc = _add_rust_bridges(config, rust_specs, verbose);
+        if rust_rc != 0 {
+            return rust_rc;
+        }
+        if not packages and not git {
+            return 0;
+        }
+    }
+    py_specs = [
+        p
+        for p in packages
+        if isinstance(p, str) and p.startswith("py:")
+    ];
+    if py_specs {
+        packages = [
+            p
+            for p in packages
+            if p not in py_specs
+        ];
+        py_rc = _add_py_interop(config, py_specs, verbose);
+        if py_rc != 0 {
+            return py_rc;
+        }
+        if not packages and not git {
+            return 0;
+        }
+    }
+    python = get_python_provider();
+    ctx = InstallContext(verbose=verbose);
+    if git {
+        if packages {
+            pkg_name = packages[0];
+        } else {
+            pkg_name = git.rstrip("/").split("/")[-1];
+            if pkg_name.endswith(".git") {
+                pkg_name = pkg_name[:-4];
+            }
+        }
+        console.print(f"\n📦 Adding {pkg_name} from git", style="bold");
+        console.print(f"  Repository: {git}", style="muted");
+        with console.status(f"Installing {pkg_name}...", spinner="dots") as status {
+            git_success = python.install_specs(config, [make_git_spec(git)], ctx);
+        }
+        if git_success {
+            config.add_dependency(pkg_name, git, dev=dev, dep_type="git");
+            config.save();
+            console.print(f"  ✔ {pkg_name}", style="success");
+            console.print(f"\n  ✔ Updated jac.toml [dependencies.git]", style="muted");
+            return 0;
+        } else {
+            console.error(f"Failed to install {pkg_name}");
+            return 1;
+        }
+    }
+    console.print(f"\n📦 Adding {len(packages)} Python package(s)", style="bold");
+    for pkg_spec in packages {
+        (name, version) = python.parse_spec(pkg_spec);
+        with console.status(f"Installing {name}...", spinner="dots") as status {
+            recorded = python.add_package(config, name, version, dev, ctx);
+        }
+        if recorded is None {
+            console.error(f"Failed to install {name}");
+            return 1;
+        }
+        console.print(f"  ✔ {name} ({recorded})", style="success");
+    }
+    try {
+        config.save();
+        section = "dev-dependencies" if dev else "dependencies";
+        console.print(f"\n  ✔ Updated jac.toml [{section}]", style="muted");
+    } except Exception as e {
+        console.error(f"Could not save jac.toml: {e}");
+        return 1;
+    }
+    return 0;
+}
+
 impl remove(
     packages: list = [], dev: bool = False, npm: bool = False, shadcn: bool = False
 ) -> int {
@@ -870,7 +1224,11 @@ impl remove(
         return run_npm_remove(packages, dev);
     }
     import from jaclang.project.config { get_config }
-    import from jaclang.project.providers { InstallContext, get_python_provider }
+    import from jaclang.project.providers {
+        InstallContext,
+        get_provider_registry,
+        get_python_provider
+    }
     config = get_config();
     if config is None {
         console.error(
@@ -884,7 +1242,31 @@ impl remove(
     }
     python = get_python_provider();
     ctx = InstallContext();
-    for name in packages {
+    rust = get_provider_registry().get("rust");
+    for raw_name in packages {
+        name = raw_name;
+        if isinstance(name, str) and name.startswith("py:") {
+            name = name[len("py:"):].strip();
+        }
+        if isinstance(name, str) and name.startswith("rust:") {
+            name = name[len("rust:"):].strip();
+        }
+        if name in config.py_interop {
+            if config.remove_dependency(name, dep_type="py") {
+                console.success(f"Removed py:{name} from jac.toml");
+            } else {
+                console.error(f"Package {name} not found in dependencies");
+            }
+            continue;
+        }
+        if rust is not None and name in config.rust_bridges {
+            if rust.remove_package(config, name, dev, ctx) {
+                console.success(f"Removed rust:{name} from jac.toml");
+            } else {
+                console.error(f"Package {name} not found in dependencies");
+            }
+            continue;
+        }
         if python.remove_package(config, name, dev, ctx) {
             console.success(f"Removed {name} from jac.toml");
         } else {
@@ -1756,6 +2138,39 @@ def _make_sealed_image(
     }
 }
 
+def _copy_rust_bridges(config: any, dest_dir: any, verbose: bool = False) -> int {
+    if not config.rust_bridges {
+        return 0;
+    }
+    import shutil;
+    import from jaclang.compiler.rust_bridge._finder { find_bridge_lib }
+
+    dest = Path(dest_dir) / "rust-bridges";
+    dest.mkdir(parents=True, exist_ok=True);
+    copied = 0;
+    missing = 0;
+    for (crate, version) in config.rust_bridges.items() {
+        lib = find_bridge_lib(crate, constraint=version);
+        if lib is None {
+            console.error(
+                f"  rust:{crate} ({version}) not in cache — run 'jac install' before bundling"
+            );
+            missing += 1;
+            continue;
+        }
+        shutil.copy2(lib, dest / lib.name);
+        copied += 1;
+        if verbose {
+            console.print(f"    bundled {lib.name}", style="muted");
+        }
+    }
+    if copied {
+        console.print(f"  ✔ bundled {copied} Rust bridge(s)", style="success");
+    }
+    return copied;
+}
+
+
 def _bundle_sealed(config: any, output: str) -> int {
     name = config.project.name;
     Path(output).mkdir(parents=True, exist_ok=True);
@@ -1764,6 +2179,11 @@ def _bundle_sealed(config: any, output: str) -> int {
         config, Path(output), f"{name}-sealed", out_dir=Path(output)
     );
     if dest is None {
+        return 1;
+    }
+    expected = len(config.rust_bridges) if config.rust_bridges else 0;
+    copied = _copy_rust_bridges(config, dest);
+    if copied < expected {
         return 1;
     }
     console.print(
@@ -1873,6 +2293,276 @@ def _bundle_jab(config: any, output: str, fat: bool = False) -> int {
     return 0;
 }
 
+def _find_bundled_python(base: Path) -> any {
+    import glob;
+
+    lib_root = base / "python" / "lib";
+    cands = sorted(
+        [
+            p
+            for p in glob.glob(str(lib_root / "python3.*"))
+            if Path(p).is_dir() and not p.endswith(".zip")
+        ]
+    );
+    if not cands {
+        return None;
+    }
+    py_lib = Path(cands[0]);
+    ver = py_lib.name.removeprefix("python");
+    py_bin = base / "python" / "bin" / f"python{ver}";
+    if not py_bin.exists() {
+        alt = base / "python" / "bin" / "python3";
+        if alt.exists() {
+            py_bin = alt;
+        }
+    }
+    site_pkgs = py_lib / "site-packages";
+    return (py_lib, ver, py_bin, site_pkgs);
+}
+
+def _slim_pyinterop_tree(base: Path, site_pkgs: Path) {
+    shutil.rmtree(base / "site", ignore_errors=True);
+    drop = [
+        "pip",
+        "setuptools",
+        "pkg_resources",
+        "_distutils_hack",
+        "wheel",
+        "pytest",
+        "_pytest"
+    ];
+    for nm in drop {
+        shutil.rmtree(site_pkgs / nm, ignore_errors=True);
+        for di in site_pkgs.glob(f"{nm}-*.dist-info") {
+            shutil.rmtree(di, ignore_errors=True);
+        }
+        for eg in site_pkgs.glob(f"{nm}-*.egg-info") {
+            shutil.rmtree(eg, ignore_errors=True);
+        }
+    }
+    for pyc in base.rglob("__pycache__") {
+        shutil.rmtree(pyc, ignore_errors=True);
+    }
+}
+
+def _patch_wheel_rpaths(site_pkgs: Path) {
+    # RPATH each installed wheel .so to $ORIGIN so a package's own bundled
+    # shared libs (e.g. a .libs sibling) resolve after materialize. libpython
+    # symbols already come from the runtime's RTLD_GLOBAL dlopen, so they need
+    # no RPATH. Best-effort: a missing patchelf only warns (self-contained
+    # single-.so wheels like orjson need no patching at all).
+    patchelf = shutil.which("patchelf");
+    sos = list(site_pkgs.rglob("*.so"));
+    if not sos {
+        return;
+    }
+    if not patchelf {
+        console.print(
+            "  [yellow]patchelf not found; wheels with bundled shared libs may "
+            "not start on the target (single-.so wheels are unaffected)[/yellow]"
+        );
+        return;
+    }
+    for so in sos {
+        subprocess.run(
+            [patchelf, "--set-rpath", "$ORIGIN", str(so)], capture_output=True
+        );
+    }
+}
+
+def _tar_zst_tree(top: Path, out: Path) {
+    # Repack a slim runtime tree into a decoder-compatible tar.zst (single
+    # frame, window_log pinned to the launcher's PAYLOAD_WINDOW_LOG=24 cap so
+    # materialize's ZSTD_d_windowLogMax never rejects it). File modes are
+    # preserved, so the exec bit rides through to executable_bit_only extract.
+    import io;
+    import tarfile;
+    import from compression.zstd { compress, CompressionParameter }
+
+    buf = io.BytesIO();
+    with tarfile.open(fileobj=buf, mode="w") as tf {
+        for (dirpath, dirnames, filenames) in os.walk(str(top)) {
+            dirnames.sort();
+            rel_dir = os.path.relpath(dirpath, str(top));
+            arc_dir = "";
+            if rel_dir != "." {
+                arc_dir = rel_dir;
+            }
+            if arc_dir {
+                tf.add(dirpath, arcname=arc_dir, recursive=False);
+            }
+            for fn in sorted(filenames) {
+                full = os.path.join(dirpath, fn);
+                arc = fn;
+                if arc_dir {
+                    arc = os.path.join(arc_dir, fn);
+                }
+                tf.add(full, arcname=arc, recursive=False);
+            }
+        }
+    }
+    opts = {
+        CompressionParameter.compression_level: 19,
+        CompressionParameter.window_log: 24
+    };
+    frame = compress(buf.getvalue(), options=opts);
+    out.write_bytes(frame);
+}
+
+def _assemble_pyinterop_payload(wheels: list[str], stage: Path) -> (Path | None) {
+    # Build a slim custom runtime payload carrying pip-installed wheels
+    # (FFI-LANES 3.3.1). Materialize this jac's base runtime, pip-install the
+    # wheels into its site-packages (already on embed.zig's module_search_paths),
+    # slim the jaclang site + packaging tooling, patchelf wheel .so RPATHs, and
+    # repack. Returns the produced tar.zst, or None on failure.
+    import from jaclang.runtimelib.client.targets.desktop.desktop_build { _jac_bin }
+
+    jac_bin = _jac_bin();
+    base = stage / "base";
+
+    console.print("  Materializing the base runtime", style="muted");
+    rc = subprocess.run([jac_bin, "__extractrt", str(base)]).returncode;
+    if rc != 0 {
+        console.error(
+            "py-interop: could not extract the base runtime payload; a "
+            "--with_py_interop bundle needs a fused `jac` built via `zig build`."
+        );
+        return None;
+    }
+
+    found = _find_bundled_python(base);
+    if found is None {
+        console.error("py-interop: bundled python lib dir not found in the base tree.");
+        return None;
+    }
+    (py_lib, ver, py_bin, site_pkgs) = found;
+    site_pkgs.mkdir(parents=True, exist_ok=True);
+
+    if wheels {
+        console.print(
+            f"  Installing {len(wheels)} package(s) with the bundled interpreter "
+            f"(python {ver})",
+            style="muted"
+        );
+        pip = subprocess.run(
+            [
+                str(py_bin),
+                "-m",
+                "pip",
+                "install",
+                "--only-binary=:all:",
+                "--no-compile",
+                "--target",
+                str(site_pkgs)
+            ] + list(wheels),
+            capture_output=True,
+            text=True
+        );
+        if pip.returncode != 0 {
+            console.error(
+                "py-interop: pip install failed (host platform tag only in v1; "
+                f"the build host libc must match the target):\n{pip.stderr
+                or pip.stdout}"
+            );
+            return None;
+        }
+    }
+
+    _slim_pyinterop_tree(base, site_pkgs);
+    _patch_wheel_rpaths(site_pkgs);
+
+    out = stage / "pyinterop-payload.tar.zst";
+    console.print("  Repacking the slim runtime + wheels", style="muted");
+    _tar_zst_tree(base, out);
+    return out;
+}
+
+def _bundle_binary_pyinterop(config: any, output: str, wheels: list[str]) -> int {
+    import from jaclang.jac0core.ext_registry { is_native_module }
+    import from jaclang.runtimelib.client.targets.desktop.desktop_build {
+        _jac_bin,
+        _stage_pyembed_shim,
+        _patch_host_rpath
+    }
+    import from jaclang.cli.commands.nacompile { nacompile }
+
+    name = config.project.name;
+    entry_file = _resolve_entry_file(config);
+    if entry_file is None {
+        console.error(
+            "--with_py_interop needs a native entry host; point [project] "
+            "entry-point at an na host (.na.jac) that boots the runtime and "
+            "calls into python via `import from python`."
+        );
+        return 1;
+    }
+    if not is_native_module(str(entry_file)) {
+        console.error(
+            f"--with_py_interop entry '{entry_file.name}' is not a native "
+            "(.na.jac) module; a py-interop binary is nacompiled machine code, "
+            "not a sealed jaclang app."
+        );
+        return 1;
+    }
+
+    jac_bin = _jac_bin();
+    if subprocess.run([jac_bin, "__hasruntime"], capture_output=True).returncode != 0 {
+        console.error(
+            "--with_py_interop needs a fused single-file jac to carry the base "
+            "runtime; the current interpreter is not one (source / pip install).",
+            hint="Run it with an installed single-file jac binary."
+        );
+        return 1;
+    }
+
+    out_dir = Path(output);
+    out_dir.mkdir(parents=True, exist_ok=True);
+    out_bin = out_dir / name;
+    stage = Path(tempfile.mkdtemp(prefix="jacpyi-", dir=output));
+    try {
+        console.print(f"\n  Compiling native host {entry_file.name}", style="muted");
+        rc = nacompile(filename=str(entry_file), output=str(out_bin));
+        if rc != 0 or not out_bin.is_file() {
+            console.error("Native compilation failed.");
+            return 1;
+        }
+
+        # The libjacpyembed shim must sit $ORIGIN-adjacent so the host's
+        # `import from jacpyembed` resolves it at load; $ORIGIN rpath finds it.
+        _stage_pyembed_shim(out_dir);
+        _patch_host_rpath(out_bin);
+
+        payload = _assemble_pyinterop_payload(wheels, stage);
+        if payload is None {
+            return 1;
+        }
+
+        console.print(
+            "  Grafting the slim runtime + wheels onto the host", style="muted"
+        );
+        rc = subprocess.run(
+            [jac_bin, "__graftrt", str(out_bin), str(payload)]
+        ).returncode;
+        if rc != 0 {
+            console.error("Failed to graft the py-interop runtime onto the host.");
+            return 1;
+        }
+    } finally {
+        shutil.rmtree(stage, ignore_errors=True);
+    }
+
+    console.print(
+        f"  ✔ Built self-contained py-interop binary [cyan]{out_bin}[/cyan] "
+        f"({out_bin.stat().st_size:,} bytes)",
+        style="success"
+    );
+    console.print(
+        f"  Run it directly (no python on the target): {out_bin.resolve()}",
+        style="muted"
+    );
+    return 0;
+}
+
 def _bundle_binary(config: any, output: str, fat: bool = False) -> int {
     import sys;
     import os;
@@ -1941,6 +2631,7 @@ def _bundle_binary(config: any, output: str, fat: bool = False) -> int {
         f"({out_bin.stat().st_size:,} bytes)",
         style="success"
     );
+    _copy_rust_bridges(config, Path(output));
     console.print(f"  Run it directly: {out_bin.resolve()}", style="muted");
     return 0;
 }
@@ -2022,7 +2713,13 @@ def _bundle_npm_runtime(output: str, framework: str = "") -> int {
     return 0;
 }
 
-impl bundle(output: str = "dist", target: str = "wheel", fat: bool = False) -> int {
+impl bundle(
+    output: str = "dist",
+    target: str = "wheel",
+    fat: bool = False,
+    with_py_interop: bool = False,
+    py: str = ""
+) -> int {
     import from jaclang.project.config { get_config }
 
     if target == "npm-runtime" {
@@ -2050,7 +2747,31 @@ impl bundle(output: str = "dist", target: str = "wheel", fat: bool = False) -> i
         return _bundle_jab(config, output, fat=fat);
     }
     if target == "binary" {
+        if with_py_interop {
+            wheels = [
+                w
+                for w in py.replace(",", " ").split()
+                if w
+            ];
+            manifest_wheels = _pyinterop_wheel_specs(config);
+            if manifest_wheels {
+                console.print(
+                    f"  Including {len(manifest_wheels)} package(s) from "
+                    "jac.toml [py-interop]",
+                    style="muted"
+                );
+                wheels = manifest_wheels + wheels;
+            }
+            return _bundle_binary_pyinterop(config, output, wheels);
+        }
         return _bundle_binary(config, output, fat=fat);
+    }
+    if with_py_interop {
+        console.error(
+            "--with_py_interop only applies to --as binary (a native "
+            "py-interop host); other targets ship a jaclang app, not machine code."
+        );
+        return 1;
     }
     if target not in ("wheel", "npm", "all") {
         console.error(

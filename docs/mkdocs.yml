@@ -94,6 +94,8 @@ nav:
           - Interoperability: "reference/language/python-integration.md"
           - Library Mode: "reference/language/library-mode.md"
           - Import Anything: "quick-guide/import-anything.md"
+          - Rust Crate Bridges: "reference/language/rust-bridges.md"
+          - Python Interop Tier: "reference/language/py-interop.md"
       - Developer Workflow:
           - CLI Commands: "reference/cli/index.md"
           - MCP Server: "reference/mcp.md"

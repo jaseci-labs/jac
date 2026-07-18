@@ -253,6 +253,8 @@ glob JAC_TYPE_REGISTRY = JacTypeRegistry(
                  "range",
                  "slice",
                  "bytearray",
+                 "__jac_str_from_raw",
+                 "__jac_bytes_from_raw",
 
              }
          ),

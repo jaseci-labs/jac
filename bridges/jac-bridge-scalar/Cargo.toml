@@ -1,0 +1,15 @@
+# Scalar-integer bridge demo (M6.1). Hand-written to exercise the integer
+# boundary tags (TAG_INT / TAG_UINT) end-to-end: signed and unsigned params and
+# returns, narrow widths, full-range u64, and a fallible integer return. The
+# workspace CI compiles + round-trips it like any other bridge crate.
+[package]
+name = "jac-bridge-scalar"
+version = "0.1.0"
+edition = "2021"
+description = "Scalar-integer bridge demo — exercises the TAG_INT / TAG_UINT boundary tags"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+jac-bridge = { path = "../jac-bridge" }
