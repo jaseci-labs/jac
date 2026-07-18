@@ -512,4 +512,10 @@ def clean(
 
 def jacpack(action: str = "", path: str = "", output: str = "") -> int;
 
-def bundle(output: str = "dist", target: str = "wheel", fat: bool = False) -> int;
+def bundle(
+    output: str = "dist",
+    target: str = "wheel",
+    fat: bool = False,
+    with_py_interop: bool = False,
+    py: str = ""
+) -> int;

@@ -2201,6 +2201,276 @@ def _bundle_jab(config: any, output: str, fat: bool = False) -> int {
     return 0;
 }
 
+def _find_bundled_python(base: Path) -> any {
+    import glob;
+
+    lib_root = base / "python" / "lib";
+    cands = sorted(
+        [
+            p
+            for p in glob.glob(str(lib_root / "python3.*"))
+            if Path(p).is_dir() and not p.endswith(".zip")
+        ]
+    );
+    if not cands {
+        return None;
+    }
+    py_lib = Path(cands[0]);
+    ver = py_lib.name.removeprefix("python");
+    py_bin = base / "python" / "bin" / f"python{ver}";
+    if not py_bin.exists() {
+        alt = base / "python" / "bin" / "python3";
+        if alt.exists() {
+            py_bin = alt;
+        }
+    }
+    site_pkgs = py_lib / "site-packages";
+    return (py_lib, ver, py_bin, site_pkgs);
+}
+
+def _slim_pyinterop_tree(base: Path, site_pkgs: Path) {
+    shutil.rmtree(base / "site", ignore_errors=True);
+    drop = [
+        "pip",
+        "setuptools",
+        "pkg_resources",
+        "_distutils_hack",
+        "wheel",
+        "pytest",
+        "_pytest"
+    ];
+    for nm in drop {
+        shutil.rmtree(site_pkgs / nm, ignore_errors=True);
+        for di in site_pkgs.glob(f"{nm}-*.dist-info") {
+            shutil.rmtree(di, ignore_errors=True);
+        }
+        for eg in site_pkgs.glob(f"{nm}-*.egg-info") {
+            shutil.rmtree(eg, ignore_errors=True);
+        }
+    }
+    for pyc in base.rglob("__pycache__") {
+        shutil.rmtree(pyc, ignore_errors=True);
+    }
+}
+
+def _patch_wheel_rpaths(site_pkgs: Path) {
+    # RPATH each installed wheel .so to $ORIGIN so a package's own bundled
+    # shared libs (e.g. a .libs sibling) resolve after materialize. libpython
+    # symbols already come from the runtime's RTLD_GLOBAL dlopen, so they need
+    # no RPATH. Best-effort: a missing patchelf only warns (self-contained
+    # single-.so wheels like orjson need no patching at all).
+    patchelf = shutil.which("patchelf");
+    sos = list(site_pkgs.rglob("*.so"));
+    if not sos {
+        return;
+    }
+    if not patchelf {
+        console.print(
+            "  [yellow]patchelf not found; wheels with bundled shared libs may "
+            "not start on the target (single-.so wheels are unaffected)[/yellow]"
+        );
+        return;
+    }
+    for so in sos {
+        subprocess.run(
+            [patchelf, "--set-rpath", "$ORIGIN", str(so)], capture_output=True
+        );
+    }
+}
+
+def _tar_zst_tree(top: Path, out: Path) {
+    # Repack a slim runtime tree into a decoder-compatible tar.zst (single
+    # frame, window_log pinned to the launcher's PAYLOAD_WINDOW_LOG=24 cap so
+    # materialize's ZSTD_d_windowLogMax never rejects it). File modes are
+    # preserved, so the exec bit rides through to executable_bit_only extract.
+    import io;
+    import tarfile;
+    import from compression.zstd { compress, CompressionParameter }
+
+    buf = io.BytesIO();
+    with tarfile.open(fileobj=buf, mode="w") as tf {
+        for (dirpath, dirnames, filenames) in os.walk(str(top)) {
+            dirnames.sort();
+            rel_dir = os.path.relpath(dirpath, str(top));
+            arc_dir = "";
+            if rel_dir != "." {
+                arc_dir = rel_dir;
+            }
+            if arc_dir {
+                tf.add(dirpath, arcname=arc_dir, recursive=False);
+            }
+            for fn in sorted(filenames) {
+                full = os.path.join(dirpath, fn);
+                arc = fn;
+                if arc_dir {
+                    arc = os.path.join(arc_dir, fn);
+                }
+                tf.add(full, arcname=arc, recursive=False);
+            }
+        }
+    }
+    opts = {
+        CompressionParameter.compression_level: 19,
+        CompressionParameter.window_log: 24
+    };
+    frame = compress(buf.getvalue(), options=opts);
+    out.write_bytes(frame);
+}
+
+def _assemble_pyinterop_payload(wheels: list[str], stage: Path) -> (Path | None) {
+    # Build a slim custom runtime payload carrying pip-installed wheels
+    # (FFI-LANES 3.3.1). Materialize this jac's base runtime, pip-install the
+    # wheels into its site-packages (already on embed.zig's module_search_paths),
+    # slim the jaclang site + packaging tooling, patchelf wheel .so RPATHs, and
+    # repack. Returns the produced tar.zst, or None on failure.
+    import from jaclang.runtimelib.client.targets.desktop.desktop_build { _jac_bin }
+
+    jac_bin = _jac_bin();
+    base = stage / "base";
+
+    console.print("  Materializing the base runtime", style="muted");
+    rc = subprocess.run([jac_bin, "__extractrt", str(base)]).returncode;
+    if rc != 0 {
+        console.error(
+            "py-interop: could not extract the base runtime payload; a "
+            "--with_py_interop bundle needs a fused `jac` built via `zig build`."
+        );
+        return None;
+    }
+
+    found = _find_bundled_python(base);
+    if found is None {
+        console.error("py-interop: bundled python lib dir not found in the base tree.");
+        return None;
+    }
+    (py_lib, ver, py_bin, site_pkgs) = found;
+    site_pkgs.mkdir(parents=True, exist_ok=True);
+
+    if wheels {
+        console.print(
+            f"  Installing {len(wheels)} package(s) with the bundled interpreter "
+            f"(python {ver})",
+            style="muted"
+        );
+        pip = subprocess.run(
+            [
+                str(py_bin),
+                "-m",
+                "pip",
+                "install",
+                "--only-binary=:all:",
+                "--no-compile",
+                "--target",
+                str(site_pkgs)
+            ] + list(wheels),
+            capture_output=True,
+            text=True
+        );
+        if pip.returncode != 0 {
+            console.error(
+                "py-interop: pip install failed (host platform tag only in v1; "
+                f"the build host libc must match the target):\n{pip.stderr
+                or pip.stdout}"
+            );
+            return None;
+        }
+    }
+
+    _slim_pyinterop_tree(base, site_pkgs);
+    _patch_wheel_rpaths(site_pkgs);
+
+    out = stage / "pyinterop-payload.tar.zst";
+    console.print("  Repacking the slim runtime + wheels", style="muted");
+    _tar_zst_tree(base, out);
+    return out;
+}
+
+def _bundle_binary_pyinterop(config: any, output: str, wheels: list[str]) -> int {
+    import from jaclang.jac0core.ext_registry { is_native_module }
+    import from jaclang.runtimelib.client.targets.desktop.desktop_build {
+        _jac_bin,
+        _stage_pyembed_shim,
+        _patch_host_rpath
+    }
+    import from jaclang.cli.commands.nacompile { nacompile }
+
+    name = config.project.name;
+    entry_file = _resolve_entry_file(config);
+    if entry_file is None {
+        console.error(
+            "--with_py_interop needs a native entry host; point [project] "
+            "entry-point at an na host (.na.jac) that boots the runtime and "
+            "calls into python via `import from python`."
+        );
+        return 1;
+    }
+    if not is_native_module(str(entry_file)) {
+        console.error(
+            f"--with_py_interop entry '{entry_file.name}' is not a native "
+            "(.na.jac) module; a py-interop binary is nacompiled machine code, "
+            "not a sealed jaclang app."
+        );
+        return 1;
+    }
+
+    jac_bin = _jac_bin();
+    if subprocess.run([jac_bin, "__hasruntime"], capture_output=True).returncode != 0 {
+        console.error(
+            "--with_py_interop needs a fused single-file jac to carry the base "
+            "runtime; the current interpreter is not one (source / pip install).",
+            hint="Run it with an installed single-file jac binary."
+        );
+        return 1;
+    }
+
+    out_dir = Path(output);
+    out_dir.mkdir(parents=True, exist_ok=True);
+    out_bin = out_dir / name;
+    stage = Path(tempfile.mkdtemp(prefix="jacpyi-", dir=output));
+    try {
+        console.print(f"\n  Compiling native host {entry_file.name}", style="muted");
+        rc = nacompile(filename=str(entry_file), output=str(out_bin));
+        if rc != 0 or not out_bin.is_file() {
+            console.error("Native compilation failed.");
+            return 1;
+        }
+
+        # The libjacpyembed shim must sit $ORIGIN-adjacent so the host's
+        # `import from jacpyembed` resolves it at load; $ORIGIN rpath finds it.
+        _stage_pyembed_shim(out_dir);
+        _patch_host_rpath(out_bin);
+
+        payload = _assemble_pyinterop_payload(wheels, stage);
+        if payload is None {
+            return 1;
+        }
+
+        console.print(
+            "  Grafting the slim runtime + wheels onto the host", style="muted"
+        );
+        rc = subprocess.run(
+            [jac_bin, "__graftrt", str(out_bin), str(payload)]
+        ).returncode;
+        if rc != 0 {
+            console.error("Failed to graft the py-interop runtime onto the host.");
+            return 1;
+        }
+    } finally {
+        shutil.rmtree(stage, ignore_errors=True);
+    }
+
+    console.print(
+        f"  ✔ Built self-contained py-interop binary [cyan]{out_bin}[/cyan] "
+        f"({out_bin.stat().st_size:,} bytes)",
+        style="success"
+    );
+    console.print(
+        f"  Run it directly (no python on the target): {out_bin.resolve()}",
+        style="muted"
+    );
+    return 0;
+}
+
 def _bundle_binary(config: any, output: str, fat: bool = False) -> int {
     import sys;
     import os;
@@ -2351,7 +2621,13 @@ def _bundle_npm_runtime(output: str, framework: str = "") -> int {
     return 0;
 }
 
-impl bundle(output: str = "dist", target: str = "wheel", fat: bool = False) -> int {
+impl bundle(
+    output: str = "dist",
+    target: str = "wheel",
+    fat: bool = False,
+    with_py_interop: bool = False,
+    py: str = ""
+) -> int {
     import from jaclang.project.config { get_config }
 
     if target == "npm-runtime" {
@@ -2379,7 +2655,22 @@ impl bundle(output: str = "dist", target: str = "wheel", fat: bool = False) -> i
         return _bundle_jab(config, output, fat=fat);
     }
     if target == "binary" {
+        if with_py_interop {
+            wheels = [
+                w
+                for w in py.replace(",", " ").split()
+                if w
+            ];
+            return _bundle_binary_pyinterop(config, output, wheels);
+        }
         return _bundle_binary(config, output, fat=fat);
+    }
+    if with_py_interop {
+        console.error(
+            "--with_py_interop only applies to --as binary (a native "
+            "py-interop host); other targets ship a jaclang app, not machine code."
+        );
+        return 1;
     }
     if target not in ("wheel", "npm", "all") {
         console.error(

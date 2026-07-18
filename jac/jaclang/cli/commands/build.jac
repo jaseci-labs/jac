@@ -69,6 +69,27 @@ glob registry = get_registry();
             choices=["windows", "macos", "linux", "all", "android", "ios"],
             short="p"
         ),
+        Arg.create(
+            "with_py_interop",
+            typ=bool,
+            default=False,
+            help=(
+                "With --as binary: build a native py-interop host that boots "
+                "embedded CPython with pip-installed wheels, no Python on the "
+                "target (entry-point must be an .na.jac host)"
+            ),
+            short=""
+        ),
+        Arg.create(
+            "py",
+            typ=str,
+            default="",
+            help=(
+                "With --with_py_interop: wheel/package specs to install into the "
+                "bundled interpreter (space- or comma-separated, e.g. 'orjson')"
+            ),
+            short=""
+        ),
 
     ],
     examples=[
@@ -91,5 +112,7 @@ def build(
     check_only: bool = False,
     client: str = "",
     platform: str | None = None,
-    fat: bool = False
+    fat: bool = False,
+    with_py_interop: bool = False,
+    py: str = ""
 ) -> int;
