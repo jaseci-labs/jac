@@ -339,18 +339,6 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
             param_type = self._convert_to_instance(param_type_cls);
         }
 
-        is_self_param = (
-            idx == 0
-            and (
-                self._is_expr_self(param.name)
-                or (
-                    isinstance(param.name, uni.Name)
-                    and param.name.value == "self"
-                    and node_.signature
-                    and not node_.signature.is_static
-                )
-            )
-        );
         is_cls_param = (
             idx == 0
             and (
@@ -359,6 +347,34 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
                     isinstance(param.name, uni.Name)
                     and param.name.value == "cls"
                     and node_.name_spec.sym_name == "__new__"
+                )
+            )
+        );
+
+        is_self_param = (
+            idx == 0
+            and not is_cls_param
+            and (
+                self._is_expr_self(param.name)
+                or (
+                    isinstance(param.name, uni.Name)
+                    and param.name.value == "self"
+                    and node_.signature
+                    and not node_.signature.is_static
+                )
+                or (
+                    node_.is_method
+                    and node_.signature.is_in_py_class
+                    and param.param_kind in (
+                        uni.ParamKind.POSONLY,
+                        uni.ParamKind.NORMAL
+                    )
+                    and node_.name_spec.sym_name not in (
+                        "__new__",
+                        "__init_subclass__",
+                        "__class_getitem__"
+                    )
+                    and not self._is_ability_staticmethod(node_)
                 )
             )
         );
@@ -376,7 +392,7 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
     }
 
     flags = types.FunctionTypeFlags.Null;
-    if node_.is_static {
+    if self._is_ability_staticmethod(node_) {
         flags = flags | types.FunctionTypeFlags.StaticMethod;
     }
     if self._is_ability_classmethod(node_) {

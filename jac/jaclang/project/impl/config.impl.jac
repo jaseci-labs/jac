@@ -306,6 +306,26 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
             }
         }
     }
+    if "gc" in data {
+        gc_data = data["gc"];
+        if "default" in gc_data {
+            _gcd = str(gc_data["default"]).strip().lower();
+            if _gcd in ("cycles", "rc", "none") {
+                self.gc.default = _gcd;
+            }
+        }
+        if "enforce" in gc_data and isinstance(gc_data["enforce"], dict) {
+            enf = gc_data["enforce"];
+            if "modules" in enf {
+                self.gc.enforce.modules = [str(_m) for _m in enf["modules"]];
+            }
+            if "grandfathered" in enf {
+                self.gc.enforce.grandfathered = [
+                    str(_m) for _m in enf["grandfathered"]
+                ];
+            }
+        }
+    }
     for _feat in ("byllm", "scale", "client", "mcp", "desktop") {
         if _feat in data and isinstance(data[_feat], dict) {
             if _feat in self.plugins {
@@ -1085,6 +1105,27 @@ impl _parse_toml_data(
             dir=build_data.get("dir", ".jac")
         );
     }
+    if "gc" in data {
+        gc_data = data["gc"];
+        _gc_default = str(gc_data.get("default", "cycles")).strip().lower();
+        if _gc_default not in ("cycles", "rc", "none") {
+            import from jaclang.cli.console { console }
+            console.warning(
+                f"[gc] default='{gc_data.get('default')}' is not one of "
+                "'cycles', 'rc', 'none'; defaulting to 'cycles'."
+            );
+            _gc_default = "cycles";
+        }
+        enforce_cfg = GcEnforceConfig();
+        if "enforce" in gc_data and isinstance(gc_data["enforce"], dict) {
+            enf = gc_data["enforce"];
+            enforce_cfg = GcEnforceConfig(
+                modules=[str(_m) for _m in enf.get("modules", [])],
+                grandfathered=[str(_m) for _m in enf.get("grandfathered", [])]
+            );
+        }
+        config.gc = GcConfig(default=_gc_default, enforce=enforce_cfg);
+    }
     if "test" in data {
         test_data = data["test"];
         config.test = TestConfig(
@@ -1243,7 +1284,6 @@ impl _interpolate_recursive(`obj: any) -> any {
 impl get_config(
     start_path: Path | None = None, force_discover: bool = False
 ) -> JacConfig | None {
-    global _config,_config_explicit,_config_by_root;
     if _config is None or force_discover {
         _config = JacConfig.discover(start_path=start_path);
 
@@ -1257,7 +1297,6 @@ impl get_config(
 }
 
 impl set_config(config: JacConfig) -> None {
-    global _config,_config_explicit,_config_by_root;
     _config = config;
 
     _config_explicit = config is not None;
@@ -1270,7 +1309,6 @@ impl get_explicit_config -> JacConfig | None {
 }
 
 impl get_config_for_path(start_path: Path) -> JacConfig | None {
-    global _config_by_root;
     explicit = get_explicit_config();
     if explicit is not None {
         return explicit;

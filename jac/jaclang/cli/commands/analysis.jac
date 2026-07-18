@@ -122,6 +122,13 @@ def lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int;
             help="Check if files are formatted without modifying them (exit 1 if unformatted)",
             short="c"
         ),
+        Arg.create(
+            "cache",
+            typ=bool,
+            default=False,
+            help="Skip files already known to be formatted (content + config + version keyed)",
+            short="C"
+        ),
 
     ],
     examples=[
@@ -135,7 +142,14 @@ def lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int;
     group="analysis"
 )
 def format(
-    paths: list, to_screen: bool = False, lintfix: bool = False, check: bool = False
+    paths: list,
+    to_screen: bool = False,
+    lintfix: bool = False,
+    check: bool = False,
+    cache: bool = False,
+    cache_anchor: str = "",
+    path_map: dict | None = None,
+    cache_stats: dict | None = None
 ) -> int;
 
 @registry.command(
@@ -190,7 +204,8 @@ def precommit(
     staged: bool = False,
     verify: bool = False,
     install: bool = False,
-    force: bool = False
+    force: bool = False,
+    cache_stats: dict | None = None
 ) -> int;
 
 @registry.command(
@@ -267,4 +282,4 @@ def `test(
 )
 def gen_parser -> int;
 
-def grammar(output: str = "") -> int;
+def grammar(output: str = "", strict: bool = False) -> int;

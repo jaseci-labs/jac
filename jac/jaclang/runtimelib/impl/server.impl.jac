@@ -273,7 +273,17 @@ async def _abegin_user_request_context(
     import from jaclang.runtimelib.exceptions { MissingAnchorError }
     root_id = await user_manager.aget_root_id(username);
     if not root_id {
-        return {'error': 'User not found'};
+        import os;
+        if (
+            username != Con.GUEST.value
+            and os.environ.get('JAC_SV_SIBLING')
+            and hasattr(user_manager, 'ensure_user_root')
+        ) {
+            root_id = await asyncio.to_thread(user_manager.ensure_user_root, username);
+        }
+        if not root_id {
+            return {'error': 'User not found'};
+        }
     }
     try {
         (ctx, token) = await _begin_request_context(root_id);

@@ -619,7 +619,8 @@ function jacErrorReporter() {{
             loc += ")";
           }} catch(e) {{}}
         }}
-        console.error("Client error: " + data.type + ": " + data.message + loc);
+        // Timestamped: the log is append-only, so a fixed error otherwise reads as live.
+        console.error("[" + new Date(now).toISOString() + "] Client error: " + data.type + ": " + data.message + loc);
         if (data.phase === "load") {{
           try {{ reportClientLoad(data); }} catch (e) {{}}
           server.ws.send({{

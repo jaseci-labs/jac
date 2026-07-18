@@ -34,6 +34,11 @@ test "reassigning a moved-from own binding revives it (no diagnostics)" {
     expect_ownership_codes(prog, []);
 }
 
+test "self-reassignment through a consuming call in a loop revives (no E1301)" {
+    prog = compile_fixture("reassign_through_call_loop_ok.jac");
+    expect_ownership_codes(prog, []);
+}
+
 test "un-annotated bindings are never move-checked" {
     prog = compile_fixture("unannotated_untouched.jac");
     expect_ownership_codes(prog, []);
@@ -194,7 +199,7 @@ test "moving an owner after its borrow is dead (NLL) is clean" {
 
 # --- The ownership checker is diagnostics-only: a consumed, never-borrowed own
 # binding is sound and must raise no ownership codes. RC move-lowering for this
-# shape is proven independently by the native `RcElisionProofPass` and is covered
+# shape is proven independently by the core `RcFactsPass` and is covered
 # in `tests/compiler/passes/native/test_move_elision.jac`; the checker no longer
 # writes any backend-consumed fact. --------------------------------------------
 test "a consumed, unborrowed own binding raises no ownership diagnostics" {

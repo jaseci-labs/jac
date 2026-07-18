@@ -247,6 +247,21 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
 
+    if getattr(self.ir_in.gen, "nogc_enforced", False)
+    and not self._raise_has_frame_handler(nd) {
+        _abort_fn = self._get_or_declare_extern("abort", ir.VoidType(), []);
+        _msg = self._make_global_string(
+            "jac: unhandled exception in nogc-enforced module (abort)",
+            name_prefix=".nogc.abort"
+        );
+        _puts_fn = self._get_or_declare_extern("puts", i32, [i8p]);
+        _msg_i8 = self.builder.bitcast(_msg, i8p, name="nogc.abort.msg");
+        self.builder.call(_puts_fn, [_msg_i8]);
+        self.builder.call(_abort_fn, []);
+        self.builder.unreachable();
+        return;
+    }
+
     if self._exc_raise_fn is None {
         self._declare_exception_runtime();
     }
@@ -290,6 +305,22 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
         self._exc_raise_fn, [exc_payload, ir.Constant(i32, exc_type_id), exc_msg]
     );
     self.builder.unreachable();
+}
+
+impl NaIRGenPass._raise_has_frame_handler(nd: uni.RaiseStmt) -> bool {
+    _child: uni.UniNode = nd;
+    _cur = nd.parent;
+    while _cur is not None {
+        if isinstance(_cur, uni.TryStmt) and _child in list(_cur.body) {
+            return True;
+        }
+        if isinstance(_cur, (uni.Ability, uni.LambdaExpr, uni.Module)) {
+            return False;
+        }
+        _child = _cur;
+        _cur = _cur.parent;
+    }
+    return False;
 }
 
 impl NaIRGenPass._codegen_try(nd: uni.TryStmt) -> None {

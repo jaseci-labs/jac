@@ -3,7 +3,7 @@ import from jaclang.jac0core.diagnostics { E1308 }
 impl OwnershipCheckPass._emit_sendability_diagnostics -> None {
     tracked = set(self.owned_decl);
     tracked.update(self.borrow_meta);
-    tracked.update(self.val_decl);
+    tracked.update(self.imm_decl);
     for nd in self.idx_assignments {
         for tgt in nd.target {
             if isinstance(tgt, uni.Name) and tgt.sym {
@@ -17,7 +17,11 @@ impl OwnershipCheckPass._emit_sendability_diagnostics -> None {
         }
     }
 
+    import from jaclang.jac0core.constant { Tokens as Tok }
     for cexpr in self.idx_concurrent {
+        if cexpr.tok is not None and cexpr.tok.name == Tok.KW_WAIT {
+            continue;
+        }
         names: list[uni.Name] = [];
         if isinstance(cexpr.target, uni.Name) {
             names.append(cexpr.target);
@@ -33,14 +37,17 @@ impl OwnershipCheckPass._emit_sendability_diagnostics -> None {
             if sid is None or sid not in tracked or nm.sym is None {
                 continue;
             }
+            if self._is_deep_immutable_scalar(nm) {
+                continue;
+            }
             ownership = nm.sym.ownership;
-            if ownership == OwnershipKind.VAL {
+            if ownership == OwnershipKind.IMM {
                 continue;
             }
             if ownership == OwnershipKind.OWN and self._is_move_producing_use(nm) {
                 continue;
             }
-            if nm.find_parent_of_type(uni.RegionStmt) is not None {
+            if nm.find_parent_of_type(uni.OpenStmt) is not None {
                 continue;
             }
             if self._borrow_sym_of(nm) is not None {
@@ -58,4 +65,18 @@ impl OwnershipCheckPass._emit_sendability_diagnostics -> None {
             break;
         }
     }
+}
+
+impl OwnershipCheckPass._is_deep_immutable_scalar(nm: uni.Name) -> bool {
+    t = nm.type;
+    if t is None {
+        return False;
+    }
+    _mangled = "";
+    try {
+        _mangled = t.mangle();
+    } except Exception {
+        return False;
+    }
+    return _mangled in ("int", "float", "bool", "str", "bytes");
 }

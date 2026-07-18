@@ -21,7 +21,7 @@ obj RouteScanner {
     }
 
     has project_root: Path,
-        pages_dir: Path by postinit,
+        pages_dir: Path postinit,
         _routes: list[RouteEntry] = [],
         _layouts: dict[(str, RouteEntry)] = {},
         _page_files: list[Path] = [];

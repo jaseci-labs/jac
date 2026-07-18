@@ -1086,6 +1086,14 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
     }
   },
 
+  // Builtin types as first-class values -- `map(int, xs)`, `key=str`,
+  // `f = int`, `[str, int]`.  In Python `int` is a single object playing two
+  // roles, so it lowers to a single object here too: a callable whose body is
+  // generated from the same emitters the direct-call path uses (so
+  // `f = int; f(x)` can never drift from `int(x)`), carrying the
+  // `__jac_type__` tag that isinstance/issubclass compare against.
+  types: __JAC_TYPES_RUNTIME__,
+
   builtin: {
     round(n, ndigits) {
       if (ndigits === undefined) return Math.round(n);
@@ -1124,7 +1132,10 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
       return result;
     },
     map(fn, ...iterables) {
-      if (iterables.length === 1) return [...iterables[0]].map(fn);
+      // Python hands the callback exactly one element per iterable, while JS's
+      // `Array.prototype.map` would also hand it (index, array) -- which a
+      // two-arity callable like `int(x, base)` reads as a radix.
+      if (iterables.length === 1) return [...iterables[0]].map((v) => fn(v));
       const arrays = iterables.map(it => [...it]);
       const len = Math.min(...arrays.map(a => a.length));
       const result = [];
@@ -1134,16 +1145,25 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
       return result;
     },
     filter(fn, iterable) {
-      return [...iterable].filter(fn || (x => x));
+      return [...iterable].filter((v) => fn ? fn(v) : v);
     },
-    // Python subclass relation over builtin-type *tags* -- the string names
-    // (`"str"`, `"int"`, ...) that `exit_builtin_type` lowers builtin types to.
-    // `object` is the universal base and `bool` is a subclass of `int`; `tuple`
-    // and `frozenset` share JS representations with `list`/`set`, so fold those
-    // aliases to their runtime tag first. One source of truth so isinstance and
-    // issubclass can never disagree.
+    // The Python type of a builtin-type value, as a tag string.  A builtin type
+    // reaches classinfo position in either of the two spellings the compiler
+    // emits: the runtime type object (`_jac.types.int`, which carries the tag)
+    // or the bare tag itself (an erased annotation, or `_typename` output).
+    _typeTag(t) {
+      return (t !== null && t !== undefined && t.__jac_type__) || t;
+    },
+    // Python subclass relation over builtin-type tags. `object` is the
+    // universal base and `bool` is a subclass of `int`; `tuple` and `frozenset`
+    // share JS representations with `list`/`set`, so fold those aliases to
+    // their runtime tag first. One source of truth so isinstance and issubclass
+    // can never disagree.
     _tagSubclass(subTag, superTag) {
-      const fold = (t) => t === "tuple" ? "list" : t === "frozenset" ? "set" : t;
+      const fold = (t) => {
+        const tag = _jac.builtin._typeTag(t);
+        return tag === "tuple" ? "list" : tag === "frozenset" ? "set" : tag;
+      };
       const sub = fold(subTag), sup = fold(superTag);
       if (sup === "object") return true;
       if (sub === sup) return true;
@@ -1159,10 +1179,12 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
         }
         return false;
       }
-      // Builtin types lower to a string tag (their Python type name): compare
-      // the value's runtime type against it via the shared subclass relation.
-      if (typeof classinfo === "string") {
-        return _jac.builtin._tagSubclass(_jac.poly._typename(o), classinfo);
+      // Builtin type: compare the value's runtime type against its tag via the
+      // shared subclass relation.  Checked before the constructor branch --
+      // a type object is a callable too, and `o instanceof int` is meaningless.
+      const tag = _jac.builtin._typeTag(classinfo);
+      if (typeof tag === "string") {
+        return _jac.builtin._tagSubclass(_jac.poly._typename(o), tag);
       }
       // User archetype / JS constructor.
       if (typeof classinfo === "function") return o instanceof classinfo;
@@ -1175,10 +1197,12 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
         }
         return false;
       }
-      // When either side is a builtin-type tag, compare by the shared subclass
+      // When either side names a builtin type, compare by the shared subclass
       // relation (covers `object`, `bool` ⊂ `int`, and identity).
-      if (typeof cls === "string" || typeof classinfo === "string") {
-        return _jac.builtin._tagSubclass(cls, classinfo);
+      const subTag = _jac.builtin._typeTag(cls);
+      const supTag = _jac.builtin._typeTag(classinfo);
+      if (typeof subTag === "string" || typeof supTag === "string") {
+        return _jac.builtin._tagSubclass(subTag, supTag);
       }
       if (cls === classinfo) return true;
       let proto = cls;
@@ -1374,9 +1398,77 @@ def _build_exc_runtime_js -> str {
     return "\n".join(lines);
 }
 
+def _build_types_runtime_js -> str {
+    import from jaclang.jac0core.constant { TOKEN_MAP }
+    import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
+    import from jaclang.compiler.passes.ecmascript.primitives_es {
+        ESBuiltinEmitter,
+        ESEmitCtx
+    }
+    emitter = ESBuiltinEmitter();
+    ctx = ESEmitCtx(unparser=JSCodeGenerator());
+    entries: list[str] = [];
+    for (tok, name) in sorted(TOKEN_MAP.items()) {
+        if not tok.startswith("TYP_") {
+            continue;
+        }
+        emit_fn = getattr(emitter, "emit_" + name, None);
+        if emit_fn is None {
+            continue;
+        }
+
+        bodies: list[(str | None)] = [];
+        for argv in ([], ["a[0]"], ["a[0]", "a[1]"]) {
+            try {
+                bodies.append(emit_fn(ctx, argv));
+            } except Exception {
+                bodies.append(None);
+            }
+        }
+        supported = [
+            b
+            for b in bodies
+            if b is not None
+        ];
+        if not supported {
+            continue;
+        }
+        (zero, one, two) = (
+            bodies[0] or supported[0],
+            bodies[1] or supported[-1],
+            bodies[2] or (bodies[1] or supported[-1])
+        );
+        if zero == one and one == two {
+            body = "(" + one + ")";
+        } elif one == two {
+            body = "a.length === 0 ? (" + zero + ") : (" + one + ")";
+        } else {
+            body = (
+                "a.length === 0 ? (" + zero + ") : a.length === 1 ? (" + one + ") : (" + two + ")"
+            );
+        }
+        entries.append("    " + name + ': _t("' + name + '", (...a) => ' + body + ")");
+    }
+    return "\n".join(
+        [
+            "(() => {",
+            "    const _t = (tag, fn) => Object.assign(fn, {",
+            "      __jac_type__: tag,",
+            "      toString: () => \"<class '\" + tag + \"'>\"",
+            "    });",
+            "    return {",
+            ",\n".join(entries),
+            "    };",
+            "  })()"
+        ]
+    );
+}
+
 def build_jac_runtime_js -> str {
     return JAC_RUNTIME_JS_OBJECT.replace(
         "__JAC_EXC_RUNTIME__", _build_exc_runtime_js()
+    ).replace(
+        "__JAC_TYPES_RUNTIME__", _build_types_runtime_js()
     );
 }
 
@@ -1402,7 +1494,8 @@ def build_osp_kernel_js -> str {
     js = "";
     try {
         prog = JacProgram();
-        ir = prog.compile(file_path=cl_copy, no_cgen=True);
+
+        ir = prog.compile(file_path=cl_copy, no_cgen=True, type_check=True);
         program = EsastGenPass(ir_in=ir, prog=prog).ir_out.gen.es_ast;
         kept: list = [];
         if isinstance(program, es.Program) {

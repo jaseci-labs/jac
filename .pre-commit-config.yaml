@@ -97,7 +97,7 @@ repos:
         entry: jac fmt
         language: system
         types: [file]
-        args: [--lintfix]
+        args: [--lintfix, --cache]
         files: \.jac$
         require_serial: true
         # ai_tui_na/: jac fmt --lintfix rewrites the truthiness ternaries
