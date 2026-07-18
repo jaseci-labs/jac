@@ -1271,7 +1271,17 @@ these first; the adversarial suite already contains skip-gated tests waiting on 
       `py_import` raises. RUN GREEN 2026-07-17 on the fused jac (same fused-only
       disposition as 3.0/3.1); 3.0+3.1 e2e re-verified green, no regression.
   - REMAINING: `install_signal_handlers` configurability in `InitOpts` (embed.zig).
-- [ ] 3.3 `jac bundle --target binary --with-py-interop` (`project.impl.jac`):
+- [x] 3.3 `jac build --as binary --with_py_interop` (`project.impl.jac`)
+      (LANDED 2026-07-17; note the real surface is `jac build`, NOT `jac bundle`
+      -- `jac bundle` was removed in #7255. Commits: 3.3.0 exec-bit e3fb5ae09;
+      Zig verbs 3381c6377; assembler+CLI a9e859ebe; orjson e2e d4eb26878.
+      REPACK SUB-Q RESOLVED: hybrid -- Python `compression.zstd` (window_log
+      pinned to the launcher's PAYLOAD_WINDOW_LOG=24) produces the `.tar.zst`
+      frame, Zig `graftRuntimeFrom` owns the trailer format. Avoids linking the
+      zstd COMPRESSOR into the shipped stub (the payload build tool's tarZstDir
+      is build-time-only); the bundled py3.14 already has stdlib `compression.zstd`.
+      e2e run + orjson wheel proof are CI/fused-build gated -- not runnable in
+      this worktree, whose fused jac launcher can't materialize its payload.):
       ship a single-file NATIVE binary that boots embedded CPython WITH external
       wheels, no Python on the target. NOTE the shape difference from today's
       `jac build --as binary`: that seals a *jaclang* app (Python bytecode) into a
@@ -1290,27 +1300,27 @@ these first; the adversarial suite already contains skip-gated tests waiting on 
       PYTHONPATH. A is smallest + most self-contained.) OPEN sub-question: repack
       via extending the zig `mkpayload` (keeps pack/trailer format single-source --
       preferred) vs a Python-side tar.
-  - [ ] 3.3.0 FIX FIRST -- exec-bit-drop in payload pack/materialize (concrete):
+  - [x] 3.3.0 FIX FIRST -- exec-bit-drop in payload pack/materialize (concrete):
       `launcher/payload.zig:1811` `tw.writeFileBytes(path, bytes, .{})` must record
       the source mode; the `.mode_mode = .ignore` extracts at `runtime.zig:511` and
       `payload.zig:1919` -> `.executable_bit_only` (fix pattern already at
       `payload.zig:258`). Test: pack+materialize a `0o755` file, assert +x survives.
       See [[desktop-payload-execbit-drop]] (also compounded by rt-cache eviction).
-  - [ ] 3.3.1 `_assemble_pyinterop_payload(config, wheels, stage)`
+  - [x] 3.3.1 `_assemble_pyinterop_payload(config, wheels, stage)`
       (`project.impl.jac`): materialize base runtime (libpython + stdlib + site) ->
       `pip install --only-binary=:all: --target <stage>/.../site-packages <wheels>`
       (host platform tag only, v1) -> slim (drop `site/jaclang`, `pytest`, unused
       `pip`/`setuptools`; KEEP libpython + zipped stdlib + wheels + `cacert.pem`) ->
       **patchelf** each wheel `.so` RPATH to `$ORIGIN` + the libpython dir -> repack
       to a payload trailer.
-  - [ ] 3.3.2 Native bundle path -- branch `_bundle_binary` under `--with-py-interop`:
+  - [x] 3.3.2 Native bundle path -- branch `_bundle_binary` under `--with-py-interop`:
       `nacompile(entry)` -> ELF (not seal/`__appjab`); graft the CUSTOM slim+wheels
       payload (new `graftRuntimeFrom(payload)` variant or a `__graftrt`-with-payload
       arg); `_stage_pyembed_shim` into/beside the binary.
-  - [ ] 3.3.3 CLI surface: add `--with-py-interop` bool to `bundle`
+  - [x] 3.3.3 CLI surface: add `--with-py-interop` bool to `bundle`
       (`project.jac`/`impl`); with `--target binary` route to the native path.
       Wheels from a flag in 3.3; from the `[py-interop]` jac.toml stanza in 3.4.
-  - [ ] 3.3.4 Test (3.3-scale, not the full 3.5 acceptance): bundle a tiny na host
+  - [x] 3.3.4 Test (3.3-scale, not the full 3.5 acceptance): bundle a tiny na host
       doing `py_import("orjson").getattr("dumps").call(...)` -- orjson is a small
       single-`.so` binary wheel, so it proves wheel-install + patchelf + boot e2e.
       polars/cryptography smoke tests stay in 3.5.
