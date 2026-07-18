@@ -1,4 +1,4 @@
-glob _COMMAND_ROUTES: list = [
+glob _COMMAND_ROUTES: list[tuple[str, str, str, str, bool, str, str, list[str]]] = [
          (
              'ai',
              'Launch an interactive Jac coding agent',
@@ -335,10 +335,11 @@ glob _COMMANDS: dict[str, CommandMeta] = {},
      _COMMANDS_LOADED: bool = False;
 
 def _ensure_commands_loaded {
-    global _COMMANDS_LOADED;
+    global _COMMANDS,_COMMANDS_LOADED;
     if _COMMANDS_LOADED {
         return;
     }
+    built: dict[str, CommandMeta] = {};
     for row in _COMMAND_ROUTES {
         meta = CommandMeta(
             name=row[0],
@@ -350,8 +351,9 @@ def _ensure_commands_loaded {
             handler_name=row[6],
             needs=row[7]
         );
-        _COMMANDS[meta.name] = meta;
+        built[meta.name] = meta;
     }
+    _COMMANDS = built;
     _COMMANDS_LOADED = True;
 }
 
@@ -385,12 +387,12 @@ impl validate_manifest -> list[str] {
         errors.append(f"tombstoned verb(s) present in manifest: {revived}");
     }
 
-    for (name, meta) in _COMMANDS.items() {
+    for (nm, meta) in _COMMANDS.items() {
         if not meta.handler_module or not meta.handler_name {
-            errors.append(f"{name}: missing handler reference");
+            errors.append(f"{nm}: missing handler reference");
         }
         if meta.tier and meta.tier not in TIER_SECTIONS {
-            errors.append(f"{name}: unknown tier {meta.tier!r}");
+            errors.append(f"{nm}: unknown tier {meta.tier!r}");
         }
     }
     return errors;
