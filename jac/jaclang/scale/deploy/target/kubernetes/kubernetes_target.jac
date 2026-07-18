@@ -1458,9 +1458,23 @@ obj KubernetesTarget(DeploymentTarget) {
         self._destroy_dashboard(app_name, namespace, apps_v1, core_v1);
     }
 
+    def _destroy_managed_workloads(namespace: str, apps_v1: any) {
+        try {
+            apps_v1.delete_collection_namespaced_deployment(
+                namespace=namespace,
+                label_selector="managed=jac-scale,jac-scale.role in (microservice,gateway)"
+            );
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+    }
+
     def _destroy_application(
         app_name: str, namespace: str, apps_v1: any, core_v1: any
     ) {
+        self._destroy_managed_workloads(namespace, apps_v1);
         autoscaler = AutoscalerFactory.create(
             self.k8s_config.autoscaler_engine, self.k8s_config.to_dict(), self.logger
         );
