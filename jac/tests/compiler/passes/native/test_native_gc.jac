@@ -15,11 +15,13 @@ Fixtures exercised:
 
 import os;
 import re;
+import resource;
 import shutil;
 import subprocess;
 import sys;
 import tempfile;
 import from pathlib { Path }
+import from typing { Callable }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures"),
      # Programs whose RSS savings are too small / noisy to gate on (still verified to
@@ -208,7 +210,74 @@ def _measure_cycle_collection(
 }
 
 
+"""Return a zero-arg callable that caps the child's RLIMIT_STACK.
+
+Used as a `subprocess` `preexec_fn` so the native binary runs with a tiny
+stack — a deep object graph whose destructor recursed one C-stack frame per
+node would SIGSEGV on teardown, so a clean exit proves deep release is
+O(1)-stack.
+"""
+def _stack_limiter(stack_bytes: int) -> Callable {
+    def _apply {
+        resource.setrlimit(
+            resource.RLIMIT_STACK, (stack_bytes, resource.RLIM_INFINITY)
+        );
+    }
+    return _apply;
+}
+
+
+"""Run `binary` under a reduced stack limit; return (exit_code, stdout)."""
+def _run_under_stack_limit(
+    binary: str,
+    stack_kb: int = 512,
+    env_extra: dict[str, str] | None = None,
+    timeout: int = 180,
+) -> tuple[int, str] {
+    env = os.environ.copy();
+    if env_extra {
+        for (k, v) in env_extra.items() {
+            env[k] = v;
+        }
+    }
+    proc = subprocess.run(
+        [binary],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        env=env,
+        preexec_fn=_stack_limiter(stack_kb * 1024),
+    );
+    return (proc.returncode, proc.stdout);
+}
+
+
 # --- Tests ------------------------------------------------------------------
+test "deep release is O(1)-stack and reclaims a long acyclic chain" {
+    # Deep-release contract (7446a): releasing the head of a long singly-linked
+    # chain transitively releases every `nxt`. A naive recursive destructor
+    # consumes one C-stack frame per node and overflows on teardown; the
+    # iterative deep-release worklist keeps it O(1)-stack. Running under a tiny
+    # 512 KB stack turns any reintroduced recursion into a SIGSEGV.
+    with tempfile.TemporaryDirectory() as tmp {
+        bin_path = os.path.join(tmp, "deep_chain_release");
+        _nacompile("deep_chain_release.na.jac", bin_path);
+        # Stack-safety: a chain far deeper than a 512 KB stack could hold as
+        # recursion frames must still tear down cleanly.
+        (code, out) = _run_under_stack_limit(bin_path, stack_kb=512);
+        assert code == 0 , (
+            f"deep_chain_release SIGSEGV/failed under 512 KB stack: exit={code}"
+            f" — deep release regressed to stack recursion"
+        );
+        assert "OK deep_chain_release" in out , f"unexpected output: {out[:200]!r}";
+    }
+    # No-leak: the same fixture rebuilds and drops the chain 400x. With the GC
+    # on each chain is fully reclaimed so RSS stays flat; without it every
+    # chain leaks and RSS balloons into the gigabytes.
+    (gc, nogc) = _measure_gc_savings("deep_chain_release.na.jac", min_savings_kb=51200);
+    print(f"[deep_chain_release] gc={gc} KB  nogc={nogc} KB  saved={nogc - gc} KB");
+}
+
 test "gc reduces rss for perf_alloc_storm" {
     (gc, nogc) = _measure_gc_savings("perf_alloc_storm.na.jac");
     print(f"[alloc_storm] gc={gc} KB  nogc={nogc} KB  saved={nogc - gc} KB");

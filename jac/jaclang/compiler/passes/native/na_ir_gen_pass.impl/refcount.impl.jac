@@ -472,13 +472,99 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     b = ir.IRBuilder(done_bb);
     b.ret_void();
     self.rc_release_impl_fn = release_fn;
+
+    i8_pp = i8_ptr.as_pointer();
+    realloc_fn = self._get_or_declare_extern("realloc", i8_ptr, [i8_ptr, i64]);
+
+    wl_active_gv = ir.GlobalVariable(self.llvm_module, i8, name="__rc_wl_active");
+    wl_active_gv.linkage = "internal";
+    wl_active_gv.initializer = ir.Constant(i8, 0);
+    wl_base_gv = ir.GlobalVariable(self.llvm_module, i8_pp, name="__rc_wl_base");
+    wl_base_gv.linkage = "internal";
+    wl_base_gv.initializer = ir.Constant(i8_pp, None);
+    wl_len_gv = ir.GlobalVariable(self.llvm_module, i64, name="__rc_wl_len");
+    wl_len_gv.linkage = "internal";
+    wl_len_gv.initializer = ir.Constant(i64, 0);
+    wl_cap_gv = ir.GlobalVariable(self.llvm_module, i64, name="__rc_wl_cap");
+    wl_cap_gv.linkage = "internal";
+    wl_cap_gv.initializer = ir.Constant(i64, 0);
+
+    _push_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr]);
+    push_fn = self._define_function("__rc_wl_push", _push_fnty);
+    push_fn.linkage = "internal";
+    push_fn.args[0].name = "ptr";
+    _pu_entry = push_fn.append_basic_block("entry");
+    _pu_grow = push_fn.append_basic_block("grow");
+    _pu_store = push_fn.append_basic_block("store");
+    _pu_b = ir.IRBuilder(_pu_entry);
+    _pu_len = _pu_b.load(wl_len_gv, name="wl.len");
+    _pu_cap = _pu_b.load(wl_cap_gv, name="wl.cap");
+    _pu_need = _pu_b.icmp_unsigned(">=", _pu_len, _pu_cap, name="wl.need.grow");
+    _pu_b.cbranch(_pu_need, _pu_grow, _pu_store);
+    _pu_b = ir.IRBuilder(_pu_grow);
+    _pu_cap_zero = _pu_b.icmp_unsigned(
+        "==", _pu_cap, ir.Constant(i64, 0), name="wl.cap.zero"
+    );
+    _pu_cap2 = _pu_b.mul(_pu_cap, ir.Constant(i64, 2), name="wl.cap.x2");
+    _pu_newcap = _pu_b.select(
+        _pu_cap_zero, ir.Constant(i64, 1024), _pu_cap2, name="wl.newcap"
+    );
+    _pu_old = _pu_b.load(wl_base_gv, name="wl.base.old");
+    _pu_old_i8 = _pu_b.bitcast(_pu_old, i8_ptr, name="wl.base.old.i8");
+    _pu_bytes = _pu_b.mul(_pu_newcap, ir.Constant(i64, 8), name="wl.bytes");
+    _pu_new = _pu_b.call(realloc_fn, [_pu_old_i8, _pu_bytes], name="wl.base.new");
+    _pu_new_pp = _pu_b.bitcast(_pu_new, i8_pp, name="wl.base.new.pp");
+    _pu_b.store(_pu_new_pp, wl_base_gv);
+    _pu_b.store(_pu_newcap, wl_cap_gv);
+    _pu_b.branch(_pu_store);
+    _pu_b = ir.IRBuilder(_pu_store);
+    _pu_base = _pu_b.load(wl_base_gv, name="wl.base");
+    _pu_slot = _pu_b.gep(_pu_base, [_pu_len], name="wl.slot");
+    _pu_b.store(push_fn.args[0], _pu_slot);
+    _pu_b.store(_pu_b.add(_pu_len, ir.Constant(i64, 1), name="wl.len.inc"), wl_len_gv);
+    _pu_b.ret_void();
+
     _pub_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr]);
     _pub_fn = ir.Function(self.llvm_module, _pub_fnty, name="__rc_release_simple");
     _pub_fn.linkage = "private";
     _pub_fn.args[0].name = "ptr";
-    _pub_bb = _pub_fn.append_basic_block("entry");
-    _pub_b = ir.IRBuilder(_pub_bb);
+    _pub_entry = _pub_fn.append_basic_block("entry");
+    _pub_enqueue = _pub_fn.append_basic_block("enqueue");
+    _pub_drive = _pub_fn.append_basic_block("drive");
+    _pub_loop = _pub_fn.append_basic_block("drain_loop");
+    _pub_pop = _pub_fn.append_basic_block("drain_pop");
+    _pub_fin = _pub_fn.append_basic_block("drain_done");
+    _pub_b = ir.IRBuilder(_pub_entry);
+    _pub_act = _pub_b.load(wl_active_gv, name="wl.active");
+    _pub_is_act = _pub_b.icmp_unsigned(
+        "!=", _pub_act, ir.Constant(i8, 0), name="wl.is.active"
+    );
+    _pub_b.cbranch(_pub_is_act, _pub_enqueue, _pub_drive);
+
+    _pub_b = ir.IRBuilder(_pub_enqueue);
+    _pub_b.call(push_fn, [_pub_fn.args[0]]);
+    _pub_b.ret_void();
+
+    _pub_b = ir.IRBuilder(_pub_drive);
+    _pub_b.store(ir.Constant(i8, 1), wl_active_gv);
     _pub_b.call(release_fn, [_pub_fn.args[0], ir.Constant(ir.IntType(1), 1)]);
+    _pub_b.branch(_pub_loop);
+    _pub_b = ir.IRBuilder(_pub_loop);
+    _pub_len = _pub_b.load(wl_len_gv, name="wl.drain.len");
+    _pub_empty = _pub_b.icmp_unsigned(
+        "==", _pub_len, ir.Constant(i64, 0), name="wl.empty"
+    );
+    _pub_b.cbranch(_pub_empty, _pub_fin, _pub_pop);
+    _pub_b = ir.IRBuilder(_pub_pop);
+    _pub_len1 = _pub_b.sub(_pub_len, ir.Constant(i64, 1), name="wl.pop.idx");
+    _pub_b.store(_pub_len1, wl_len_gv);
+    _pub_base = _pub_b.load(wl_base_gv, name="wl.drain.base");
+    _pub_slot = _pub_b.gep(_pub_base, [_pub_len1], name="wl.pop.slot");
+    _pub_item = _pub_b.load(_pub_slot, name="wl.pop.item");
+    _pub_b.call(release_fn, [_pub_item, ir.Constant(ir.IntType(1), 1)]);
+    _pub_b.branch(_pub_loop);
+    _pub_b = ir.IRBuilder(_pub_fin);
+    _pub_b.store(ir.Constant(i8, 0), wl_active_gv);
     _pub_b.ret_void();
     self.rc_release_simple_fn = _pub_fn;
 }
