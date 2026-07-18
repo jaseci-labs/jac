@@ -276,8 +276,11 @@ impl UnparsePass.exit_archetype(nd: uni.Archetype) -> None {
         tp_str = ", ".join([tp.gen.jac for tp in nd.type_params]);
         parts.append("[" + tp_str + "]");
     }
-    if nd.base_classes {
-        parts.append("(" + self._comma_sep(nd.base_classes) + ")");
+    if nd.base_classes or nd.keywords {
+        inherit = [b.gen.jac for b in nd.base_classes] + [
+            k.gen.jac for k in nd.keywords
+        ];
+        parts.append("(" + ", ".join(inherit) + ")");
     }
     if nd.src_endpoint and nd.tgt_endpoint {
         parts.append(

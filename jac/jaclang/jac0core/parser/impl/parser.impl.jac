@@ -5265,16 +5265,29 @@ impl Parser.parse_archetype -> Archetype {
         tp_rb_uni = self.consume_uni(TokenKind.RSQUARE);
     }
     base_classes: list = [];
+    keywords: list = [];
+    inherit_items: list = [];
     lp_uni = None;
     rp_uni = None;
     arch_comma_unis: list = [];
     if self.match_tok(TokenKind.LPAREN) {
         lp_uni = self.make_uni_token(self.previous());
         if not self.check(TokenKind.RPAREN) {
-            base_classes.append(self.parse_atomic_chain());
+            entry = self.parse_call_arg();
+            inherit_items.append(entry);
+            keywords.append(entry)
+                if isinstance(entry, KWPair)
+                else base_classes.append(entry);
             while self.match_tok(TokenKind.COMMA) {
                 arch_comma_unis.append(self.make_uni_token(self.previous()));
-                base_classes.append(self.parse_atomic_chain());
+                if self.check(TokenKind.RPAREN) {
+                    break;
+                }
+                entry = self.parse_call_arg();
+                inherit_items.append(entry);
+                keywords.append(entry)
+                    if isinstance(entry, KWPair)
+                    else base_classes.append(entry);
             }
         }
         rp_uni = self.consume_uni(TokenKind.RPAREN);
@@ -5337,13 +5350,13 @@ impl Parser.parse_archetype -> Archetype {
         }
         kid.append(tp_rb_uni);
     }
-    if base_classes {
+    if lp_uni is not None {
         kid.append(lp_uni);
-        for (i, bc) in enumerate(base_classes) {
+        for (i, it) in enumerate(inherit_items) {
             if i > 0 {
                 kid.append(arch_comma_unis[i - 1]);
             }
-            kid.append(bc);
+            kid.append(it);
         }
         kid.append(rp_uni);
     }
@@ -5365,6 +5378,7 @@ impl Parser.parse_archetype -> Archetype {
         arch_type=arch_type,
         access=access,
         base_classes=base_classes,
+        keywords=keywords,
         body=body,
         kid=kid,
         doc=None,

@@ -143,6 +143,32 @@ test "super_init_py_to_jac_roundtrip" {
     }
 }
 
+test "metaclass_py_to_jac_roundtrip" {
+    # A `class Foo(metaclass=Meta)` must survive Python AST -> Jac IR -> Python
+    # AST so CPython runs the metaclass natively (the class keyword is carried on
+    # uni.Archetype.keywords, not dropped).
+    code_gen = (prog := JacProgram()).compile(
+        os.path.join(FIXTURES, "metaclass_roundtrip.py")
+    );
+    assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
+    if code_gen.gen.py_ast and isinstance(code_gen.gen.py_ast[0], ast3.Module) {
+        compiled = compile(code_gen.gen.py_ast[0], filename="<ast>", mode="exec");
+        captured = io.StringIO();
+        original_stdout = sys.stdout;
+        try {
+            sys.stdout = captured;
+            module = types.ModuleType("__main__");
+            module.__dict__["__file__"] = code_gen.loc.mod_path;
+            exec(compiled, module.__dict__);
+        } finally {
+            sys.stdout = original_stdout;
+        }
+        output = captured.getvalue();
+        assert "by-meta" in output , f"metaclass did not fire, got: {output}";
+        assert "1" in output , f"class body lost, got: {output}";
+    }
+}
+
 test "sem decorator" {
     code_gen = JacProgram().compile(os.path.join(FIXTURES, "codegen_sem.jac"));
 

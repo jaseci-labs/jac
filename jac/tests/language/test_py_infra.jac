@@ -155,6 +155,23 @@ test "py2jac" {
     assert "case _:\n" in output;
 }
 
+test "py2jac metaclass" {
+    Jac.attach_program(JacProgram());
+    py_out_path = os.path.join(FIXTURES, "py2jac_metaclass.py");
+    with open(py_out_path) as f {
+        file_source = f.read();
+        output = PyastBuildPass(
+            ir_in=uni.PythonModuleAst(
+                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
+            ),
+            prog=JacProgram()
+        ).ir_out.unparse();
+    }
+    # The class keyword `metaclass=Meta` must survive py2jac, alongside the
+    # positional base class.
+    assert "class Foo(Base, metaclass=Meta)" in output;
+}
+
 test "py2jac params" {
     Jac.attach_program(JacProgram());
     py_out_path = os.path.join(FIXTURES, "py2jac_params.py");

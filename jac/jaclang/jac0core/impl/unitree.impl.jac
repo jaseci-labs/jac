@@ -1267,6 +1267,7 @@ impl ModuleItem.resolve_relative_path -> str {
 
 impl Archetype.postinit -> None {
     self.base_classes = `list(self.base_classes) if self.base_classes else [];
+    self.keywords = `list(self.keywords) if self.keywords else [];
     self.type_params = `list(self.type_params) if self.type_params else [];
     UniNode.postinit(self);
     AstSymbolNode._init_symbol(

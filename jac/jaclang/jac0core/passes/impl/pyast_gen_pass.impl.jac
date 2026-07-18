@@ -1259,11 +1259,14 @@ impl PyastGenPass.exit_archetype(nd: uni.Archetype) -> None {
             }
         }
     }
+    keywords = [cast(ast3.keyword, self.py_ast_val(k)) for k in nd.keywords]
+        if nd.keywords
+        else [];
     class_def = self.sync(
         ast3.ClassDef(
             name=nd.name.sym_name,
             bases=[cast(ast3.expr, i) for i in base_classes],
-            keywords=[],
+            keywords=keywords,
             body=[cast(ast3.stmt, i) for i in body],
             decorator_list=[cast(ast3.expr, i) for i in decorators],
             type_params=type_param_asts
