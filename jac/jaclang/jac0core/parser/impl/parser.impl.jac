@@ -32,6 +32,7 @@ import from jaclang.jac0core.unitree {
     ElseIf,
     ElseStmt,
     WhileStmt,
+    ForeverStmt,
     InForStmt,
     IterForStmt
 }
@@ -59,7 +60,7 @@ import from jaclang.jac0core.unitree {
     DisengageStmt,
     ExprStmt
 }
-import from jaclang.jac0core.unitree { TypedCtxBlock, GlobalStmt, NonLocalStmt }
+import from jaclang.jac0core.unitree { TypedCtxBlock, OpenStmt }
 import from jaclang.jac0core.unitree {
     BinaryExpr,
     UnaryExpr,
@@ -152,7 +153,7 @@ import from jaclang.jac0core.diagnostics {
     E2023,
     E2028,
     W0060,
-    W0061,
+    E0048,
     W0063
 }
 
@@ -222,6 +223,22 @@ impl Parser.match_tok(kind: TokenKind) -> Token | None {
     return None;
 }
 
+impl Parser.match_any(*kinds: TokenKind) -> Token | None {
+    if self.current().kind in kinds {
+        return self.advance();
+    }
+    return None;
+}
+
+impl Parser.expect_any(*kinds: TokenKind) -> Token {
+    if self.current().kind in kinds {
+        return self.advance();
+    }
+    expected = " | ".join([k.value for k in kinds]);
+    self.emit_diag(E0001, expected=expected, got=self.current().kind.value);
+    return self.advance();
+}
+
 impl Parser.expect(kind: TokenKind) -> Token {
     if self.check(kind) {
         return self.advance();
@@ -248,7 +265,10 @@ impl Parser.consume_uni(kind: TokenKind) -> UniToken {
 }
 
 impl Parser._make_alert(
-    message: str, sloc: SourceLoc, code: DiagnosticInfo | None = None
+    message: str,
+    sloc: SourceLoc,
+    code: DiagnosticInfo | None = None,
+    help_text: str | None = None
 ) -> Alert {
     source = self.get_source();
     tok = UniToken(
@@ -263,7 +283,7 @@ impl Parser._make_alert(
         pos_end=sloc.pos_end
     );
     loc = CodeLocInfo(tok, tok);
-    return Alert(message, loc, Parser, code=code);
+    return Alert(message, loc, Parser, code=code, help_text=help_text);
 }
 
 impl Parser.error(message: str) {
@@ -282,7 +302,9 @@ impl Parser.emit_diag(
     msg = diag.format_message(**kwargs);
     self.error_count += 1;
     if self.prog is not None {
-        alrt = self._make_alert(msg, sloc, code=diag);
+        alrt = self._make_alert(
+            msg, sloc, code=diag, help_text=diag.format_help(**kwargs)
+        );
         self.prog.errors_had.append(alrt);
     }
 }
@@ -293,7 +315,9 @@ impl Parser.emit_warn(
     sloc = loc if loc is not None else self.current().loc;
     msg = diag.format_message(**kwargs);
     if self.prog is not None {
-        alrt = self._make_alert(msg, sloc, code=diag);
+        alrt = self._make_alert(
+            msg, sloc, code=diag, help_text=diag.format_help(**kwargs)
+        );
         self.prog.warnings_had.append(alrt);
     }
 }
@@ -323,8 +347,6 @@ impl Parser.is_keyword_token -> bool {
         TokenKind.KW_SEM,
         TokenKind.KW_TEST,
         TokenKind.KW_GLOBAL,
-        TokenKind.KW_GLOBAL_REF,
-        TokenKind.KW_NONLOCAL,
         TokenKind.KW_IMPORT,
         TokenKind.KW_INCLUDE,
         TokenKind.KW_FROM,
@@ -333,9 +355,9 @@ impl Parser.is_keyword_token -> bool {
         TokenKind.KW_ELIF,
         TokenKind.KW_ELSE,
         TokenKind.KW_FOR,
-        TokenKind.KW_TO,
         TokenKind.KW_BY,
         TokenKind.KW_WHILE,
+        TokenKind.KW_FOREVER,
         TokenKind.KW_MATCH,
         TokenKind.KW_SWITCH,
         TokenKind.KW_CASE,
@@ -510,7 +532,9 @@ impl Parser.parse_access_tag -> SubTag | None {
     if self.match_tok(TokenKind.COLON) {
         colon_uni = self.make_uni_token(self.previous());
         if self.check_any(TokenKind.KW_PUB, TokenKind.KW_PRIV, TokenKind.KW_PROT) {
-            access_tok = self.advance();
+            access_tok = self.expect_any(
+                TokenKind.KW_PUB, TokenKind.KW_PRIV, TokenKind.KW_PROT
+            );
             return SubTag(
                 tag=(at := self.make_uni_token(access_tok)), kid=[colon_uni, at]
             );
@@ -592,6 +616,7 @@ impl Parser.synchronize{
         if self.check_any(
             TokenKind.KW_IF,
             TokenKind.KW_WHILE,
+            TokenKind.KW_FOREVER,
             TokenKind.KW_FOR,
             TokenKind.KW_DEF,
             TokenKind.KW_CAN,
@@ -637,7 +662,7 @@ impl Parser.parse_module -> Module {
         terminals.append(self.make_uni_token(tok));
     }
     if self.check(TokenKind.STRING) {
-        tok = self.advance();
+        tok = self.expect(TokenKind.STRING);
         doc = self.make_string(tok);
     }
     while not self.at_end() {
@@ -758,7 +783,7 @@ impl Parser._recover_js_arrow_fault(left: Expr) -> Expr {
 
 impl Parser.parse_concurrent_expr -> Expr {
     if self.check_any(TokenKind.KW_FLOW, TokenKind.KW_WAIT) {
-        tok = self.advance();
+        tok = self.expect_any(TokenKind.KW_FLOW, TokenKind.KW_WAIT);
         target = self.parse_walrus_assign();
         uni_tok = self.make_uni_token(tok);
         return ConcurrentExpr(tok=uni_tok, target=target, kid=[uni_tok, target]);
@@ -769,7 +794,7 @@ impl Parser.parse_concurrent_expr -> Expr {
 impl Parser.parse_walrus_assign -> Expr {
     expr = self.parse_by_expr();
     if self.check(TokenKind.WALRUS_EQ) {
-        walrus_tok = self.advance();
+        walrus_tok = self.expect(TokenKind.WALRUS_EQ);
         value = self.parse_by_expr();
         op = self.make_uni_token(walrus_tok);
         return BinaryExpr(left=expr, op=op, right=value, kid=[expr, op, value]);
@@ -850,7 +875,7 @@ impl Parser.parse_bitwise_and -> Expr {
 impl Parser.parse_shift -> Expr {
     left = self.parse_arithmetic();
     while self.check_any(TokenKind.LSHIFT, TokenKind.RSHIFT) {
-        tok = self.advance();
+        tok = self.expect_any(TokenKind.LSHIFT, TokenKind.RSHIFT);
         op = self.make_uni_token(tok);
         right = self.parse_arithmetic();
         left = BinaryExpr(left=left, op=op, right=right, kid=[left, op, right]);
@@ -944,7 +969,18 @@ impl Parser.parse_compare -> Expr {
             TokenKind.KW_NIN,
             TokenKind.KW_ISN
         ) {
-            op_tok = self.advance();
+            op_tok = self.expect_any(
+                TokenKind.EE,
+                TokenKind.NE,
+                TokenKind.LT,
+                TokenKind.GT,
+                TokenKind.LTE,
+                TokenKind.GTE,
+                TokenKind.KW_IN,
+                TokenKind.KW_IS,
+                TokenKind.KW_NIN,
+                TokenKind.KW_ISN
+            );
             op = self.make_uni_token(op_tok);
             ops.append(op);
             kid.append(op);
@@ -960,7 +996,7 @@ impl Parser.parse_compare -> Expr {
 impl Parser.parse_arithmetic -> Expr {
     left = self.parse_term();
     while self.check_any(TokenKind.PLUS, TokenKind.MINUS) {
-        tok = self.advance();
+        tok = self.expect_any(TokenKind.PLUS, TokenKind.MINUS);
         op = self.make_uni_token(tok);
         right = self.parse_term();
         left = BinaryExpr(left=left, op=op, right=right, kid=[left, op, right]);
@@ -977,7 +1013,13 @@ impl Parser.parse_term -> Expr {
         TokenKind.MOD,
         TokenKind.DECOR_OP
     ) {
-        tok = self.advance();
+        tok = self.expect_any(
+            TokenKind.STAR_MUL,
+            TokenKind.DIV,
+            TokenKind.FLOOR_DIV,
+            TokenKind.MOD,
+            TokenKind.DECOR_OP
+        );
         op = self.make_uni_token(tok);
         right = self.parse_power();
         left = BinaryExpr(left=left, op=op, right=right, kid=[left, op, right]);
@@ -997,7 +1039,7 @@ impl Parser.parse_power -> Expr {
 
 impl Parser.parse_factor -> Expr {
     if self.check_any(TokenKind.BW_NOT, TokenKind.MINUS, TokenKind.PLUS) {
-        tok = self.advance();
+        tok = self.expect_any(TokenKind.BW_NOT, TokenKind.MINUS, TokenKind.PLUS);
         op = self.make_uni_token(tok);
         operand = self.parse_factor();
         return UnaryExpr(operand=operand, op=op, kid=[op, operand]);
@@ -1050,7 +1092,7 @@ impl Parser.parse_connect_op -> ConnectOp | DisconnectOp | None {
         TokenKind.ARROW_R_P1,
         TokenKind.ARROW_L_P1
     ) {
-        del_tok = self.advance();
+        del_tok = self.expect(TokenKind.KW_DELETE);
 
         edge_op = self.parse_edge_op_ref_inline();
         if edge_op {
@@ -1205,7 +1247,7 @@ impl Parser.parse_atomic_pipe_back -> Expr {
 
 impl Parser.parse_spawn -> Expr {
     if self.check(TokenKind.KW_SPAWN) {
-        op_tok = self.advance();
+        op_tok = self.expect(TokenKind.KW_SPAWN);
         op = self.make_uni_token(op_tok);
         target = self.parse_unpack();
 
@@ -1230,10 +1272,44 @@ impl Parser.parse_unpack -> Expr {
 }
 
 impl Parser.parse_ref -> Expr {
+    if self.match_tok(TokenKind.KW_OWN) {
+        own_op = self.make_uni_token(self.previous());
+        own_target = self.parse_await_expr();
+        return UnaryExpr(
+            operand=own_target,
+            op=own_op,
+            ownership=OwnershipKind.OWN,
+            kid=[own_op, own_target]
+        );
+    }
     if self.match_tok(TokenKind.BW_AND) {
-        op = self.make_uni_token(self.previous());
+        raw_tok = self.previous();
+        op = self.make_uni_token(raw_tok);
+        kids: list = [op];
+
+        if self.check(TokenKind.LPAREN)
+        or (not self.at_end() and self.current().loc.pos_start > raw_tok.loc.pos_end) {
+            target = self.parse_await_expr();
+            kids.append(target);
+            return UnaryExpr(
+                operand=target, op=op, ownership=OwnershipKind.BORROW, kid=kids
+            );
+        }
+
+        is_mut = False;
+        if self.check(TokenKind.KW_MUT) {
+            mut_tok = self.expect(TokenKind.KW_MUT);
+            kids.append(self.make_uni_token(mut_tok));
+            is_mut = True;
+        }
         target = self.parse_await_expr();
-        return UnaryExpr(operand=target, op=op, kid=[op, target]);
+        kids.append(target);
+        return UnaryExpr(
+            operand=target,
+            op=op,
+            ownership=OwnershipKind.MUT_BORROW if is_mut else OwnershipKind.BORROW,
+            kid=kids
+        );
     }
     return self.parse_await_expr();
 }
@@ -1249,7 +1325,7 @@ impl Parser.parse_await_expr -> Expr {
 
 impl Parser.parse_pipe_call -> Expr {
     if self.check_any(TokenKind.PIPE_FWD, TokenKind.A_PIPE_FWD) {
-        tok = self.advance();
+        tok = self.expect_any(TokenKind.PIPE_FWD, TokenKind.A_PIPE_FWD);
         op = self.make_uni_token(tok);
         target = self.parse_atomic_chain();
         return UnaryExpr(operand=target, op=op, kid=[op, target]);
@@ -1285,7 +1361,11 @@ impl Parser.parse_atomic_chain -> Expr {
                 dot_kind2 = self.current().kind;
                 is_dot_fwd = dot_kind2 == TokenKind.DOT_FWD;
                 is_dot_bkwd = dot_kind2 == TokenKind.DOT_BKWD;
-                dot_uni = self.make_uni_token(self.advance());
+                dot_uni = self.make_uni_token(
+                    self.expect_any(
+                        TokenKind.DOT, TokenKind.DOT_FWD, TokenKind.DOT_BKWD
+                    )
+                );
             }
             if not dot_uni and null_ok {
                 dot_uni = null_ok_uni;
@@ -1293,7 +1373,7 @@ impl Parser.parse_atomic_chain -> Expr {
 
             attr: Name | None = None;
             if self.check_name() {
-                name_tok = self.advance();
+                name_tok = self.expect_name();
                 attr = self.make_name(name_tok);
             } elif self.is_keyword_token() {
                 name_tok = self.advance();
@@ -1330,8 +1410,8 @@ impl Parser.parse_atomic_chain -> Expr {
             );
         } elif self.check(TokenKind.LPAREN) {
             if self.check_peek(TokenKind.NULL_OK) {
-                self.emit_warn(W0061, loc=self.current().loc);
-                self.advance();
+                self.emit_diag(E0048, loc=self.current().loc);
+                self.expect(TokenKind.LPAREN);
                 filter_expr = self.parse_filter_compr_inner();
 
                 kid = [expr, filter_expr];
@@ -1343,7 +1423,7 @@ impl Parser.parse_atomic_chain -> Expr {
                     kid=kid
                 );
             } elif self.check_peek(TokenKind.EQ) {
-                self.advance();
+                self.expect(TokenKind.LPAREN);
                 assign_expr = self.parse_assign_compr_inner();
                 kid = [expr, assign_expr];
                 expr = AtomTrailer(
@@ -1354,7 +1434,7 @@ impl Parser.parse_atomic_chain -> Expr {
                     kid=kid
                 );
             } else {
-                lp_uni = self.make_uni_token(self.advance());
+                lp_uni = self.make_uni_token(self.expect(TokenKind.LPAREN));
                 kid = [expr, lp_uni];
                 args = self.parse_call_args(kid);
                 rp_uni = self.consume_uni(TokenKind.RPAREN);
@@ -1377,7 +1457,7 @@ impl Parser.parse_atomic_chain -> Expr {
                 expr = FuncCall(target=expr, params=args, genai_call=None, kid=kid);
             }
         } elif self.check(TokenKind.LSQUARE) and self.check_peek(TokenKind.NULL_OK) {
-            self.advance();
+            self.expect(TokenKind.LSQUARE);
             filter_expr = self.parse_filter_compr_bracket();
             kid = [expr, filter_expr];
             expr = AtomTrailer(
@@ -1586,14 +1666,14 @@ impl Parser.parse_call_arg -> Expr | KWPair {
     }
 
     if self.check(TokenKind.STAR_POW) {
-        star_tok = self.advance();
+        star_tok = self.expect(TokenKind.STAR_POW);
         star = self.make_uni_token(star_tok);
         value = self.parse_expression();
         return KWPair(key=None, value=value, kid=[star, value]);
     }
 
     if self.check(TokenKind.STAR_MUL) {
-        star_tok = self.advance();
+        star_tok = self.expect(TokenKind.STAR_MUL);
         star = self.make_uni_token(star_tok);
         value = self.parse_expression();
         return UnaryExpr(op=star, operand=value, kid=[star, value]);
@@ -1715,35 +1795,35 @@ impl Parser.parse_assign_compr_inner -> AssignCompr {
     return AssignCompr(assigns=assigns, kid=kid);
 }
 
-impl Parser.parse_atom_literal -> Expr {
+impl Parser.parse_atom_literal -> Expr | None {
     if self.check(TokenKind.INT) {
-        tok = self.advance();
+        tok = self.expect(TokenKind.INT);
         return self.make_int(tok);
     }
     if self.check_any(TokenKind.HEX, TokenKind.BIN, TokenKind.OCT) {
-        tok = self.advance();
+        tok = self.expect_any(TokenKind.HEX, TokenKind.BIN, TokenKind.OCT);
         return self.make_int(tok);
     }
     if self.check(TokenKind.FLOAT) {
-        tok = self.advance();
+        tok = self.expect(TokenKind.FLOAT);
         return self.make_float(tok);
     }
     if self.check(TokenKind.BOOL) {
-        tok = self.advance();
+        tok = self.expect(TokenKind.BOOL);
         return self.make_bool(tok);
     }
     if self.check(TokenKind.NULL) {
-        tok = self.advance();
+        tok = self.expect(TokenKind.NULL);
         return self.make_null(tok);
     }
     if self.check(TokenKind.ELLIPSIS) {
-        tok = self.advance();
+        tok = self.expect(TokenKind.ELLIPSIS);
         return self.make_ellipsis(tok);
     }
     return None;
 }
 
-impl Parser.parse_multistring -> Expr {
+impl Parser.parse_multistring -> Expr | None {
     strings: list = [];
 
     if self.check(TokenKind.NAME)
@@ -1762,13 +1842,13 @@ impl Parser.parse_multistring -> Expr {
         "RB"
     ]
     and self.check_peek(TokenKind.STRING) {
-        prefix_tok = self.advance();
-        str_tok = self.advance();
+        prefix_tok = self.expect(TokenKind.NAME);
+        str_tok = self.expect(TokenKind.STRING);
         combined = self.make_string(str_tok);
         combined.value = prefix_tok.value + combined.value;
         strings.append(combined);
     } elif self.check(TokenKind.STRING) {
-        first_tok = self.advance();
+        first_tok = self.expect(TokenKind.STRING);
         strings.append(self.make_string(first_tok));
     } elif self.check_any(
         TokenKind.F_DQ_START,
@@ -1815,13 +1895,13 @@ impl Parser.parse_multistring -> Expr {
         and self.check_peek(TokenKind.STRING)
     ) {
         if self.check(TokenKind.NAME) and self.check_peek(TokenKind.STRING) {
-            ptok = self.advance();
-            stok = self.advance();
+            ptok = self.expect(TokenKind.NAME);
+            stok = self.expect(TokenKind.STRING);
             s = self.make_string(stok);
             s.value = ptok.value + s.value;
             strings.append(s);
         } elif self.check(TokenKind.STRING) {
-            tok = self.advance();
+            tok = self.expect(TokenKind.STRING);
             strings.append(self.make_string(tok));
         } else {
             strings.append(self.parse_fstring());
@@ -1830,7 +1910,7 @@ impl Parser.parse_multistring -> Expr {
     return MultiString(strings=strings, kid=strings);
 }
 
-impl Parser.parse_builtin_type -> Expr {
+impl Parser.parse_builtin_type -> Expr | None {
     if self.check_any(
         TokenKind.TYP_STRING,
         TokenKind.TYP_INT,
@@ -1854,7 +1934,29 @@ impl Parser.parse_builtin_type -> Expr {
         TokenKind.TYP_F32,
         TokenKind.TYP_F64
     ) {
-        tok = self.advance();
+        tok = self.expect_any(
+            TokenKind.TYP_STRING,
+            TokenKind.TYP_INT,
+            TokenKind.TYP_FLOAT,
+            TokenKind.TYP_LIST,
+            TokenKind.TYP_TUPLE,
+            TokenKind.TYP_SET,
+            TokenKind.TYP_DICT,
+            TokenKind.TYP_BOOL,
+            TokenKind.TYP_BYTES,
+            TokenKind.TYP_ANY,
+            TokenKind.TYP_TYPE,
+            TokenKind.TYP_I8,
+            TokenKind.TYP_U8,
+            TokenKind.TYP_I16,
+            TokenKind.TYP_U16,
+            TokenKind.TYP_I32,
+            TokenKind.TYP_U32,
+            TokenKind.TYP_I64,
+            TokenKind.TYP_U64,
+            TokenKind.TYP_F32,
+            TokenKind.TYP_F64
+        );
         builtin_name: str = TOKEN_KIND_TO_TOK[tok.kind]
             if tok.kind in TOKEN_KIND_TO_TOK
             else tok.kind.value;
@@ -1873,7 +1975,7 @@ impl Parser.parse_builtin_type -> Expr {
     return None;
 }
 
-impl Parser.parse_special_ref -> Expr {
+impl Parser.parse_special_ref -> Expr | None {
     if self.check_any(
         TokenKind.KW_SELF,
         TokenKind.KW_SUPER,
@@ -1897,7 +1999,14 @@ impl Parser.parse_special_ref -> Expr {
         TokenKind.KW_CLASS,
         TokenKind.KW_ENUM
     ) {
-        tok = self.advance();
+        tok = self.expect_any(
+            TokenKind.KW_NODE,
+            TokenKind.KW_EDGE,
+            TokenKind.KW_WALKER,
+            TokenKind.KW_OBJECT,
+            TokenKind.KW_CLASS,
+            TokenKind.KW_ENUM
+        );
         return self.make_special_name(tok);
     }
     return None;
@@ -1994,13 +2103,13 @@ impl Parser.parse_atom -> Expr {
     }
 
     if self.check(TokenKind.STAR_MUL) {
-        star_tok = self.advance();
+        star_tok = self.expect(TokenKind.STAR_MUL);
         star = self.make_uni_token(star_tok);
         operand = self.parse_expression();
         return UnaryExpr(op=star, operand=operand, kid=[star, operand]);
     }
     if self.check(TokenKind.STAR_POW) {
-        star_tok = self.advance();
+        star_tok = self.expect(TokenKind.STAR_POW);
         star = self.make_uni_token(star_tok);
         value = self.parse_expression();
         return KWPair(key=None, value=value, kid=[star, value]);
@@ -2025,7 +2134,7 @@ impl Parser.parse_atom -> Expr {
 impl Parser.parse_paren_expr -> Expr {
     lp_uni = self.consume_uni(TokenKind.LPAREN);
     if self.check(TokenKind.RPAREN) {
-        rp_uni = self.make_uni_token(self.advance());
+        rp_uni = self.make_uni_token(self.expect(TokenKind.RPAREN));
         return TupleVal(values=[], kid=[lp_uni, rp_uni]);
     }
 
@@ -2181,7 +2290,16 @@ impl Parser.parse_brace_expr -> Expr {
 }
 
 impl Parser.parse_fstring -> FString {
-    start_tok = self.advance();
+    start_tok = self.expect_any(
+        TokenKind.F_DQ_START,
+        TokenKind.F_SQ_START,
+        TokenKind.F_TDQ_START,
+        TokenKind.F_TSQ_START,
+        TokenKind.RF_DQ_START,
+        TokenKind.RF_SQ_START,
+        TokenKind.RF_TDQ_START,
+        TokenKind.RF_TSQ_START
+    );
     start = self.make_uni_token(start_tok);
     end_kind: TokenKind;
     text_kind: TokenKind;
@@ -2219,12 +2337,12 @@ impl Parser.parse_fstring -> FString {
             parts.append(part);
             kid.append(part);
         } elif self.check(TokenKind.D_LBRACE) {
-            self.advance();
+            self.expect(TokenKind.D_LBRACE);
             part = self.make_string_from_value("{");
             parts.append(part);
             kid.append(part);
         } elif self.check(TokenKind.D_RBRACE) {
-            self.advance();
+            self.expect(TokenKind.D_RBRACE);
             part = self.make_string_from_value("}");
             parts.append(part);
             kid.append(part);
@@ -2234,13 +2352,13 @@ impl Parser.parse_fstring -> FString {
             conv = -1;
             fv_kid: list = [lbrace_uni, expr];
             if self.check(TokenKind.CONV) {
-                conv_tok = self.advance();
+                conv_tok = self.expect(TokenKind.CONV);
                 conv = ord(conv_tok.value[1]) if len(conv_tok.value) > 1 else -1;
                 fv_kid.append(self.make_uni_token(conv_tok));
             }
             format_spec = None;
             if self.check(TokenKind.COLON) {
-                self.advance();
+                self.expect(TokenKind.COLON);
                 fv_kid.append(self.make_uni_token(self.previous()));
 
                 spec_parts: list[str] = [];
@@ -2262,7 +2380,7 @@ impl Parser.parse_fstring -> FString {
                         nested_conv = -1;
                         nested_fv_kid: list = [nested_lbrace_uni, nested_expr];
                         if self.check(TokenKind.CONV) {
-                            nc_tok = self.advance();
+                            nc_tok = self.expect(TokenKind.CONV);
                             nested_conv = ord(nc_tok.value[1])
                                 if len(nc_tok.value) > 1
                                 else -1;
@@ -2313,7 +2431,7 @@ impl Parser.parse_fstring -> FString {
 impl Parser.parse_list_or_compr -> Expr {
     lsquare_uni = self.make_uni_token(self.previous());
     if self.check(TokenKind.RSQUARE) {
-        self.advance();
+        self.expect(TokenKind.RSQUARE);
         return ListVal(
             values=[], kid=[lsquare_uni, self.make_uni_token(self.previous())]
         );
@@ -2335,7 +2453,7 @@ impl Parser.parse_list_or_compr -> Expr {
         TokenKind.ARROW_R_P1,
         TokenKind.ARROW_L_P1
     ) {
-        return self.continue_edge_ref_chain(first, lsquare_uni);
+        return self._continue_edge_ref_chain(first, lsquare_uni);
     }
     values = [first];
     kid = [lsquare_uni, first];
@@ -2352,7 +2470,7 @@ impl Parser.parse_list_or_compr -> Expr {
     return ListVal(values=values, kid=kid);
 }
 
-impl Parser.continue_edge_ref_chain(start_expr: Expr, lsquare_uni: UniToken) -> Expr {
+impl Parser._continue_edge_ref_chain(start_expr: Expr, lsquare_uni: UniToken) -> Expr {
     kid: list = [lsquare_uni, start_expr];
     chain: list = [start_expr];
     while True {
@@ -2370,7 +2488,7 @@ impl Parser.continue_edge_ref_chain(start_expr: Expr, lsquare_uni: UniToken) -> 
             kid.append(filter_expr);
         } elif self.check(TokenKind.LPAREN) {
             if self.check_peek(TokenKind.NULL_OK) {
-                self.emit_warn(W0061, loc=self.current().loc);
+                self.emit_diag(E0048, loc=self.current().loc);
                 self.advance();
                 filter_expr = self.parse_filter_compr_inner();
                 chain.append(filter_expr);
@@ -2412,10 +2530,10 @@ impl Parser.parse_edge_ref_chain -> Expr {
 
     if self.check(TokenKind.KW_EDGE) {
         edges_only = True;
-        filter_tok = self.advance();
+        filter_tok = self.expect(TokenKind.KW_EDGE);
         kid.append(self.make_uni_token(filter_tok));
     } elif self.check(TokenKind.KW_NODE) {
-        self.advance();
+        self.expect(TokenKind.KW_NODE);
         kid.append(self.make_uni_token(self.previous()));
     }
 
@@ -2445,19 +2563,19 @@ impl Parser.parse_edge_ref_chain -> Expr {
         }
 
         if self.check(TokenKind.LSQUARE) and self.check_peek(TokenKind.NULL_OK) {
-            self.advance();
+            self.expect(TokenKind.LSQUARE);
             filter_expr = self.parse_filter_compr_bracket();
             chain.append(filter_expr);
             kid.append(filter_expr);
         } elif self.check(TokenKind.LPAREN) {
             if self.check_peek(TokenKind.NULL_OK) {
-                self.emit_warn(W0061, loc=self.current().loc);
-                self.advance();
+                self.emit_diag(E0048, loc=self.current().loc);
+                self.expect(TokenKind.LPAREN);
                 filter_expr = self.parse_filter_compr_inner();
                 chain.append(filter_expr);
                 kid.append(filter_expr);
             } else {
-                self.advance();
+                self.expect(TokenKind.LPAREN);
                 kid.append(self.make_uni_token(self.previous()));
                 filter_expr = self.parse_expression();
                 chain.append(filter_expr);
@@ -2485,7 +2603,9 @@ impl Parser.parse_edge_ref_chain -> Expr {
 
 impl Parser.parse_edge_op_ref -> EdgeOpRef | None {
     if self.check_any(TokenKind.ARROW_R, TokenKind.ARROW_L, TokenKind.ARROW_BI) {
-        edge_tok = self.advance();
+        edge_tok = self.expect_any(
+            TokenKind.ARROW_R, TokenKind.ARROW_L, TokenKind.ARROW_BI
+        );
         edge_uni = self.make_uni_token(edge_tok);
         dir = EdgeDir.OUT;
         if edge_tok.kind == TokenKind.ARROW_L {
@@ -2497,7 +2617,7 @@ impl Parser.parse_edge_op_ref -> EdgeOpRef | None {
     }
 
     if self.check(TokenKind.ARROW_R_P1) {
-        self.advance();
+        self.expect(TokenKind.ARROW_R_P1);
         start_uni = self.make_uni_token(self.previous());
         f_type = None;
         compares: list = [];
@@ -2507,7 +2627,7 @@ impl Parser.parse_edge_op_ref -> EdgeOpRef | None {
             fcompr_kid.append(f_type);
         }
         if self.check(TokenKind.COLON) and not self.check(TokenKind.ARROW_R_P2) {
-            self.advance();
+            self.expect(TokenKind.COLON);
             fcompr_kid.append(self.make_uni_token(self.previous()));
             if not self.check(TokenKind.ARROW_R_P2) {
                 cmp = self.parse_compare();
@@ -2529,7 +2649,7 @@ impl Parser.parse_edge_op_ref -> EdgeOpRef | None {
     }
 
     if self.check(TokenKind.ARROW_L_P1) {
-        self.advance();
+        self.expect(TokenKind.ARROW_L_P1);
         start_uni = self.make_uni_token(self.previous());
         f_type = None;
         compares: list = [];
@@ -2539,7 +2659,7 @@ impl Parser.parse_edge_op_ref -> EdgeOpRef | None {
             fcompr_kid.append(f_type);
         }
         if self.check(TokenKind.COLON) and not self.check(TokenKind.ARROW_L_P2) {
-            self.advance();
+            self.expect(TokenKind.COLON);
             fcompr_kid.append(self.make_uni_token(self.previous()));
             if not self.check(TokenKind.ARROW_L_P2) {
                 cmp = self.parse_compare();
@@ -2565,7 +2685,7 @@ impl Parser.parse_edge_op_ref -> EdgeOpRef | None {
 impl Parser.parse_dict_or_set -> Expr {
     lbrace_uni = self.make_uni_token(self.previous());
     if self.check(TokenKind.RBRACE) {
-        self.advance();
+        self.expect(TokenKind.RBRACE);
         return DictVal(
             kv_pairs=[], kid=[lbrace_uni, self.make_uni_token(self.previous())]
         );
@@ -2596,7 +2716,7 @@ impl Parser.parse_dict_or_set -> Expr {
                 break;
             }
             if self.check(TokenKind.STAR_POW) {
-                self.advance();
+                self.expect(TokenKind.STAR_POW);
                 star_pow_uni = self.make_uni_token(self.previous());
                 spread_val = self.parse_expression();
                 pair = KVPair(
@@ -2660,7 +2780,7 @@ impl Parser.parse_dict_with_spread(lbrace_uni: UniToken) -> DictVal {
 
 impl Parser.parse_dict_spread_entry -> KVPair {
     if self.check(TokenKind.STAR_POW) {
-        self.advance();
+        self.expect(TokenKind.STAR_POW);
         star_pow_uni = self.make_uni_token(self.previous());
         spread_val = self.parse_expression();
         return KVPair(key=None, value=spread_val, kid=[star_pow_uni, spread_val]);
@@ -2716,13 +2836,11 @@ impl Parser.parse_lambda_expr -> Expr {
     lambda_tok = self.consume_uni(TokenKind.KW_LAMBDA);
 
     sig_kid: list = [];
-    if self.check(TokenKind.LPAREN) {
-        self.advance();
+    params: list = [];
+    if self.match_tok(TokenKind.LPAREN) {
         sig_kid.append(self.make_uni_token(self.previous()));
         params = self.parse_func_params(sig_kid);
         sig_kid.append(self.consume_uni(TokenKind.RPAREN));
-    } else {
-        params = self.parse_lambda_params(sig_kid);
     }
     return_type = None;
     ret_hint_uni: UniToken | None = None;
@@ -2731,13 +2849,9 @@ impl Parser.parse_lambda_expr -> Expr {
         return_type = self.parse_expression();
     }
     body: Expr | list;
-    colon_uni: UniToken | None = None;
     lbrace_uni: UniToken | None = None;
     rbrace_uni: UniToken | None = None;
-    if self.match_tok(TokenKind.COLON) {
-        colon_uni = self.make_uni_token(self.previous());
-        body = self.parse_expression();
-    } elif self.match_tok(TokenKind.LBRACE) {
+    if self.match_tok(TokenKind.LBRACE) {
         lbrace_uni = self.make_uni_token(self.previous());
         body = self.parse_code_block_stmts();
         rbrace_uni = self.consume_uni(TokenKind.RBRACE);
@@ -2771,9 +2885,6 @@ impl Parser.parse_lambda_expr -> Expr {
     }
 
     if not isinstance(body, list) {
-        if colon_uni {
-            kid.append(colon_uni);
-        }
         kid.append(body);
     } else {
         if lbrace_uni {
@@ -2787,137 +2898,11 @@ impl Parser.parse_lambda_expr -> Expr {
     return LambdaExpr(body=body, kid=kid, signature=signature);
 }
 
-impl Parser.parse_lambda_params(sig_kid: list) -> list {
-    params: list = [];
-    while self.check_name()
-    or self.check_any(
-        TokenKind.KW_SELF,
-        TokenKind.KW_PROPS,
-        TokenKind.KW_SUPER,
-        TokenKind.KW_ROOT,
-        TokenKind.KW_HERE,
-        TokenKind.KW_VISITOR
-    )
-    or self.is_keyword_token()
-    or self.check_any(TokenKind.STAR_MUL, TokenKind.STAR_POW, TokenKind.DIV) {
-        if self.check(TokenKind.STAR_MUL)
-        and self.check_peek_any(
-            TokenKind.COMMA, TokenKind.COLON, TokenKind.RETURN_HINT, TokenKind.LBRACE
-        ) {
-            star_tok = self.advance();
-            star_uni = self.make_uni_token(star_tok);
-            sig_kid.append(star_uni);
-        } elif self.check(TokenKind.DIV)
-        and self.check_peek_any(
-            TokenKind.COMMA, TokenKind.COLON, TokenKind.RETURN_HINT, TokenKind.LBRACE
-        ) {
-            div_tok = self.advance();
-            div_uni = self.make_uni_token(div_tok);
-            sig_kid.append(div_uni);
-        } else {
-            pv = self.parse_lambda_param();
-            if pv is None {
-                break;
-            }
-            params.append(pv);
-            sig_kid.append(pv);
-        }
-        if not self.match_tok(TokenKind.COMMA) {
-            break;
-        }
-        sig_kid.append(self.make_uni_token(self.previous()));
-    }
-    return params;
-}
-
-impl Parser.parse_lambda_param -> ParamVar | None {
-    unpack: UniToken | None = None;
-    if self.check_any(TokenKind.STAR_MUL, TokenKind.STAR_POW) {
-        unpack_tok = self.advance();
-        unpack = self.make_uni_token(unpack_tok);
-    }
-
-    if self.check_name() {
-        name_tok = self.expect_name();
-        name = self.make_name_or_special(name_tok);
-    } elif self.check_any(
-        TokenKind.KW_SELF, TokenKind.KW_PROPS, TokenKind.KW_HERE, TokenKind.KW_VISITOR
-    ) {
-        name_tok = self.advance();
-        name = SpecialVarRef(var=self.make_special_name(name_tok), is_enum_stmt=False);
-    } elif self.is_builtin_type_token() {
-        name_tok = self.advance();
-        name = self.make_name_or_special(name_tok);
-    } elif self.is_keyword_token() {
-        kw = self.current().value;
-        self.emit_diag(E0013, keyword=kw, context="lambda parameter");
-        name_tok = self.advance();
-        name = self.make_name_or_special(name_tok);
-    } else {
-        return None;
-    }
-    type_tag: SubTag | None = None;
-
-    if self.check(TokenKind.COLON) {
-        next_tok = self.peek();
-        is_type_annotation = False;
-        if next_tok.kind in [
-            TokenKind.NAME,
-            TokenKind.TYP_STRING,
-            TokenKind.TYP_INT,
-            TokenKind.TYP_FLOAT,
-            TokenKind.TYP_LIST,
-            TokenKind.TYP_TUPLE,
-            TokenKind.TYP_SET,
-            TokenKind.TYP_DICT,
-            TokenKind.TYP_BOOL,
-            TokenKind.TYP_BYTES,
-            TokenKind.TYP_ANY,
-            TokenKind.TYP_TYPE
-        ] {
-            after_type = self.peek(2);
-            if after_type.kind in [
-                TokenKind.COMMA,
-                TokenKind.EQ,
-                TokenKind.COLON,
-                TokenKind.RETURN_HINT,
-                TokenKind.LBRACE
-            ] {
-                is_type_annotation = True;
-            }
-        }
-        if is_type_annotation {
-            self.advance();
-            lam_colon = self.make_uni_token(self.previous());
-            te = self.parse_pipe();
-            type_tag = SubTag(tag=te, kid=[lam_colon, te]);
-        }
-    }
-    default_val: Expr | None = None;
-    if self.match_tok(TokenKind.EQ) {
-        default_val = self.parse_expression();
-    }
-    kid: list = [];
-    if unpack {
-        kid.append(unpack);
-    }
-    kid.append(name);
-    if type_tag {
-        kid.append(type_tag);
-    }
-    if default_val {
-        kid.append(default_val);
-    }
-    return ParamVar(
-        name=name, unpack=unpack, type_tag=type_tag, value=default_val, kid=kid
-    );
-}
-
 impl Parser.parse_jsx_element -> Expr {
     kid: list = [];
 
     if self.check(TokenKind.JSX_FRAG_OPEN) {
-        frag_open = self.advance();
+        frag_open = self.expect(TokenKind.JSX_FRAG_OPEN);
         kid.append(self.make_uni_token(frag_open));
         children = self.parse_jsx_children();
         kid.extend(children);
@@ -2959,7 +2944,7 @@ impl Parser.parse_jsx_element -> Expr {
     open_kid.extend(attrs);
 
     if self.check(TokenKind.JSX_SELF_CLOSE) {
-        self.advance();
+        self.expect(TokenKind.JSX_SELF_CLOSE);
         open_kid.append(self.make_uni_token(self.previous()));
         return JsxElement(
             name=elem_name,
@@ -3078,7 +3063,7 @@ impl Parser.parse_jsx_attributes -> list {
     attrs: list = [];
     while True {
         if self.check(TokenKind.JSX_NAME) {
-            attr_name_tok = self.advance();
+            attr_name_tok = self.expect(TokenKind.JSX_NAME);
             attr_name = self.make_uni_token(attr_name_tok);
             attr_value: Expr | None = None;
             attr_kid: list = [attr_name];
@@ -3086,11 +3071,11 @@ impl Parser.parse_jsx_attributes -> list {
                 attr_kid.append(self.make_uni_token(self.previous()));
 
                 if self.check(TokenKind.STRING) {
-                    str_tok = self.advance();
+                    str_tok = self.expect(TokenKind.STRING);
                     attr_value = self.make_string(str_tok);
                     attr_kid.append(attr_value);
                 } elif self.check(TokenKind.LBRACE) {
-                    self.advance();
+                    self.expect(TokenKind.LBRACE);
                     lbrace = self.make_uni_token(self.previous());
                     attr_value = self.parse_expression();
                     rbrace = self.consume_uni(TokenKind.RBRACE);
@@ -3103,17 +3088,17 @@ impl Parser.parse_jsx_attributes -> list {
                 JsxNormalAttribute(name=attr_name, value=attr_value, kid=attr_kid)
             );
         } elif self.check(TokenKind.LBRACE) {
-            self.advance();
+            self.expect(TokenKind.LBRACE);
             lbrace_tok = self.make_uni_token(self.previous());
             saw_spread_marker: bool = False;
             spread_marker_kid: any = None;
             if self.check(TokenKind.STAR_POW) {
-                star_tok = self.advance();
+                star_tok = self.expect(TokenKind.STAR_POW);
                 spread_marker_kid = self.make_uni_token(star_tok);
                 saw_spread_marker = True;
             } elif self.check(TokenKind.ELLIPSIS) {
                 self.emit_warn(W0063, loc=self.current().loc);
-                ellipsis_tok = self.advance();
+                ellipsis_tok = self.expect(TokenKind.ELLIPSIS);
                 spread_marker_kid = self.make_ellipsis(ellipsis_tok);
                 saw_spread_marker = True;
             }
@@ -3161,9 +3146,9 @@ impl Parser.parse_jsx_children -> list {
     return children;
 }
 
-impl Parser.parse_jsx_child -> Expr {
+impl Parser.parse_jsx_child -> Expr | None {
     if self.check(TokenKind.JSX_TEXT) {
-        text_tok = self.advance();
+        text_tok = self.expect(TokenKind.JSX_TEXT);
         raw = text_tok.value;
         if not raw.strip() and ('\n' in raw or '\r' in raw) {
             return self.parse_jsx_child();
@@ -3173,18 +3158,19 @@ impl Parser.parse_jsx_child -> Expr {
     }
 
     if self.check(TokenKind.JSX_COMMENT) {
-        cmt_tok = self.advance();
+        cmt_tok = self.expect(TokenKind.JSX_COMMENT);
         cmt_node = self.make_uni_token(cmt_tok);
         return JsxComment(value=cmt_node, kid=[cmt_node]);
     }
 
     if self.check(TokenKind.LBRACE) {
-        lbrace = self.advance();
+        lbrace = self.expect(TokenKind.LBRACE);
         lbrace_uni = self.make_uni_token(lbrace);
 
         if self.check_any(
             TokenKind.KW_FOR,
             TokenKind.KW_WHILE,
+            TokenKind.KW_FOREVER,
             TokenKind.KW_IF,
             TokenKind.KW_MATCH,
             TokenKind.KW_SWITCH,
@@ -3251,72 +3237,11 @@ impl Parser.parse_jsx_child -> Expr {
 impl Parser.parse_element_stmt{
     if self.check(TokenKind.SEMI) {
         self.emit_diag(E0030);
-        self.advance();
+        self.expect(TokenKind.SEMI);
         return None;
     }
     if self.at_end() {
         return None;
-    }
-
-    if self.check(TokenKind.KW_TO)
-    and self.check_peek_any(
-        TokenKind.KW_CLIENT, TokenKind.KW_SERVER, TokenKind.KW_NATIVE
-    )
-    and self.peek(2).kind == TokenKind.COLON {
-        to_tok = self.advance();
-        to_uni = self.make_uni_token(to_tok);
-        ctx_tok = self.advance();
-        ctx_uni = self.make_uni_token(ctx_tok);
-        colon_tok = self.advance();
-        colon_uni = self.make_uni_token(colon_tok);
-        section_ctx: CodeContext;
-        if ctx_tok.kind == TokenKind.KW_CLIENT {
-            section_ctx = CodeContext.CLIENT;
-        } elif ctx_tok.kind == TokenKind.KW_SERVER {
-            section_ctx = CodeContext.SERVER;
-        } else {
-            section_ctx = CodeContext.NATIVE;
-        }
-        body: list = [];
-        kid: list = [to_uni, ctx_uni, colon_uni];
-        while not self.at_end() {
-            if self.check(TokenKind.KW_TO)
-            and self.check_peek_any(
-                TokenKind.KW_CLIENT, TokenKind.KW_SERVER, TokenKind.KW_NATIVE
-            )
-            and self.peek(2).kind == TokenKind.COLON {
-                break;
-            }
-            before = self.pos;
-            stmt = self.parse_element_stmt();
-            if stmt is not None {
-                has_explicit_prefix = (
-                    len(stmt.kid) > 0
-                    and isinstance(stmt.kid[0], UniToken)
-                    and (
-                        stmt.kid[0].name == Tok.KW_CLIENT
-                        or stmt.kid[0].name == Tok.KW_SERVER
-                        or stmt.kid[0].name == Tok.KW_NATIVE
-                    )
-                );
-                if stmt?.code_context and not has_explicit_prefix {
-                    stmt.code_context = section_ctx;
-                }
-                body.append(stmt);
-                kid.append(stmt);
-            }
-
-            if self.pos == before and not self.at_end() {
-                self.advance();
-            }
-        }
-        if section_ctx == CodeContext.CLIENT {
-            return ClientBlock(body=body, implicit=True, kid=kid);
-        } elif section_ctx == CodeContext.SERVER {
-            return ServerBlock(body=body, implicit=True, kid=kid);
-        } else {
-            return NativeBlock(body=body, implicit=True, kid=kid);
-        }
     }
 
     if self.check(TokenKind.KW_CLIENT) {
@@ -3324,7 +3249,7 @@ impl Parser.parse_element_stmt{
         if self.check_peek(TokenKind.LBRACE) {
             return self.parse_client_block();
         } else {
-            self.advance();
+            self.expect(TokenKind.KW_CLIENT);
             cl_tok = self.make_uni_token(self.previous());
             stmt = self.parse_element_stmt();
             if stmt is not None {
@@ -3341,7 +3266,7 @@ impl Parser.parse_element_stmt{
         if self.check_peek(TokenKind.LBRACE) {
             return self.parse_server_block();
         } else {
-            self.advance();
+            self.expect(TokenKind.KW_SERVER);
             sv_tok = self.make_uni_token(self.previous());
             stmt = self.parse_element_stmt();
             if stmt is not None {
@@ -3358,7 +3283,7 @@ impl Parser.parse_element_stmt{
         if self.check_peek(TokenKind.LBRACE) {
             return self.parse_native_block();
         } else {
-            self.advance();
+            self.expect(TokenKind.KW_NATIVE);
             na_tok = self.make_uni_token(self.previous());
             stmt = self.parse_element_stmt();
             if stmt is not None {
@@ -3373,10 +3298,10 @@ impl Parser.parse_element_stmt{
 
     if self.check(TokenKind.TYP_TYPE) {
         save = self.pos;
-        self.advance();
+        self.expect(TokenKind.TYP_TYPE);
 
         if self.check_any(TokenKind.KW_PUB, TokenKind.KW_PRIV, TokenKind.KW_PROT) {
-            self.advance();
+            self.expect_any(TokenKind.KW_PUB, TokenKind.KW_PRIV, TokenKind.KW_PROT);
         }
         if self.check_name() or self.check(TokenKind.KWESC_NAME) {
             self.advance();
@@ -3448,7 +3373,7 @@ impl Parser.parse_element_stmt{
     }
 
     if self.check(TokenKind.PYNLINE) {
-        py_tok = self.advance();
+        py_tok = self.expect(TokenKind.PYNLINE);
         py_code = self.make_uni_token(py_tok);
         return PyInlineCode(code=py_code, kid=[py_code]);
     }
@@ -3604,7 +3529,7 @@ impl Parser.parse_client_block -> ClientBlock {
                 body.append(stmt);
                 kid.append(stmt);
 
-                if stmt?.code_context {
+                if stmt?.code_context and stmt._source_context_token() is None {
                     stmt.code_context = CodeContext.CLIENT;
                 }
             }
@@ -3684,10 +3609,10 @@ impl Parser.parse_module_code -> ModuleCode {
     target_name = None;
     colon_uni = None;
     if self.check(TokenKind.KW_EXIT) {
-        name_tok = self.advance();
+        name_tok = self.expect(TokenKind.KW_EXIT);
         name = self.make_uni_token(name_tok);
     } elif self.check(TokenKind.KW_ENTRY) {
-        name_tok = self.advance();
+        name_tok = self.expect(TokenKind.KW_ENTRY);
         name = self.make_uni_token(name_tok);
     }
 
@@ -3770,9 +3695,9 @@ impl Parser.parse_code_block_stmts -> list {
     return stmts;
 }
 
-impl Parser.parse_ctrl_stmt{
+impl Parser.parse_ctrl_stmt -> CtrlStmt | DisengageStmt | None {
     if self.check_any(TokenKind.KW_BREAK, TokenKind.KW_CONTINUE, TokenKind.KW_SKIP) {
-        self.advance();
+        self.expect_any(TokenKind.KW_BREAK, TokenKind.KW_CONTINUE, TokenKind.KW_SKIP);
         ctrl_uni = self.make_uni_token(self.previous());
         kid: list = [ctrl_uni];
         self.expect(TokenKind.SEMI);
@@ -3780,7 +3705,7 @@ impl Parser.parse_ctrl_stmt{
         return CtrlStmt(ctrl=ctrl_uni, kid=kid);
     }
     if self.check(TokenKind.KW_DISENGAGE) {
-        self.advance();
+        self.expect(TokenKind.KW_DISENGAGE);
         dis_uni = self.make_uni_token(self.previous());
         kid: list = [dis_uni];
         self.expect(TokenKind.SEMI);
@@ -3813,6 +3738,7 @@ impl Parser.parse_statement{
     and self.check_peek_any(
         TokenKind.KW_FOR,
         TokenKind.KW_WHILE,
+        TokenKind.KW_FOREVER,
         TokenKind.KW_IF,
         TokenKind.KW_MATCH,
         TokenKind.KW_SWITCH,
@@ -3829,7 +3755,7 @@ impl Parser.parse_statement{
 
         self.match_tok(TokenKind.SEMI);
         if self.check(TokenKind.RBRACE) {
-            self.advance();
+            self.expect(TokenKind.RBRACE);
         }
         return inner;
     }
@@ -3870,6 +3796,12 @@ impl Parser.parse_statement{
     }
     if self.check(TokenKind.KW_WHILE) {
         return self.parse_while_stmt();
+    }
+    if self.check(TokenKind.KW_IN) {
+        return self.parse_open_stmt();
+    }
+    if self.check(TokenKind.KW_FOREVER) {
+        return self.parse_forever_stmt();
     }
 
     if self.check(TokenKind.KW_ASYNC) and self.check_peek(TokenKind.KW_FOR) {
@@ -3922,14 +3854,6 @@ impl Parser.parse_statement{
     }
     if self.check(TokenKind.KW_GLOBAL) {
         return self.parse_global_var();
-    }
-
-    if self.check(TokenKind.KW_GLOBAL_REF) {
-        return self.parse_global_stmt();
-    }
-
-    if self.check(TokenKind.KW_NONLOCAL) {
-        return self.parse_nonlocal_stmt();
     }
 
     if self.check(TokenKind.KW_VISIT) {
@@ -3996,7 +3920,7 @@ impl Parser.parse_statement{
     }
 
     if self.check(TokenKind.PYNLINE) {
-        py_tok = self.advance();
+        py_tok = self.expect(TokenKind.PYNLINE);
         py_code = self.make_uni_token(py_tok);
         return PyInlineCode(code=py_code, kid=[py_code]);
     }
@@ -4009,12 +3933,18 @@ impl Parser.parse_statement{
         TokenKind.KW_CASE
     ) {
         self.emit_diag(E0032, token=self.current().value);
-        self.advance();
+        self.expect_any(
+            TokenKind.KW_ELIF,
+            TokenKind.KW_ELSE,
+            TokenKind.KW_EXCEPT,
+            TokenKind.KW_FINALLY,
+            TokenKind.KW_CASE
+        );
         return None;
     }
 
     if self.check(TokenKind.RETURN_HINT) and not self.check_peek(TokenKind.SEMI) {
-        self.advance();
+        self.expect(TokenKind.RETURN_HINT);
         arrow_uni = self.make_uni_token(self.previous());
         type_ctx = self.parse_expression();
         lb_uni = self.consume_uni(TokenKind.LBRACE);
@@ -4132,6 +4062,32 @@ impl Parser.parse_while_stmt -> WhileStmt {
     return WhileStmt(condition=condition, body=body, else_body=else_body, kid=kid);
 }
 
+impl Parser.parse_open_stmt -> OpenStmt {
+    in_uni = self.consume_uni(TokenKind.KW_IN);
+    target = self.parse_expression();
+    if not self.check(TokenKind.LBRACE) {
+        self.error("expected '{' to open the region body after `in <handle>`");
+    }
+    lb_uni = self.consume_uni(TokenKind.LBRACE);
+    body = self.parse_code_block_stmts();
+    rb_uni = self.consume_uni(TokenKind.RBRACE);
+    kid: list = [in_uni, target, lb_uni];
+    kid.extend(body);
+    kid.append(rb_uni);
+    return OpenStmt(target=target, body=body, kid=kid);
+}
+
+impl Parser.parse_forever_stmt -> ForeverStmt {
+    forever_uni = self.consume_uni(TokenKind.KW_FOREVER);
+    lb_uni = self.consume_uni(TokenKind.LBRACE);
+    body = self.parse_code_block_stmts();
+    rb_uni = self.consume_uni(TokenKind.RBRACE);
+    kid: list = [forever_uni, lb_uni];
+    kid.extend(body);
+    kid.append(rb_uni);
+    return ForeverStmt(body=body, kid=kid);
+}
+
 impl Parser.parse_for_stmt{
     is_async = False;
     async_uni = None;
@@ -4144,12 +4100,12 @@ impl Parser.parse_for_stmt{
     target = self.parse_atomic_chain();
 
     if self.check(TokenKind.EQ) {
-        eq_tok = self.advance();
+        eq_tok = self.expect(TokenKind.EQ);
         eq_uni = self.make_uni_token(eq_tok);
         start_val = self.parse_expression();
-        to_uni = self.consume_uni(TokenKind.KW_TO);
-        end_val = self.parse_pipe();
-        by_uni = self.consume_uni(TokenKind.KW_BY);
+        while_uni = self.consume_uni(TokenKind.KW_WHILE);
+        end_val = self.parse_expression();
+        with_uni = self.consume_uni(TokenKind.KW_WITH);
 
         step_target = self.parse_atomic_chain();
         step_assign: Assignment;
@@ -4199,7 +4155,7 @@ impl Parser.parse_for_stmt{
             kid.append(async_uni);
         }
         kid.extend(
-            [for_uni, init_assign, to_uni, end_val, by_uni, step_assign, lb_uni]
+            [for_uni, init_assign, while_uni, end_val, with_uni, step_assign, lb_uni]
         );
         kid.extend(body);
         kid.append(rb_uni);
@@ -4255,7 +4211,7 @@ impl Parser.parse_try_stmt -> TryStmt {
 
     awaiting_body = None;
     if self.check(TokenKind.KW_AWAITING) {
-        awaiting_uni = self.make_uni_token(self.advance());
+        awaiting_uni = self.make_uni_token(self.expect(TokenKind.KW_AWAITING));
         awaiting_lb = self.consume_uni(TokenKind.LBRACE);
         awaiting_stmts = self.parse_code_block_stmts();
         awaiting_rb = self.consume_uni(TokenKind.RBRACE);
@@ -4274,7 +4230,7 @@ impl Parser.parse_try_stmt -> TryStmt {
     }
     finally_body = None;
     if self.check(TokenKind.KW_FINALLY) {
-        fin_uni = self.make_uni_token(self.advance());
+        fin_uni = self.make_uni_token(self.expect(TokenKind.KW_FINALLY));
         fin_lb = self.consume_uni(TokenKind.LBRACE);
         finally_stmts = self.parse_code_block_stmts();
         fin_rb = self.consume_uni(TokenKind.RBRACE);
@@ -4482,12 +4438,12 @@ impl Parser.parse_single_pattern{
     }
 
     if self.check(TokenKind.BOOL) {
-        tok = self.advance();
+        tok = self.expect(TokenKind.BOOL);
         val = self.make_bool(tok);
         return MatchSingleton(value=val, kid=[val]);
     }
     if self.check(TokenKind.NULL) {
-        tok = self.advance();
+        tok = self.expect(TokenKind.NULL);
         val = self.make_null(tok);
         return MatchSingleton(value=val, kid=[val]);
     }
@@ -4521,12 +4477,12 @@ impl Parser.parse_single_pattern{
 
 impl Parser.parse_literal_pattern -> MatchValue {
     if self.check(TokenKind.INT) {
-        tok = self.advance();
+        tok = self.expect(TokenKind.INT);
         val = self.make_int(tok);
         return MatchValue(value=val, kid=[val]);
     }
     if self.check(TokenKind.FLOAT) {
-        tok = self.advance();
+        tok = self.expect(TokenKind.FLOAT);
         val = self.make_float(tok);
         return MatchValue(value=val, kid=[val]);
     }
@@ -4536,9 +4492,9 @@ impl Parser.parse_literal_pattern -> MatchValue {
     }
 
     if self.check(TokenKind.MINUS) {
-        minus_tok = self.advance();
+        minus_tok = self.expect(TokenKind.MINUS);
         if self.check(TokenKind.INT) {
-            tok = self.advance();
+            tok = self.expect(TokenKind.INT);
             num = self.make_int(tok);
             val = UnaryExpr(
                 operand=num,
@@ -4548,7 +4504,7 @@ impl Parser.parse_literal_pattern -> MatchValue {
             return MatchValue(value=val, kid=[val]);
         }
         if self.check(TokenKind.FLOAT) {
-            tok = self.advance();
+            tok = self.expect(TokenKind.FLOAT);
             num = self.make_float(tok);
             val = UnaryExpr(
                 operand=num,
@@ -4559,10 +4515,10 @@ impl Parser.parse_literal_pattern -> MatchValue {
         }
     }
 
-    return self._literal_pattern_fallback();
+    return self.parse_expression_pattern();
 }
 
-impl Parser._literal_pattern_fallback -> MatchValue {
+impl Parser.parse_expression_pattern -> MatchValue {
     expr = self.parse_expression();
     return MatchValue(value=expr, kid=[expr]);
 }
@@ -4617,7 +4573,7 @@ impl Parser.parse_name_pattern{
         return MatchValue(value=name, kid=[name]);
     }
 
-    return self._literal_pattern_fallback();
+    return self.parse_expression_pattern();
 }
 
 impl Parser.parse_sequence_pattern{
@@ -4626,7 +4582,7 @@ impl Parser.parse_sequence_pattern{
     values: list = [];
     while not self.check(TokenKind.RSQUARE) and not self.at_end() {
         if self.check(TokenKind.STAR_MUL) {
-            star_tok = self.advance();
+            star_tok = self.expect(TokenKind.STAR_MUL);
             name_tok = self.expect_name();
             name = self.make_name(name_tok);
             star_pattern = MatchStar(
@@ -4655,7 +4611,7 @@ impl Parser.parse_tuple_sequence_pattern{
     values: list = [];
     while not self.check(TokenKind.RPAREN) and not self.at_end() {
         if self.check(TokenKind.STAR_MUL) {
-            star_tok = self.advance();
+            star_tok = self.expect(TokenKind.STAR_MUL);
             name_tok = self.expect_name();
             name = self.make_name(name_tok);
             star_pattern = MatchStar(
@@ -4684,7 +4640,7 @@ impl Parser.parse_mapping_pattern{
     values: list = [];
     while not self.check(TokenKind.RBRACE) and not self.at_end() {
         if self.check(TokenKind.STAR_POW) {
-            star_tok = self.advance();
+            star_tok = self.expect(TokenKind.STAR_POW);
             name_tok = self.expect_name();
             name = self.make_name(name_tok);
             star_pattern = MatchStar(
@@ -4712,12 +4668,12 @@ impl Parser.parse_mapping_pattern{
 
 impl Parser.parse_literal_for_mapping{
     if self.check(TokenKind.INT) {
-        tok = self.advance();
+        tok = self.expect(TokenKind.INT);
         val = self.make_int(tok);
         return MatchValue(value=val, kid=[val]);
     }
     if self.check(TokenKind.FLOAT) {
-        tok = self.advance();
+        tok = self.expect(TokenKind.FLOAT);
         val = self.make_float(tok);
         return MatchValue(value=val, kid=[val]);
     }
@@ -4726,9 +4682,9 @@ impl Parser.parse_literal_for_mapping{
         return MatchValue(value=ms, kid=[ms]);
     }
     if self.check(TokenKind.MINUS) {
-        minus_tok = self.advance();
+        minus_tok = self.expect(TokenKind.MINUS);
         if self.check(TokenKind.INT) {
-            tok = self.advance();
+            tok = self.expect(TokenKind.INT);
             num = self.make_int(tok);
             val = UnaryExpr(
                 operand=num,
@@ -4738,7 +4694,7 @@ impl Parser.parse_literal_for_mapping{
             return MatchValue(value=val, kid=[val]);
         }
         if self.check(TokenKind.FLOAT) {
-            tok = self.advance();
+            tok = self.expect(TokenKind.FLOAT);
             num = self.make_float(tok);
             val = UnaryExpr(
                 operand=num,
@@ -4779,7 +4735,7 @@ impl Parser.parse_class_pattern_args(names: list, dot_unis: list | None = None) 
 
     while not self.check(TokenKind.RPAREN) and not self.at_end() {
         if self.check_name() and self.check_peek(TokenKind.EQ) {
-            name_tok = self.advance();
+            name_tok = self.expect_name();
             eq_uni = self.consume_uni(TokenKind.EQ);
             val = self.parse_pattern();
             name = self.make_name(name_tok);
@@ -4913,44 +4869,26 @@ impl Parser._recover_misplaced_disconnect -> None {
     }
 }
 
-impl Parser.parse_global_stmt -> GlobalStmt {
-    global_uni = self.consume_uni(TokenKind.KW_GLOBAL_REF);
-    targets: list = [];
-    kid: list = [global_uni];
-    name_tok = self.expect_name();
-    name = self.make_name(name_tok);
-    targets.append(name);
-    kid.append(name);
-    while self.match_tok(TokenKind.COMMA) {
-        kid.append(self.make_uni_token(self.previous()));
-        name_tok = self.expect_name();
-        name = self.make_name(name_tok);
-        targets.append(name);
-        kid.append(name);
+impl Parser.parse_ownership_prefix(kids: list) -> OwnershipKind {
+    if self.check(TokenKind.KW_OWN) {
+        own_tok = self.expect(TokenKind.KW_OWN);
+        kids.append(self.make_uni_token(own_tok));
+        return OwnershipKind.OWN;
+    } elif self.check(TokenKind.KW_IMM) {
+        imm_tok = self.expect(TokenKind.KW_IMM);
+        kids.append(self.make_uni_token(imm_tok));
+        return OwnershipKind.IMM;
+    } elif self.check(TokenKind.BW_AND) {
+        amp_tok = self.expect(TokenKind.BW_AND);
+        kids.append(self.make_uni_token(amp_tok));
+        if self.check(TokenKind.KW_MUT) {
+            mut_tok = self.expect(TokenKind.KW_MUT);
+            kids.append(self.make_uni_token(mut_tok));
+            return OwnershipKind.MUT_BORROW;
+        }
+        return OwnershipKind.BORROW;
     }
-    self.expect(TokenKind.SEMI);
-    kid.append(self.make_semi());
-    return GlobalStmt(target=targets, kid=kid);
-}
-
-impl Parser.parse_nonlocal_stmt -> NonLocalStmt {
-    nonlocal_uni = self.consume_uni(TokenKind.KW_NONLOCAL);
-    targets: list = [];
-    kid: list = [nonlocal_uni];
-    name_tok = self.expect_name();
-    name = self.make_name(name_tok);
-    targets.append(name);
-    kid.append(name);
-    while self.match_tok(TokenKind.COMMA) {
-        kid.append(self.make_uni_token(self.previous()));
-        name_tok = self.expect_name();
-        name = self.make_name(name_tok);
-        targets.append(name);
-        kid.append(name);
-    }
-    self.expect(TokenKind.SEMI);
-    kid.append(self.make_semi());
-    return NonLocalStmt(target=targets, kid=kid);
+    return OwnershipKind.NONE;
 }
 
 impl Parser.parse_assignment_with_target(
@@ -4959,8 +4897,12 @@ impl Parser.parse_assignment_with_target(
     type_tag = None;
     if self.match_tok(TokenKind.COLON) {
         colon_uni = self.make_uni_token(self.previous());
+
+        own_kid: list = [colon_uni];
+        own_kind = self.parse_ownership_prefix(own_kid);
         tp = self.parse_pipe();
-        type_tag = SubTag(tag=tp, kid=[colon_uni, tp]);
+        own_kid.append(tp);
+        type_tag = SubTag(tag=tp, ownership=own_kind, kid=own_kid);
     }
     value = None;
     aug_op = None;
@@ -4974,7 +4916,7 @@ impl Parser.parse_assignment_with_target(
 
         while self.check(TokenKind.EQ)
         and not self.check_any(TokenKind.SEMI, TokenKind.RBRACE) {
-            self.advance();
+            self.expect(TokenKind.EQ);
             eq_unis.append(self.make_uni_token(self.previous()));
             targets.append(value);
             value = self.parse_yield_stmt()
@@ -4996,12 +4938,27 @@ impl Parser.parse_assignment_with_target(
         TokenKind.LSHIFT_EQ,
         TokenKind.RSHIFT_EQ
     ) {
-        aug_tok = self.advance();
+        aug_tok = self.expect_any(
+            TokenKind.ADD_EQ,
+            TokenKind.SUB_EQ,
+            TokenKind.MUL_EQ,
+            TokenKind.DIV_EQ,
+            TokenKind.FLOOR_DIV_EQ,
+            TokenKind.MOD_EQ,
+            TokenKind.STAR_POW_EQ,
+            TokenKind.MATMUL_EQ,
+            TokenKind.BW_AND_EQ,
+            TokenKind.BW_OR_EQ,
+            TokenKind.BW_XOR_EQ,
+            TokenKind.LSHIFT_EQ,
+            TokenKind.RSHIFT_EQ
+        );
         aug_op = self.make_uni_token(aug_tok);
         value = self.parse_yield_stmt()
             if self.check(TokenKind.KW_YIELD)
             else self.parse_expression();
     }
+
     kid: list = [];
     eq_idx = 0;
     for (ti, tgt) in enumerate(targets) {
@@ -5083,7 +5040,7 @@ impl Parser.parse_import_stmt -> Import {
             path_names: list = [];
             path_kid: list = [];
             if self.check(TokenKind.STRING) {
-                str_tok = self.advance();
+                str_tok = self.expect(TokenKind.STRING);
                 str_node = self.make_string(str_tok);
                 path_names.append(str_node);
                 path_kid.append(str_node);
@@ -5149,18 +5106,18 @@ impl Parser.parse_from_path -> tuple {
     if self.check_any(TokenKind.DOT, TokenKind.ELLIPSIS) {
         while self.check_any(TokenKind.DOT, TokenKind.ELLIPSIS) {
             if self.check(TokenKind.ELLIPSIS) {
-                tok = self.advance();
+                tok = self.expect(TokenKind.ELLIPSIS);
                 level += 3;
                 path_kid.append(self.make_ellipsis(tok));
             } else {
-                tok = self.advance();
+                tok = self.expect(TokenKind.DOT);
                 level += 1;
                 path_kid.append(self.make_uni_token(tok));
             }
         }
     }
     if self.check(TokenKind.STRING) {
-        str_tok = self.advance();
+        str_tok = self.expect(TokenKind.STRING);
         str_node = self.make_string(str_tok);
         path_names.append(str_node);
         path_kid.append(str_node);
@@ -5222,15 +5179,15 @@ impl Parser.parse_import_items(kid: list, is_clib_import: bool) -> tuple {
         while not self.check(TokenKind.RBRACE) and not self.at_end() {
             item_name: Name;
             if self.check(TokenKind.STAR_MUL) {
-                star_tok = self.advance();
+                star_tok = self.expect(TokenKind.STAR_MUL);
                 item_name = self.make_uni_token(star_tok);
             } else {
                 item_name_tok: Token;
                 if self.check(TokenKind.KW_DEFAULT) {
-                    item_name_tok = self.advance();
+                    item_name_tok = self.expect(TokenKind.KW_DEFAULT);
                     item_name = self.make_uni_token(item_name_tok);
                 } elif self.check_name() {
-                    item_name_tok = self.advance();
+                    item_name_tok = self.expect_name();
                     item_name = self.make_name(item_name_tok);
                 } elif self.is_keyword_token() {
                     item_name_tok = self.advance();
@@ -5270,7 +5227,7 @@ impl Parser.parse_archetype -> Archetype {
     decorators: list = [];
     decor_unis: list = [];
     while self.check(TokenKind.DECOR_OP) {
-        decor_unis.append(self.make_uni_token(self.advance()));
+        decor_unis.append(self.make_uni_token(self.expect(TokenKind.DECOR_OP)));
         decorators.append(self.parse_atomic_chain());
     }
     is_async = False;
@@ -5279,12 +5236,18 @@ impl Parser.parse_archetype -> Archetype {
         is_async = True;
         async_uni = self.make_uni_token(self.previous());
     }
-    arch_tok = self.advance();
+    arch_tok = self.expect_any(
+        TokenKind.KW_OBJECT,
+        TokenKind.KW_NODE,
+        TokenKind.KW_EDGE,
+        TokenKind.KW_WALKER,
+        TokenKind.KW_CLASS
+    );
     arch_type = self.make_uni_token(arch_tok);
     access = self.parse_access_tag();
     name_tok: Token;
     if self.check_name() {
-        name_tok = self.advance();
+        name_tok = self.expect_name();
     } elif self.is_keyword_token() {
         name_tok = self.advance();
     } else {
@@ -5322,7 +5285,7 @@ impl Parser.parse_archetype -> Archetype {
     ep_colon_uni = None;
     ep_arrow_uni = None;
     if self.check(TokenKind.COLON) {
-        self.advance();
+        self.expect(TokenKind.COLON);
         ep_colon_uni = self.make_uni_token(self.previous());
         src_endpoint = self.parse_atomic_chain();
         ep_arrow_uni = self.consume_uni(TokenKind.ARROW_R);
@@ -5424,7 +5387,7 @@ impl Parser.parse_archetype_member{
 
     doc: String | None = None;
     if self.check(TokenKind.STRING) {
-        doc_tok = self.advance();
+        doc_tok = self.expect(TokenKind.STRING);
         doc = self.make_string(doc_tok);
     }
 
@@ -5522,16 +5485,16 @@ impl Parser.parse_archetype_member{
     }
 
     if self.check(TokenKind.PYNLINE) {
-        py_tok = self.advance();
+        py_tok = self.expect(TokenKind.PYNLINE);
         py_code = self.make_uni_token(py_tok);
         return PyInlineCode(code=py_code, kid=[py_code]);
     }
 
     if self.check(TokenKind.KW_WITH) {
-        self.advance();
+        self.expect(TokenKind.KW_WITH);
         with_tok = self.previous();
         if self.check_any(TokenKind.KW_ENTRY, TokenKind.KW_EXIT) {
-            event_tok = self.advance();
+            event_tok = self.expect_any(TokenKind.KW_ENTRY, TokenKind.KW_EXIT);
             lb_uni = self.consume_uni(TokenKind.LBRACE);
             body = self.parse_code_block_stmts();
             rb_uni = self.consume_uni(TokenKind.RBRACE);
@@ -5640,7 +5603,7 @@ impl Parser.parse_has_stmt -> ArchHas {
 impl Parser.parse_has_var -> HasVar {
     name_tok: Token;
     if self.check_name() {
-        name_tok = self.advance();
+        name_tok = self.expect_name();
     } elif self.is_keyword_token() {
         name_tok = self.advance();
     } else {
@@ -5667,13 +5630,12 @@ impl Parser.parse_has_var -> HasVar {
     value = None;
     defer = False;
     eq_uni: UniToken | None = None;
-    by_uni: UniToken | None = None;
+    postinit_name: Name | None = None;
     if self.match_tok(TokenKind.EQ) {
         eq_uni = self.make_uni_token(self.previous());
         value = self.parse_expression();
-    } elif self.match_tok(TokenKind.KW_BY) {
-        by_uni = self.make_uni_token(self.previous());
-        self.expect(TokenKind.KW_POST_INIT);
+    } elif self.match_tok(TokenKind.KW_POST_INIT) {
+        postinit_name = self.make_special_name(self.previous());
         defer = True;
     }
 
@@ -5700,8 +5662,7 @@ impl Parser.parse_has_var -> HasVar {
         kid.append(value);
     }
     if defer {
-        kid.append(by_uni);
-        kid.append(self.make_special_name(self.previous()));
+        kid.append(postinit_name);
     }
     if accessors is not None {
         kid.append(acc_lb_uni);
@@ -5791,7 +5752,7 @@ impl Parser.parse_ability -> Ability {
     decorators: list = [];
     decor_unis: list = [];
     while self.check(TokenKind.DECOR_OP) {
-        decor_unis.append(self.make_uni_token(self.advance()));
+        decor_unis.append(self.make_uni_token(self.expect(TokenKind.DECOR_OP)));
         decorators.append(self.parse_atomic_chain());
     }
     is_override = False;
@@ -5804,7 +5765,7 @@ impl Parser.parse_ability -> Ability {
     classmethod_tok = None;
     if self.check(TokenKind.KW_CLASS)
     and self.check_peek_any(TokenKind.KW_DEF, TokenKind.KW_CAN, TokenKind.KW_ASYNC) {
-        self.advance();
+        self.expect(TokenKind.KW_CLASS);
         is_classmethod = True;
         classmethod_tok = self.previous();
     }
@@ -5826,18 +5787,18 @@ impl Parser.parse_ability -> Ability {
         if not is_classmethod
         and self.check(TokenKind.KW_CLASS)
         and self.check_peek_any(TokenKind.KW_DEF, TokenKind.KW_CAN) {
-            self.advance();
+            self.expect(TokenKind.KW_CLASS);
             is_classmethod = True;
             classmethod_tok = self.previous();
         }
     }
     is_can = self.check(TokenKind.KW_CAN);
-    ability_tok = self.advance();
+    ability_tok = self.expect_any(TokenKind.KW_DEF, TokenKind.KW_CAN);
     access = self.parse_access_tag();
     name = None;
 
     if self.check_name() {
-        name_tok = self.advance();
+        name_tok = self.expect_name();
         name = self.make_name(name_tok);
     } elif self.is_keyword_token() and not (is_can and self.check(TokenKind.KW_WITH)) {
         name_tok = self.advance();
@@ -5855,11 +5816,11 @@ impl Parser.parse_ability -> Ability {
     }
     signature: FuncSignature | EventSignature;
     if is_can and self.check(TokenKind.KW_WITH) {
-        with_uni = self.make_uni_token(self.advance());
+        with_uni = self.make_uni_token(self.expect(TokenKind.KW_WITH));
         event_type = self.parse_expression()
             if not self.check_any(TokenKind.KW_ENTRY, TokenKind.KW_EXIT)
             else None;
-        event_tok = self.advance();
+        event_tok = self.expect_any(TokenKind.KW_ENTRY, TokenKind.KW_EXIT);
         event_uni_tok = self.make_uni_token(event_tok);
 
         sig_kid: list = [with_uni];
@@ -6063,7 +6024,7 @@ impl Parser.parse_func_params(kid: list) -> list {
     while not self.check(TokenKind.RPAREN) {
         if self.check(TokenKind.STAR_MUL)
         and (self.check_peek(TokenKind.COMMA) or self.check_peek(TokenKind.RPAREN)) {
-            star_tok = self.advance();
+            star_tok = self.expect(TokenKind.STAR_MUL);
             star_uni = self.make_uni_token(star_tok);
             kid.append(star_uni);
             if not self.match_tok(TokenKind.COMMA) {
@@ -6072,7 +6033,7 @@ impl Parser.parse_func_params(kid: list) -> list {
             kid.append(self.make_uni_token(self.previous()));
         } elif self.check(TokenKind.DIV)
         and (self.check_peek(TokenKind.COMMA) or self.check_peek(TokenKind.RPAREN)) {
-            div_tok = self.advance();
+            div_tok = self.expect(TokenKind.DIV);
             div_uni = self.make_uni_token(div_tok);
             kid.append(div_uni);
             if not self.match_tok(TokenKind.COMMA) {
@@ -6098,7 +6059,7 @@ impl Parser.parse_func_params(kid: list) -> list {
 impl Parser.parse_param_var -> ParamVar | None {
     unpack: UniToken | None = None;
     if self.check_any(TokenKind.STAR_MUL, TokenKind.STAR_POW) {
-        unpack_tok = self.advance();
+        unpack_tok = self.expect_any(TokenKind.STAR_MUL, TokenKind.STAR_POW);
         unpack = self.make_uni_token(unpack_tok);
     }
 
@@ -6106,15 +6067,39 @@ impl Parser.parse_param_var -> ParamVar | None {
         name_tok = self.expect_name();
         name = self.make_name_or_special(name_tok);
     } elif self.check(TokenKind.KW_SELF) {
-        name_tok = self.advance();
+        name_tok = self.expect(TokenKind.KW_SELF);
         name = SpecialVarRef(var=self.make_special_name(name_tok), is_enum_stmt=False);
     } elif self.check_any(
         TokenKind.KW_PROPS, TokenKind.KW_HERE, TokenKind.KW_VISITOR
     ) {
-        name_tok = self.advance();
+        name_tok = self.expect_any(
+            TokenKind.KW_PROPS, TokenKind.KW_HERE, TokenKind.KW_VISITOR
+        );
         name = SpecialVarRef(var=self.make_special_name(name_tok), is_enum_stmt=False);
     } elif self.is_builtin_type_token() {
-        name_tok = self.advance();
+        name_tok = self.expect_any(
+            TokenKind.TYP_STRING,
+            TokenKind.TYP_INT,
+            TokenKind.TYP_FLOAT,
+            TokenKind.TYP_LIST,
+            TokenKind.TYP_TUPLE,
+            TokenKind.TYP_SET,
+            TokenKind.TYP_DICT,
+            TokenKind.TYP_BOOL,
+            TokenKind.TYP_BYTES,
+            TokenKind.TYP_ANY,
+            TokenKind.TYP_TYPE,
+            TokenKind.TYP_I8,
+            TokenKind.TYP_U8,
+            TokenKind.TYP_I16,
+            TokenKind.TYP_U16,
+            TokenKind.TYP_I32,
+            TokenKind.TYP_U32,
+            TokenKind.TYP_I64,
+            TokenKind.TYP_U64,
+            TokenKind.TYP_F32,
+            TokenKind.TYP_F64
+        );
         name = self.make_name_or_special(name_tok);
     } elif self.is_keyword_token() {
         kw = self.current().value;
@@ -6127,8 +6112,11 @@ impl Parser.parse_param_var -> ParamVar | None {
     type_tag: SubTag | None = None;
     if self.match_tok(TokenKind.COLON) {
         param_colon_uni = self.make_uni_token(self.previous());
+        param_type_kid: list = [param_colon_uni];
+        param_kind = self.parse_ownership_prefix(param_type_kid);
         tp = self.parse_pipe();
-        type_tag = SubTag(tag=tp, kid=[param_colon_uni, tp]);
+        param_type_kid.append(tp);
+        type_tag = SubTag(tag=tp, ownership=param_kind, kid=param_type_kid);
     }
     default_val: Expr | None = None;
     param_eq_uni: UniToken | None = None;
@@ -6159,14 +6147,14 @@ impl Parser.parse_enum -> Enum {
     decorators: list = [];
     enum_decor_unis: list = [];
     while self.check(TokenKind.DECOR_OP) {
-        enum_decor_unis.append(self.make_uni_token(self.advance()));
+        enum_decor_unis.append(self.make_uni_token(self.expect(TokenKind.DECOR_OP)));
         decorators.append(self.parse_atomic_chain());
     }
     enum_kw_uni = self.consume_uni(TokenKind.KW_ENUM);
     access = self.parse_access_tag();
     name_tok: Token;
     if self.check_name() {
-        name_tok = self.advance();
+        name_tok = self.expect_name();
     } elif self.is_keyword_token() {
         name_tok = self.advance();
     } else {
@@ -6211,7 +6199,7 @@ impl Parser.parse_enum -> Enum {
                     body_kid.append(self.make_uni_token(self.previous()));
                 }
             } elif self.check(TokenKind.PYNLINE) {
-                py_tok = self.advance();
+                py_tok = self.expect(TokenKind.PYNLINE);
                 py_code = self.make_uni_token(py_tok);
                 pynline = PyInlineCode(code=py_code, kid=[py_code]);
                 pynline.is_enum_stmt = True;
@@ -6303,7 +6291,7 @@ impl Parser.parse_test -> Test {
     decorators: list = [];
     decor_unis: list = [];
     while self.check(TokenKind.DECOR_OP) {
-        decor_unis.append(self.make_uni_token(self.advance()));
+        decor_unis.append(self.make_uni_token(self.expect(TokenKind.DECOR_OP)));
         decorators.append(self.parse_atomic_chain());
     }
     test_kw_uni = self.consume_uni(TokenKind.KW_TEST);
@@ -6323,7 +6311,7 @@ impl Parser.parse_test -> Test {
     has_description = False;
     description: String | None = None;
     if self.check(TokenKind.STRING) {
-        str_tok = self.advance();
+        str_tok = self.expect(TokenKind.STRING);
         description = self.make_string(str_tok);
 
         desc_text = description.lit_value;
@@ -6464,7 +6452,7 @@ impl Parser.parse_global_var -> GlobalVars {
 impl Parser.parse_global_var_assignment -> Assignment {
     name_tok: Token;
     if self.check_name() {
-        name_tok = self.advance();
+        name_tok = self.expect_name();
     } elif self.is_keyword_token() {
         name_tok = self.advance();
     } else {
@@ -6486,7 +6474,7 @@ impl Parser.parse_global_var_assignment -> Assignment {
 
         while self.check(TokenKind.EQ) {
             targets.append(value);
-            self.advance();
+            self.expect(TokenKind.EQ);
             gv_eq_unis.append(self.make_uni_token(self.previous()));
             value = self.parse_expression();
         }
@@ -6522,7 +6510,7 @@ impl Parser.parse_impl_def -> ImplDef {
     decorators: list = [];
     impl_decor_unis: list = [];
     while self.check(TokenKind.DECOR_OP) {
-        impl_decor_unis.append(self.make_uni_token(self.advance()));
+        impl_decor_unis.append(self.make_uni_token(self.expect(TokenKind.DECOR_OP)));
         decorators.append(self.parse_atomic_chain());
     }
     impl_uni = self.consume_uni(TokenKind.KW_IMPL);
@@ -6556,7 +6544,7 @@ impl Parser.parse_impl_def -> ImplDef {
         if is_func_params {
             spec = self.parse_func_signature();
         } else {
-            impl_inh_lp_tok = self.advance();
+            impl_inh_lp_tok = self.expect(TokenKind.LPAREN);
             if not self.check(TokenKind.RPAREN) {
                 base_classes.append(self.parse_atomic_chain());
                 while self.match_tok(TokenKind.COMMA) {
@@ -6568,11 +6556,11 @@ impl Parser.parse_impl_def -> ImplDef {
             spec = base_classes;
         }
     } elif self.check(TokenKind.KW_WITH) {
-        with_tok = self.advance();
+        with_tok = self.expect(TokenKind.KW_WITH);
         event_type = self.parse_expression()
             if not self.check_any(TokenKind.KW_ENTRY, TokenKind.KW_EXIT)
             else None;
-        event_tok = self.advance();
+        event_tok = self.expect_any(TokenKind.KW_ENTRY, TokenKind.KW_EXIT);
         ev_kid: list = [self.make_uni_token(with_tok)];
         if event_type is not None {
             ev_kid.append(event_type);
@@ -6758,15 +6746,17 @@ impl Parser._is_impl_enum_body -> bool {
 
 impl Parser.parse_impl_target_name -> Name {
     if self.check_name() {
-        name_tok = self.advance();
+        name_tok = self.expect_name();
         return self.make_name(name_tok);
     } elif self.check_any(TokenKind.KW_INIT, TokenKind.KW_POST_INIT) {
-        name_tok = self.advance();
+        name_tok = self.expect_any(TokenKind.KW_INIT, TokenKind.KW_POST_INIT);
         return SpecialVarRef(var=self.make_special_name(name_tok), is_enum_stmt=False);
     } elif self.check_any(
         TokenKind.KW_ENTRY, TokenKind.KW_EXIT, TokenKind.KW_DEFAULT
     ) {
-        name_tok = self.advance();
+        name_tok = self.expect_any(
+            TokenKind.KW_ENTRY, TokenKind.KW_EXIT, TokenKind.KW_DEFAULT
+        );
         return self.make_special_name(name_tok);
     } elif self.is_keyword_token() {
         name_tok = self.advance();
@@ -6781,7 +6771,7 @@ impl Parser.parse_impl_enum_body -> list {
     members: list = [];
     while not self.check(TokenKind.RBRACE) and not self.at_end() {
         if self.check_name() {
-            name_tok = self.advance();
+            name_tok = self.expect_name();
             name = self.make_name(name_tok, is_enum_stmt=True);
             type_tag: SubTag | None = None;
             value: Expr | None = None;
@@ -6848,7 +6838,7 @@ impl Parser.parse_sem_def -> SemDef {
 
     str_nodes: list = [self.make_string(self.expect(TokenKind.STRING))];
     while self.check(TokenKind.STRING) {
-        str_nodes.append(self.make_string(self.advance()));
+        str_nodes.append(self.make_string(self.expect(TokenKind.STRING)));
     }
     value = MultiString(strings=str_nodes, kid=str_nodes);
     kid: list = [sem_kw_uni];
@@ -6870,7 +6860,7 @@ impl Parser.parse_type_alias -> TypeAlias {
     access = self.parse_access_tag();
     name_tok: Token;
     if self.check_name() {
-        name_tok = self.advance();
+        name_tok = self.expect_name();
     } elif self.is_keyword_token() {
         name_tok = self.advance();
     } else {

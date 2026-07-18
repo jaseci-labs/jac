@@ -74,7 +74,14 @@ impl get_symbols_for_outline(nd: UniScopeNode) -> list[lspt.DocumentSymbol] {
         sub_symbols = get_symbols_for_outline(sub_tab);
         if isinstance(
             sub_tab,
-            (uni.IfStmt, uni.ElseStmt, uni.WhileStmt, uni.IterForStmt, uni.InForStmt)
+            (
+                uni.IfStmt,
+                uni.ElseStmt,
+                uni.WhileStmt,
+                uni.ForeverStmt,
+                uni.IterForStmt,
+                uni.InForStmt
+            )
         ) {
             symbols.extend(sub_symbols);
         } else {

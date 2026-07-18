@@ -103,7 +103,7 @@ cl {
                         style={styles.input}
                         value={name}
                         placeholder="Type your name"
-                        onChangeText={lambda t: str { name = t; }}
+                        onChangeText={lambda (t: str) { name = t; }}
                     />
                     <Text style={styles.value}>Hello, {name}</Text>
                 </View>

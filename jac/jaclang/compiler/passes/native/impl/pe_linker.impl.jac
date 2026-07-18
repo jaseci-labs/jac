@@ -783,7 +783,7 @@ impl PeLinker.build_shared_object -> bytes {
     }
     n_exp = len(export_pairs);
 
-    sorted_names = sorted(range(n_exp), key=lambda k : export_pairs[k][0]);
+    sorted_names = sorted(range(n_exp), key=lambda (k) { export_pairs[k][0]; });
     edata_rva = _align(idata_rva + max(idata_vsize, 1), SECT_ALIGN);
     dir_sz = 40;
     eat_off = dir_sz;

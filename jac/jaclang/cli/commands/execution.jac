@@ -117,7 +117,7 @@ def run(
 
 @registry.command(
     name="dev",
-    help="Run the live dev loop: serve with hot reload and live compilation (never reads sealed artifacts)",
+    help="Serve with hot reload and live compilation",
     tier="core",
     args=[
         Arg.create(
@@ -188,7 +188,7 @@ def enter(
             help="Separate API port for HMR mode (0=same as port)"
         ),
         Arg.create(
-            "no_client",
+            "no-client",
             typ=bool,
             default=False,
             help="Skip client bundling/serving (API only)"
@@ -207,7 +207,7 @@ def enter(
                 "Client build target for dev server (web, pwa, mobile, desktop). "
                 "Choices reflect installed targets (desktop builds a native webview app)."
             ),
-            choices=["web", "pwa", "mobile"],
+            choices=["web", "pwa", "mobile", "desktop"],
             short=""
         ),
         Arg.create(
@@ -255,14 +255,14 @@ def enter(
             "dry-run",
             typ=bool,
             default=False,
-            help="Print manifests + image plan that would be applied; touch nothing (no cluster contact, no build, no DB provisioning)",
+            help="Print the manifests that would be applied; touch nothing (no cluster contact, no downloads, no client build, no DB provisioning, no TLS issuance, no deploy tooling installed)",
             short=""
         ),
         Arg.create(
             "show-yaml",
             typ=bool,
             default=False,
-            help="With --dry-run: also dump the raw multi-doc YAML stream (for `kubectl diff` or similar). Off by default; the card view above is the friendly summary",
+            help="With --dry-run: dump the raw YAML stream",
             short=""
         ),
 

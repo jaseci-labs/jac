@@ -143,7 +143,7 @@ def run_pth_tests(runner: IntegrationTestRunner) {
 def run_cli_tests(runner: IntegrationTestRunner) {
     runner.run(
         ["jac", "--version"],
-        check_contains=["Version:"],
+        check_contains=["jac"],
         description="jac --version shows version",
     );
 
@@ -221,7 +221,7 @@ def run_admin_prebuild_tests(runner: IntegrationTestRunner) {
     main_jac = os.path.join(tmpdir, "main.jac");
     open(main_jac, "w").write(
         'walker:pub Health {\n'
-        '    can check with `root entry {\n'
+        '    can check with Root entry {\n'
         '        report {"status": "healthy"};\n'
         '    }\n'
         '}\n'

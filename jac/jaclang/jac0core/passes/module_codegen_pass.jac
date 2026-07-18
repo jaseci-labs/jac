@@ -18,16 +18,16 @@ obj ModuleCodegenPass(Transform[uni.Module, uni.Module]) {
     }
 
     static def iter_woven_segments(module: uni.Module) -> list[tuple[Sequence, bool]] {
-        own = module.loc.mod_path;
+        own_path = module.loc.mod_path;
         annex_stmts = [
             stmt
             for stmt in module.body
-            if stmt.loc.mod_path and stmt.loc.mod_path != own
+            if stmt.loc.mod_path and stmt.loc.mod_path != own_path
         ];
         head_stmts = [
             stmt
             for stmt in module.body
-            if not (stmt.loc.mod_path and stmt.loc.mod_path != own)
+            if not (stmt.loc.mod_path and stmt.loc.mod_path != own_path)
         ];
         return [(annex_stmts, True), (head_stmts, True)];
     }
@@ -65,6 +65,10 @@ obj ModuleCodegenPass(Transform[uni.Module, uni.Module]) {
             }
         }
         return result;
+    }
+
+    static def has_native_context_stmts(module: uni.Module) -> bool {
+        return bool(ModuleCodegenPass.iter_context_stmts(module, CodeContext.NATIVE));
     }
 
     static def archetype_refs(nd: uni.UniNode) -> list[str] {

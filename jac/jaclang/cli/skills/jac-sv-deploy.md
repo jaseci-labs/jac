@@ -29,8 +29,7 @@ JWT_SECRET = "${JWT_SECRET}"        # see jac-sv-auth: the default JWT secret MU
 
 ```bash
 jac start app.jac --scale --dry-run   # lint config + print the plan; nothing applied. Use before every deploy.
-jac start app.jac --scale             # dev deploy (no image build)
-jac start app.jac --scale --build     # build+push Docker image (DOCKER_USERNAME/PASSWORD in .env), then deploy
+jac start app.jac --scale             # deploy (no image build: source ships into the cluster on a PVC)
 jac scale status app.jac              # component health table (app, Mongo, Redis, Grafana)
 jac scale destroy app.jac             # DELETES THE NAMESPACE INCLUDING PERSISTENT VOLUMES - all data is lost
 ```

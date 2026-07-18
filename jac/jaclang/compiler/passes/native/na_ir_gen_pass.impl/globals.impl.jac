@@ -122,17 +122,16 @@ impl NaIRGenPass._infer_global_init_type(value_node: uni.UniNode) -> (ir.Type | 
 impl NaIRGenPass._codegen_const_expr(
     nd: uni.UniNode, target_type: ir.Type
 ) -> (ir.Constant | None) {
-    if isinstance(nd, uni.Int) {
-        return ir.Constant(target_type, nd.lit_value);
-    }
-    if isinstance(nd, uni.Float) {
-        return ir.Constant(target_type, nd.lit_value);
-    }
-    if isinstance(nd, uni.Bool) {
-        return ir.Constant(target_type, 1 if nd.lit_value else 0);
-    }
-    if isinstance(nd, uni.String) or isinstance(nd, uni.MultiString) {
+    import from jaclang.jac0core.const_fold { fold_const }
+    (ok, v) = fold_const(nd);
+    if not ok {
         return None;
+    }
+    if isinstance(v, bool) {
+        return ir.Constant(target_type, 1 if v else 0);
+    }
+    if isinstance(v, (int, float)) {
+        return ir.Constant(target_type, v);
     }
     return None;
 }
