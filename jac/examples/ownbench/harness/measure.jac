@@ -20,25 +20,32 @@ import sys;
 import from pathlib { Path }
 
 glob BENCH = Path(str(__file__)).resolve().parent.parent,
-     KERNELS = ["binarytrees", "vecdot", "histogram", "vm", "rbtree", "deriv"],
+     KERNELS = [
+         "own_binarytrees",
+         "own_vecdot",
+         "own_histogram",
+         "own_vm",
+         "own_rbtree",
+         "own_deriv"
+     ],
      MODES = ["none", "rc", "cycles"],
      SIZES: dict[str, dict[str, list[str]]] = {
          "default": {
-             "binarytrees": ["16"],
-             "vecdot": ["20000", "400"],
-             "histogram": ["200000", "40"],
-             "vm": ["5000", "4000"],
-             "rbtree": ["100000", "8"],
-             "deriv": ["120", "400"],
+             "own_binarytrees": ["16"],
+             "own_vecdot": ["20000", "400"],
+             "own_histogram": ["200000", "40"],
+             "own_vm": ["5000", "4000"],
+             "own_rbtree": ["100000", "8"],
+             "own_deriv": ["120", "400"],
 
          },
          "small": {
-             "binarytrees": ["10"],
-             "vecdot": ["2000", "20"],
-             "histogram": ["20000", "5"],
-             "vm": ["500", "200"],
-             "rbtree": ["5000", "3"],
-             "deriv": ["40", "10"],
+             "own_binarytrees": ["10"],
+             "own_vecdot": ["2000", "20"],
+             "own_histogram": ["20000", "5"],
+             "own_vm": ["500", "200"],
+             "own_rbtree": ["5000", "3"],
+             "own_deriv": ["40", "10"],
 
          },
 
