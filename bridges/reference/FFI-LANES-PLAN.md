@@ -1241,13 +1241,36 @@ these first; the adversarial suite already contains skip-gated tests waiting on 
       decoder); `call(...)` -> msgpack result blob of len 1 (msgpack of 42 is one
       byte); `import("no_such_module_xyz")` -> non-zero status + non-empty out_err.
       Same `_bundle_runtime` fused-only disposition as the 3.0 spike.
-  - REMAINING: the CI/fused-build e2e run (execute the surface binary on a `zig
-      build` jac); shared with 3.0's remaining e2e half.
-- [ ] 3.2 `jaclang/runtimelib/.../python.na.jac`: `PyObj` with `__del__` decref;
-      scalar/str/bytes conversions; lists/dicts as opaque PyObj + indexer
+  - DONE: the CI/fused-build e2e run (execute the surface + spike binaries on a
+      `zig build` jac carrying the `__graftrt` trailer); shared with 3.0's e2e half.
+      Both `test_pyinterop_surface.jac` (3.1) and `test_pyinterop_spike.jac` (3.0)
+      RUN GREEN 2026-07-17 on a fused `zig build -Dno-ninja` jac.
+- [~] 3.2 `jaclang/runtimelib/na_stdlib/python.na.jac`: `PyObj` with `__del__`
+      decref; scalar/str/bytes conversions; lists/dicts as opaque PyObj + indexer
       helpers; GIL ensure/release per call; main-thread-only documented; make
       `install_signal_handlers` configurable in `InitOpts` (embed.zig
       `initInterpreter`).
+  - LANDED: `jaclang/runtimelib/na_stdlib/python.na.jac` -- an na_stdlib module
+      (resolves via `import from python`) wrapping the 3.1 `jac_py_*` surface.
+      `PyObj` owns a handle, decrefs once at RC death (`__del__`/`close`, the
+      jac-bridge-regex RC-dtor pattern); `to_{int,float,bool,str,bytes}` coercions
+      (JacBuf out-slots decoded via `__jac_str_from_raw`/`__jac_bytes_from_raw`,
+      freed with `jac_py_free_buf`); module ctors `py_boot`/`py_import`/`py_none`/
+      `py_{int,float,bool,str,bytes}`; `PyObj.getattr`; and an `Args` MessagePack
+      builder (`add_{none,bool,int,float,str}`) feeding `PyObj.call` (handle path)
+      / `call_raw` (blob path). Args-str is ASCII-only in v1 (byte==char); non-
+      ASCII str + bytes CALL args are a follow-up (conversions/ctors handle bytes).
+      Three na-backend obj-method mislowerings worked around (see PROGRESS /
+      na-obj-method-codegen-gotchas memo): `return self` from a discarded-result
+      mutator clobbers the first list element (-> add_* return None, no fluent
+      chaining); `bytes(list)` inside a method segfaults (-> module-level
+      `_pack_array` free fn); native `print` unreliable in the embedded runtime.
+  - LANDED: `tests/runtimelib/client/test_pyinterop_wrapper.jac` -- na host drives
+      the wrapper e2e: `operator.add` via `call`+`to_int` (42) and `call`+`to_str`
+      ("foobar"); `call_raw` blob len 1; `py_str` round-trip; missing-module
+      `py_import` raises. RUN GREEN 2026-07-17 on the fused jac (same fused-only
+      disposition as 3.0/3.1); 3.0+3.1 e2e re-verified green, no regression.
+  - REMAINING: `install_signal_handlers` configurability in `InitOpts` (embed.zig).
 - [ ] 3.3 `jac bundle --target binary --with-py-interop` (`project.impl.jac`):
       existing `_bundle_binary` flow + `pip install --only-binary=:all:
       --target stage/site <wheels>` + slim-payload filter (drop site/jaclang +
