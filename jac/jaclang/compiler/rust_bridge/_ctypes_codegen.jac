@@ -283,6 +283,8 @@ def _wire(lib: CDLL, fd: FnDesc) -> object {
     or ret.kind == SlotKind.Bytes
     or ret.kind == SlotKind.Wide {
         args.append(POINTER(_JacBuf));
+    } elif (ret.kind == SlotKind.Int or ret.kind == SlotKind.Uint) and ret.is_opt {
+        args.append(POINTER(_JacBuf));
     } elif ret.kind != SlotKind.Void {
         args.append(POINTER(c_uint64));
     }

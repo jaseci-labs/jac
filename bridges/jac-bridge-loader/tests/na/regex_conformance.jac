@@ -167,25 +167,36 @@ def na_side -> list {
     }
     parts.append(f"    r = Regex({jac_str(CAPS_PAT)});");
     parts.append(f"    c = r.captures({jac_str(CAPS_HAY)});");
-    parts.append("    g1 = c.get(1);");
+    # captures/get/name return Owned* | None; na requires narrowing before use.
+    parts.append("    if c is not None {");
+    parts.append("        g1 = c.get(1);");
+    parts.append("        if g1 is not None {");
     parts.append(
-        f"    print({jac_str('caps get 1 = [')} + g1.as_str() + {jac_str(']')});"
+        f"            print({jac_str('caps get 1 = [')} + g1.as_str() + {jac_str(
+            ']'
+        )});"
     );
-    parts.append("    g1.close();");
-    parts.append(f"    nm = c.name({jac_str('second')});");
+    parts.append("            g1.close();");
+    parts.append("        }");
+    parts.append(f"        nm = c.name({jac_str('second')});");
+    parts.append("        if nm is not None {");
     parts.append(
-        f"    print({jac_str('caps name second = [')} + nm.as_str() + {jac_str(']')});"
+        f"            print({jac_str('caps name second = [')} + nm.as_str() + {jac_str(
+            ']'
+        )});"
     );
-    parts.append("    nm.close();");
-    parts.append("    g0 = c.get_match();");
+    parts.append("            nm.close();");
+    parts.append("        }");
+    parts.append("        g0 = c.get_match();");
     parts.append(
-        f"    print({jac_str('caps get_match = [')} + g0.as_str() + {jac_str('] ')} " + f"+ str(g0.start()) + {jac_str(
-            '..'
-        )} + str(g0.end()));"
+        f"        print({jac_str('caps get_match = [')} + g0.as_str() + {jac_str(
+            '] '
+        )} " + f"+ str(g0.start()) + {jac_str('..')} + str(g0.end()));"
     );
-    parts.append("    g0.close();");
-    parts.append(f"    print({jac_str('caps len = ')} + str(c.len()));");
-    parts.append("    c.close();");
+    parts.append("        g0.close();");
+    parts.append(f"        print({jac_str('caps len = ')} + str(c.len()));");
+    parts.append("        c.close();");
+    parts.append("    }");
     parts.append(f"    s = Regex({jac_str(r'[,]')});");
     parts.append(f"    d = s.split({jac_str(SPLIT_HAY)});");
     parts.append("    i = 0;");
