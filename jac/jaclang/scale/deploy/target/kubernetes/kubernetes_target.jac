@@ -56,8 +56,6 @@ obj KubernetesTarget(DeploymentTarget) {
         k8s_config: KubernetesConfig postinit,
         env_list: list = [],
         secrets: dict[str, str] = {},
-        # Set by the factory for --dry-run: manifest generation must then stay
-        # hermetic -- no cluster reads, downloads, or builds (issue #7431).
         dry_run: bool = False;
 
     def postinit {
@@ -1156,8 +1154,7 @@ obj KubernetesTarget(DeploymentTarget) {
                         }
                     )
                 ];
-                # Utilization is relative to the container request; without a
-                # memory_request the metric can never be computed.
+
                 if self.k8s_config.memory_request {
                     triggers.append(
                         Trigger(

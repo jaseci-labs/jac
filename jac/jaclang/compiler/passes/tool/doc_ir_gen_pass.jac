@@ -5,6 +5,14 @@ import from jaclang.jac0core.constant { Tokens as Tok, is_mut_kind }
 import from jaclang.jac0core.passes { UniPass }
 
 obj DocIRGenPass(UniPass) {
+    has _live_comment_ids: (set[int] | None) = None,
+        _emitted_comment_ids: (set[int] | None) = None;
+
+    def _comment_is_live(c: uni.CommentToken) -> bool;
+    def _rescue_lost_comments(
+        nd: uni.Module, parts: list[doc.DocType], next_kid: (uni.UniNode | None)
+    ) -> None;
+
     def text(text: str, source_token: (uni.Token | None) = None) -> doc.Text;
     def space -> doc.Text;
     def line(hard: bool = False, literal: bool = False) -> doc.Line;
@@ -29,6 +37,11 @@ obj DocIRGenPass(UniPass) {
     ) -> doc.IfBreak;
 
     def align(contents: doc.DocType, n: (int | None) = None) -> doc.Align;
+    def line_suffix(contents: doc.DocType) -> doc.LineSuffix;
+    def break_parent -> doc.BreakParent;
+    def exit_node(nd: uni.UniNode) -> None;
+    def _wrap_doc_comments(nd: uni.UniNode) -> None;
+    def effective_first_line(nd: uni.UniNode) -> int;
     def join(separator: doc.DocType, parts: list[doc.DocType]) -> doc.DocType;
     def join_with_space(parts: list[doc.DocType]) -> doc.DocType;
     def _child_docs(nd: uni.UniNode) -> list[doc.DocType];

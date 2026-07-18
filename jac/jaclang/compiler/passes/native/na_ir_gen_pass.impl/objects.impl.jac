@@ -1933,57 +1933,16 @@ impl NaIRGenPass._codegen_field_aug_assign(
         return None;
     }
 
+    scalar = self._apply_scalar_aug_op(current, rhs, aug_op);
+    if scalar is not None {
+        return scalar;
+    }
+
     coerced = self._coerce_type(rhs, current.type);
 
-    if aug_op == "+=" {
-        if isinstance(current.type, ir.IntType) {
-            return self.builder.add(current, coerced, name="field.add");
-        } elif isinstance(current.type, ir.DoubleType) {
-            return self.builder.fadd(current, coerced, name="field.fadd");
-        } elif isinstance(current.type, ir.PointerType) {
-            result = self._emit_binary_op(Tok.PLUS, current, coerced);
-            return result if result is not None else current;
-        }
-    } elif aug_op == "-=" {
-        if isinstance(current.type, ir.IntType) {
-            return self.builder.sub(current, coerced, name="field.sub");
-        } elif isinstance(current.type, ir.DoubleType) {
-            return self.builder.fsub(current, coerced, name="field.fsub");
-        }
-    } elif aug_op == "*=" {
-        if isinstance(current.type, ir.IntType) {
-            return self.builder.mul(current, coerced, name="field.mul");
-        } elif isinstance(current.type, ir.DoubleType) {
-            return self.builder.fmul(current, coerced, name="field.fmul");
-        }
-    } elif aug_op == "//=" {
-        if isinstance(current.type, ir.IntType) {
-            return self.builder.sdiv(current, coerced, name="field.sdiv");
-        }
-    } elif aug_op == "%=" {
-        if isinstance(current.type, ir.IntType) {
-            return self.builder.srem(current, coerced, name="field.srem");
-        }
-    } elif aug_op == "&=" {
-        if isinstance(current.type, ir.IntType) {
-            return self.builder.and_(current, coerced, name="field.and");
-        }
-    } elif aug_op == "|=" {
-        if isinstance(current.type, ir.IntType) {
-            return self.builder.or_(current, coerced, name="field.or");
-        }
-    } elif aug_op == "^=" {
-        if isinstance(current.type, ir.IntType) {
-            return self.builder.xor(current, coerced, name="field.xor");
-        }
-    } elif aug_op == "<<=" {
-        if isinstance(current.type, ir.IntType) {
-            return self.builder.shl(current, coerced, name="field.shl");
-        }
-    } elif aug_op == ">>=" {
-        if isinstance(current.type, ir.IntType) {
-            return self.builder.ashr(current, coerced, name="field.ashr");
-        }
+    if aug_op == "+=" and isinstance(current.type, ir.PointerType) {
+        result = self._emit_binary_op(Tok.PLUS, current, coerced);
+        return result if result is not None else current;
     }
 
     return coerced;

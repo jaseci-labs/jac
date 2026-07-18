@@ -107,7 +107,6 @@ obj RedisEventStream(EventStreamBroker) {
         return start_from;
     }
 
-    """Create the consumer group, caching only on success or BUSYGROUP."""
     def _ensure_group(
         topic: str, group: str, start_from: str = "latest", force: bool = False
     ) -> None {
@@ -176,7 +175,6 @@ obj RedisEventStream(EventStreamBroker) {
         );
     }
 
-    """Read from the group, recreating it once if it was evicted (NOGROUP)."""
     def _read_group(
         topic: str, group: str, max_messages: int, block_ms: int, start_from: str
     ) -> any {

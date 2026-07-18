@@ -47,8 +47,6 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'messages_per_second': 20
         },
         'kubernetes': {
-            # app_name intentionally absent: any key here wins the jac.toml
-            # deep-merge, which would kill the project-name default.
             'namespace': 'default',
             'container_port': 8000,
             'mongodb_enabled': True,
@@ -72,10 +70,6 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'cpu_limit': None,
             'memory_request': None,
             'memory_limit': None,
-            # Probe timings must match the KubernetesConfig field defaults
-            # (deploy/target/kubernetes/kubernetes_config.jac) — this dict is
-            # deep-merged over jac.toml, so these values are what actually
-            # take effect when the user sets no probe keys.
             'readiness_initial_delay': 10,
             'readiness_period': 20,
             'liveness_initial_delay': 10,
@@ -391,15 +385,6 @@ impl JacScaleConfig.get_events_config(self: JacScaleConfig) -> dict[str, any] {
     };
 }
 
-"""Read a positive WebSocket limit, rejecting values that would wedge a socket.
-
-Every limit here is a divisor or a budget, and each has a value that silently
-breaks the connection rather than loosening it: `messages_per_second = 0` leaves
-the token bucket with nothing to refill it, so a socket is rate-limited forever
-after its first message; `max_message_bytes = 0` rejects every frame; a zero
-connection cap refuses every client. None of them mean "unlimited", so they are
-refused at load rather than at 3am. To effectively disable a limit, set it high.
-"""
 impl _ws_positive(ws_config: dict, key: str, fallback: (int | float)) -> float {
     raw = ws_config.get(key, fallback);
     if isinstance(raw, bool) or not isinstance(raw, (int, float, str)) {
@@ -622,10 +607,6 @@ impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, 
 }
 
 impl JacScaleConfig.microservices_declared(self: JacScaleConfig) -> bool {
-    # The merged load() always carries a 'microservices' key from
-    # get_default_config (and callers may write merged routes back into the
-    # loaded doc), so "did the user write [scale.microservices]?" must be
-    # answered from the raw, unmerged plugin config in jac.toml.
     declared = self.get_jac_config().get_plugin_config(self.get_plugin_name()).get(
         'microservices'
     );
