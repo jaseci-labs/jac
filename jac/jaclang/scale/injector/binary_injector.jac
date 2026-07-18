@@ -11,11 +11,6 @@ import from jaclang.scale.injector.bundle { bundle_object_key, content_address }
 import from jaclang.scale.config.dev_config { Channel }
 
 glob logger = logging.getLogger(__name__),
-     # Digest slotted into a dry-run plan's content-addressed object keys. The real
-     # keys are sha256 digests of the packed bundle and toolchain, which cannot be
-     # known without downloading the binary and packing the project -- exactly the
-     # work --dry-run promises to skip (issue #7431) -- so the plan renders an
-     # honest placeholder in their place.
      DRY_RUN_DIGEST: str = "sha256-computed-at-deploy";
 
 
@@ -26,13 +21,8 @@ obj BinaryInjector(PvcInjector) {
         _pod_binary_bytes: bytes = b"";
 
     def prepare(app_name: str, namespace: str, project_dir: str) {
-        # Stage the console into the bundle first; it is independent of the
-        # binary and best-effort (a failure just falls back to the gateway's
-        # on-boot build), so it must not gate the download below.
         stage_admin_dist(project_dir, self.channel.value);
-        # Download the pod binary before pack_source runs so it can precompile
-        # the app's modules with it: .jir is version-locked to the compiling
-        # binary, so the driver's own jac cannot produce pod-valid seeds.
+
         payload = download_release_binary(self.channel.value, node_arch());
         self._pod_binary_bytes = payload;
         super.prepare(app_name, namespace, project_dir);
@@ -67,7 +57,7 @@ def select_injector(
 ) -> tuple[PvcInjector, str] {
     import from jaclang.cli.console { console }
     import from jaclang.scale.config.dev_config { resolve_dev_channel }
-    # The one place the pod binary channel is decided (local > dev > stable).
+
     channel = resolve_dev_channel(project_dir);
     blurbs = {
         Channel.LOCAL: "shipping the local jac binary",
@@ -76,10 +66,6 @@ def select_injector(
         Channel.EXPERIMENTAL: "downloading the `dev` jac binary to seal .jir (pods run the PR's experimental image)"
     };
     if dry_run {
-        # A dry run must not prepare() the injector: that reads the cluster's
-        # node architectures, downloads the pod binary and admin console, and
-        # packs the project. Placeholder digests keep the plan renderable while
-        # seed() still refuses to publish (no bundle bytes were produced).
         injector = BinaryInjector(
             channel=channel,
             storage_class=storage_class,

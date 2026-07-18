@@ -29,11 +29,6 @@ exclude = [
     "docs/*",
     "*/examples/*",
     "*/tests/*",
-    # Folded-in scale subsystem: large self-contained subsystem whose inline
-    # comments (k8s/deploy/observability logic) are kept, not deslopped.
-    "*/scale/*",
-    # Folded-in byllm subsystem (the `by llm()` feature): same rationale as scale.
-    "*/byllm/*",
     "console.impl.jac",
     "cli_boot.jac",
     # Files whose comments/docstrings are load-bearing, so they are NOT deslopped:

@@ -413,6 +413,19 @@ dir = "cache"    # Cache subdirectory under the build dir (i.e. .jac/cache).
                  # An absolute path relocates the cache wholesale.
 ```
 
+The format cache (`jac fmt --cache` / `jac precommit`) also lives here, under
+`<cache dir>/fmt-v1/`. It stores one marker per file proven clean, keyed on the
+file's content digest, the `lintfix` mode, the effective `[format]` and
+`[check]` settings (including `suppress` / `suppress_categories` / nested
+`lint`), the logical path when `lintfix` is on, and a formatter-pipeline
+fingerprint -- so a content, config, path, or pipeline change automatically
+invalidates the relevant entries. Entries are written only for fully
+successful, unchanged (or just-rewritten) results; syntax errors, lint
+failures, and annex failures are never cached as clean. `--cache` / precommit
+enable this format cache explicitly and do **not** consult `[cache].enabled`
+(that flag gates the bytecode cache). The directory is git-ignored, so it is
+safe to delete at any time. See [`jac fmt --cache`](../cli/index.md#jac-fmt).
+
 ---
 
 ### [storage]

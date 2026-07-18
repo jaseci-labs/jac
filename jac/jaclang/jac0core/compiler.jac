@@ -244,16 +244,14 @@ def get_py_code_gen(
 def get_format_sched(
     auto_lint: bool = False
 ) -> list[type[Transform[uni.Module, uni.Module]]] {
-    import from jaclang.compiler.passes.tool.comment_injection_pass {
-        CommentInjectionPass
-    }
+    import from jaclang.compiler.passes.tool.comment_attach_pass { CommentAttachPass }
     import from jaclang.compiler.passes.tool.doc_ir_gen_pass { DocIRGenPass }
     import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacAutoLintPass }
     import from jaclang.compiler.passes.tool.jac_formatter_pass { JacFormatPass }
     if auto_lint {
-        return [JacAutoLintPass, DocIRGenPass, CommentInjectionPass, JacFormatPass];
+        return [CommentAttachPass, JacAutoLintPass, DocIRGenPass, JacFormatPass];
     } else {
-        return [DocIRGenPass, CommentInjectionPass, JacFormatPass];
+        return [CommentAttachPass, DocIRGenPass, JacFormatPass];
     }
 }
 

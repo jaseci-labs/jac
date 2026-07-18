@@ -2601,10 +2601,8 @@ impl CommentToken.init(
     col_end: int,
     pos_start: int,
     pos_end: int,
-    kid: Sequence[UniNode],
-    is_inline: bool = False
+    kid: Sequence[UniNode]
 ) -> None {
-    self.is_inline = is_inline;
     Token.init(
         self,
         orig_src=orig_src,

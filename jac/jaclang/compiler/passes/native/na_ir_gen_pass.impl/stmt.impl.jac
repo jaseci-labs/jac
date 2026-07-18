@@ -1261,14 +1261,19 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     } elif self._is_owned(value) {
                         self.rc_ops_elided += 1;
                     }
-                    old_val = self.builder.load(alloca, name=f"{var_name}.old");
-                    self._emit_rc_release_typed(
-                        old_val,
-                        op="overwrite",
-                        loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
-                            if nd.loc
-                            else 0}"
-                    );
+                    if not (
+                        self._nogc_headerless()
+                        and getattr(nd, 'na_overwrite_consumed', False)
+                    ) {
+                        old_val = self.builder.load(alloca, name=f"{var_name}.old");
+                        self._emit_rc_release_typed(
+                            old_val,
+                            op="overwrite",
+                            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                                if nd.loc
+                                else 0}"
+                        );
+                    }
                 }
             } elif (
                 self?.jacval_type
@@ -1557,14 +1562,19 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     } elif self._is_owned(value) {
                         self.rc_ops_elided += 1;
                     }
-                    old_val = self.builder.load(alloca, name=f"{var_name}.old");
-                    self._emit_rc_release_typed(
-                        old_val,
-                        op="overwrite",
-                        loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
-                            if nd.loc
-                            else 0}"
-                    );
+                    if not (
+                        self._nogc_headerless()
+                        and getattr(nd, 'na_overwrite_consumed', False)
+                    ) {
+                        old_val = self.builder.load(alloca, name=f"{var_name}.old");
+                        self._emit_rc_release_typed(
+                            old_val,
+                            op="overwrite",
+                            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                                if nd.loc
+                                else 0}"
+                        );
+                    }
                 }
             } elif (
                 self?.jacval_type

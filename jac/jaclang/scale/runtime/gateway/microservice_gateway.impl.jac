@@ -165,8 +165,6 @@ impl MicroserviceGateway.serve_spa_fallback -> Response | None {
 }
 
 impl MicroserviceGateway.bootstrap_admin_ui -> None {
-    # The deploy driver stages the console at admin_dist_dir; building from
-    # source is the fallback when nothing was staged.
     if (Path(self.admin_dist_dir) / "index.html").is_file() {
         return;
     }
@@ -362,9 +360,6 @@ impl MicroserviceGateway.handle_builtin_passthrough(
         return None;
     }
 
-    # Each service can only deserialize its own module's archetypes out of the
-    # shared store, so no single service can render the whole graph -- merge
-    # every healthy service's fragment instead of forwarding to one of them.
     if request.method == "GET" and path == "/graph/data" {
         agg = await self.aggregate_graph_data(request);
         if agg is not None {
@@ -648,9 +643,6 @@ impl MicroserviceGateway.setup -> FastAPI {
                 }
                 resp = admin_resp;
             } elif decision.kind == ROUTE_IDENTITY {
-                # Gateway-owned identity: answer /user/* from the gateway's
-                # own endpoints; a 404/405 (endpoint not registered here)
-                # leaves resp None so the passthrough fallback below runs.
                 if gw.server is not None {
                     ident_resp = await call_next(request);
                     if ident_resp.status_code not in (404, 405) {
@@ -801,12 +793,6 @@ impl MicroserviceGateway._install_admin_api -> None {
     self.register_network_endpoints();
     self.register_podenv_endpoints();
 
-    # Gateway-owned identity: the gateway is the single registration/login
-    # authority for the deployment, so /user/* state never depends on which
-    # service a passthrough happens to land on. Services accept these tokens
-    # (shared [scale.jwt] secret) and JIT-provision their local user root.
-    # Endpoints not registered here (verification, SSO, ...) still fall back
-    # to service passthrough in the dispatcher.
     self.register_register_endpoint();
     self.register_login_endpoint();
     self.register_refresh_token_endpoint();

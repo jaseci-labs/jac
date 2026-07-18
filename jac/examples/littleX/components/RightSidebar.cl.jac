@@ -7,7 +7,7 @@ import from .ui.card { Card, CardHeader, CardTitle, CardContent }
 import from .ui.avatar { Avatar, AvatarImage, AvatarFallback }
 import from .ui.badge { Badge }
 import from .ui.hover_card { HoverCard, HoverCardTrigger, HoverCardContent }
-sv import from ..social_graph { UserView, TrendingTag }
+sv import from ..social_graph { Profile, TrendingTag }
 
 def:pub RightSidebar(
     searchQuery: str,
@@ -16,7 +16,7 @@ def:pub RightSidebar(
     onClearSearch: Callable[[], None],
     trendingTags: list[TrendingTag],
     onTrendClick: Callable[[str], None],
-    toFollow: list[UserView],
+    toFollow: list[Profile],
     onFollow: Callable[[str], None],
     onShowMore: Callable[[], None],
 ) -> JsxElement {
@@ -91,7 +91,7 @@ def:pub RightSidebar(
                         {for u in toFollow[:5] {
                             <div
                                 className="flex items-center gap-2 px-4 py-2 transition-colors hover:bg-muted/50"
-                                key={u.id}
+                                key={jid(u)}
                             >
                                 <Avatar className="size-9 shrink-0">
                                     <AvatarImage
@@ -171,7 +171,7 @@ def:pub RightSidebar(
                                 <Button
                                     size="sm"
                                     className="shrink-0 rounded-full font-semibold"
-                                    onClick={lambda { onFollow(u.id); }}
+                                    onClick={lambda { onFollow(jid(u)); }}
                                 >
                                     Follow
                                 </Button>
