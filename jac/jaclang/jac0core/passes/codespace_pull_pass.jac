@@ -1,16 +1,3 @@
-"""Codespace pull pass: symbol-based propagation of inferred client placement.
-
-Parse-time seeding (jac0core/compiler.jac) stamps elements whose syntax is
-structurally client-only (JSX, string-path imports). This pass runs once
-symbol tables exist and propagates CLIENT placement to unmarked module-level
-elements through resolved symbol references: an element that uses a
-client-placed declaration joins the client side, and an unmarked declaration
-referenced from client code is pulled unless the backends already bridge that
-reference across the boundary (auto-shared archetypes, `:pub` auto-RPC
-endpoints, JS-erased type aliases). Resolution is scope-aware, so a local
-that shadows a module-level name produces no edge. Explicit markers
-(blocks, sv/cl/na prefixes, file suffixes) are never overridden.
-"""
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { CodeContext }
 import from jaclang.jac0core.passes.transform { Transform }
@@ -24,10 +11,6 @@ def _top_element(module: uni.Module, nd: uni.UniNode) -> (uni.UniNode | None) {
 }
 
 def _pullable_by_client_reference(elem: uni.UniNode) -> bool {
-    # A client reference to a server-side element does NOT relocate it when the
-    # backends already bridge the boundary for that element kind: top-level
-    # archetypes are auto-shared into the bundle, `:pub` defs/globs are served
-    # as auto-RPC endpoints, and type aliases are erased in JS output.
     if isinstance(elem, (uni.Archetype, uni.TypeAlias)) {
         return False;
     }
@@ -44,7 +27,7 @@ def _ref_top_ids(module: uni.Module, elem: uni.UniNode) -> set[int] {
         if (isinstance(par, uni.AtomTrailer) and par.is_attr and par.right is nm) {
             continue;
         }
-        tab = getattr(nm, 'sym_tab', None);
+        tab = nm?.sym_tab;
         if tab is None {
             continue;
         }
@@ -84,22 +67,19 @@ impl CodespacePullPass.transform(ir_in: uni.Module) -> uni.Module {
     client_tops: list[uni.UniNode] = [];
     inferable: list[uni.UniNode] = [];
     for stmt in module.body {
-        if isinstance(stmt, uni.ClientBlock) {
-            client_tops.append(stmt);
-            continue;
-        }
-        if isinstance(stmt, (uni.ServerBlock, uni.NativeBlock)) {
+        if isinstance(stmt, (uni.ClientBlock, uni.ServerBlock, uni.NativeBlock)) {
             continue;
         }
         if not isinstance(stmt, uni.ContextAwareNode) {
             continue;
         }
         if stmt.code_context == CodeContext.CLIENT {
-            client_tops.append(stmt);
+            if stmt._source_context_token() is None {
+                client_tops.append(stmt);
+            }
             continue;
         }
-        # An explicit sv/cl prefix pins placement — except on Imports, where
-        # the sv marker is a boundary fact and placement stays inferable.
+
         is_placement_pinned = (
             stmt._source_context_token() is not None
             and not isinstance(stmt, uni.Import)
@@ -113,9 +93,7 @@ impl CodespacePullPass.transform(ir_in: uni.Module) -> uni.Module {
         return module;
     }
     import from jaclang.jac0core.compiler { _stamp_client_element }
-    # pull_source_ids: client elements whose USE pulls the user client-ward.
-    # sv-marked imports are excluded — their names are boundary names callable
-    # from either side, so using one implies nothing about the caller's side.
+
     pull_source_ids: set[int] = set();
     client_ref_ids: set[int] = set();
     uses_map: dict[int, set[int]] = {};

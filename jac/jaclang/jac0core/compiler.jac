@@ -393,11 +393,6 @@ def _stamp_client_element(elem: uni.UniNode) {
 }
 
 def _seed_module_codespace(module: uni.Module) {
-    # Markerless codespace seeding: string-path (npm/asset) imports and JSX are
-    # structurally client-only, so the elements carrying them are stamped CLIENT
-    # at parse time — early enough to drive schedule gating. Propagation to the
-    # rest of the module happens in CodespacePullPass once symbol tables exist.
-    # Explicit markers (blocks, sv/cl prefixes, file suffixes) always win.
     signal_top_ids: set[int] = set();
     for jsx in module.get_all_sub_nodes(uni.JsxElement) {
         top = _module_top_element(module, jsx);

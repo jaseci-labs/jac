@@ -3271,8 +3271,7 @@ impl Parser.parse_element_stmt{
             stmt = self.parse_element_stmt();
             if stmt is not None {
                 stmt.add_kids_left([sv_tok]);
-                # On an Import the sv marker is a boundary fact (target lives
-                # server-side), not a placement pin — placement stays derivable.
+
                 if stmt?.code_context and not isinstance(stmt, Import) {
                     stmt.code_context = CodeContext.SERVER;
                 }

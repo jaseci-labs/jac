@@ -1,6 +1,6 @@
 """Markerless client module: placement inferred from JSX and npm imports.
 
-No `cl` marker anywhere — the string-path import and JSX are the seeds, and
+No `cl` marker anywhere - the string-path import and JSX are the seeds, and
 the helper def plus the mutable glob are pulled client through symbol
 references.
 """

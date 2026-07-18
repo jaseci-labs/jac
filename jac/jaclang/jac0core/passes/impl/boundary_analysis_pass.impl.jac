@@ -128,8 +128,6 @@ impl BoundaryAnalysisPass.enter_import(
                 if (self.ir_in and self.ir_in.loc)
                 else '';
             if (nd.is_sv_marked and not native_path and nd.items) {
-                # The sv marker is a boundary fact (target lives server-side);
-                # the caller side is the import's own placement.
                 sv_module_name = nd.from_loc.base_module_name;
                 caller_ctx = InteropContext.CLIENT
                     if nd.in_client_context()

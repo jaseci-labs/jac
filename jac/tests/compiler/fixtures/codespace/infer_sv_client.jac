@@ -4,7 +4,7 @@ The `sv` marker on the import is a boundary fact (its target lives on the
 server); the import's own PLACEMENT is inferred: client code uses
 `fetch_items`, so the import is placed client and becomes an RPC stub.
 Meanwhile `local_report` also calls `fetch_items` but is referenced by no
-client code — sv-imported names are callable from either side, so it stays
+client code - sv-imported names are callable from either side, so it stays
 server.
 """
 

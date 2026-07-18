@@ -1,7 +1,7 @@
 """Scope-aware pulls: locals that shadow client names must not pull anything.
 
 `server_side` mentions the names `clsx` and `styled`, but both resolve to its
-own locals — symbol-based propagation produces no edge, so it stays server.
+own locals - symbol-based propagation produces no edge, so it stays server.
 """
 
 import from "clsx" { clsx }
