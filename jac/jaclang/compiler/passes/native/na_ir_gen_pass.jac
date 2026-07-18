@@ -907,6 +907,14 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> None;
 
     def _rc_alloc(size: ir.Value, name: str = "rc.alloc") -> ir.Value;
+    def _emit_malloc_null_guard(
+        parent_fn: ir.Function,
+        b: ir.IRBuilder,
+        raw: ir.Value,
+        ok_bb_name: str = "alloc.ok",
+        oom_bb_name: str = "oom"
+    ) -> ir.IRBuilder;
+
     def _emit_rc_retain(ptr: ir.Value, op: str = "", loc: str = "") -> None;
     def _emit_rc_release_simple(ptr: ir.Value, op: str = "", loc: str = "") -> None;
     def _emit_rc_release_typed(val: ir.Value, op: str = "", loc: str = "") -> None;
