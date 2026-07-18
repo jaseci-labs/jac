@@ -132,6 +132,7 @@ fn drop_label(r: &DropReason) -> &'static str {
         DropReason::Lifetime => "lifetime-bearing struct",
         DropReason::ConstGeneric => "const-generic struct",
         DropReason::UnpinnedGeneric => "unpinned generic (needs monomorphize overlay)",
+        DropReason::TransparentData => "transparent data with methods (needs treat_as = \"opaque\")",
     }
 }
 

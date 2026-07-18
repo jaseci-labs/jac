@@ -472,6 +472,10 @@ fn scalar_ty(t: &ScalarType) -> String {
         // serde-transparent newtype the macro imports from the rt module). The
         // body unwraps `.0` before the inner call (see `call_args` in `emit_fn`).
         ScalarType::Wide(inner) => format!("Wide<{inner}>"),
+        // An inbound handle param re-declared as a reference to the target newtype;
+        // the macro reconstructs `&Target` from the caller's handle slot. The inner
+        // call passes `&{name}.0` (see `call_args`).
+        ScalarType::Handle(target) => format!("&{target}"),
     }
 }
 
@@ -518,6 +522,9 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
         .iter()
         .map(|p| match p.ty {
             ScalarType::Wide(_) => format!("{}.0", p.name),
+            // A handle param arrives as `&Target`; the inner method wants
+            // `&Inner`, so pass `&{name}.0` (the newtype's wrapped value).
+            ScalarType::Handle(_) => format!("&{}.0", p.name),
             _ => p.name.clone(),
         })
         .collect::<Vec<_>>()
@@ -606,6 +613,21 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
             // into a real Jac dict/list. The wrapper just forwards the value.
             (format!(" -> {rust}"), base_call(&recv_expr))
         }
+        // A `std::cmp::Ordering` return lowers to the `i8` scalar lane: the wrapper
+        // signature is `-> i8` (so the macro tags it `TAG_INT` exactly like any i8)
+        // and the body maps the three variants to -1/0/1. `::std::cmp::Ordering` is
+        // always in scope, so the match compiles regardless of how the source spelled
+        // the return path.
+        BridgeReturn::Ordering => (
+            " -> i8".into(),
+            format!(
+                "match {} {{ \
+                 ::std::cmp::Ordering::Less => -1i8, \
+                 ::std::cmp::Ordering::Equal => 0i8, \
+                 ::std::cmp::Ordering::Greater => 1i8 }}",
+                base_call(&recv_expr)
+            ),
+        ),
         // 1.2.2: a byte-string return crosses as an owned `Vec<u8>` (TAG_BYTES).
         // `.to_vec()` turns a digest's `GenericArray`/`[u8]` into an owned Vec and
         // is a shape-preserving clone on a `Vec<u8>` source.

@@ -95,6 +95,11 @@ pub enum DropReason {
     /// (or one the single-param rule can't apply). Its concrete instantiations are
     /// unknown, so it can't cross as a bare newtype.
     UnpinnedGeneric,
+    /// A struct with only public fields and no serde impl, but carrying inherent
+    /// methods that would be lost — the wide (serde) lane doesn't rescue it, so
+    /// the real API silently vanishes unless `[type."T"] treat_as = "opaque"`
+    /// forces it through as a handle.
+    TransparentData,
 }
 
 /// Serde-trait presence on a bridged type, detected from its impl list by
@@ -455,6 +460,12 @@ pub enum BridgeReturn {
     /// An unsigned-integer return. The string is the concrete Rust type (`u32`,
     /// `u64`, `usize`, …); carried in a u64 slot tagged `TAG_UINT`.
     Uint(String),
+    /// A `std::cmp::Ordering` return (`Version::cmp_precedence`). Ordering has no
+    /// primitive spelling, but its three variants map cleanly onto an `i8`
+    /// (`Less`/`Equal`/`Greater` → `-1`/`0`/`1`). Codegen emits a `-> i8` signature
+    /// and wraps the call in a `match`, so every layer below (macro, metadata, both
+    /// loaders) rides the existing signed-int `TAG_INT` lane with no change.
+    Ordering,
     /// A `HashMap<String, V>` return marshaled as a real Jac `dict[str, V]`. The
     /// string is the full Rust type the wrapper re-declares (e.g.
     /// `HashMap<String, i64>`); V is one of bool/int/str.
@@ -523,6 +534,13 @@ pub enum ScalarType {
     /// inner call. Lane selection is per-value: a scalar beside a wide param stays
     /// its own tag (see [`crate::classify`] resolution + tests).
     Wide(String),
+    /// An inbound handle param: a `&OtherBridgedType` (or `&Self`) reference to
+    /// another opaque handle in the SAME bridge module (`VersionReq::matches(&self,
+    /// other: &Version)`). The string is the target newtype's name. Crosses the
+    /// boundary as a handle slot (the caller passes the other object's handle); the
+    /// macro reconstructs `&Target` from it, the wrapper re-declares the param as
+    /// `&Target` and passes `&{name}.0` to the inner call.
+    Handle(String),
 }
 
 /// A public item the classifier could not bridge, with a machine-readable reason.

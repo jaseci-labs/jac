@@ -129,33 +129,42 @@ fn extra_self_constructors_become_statics() {
     );
 }
 
-/// `Uuid::get_timestamp -> Option<Timestamp>` names `Timestamp`, whose entire API
-/// is closures/unsupported types, so it bridges NOTHING and codegen drops it as a
-/// dead-opaque type. A return to a would-be-dropped type must not survive (it would
-/// reference an undeclared wrapper and the macro would reject the crate), so the
-/// reconciliation pass demotes it to a skip.
+/// `Uuid::get_timestamp -> Option<Timestamp>` names `Timestamp`, which bridges its
+/// `-> Self` constructor `from_gregorian_time` — so `Timestamp` is a LIVE opaque
+/// handle and the cross-type return legitimately survives as `OptRef("Timestamp")`.
+/// (The dead-opaque reconciliation pass itself is covered directly in
+/// `classify::reconcile_tests`.)
 #[test]
-fn ref_return_to_dead_opaque_type_is_reconciled_to_skip() {
+fn live_cross_type_return_survives_as_handle() {
     let spec = classify(&load("uuid-1.23.4"));
 
-    assert!(
-        !spec
-            .types
+    let timestamp = ty(&spec, "Timestamp");
+    let bridges_from_gregorian = timestamp.ctor.as_ref().map(|c| c.name.as_str())
+        == Some("from_gregorian_time")
+        || timestamp
+            .methods
             .iter()
-            .any(|t| t.name == "Uuid" && t.methods.iter().any(|m| m.name == "get_timestamp")),
-        "get_timestamp must not survive as a bridged method"
-    );
+            .any(|m| m.name == "from_gregorian_time");
     assert!(
-        spec.skips.iter().any(|s| {
-            s.item == "Uuid::get_timestamp" && format!("{:?}", s.reason).contains("Timestamp")
-        }),
-        "get_timestamp must be a recorded cross-type-to-unbridged skip"
+        bridges_from_gregorian,
+        "Timestamp::from_gregorian_time (-> Self) must bridge (as ctor or method), keeping the type live"
     );
 
-    // The demoted target is genuinely never emitted — no dangling `Timestamp` wrapper.
+    let get_timestamp = ty(&spec, "Uuid")
+        .methods
+        .iter()
+        .find(|m| m.name == "get_timestamp")
+        .expect("get_timestamp must survive — its target Timestamp is live");
+    assert_eq!(
+        get_timestamp.ret,
+        BridgeReturn::OptRef("Timestamp".into()),
+        "get_timestamp returns an Option<Timestamp> handle"
+    );
+
+    // The live target IS emitted — the reference is not dangling.
     let src = emit(&spec);
     assert!(
-        !src.contains("Option<Timestamp>"),
-        "no method may reference the dropped Timestamp handle\n{src}"
+        src.contains("Option<Timestamp>"),
+        "the surviving method must reference the live Timestamp handle\n{src}"
     );
 }

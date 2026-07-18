@@ -1743,6 +1743,27 @@ fn gen_fn_shim(f: &FnDef, types: &[TypeDef], mod_ident: &Ident, rt: &Ident, _has
                         let #pn = unsafe { #rt::JacCallback::from_raw(#pn) };
                     });
                 }
+                Tag::Ref(i) => {
+                    // An inbound handle param: `&Target` reference to another bridged
+                    // handle in this module (`VersionReq::matches(&self, &Version)`).
+                    // The caller passes that object's handle integer; reconstruct
+                    // `&Target` by mirroring the receiver deref (`self_`). `.value`
+                    // is the target NEWTYPE, so it matches the wrapper fn's `&Target`
+                    // param exactly. Null-guard identical to the receiver's.
+                    let target_name = format_ident!("{}", types[*i].name);
+                    let target_path = quote! { #mod_ident :: #target_name };
+                    c_params.push(quote! { #pn: u64 });
+                    decode.push(quote! {
+                        if #pn == 0 {
+                            return ::std::result::Result::<_, String>::Err(
+                                "null handle param (use after close?)".to_string()
+                            );
+                        }
+                        let #pn = unsafe {
+                            &(*(#pn as *const #rt::JacHandle<#target_path>)).value
+                        };
+                    });
+                }
                 _ => { c_params.push(quote! { #pn: u64 }); }
             }
         }

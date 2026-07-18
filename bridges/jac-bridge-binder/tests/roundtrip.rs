@@ -258,10 +258,12 @@ fn uuid_bridge_compiles_clean() {
         lib_src.contains("pub struct NonNilUuid(pub uuid::NonNilUuid);"),
         "NonNilUuid must wrap its crate-root re-export path\n{lib_src}"
     );
-    // The dead-opaque reconcile removed the only reference to Timestamp.
+    // `Timestamp` is now a LIVE opaque handle — its `-> Self` ctor
+    // `from_gregorian_time` bridges — so `get_timestamp -> Option<Timestamp>` is a
+    // valid cross-type return and the wrapper IS emitted (must still compile).
     assert!(
-        !lib_src.contains("Timestamp"),
-        "no dropped-Timestamp reference may survive\n{lib_src}"
+        lib_src.contains("pub struct Timestamp(pub uuid::Timestamp);"),
+        "the live Timestamp handle must be emitted\n{lib_src}"
     );
 
     let jac_bridge = manifest_dir().join("../jac-bridge");
@@ -302,6 +304,95 @@ fn uuid_bridge_compiles_clean() {
         "jac_uuid_Simple_into_uuid", // ref-lane handle conversion
         "jac_uuid_NonNilUuid_get",   // private-module type, root-reexport path
         "jac_bridge_init_uuid",
+    ] {
+        assert!(syms.contains(want), "missing exported symbol {want}");
+    }
+}
+
+/// The seed-crate proof: `semver` bridged WITH its overlay (`treat_as = "opaque"`
+/// on `Version`/`VersionReq`) must compile — exercising the INBOUND HANDLE PARAM
+/// lane (`VersionReq::matches(&self, &Version)`), the literal-`Self` alias fix
+/// (`Version::parse -> Result<Self, Error>`), and two bridged types interacting.
+#[test]
+#[ignore = "compiles a full crate; run with --ignored (CI does)"]
+fn semver_bridge_compiles_clean() {
+    let doc_path = fixture("semver-1.0.27.json");
+    let doc: rustdoc_types::Crate =
+        serde_json::from_str(&std::fs::read_to_string(&doc_path).expect("read fixture"))
+            .expect("parse fixture");
+    let overlay_src =
+        std::fs::read_to_string(fixture("semver.overlay.toml")).expect("read overlay");
+    let overlay = jac_bridge_binder::parse_overlay(&overlay_src).expect("parse overlay");
+
+    // `treat_as` steers classification; `inject`/`rename` are applied afterwards
+    // (mirrors the CLI's two-step flow in main.rs).
+    let mut spec = jac_bridge_binder::classify_with_overlay(&doc, Some(&overlay));
+    jac_bridge_binder::apply_overlay(&mut spec, &overlay).expect("apply overlay");
+    let lib_src = jac_bridge_binder::emit(&spec);
+
+    // The inbound-handle-param lane: a param that is a reference to another bridged
+    // handle, forwarded as `&{name}.0` to the inner call.
+    assert!(
+        lib_src.contains("pub fn matches(&self, version: &Version) -> bool"),
+        "VersionReq::matches must take a &Version handle param\n{lib_src}"
+    );
+    assert!(
+        lib_src.contains("self.0.matches(&version.0)"),
+        "matches must forward the handle's inner value\n{lib_src}"
+    );
+
+    // The Ordering return lane: `Version::cmp_precedence(&self, &Version) -> Ordering`
+    // is a REAL inherent semver method with NO overlay inject — the binder lowers its
+    // `Ordering` return automatically onto the `i8` lane (`-> i8` signature + a `match`
+    // mapping the three variants to -1/0/1). This is the whole point of the lane: no
+    // hand-written `cmp` inject is needed anymore.
+    assert!(
+        lib_src.contains("pub fn cmp_precedence(&self, other: &Version) -> i8"),
+        "cmp_precedence must bridge automatically as an i8 return\n{lib_src}"
+    );
+    assert!(
+        lib_src.contains("::std::cmp::Ordering::Less => -1i8"),
+        "cmp_precedence body must map Ordering variants to -1/0/1\n{lib_src}"
+    );
+
+    let jac_bridge = manifest_dir().join("../jac-bridge");
+    let cargo_src = jac_bridge_binder::emit_cargo_toml(&spec, &jac_bridge.to_string_lossy());
+
+    let out = manifest_dir().join("../target/binder-roundtrip/semver");
+    let _ = std::fs::remove_dir_all(&out);
+    std::fs::create_dir_all(out.join("src")).expect("mkdir");
+    std::fs::write(out.join("src/lib.rs"), &lib_src).expect("write lib.rs");
+    let cargo_src = format!("{cargo_src}\n[workspace]\n");
+    std::fs::write(out.join("Cargo.toml"), &cargo_src).expect("write Cargo.toml");
+
+    let output = Command::new(env!("CARGO"))
+        .current_dir(&out)
+        .args(["build", "--release"])
+        .env("RUSTFLAGS", "-D warnings")
+        .output()
+        .expect("run cargo build");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "generated semver bridge failed to compile:\n{stderr}\n\n--- lib.rs ---\n{lib_src}"
+    );
+
+    let so = out.join("target/release/libjac_bridge_semver.so");
+    assert!(so.exists(), "cdylib not produced at {}", so.display());
+    let nm = Command::new("nm")
+        .args(["-D"])
+        .arg(&so)
+        .output()
+        .expect("nm");
+    let syms = String::from_utf8_lossy(&nm.stdout);
+    for want in [
+        "jac_semver_Version_parse",       // Result<Self, Error> ctor (literal-Self fix)
+        "jac_semver_VersionReq_matches",  // inbound handle param (&Version)
+        "jac_semver_Version_cmp",         // handle param inside an injected method
+        "jac_semver_Version_cmp_precedence", // Ordering return lane (auto -1/0/1 i8)
+        "jac_semver_Version_major",       // public-field accessor (overlay inject)
+        "jac_semver_Version_drop",        // Version is now an opaque handle
+        "jac_bridge_init_semver",
     ] {
         assert!(syms.contains(want), "missing exported symbol {want}");
     }

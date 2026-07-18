@@ -78,8 +78,14 @@ dropped = 10
 # now tallied as hidden surface rather than silently absent.
 # 1.3 FN_STATIC lifted base64 1 -> 2 (total 11 -> 13): an extra `-> Self` engine
 # factory admitted as a static rather than an additional-constructor skip.
+# The literal-`Self` alias fix (a `-> Self` / `Result<Self, E>` associated fn whose
+# rustdoc ok-type renders as `Generic("Self")` rather than the concrete name is now
+# recognised) lifted base64 2 -> 6: four more engine `-> Self` factories bridge.
+# base64 has no roundtrip test — its crate declares more than one `#[jac_error]`
+# type, a standing macro limitation — but the added shapes are the OwnSelf/
+# OwnSelfResult arms the uuid + sha2 roundtrips compile-prove.
 [base64]
-bridged = 2
+bridged = 6
 total = 13
 dropped = 4
 
@@ -142,10 +148,17 @@ dropped = 4
 # surface folds in. (chrono's own full bridge compile is blocked by a pre-existing,
 # unrelated multi-`#[jac_error]` limitation, so it has no roundtrip test; the static
 # shapes are compile-proven by the uuid + sha2 roundtrips.)
+# The literal-`Self` alias fix lifted chrono 145 -> 147 (total 287 -> 289): two more
+# `Result<Self, E>` associated fns whose ok-type renders as `Generic("Self")` now
+# bridge (chrono has a detected error type, so the Result lowers cleanly).
+# `dropped` 4 -> 6: the transparent-data honesty rule now records `Local` and `Utc`
+# — zero-field marker structs that carry inherent methods but no serde impl, so the
+# wide lane can't rescue them — as hidden surface (needs `treat_as = "opaque"`)
+# instead of dropping them silently.
 [chrono]
-bridged = 145
-total = 287
-dropped = 4
+bridged = 147
+total = 289
+dropped = 6
 
 # uuid was 0 bridged: `Uuid` is a single-field private tuple struct
 # (`pub struct Uuid([u8; 16])`), which `classify_type` only admitted as a Plain
@@ -179,8 +192,17 @@ dropped = 4
 # all fallible `-> Result<Self, _>` — are now admitted as static methods rather than
 # "additional constructor" skips (+4). uuid's infallible `nil`/`max` stay dropped
 # (const-generic "generic" skips, a different gap). `total` unchanged (96).
+# The literal-`Self` alias fix lifted uuid 17 -> 25: eight more `-> Self` factories
+# and `-> Self` methods bridge (`Timestamp::from_gregorian_time`, `Builder` `-> Self`
+# setters, …) — previously skipped as "Generic" because rustdoc renders their
+# ok-type as `Generic("Self")` and the self-alias set held only the concrete name.
+# `Timestamp` is now a LIVE handle, so `Uuid::get_timestamp -> Option<Timestamp>`
+# survives as a valid cross-type return. The four `fmt::*` `from_str` (FromStr) trait
+# ctors that the fix briefly admitted are correctly held back: an unusable-trait
+# ctor can no longer WIN the ctor slot (it bypassed the loser-only guard before), so
+# they stay honest skips. Roundtrip-compiled under `-D warnings`.
 [uuid]
-bridged = 17
+bridged = 25
 total = 96
 dropped = 1
 
@@ -231,17 +253,27 @@ dropped = 0
 # for serde -- it implements Serialize/Deserialize BY HAND, rendering a Version as
 # its string form ("1.2.3"), so `automatically_derived` is false and no typed
 # record is synthesized; the value never rides the wide lane. BuildMetadata and
-# Prerelease bridge as opaque handles (`as_str`/`is_empty` readers, +4); their
-# `new`/`from_str` are fallible `-> Result<Self, Error>` associated fns the single
-# ctor slot can't hold (recorded as honest skips). Version/VersionReq/Comparator
-# are plain public-field data structs with no opaque handle to hang methods on, so
-# they are not admitted -- exactly why real serde data crates need the wide lane
-# and why the SYNTHETIC serde-DTO fixture (opaque handle passing derived structs)
-# is what actually exercises typed-record synthesis. No overlay.
+# Prerelease bridge as opaque handles (`as_str`/`is_empty` readers). This baseline
+# reflects the crate with NO overlay.
+#
+# Two binder fixes landed on this seed crate lift it 4 -> 6 and make its hidden
+# surface honest:
+#  - The literal-`Self` alias fix bridges `BuildMetadata::new`/`Prerelease::new`
+#    (fallible `-> Result<Self, Error>` ctors whose ok-type renders as
+#    `Generic("Self")`) — semver has a detected error type (`Error`), so the Result
+#    lowers cleanly. (+2 bridged, total 8 -> 11 as their surface folds in.)
+#  - The transparent-data honesty rule records `Version`, `VersionReq`, and
+#    `Comparator` — all-public-field structs with real inherent methods but no serde
+#    impl, so the wide lane can't rescue them — as DROPPED (needs `treat_as =
+#    "opaque"`) instead of vanishing silently. (dropped 0 -> 3.)
+# With the sibling `semver.overlay.toml` (`treat_as = "opaque"` on Version/
+# VersionReq), those two bridge as handles exposing `parse`/`new`, and the whole
+# generated crate compiles under `-D warnings`. `matches(&Version)` /
+# `cmp_precedence(&Self)` remain skips pending the inbound-handle-param lane.
 [semver]
-bridged = 4
-total = 8
-dropped = 0
+bridged = 6
+total = 11
+dropped = 3
 
 # geo_demo (Phase 2.10 part 2 / 2.9-followup) is a PURPOSE-BUILT serde-DTO crate
 # (source in tests/fixtures/crates/geo_demo): an opaque Canvas handle whose methods
@@ -252,8 +284,10 @@ dropped = 0
 # shape directly (semver above reaches 50% via the opaque lane and never touches
 # the wide lane), so this fixture is what actually exercises typed-record synthesis
 # -- nested/container/enum classification (2.9-followup) -- in the coverage gate.
-# 100% (6/6) with ZERO overlay: the Canvas ctor + all 5 wide methods bridge.
+# The literal-`Self` alias fix then lifted geo_demo 6 -> 8 (total 6 -> 8): two more
+# `-> Self` builder-style methods whose ok-type renders as `Generic("Self")` bridge.
+# Still ZERO overlay; still 100%.
 [geo_demo]
-bridged = 6
-total = 6
+bridged = 8
+total = 8
 dropped = 0

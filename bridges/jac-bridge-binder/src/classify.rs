@@ -198,6 +198,15 @@ pub fn classify_with_overlay(doc: &Crate, overlay: Option<&Overlay>) -> BridgeSp
     // a fixpoint (removing a type's last method can make IT dead in turn).
     reconcile_ref_returns(&mut types, &mut ctx.skips);
 
+    // A fallible `-> Result<Self, E>` method/ctor lowers to `Result<Self, String>`,
+    // which the macro rejects unless the module declares a `#[jac_error]` type —
+    // and the module gets one only when some bridged type is itself an error
+    // (`TypeKind::Error`). A crate with fallible constructors but NO detected error
+    // type (sha2's `Sha256VarCore::new(usize) -> Result<Self, _>`, whose error lives
+    // in an un-bridged external crate) would emit an uncompilable Result return.
+    // Demote those to honest skips so the emitted crate always compiles.
+    reconcile_fallible_returns(&mut types, &mut ctx.skips);
+
     // Materialize synthesized owning wrappers (M4 Phase B v1). The same wrapper
     // can be requested by several producers — a ROOT producer (`Regex::find`) and
     // a NESTED one (`OwnedCaptures::name`) both yield `OwnedMatch`. Merge requests
@@ -393,6 +402,50 @@ fn reconcile_ref_returns(types: &mut [BridgeType], skips: &mut Vec<Skip>) {
         if !changed {
             break;
         }
+    }
+}
+
+/// A fallible return the macro can only lower when a `#[jac_error]` type exists.
+fn is_fallible_return(ret: &BridgeReturn) -> bool {
+    matches!(ret, BridgeReturn::OwnSelfResult)
+}
+
+/// Demote every `Result<Self, E>` ctor/method to a skip when the crate has NO
+/// bridged error type — the macro would otherwise reject the `Result` return for
+/// lack of a `#[jac_error]` struct. A crate WITH an error type keeps them (the
+/// error crosses Display-stringified). Mirrors `reconcile_ref_returns`.
+fn reconcile_fallible_returns(types: &mut [BridgeType], skips: &mut Vec<Skip>) {
+    if types.iter().any(|t| t.kind == TypeKind::Error) {
+        return;
+    }
+    let reason = || {
+        SkipReason::UnsupportedType(
+            "fallible return but crate has no bridged error type".into(),
+        )
+    };
+    for bt in types.iter_mut() {
+        if let Some(c) = &bt.ctor {
+            if is_fallible_return(&c.ret) {
+                skips.push(Skip {
+                    item: format!("{}::{}", bt.name, c.name),
+                    reason: reason(),
+                });
+                bt.ctor = None;
+            }
+        }
+        let name = bt.name.clone();
+        let mut kept = Vec::with_capacity(bt.methods.len());
+        for m in std::mem::take(&mut bt.methods) {
+            if is_fallible_return(&m.ret) {
+                skips.push(Skip {
+                    item: format!("{name}::{}", m.name),
+                    reason: reason(),
+                });
+            } else {
+                kept.push(m);
+            }
+        }
+        bt.methods = kept;
     }
 }
 
@@ -621,7 +674,30 @@ impl<'a> Ctx<'a> {
                     StructKind::Tuple(fields) => fields.len() == 1 && fields[0].is_none(),
                     StructKind::Unit => false,
                 };
-                if !has_hidden {
+                // An overlay `[type."T"] treat_as = "opaque"` forces an
+                // all-public-field struct through as a boxed handle — the escape
+                // hatch for a type whose API lives in methods, not fields
+                // (`semver::Version`, `VersionReq`). Without it such a struct is
+                // transparent data left for the wide (serde) lane.
+                let forced_opaque = self
+                    .overlay
+                    .and_then(|o| o.types.get(&name))
+                    .and_then(|t| t.treat_as.as_deref())
+                    == Some("opaque");
+                if !has_hidden && !forced_opaque {
+                    // A public-field struct that ALSO carries inherent methods and
+                    // no serde impl is real API that would otherwise vanish with no
+                    // trace (neither bridged, skipped, nor dropped). Record the drop
+                    // so coverage stays honest and `jac add` can hint `treat_as =
+                    // "opaque"`. Pure serde-data structs are correctly wide-laned, so
+                    // they are left silent.
+                    let s = self.serde_disposition(item_id);
+                    if !s.serialize && !s.deserialize && self.has_inherent_methods(item_id) {
+                        self.dropped.push(DroppedType {
+                            name,
+                            reason: DropReason::TransparentData,
+                        });
+                    }
                     return vec![];
                 }
                 // Types with lifetime params can't be stored in Box<T> — drop them.
@@ -917,6 +993,32 @@ impl<'a> Ctx<'a> {
             }
         }
         info
+    }
+
+    /// True if the type has at least one inherent (`impl T`, no trait) method —
+    /// i.e. real API that would be lost if the type is filtered out as transparent
+    /// data. Used only to keep the drop report honest (see `classify_type`).
+    fn has_inherent_methods(&self, item_id: u32) -> bool {
+        let Some(item) = self.doc.index.get(&Id(item_id)) else {
+            return false;
+        };
+        let impls = match &item.inner {
+            ItemEnum::Struct(s) => &s.impls,
+            ItemEnum::Enum(e) => &e.impls,
+            _ => return false,
+        };
+        impls.iter().any(|impl_id| {
+            let Some(impl_item) = self.item(impl_id) else {
+                return false;
+            };
+            let ItemEnum::Impl(impl_block) = &impl_item.inner else {
+                return false;
+            };
+            impl_block.trait_.is_none()
+                && impl_block.items.iter().any(|iid| {
+                    matches!(self.item(iid).map(|i| &i.inner), Some(ItemEnum::Function(_)))
+                })
+        })
     }
 
     /// Whether a trait reference resolves to serde's `Serialize`/`Deserialize`.
@@ -1619,6 +1721,27 @@ impl<'a> Ctx<'a> {
         // honest "additional constructor" skips rather than silently dropped. Uses
         // `UnsupportedType` (the plan's `Skip("additional constructor")` string
         // form) so no new `SkipReason` variant is required.
+        // A `-> Self` factory flattened off a std/core trait (`FromStr::from_str`)
+        // has no recoverable public `use` path, so it can NEVER be a compiling ctor
+        // OR static. The loser loop below already skips such candidates, but the
+        // WINNER bypassed that check — a type whose ONLY `-> Self` candidate is
+        // `from_str` (uuid's `fmt::Braced`/`Simple`/…) would let it win the ctor
+        // slot and emit an uncompilable `Type::from_str(..)` + bogus trait `use`.
+        // Drain them up front so an unusable trait ctor can't win.
+        ctor_candidates.retain(|(item_path, cand)| {
+            if static_trait_path_unusable(&cand.via_trait) {
+                self.skips.push(Skip {
+                    item: item_path.clone(),
+                    reason: SkipReason::UnsupportedType(
+                        "additional constructor via a std/core trait (no reliable public use path)"
+                            .into(),
+                    ),
+                });
+                false
+            } else {
+                true
+            }
+        });
         ctor_candidates.sort_by(|a, b| {
             (a.1.via_trait.is_some(), &a.1.name).cmp(&(b.1.via_trait.is_some(), &b.1.name))
         });
@@ -1893,6 +2016,16 @@ impl<'a> Ctx<'a> {
         }
     }
 
+    /// A `ScalarType::Handle` for `name` when it names a LIVE bridged opaque type
+    /// (present in `ref_type_names`, the same set the cross-type Ref return uses).
+    /// `None` otherwise, so an unresolved `&Self`/`&Other` stays an honest skip.
+    fn handle_param_target(&self, name: Option<&str>) -> Option<ScalarType> {
+        let name = name?;
+        self.ref_type_names
+            .contains(name)
+            .then(|| ScalarType::Handle(name.to_string()))
+    }
+
     fn classify_fn(
         &self,
         path: &str,
@@ -1984,10 +2117,23 @@ impl<'a> Ctx<'a> {
                 // lifetime-bearing `&'a [u8]` is fine — the slice is copied at the
                 // boundary, so no borrow outlives the call.
                 _ if is_u8_slice(type_) => Ok(ScalarType::Bytes),
-                // 1.1.2: `&Self` may also spell as `&D` inside a flattened blanket
-                // impl; treat every self-alias the same as `Self`.
-                Type::Generic(g) if g == "Self" || self_aliases.contains(&g.as_str()) => {
-                    Err(SkipReason::UnsupportedType("&Self receiver".into()))
+                // An inbound handle param: `&Self` (1.1.2: also `&D` inside a
+                // flattened blanket impl) is a reference to THIS bridged type
+                // (`Version::cmp_precedence(&self, other: &Self)`). Crosses as the
+                // caller's handle; `self_aliases[0]` is always the concrete name.
+                Type::Generic(g) if g == "Self" || self_aliases.contains(&g.as_str()) => self
+                    .handle_param_target(self_aliases.first().copied())
+                    .ok_or_else(|| SkipReason::UnsupportedType("&Self receiver".into())),
+                // An inbound handle param to ANOTHER bridged opaque type in the same
+                // module (`VersionReq::matches(&self, other: &Version)`). Mirrors the
+                // 1.2.4 cross-type Ref RETURN rule: the path must name a live handle
+                // and carry no lifetime (a lifetime-borrowed handle can't cross).
+                Type::ResolvedPath(inner)
+                    if self.ref_type_names.contains(&inner.path)
+                        && !has_lifetime_args(inner)
+                        && !inner_has_lifetime(inner, self.doc) =>
+                {
+                    Ok(ScalarType::Handle(inner.path.clone()))
                 }
                 _ => {
                     if lifetime.is_some() {
@@ -2106,6 +2252,15 @@ impl<'a> Ctx<'a> {
                 if rp.path == "String" {
                     return Ok(BridgeReturn::Str);
                 }
+                // A `std::cmp::Ordering` return (`Version::cmp_precedence`) has no
+                // primitive spelling, so it fits no scalar arm — but its three
+                // variants map onto an `i8` (-1/0/1). Lower it there: codegen wraps
+                // the call in a `match` and emits `-> i8`, so it rides the existing
+                // `TAG_INT` lane through the macro and both loaders. Matched on the
+                // leaf name like the other std leaves (`String`/`Vec`/`Option`).
+                if rp_name(&rp.path) == "Ordering" {
+                    return Ok(BridgeReturn::Ordering);
+                }
                 // A `-> Self` return reads as the type's own path. For a
                 // monomorphized type that path is still the ORIGINAL generic name
                 // (`Date`), not the mono name (`DateUtc`) — match on origin.
@@ -2174,7 +2329,9 @@ impl<'a> Ctx<'a> {
             // 1.1.2: a bare `-> D` inside a flattened blanket impl is a `-> Self`
             // return (sha2's `Digest::new() -> D`). Any other free generic stays a
             // Generic skip.
-            Type::Generic(g) if self_aliases.contains(&g.as_str()) => Ok(BridgeReturn::OwnSelf),
+            Type::Generic(g) if g == "Self" || self_aliases.contains(&g.as_str()) => {
+                Ok(BridgeReturn::OwnSelf)
+            }
             Type::Generic(_) => Err(SkipReason::Generic),
             Type::ImplTrait(_) => Err(SkipReason::Cursor),
             // 2.8: a by-value tuple/array/slice return of wide values (`(f64, f64)`)
@@ -2209,8 +2366,14 @@ impl<'a> Ctx<'a> {
             Some(Type::ResolvedPath(ok_rp)) if returns_self(bt, ok_rp, self_aliases) => {
                 Ok(BridgeReturn::OwnSelfResult)
             }
-            // 1.1.2: `Result<D, E>` in a flattened blanket impl is `Result<Self, E>`.
-            Some(Type::Generic(g)) if self_aliases.contains(&g.as_str()) => {
+            // `Result<Self, E>` — the literal `Self` alias always denotes this type
+            // (rustdoc renders an inherent `fn parse() -> Result<Self, Error>` with
+            // the ok type as `Generic("Self")`, and `self_aliases` holds only the
+            // concrete name). 1.1.2: `Result<D, E>` in a flattened blanket impl is
+            // likewise `Result<Self, E>`. The error crosses Display-stringified
+            // (see `OwnSelfResult` codegen), so a concrete `semver::Error` works
+            // exactly like regex's `String`.
+            Some(Type::Generic(g)) if g == "Self" || self_aliases.contains(&g.as_str()) => {
                 Ok(BridgeReturn::OwnSelfResult)
             }
             _ => Err(SkipReason::UnsupportedType(format!("{args:?}"))),
@@ -3497,6 +3660,20 @@ mod serde_lane_tests {
     }
 
     #[test]
+    fn ordering_return_rides_the_i8_lane() {
+        // A `std::cmp::Ordering` return (`Version::cmp_precedence`) classifies as the
+        // dedicated `Ordering` lane, which codegen lowers to `-> i8` — no primitive
+        // spelling, no wide fallback, no skip.
+        let doc = load_doc();
+        let cx = ctx(&doc);
+        let bt = owner_bt();
+        assert_eq!(
+            cx.classify_return(&Some(path("Ordering", vec![])), &bt, &[]),
+            Ok(BridgeReturn::Ordering)
+        );
+    }
+
+    #[test]
     fn manual_serde_impl_is_not_a_typed_record() {
         // 2.9's load-bearing safety rule: a MANUAL serde impl (chrono's `NaiveDate`
         // serializes as an ISO-8601 *string*, not a `{year, month, day}` record) must
@@ -3589,5 +3766,82 @@ mod serde_lane_tests {
             cx.classify_param_type(&leaf(&doc, "NaiveDate"), &[]),
             Err(SkipReason::UnsupportedType(_))
         ));
+    }
+}
+
+#[cfg(test)]
+mod reconcile_tests {
+    //! Direct coverage for the dead-opaque reconciliation pass. The corpus used to
+    //! exercise it via uuid's `Timestamp` (whose only bridgeable fn is now a
+    //! `-> Self` ctor, so it is live), so this synthesizes the dead-target shape.
+    use super::*;
+
+    fn opaque(name: &str, methods: Vec<BridgeFn>) -> BridgeType {
+        BridgeType {
+            name: name.into(),
+            kind: TypeKind::Opaque,
+            inner_path: format!("crate::{name}"),
+            module_path: vec![],
+            item_id: 0,
+            ctor: None,
+            methods,
+            injected_source: vec![],
+            wrapper: None,
+            mono: None,
+            serde: SerdeInfo::default(),
+            force_wide: None,
+        }
+    }
+
+    fn method(name: &str, ret: BridgeReturn) -> BridgeFn {
+        BridgeFn {
+            name: name.into(),
+            export_name: None,
+            params: vec![],
+            ret,
+            throws: None,
+            recv: Recv::Field0,
+            is_async: false,
+            ret_ownership: Ownership::Owned,
+            via_trait: None,
+            self_mut: false,
+            consumes_self: false,
+            is_static: false,
+        }
+    }
+
+    #[test]
+    fn demotes_ref_return_to_dead_opaque_type() {
+        // `Dead` is opaque with no ctor/methods/injected source → codegen never
+        // emits it. `Live` stays live (a `Bool` method) but also returns `Dead` by
+        // handle — a dangling wrapper reference the pass must demote to a skip.
+        let dead = opaque("Dead", vec![]);
+        let live = opaque(
+            "Live",
+            vec![
+                method("is_ok", BridgeReturn::Bool),
+                method("get_dead", BridgeReturn::Ref("Dead".into())),
+            ],
+        );
+        let mut types = vec![live, dead];
+        let mut skips = vec![];
+        reconcile_ref_returns(&mut types, &mut skips);
+
+        let live = types.iter().find(|t| t.name == "Live").unwrap();
+        assert!(
+            live.methods.iter().all(|m| m.name != "get_dead"),
+            "the return-to-dead method must be stripped"
+        );
+        assert!(
+            live.methods.iter().any(|m| m.name == "is_ok"),
+            "the healthy method must survive"
+        );
+        assert!(
+            skips
+                .iter()
+                .any(|s| s.item == "Live::get_dead"
+                    && format!("{:?}", s.reason).contains("Dead")),
+            "the demotion must be recorded as an honest skip"
+        );
     }
 }

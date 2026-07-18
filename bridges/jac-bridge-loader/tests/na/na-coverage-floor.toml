@@ -77,3 +77,13 @@ total = 7
 [libjac_bridge_map_so]
 bridged = 7
 total = 7
+
+# semver: the seed crate (binder-generated, with treat_as="opaque" overlay). na
+# bridges 13 of 14 — Version/VersionReq ctors, the major/minor/patch accessors,
+# cmp (a handle param, -1/0/1), and VersionReq.matches (a handle param) all cross;
+# the sole skip is Version.parse, an na-gated static (parse lost the ctor race to
+# new). Proven identical to CPython by na/semver_conformance.jac, the first
+# vertical exercising the INBOUND HANDLE PARAM lane (a bridged type passed as an arg).
+[libjac_bridge_semver_so]
+bridged = 13
+total = 14
