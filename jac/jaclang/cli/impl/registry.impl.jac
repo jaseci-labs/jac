@@ -1,6 +1,12 @@
 import argparse;
 import from jaclang.cli.banners { JAC_GITHUB_URL }
 
+def _norm_dest(kwargs: dict, name: str) -> str {
+    dest: str = kwargs.get("dest") or name.replace("-", "_");
+    kwargs["dest"] = dest;
+    return dest;
+}
+
 impl CommandRegistry.init -> None {
     self.commands = {};
     self._pending_extensions = {};
@@ -172,6 +178,7 @@ impl CommandRegistry._add_argument(parser: argparse.ArgumentParser, arg: Arg) ->
         kwargs["action"] = "append";
         kwargs["nargs"] = "+";
         kwargs["default"] = None;
+        _norm_dest(kwargs, arg.name);
         if arg.short {
             parser.add_argument(f"-{arg.short}", f"--{arg.name}", **kwargs);
         } else {
@@ -183,8 +190,7 @@ impl CommandRegistry._add_argument(parser: argparse.ArgumentParser, arg: Arg) ->
     } elif arg.kind == ArgKind.FLAG or arg.typ == bool {
         kwargs["action"] = "store_true";
         kwargs["default"] = arg.default if arg.default is not None else False;
-        shared_dest: str = kwargs.get("dest") or arg.name.replace("-", "_");
-        kwargs["dest"] = shared_dest;
+        shared_dest: str = _norm_dest(kwargs, arg.name);
         if arg.short {
             parser.add_argument(f"-{arg.short}", f"--{arg.name}", **kwargs);
         } else {
