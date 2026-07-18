@@ -70,6 +70,11 @@ const PyErrOccurred_t = *const fn () callconv(.c) ?*anyopaque;
 const PyErrClear_t = *const fn () callconv(.c) void;
 const PyErrFetch_t = *const fn (t: *?*anyopaque, v: *?*anyopaque, tb: *?*anyopaque) callconv(.c) void;
 const PyErrNormalize_t = *const fn (t: *?*anyopaque, v: *?*anyopaque, tb: *?*anyopaque) callconv(.c) void;
+// Stage B (`jac_py_call`): drive the injected `_jacpyi` codec + the actual call.
+const PyRunSimpleString_t = *const fn (cmd: [*:0]const u8) callconv(.c) c_int;
+const PyObjectCallOneArg_t = *const fn (callable: ?*anyopaque, arg: ?*anyopaque) callconv(.c) ?*anyopaque;
+const PyObjectCall_t = *const fn (callable: ?*anyopaque, args: ?*anyopaque, kwargs: ?*anyopaque) callconv(.c) ?*anyopaque;
+const PySequenceTuple_t = *const fn (o: ?*anyopaque) callconv(.c) ?*anyopaque;
 
 var p_gil_ensure: PyGILStateEnsure_t = undefined;
 var p_gil_release: PyGILStateRelease_t = undefined;
@@ -95,6 +100,17 @@ var p_err_normalize: PyErrNormalize_t = undefined;
 // `Py_None` is a DATA symbol: dlsym("_Py_NoneStruct") returns the address OF the
 // singleton, i.e. the `PyObject*` for None itself.
 var p_none: ?*anyopaque = undefined;
+var p_run_simple: PyRunSimpleString_t = undefined;
+var p_call_one: PyObjectCallOneArg_t = undefined;
+var p_call: PyObjectCall_t = undefined;
+var p_seq_tuple: PySequenceTuple_t = undefined;
+
+// Stage B lazy bootstrap: the `_jacpyi._decode`/`_encode` callables (owned
+// forever once resolved) and the one-shot install latch. Lazy so a host that
+// boots the engine but never calls Python pays no codec-injection cost.
+var p_decode: ?*anyopaque = null;
+var p_encode: ?*anyopaque = null;
+var bootstrap_failed: bool = false;
 
 /// Resolve the C-API this surface needs. Called from `jac_engine_boot` after the
 /// base forwarder surface is resolved; returns false (never crashes) on a missing
@@ -123,6 +139,10 @@ pub fn resolve(emb: *const embed.Embed) bool {
     p_err_fetch = emb.sym(PyErrFetch_t, "PyErr_Fetch") orelse return false;
     p_err_normalize = emb.sym(PyErrNormalize_t, "PyErr_NormalizeException") orelse return false;
     p_none = emb.sym(*anyopaque, "_Py_NoneStruct") orelse return false;
+    p_run_simple = emb.sym(PyRunSimpleString_t, "PyRun_SimpleString") orelse return false;
+    p_call_one = emb.sym(PyObjectCallOneArg_t, "PyObject_CallOneArg") orelse return false;
+    p_call = emb.sym(PyObjectCall_t, "PyObject_Call") orelse return false;
+    p_seq_tuple = emb.sym(PySequenceTuple_t, "PySequence_Tuple") orelse return false;
     return true;
 }
 
@@ -161,6 +181,73 @@ fn captureErr(out_err: *JacBuf) c_int {
     if (tb) |x| p_decref(x);
     p_err_clear();
     return ERR_PY;
+}
+
+/// Inject the `_jacpyi` msgpack codec module (once) and resolve its
+/// `_decode`/`_encode` callables. Lazy: called from the first `jac_py_call*`.
+/// Assumes the GIL is held. Latches on failure so a broken bootstrap doesn't
+/// re-run every call. Returns false with `out_err` populated on failure.
+fn ensureBootstrap(out_err: *JacBuf) bool {
+    if (p_decode != null) return true;
+    if (bootstrap_failed) {
+        out_err.* = allocBuf("jac_py_call: py-interop bootstrap previously failed");
+        return false;
+    }
+    if (p_run_simple(BOOTSTRAP_PY) != 0) {
+        bootstrap_failed = true;
+        _ = captureErr(out_err);
+        return false;
+    }
+    const m = p_import("_jacpyi");
+    if (m == null) {
+        bootstrap_failed = true;
+        _ = captureErr(out_err);
+        return false;
+    }
+    const dec = p_getattr(m, "_decode");
+    const enc = p_getattr(m, "_encode");
+    p_decref(m);
+    if (dec == null or enc == null) {
+        if (dec) |d| p_decref(d);
+        if (enc) |e| p_decref(e);
+        bootstrap_failed = true;
+        _ = captureErr(out_err);
+        return false;
+    }
+    p_decode = dec;
+    p_encode = enc;
+    return true;
+}
+
+/// Decode the msgpack arg blob to a Python arg tuple, call `callable(*args)`, and
+/// return the result as a NEW reference (or null with `out_err` set). Assumes the
+/// GIL is held. The arg blob MUST be a msgpack array (`packb([])` for no args).
+fn callCommon(callable: ?*anyopaque, args_ptr: [*]const u8, args_len: usize, out_err: *JacBuf) ?*anyopaque {
+    if (!ensureBootstrap(out_err)) return null;
+    const args_obj = p_bytes_from(args_ptr, @intCast(args_len));
+    if (args_obj == null) {
+        _ = captureErr(out_err);
+        return null;
+    }
+    const arglist = p_call_one(p_decode, args_obj); // -> a Python list
+    p_decref(args_obj);
+    if (arglist == null) {
+        _ = captureErr(out_err);
+        return null;
+    }
+    const argtuple = p_seq_tuple(arglist);
+    p_decref(arglist);
+    if (argtuple == null) {
+        _ = captureErr(out_err);
+        return null;
+    }
+    const result = p_call(callable, argtuple, null);
+    p_decref(argtuple);
+    if (result == null) {
+        _ = captureErr(out_err);
+        return null;
+    }
+    return result;
 }
 
 // ── exported surface ─────────────────────────────────────────────────────────
@@ -304,6 +391,45 @@ export fn jac_py_to_bytes(obj: ?*anyopaque, out_val: *JacBuf, out_err: *JacBuf) 
     return OK;
 }
 
+/// Call `callable(*args)` where `args` is a msgpack array blob, returning the
+/// result as a msgpack blob in `out_val` (scalar or container-of-scalars). A
+/// non-encodable result (an arbitrary object) raises -> `ERR_PY`; use
+/// `jac_py_call_h` for object results. `args` MUST be a msgpack array.
+export fn jac_py_call(callable: ?*anyopaque, args_ptr: [*]const u8, args_len: usize, out_val: *JacBuf, out_err: *JacBuf) c_int {
+    out_val.* = NULL_BUF;
+    out_err.* = NULL_BUF;
+    if (callable == null) return ERR_USE;
+    const g = p_gil_ensure();
+    defer p_gil_release(g);
+    const result = callCommon(callable, args_ptr, args_len, out_err) orelse return ERR_PY;
+    const enc = p_call_one(p_encode, result); // -> a Python `bytes`
+    p_decref(result);
+    if (enc == null) return captureErr(out_err); // non-encodable result
+    var buf: ?[*]const u8 = null;
+    var n: isize = 0;
+    if (p_bytes_as(enc, &buf, &n) != 0) {
+        p_decref(enc);
+        return captureErr(out_err);
+    }
+    if (buf) |b| out_val.* = allocBuf(b[0..@intCast(n)]);
+    p_decref(enc);
+    return OK;
+}
+
+/// Call `callable(*args)` (msgpack array blob) and return the result as a new-ref
+/// handle -> `*out_handle`. The general path (objects, DataFrames, ...); the
+/// caller `jac_py_decref`s the handle. `args` MUST be a msgpack array.
+export fn jac_py_call_h(callable: ?*anyopaque, args_ptr: [*]const u8, args_len: usize, out_handle: *u64, out_err: *JacBuf) c_int {
+    out_handle.* = 0;
+    out_err.* = NULL_BUF;
+    if (callable == null) return ERR_USE;
+    const g = p_gil_ensure();
+    defer p_gil_release(g);
+    const result = callCommon(callable, args_ptr, args_len, out_err) orelse return ERR_PY;
+    out_handle.* = @intFromPtr(result);
+    return OK;
+}
+
 /// Bump a handle's refcount (a second na wrapper adopting the same object).
 export fn jac_py_incref(obj: ?*anyopaque) void {
     if (obj == null) return;
@@ -325,3 +451,198 @@ export fn jac_py_decref(obj: ?*anyopaque) void {
 export fn jac_py_free_buf(ptr: ?*anyopaque) void {
     if (ptr) |p| std.c.free(p);
 }
+
+// The Python codec injected on first `jac_py_call*` (see ensureBootstrap).
+// A throwaway installer defines a msgpack subset codec as nested closures and
+// registers module `_jacpyi` with `_decode`/`_encode`, then deletes itself --
+// no __main__ pollution. The wire format is standard MessagePack, byte-identical
+// to the wide lane's, and differential-tested against the `msgpack` package on
+// CPython 3.14 (the bundled pbs version). Value shapes: None/bool/int/float/
+// str/bytes + list/dict.
+const BOOTSTRAP_PY =
+    \\def _jpi_install():
+    \\    import sys, struct as _st, types
+    \\
+    \\    def _decode(buf):
+    \\        v, off = _dec(buf, 0)
+    \\        return v
+    \\
+    \\    def _dec(b, off):
+    \\        c = b[off]
+    \\        off += 1
+    \\        if c <= 0x7F:
+    \\            return c, off
+    \\        if c >= 0xE0:
+    \\            return c - 0x100, off
+    \\        if 0x80 <= c <= 0x8F:
+    \\            return _dec_map(b, off, c & 0x0F)
+    \\        if 0x90 <= c <= 0x9F:
+    \\            return _dec_arr(b, off, c & 0x0F)
+    \\        if 0xA0 <= c <= 0xBF:
+    \\            n = c & 0x1F
+    \\            return b[off:off + n].decode("utf-8"), off + n
+    \\        if c == 0xC0:
+    \\            return None, off
+    \\        if c == 0xC2:
+    \\            return False, off
+    \\        if c == 0xC3:
+    \\            return True, off
+    \\        if c == 0xC4 or c == 0xC5 or c == 0xC6:
+    \\            n, off = _dec_len(b, off, 1 << (c - 0xC4))
+    \\            return bytes(b[off:off + n]), off + n
+    \\        if c == 0xCA:
+    \\            (f,) = _st.unpack_from(">f", b, off)
+    \\            return f, off + 4
+    \\        if c == 0xCB:
+    \\            (f,) = _st.unpack_from(">d", b, off)
+    \\            return f, off + 8
+    \\        if 0xCC <= c <= 0xCF:
+    \\            return _dec_uint(b, off, 1 << (c - 0xCC))
+    \\        if 0xD0 <= c <= 0xD3:
+    \\            return _dec_int(b, off, 1 << (c - 0xD0))
+    \\        if c == 0xD9 or c == 0xDA or c == 0xDB:
+    \\            n, off = _dec_len(b, off, 1 << (c - 0xD9))
+    \\            return b[off:off + n].decode("utf-8"), off + n
+    \\        if c == 0xDC:
+    \\            (n,) = _st.unpack_from(">H", b, off)
+    \\            return _dec_arr(b, off + 2, n)
+    \\        if c == 0xDD:
+    \\            (n,) = _st.unpack_from(">I", b, off)
+    \\            return _dec_arr(b, off + 4, n)
+    \\        if c == 0xDE:
+    \\            (n,) = _st.unpack_from(">H", b, off)
+    \\            return _dec_map(b, off + 2, n)
+    \\        if c == 0xDF:
+    \\            (n,) = _st.unpack_from(">I", b, off)
+    \\            return _dec_map(b, off + 4, n)
+    \\        raise ValueError("jac_py: bad msgpack lead 0x%02x" % c)
+    \\
+    \\    def _dec_len(b, off, width):
+    \\        if width == 1:
+    \\            return b[off], off + 1
+    \\        if width == 2:
+    \\            (n,) = _st.unpack_from(">H", b, off)
+    \\            return n, off + 2
+    \\        (n,) = _st.unpack_from(">I", b, off)
+    \\        return n, off + 4
+    \\
+    \\    def _dec_uint(b, off, width):
+    \\        fmt = {1: ">B", 2: ">H", 4: ">I", 8: ">Q"}[width]
+    \\        (n,) = _st.unpack_from(fmt, b, off)
+    \\        return n, off + width
+    \\
+    \\    def _dec_int(b, off, width):
+    \\        fmt = {1: ">b", 2: ">h", 4: ">i", 8: ">q"}[width]
+    \\        (n,) = _st.unpack_from(fmt, b, off)
+    \\        return n, off + width
+    \\
+    \\    def _dec_arr(b, off, n):
+    \\        out = []
+    \\        i = 0
+    \\        while i < n:
+    \\            v, off = _dec(b, off)
+    \\            out.append(v)
+    \\            i += 1
+    \\        return out, off
+    \\
+    \\    def _dec_map(b, off, n):
+    \\        out = {}
+    \\        i = 0
+    \\        while i < n:
+    \\            k, off = _dec(b, off)
+    \\            v, off = _dec(b, off)
+    \\            out[k] = v
+    \\            i += 1
+    \\        return out, off
+    \\
+    \\    def _encode(v):
+    \\        out = bytearray()
+    \\        _enc(v, out)
+    \\        return bytes(out)
+    \\
+    \\    def _enc(v, out):
+    \\        if v is None:
+    \\            out.append(0xC0)
+    \\        elif v is True:
+    \\            out.append(0xC3)
+    \\        elif v is False:
+    \\            out.append(0xC2)
+    \\        elif isinstance(v, int):
+    \\            _enc_int(v, out)
+    \\        elif isinstance(v, float):
+    \\            out.append(0xCB)
+    \\            out += _st.pack(">d", v)
+    \\        elif isinstance(v, str):
+    \\            _enc_str(v, out)
+    \\        elif isinstance(v, (bytes, bytearray)):
+    \\            _enc_bin(v, out)
+    \\        elif isinstance(v, (list, tuple)):
+    \\            _enc_len(out, len(v), 0x90, 0xDC, 0xDD)
+    \\            for e in v:
+    \\                _enc(e, out)
+    \\        elif isinstance(v, dict):
+    \\            _enc_len(out, len(v), 0x80, 0xDE, 0xDF)
+    \\            for k, val in v.items():
+    \\                _enc(k, out)
+    \\                _enc(val, out)
+    \\        else:
+    \\            raise TypeError("jac_py_call: non-encodable result %r" % type(v).__name__)
+    \\
+    \\    def _enc_int(v, out):
+    \\        if 0 <= v <= 0x7F:
+    \\            out.append(v)
+    \\        elif -32 <= v < 0:
+    \\            out.append(v + 0x100)
+    \\        elif 0 <= v <= 0xFFFFFFFFFFFFFFFF:
+    \\            out.append(0xCF)
+    \\            out += _st.pack(">Q", v)
+    \\        elif -(1 << 63) <= v < 0:
+    \\            out.append(0xD3)
+    \\            out += _st.pack(">q", v)
+    \\        else:
+    \\            raise OverflowError("jac_py_call: int out of 64-bit range")
+    \\
+    \\    def _enc_str(v, out):
+    \\        data = v.encode("utf-8")
+    \\        n = len(data)
+    \\        if n <= 0x1F:
+    \\            out.append(0xA0 | n)
+    \\        else:
+    \\            _enc_len_only(out, n, 0xD9, 0xDA, 0xDB)
+    \\        out += data
+    \\
+    \\    def _enc_bin(v, out):
+    \\        n = len(v)
+    \\        _enc_len_only(out, n, 0xC4, 0xC5, 0xC6)
+    \\        out += bytes(v)
+    \\
+    \\    def _enc_len(out, n, fix_base, tag16, tag32):
+    \\        if n <= 0x0F:
+    \\            out.append(fix_base | n)
+    \\        elif n <= 0xFFFF:
+    \\            out.append(tag16)
+    \\            out += _st.pack(">H", n)
+    \\        else:
+    \\            out.append(tag32)
+    \\            out += _st.pack(">I", n)
+    \\
+    \\    def _enc_len_only(out, n, tag8, tag16, tag32):
+    \\        if n <= 0xFF:
+    \\            out.append(tag8)
+    \\            out.append(n)
+    \\        elif n <= 0xFFFF:
+    \\            out.append(tag16)
+    \\            out += _st.pack(">H", n)
+    \\        else:
+    \\            out.append(tag32)
+    \\            out += _st.pack(">I", n)
+    \\
+    \\    m = types.ModuleType("_jacpyi")
+    \\    m._decode = _decode
+    \\    m._encode = _encode
+    \\    sys.modules["_jacpyi"] = m
+    \\
+    \\
+    \\_jpi_install()
+    \\del _jpi_install
+;

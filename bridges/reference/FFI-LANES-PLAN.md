@@ -1220,10 +1220,29 @@ these first; the adversarial suite already contains skip-gated tests waiting on 
       `none`). Verified: `zig build pyembed` green, all 16 symbols exported
       (`nm -D`); an na host declaring the surface `nacompile`s + links (JacBuf/u64
       out-slots marshal through na `bytes`; all resolve DT_NEEDED).
-  - REMAINING (Stage B): `jac_py_call(handle, args_payload, args_len, out_val,
-      out_err)` -- decode the msgpack arg blob to a Python tuple (pure-Python codec
-      injected in the shim bootstrap, matching the Phase-2 wire format), `PyObject_Call`,
-      encode the result back to a msgpack JacBuf. Plus the CI/fused-build e2e run.
+  - LANDED (Stage B -- `jac_py_call` + `jac_py_call_h`): both take a msgpack ARRAY
+      arg blob (`packb([])` for no args); `callCommon` decodes it to a Python tuple
+      via the injected codec, `PySequence_Tuple`, then `PyObject_Call`. `jac_py_call`
+      encodes the result back to a msgpack JacBuf (scalar/container-of-scalars; a
+      non-encodable object raises -> ERR_PY); `jac_py_call_h` returns the result as a
+      new-ref handle (the general path -- objects/DataFrames). Codec = a pure-Python
+      MessagePack subset (None/bool/int/float/str/bytes + list/dict) injected LAZILY
+      on first call as an isolated `_jacpyi` module (throwaway installer w/ nested
+      closures, no **main** pollution); standard-msgpack wire, byte-identical to the
+      wide lane. Differential-tested against the `msgpack` package on CPython 3.14
+      (the bundled pbs version): 43 value shapes both directions + crafted
+      int8/16/32/float32/str8 decode paths + non-encodable-raises; the embedded Zig
+      string literal reconstructs byte-identical to the tested source. Verified: `zig
+      build pyembed` green, both symbols exported; the test's exact 77-line emitted na
+      source nacompiles + links all 9 symbols DT_NEEDED.
+  - LANDED: `tests/runtimelib/client/test_pyinterop_surface.jac` -- na host drives
+      the surface e2e: `import("operator")` -> `getattr("add")` -> `call_h(msgpack
+      [40,2])` -> `to_int` == 42 (handle path, plain int compare, no na msgpack
+      decoder); `call(...)` -> msgpack result blob of len 1 (msgpack of 42 is one
+      byte); `import("no_such_module_xyz")` -> non-zero status + non-empty out_err.
+      Same `_bundle_runtime` fused-only disposition as the 3.0 spike.
+  - REMAINING: the CI/fused-build e2e run (execute the surface binary on a `zig
+      build` jac); shared with 3.0's remaining e2e half.
 - [ ] 3.2 `jaclang/runtimelib/.../python.na.jac`: `PyObj` with `__del__` decref;
       scalar/str/bytes conversions; lists/dicts as opaque PyObj + indexer
       helpers; GIL ensure/release per call; main-thread-only documented; make
