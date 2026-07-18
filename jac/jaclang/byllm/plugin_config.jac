@@ -1,14 +1,4 @@
-"""Plugin configuration hooks for jac-byllm.
-
-This module implements JacConfig hooks to integrate with core's
-configuration system, registering:
-- Plugin metadata (name, version)
-- Config schema for [byllm] section
-"""
-
-"""Plugin configuration hooks for jac-byllm."""
 class JacByllmPluginConfig {
-    """Return plugin metadata."""
     static def get_plugin_metadata -> dict[str, any] {
         return {
             "name": "byllm",
@@ -17,7 +7,6 @@ class JacByllmPluginConfig {
         };
     }
 
-    """Return the plugin's configuration schema for [byllm]."""
     static def get_config_schema -> dict[str, any] {
         return {
             "section": "byllm",
