@@ -39,7 +39,6 @@ impl CommandExecutor.run_handler(spec: CommandSpec, args: dict[str, any]) -> int
 
 impl get_executor -> CommandExecutor {
     import from jaclang.cli.executor { CommandExecutor }
-    global _executor;
     if _executor is None {
         _executor = CommandExecutor();
     }

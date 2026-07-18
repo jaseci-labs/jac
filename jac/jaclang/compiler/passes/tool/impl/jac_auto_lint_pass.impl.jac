@@ -470,7 +470,60 @@ impl JacAutoLintPass.can_convert_to_glob(assignment: uni.Assignment) -> bool {
             return False;
         }
     }
+    if isinstance(assignment.value, uni.FuncCall)
+    or len(assignment.value.get_all_sub_nodes(uni.FuncCall)) > 0 {
+        return False;
+    }
     return True;
+}
+
+impl JacAutoLintPass.names_unsafe_to_globalize(module: uni.Module) -> set[str] {
+    counts: dict[str, int] = {};
+    for stmt in module.body {
+        target_lists: list = [];
+        if isinstance(stmt, uni.GlobalVars) {
+            for assign in stmt.assignments {
+                target_lists.append(assign.target);
+            }
+        } elif isinstance(stmt, uni.ModuleCode) and stmt.name is None {
+            for inner_stmt in stmt.body {
+                for assign in inner_stmt.get_all_sub_nodes(uni.Assignment) {
+                    target_lists.append(assign.target);
+                }
+                if isinstance(inner_stmt, uni.Assignment) {
+                    target_lists.append(inner_stmt.target);
+                }
+            }
+        }
+        for targets in target_lists {
+            for target in targets {
+                if isinstance(target, uni.Name) {
+                    counts[target.value] = counts.get(target.value, 0) + 1;
+                }
+            }
+        }
+    }
+    return {
+        name
+        for (name, count) in counts.items()
+        if count > 1
+    };
+}
+
+impl JacAutoLintPass.entry_written_names(module: uni.Module) -> set[str] {
+    written: set[str] = set();
+    for stmt in module.body {
+        if isinstance(stmt, uni.ModuleCode) and stmt.name is None {
+            for assign in stmt.get_all_sub_nodes(uni.Assignment) {
+                for target in assign.target {
+                    if isinstance(target, uni.Name) {
+                        written.add(target.value);
+                    }
+                }
+            }
+        }
+    }
+    return written;
 }
 
 impl JacAutoLintPass.enter_module(nd: uni.Module) -> None {
@@ -481,6 +534,8 @@ impl JacAutoLintPass.enter_module(nd: uni.Module) -> None {
     if self.main_module is None {
         self.main_module = module;
     }
+    unsafe_globalize = self.names_unsafe_to_globalize(module);
+    entry_written = self.entry_written_names(module);
     new_body: list[uni.UniNode] = [];
     for stmt in module.body {
         if self._is_future_annotations_import(stmt)
@@ -494,7 +549,18 @@ impl JacAutoLintPass.enter_module(nd: uni.Module) -> None {
                 extracted_stmt: uni.UniNode | None = None;
 
                 if isinstance(inner_stmt, uni.Assignment)
-                and self.can_convert_to_glob(inner_stmt) {
+                and self.can_convert_to_glob(inner_stmt)
+                and not any(
+                    target.value in unsafe_globalize for target in inner_stmt.target
+                )
+                and not (
+                    isinstance(inner_stmt.value, uni.Name)
+                    and inner_stmt.value.value in entry_written
+                )
+                and not any(
+                    nm.value in entry_written
+                    for nm in inner_stmt.value.get_all_sub_nodes(uni.Name)
+                ) {
                     extracted_stmt = self.create_glob_from_assignment(inner_stmt);
                 } elif self.is_module_level_construct(inner_stmt) {
                     extracted_stmt = inner_stmt;
@@ -1195,6 +1261,9 @@ impl JacAutoLintPass._is_future_annotations_import(stmt: uni.UniNode) -> bool {
 }
 
 impl JacAutoLintPass._fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> None {
+    if self._is_file_excluded(impl_node.loc.mod_path) {
+        return;
+    }
     decl: uni.Ability | None = None;
     if isinstance(impl_node.decl_link, uni.Ability) {
         decl = impl_node.decl_link;
@@ -2734,6 +2803,9 @@ impl JacAutoLintPass._build_property_has(
 }
 
 impl JacAutoLintPass._convert_properties(container: uni.Archetype) -> None {
+    if self._is_file_excluded(container.loc.mod_path) {
+        return;
+    }
     body = container.body;
     if not isinstance(body, list) {
         return;
@@ -2944,6 +3016,9 @@ impl JacAutoLintPass._impl_property_kind(nd: uni.ImplDef) -> str {
 }
 
 impl JacAutoLintPass._convert_property_impl(nd: uni.ImplDef) -> None {
+    if self._is_file_excluded(nd.loc.mod_path) {
+        return;
+    }
     kind = self._impl_property_kind(nd);
     if kind == "" {
         return;

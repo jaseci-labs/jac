@@ -616,7 +616,6 @@ impl NormalizePass.enter_has_var(nd: uni.HasVar) -> None {
         new_kid.append(nd.value);
     }
     if nd.defer {
-        new_kid.append(nd.gen_token(Tok.KW_BY));
         new_kid.append(nd.gen_token(Tok.KW_POST_INIT));
     }
     nd.set_kids(nodes=new_kid);
@@ -765,9 +764,9 @@ impl NormalizePass.enter_iter_for_stmt(nd: uni.IterForStmt) -> None {
     }
     new_kid.append(nd.gen_token(Tok.KW_FOR));
     new_kid.append(nd.iter);
-    new_kid.append(nd.gen_token(Tok.KW_TO));
+    new_kid.append(nd.gen_token(Tok.KW_WHILE));
     new_kid.append(nd.condition);
-    new_kid.append(nd.gen_token(Tok.KW_BY));
+    new_kid.append(nd.gen_token(Tok.KW_WITH));
     new_kid.append(nd.count_by);
     new_kid.append(nd.gen_token(Tok.LBRACE));
     for stmt in nd.body {
@@ -800,9 +799,10 @@ impl NormalizePass.enter_in_for_stmt(nd: uni.InForStmt) -> None {
     nd.set_kids(nodes=new_kid);
 }
 
-impl NormalizePass.enter_region_stmt(nd: uni.RegionStmt) -> None {
+impl NormalizePass.enter_open_stmt(nd: uni.OpenStmt) -> None {
     new_kid: list[uni.UniNode] = [
-        nd.gen_token(Tok.NAME, "region"),
+        nd.gen_token(Tok.KW_IN),
+        nd.target,
         nd.gen_token(Tok.LBRACE),
 
     ];
@@ -950,14 +950,6 @@ impl NormalizePass.enter_await_expr(nd: uni.AwaitExpr) -> None {
 impl NormalizePass.enter_cast_expr(nd: uni.CastExpr) -> None {
     new_kid: list[uni.UniNode] = [nd.value, nd.gen_token(Tok.KW_AS), nd.cast_type];
     nd.set_kids(nodes=new_kid);
-}
-
-impl NormalizePass.enter_global_stmt(nd: uni.GlobalStmt) -> None {
-    self._normalize_name_list_stmt(nd, Tok.GLOBAL_OP);
-}
-
-impl NormalizePass.enter_non_local_stmt(nd: uni.NonLocalStmt) -> None {
-    self._normalize_name_list_stmt(nd, Tok.NONLOCAL_OP);
 }
 
 impl NormalizePass.enter_assignment(nd: uni.Assignment) -> None {

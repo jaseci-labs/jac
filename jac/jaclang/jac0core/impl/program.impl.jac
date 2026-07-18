@@ -19,6 +19,10 @@ impl JacProgram.init(
 
     self._auto_promote_native: bool = False;
     self._auto_promote_target: str = "";
+
+    self._inferred_mods: set = set();
+
+    self._analyses_run: dict = {};
 }
 
 impl JacProgram.hub_cache_stamp(self: JacProgram, resolved_path: str) -> None {

@@ -10,6 +10,7 @@ import from jaclang.jac0core.constant {
     is_mut_kind
 }
 import from jaclang.jac0core.passes.transform { Transform }
+import jaclang.compiler.passes.main.dataflow as dataflow;
 
 glob SymId: TypeAlias = int,
      DataflowTransfer: TypeAlias = Callable[[uni.UniCFGNode, set[SymId]], set[SymId]];
@@ -51,17 +52,36 @@ obj OwnershipCheckPass(Transform[uni.Module, uni.Module]) {
         idx_returns: list[uni.ReturnStmt] = [],
         idx_concurrent: list[uni.ConcurrentExpr] = [],
         name_uses_by_sym: dict[SymId, list[uni.Name]] = {},
-        val_decl: dict[SymId, uni.Name] = {};
+        imm_decl: dict[SymId, uni.Name] = {},
+        nogc_prov: (str | None) = None;
+
+    static has PROVIDES: tuple = ('ownership', ),
+        REQUIRES: tuple = ('cfg', 'inference');
 
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;
+    def _nogc_setup -> None;
+    def _nogc_resolve_provenance -> (str | None);
+    def _nogc_infer_locals -> None;
+    def _nogc_tag_shape(tag: uni.SubTag | None) -> str;
+    def _nogc_local_shape(nm: uni.Name) -> str;
+    def _nogc_local_shape_expr_heap(expr: uni.Expr | None) -> bool;
+    def _nogc_expr_type_is_heap(expr: uni.Expr | None) -> bool;
+    def _expr_scalar_typed(expr: uni.Expr | None) -> bool;
+    def _nogc_is_container_expr(expr: uni.Expr | None) -> bool;
+    def _nogc_container_grow_method(call: uni.FuncCall) -> (str | None);
+    def _nogc_module_enforced(mod_name: str) -> bool;
+    def _nogc_check_call(call: uni.FuncCall, prov: str) -> None;
+    def _emit_enforcement_diagnostics -> None;
     def _build_index(tree: uni.UniNode) -> None;
     def _stamp_ownership -> None;
+    def _stamp_overwrite_consumed -> None;
     def _has_region_blocks -> bool;
     def _emit_region_escape_diagnostics -> None;
     def _emit_sendability_diagnostics -> None;
+    def _is_deep_immutable_scalar(nm: uni.Name) -> bool;
     def _emit_marker_diagnostics -> None;
-    def _emit_val_mutation(
+    def _emit_imm_mutation(
         sid: SymId, site: uni.UniNode, decl: uni.Name | None
     ) -> None;
 
@@ -74,11 +94,20 @@ obj OwnershipCheckPass(Transform[uni.Module, uni.Module]) {
     def _place_of(nd: uni.Expr | None) -> (uni.Name | None);
     def _places_reachable(nd: uni.Expr | None) -> list[uni.Name];
     def _region_escapee_roots(
-        expr: uni.Expr | None, region: uni.RegionStmt
+        expr: uni.Expr | None, region: uni.OpenStmt
     ) -> list[uni.Name];
 
-    def _is_region_local(nd: uni.Name, region: uni.RegionStmt) -> bool;
-    def _emit_region_escape(nm: uni.Name, region: uni.RegionStmt) -> None;
+    def _is_region_local(nd: uni.Name, region: uni.OpenStmt) -> bool;
+    def _emit_region_escape(nm: uni.Name, region: uni.OpenStmt) -> None;
+    def _region_expr_is_scalar(expr: uni.Expr | None) -> bool;
+    def _region_callee_is_safe(call: uni.FuncCall, region: uni.OpenStmt) -> bool;
+    def _stamp_region_borrows -> None;
+    def _open_handle_name(region: uni.OpenStmt) -> (uni.Name | None);
+    def _region_handle_sid(region: uni.OpenStmt) -> (SymId | None);
+    def _region_handle_kind(region: uni.OpenStmt) -> str;
+    def _param_is_region_borrow(param: uni.ParamVar) -> bool;
+    def _region_param_count(region: uni.OpenStmt) -> int;
+    def _call_borrows_handle(expr: uni.Expr | None, hsid: SymId) -> bool;
     def _is_own_decl(nd: uni.Assignment) -> (uni.Name | None);
     def _is_borrow_decl(nd: uni.Assignment) -> (uni.Name | None);
     def _borrow_target(nd: uni.Assignment) -> (uni.Name | None);

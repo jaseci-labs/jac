@@ -17,15 +17,15 @@ Use these appendices when you need to look up a specific keyword, operator, or s
 
 | Keyword | Category | Description |
 |---------|----------|-------------|
-| `abs` | Modifier | Abstract ability declaration (postfix, e.g., `def area() -> float abs;`) |
-| `and` | Operator | Logical AND (also `&&`) |
+| `abst` | Modifier | Abstract ability declaration (postfix, e.g., `def area() -> float abst;`) |
+| `and` | Operator | Logical AND |
 | `as` | Operator / Alias | Type-cast operator (`expr as Type`); also the alias in `import`/`with`/`except`/`match` |
 | `assert` | Statement | Assertion |
 | `async` | Modifier | Async function/walker |
 | `await` | Expression | Await async |
 | `break` | Control | Exit loop |
 | `by` | Operator | Delegation operator (used by byllm for LLM) |
-| `can` | Declaration | Ability (method on archetypes) |
+| `can` | Declaration | Event-triggered ability (always with `with entry`/`with exit`; use `def` for functions) |
 | `case` | Control | Match/switch case |
 | `cl` | Block | Client-side code block |
 | `na` | Block | Native code block (compiles to LLVM IR) |
@@ -47,7 +47,6 @@ Use these appendices when you need to look up a specific keyword, operator, or s
 | `for` | Control | For loop |
 | `from` | Import | Import from |
 | `glob` | Declaration | Global variable |
-| `global` | Scope | Access global scope |
 | `has` | Declaration | Instance field |
 | `here` | OSP | Current node (in walker) |
 | `if` | Control | Conditional |
@@ -60,10 +59,9 @@ Use these appendices when you need to look up a specific keyword, operator, or s
 | `lambda` | Expression | Anonymous function |
 | `match` | Control | Pattern match |
 | `node` | Archetype | Node type |
-| `nonlocal` | Scope | Access nonlocal scope |
 | `not` | Operator | Logical NOT |
 | `obj` | Archetype | Object/class |
-| `or` | Operator | Logical OR (also `\|\|`) |
+| `or` | Operator | Logical OR |
 | `override` | Modifier | Override method |
 | `postinit` | Method | Post-constructor |
 | `priv` | Access | Private |
@@ -84,9 +82,9 @@ Use these appendices when you need to look up a specific keyword, operator, or s
 | `sv` | Block | Server-side code block |
 | `switch` | Control | Switch statement |
 | `test` | Declaration | Test block |
-| `to` | Control | For loop upper bound |
 | `try` | Control | Try block |
 | `type` | Module | Type-only import marker (`import type from ...`) |
+| `visit` | OSP | Queue node(s)/edge(s) for walker traversal (`visit [-->];`) |
 | `visitor` | OSP | Visiting walker (in node) |
 | `wait` | Concurrency | Wait for concurrent result |
 | `walker` | Archetype | Walker type |
@@ -96,8 +94,8 @@ Use these appendices when you need to look up a specific keyword, operator, or s
 
 **Notes:**
 
-- The abstract keyword is `abs`, not `abstract`
-- Logical operators have both word and symbol forms: `and`/`&&`, `or`/`||`
+- The abstract keyword is `abst`, not `abstract` (and not `abs`, which is the built-in absolute-value function)
+- Logical operators are word-form only: `and`, `or`, `not` (there are no `&&`/`||` symbol forms)
 - `cl`, `sv`, and `na` are block keywords for client/server/native code separation
 - **Special variable references** (`self`, `Self`, `super`, `root`, `here`, `visitor`, `init`, `postinit`) are used directly without backtick escaping -- they are built-in references, not identifiers. `self` refers to the current instance; `Self` refers to the enclosing type (see [Class Methods](../language/functions-objects.md#6-static-methods-and-class-methods)). Only use backtick escaping when repurposing other keywords as regular identifiers (e.g., `` `type `` as a field name).
 
@@ -132,8 +130,8 @@ Use these appendices when you need to look up a specific keyword, operator, or s
 
 | Operator | Description |
 |----------|-------------|
-| `and`, `&&` | Logical AND |
-| `or`, `\|\|` | Logical OR |
+| `and` | Logical AND |
+| `or` | Logical OR |
 | `not` | Logical NOT |
 
 ### Graph (OSP)
@@ -174,23 +172,23 @@ module        : STRING? element*              # Optional module docstring
 element       : STRING? toplevel_stmt         # Optional statement docstring
 toplevel_stmt : import | archetype | ability | impl | test | entry
               | (cl | sv | na) "{" toplevel_stmt* "}"  # Braced block (recommended)
-              | "to" (cl | sv | na) ":"              # Section header
               | (cl | sv | na) toplevel_stmt         # Single-statement prefix
 
 archetype     : async? (obj | node | edge | walker | enum) NAME inheritance? body
 inheritance   : "(" NAME ("," NAME)* ")"
 body          : "{" member* "}"
 
-member        : has_stmt | ability | impl
-has_stmt      : "has" (modifier)? NAME ":" type ("=" expr)? ";"
-ability       : async? "can" NAME params? ("->" type)? event_clause? (body | ";")
+member        : has_stmt | ability | function | impl
+has_stmt      : "has" (modifier)? NAME ":" type ("=" expr | "postinit")? ";"
+ability       : async? "can" NAME event_clause (body | ";")
+function      : async? "def" NAME params? ("->" type)? (body | ";")
 event_clause  : "with" type_expr? (entry | exit)
 
 import        : "import" "type"? (module | "from" import_path "{" names "}")
               | "import" "from" STRING "{" extern_decl* "}"  # C library import (na)
 import_path   : (NAME ":")? dotted_name       # Optional namespace prefix (e.g., jac:module)
 entry         : "with" "entry" (":" NAME)? body
-test          : "test" NAME body
+test          : "test" STRING? body           # Name is a string literal or omitted; a bare NAME is a parse error
 impl          : "impl" NAME "." NAME params body
 
 visit_stmt    : "visit" (":" expr ":")? expr ("else" block)?  # Optional index selector
@@ -302,13 +300,19 @@ walker Example {
 
 Walker abilities don't carry an arrow-return type annotation -- `report` accumulates results on the walker's `reports` list, and `return` (with no value) ends the current ability.
 
-### 7. Global Modification Requires Declaration
+### 7. Assignment to a `glob` Rebinds It
+
+There is no `global`/`nonlocal` statement -- a bare assignment (including `+=`) inside a function binds to the nearest enclosing binding, so it modifies a module-level `glob` directly. Shadow with a typed declaration when you want a fresh local instead:
 
 ```jac
 glob counter: int = 0;
 
 def increment -> None {
-    global counter;  # Required!
+    counter += 1;  # Rebinds the glob -- no declaration needed
+}
+
+def local_count -> None {
+    counter: int = 100;  # Typed declaration = new local; the glob is untouched
     counter += 1;
 }
 ```

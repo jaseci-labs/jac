@@ -238,7 +238,7 @@ jac run greet.jac --name Alice
 Start a Jac application as an HTTP API server. Use `--scale` to deploy to Kubernetes (handled by the built-in `scale` subsystem; the first `--scale` run resolves its deploy deps via `jac install`). Use `--dev` for Hot Module Replacement (HMR) during development; live-reload is powered by the `watchdog` library bundled in the `jac` binary, so no extra install is needed.
 
 ```bash
-jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a API_PORT] [-n] [--no-no_client] [--profile PROFILE] [--client {web,desktop,pwa,mobile}] [--host HOST] [--platform {auto,android,ios}] [--scale] [--no-scale] [-b] [--no-build] [filename]
+jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a API_PORT] [-n] [--no-no-client] [--profile PROFILE] [--client {web,pwa,static,mobile,desktop,cef,react-native}] [--host HOST] [--platform {auto,android,ios}] [--scale] [--no-scale] [-t TARGET] [--enable-tls] [--no-enable-tls] [--dry-run] [--no-dry-run] [--show-yaml] [--no-show-yaml] [filename]
 ```
 
 | Option | Description | Default |
@@ -502,7 +502,7 @@ jac test main.jac -v
 Format Jac code according to style guidelines. For auto-linting (code corrections like combining consecutive `has` statements, converting `@staticmethod` to `static`), use `jac check --lint --fix` instead.
 
 ```bash
-jac fmt [-h] [-s] [-l] [-c] paths [paths ...]
+jac fmt [-h] [-s] [-l] [-c] [-C] paths [paths ...]
 ```
 
 | Option | Description | Default |
@@ -511,6 +511,7 @@ jac fmt [-h] [-s] [-l] [-c] paths [paths ...]
 | `-s, --to_screen` | Print to stdout instead of writing | `False` |
 | `-l, --lintfix` | Also apply auto-lint fixes in the same pass | `False` |
 | `-c, --check` | Check if files are formatted without modifying them (exit 1 if unformatted) | `False` |
+| `-C, --cache` | Skip files already known to be formatted (keyed on content + effective config + formatter version) | `False` |
 
 **Examples:**
 
@@ -526,9 +527,14 @@ jac fmt .
 
 # Check formatting without modifying (useful in CI)
 jac fmt . --check
+
+# Skip already-formatted files (biggest win in pre-commit / CI)
+jac fmt . --cache
 ```
 
 > **Note**: For auto-linting (code corrections), use `jac check --lint --fix` instead. See [`jac check`](#jac-check) above.
+>
+> **Format cache**: `--cache` records each file proven clean under `<build dir>/<cache dir>/fmt-v1/` (default `.jac/cache/fmt-v1/`, already git-ignored). Outside a project (no `jac.toml`), the same default path is created next to the formatted file. A later run skips such files entirely -- no parse, no format pass, no lint. An entry is only ever written for a fully successful, unchanged (or just-rewritten) result, so syntax errors, lint failures, and annex failures are never cached as clean. `--cache` is an explicit opt-in and enables the format cache regardless of [`[cache].enabled`](../config/index.md#cache) (that setting gates the bytecode cache). Caching is disabled when combined with `--to_screen` so preview always prints source. `jac precommit` enables the cache automatically; with `--staged --verify` it keys on the **staged blob bytes** of the full module unit (including tracked sibling `.impl.jac`/`.test.jac` annexes) while preserving the original logical path for config/lint discovery, so a clean staged file is a hit even over a dirty worktree. Ordinary `--staged` (without `--verify`) still formats worktree files. Changing the file content, the effective `[format]` / `[check]` settings, the logical path under `--lintfix`, or the formatter pipeline invalidates the relevant entries.
 >
 > **Safety**: If the formatter detects that comments were displaced (e.g., moved to the end of the file), it emits error `E5051` and refuses to save the file. Run `jac fmt <file> -s` to inspect the output without writing.
 
@@ -1271,8 +1277,8 @@ jac scale <action> [name|file] [--target TARGET] [--component COMPONENT]
 
   Service URLs
   ────────────────────────────────────────────
-  Application:  http://localhost:30001
-  Grafana:      http://localhost:30003
+  Application:  http://localhost:30080
+  Grafana:      http://localhost:30080/grafana
 ```
 
 **Status indicators:**
@@ -1615,7 +1621,7 @@ jac purge
 Run the whole-program **type-check gate** (fail-closed; reuses [`jac check`](#jac-check)), then emit **one** artifact. By default `jac build` produces a `.jab` -- a single self-describing sealed app bundle. Use `--as` to select a different projection. `jac build` is now the single front door that the former `jac bundle` (wheel/npm), `jac eject` (source), and project-level `jac nacompile` (native/binary) folded into.
 
 ```bash
-jac build [-h] [--as {jab,sealed,binary,wheel,npm,source,native}] [-o OUTPUT] [-n] [-c]
+jac build [-h] [--as {jab,sealed,binary,wheel,npm,source,native}] [-o OUTPUT] [-n] [-c] [-f]
           [--client {web,pwa,static,mobile,desktop,cef,react-native}] [-p PLATFORM] [filename]
 ```
 
@@ -1626,6 +1632,7 @@ jac build [-h] [--as {jab,sealed,binary,wheel,npm,source,native}] [-o OUTPUT] [-
 | `-o, --output` | Output directory | `dist` |
 | `-n, --no_typecheck` | Skip the type-check gate | `False` |
 | `-c, --check_only` | Run the gate only; emit nothing | `False` |
+| `-f, --fat` | Vendor the Python dependency closure into the bundle (`jab` / `binary` only) so it materializes offline | `False` |
 | `--client` | Build a client shell (`web`, `pwa`, `static`, `mobile`, `desktop`, `cef`, `react-native`) | None |
 | `-p, --platform` | Platform selector for `--client` builds | Current platform |
 
@@ -1649,6 +1656,17 @@ jac build [-h] [--as {jab,sealed,binary,wheel,npm,source,native}] [-o OUTPUT] [-
 
 - `--as binary` packages **any** app (walkers, Python imports, a full web client) into one executable by appending the sealed `.jab` onto a copy of the running `jac` launcher. The file carries the full runtime and boots through the same path as `jac run app.jab`, with zero live compilation. Because it embeds the runtime, the artifact is large but complete: hand it to a machine with no Jac, Python, or Node installed. The entry point resolves the same way `jac run` does (a `main.jac` or the `[project]` entry-point in `jac.toml`); an entry-less package is rejected at build time.
 - `--as native` AOT-compiles the restricted `na` subset through LLVM into a **small, dependency-free** binary (no walkers, no async, no Python imports). Reach for it when your program fits the [native pathway](../language/native-pathway.md) and you want the smallest possible artifact.
+
+**Fat jab: vendoring the Python dependency closure (`--fat`).** A plain `.jab` bundles the sealed app, client dist, and native binaries, but its *Python* dependencies are only declared; they are pip-installed on the target at run or deploy time, so running a jab still assumes the target can reach PyPI. `jac build --fat` (on the `jab` and `binary` projections) resolves the app's runtime Python closure and packs the wheels into the bundle under `_vendor/wheels/`, the same way a Spring Boot fat jar nests every dependency jar:
+
+```bash
+jac build --fat                 # fat .jab in dist/
+jac build --as binary --fat     # fully offline-capable executable
+```
+
+- **Offline materialize.** When [`jac run app.jab`](#jac-run) / [`jac start app.jab`](#jac-start) (or a `--fat` binary) materializes the bundle, the vendored wheels install offline into a cache-scoped site directory that goes on `sys.path`, so the app imports its dependencies with **no PyPI access**. The install runs once per bundle and is skipped on subsequent runs.
+- **Content-addressed for free.** The wheels ride inside the tarball as a sibling of the sealed image, so the jab's existing sha256 content addressing covers them: bump a dependency, get a new digest, get a fresh cache directory, with no stale-dependency aliasing.
+- **What is vendored.** The closure is exactly what [`jac install`](#jac-install) would install: your declared dependencies plus the capability dependencies derived from `jac.toml` intents. Wheels are resolved for the build host by default (like a `.jir`, the bundle is version-locked to the building runtime). Vendoring honors pip's environment (`PIP_INDEX_URL`, `PIP_FIND_LINKS`, `PIP_NO_INDEX`), and fails the build if a dependency has no installable wheel rather than shipping a bundle that cannot materialize. Git dependencies are not vendored and still install normally. The build summary prints the vendored wheel count and total size.
 
 **Building a wheel (publish to PyPI):**
 
@@ -1936,13 +1954,20 @@ Compile a `.na.jac` file to a standalone native ELF executable. No external comp
 > **Project-level vs. file-level.** For a whole-project native build, use [`jac build --as native`](#jac-build) (or `--as binary`), which runs the type-check gate first. `jac nacompile` remains the file-level tool for compiling an individual `.na.jac` file, building `--shared` C-ABI libraries, and cross-compiling with `--target wasm32`.
 
 ```bash
-jac nacompile filename [-o OUTPUT]
+jac nacompile filename [-o OUTPUT] [--gc MODE] [--enforce-nogc] [--assert-no-rc] [--shared] [-t TARGET] [-g] [--scrub]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `filename` | Path to the `.na.jac` file (must have `with entry {}` block) | *required* |
+| `filename` | Path to the `.jac` or `.na.jac` file (must have `with entry {}` block) | *required* |
 | `-o, --output` | Output binary path | filename without `.na.jac` |
+| `-t, --target` | Code target: native host, or `wasm32` for a browser `.wasm` module | host |
+| `--shared` | Build a C-ABI shared library (`.so`/`.dylib`/`.dll`) exporting `:pub` symbols instead of an executable | `False` |
+| `-g, --debug` | Emit DWARF debug info + symbol table so the binary is debuggable with gdb/lldb | `False` |
+| `--scrub` | Scrub build: wipe cached IR and recompile everything from scratch | `False` |
+| `--gc` | Memory-management runtime to emit: `cycles` (refcounting + cycle collector), `rc` (refcounting only, no collector code), or `none` (no refcounting call sites) | `jac.toml [gc]` default, else `cycles` |
+| `--enforce-nogc` | Enforce zero-RC ownership coverage (`E1401`-`E1406` hard errors) on the compiled module, regardless of `jac.toml [gc.enforce]` patterns | `False` |
+| `--assert-no-rc` | Fail the build if the emitted IR contains any RC/collector machinery: `__rc_*` helpers, trace functions, roots-buffer globals, or entry-point GC env probes | `False` |
 
 The file must contain a `with entry { }` block (which defines the `jac_entry()` function). Files with Python/server dependencies (`native_imports`) cannot be compiled to standalone binaries.
 
@@ -1953,7 +1978,7 @@ The file must contain a `with entry { }` block (which defines the `jac_entry()` 
 3. Emits native object code via llvmlite's `emit_object()`
 4. Links into an ELF executable via the built-in pure-Python ELF linker
 
-The resulting binary dynamically links against `libc.so.6`. Memory management uses a self-contained reference counting scheme -- no external garbage collector (libgc) is required.
+The resulting binary dynamically links against `libc.so.6`. Memory management uses a self-contained reference counting scheme -- no external garbage collector (libgc) is required -- and `--gc` selects how much of that machinery is emitted, down to `--gc none` with statically inserted frees for [ownership-checked](../language/ownership-borrowing.md) modules. See [Memory Management](../language/native-pathway.md#memory-management) in the native pathway reference.
 
 **Examples:**
 
@@ -1963,6 +1988,10 @@ jac nacompile chess.na.jac
 
 # Compile with custom output name
 jac nacompile chess.na.jac -o mychess
+
+# Compile an ownership-covered module and prove the artifact
+# contains no RC/collector machinery
+jac nacompile service.na.jac --gc none --enforce-nogc --assert-no-rc
 
 # Run the binary
 ./mychess

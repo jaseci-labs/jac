@@ -465,19 +465,19 @@ test "gap 49 type checking forward ref" {
 # =========================================================================
 # Gap #50: postinit body not validated against by-postinit declarations
 #
-# When an obj declares fields with 'by postinit', the type checker should
+# When an obj declares fields with 'postinit', the type checker should
 # verify that the postinit method body actually assigns to ALL such fields
 # with compatible types. The semantic analysis pass already validates that
 # a postinit METHOD exists, but the type checker should go further:
 #
-#   A) All 'by postinit' fields must be assigned in the postinit body
+#   A) All 'postinit' fields must be assigned in the postinit body
 #   B) Assigned values must be compatible with declared field types
 #
 # Currently, the type checker does not inspect postinit bodies to verify
 # these constraints, allowing missing assignments (runtime AttributeError)
 # and type mismatches to slip through.
 #
-# Impact: An obj with `has z: str by postinit` but no `self.z = ...` in
+# Impact: An obj with `has z: str postinit` but no `self.z = ...` in
 #         postinit compiles cleanly, then crashes at runtime when z is
 #         accessed. Similarly, `self.value = "wrong"` for `has value: int`
 #         silently passes type checking.
@@ -490,7 +490,7 @@ test "gap 50 postinit assignment tracking" {
     # by-postinit fields are still declared with types via 'has'.
     #
     # The REAL gap is missing assignments: Incomplete.postinit never assigns
-    # to self.z (declared `has z: str by postinit`), which will crash at
+    # to self.z (declared `has z: str postinit`), which will crash at
     # runtime but produces no compile-time error.
     #
     # Check that the Incomplete case produces at least one error about the
@@ -503,9 +503,9 @@ test "gap 50 postinit assignment tracking" {
         and 44 <= e.loc.first_line <= 51
     ];
     assert len(incomplete_errors) >= 1 , "Gap #50: postinit missing assignment not caught. "
-    "Incomplete.postinit never assigns to self.z (by postinit field), but "
+    "Incomplete.postinit never assigns to self.z (postinit field), but "
     "no error is produced. The type checker should validate that postinit "
-    "bodies assign to ALL 'by postinit' fields. "
+    "bodies assign to ALL 'postinit' fields. "
     f"Total errors: {len(program.errors_had)}, Incomplete errors: {len(
         incomplete_errors
     )}. "

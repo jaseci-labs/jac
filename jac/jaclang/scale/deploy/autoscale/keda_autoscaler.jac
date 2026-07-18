@@ -8,6 +8,7 @@ import from jaclang.scale.deploy.autoscale.autoscaler {
     DEFAULT_MEMORY_UTILIZATION_TARGET
 }
 import from jaclang.scale.observability.logger { Logger }
+import hashlib;
 
 obj KEDAAutoscaler(Autoscaler) {
     has _custom_api: (any | None) = None,
@@ -17,8 +18,17 @@ obj KEDAAutoscaler(Autoscaler) {
     static has _preflight_cache: dict[str, any] = {};
 
     def _get_cluster_key -> str;
-    def _build_trigger(trigger: Trigger) -> dict[str, any];
-    def _apply_trigger_auth(api: any, trigger: Trigger, namespace: str) -> None;
+    def _trigger_key(trigger: Trigger, trigger_index: int) -> str;
+    def _trigger_auth_name(app_name: str, trigger: Trigger, trigger_index: int) -> str;
+    def _validate_triggers(spec: AutoscalerSpec, app_name: str) -> None;
+    def _build_trigger(
+        trigger: Trigger, app_name: str, trigger_index: int
+    ) -> dict[str, any];
+
+    def _apply_trigger_auth(
+        api: any, trigger: Trigger, namespace: str, app_name: str, trigger_index: int
+    ) -> None;
+
     def _build_manifests(spec: AutoscalerSpec) -> dict[str, any];
     def preflight -> list[str];
     def apply(spec: AutoscalerSpec) -> bool;

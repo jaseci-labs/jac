@@ -1,7 +1,7 @@
 """Regression tests for native RC move-lowering (#6905 payoff, borrow-checker split).
 
 When an assignment `b = a` binds a bare local `Name` that the native
-`RcElisionProofPass` proves safe (LOCAL source, every use an alias-value, dead-out
+the core `RcFactsPass` proves safe (LOCAL source, every use an alias-value, dead-out
 at the move site), the native pass lowers it as a MOVE instead of an alias-copy:
 it skips the defensive `__rc_retain` and nulls the source slot so the source's
 later scope/iter cleanup release is a no-op. The destination inherits the single

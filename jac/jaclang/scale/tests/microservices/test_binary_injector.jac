@@ -12,6 +12,7 @@ import from types { SimpleNamespace }
 import jaclang.scale.injector.binary as binary_mod;
 import from jaclang.scale.config.dev_config {
     resolve_dev_channel,
+    resolve_experimental_pr,
     Channel,
     BINARY_PATH_ENV
 }
@@ -76,6 +77,28 @@ test "JAC_SCALE_BINARY_PATH forces the LOCAL channel over any [dev] stanza" {
             os.environ[BINARY_PATH_ENV] = saved;
         }
     }
+}
+
+
+test "[experimental] pr = N resolves to the experimental channel, outranking [dev]" {
+    d = _write_toml("[dev]\ntest_jobs = \"auto\"\n\n[experimental]\npr = 7494\n");
+    assert resolve_dev_channel(d) == Channel.EXPERIMENTAL;
+    assert resolve_experimental_pr(d) == "7494";
+}
+
+
+test "experimental base image resolves to jaseci/jaclang:experimental-<PR#>" {
+    d = _write_toml("[experimental]\npr = 7494\n");
+    image = binary_mod.resolve_pod_base_image(d, "", probe=False);
+    assert image == "jaseci/jaclang:experimental-7494";
+}
+
+
+test "[experimental] without pr falls back to the dev base image" {
+    d = _write_toml("[experimental]\nnote = \"oops, no pr\"\n");
+    assert resolve_experimental_pr(d) == "";
+    image = binary_mod.resolve_pod_base_image(d, "", probe=False);
+    assert image == "jaseci/jaclang:dev";
 }
 
 
@@ -497,14 +520,28 @@ test "unpublished official image falls back to the plain python base" {
 }
 
 
-test "only the mutable dev tag forces imagePullPolicy Always" {
+test "mutable tags (dev, experimental-<PR#>) force imagePullPolicy Always" {
     import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
         image_pull_policy
     }
     assert image_pull_policy("jaseci/jaclang:dev") == "Always";
+    assert image_pull_policy("jaseci/jaclang:experimental-7494") == "Always";
     assert image_pull_policy("jaseci/jaclang:latest") == "";
     assert image_pull_policy("jaseci/jaclang:0.31.2") == "";
     assert image_pull_policy("python:3.12-slim") == "";
+}
+
+
+test "experimental base image: pod boots the image binary over the injected one" {
+    script = str(
+        build_bootstrap_init_container(
+            KubernetesConfig(), "jaseci/jaclang:experimental-7494"
+        )["args"][0]
+    );
+    # Image binary wins with no checksum gate; injected binary is only the fallback.
+    assert "ln -sf /usr/local/bin/jac" in script;
+    assert "sha256sum /usr/local/bin/jac" not in script;
+    assert f"{TOOLCHAIN_SUBDIR}/bin/jac" in script;
 }
 
 
