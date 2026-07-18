@@ -8,6 +8,8 @@ use jac_bridge::bridge;
 mod bridge_impl {
     pub struct BuildMetadata(pub semver::BuildMetadata);
 
+    pub struct Comparator(pub semver::Comparator);
+
     pub struct Prerelease(pub semver::Prerelease);
 
     pub struct Version(pub semver::Version);
@@ -29,6 +31,50 @@ mod bridge_impl {
         pub fn is_empty(&self) -> bool {
             self.0.is_empty()
         }
+
+        pub fn to_string(&self) -> String {
+            self.0.to_string()
+        }
+
+        pub fn cmp(&self, other: &BuildMetadata) -> i8 {
+            match self.0.cmp(&other.0) { ::std::cmp::Ordering::Less => -1i8, ::std::cmp::Ordering::Equal => 0i8, ::std::cmp::Ordering::Greater => 1i8 }
+        }
+
+        #[jac(assoc)]
+        pub fn from_str(text: &str) -> Result<Self, String> {
+            <semver::BuildMetadata as ::std::str::FromStr>::from_str(text).map(Self).map_err(|e| e.to_string())
+        }
+    }
+
+    impl Comparator {
+        pub fn parse(text: &str) -> Result<Self, String> {
+            semver::Comparator::parse(text).map(Self).map_err(|e| e.to_string())
+        }
+
+        pub fn matches(&self, version: &Version) -> bool {
+            self.0.matches(&version.0)
+        }
+
+        pub fn to_string(&self) -> String {
+            self.0.to_string()
+        }
+
+        #[jac(assoc)]
+        pub fn from_str(text: &str) -> Result<Self, String> {
+            <semver::Comparator as ::std::str::FromStr>::from_str(text).map(Self).map_err(|e| e.to_string())
+        }
+
+        pub fn op(&self) -> String {
+            match self.0.op { semver::Op::Exact => "Exact", semver::Op::Greater => "Greater", semver::Op::GreaterEq => "GreaterEq", semver::Op::Less => "Less", semver::Op::LessEq => "LessEq", semver::Op::Tilde => "Tilde", semver::Op::Caret => "Caret", semver::Op::Wildcard => "Wildcard", _ => "unknown", }.to_string()
+        }
+
+        pub fn major(&self) -> u64 {
+            self.0.major
+        }
+
+        pub fn pre(&self) -> Prerelease {
+            Prerelease(self.0.pre.clone())
+        }
     }
 
     impl Prerelease {
@@ -43,6 +89,19 @@ mod bridge_impl {
         pub fn is_empty(&self) -> bool {
             self.0.is_empty()
         }
+
+        pub fn to_string(&self) -> String {
+            self.0.to_string()
+        }
+
+        pub fn cmp(&self, other: &Prerelease) -> i8 {
+            match self.0.cmp(&other.0) { ::std::cmp::Ordering::Less => -1i8, ::std::cmp::Ordering::Equal => 0i8, ::std::cmp::Ordering::Greater => 1i8 }
+        }
+
+        #[jac(assoc)]
+        pub fn from_str(text: &str) -> Result<Self, String> {
+            <semver::Prerelease as ::std::str::FromStr>::from_str(text).map(Self).map_err(|e| e.to_string())
+        }
     }
 
     impl Version {
@@ -50,20 +109,46 @@ mod bridge_impl {
             Self(semver::Version::new(major, minor, patch))
         }
 
+        pub fn cmp_precedence(&self, other: &Version) -> i8 {
+            match self.0.cmp_precedence(&other.0) { ::std::cmp::Ordering::Less => -1i8, ::std::cmp::Ordering::Equal => 0i8, ::std::cmp::Ordering::Greater => 1i8 }
+        }
+
         #[jac(assoc)]
         pub fn parse(text: &str) -> Result<Self, String> {
             semver::Version::parse(text).map(Self).map_err(|e| e.to_string())
         }
 
-        pub fn major(&self) -> u64 { self.0.major }
-        pub fn minor(&self) -> u64 { self.0.minor }
-        pub fn patch(&self) -> u64 { self.0.patch }
+        pub fn to_string(&self) -> String {
+            self.0.to_string()
+        }
+
         pub fn cmp(&self, other: &Version) -> i8 {
-            match self.0.cmp(&other.0) {
-                ::std::cmp::Ordering::Less => -1,
-                ::std::cmp::Ordering::Equal => 0,
-                ::std::cmp::Ordering::Greater => 1,
-            }
+            match self.0.cmp(&other.0) { ::std::cmp::Ordering::Less => -1i8, ::std::cmp::Ordering::Equal => 0i8, ::std::cmp::Ordering::Greater => 1i8 }
+        }
+
+        #[jac(assoc)]
+        pub fn from_str(text: &str) -> Result<Self, String> {
+            <semver::Version as ::std::str::FromStr>::from_str(text).map(Self).map_err(|e| e.to_string())
+        }
+
+        pub fn major(&self) -> u64 {
+            self.0.major
+        }
+
+        pub fn minor(&self) -> u64 {
+            self.0.minor
+        }
+
+        pub fn patch(&self) -> u64 {
+            self.0.patch
+        }
+
+        pub fn pre(&self) -> Prerelease {
+            Prerelease(self.0.pre.clone())
+        }
+
+        pub fn build(&self) -> BuildMetadata {
+            BuildMetadata(self.0.build.clone())
         }
     }
 
@@ -74,6 +159,15 @@ mod bridge_impl {
 
         pub fn matches(&self, version: &Version) -> bool {
             self.0.matches(&version.0)
+        }
+
+        pub fn to_string(&self) -> String {
+            self.0.to_string()
+        }
+
+        #[jac(assoc)]
+        pub fn from_str(text: &str) -> Result<Self, String> {
+            <semver::VersionReq as ::std::str::FromStr>::from_str(text).map(Self).map_err(|e| e.to_string())
         }
     }
 }

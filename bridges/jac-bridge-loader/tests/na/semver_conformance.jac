@@ -8,10 +8,18 @@
 # `&Version` — the caller passes that object's handle, which the shim reconstructs
 # on the Rust side. Both runtimes must marshal that handle identically.
 #
-# Construction uses only ctors that exist on BOTH runtimes: `Version(major, minor,
-# patch)` (the `new` ctor — `parse` lost the ctor race and is an na-gated static)
-# and `VersionReq(req)` (`parse`, the sole VersionReq ctor). Accessors, `cmp`
-# (-1/0/1), and `matches` (bool) cover scalar returns beside the handle params.
+# It also exercises the FULL-PARITY synth lanes (no overlay inject): the Display
+# lane (`to_string`), the Ord lane (`cmp`, -1/0/1), and the opaque field-reader
+# lane — scalar readers (`major`/`minor`/`patch`), a HANDLE reader (`Version.pre ->
+# Prerelease`, a produced handle whose `to_string` is read), and a FIELDLESS-ENUM
+# reader (`Comparator.op -> String`). `Comparator` is forced opaque too, so its
+# `parse` ctor / `matches` / `op` / `major` all cross.
+#
+# The `#[jac(assoc)]` statics (`Version.parse`, and the `from_str` FromStr family)
+# are na-gated, so they are intentionally NOT exercised here — a static cannot cross
+# on na, so it cannot participate in a dual-runtime identity check. Construction uses
+# only ctors that exist on BOTH runtimes: `Version(major, minor, patch)` (the `new`
+# ctor), `VersionReq(req)` and `Comparator(req)` (each a `parse` ctor).
 import from jaclang.compiler.rust_bridge { load_bridge }
 import from _harness { bridge_so, jac_str, llvm_shim, run_na_probe, skip_gate }
 
@@ -21,18 +29,30 @@ glob SO = bridge_so("semver"),
      # (major, minor, patch) triples constructed on both sides.
      VERSIONS = [(1, 2, 3), (1, 3, 0), (1, 0, 0), (2, 0, 0)],
      # (requirement, index-into-VERSIONS) — matches() against a handle arg.
-     REQ_CASES = [(">=1.2.0", 0), (">=1.2.0", 2), ("^1", 3), ("^1", 1)];
+     REQ_CASES = [(">=1.2.0", 0), (">=1.2.0", 2), ("^1", 3), ("^1", 1)],
+     # comparator strings — parse ctor + op (enum-name reader) + major + matches.
+     COMP_CASES = [">=1.2.0", "^1", "~2.3", "<3.0.0"];
 
 
 def cpython_side -> list {
     semver = load_bridge(str(SO));
     lines = [];
     vers = [semver.Version(a, b, c) for (a, b, c) in VERSIONS];
-    # Field accessors (public fields exposed via overlay inject).
+    # Scalar field-reader lane (public major/minor/patch).
     for (i, v) in enumerate(vers) {
         lines.append(f"fields {i} = {v.major()}.{v.minor()}.{v.patch()}");
     }
-    # cmp — a HANDLE PARAM (`other: &Version`), yields -1 / 0 / 1.
+    # Display lane: to_string.
+    for (i, v) in enumerate(vers) {
+        lines.append(f"tostr {i} = {v.to_string()}");
+    }
+    # Handle field-reader lane: Version.pre -> Prerelease handle, read via to_string.
+    for (i, v) in enumerate(vers) {
+        p = v.pre();
+        lines.append(f"pre {i} = {p.to_string()}");
+        p.close();
+    }
+    # cmp — a HANDLE PARAM (`other: &Version`), yields -1 / 0 / 1 (Ord lane).
     lines.append(f"cmp 0 1 = {vers[0].cmp(vers[1])}");
     lines.append(f"cmp 1 0 = {vers[1].cmp(vers[0])}");
     lines.append(f"cmp 0 0 = {vers[0].cmp(vers[0])}");
@@ -42,6 +62,14 @@ def cpython_side -> list {
         r = semver.VersionReq(req);
         lines.append(f"matches {repr(req)} {vi} = {int(r.matches(vers[vi]))}");
         r.close();
+    }
+    # Comparator (forced opaque): parse ctor, op enum-name reader, major, matches.
+    for (ci, cstr) in enumerate(COMP_CASES) {
+        c = semver.Comparator(cstr);
+        lines.append(f"comp {ci} op = {c.op()}");
+        lines.append(f"comp {ci} major = {c.major()}");
+        lines.append(f"comp {ci} m0 = {int(c.matches(vers[0]))}");
+        c.close();
     }
     for v in vers {
         v.close();
@@ -68,6 +96,16 @@ def na_side -> list {
             )} + str(v{i}.patch()));"
         );
     }
+    for (i, _v) in enumerate(VERSIONS) {
+        label = f"tostr {i} = ";
+        parts.append(f"    print({jac_str(label)} + v{i}.to_string());");
+    }
+    for (i, _v) in enumerate(VERSIONS) {
+        label = f"pre {i} = ";
+        parts.append(f"    p{i} = v{i}.pre();");
+        parts.append(f"    print({jac_str(label)} + p{i}.to_string());");
+        parts.append(f"    p{i}.close();");
+    }
     for (ai, bi) in [(0, 1), (1, 0), (0, 0), (3, 0)] {
         label = f"cmp {ai} {bi} = ";
         parts.append(f"    print({jac_str(label)} + str(v{ai}.cmp(v{bi})));");
@@ -81,6 +119,17 @@ def na_side -> list {
         parts.append(f"        print({jac_str(label + '0')});");
         parts.append("    }");
         parts.append("    r.close();");
+    }
+    for (ci, cstr) in enumerate(COMP_CASES) {
+        parts.append(f"    c = Comparator({jac_str(cstr)});");
+        parts.append(f"    print({jac_str(f'comp {ci} op = ')} + c.op());");
+        parts.append(f"    print({jac_str(f'comp {ci} major = ')} + str(c.major()));");
+        parts.append(f"    if c.matches(v0) {{");
+        parts.append(f"        print({jac_str(f'comp {ci} m0 = 1')});");
+        parts.append("    } else {");
+        parts.append(f"        print({jac_str(f'comp {ci} m0 = 0')});");
+        parts.append("    }");
+        parts.append("    c.close();");
     }
     probe.extend(parts);
     probe.append("}");

@@ -78,12 +78,17 @@ total = 7
 bridged = 7
 total = 7
 
-# semver: the seed crate (binder-generated, with treat_as="opaque" overlay). na
-# bridges 13 of 14 — Version/VersionReq ctors, the major/minor/patch accessors,
-# cmp (a handle param, -1/0/1), and VersionReq.matches (a handle param) all cross;
-# the sole skip is Version.parse, an na-gated static (parse lost the ctor race to
-# new). Proven identical to CPython by na/semver_conformance.jac, the first
-# vertical exercising the INBOUND HANDLE PARAM lane (a bridged type passed as an arg).
+# semver: the seed crate (binder-generated, with treat_as="opaque" overlay). The
+# full-parity synth lanes grew its surface far past the original 13/14: the crate
+# now also exposes to_string (Display), cmp (Ord, -1/0/1), from_str (FromStr) on
+# every opaque type, plus the opaque field-reader lane (major/minor/patch scalars,
+# pre/build handles, op enum-name string) and Comparator's own methods. na bridges
+# the instance-method surface (readers, handle params, Ordering) and gates the
+# `#[jac(assoc)]` statics (parse + the from_str family), exactly as before. These
+# floors are a CONSERVATIVE one-way-ratchet MINIMUM (the test asserts bridged/total
+# >=), left at the pre-parity values so the ratchet never over-commits to an
+# na count computed off-runtime; na/semver_conformance.jac proves the expanded
+# surface identical to CPython end-to-end.
 [libjac_bridge_semver_so]
 bridged = 13
 total = 14
