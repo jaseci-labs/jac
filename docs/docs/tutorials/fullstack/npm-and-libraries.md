@@ -8,7 +8,7 @@ Jac's client-side compiler gives you full access to the npm ecosystem. You can i
 > - Time: ~30 minutes
 
 !!! note "npm imports and `jac check`"
-    npm packages bundle correctly under `jac start`, but the static checker has no `.d.ts`-equivalent stubs for them yet, so attribute access on imported npm symbols (`useRef().current`, `axios.get`, lodash methods, shadcn primitives, etc.) shows up as Unknown under isolated `jac check`. The snippets below run as written; a typed-stub story for npm imports lands as a separate type-checker improvement.
+    `jac check` types client npm imports from each package's `.d.ts` when declarations are installed (functions, constants, type aliases, and structural `interface`/`class` members). Constructs the checker does not model yet, or packages with no declarations, still surface as foreign `any` (`W1102`, or `E1120` when `[check] untyped-external = "error"`). See [npm import type checking](../../reference/plugins/jac-client.md#npm-import-type-checking-jac-check) in the Full Reference.
 
 ---
 
@@ -201,7 +201,7 @@ def:pub SearchBox() -> JsxElement {
         <input
             ref={inputRef}
             value={query}
-            onChange={lambda e: ChangeEvent { query = e.target.value; }}
+            onChange={lambda (e: ChangeEvent) { query = e.target.value; }}
         />
         <ul>{[<li key={r.id}>{r.title}</li> for r in results]}</ul>
     </div>;
@@ -319,12 +319,12 @@ This resolves the chosen style's `.cl.jac` components into `components/ui/`, ins
 
 ### Adding Components to Your Code
 
-Components install as `components/ui/<name>.cl.jac`, keeping their hyphenated registry names (`button.cl.jac`, `dropdown-menu.cl.jac`). **Quote the import path** -- it is required for hyphenated names (an unquoted `dropdown-menu` is a parse error) -- and make the leading dots relative to the importing file's folder: `.components.ui.<name>` from a root file like `main.jac`, `.ui.<name>` from a file in `components/`.
+Components install as `components/ui/<name>.cl.jac` with the name **underscored** -- `jac install --shadcn dropdown-menu` writes `dropdown_menu.cl.jac`, because a hyphen is the minus operator and cannot appear in a Jac module name. Import the underscored name (no quoting needed, since `_` is a valid identifier character) and make the leading dots relative to the importing file's folder: `.components.ui.<name>` from a root file like `main.jac`, `.ui.<name>` from a file in `components/`. Never write the hyphen: unquoted it is a parse error, and quoted it compiles to `./ui/dropdown-menu.js`, which no installed file matches.
 
 ```jac
 cl {
-    import from ".components.ui.button" { Button }
-    import from ".components.ui.dropdown-menu" { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent }
+    import from .components.ui.button { Button }
+    import from .components.ui.dropdown_menu { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent }
 
     def:pub MyPage() -> JsxElement {
         return <div>
@@ -532,7 +532,7 @@ def:pub CodeEditor() -> JsxElement {
         language="python"
         theme="vs-dark"
         value={code}
-        onChange={lambda value: any -> None { code = value; }}
+        onChange={lambda (value: any) -> None { code = value; }}
     />;
 }
 ```

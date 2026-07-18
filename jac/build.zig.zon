@@ -28,6 +28,17 @@
             .hash = "N-V-__8AALDbAQFZ-jWm-8J2Jhx1u6pxw8_0FGK9shl_v4d9",
             .lazy = true,
         },
+        // Upstream libzstd, statically compiled into both ends of the runtime
+        // payload pipe (see linkLibzstd in build.zig): the encoder into the
+        // build-time payload tool (Zig std has no zstd encoder) and the decoder
+        // into the launcher stub + pyembed shim (std's pure-Zig decoder is ~15x
+        // slower than libzstd on this payload). Shipped binaries stay
+        // self-contained -- the objects are static, nothing dynamic is added.
+        .zstd = .{
+            .url = "https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz",
+            .hash = "N-V-__8AAPZ7fwBg4JoCzM_0o2A8wxH2hsUUeiU1iuZv53L5",
+            .lazy = true,
+        },
     },
     .paths = .{
         "build.zig",

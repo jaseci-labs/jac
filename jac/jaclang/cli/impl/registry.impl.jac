@@ -218,7 +218,6 @@ impl CommandRegistry._add_argument(parser: argparse.ArgumentParser, arg: Arg) ->
 
 impl get_registry -> CommandRegistry {
     import from jaclang.cli.registry { CommandRegistry }
-    global _registry;
     if _registry is None {
         _registry = CommandRegistry();
     }

@@ -24,8 +24,8 @@ with entry {
     doubled: list[int] = [n * 2 for n in [1, 2, 3]];
     label: str = "adult" if age >= 18 else "minor";   # ternary: A if cond else B
 
-    inc = lambda x: int : x + 1;                      # typed expression lambda
-    square = lambda(x: int) -> int { return x * x; }; # typed block lambda
+    inc = lambda (x: int) { x + 1; };                    # typed lambda, implicit return
+    square = lambda (x: int) -> int { return x * x; };   # optional return type, explicit return
     print(inc(4), square(5));
 
     greeting = f"hello {name}, {len(tags)} tags";
@@ -78,13 +78,14 @@ There is also a C-style `switch value { case 1: ... default: ... }` - it **falls
 glob counter: int = 0;          # module-level variable - `glob`, not bare assignment
 
 def increment {
-    global counter;             # declare intent to modify a glob (Python-style)
-    counter += 1;
-}                               # inside nested defs, use `nonlocal x;`
+    counter += 1;               # assigns the glob directly - no `global` statement
+}
 
 with entry { print("runs on EVERY import of this module"); }
 with entry:__main__ { increment(); }   # only when run directly (= Python __main__)
 ```
+
+**Scoping - there is no `global` or `nonlocal` statement.** A bare assignment (including `+=`) inside a function assigns to the nearest *enclosing* binding - an enclosing function's local, or a `glob`-declared module variable; a new local is created only when no such binding exists. (Python's classic gotcha - `x += 1` on a global raising `UnboundLocalError` - doesn't exist.) To *shadow* an outer binding instead, write a typed declaration (`x: int = 5;`) before any use or assignment of that name in the scope; a typed declaration after the name has already been rebound there is an error (E0064). Loop targets, `except ... as`, and `with ... as` targets always bind fresh locals. Only `glob`-declared module variables are implicitly rebindable - assigning the name of an import, function, or class creates a local.
 
 **Pitfall for importable libraries:** plain `with entry` executes every time the module is imported. Put demo/CLI code in `with entry:__main__` or importing your module will run it.
 
@@ -124,20 +125,21 @@ A no-dot import is depth-independent: moving a file between directories never ch
 
 ## Also available (Python semantics, brace bodies)
 
-Generators (`yield` / `yield from`), decorators (`@deco` above `def`), walrus `(n := len(items))`, context managers (`with open(f) as fh { ... }`), C-style loops `for i = 0 to i < 10 by i += 1 { }`, null-safe access `user?.profile?.name`, `cfg?["key"]` (returns `None` instead of raising - even for missing keys/out-of-range indices), and the default idiom `name = user?.name or "Anonymous";`.
+Generators (`yield` / `yield from`), decorators (`@deco` above `def`), walrus `(n := len(items))`, context managers (`with open(f) as fh { ... }`), C-style loops `for i = 0 while i < 10 with i += 1 { }`, null-safe access `user?.profile?.name`, `cfg?["key"]` (returns `None` instead of raising - even for missing keys/out-of-range indices), and the default idiom `name = user?.name or "Anonymous";`.
 
 ## Pitfalls
 
 - **Reserved keywords cannot be used as variable or parameter names** - declaration words (`node`, `edge`, `walker`, `obj`, `def`, `impl`), OSP / control words (`visit`, `disengage`, `report`, `spawn`, `flow`, `wait`, `skip`, `del`), and `with`, `can`, `has`. (`entry` and `exit` are *not* reserved - fine as identifiers.) Escape with a single **leading** backtick: `` `visit `` (no closing backtick; `` `visit` `` is a lexer error).
-- **Backtick escape does NOT work in `has` declarations.** A backtick-escaped keyword as a field name (e.g. a field named `class`) passes `jac check` but raises `SyntaxError` at runtime inside Python's dataclass machinery. Pick a non-keyword field name (`kind`, `cls`) instead.
+- **Python reserved words can't name `has` fields or parameters - even backtick-escaped.** `` has `class: str; `` fails `jac check` with **E0067**: the generated Python uses the name as a real identifier, so escaping can't help. Pick a non-reserved name (`kind`, `cls`). Jac-only keywords that aren't Python keywords (`visit`, `node`, ...) escape fine everywhere.
 - **`` `any `` vs `any`:** bare `any` is the gradual *type*; backticked `` `any(...) `` calls the builtin truthiness *function*.
 - `import from X { Y };` fails with E0030. **Brace imports take NO trailing semicolon.** Plain module form `import X;` does.
 - **There is no `pass` statement** (`E0010`). For an intentionally empty block write empty braces: `{}`.
 - **Unused names warn (`W2003`).** Prefix intentionally-unused names with `_`, or for unread exception bindings drop the clause: `except ValueError { ... }`, not `except ValueError as e`. A value bound only to *validate* still counts as unused - discard with `_ = int(s);`. This is the #1 reason otherwise-correct parsing/validation code fails `jac check`.
 - **Booleans are `True`/`False`, null is `None` - capitalized.** Lowercase `false` parses as an undefined name, so `return false;` fails with the *misleading* `E1002: Cannot return <Unknown>, expected bool`.
 - **Docstrings go immediately before a declaration, never inside its body** (`W0060`, often + `E0002`).
-- **Lambdas must be typed.** Expression form `lambda x: int : x + 1` (note the space before the body colon), parenthesized form `lambda (x: int, y: int) -> int : x * y`, or block form `lambda(x: int) -> int { return x; }`. Block-lambda params don't need parens and the return type is optional - all idiomatic: zero-arg `lambda { onSign(); }`, single typed param `lambda v: str { gbName = v; }` (in client code also `lambda e: ChangeEvent { ... }`), multi-param `lambda exports: any, fps: int { ... }`. The bare Python form `lambda x: x` parses but is untyped (W1051 fallout); `:x: x` and `<lambda x: x>` are hard parse errors.
+- **Lambdas have ONE form: `lambda (params) { body }`.** Params always parenthesized and annotated - zero-arg `lambda { onSign(); }`, single param `lambda (v: str) { gbName = v; }` (in client code also `lambda (e: ChangeEvent) { ... }`), multi-param `lambda (exports: any, fps: int) { ... }` - with an optional return type: `lambda (x: int) -> int { return x * x; }`. A body that is exactly one expression statement IS the implicit return (`lambda (x: int) { x + 1; }` returns `x + 1`); multi-statement bodies need an explicit `return ...;` or the lambda returns `None` (fine for event handlers). A param annotation may be omitted only where the type is inferable from context; otherwise it's E1119. The Python colon forms (`lambda x: x`, `lambda x: int : x + 1`) and any paren-less form that carries a parameter (`lambda x { ... }`, `lambda v: str { ... }`) are parse errors - only a zero-parameter lambda may drop the parens (`lambda { ... }`).
 - Ternary is **Python-style**: `A if cond else B`. NOT `cond ? A : B` - parse error.
+- Boolean operators are **`and`/`or`/`not`** - C-style `&&`/`||` do not exist (parse error).
 - **Python stdlib needs explicit import - Jac auto-imports nothing.** `datetime.now()` without `import from datetime { datetime }` = runtime `NameError`.
 - **`sv import` calls are `async` - always `await` them.** `items = fetch_items()` assigns a `Promise`, not the data.
 - **`import:py` does not exist** - LLMs hallucinate it; use `import json;` / `import from datetime { datetime }`.

@@ -71,7 +71,6 @@ glob GAP_FILES = [
          "enum_free_code.jac",
          "trailing_comma_collections.jac",
          "safe_call_subscript.jac",
-         "bool_operators_symbols.jac",
          "init_as_call.jac",
          "decorator_on_impl.jac",
          "rstring_concat.jac",
@@ -80,13 +79,14 @@ glob GAP_FILES = [
          "glob_chained_assign.jac",
          "edge_ref_subscript.jac",
          "lambda_typed_params.jac",
-         "lambda_keyword_params.jac"
+         "lambda_keyword_params.jac",
+         "lambda_zero_param_no_parens.jac"
      ],
      MUST_REJECT: dict[str, str] = {
          "can_without_event_clause": "obj Foo { can bar { } }",
          "per_variable_access_tag": "obj Foo { has :pub x: int, :priv y: str; }",
-         "abs_prefix_on_ability": "obj Foo { abs def bar(); }",
-         "abs_prefix_decorated_ability": "@mydeco abs def bar() { }",
+         "abs_prefix_on_ability": "obj Foo { abst def bar(); }",
+         "abs_prefix_decorated_ability": "@mydeco abst def bar() { }",
          "abs_prefix_on_archetype": "abs obj Foo { }",
          "bare_expression_at_module_level": "5 + 3;",
          "bare_expression_in_archetype": "obj Foo { 5 + 3; }",
@@ -177,9 +177,11 @@ glob GAP_FILES = [
          "keyword_param_override": "def foo(override: bool) { }",
          "keyword_param_root": "def foo(root: int) { }",
          "keyword_param_super": "def foo(super: int) { }",
-         "keyword_param_in_lambda": "with entry { x = lambda if: int : if; }",
-         "keyword_param_root_in_lambda": "with entry { x = lambda root: int : root; }",
-         "keyword_param_super_in_lambda": "with entry { x = lambda super: int : super; }",
+         "keyword_param_in_lambda": "with entry { x = lambda (if: int) { if; }; }",
+         "keyword_param_root_in_lambda": "with entry { x = lambda (root: int) { root; }; }",
+         "keyword_param_super_in_lambda": "with entry { x = lambda (super: int) { super; }; }",
+         "lambda_params_require_parens": "with entry { f = lambda x { x; }; }",
+         "lambda_colon_body_removed": "with entry { f = lambda (y): y + 1; }",
          "enum_inside_if": "with entry { if true { enum Color { RED } } }",
          "enum_inside_function": "def foo() { enum Color { RED } }"
      },
@@ -252,24 +254,30 @@ def validation_clean_test(name_snippet: tuple[str, str]) {
 
 with entry {
     parametrize(
-        "rd parse", MICRO_JAC_FILES, rd_parse_file_test, id_fn=lambda f : Path(f).stem
+        "rd parse",
+        MICRO_JAC_FILES,
+        rd_parse_file_test,
+        id_fn=lambda (f) { Path(f).stem; }
     );
     parametrize(
-        "rd gap", GAP_FILES, rd_gap_test, id_fn=lambda f : f.replace(".jac", "")
+        "rd gap", GAP_FILES, rd_gap_test, id_fn=lambda (f) { f.replace(".jac", ""); }
     );
     parametrize(
-        "rd strict", list(MUST_REJECT.items()), strictness_test, id_fn=lambda x : x[0]
+        "rd strict",
+        list(MUST_REJECT.items()),
+        strictness_test,
+        id_fn=lambda (x) { x[0]; }
     );
     parametrize(
         "rd strict validation",
         list(MUST_REJECT_VALIDATION.items()),
         validation_strictness_test,
-        id_fn=lambda x : x[0]
+        id_fn=lambda (x) { x[0]; }
     );
     parametrize(
         "rd clean validation",
         list(MUST_VALIDATE_CLEAN.items()),
         validation_clean_test,
-        id_fn=lambda x : x[0]
+        id_fn=lambda (x) { x[0]; }
     );
 }

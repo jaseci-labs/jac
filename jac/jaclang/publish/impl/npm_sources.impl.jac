@@ -231,7 +231,7 @@ impl resolve_npm_entry(config: JacConfig, files: list[NpmSourceFile],) -> str | 
             for p in paths
             if p.endswith("index.js")
         ],
-        key=lambda p: any : p.count("/")
+        key=lambda (p: any) { p.count("/"); }
     );
     if index_files {
         return index_files[0];

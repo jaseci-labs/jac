@@ -36,7 +36,7 @@ test "build_registry file for a discovered subdir service exists on disk" {
     sub = tmp / "littlex";
     sub.mkdir();
     (sub / "social_graph.jac").write_text(
-        "to sv:\ndef:pub setup_profile -> int { return 1; }\n"
+        "sv {\ndef:pub setup_profile -> int { return 1; }\n}\n"
     );
     try {
         entry_file = str(tmp / "main.jac");
@@ -124,7 +124,7 @@ test "_wait_for_health does not burn the boot budget on a dead child" {
 
     orch = MicroserviceOrchestrator(ms_config={});
     with mock.patch.object(
-        pm, "check_health", side_effect=(lambda name : name == "alive")
+        pm, "check_health", side_effect=(lambda (name) { name == "alive"; })
     ) {
         start = time.time();
         orch._wait_for_health(pm, reg, 6);

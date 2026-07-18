@@ -35,7 +35,7 @@ permissions: {}
 jobs:
   create-release-pr:
     if: >-
-      github.repository == 'Jaseci-Labs/jaseci' &&
+      github.repository == 'jaseci-labs/jac' &&
       github.event_name == 'workflow_dispatch' &&
       inputs.action == 'create-pr'
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -103,7 +103,7 @@ jobs:
 
   resolve:
     if: |
-      github.repository == 'Jaseci-Labs/jaseci' && (
+      github.repository == 'jaseci-labs/jac' && (
         (github.event_name == 'workflow_dispatch' && inputs.action == 'publish') || (
           github.event_name == 'pull_request' &&
           github.event.pull_request.merged == true &&
@@ -134,7 +134,7 @@ jobs:
             exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "summary=jaclang $VERSION" >> "$GITHUB_OUTPUT"
+          echo "summary=jac $VERSION" >> "$GITHUB_OUTPUT"
           echo "Resolved release version: $VERSION"
 
   # Human approval gate (release-approval environment required reviewers).
@@ -195,7 +195,7 @@ jobs:
             echo "Tag ${VTAG} already exists; leaving it in place."
           else
             echo "Tagging ${VTAG} at ${GITHUB_SHA}"
-            git tag --annotate --message="jaclang ${VERSION}" "$VTAG" "$GITHUB_SHA"
+            git tag --annotate --message="jac ${VERSION}" "$VTAG" "$GITHUB_SHA"
             git push origin "refs/tags/${VTAG}"
           fi
 
@@ -214,7 +214,7 @@ jobs:
           VTAG="v${VERSION}"
 
           {
-            echo "## jaclang ${VERSION} (native \`jac\` binary)"
+            echo "## jac ${VERSION} (native \`jac\` binary)"
             echo ""
             echo "Install: \`curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash\`"
           } > release_notes.md
@@ -243,6 +243,9 @@ jobs:
     uses: ./.github/workflows/build-binaries.yml
     with:
       tag: v${{ needs.resolve.outputs.version }}
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   # Reveal draft as published + latest once every asset is attached. Gated on
   # build-binaries: a failed leg skips this, so a half-built draft never becomes

@@ -165,8 +165,6 @@ impl MicroserviceGateway.serve_spa_fallback -> Response | None {
 }
 
 impl MicroserviceGateway.bootstrap_admin_ui -> None {
-    # The deploy driver stages the console at admin_dist_dir; building from
-    # source is the fallback when nothing was staged.
     if (Path(self.admin_dist_dir) / "index.html").is_file() {
         return;
     }
@@ -362,9 +360,6 @@ impl MicroserviceGateway.handle_builtin_passthrough(
         return None;
     }
 
-    # Each service can only deserialize its own module's archetypes out of the
-    # shared store, so no single service can render the whole graph -- merge
-    # every healthy service's fragment instead of forwarding to one of them.
     if request.method == "GET" and path == "/graph/data" {
         agg = await self.aggregate_graph_data(request);
         if agg is not None {
@@ -608,6 +603,7 @@ impl MicroserviceGateway.setup -> FastAPI {
                 classify_route,
                 ROUTE_BUILTIN,
                 ROUTE_ADMIN,
+                ROUTE_IDENTITY,
                 ROUTE_PROXY
             }
             service_prefixes: list = [e.prefix for e in gw.registry.entries.values()];
@@ -646,6 +642,14 @@ impl MicroserviceGateway.setup -> FastAPI {
                     admin_resp = not_found(path);
                 }
                 resp = admin_resp;
+            } elif decision.kind == ROUTE_IDENTITY {
+                if gw.server is not None {
+                    ident_resp = await call_next(request);
+                    if ident_resp.status_code not in (404, 405) {
+                        svc_label = "__identity__";
+                        resp = ident_resp;
+                    }
+                }
             } elif decision.kind == ROUTE_PROXY {
                 matched = gw.registry.match_route(path);
                 if matched {
@@ -789,10 +793,21 @@ impl MicroserviceGateway._install_admin_api -> None {
     self.register_network_endpoints();
     self.register_podenv_endpoints();
 
+    self.register_register_endpoint();
+    self.register_login_endpoint();
+    self.register_refresh_token_endpoint();
+    self.register_update_password_endpoint();
+    self.register_me_endpoint();
+    self.register_update_me_endpoint();
+
     self.server.create_server();
 
     logger.info(
         "Admin JSON API installed on gateway "
         "(/admin/login, /admin/me, /admin/users, /admin/logs/*, ...)"
+    );
+    logger.info(
+        "Gateway-owned identity installed "
+        "(/user/register, /user/login, /user/me served by the gateway)"
     );
 }

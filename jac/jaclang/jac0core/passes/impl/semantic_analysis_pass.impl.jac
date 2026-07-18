@@ -67,18 +67,61 @@ impl SemanticAnalysisPass._check_archetype(
             self.emit(E2005, node_override=post_init_vars[0].name_spec);
         }
         arch_kind = nd.arch_type.value;
-        for method in nd.get_methods() {
+        methods = nd.get_methods();
+        prop_types = self._property_type_names(methods);
+        for method in methods {
+            prop_name = (
+                method.name_ref.value if isinstance(method.name_ref, uni.Name) else "x"
+            );
             for dec in (method.decorators or ()) {
+                prop_dec = "";
                 if isinstance(dec, uni.Name) {
                     if dec.sym_name == 'classmethod' {
                         self.emit(W2006, node_override=dec, kind=arch_kind);
                     } elif dec.sym_name == 'staticmethod' {
                         self.emit(W2007, node_override=dec, kind=arch_kind);
+                    } elif dec.value == 'property' {
+                        prop_dec = dec.value;
                     }
+                } elif (
+                    isinstance(dec, uni.AtomTrailer)
+                    and dec.is_attr
+                    and isinstance(dec.right, uni.Name)
+                    and isinstance(dec.target, uni.Name)
+                    and dec.right.value in ['getter', 'setter', 'deleter']
+                ) {
+                    prop_dec = f"{dec.target.value}.{dec.right.value}";
+                }
+                if prop_dec != "" {
+                    self.emit(
+                        W2029,
+                        node_override=dec,
+                        decorator=prop_dec,
+                        kind=arch_kind,
+                        name=prop_name,
+                        type_name=prop_types.get(prop_name, "...")
+                    );
                 }
             }
         }
     }
+}
+
+impl SemanticAnalysisPass._property_type_names(
+    self: SemanticAnalysisPass, methods: list[uni.Ability]
+) -> dict[str, str] {
+    names: dict[str, str] = {};
+    for method in methods {
+        sig = method.signature;
+        if not isinstance(sig, uni.FuncSignature) {
+            continue;
+        }
+        ret = sig.return_type;
+        if isinstance(method.name_ref, uni.Name) and isinstance(ret, uni.Name) {
+            names[method.name_ref.value] = ret.value;
+        }
+    }
+    return names;
 }
 
 impl SemanticAnalysisPass._update_ctx(

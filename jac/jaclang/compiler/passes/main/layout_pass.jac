@@ -21,7 +21,8 @@ glob LAYOUT_COMPATIBLE_PRIMITIVES: set[str] = {
          "f32",
          "f64",
 
-     };
+     },
+     VTABLE_HEADER_SLOTS: int = 1;
 
 obj FieldInfo {
     has name: str,
@@ -30,7 +31,8 @@ obj FieldInfo {
         type_node: (uni.UniNode | None) = None,
         default_expr: (uni.UniNode | None) = None,
         owner: str = "",
-        is_func_ptr: bool = False;
+        is_func_ptr: bool = False,
+        decl_node: (uni.UniNode | None) = None;
 }
 
 obj MethodSlot {
@@ -50,7 +52,26 @@ obj ArchetypeLayout {
         methods: list[MethodSlot] = [],
         method_index: dict[str, int] = {},
         has_vtable: bool = False,
-        parent_field_start: dict[str, int] = {};
+        parent_field_start: dict[str, int] = {},
+        is_osp: bool = False,
+        is_acyclic: bool = False,
+        vtable_ptr_slot: (int | None) = None,
+        type_tag_slot: (int | None) = None,
+        reports_slot: (int | None) = None;
+}
+
+obj EnumMemberLayout {
+    has name: str,
+        ordinal: int,
+        int_value: int = 0,
+        str_value: (str | None) = None;
+}
+
+obj EnumLayout {
+    has name: str,
+        underlying: str = "i64",
+        is_string_enum: bool = False,
+        members: list[EnumMemberLayout] = [];
 }
 
 def get_layout_registry(module: uni.Module, prog: any = None) -> LayoutRegistry {
@@ -77,9 +98,12 @@ obj LayoutRegistry {
     has layouts: dict[str, ArchetypeLayout] = {},
         class_parents: dict[str, list[str]] = {},
         mro_order: dict[str, list[str]] = {},
-        topo_order: list[str] = [];
+        topo_order: list[str] = [],
+        enums: dict[str, EnumLayout] = {};
 
     def get_layout(name: str) -> (ArchetypeLayout | None);
+    def get_enum_layout(name: str) -> (EnumLayout | None);
+    def resolve_method_owner(arch_name: str, method_name: str) -> (str | None);
     def get_mro(name: str) -> list[str];
     def get_topo_order -> list[str];
     def get_method_slot(class_name: str, method_name: str) -> (int | None);
@@ -90,7 +114,7 @@ obj LayoutPass(Transform[uni.Module, uni.Module]) {
     has ir_in: uni.Module,
         prog: any,
         cancel_token: any = None,
-        registry: LayoutRegistry by postinit;
+        registry: LayoutRegistry postinit;
 
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;
@@ -105,6 +129,11 @@ obj LayoutPass(Transform[uni.Module, uni.Module]) {
     def _compute_c3_mro(class_name: str) -> list[str];
     def _topo_sort(arch_map: dict[str, uni.Archetype]) -> list[str];
     def _build_layout(arch: uni.Archetype) -> ArchetypeLayout;
+    def _build_enum_layouts(module: uni.Module) -> None;
+    def _compute_acyclicity -> None;
+    def _acyclic_walk(name: str, state: dict[str, int]) -> int;
+    def _expand_type_keys(key: str) -> (list[str] | None);
+    def _split_top_level(s: str, sep: str) -> list[str];
     def _build_vtable_layout(
         arch_name: str, arch_map: dict[str, uni.Archetype]
     ) -> None;

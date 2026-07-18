@@ -378,7 +378,7 @@ Output (default, card view):
 
 ```text
 === jac scale plan: dry-run ===
-Cluster:    minikube    Namespace: my-app
+Cluster:    <active-kube-context>    Namespace: my-app
 check: no errors or warnings
 
 Microservices (3)
@@ -409,6 +409,8 @@ Totals
 
 To see the raw YAML manifests, re-run with --show-yaml
 ```
+
+Note the `__gateway__` entry above has `replicas: 1` and no HPA line -- that's the framework default, and it is a single point of failure for all external traffic. See [Gateway High Availability](../../reference/plugins/jac-scale-kubernetes.md#gateway-high-availability) for why, and how to configure a second replica.
 
 The summary line at the top tells you whether the plan is deployable:
 
