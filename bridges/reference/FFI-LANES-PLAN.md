@@ -1330,8 +1330,17 @@ these first; the adversarial suite already contains skip-gated tests waiting on 
       materialize different `rt/<hash>` trees that evict each other -- verify the
       slim payload materializes stably); slim aggressiveness (start conservative:
       full zipped stdlib).
-- [ ] 3.4 `jac add py:<pkg>` + `[py-interop]` jac.toml stanza mirroring
-      `[rust-bridges]`; host-platform-only in v1, documented.
+- [x] 3.4 `jac add py:<pkg>` + `[py-interop]` jac.toml stanza mirroring
+      `[rust-bridges]`; host-platform-only in v1, documented. `JacConfig.py_interop`
+      dict field; parse/merge/save + `add_dependency`/`remove_dependency`
+      `dep_type="py"`; `_parse_py_spec`/`_add_py_interop`/`_pyinterop_wheel_specs`
+      in `project.impl.jac`; `add`/`remove` route `py:` specs; `bundle` prepends
+      manifest wheels to any `--py` flag wheels. Drive-by fix: `save()`'s
+      minimal-update roots omitted `rust-bridges` (+ now `py-interop`), silently
+      dropping both tables when jac.toml already had content -- a pre-existing bug
+      whose `rust_bridges_survives_save_and_reload` test was red on HEAD.
+      Tests: 3 new in `test_config.jac` (parse / add-remove / save-reload),
+      all 138 green; live `jac add py:`/`remove py:` CLI verified.
 - [ ] 3.5 Acceptance: an na binary doing a polars groupby, shipped to a machine
       with no Python; flagship-wheel smoke tests (orjson, polars, cryptography)
       in a CI job; docs section positioning rust: (performance) vs py: (variety).

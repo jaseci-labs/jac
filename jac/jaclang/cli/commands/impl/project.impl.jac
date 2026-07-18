@@ -1046,6 +1046,64 @@ def _add_rust_bridges(config: any, specs: list, verbose: bool) -> int {
 }
 
 
+def _parse_py_spec(spec: str) -> tuple {
+    body = spec[len("py:"):].strip();
+    if "@" in body {
+        parts = body.split("@", 1);
+        return (parts[0].strip(), "==" + parts[1].strip());
+    }
+    for op in (">=", "<=", "==", "~=", "!=", ">", "<") {
+        if op in body {
+            idx = body.find(op);
+            return (body[:idx].strip(), body[idx:].strip());
+        }
+    }
+    return (body, "*");
+}
+
+
+def _pyinterop_wheel_specs(config: any) -> list {
+    specs: list = [];
+    for (name, ver) in config.py_interop.items() {
+        if not ver or ver == "*" {
+            specs.append(name);
+        } elif ver[0] in ("=", ">", "<", "~", "!") {
+            specs.append(f"{name}{ver}");
+        } else {
+            specs.append(f"{name}=={ver}");
+        }
+    }
+    return specs;
+}
+
+
+def _add_py_interop(config: any, specs: list, verbose: bool) -> int {
+    console.print(f"\n🐍 Adding {len(specs)} py-interop package(s)", style="bold");
+    for spec in specs {
+        (name, version) = _parse_py_spec(spec);
+        if not name {
+            console.error(f"Invalid py-interop spec: '{spec}'");
+            return 1;
+        }
+        config.add_dependency(name, version, dep_type="py");
+        console.print(f"  ✔ py:{name} ({version})", style="success");
+    }
+    console.print(
+        "  Wheels resolve at bundle time (jac build --as binary "
+        "--with_py_interop), host platform tag only in v1.",
+        style="muted"
+    );
+    try {
+        config.save();
+        console.print("\n  ✔ Updated jac.toml [py-interop]", style="muted");
+    } except Exception as e {
+        console.error(f"Could not save jac.toml: {e}");
+        return 1;
+    }
+    return 0;
+}
+
+
 impl add(
     packages: list = [], dev: bool = False, git: str = '', verbose: bool = False
 ) -> int {
@@ -1080,6 +1138,25 @@ impl add(
         rust_rc = _add_rust_bridges(config, rust_specs, verbose);
         if rust_rc != 0 {
             return rust_rc;
+        }
+        if not packages and not git {
+            return 0;
+        }
+    }
+    py_specs = [
+        p
+        for p in packages
+        if isinstance(p, str) and p.startswith("py:")
+    ];
+    if py_specs {
+        packages = [
+            p
+            for p in packages
+            if p not in py_specs
+        ];
+        py_rc = _add_py_interop(config, py_specs, verbose);
+        if py_rc != 0 {
+            return py_rc;
         }
         if not packages and not git {
             return 0;
@@ -1166,7 +1243,22 @@ impl remove(
     python = get_python_provider();
     ctx = InstallContext();
     rust = get_provider_registry().get("rust");
-    for name in packages {
+    for raw_name in packages {
+        name = raw_name;
+        if isinstance(name, str) and name.startswith("py:") {
+            name = name[len("py:"):].strip();
+        }
+        if isinstance(name, str) and name.startswith("rust:") {
+            name = name[len("rust:"):].strip();
+        }
+        if name in config.py_interop {
+            if config.remove_dependency(name, dep_type="py") {
+                console.success(f"Removed py:{name} from jac.toml");
+            } else {
+                console.error(f"Package {name} not found in dependencies");
+            }
+            continue;
+        }
         if rust is not None and name in config.rust_bridges {
             if rust.remove_package(config, name, dev, ctx) {
                 console.success(f"Removed rust:{name} from jac.toml");
@@ -2661,6 +2753,15 @@ impl bundle(
                 for w in py.replace(",", " ").split()
                 if w
             ];
+            manifest_wheels = _pyinterop_wheel_specs(config);
+            if manifest_wheels {
+                console.print(
+                    f"  Including {len(manifest_wheels)} package(s) from "
+                    "jac.toml [py-interop]",
+                    style="muted"
+                );
+                wheels = manifest_wheels + wheels;
+            }
             return _bundle_binary_pyinterop(config, output, wheels);
         }
         return _bundle_binary(config, output, fat=fat);

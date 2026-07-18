@@ -182,6 +182,7 @@ obj JacConfig {
         dev_dependencies: dict[str, str] = {},
         git_dependencies: dict[str, dict[str, str]] = {},
         rust_bridges: dict[str, str] = {},
+        py_interop: dict[str, str] = {},
         plugin_dependencies: dict[str, dict[str, any]] = {},
         scripts: dict[str, str] = {},
         plugins: dict[str, dict[str, any]] = {},

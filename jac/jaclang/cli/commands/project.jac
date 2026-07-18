@@ -377,6 +377,8 @@ def install(
         ("jac add --git https://github.com/user/plugin.git", "Add from git"),
         ("jac add rust:regex", "Add a Rust bridge crate to [rust-bridges]"),
         ("jac add rust:regex@1.11", "Add a Rust bridge crate at a version"),
+        ("jac add py:polars", "Add a py-interop wheel to [py-interop]"),
+        ("jac add py:polars@1.2.3", "Add a py-interop wheel pinned to a version"),
 
     ],
     group="project"

@@ -379,6 +379,16 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
             }
         }
     }
+    if "py-interop" in data {
+        pyi = data["py-interop"];
+        if isinstance(pyi, dict) {
+            for (key, value) in pyi.items() {
+                if isinstance(value, str) {
+                    self.py_interop[key] = value;
+                }
+            }
+        }
+    }
     if "environments" in data {
         self.environments.update(data["environments"]);
     }
@@ -519,9 +529,18 @@ impl JacConfig.save -> None {
         del doc["rust-bridges"];
     }
 
+    if self.py_interop {
+        doc["py-interop"] = dict(self.py_interop);
+    } elif "py-interop" in doc {
+        del doc["py-interop"];
+    }
+
     if text {
         updated = _toml_minimal_update(
-            text, old_doc, doc, ["dependencies", "dev-dependencies"]
+            text,
+            old_doc,
+            doc,
+            ["dependencies", "dev-dependencies", "rust-bridges", "py-interop"]
         );
         if updated is not None {
             self._write_toml_text(updated);
@@ -969,6 +988,8 @@ impl JacConfig.add_dependency(
         self.git_dependencies[name] = {"git": version};
     } elif dep_type == "rust" {
         self.rust_bridges[name] = version;
+    } elif dep_type == "py" {
+        self.py_interop[name] = version;
     } else {
         if dep_type not in self.plugin_dependencies {
             self.plugin_dependencies[dep_type] = {};
@@ -1005,6 +1026,11 @@ impl JacConfig.remove_dependency(
     } elif dep_type == "rust" {
         if name in self.rust_bridges {
             del self.rust_bridges[name];
+            return True;
+        }
+    } elif dep_type == "py" {
+        if name in self.py_interop {
+            del self.py_interop[name];
             return True;
         }
     } elif dep_type in self.plugin_dependencies {
@@ -1292,6 +1318,16 @@ impl _parse_toml_data(
             for (key, value) in bridges.items() {
                 if isinstance(value, str) {
                     config.rust_bridges[key] = value;
+                }
+            }
+        }
+    }
+    if "py-interop" in data {
+        pyi = data["py-interop"];
+        if isinstance(pyi, dict) {
+            for (key, value) in pyi.items() {
+                if isinstance(value, str) {
+                    config.py_interop[key] = value;
                 }
             }
         }
