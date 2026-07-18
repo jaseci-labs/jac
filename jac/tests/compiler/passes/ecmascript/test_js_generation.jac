@@ -379,6 +379,44 @@ test "cl only js command outputs js" {
     assert 'function greet(name = "World") {' in result.stdout;
 }
 
+test "jac2js cli prepends @jac/runtime globals for jsx" {
+    # Regression for #7541: `jac tool jac2js` emitted raw ir.gen.js without
+    # calling prepend_active_runtime_globals(), so JSX modules referenced
+    # __jacJsx with no import and threw `ReferenceError: __jacJsx is not
+    # defined` when loaded as ESM.
+    client_fixture = "client_jsx.jac";
+    fixture_file_path = os.path.join(FIXTURES, client_fixture);
+    env = os.environ.copy();
+    project_root = JAC_ROOT;
+    existing = env.get("PYTHONPATH", "");
+    env["PYTHONPATH"] = f"{project_root}:{existing}" if existing else project_root;
+
+    result = subprocess.run(
+        [sys.executable, "-m", "jaclang.cli.cli", "tool", "jac2js", fixture_file_path],
+        capture_output=True,
+        text=True,
+        env=env,
+    );
+
+    assert result.returncode == 0 , f"CLI failed: {result.stderr}";
+    assert "__jacJsx(" in result.stdout , (
+        "JSX fixture should lower to __jacJsx(...) calls"
+    );
+    # The @jac/runtime import for __jacJsx must be injected so the emitted
+    # ESM is loadable without a ReferenceError.
+    has_runtime_import = False;
+    for line in result.stdout.splitlines() {
+        if line.startswith("import {")
+        and "__jacJsx" in line
+        and 'from "@jac/runtime";' in line {
+            has_runtime_import = True;
+        }
+    }
+    assert has_runtime_import , (
+        "jac2js must prepend the @jac/runtime import for __jacJsx;\ngot:\n" + result.stdout
+    );
+}
+
 test "empty file generates minimal js" {
     temp_path = write_temp_jac("\"\"\"Empty file for smoke testing.\"\"\"\n");
 
