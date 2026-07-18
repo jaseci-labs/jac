@@ -339,9 +339,6 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
                 else None
         );
         if cls_resolved is None {
-            # A sibling service pod is EXPECTED to lack peer services'
-            # archetype classes in a shared store -- skip without mutating the
-            # shared collection; quarantining would poison it for the owner.
             if os.environ.get("JAC_SV_SIBLING") == "1" {
                 logger.debug(
                     f"MongoBackend: class {arch_module}.{arch_type} not "
@@ -528,7 +525,7 @@ impl MongoBackend.execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None]
     }
     (filt, skip_n, limit_n) = _plan_to_mongo_filter(plan);
     try {
-        cursor = self.collection.find(filt);
+        cursor = self.collection.find(filt).sort('_id', 1);
         if skip_n {
             cursor = cursor.skip(skip_n);
         }
@@ -1154,7 +1151,7 @@ impl MongoBackend.recover_all -> tuple {
         return (0, []);
     }
 
-    docs.sort(key=lambda d : 0 if d.get('type') == 'NodeAnchor' else 1);
+    docs.sort(key=lambda (d) { 0 if d.get('type') == 'NodeAnchor' else 1; });
     recovered = 0;
     still_stuck: list = [];
     for d in docs {
@@ -1422,7 +1419,7 @@ impl MongoBackend._auto_retry_quarantine(limit: int = 500) -> tuple {
         return (0, 0);
     }
 
-    docs.sort(key=lambda d : 0 if d.get('type') == 'NodeAnchor' else 1);
+    docs.sort(key=lambda (d) { 0 if d.get('type') == 'NodeAnchor' else 1; });
     attempted = 0;
     recovered = 0;
     for d in docs {

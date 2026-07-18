@@ -2,12 +2,16 @@ import from pathlib { Path }
 
 def find_repo_root -> str | None;
 
+def get_resource_provider -> ResourceProvider;
+
 obj ResourceProvider {
     has _resources: dict = {},
         _repo_root: str | None = None,
-        _package_dir: str = "";
+        _package_dir: str = "",
+        _indexed: bool = False;
 
     def index_resources -> None;
+    def _ensure_indexed -> None;
     def _index_grammar -> None;
     def _index_bundled -> None;
     def _index_shared_guides -> None;

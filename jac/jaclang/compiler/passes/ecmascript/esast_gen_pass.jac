@@ -266,6 +266,10 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         scope_node: uni.UniScopeNode, body_nodes: (Sequence[uni.UniNode] | None)
     ) -> es.BlockStatement;
 
+    def _jac_exc_ref(
+        member: str, jac_node: (uni.UniNode | None)
+    ) -> es.MemberExpression;
+
     def exit_module(nd: uni.Module) -> None;
     def populate_client_manifest(nd: uni.Module) -> None;
     def exit_sub_tag(nd: uni.SubTag[uni.T]) -> None;
@@ -356,7 +360,10 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
 
     def _expr_type_name(expr_node: uni.UniNode) -> str;
     def _is_collection_expr(expr_node: uni.UniNode) -> bool;
-    def _build_jac_ref(path: list[str], jac_node: uni.UniNode) -> es.Expression;
+    def _build_jac_ref(
+        path: list[str], jac_node: (uni.UniNode | None)
+    ) -> es.Expression;
+
     def _build_jac_call(
         path: list[str], args: list[es.Expression], jac_node: uni.UniNode
     ) -> es.Expression;
@@ -495,8 +502,9 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_null(nd: uni.Null) -> None;
     def exit_name(nd: uni.Name) -> None;
     def exit_builtin_type(nd: uni.BuiltinType) -> None;
+    def _in_type_slot(nd: uni.UniNode) -> bool;
+    def _is_call_target(nd: uni.UniNode) -> bool;
     def exit_global_vars(nd: uni.GlobalVars) -> None;
-    def exit_non_local_stmt(nd: uni.NonLocalStmt) -> None;
     def exit_module_code(nd: uni.ModuleCode) -> None;
     def exit_client_block(nd: uni.ClientBlock) -> None;
     def exit_native_block(nd: uni.NativeBlock) -> None;

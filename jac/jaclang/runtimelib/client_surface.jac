@@ -44,28 +44,35 @@ def backend_jsx_factory_name(backend: (object | None) = None) -> str {
     return "__jacJsx";
 }
 
-def prepended_runtime_import(backend: (object | None) = None) -> str {
+def _required_runtime_globals(
+    backend: (object | None) = None
+) -> tuple[list[str], str] {
     if backend is not None {
         names = backend.required_globals();
         src = backend.runtime_module();
-        if (isinstance(names, list) and names and isinstance(src, str) and src) {
-            return 'import {' + ", ".join(names) + '} from "' + src + '";';
+        if isinstance(names, list) and names and isinstance(src, str) and src {
+            return (names, src);
         }
     }
-    names = [
+    default_names = [
         sym.name
         for sym in _REACT_RUNTIME_SURFACE
         if sym.prepend
     ];
-    return 'import {' + ", ".join(names) + '} from "@jac/runtime";';
+    return (default_names, "@jac/runtime");
 }
 
 def with_runtime_globals(js_code: str, backend: (object | None) = None) -> str {
-    factory_name = backend_jsx_factory_name(backend);
-    if f"function {factory_name}(" in js_code {
+    (names, src) = _required_runtime_globals(backend);
+    missing = [
+        name
+        for name in names
+        if f"function {name}(" not in js_code
+    ];
+    if not missing {
         return js_code;
     }
-    line = prepended_runtime_import(backend);
+    line = 'import {' + ", ".join(missing) + '} from "' + src + '";';
     if line in js_code {
         return js_code;
     }

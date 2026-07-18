@@ -34,10 +34,10 @@ glob registry = get_registry();
             short="u"
         ),
         Arg.create(
-            "list_jacpacks",
+            "list",
             typ=bool,
             default=False,
-            help="List available project kinds and templates",
+            help="List available project kinds and named variants",
             short="l"
         ),
         Arg.create(
@@ -128,7 +128,7 @@ glob registry = get_registry();
         ("jac create --force", "Reinitialize existing project"),
         ("jac create --use ./my.jacpack", "Create from local .jacpack file"),
         ("jac create --use https://example.com/t.jacpack", "Create from URL"),
-        ("jac create --list_jacpacks", "List available project kinds and templates"),
+        ("jac create --list", "List available project kinds and named variants"),
 
     ],
     group="project"
@@ -138,7 +138,7 @@ def create(
     force: bool = False,
     kind: str = "",
     use: str = "default",
-    list_jacpacks: bool = False,
+    `list: bool = False,
     pack: str = "",
     pack_output: str = "",
     `skip: bool = False,
@@ -153,7 +153,7 @@ def create(
 
 @registry.command(
     name="install",
-    help="Install project dependencies, or 'jac install <pkg>' to add package(s) to jac.toml and install them",
+    help="Install project dependencies",
     args=[
         Arg.create(
             "packages",
@@ -481,4 +481,4 @@ def clean(
 
 def jacpack(action: str = "", path: str = "", output: str = "") -> int;
 
-def bundle(output: str = "dist", target: str = "wheel") -> int;
+def bundle(output: str = "dist", target: str = "wheel", fat: bool = False) -> int;

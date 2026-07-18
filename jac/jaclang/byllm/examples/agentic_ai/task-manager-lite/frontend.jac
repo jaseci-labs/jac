@@ -67,7 +67,7 @@ def bootstrap_frontend(token: str) {
     if st.session_state.loading {
         with st.spinner("🧠 AI is processing your request...") {
             try {
-                response = requests.post(
+                response: requests.Response = requests.post(
                     "http://localhost:8000/walker/task_manager",
                     json={"utterance": user_input},
                     headers={"Authorization": f"Bearer {token}"}

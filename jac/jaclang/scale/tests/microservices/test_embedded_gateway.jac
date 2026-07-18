@@ -19,10 +19,10 @@ def _make_gateway(dist: str = "/nonexistent-dist") -> EmbeddedGateway {
     transport.register_function(
         "orders",
         "create",
-        lambda payload: dict : {"order_id": payload.get("n", 0) * 10}
+        lambda (payload: dict) { {"order_id": payload.get("n", 0) * 10}; }
     );
     transport.register_walker(
-        "products", "List", lambda payload: dict : {"items": ["a", "b"]}
+        "products", "List", lambda (payload: dict) { {"items": ["a", "b"]}; }
     );
 
     gw = EmbeddedGateway(registry=reg, transport=transport, client_dist_dir=dist);

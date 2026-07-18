@@ -1,7 +1,7 @@
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.transform { Transform }
 import from jaclang.jac0core.program { JacProgram }
-import from jaclang.compiler.ownership { Ownership, result_ownership }
+import from jaclang.compiler.passes.main.rc_facts_pass { Ownership, result_ownership }
 import from jaclang.compiler.passes.main.type_facts_pass {
     TypeFacts,
     get_type_facts,

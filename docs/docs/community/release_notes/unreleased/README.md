@@ -28,7 +28,7 @@ Every PR that changes package code must include a release note fragment file.
 **Bug fix** (`docs/docs/community/release_notes/unreleased/jaclang/1234.bugfix.md`):
 
 ```markdown
-- **Fix: `by postinit` symbol resolution**: Fields declared with `by postinit` no longer show a false W2001 warning.
+- **Fix: `postinit` symbol resolution**: Fields declared with the `postinit` marker no longer show a false W2001 warning.
 ```
 
 **Breaking change** (`docs/docs/community/release_notes/unreleased/jaclang/1234.breaking.md`):

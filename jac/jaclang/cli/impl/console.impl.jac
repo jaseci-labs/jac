@@ -503,7 +503,7 @@ impl ConsoleRenderer.spinner_ctx(text: str) -> object {
 """Detect terminal capabilities once at construction, build the renderer via
 the polymorphic factory, and push the capability decision to it.
 
-`init` is Jac's constructor (`__init__`), which runs before `by postinit`
+`init` is Jac's constructor (`__init__`), which runs before `postinit`
 fields are set — so all renderer setup lives here in `postinit`, which runs
 after fields are initialized. Plugins customize the backend by overriding
 `_make_renderer`, not by re-implementing this.
@@ -602,6 +602,12 @@ impl JacConsole.error(
     # live status line first so the two don't collide on the terminal.
     self._renderer.clear_status();
     prefix = '✖' if emoji and self.use_emoji else '[ERROR]';
+    # Some callers pass a message that already carries an "Error:" prefix
+    # (e.g. a formatted runtime exception); drop it so we don't print the
+    # doubled "Error: Error:" banner.
+    if message.startswith("Error: ") {
+        message = message[len("Error: "):];
+    }
     self._renderer.emit(
         [Span(f"{prefix} Error:", 'error'), Span(f" {message}", None)], sys.stderr
     );
@@ -711,7 +717,6 @@ impl JacConsole.print_watching(pattern: str, count: int) -> None {
 # ===============================================================================
 """Get the console instance using the hook system, allowing plugins to override."""
 impl _get_console -> JacConsole {
-    global _console_instance;
     if _console_instance is None {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
         # Capability detection and renderer wiring happen in `postinit` at

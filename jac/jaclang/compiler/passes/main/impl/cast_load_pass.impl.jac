@@ -230,11 +230,14 @@ impl CastBuildPass._collect_module_globals(ext: list) -> set[str] {
 
 impl CastBuildPass._global_stmt(
     c_node: c_ast.Node, names: list[str]
-) -> uni.GlobalStmt {
-    targets: list[uni.Name] = [self._name(c_node, n) for n in names];
-    gtok = self._op_tok(c_node, Tok.GLOBAL_OP, "global");
-    semi = self._op_tok(c_node, Tok.SEMI, ";");
-    return uni.GlobalStmt(target=targets, kid=[gtok, *targets, semi]);
+) -> uni.Semi {
+    # main removed the GlobalStmt/NonLocalStmt uni nodes (refactor: Python
+    # `global`/`nonlocal` now lower to a no-op uni.Semi, see PyastBuildPass.
+    # proc_global). c2jac follows the same convention: the collected global
+    # writes in `names` are already resolved by the symbol table, so the
+    # declaration lowers to a no-op semicolon statement.
+    _ = names;
+    return self._pass_semi(c_node);
 }
 
 impl CastBuildPass.proc_file_ast(nd: c_ast.Node) -> uni.Module {

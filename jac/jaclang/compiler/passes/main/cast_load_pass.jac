@@ -114,19 +114,19 @@ obj CastBuildPass(Transform[uni.CModuleAst, uni.Module]) {
         prog: JacProgram,
         cancel_token: Event | None = None,
         lenient_c: bool = False,
-        orig_src: uni.Source by postinit,
-        enum_verdicts: EnumVerdicts by postinit,
-        _list_bound: set[str] by postinit,
-        _enum_member_owner: dict[str, str] by postinit,
-        _var_types: dict[str, JacPrim] by postinit,
-        _func_depth: int by postinit,
-        _func_name: str | None by postinit,
-        _func_contam: list[CLiftSite] by postinit,
-        _sites: list[CLiftSite] by postinit,
-        _quarantined: list[str] by postinit,
-        _module_globals: set[str] by postinit,
-        _func_global_writes: set[str] by postinit,
-        _struct_fields: dict[str, list[tuple[str, object]]] by postinit;
+        orig_src: uni.Source postinit,
+        enum_verdicts: EnumVerdicts postinit,
+        _list_bound: set[str] postinit,
+        _enum_member_owner: dict[str, str] postinit,
+        _var_types: dict[str, JacPrim] postinit,
+        _func_depth: int postinit,
+        _func_name: str | None postinit,
+        _func_contam: list[CLiftSite] postinit,
+        _sites: list[CLiftSite] postinit,
+        _quarantined: list[str] postinit,
+        _module_globals: set[str] postinit,
+        _func_global_writes: set[str] postinit,
+        _struct_fields: dict[str, list[tuple[str, object]]] postinit;
 
     def postinit -> None;
     def _build_member_owner_map -> dict[str, str];
@@ -157,7 +157,7 @@ obj CastBuildPass(Transform[uni.CModuleAst, uni.Module]) {
     def _surrogate_stmt(c_node: c_ast.Node) -> uni.UniNode;
     def _scope_bind(assign: uni.Assignment) -> uni.UniNode;
     def _collect_module_globals(ext: list) -> set[str];
-    def _global_stmt(c_node: c_ast.Node, names: list[str]) -> uni.GlobalStmt;
+    def _global_stmt(c_node: c_ast.Node, names: list[str]) -> uni.Semi;
     def proc_file_ast(nd: c_ast.Node) -> uni.Module;
     def proc_compound(nd: c_ast.Node) -> list[uni.CodeBlockStmt];
     def proc_func_def(nd: c_ast.Node) -> uni.Ability;

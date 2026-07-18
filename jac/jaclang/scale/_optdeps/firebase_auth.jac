@@ -1,5 +1,3 @@
-"""Guarded re-exports for firebase-admin (install group: [firebase])."""
-
 with entry {
     try {
         import firebase_admin;

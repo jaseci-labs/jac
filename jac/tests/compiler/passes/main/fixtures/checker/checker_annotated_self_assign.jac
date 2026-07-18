@@ -15,7 +15,7 @@ class Foo {
 
 # Case 2: obj with annotated self-assignment on declared field — no false E1001
 obj Bar {
-    has x: int by postinit;
+    has x: int postinit;
 
     def postinit {
         self.x = 0;

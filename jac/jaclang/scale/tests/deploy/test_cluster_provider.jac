@@ -41,7 +41,9 @@ test "validate_ports: AWS skips the API; Local raises on conflict and excludes o
     }
 
     api_spy = unittest.mock.MagicMock();
-    with unittest.mock.patch.object(cp_module.client, "CoreV1Api", lambda : api_spy ) {
+    with unittest.mock.patch.object(
+        cp_module.client, "CoreV1Api", lambda { api_spy; }
+    ) {
         AWSProvider().validate_ports(30080, "my-ns");
     }
     api_spy.list_service_for_all_namespaces.assert_not_called();
@@ -55,7 +57,7 @@ test "validate_ports: AWS skips the API; Local raises on conflict and excludes o
     error_msg = "";
     try {
         with unittest.mock.patch.object(
-            cp_module.client, "CoreV1Api", lambda : fake_v1_conflict
+            cp_module.client, "CoreV1Api", lambda { fake_v1_conflict; }
         ) {
             LocalProvider().validate_ports(30080, "my-ns");
         }
@@ -73,7 +75,7 @@ test "validate_ports: AWS skips the API; Local raises on conflict and excludes o
         items=[same_ns_svc]
     );
     with unittest.mock.patch.object(
-        cp_module.client, "CoreV1Api", lambda : fake_v1_same_ns
+        cp_module.client, "CoreV1Api", lambda { fake_v1_same_ns; }
     ) {
         LocalProvider().validate_ports(30080, "my-ns");
     }
@@ -99,14 +101,16 @@ test "get_cluster_provider returns the correct provider based on cluster node me
         }
     }
 
-    with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda : FakeApiAws()) {
+    with unittest.mock.patch.object(
+        utils.client, "CoreV1Api", lambda { FakeApiAws(); }
+    ) {
         provider = get_cluster_provider();
         assert provider.service_type() == 'LoadBalancer' , "AWS nodes must yield a LoadBalancer provider";
         assert provider.needs_nlb_wait() is True;
     }
 
     with unittest.mock.patch.object(
-        utils.client, "CoreV1Api", lambda : FakeApiLocal()
+        utils.client, "CoreV1Api", lambda { FakeApiLocal(); }
     ) {
         provider = get_cluster_provider();
         assert provider.service_type() == 'NodePort' , "Non-AWS nodes must yield a NodePort provider";

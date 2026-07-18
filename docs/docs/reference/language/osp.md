@@ -1212,7 +1212,7 @@ walker:priv SearchItems {
     }
 
     can finish with Root exit {
-        self.matches.sort(key=lambda x: any: x["score"], reverse=True);
+        self.matches.sort(key=lambda (x: any) { x["score"]; }, reverse=True);
         report self.matches;
     }
 }

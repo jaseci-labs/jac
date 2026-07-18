@@ -74,7 +74,7 @@ def:pub DashboardLayout -> JsxElement {
     alert = useAlert();
 
     def makeHandler(tabId: str) -> any {
-        return lambda e: any { activeTab = tabId; };
+        return lambda (e: any) { activeTab = tabId; };
     }
 
     # Flip the `.light` class on <html>; tokens in main.css do the rest.

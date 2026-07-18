@@ -1,8 +1,8 @@
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { SymbolAccess, Tokens }
 import from jaclang.jac0core.passes.uni_pass { UniPass }
-import from jaclang.jac0core.unitree { UniScopeNode }
-import from jaclang.jac0core.diagnostics { E0077 }
+import from jaclang.jac0core.unitree { UniScopeNode, Symbol }
+import from jaclang.jac0core.diagnostics { E0064, E0077 }
 
 class SymTabBuildPass(UniPass) {
     def before_pass(self: SymTabBuildPass) -> None;
@@ -23,7 +23,6 @@ class SymTabBuildPass(UniPass) {
     def exit_global_vars(self: SymTabBuildPass, nd: uni.GlobalVars) -> None;
     def exit_assignment(self: SymTabBuildPass, nd: uni.Assignment) -> None;
     def exit_binary_expr(self: SymTabBuildPass, nd: uni.BinaryExpr) -> None;
-    def enter_global_stmt(self: SymTabBuildPass, nd: uni.GlobalStmt) -> None;
     def enter_test(self: SymTabBuildPass, nd: uni.Test) -> None;
     def exit_test(self: SymTabBuildPass, nd: uni.Test) -> None;
     def _exit_import_absorb(self: SymTabBuildPass, nd: uni.Import) -> None;
@@ -46,6 +45,8 @@ class SymTabBuildPass(UniPass) {
     def exit_enum(self: SymTabBuildPass, nd: uni.Enum) -> None;
     def enter_typed_ctx_block(self: SymTabBuildPass, nd: uni.TypedCtxBlock) -> None;
     def exit_typed_ctx_block(self: SymTabBuildPass, nd: uni.TypedCtxBlock) -> None;
+    def enter_open_stmt(self: SymTabBuildPass, nd: uni.OpenStmt) -> None;
+    def exit_open_stmt(self: SymTabBuildPass, nd: uni.OpenStmt) -> None;
     def enter_if_stmt(self: SymTabBuildPass, nd: uni.IfStmt) -> None;
     def exit_if_stmt(self: SymTabBuildPass, nd: uni.IfStmt) -> None;
     def enter_else_if(self: SymTabBuildPass, nd: uni.ElseIf) -> None;
@@ -95,4 +96,10 @@ def def_insert_unpacking(
 
 def bind_assignment_targets(nd: uni.Assignment) -> None;
 
-def bind_global_stmt(nd: uni.GlobalStmt) -> None;
+def lookup_enclosing_binding(from_scope: UniScopeNode, name: str) -> (Symbol | None);
+
+def rebind_or_def_insert(
+    target: uni.AstSymbolNode, py_scope: UniScopeNode, single_decl: str
+) -> None;
+
+def record_cross_scope_rebind(py_scope: UniScopeNode, name: str, sym: Symbol) -> None;

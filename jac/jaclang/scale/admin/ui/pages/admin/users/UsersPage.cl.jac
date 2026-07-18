@@ -98,11 +98,11 @@ def:pub UsersPage -> JsxElement {
     }
 
     def makeEditHandler(username: str, role: str, resetRequired: bool) -> any {
-        return lambda e: any { openEditModal(username, role, resetRequired); };
+        return lambda (e: any) { openEditModal(username, role, resetRequired); };
     }
 
     def makeDeleteHandler(username: str) -> any {
-        return lambda e: any { handleDelete(username); };
+        return lambda (e: any) { handleDelete(username); };
     }
 
     totalUsers = len(users);

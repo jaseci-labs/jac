@@ -146,6 +146,10 @@ impl FinallyStmt.accept_enter(v: UniPass) -> None {
     v.enter_finally_stmt(self);
 }
 
+impl ForeverStmt.accept_enter(v: UniPass) -> None {
+    v.enter_forever_stmt(self);
+}
+
 impl FormattedValue.accept_enter(v: UniPass) -> None {
     v.enter_formatted_value(self);
 }
@@ -160,10 +164,6 @@ impl FuncSignature.accept_enter(v: UniPass) -> None {
 
 impl GenCompr.accept_enter(v: UniPass) -> None {
     v.enter_gen_compr(self);
-}
-
-impl GlobalStmt.accept_enter(v: UniPass) -> None {
-    v.enter_global_stmt(self);
 }
 
 impl GlobalVars.accept_enter(v: UniPass) -> None {
@@ -342,8 +342,8 @@ impl NativeBlock.accept_enter(v: UniPass) -> None {
     v.enter_native_block(self);
 }
 
-impl NonLocalStmt.accept_enter(v: UniPass) -> None {
-    v.enter_non_local_stmt(self);
+impl OpenStmt.accept_enter(v: UniPass) -> None {
+    v.enter_open_stmt(self);
 }
 
 impl ParamVar.accept_enter(v: UniPass) -> None {
@@ -444,10 +444,6 @@ impl VisitStmt.accept_enter(v: UniPass) -> None {
 
 impl WhileStmt.accept_enter(v: UniPass) -> None {
     v.enter_while_stmt(self);
-}
-
-impl ForeverStmt.accept_enter(v: UniPass) -> None {
-    v.enter_forever_stmt(self);
 }
 
 impl WithStmt.accept_enter(v: UniPass) -> None {
@@ -622,6 +618,10 @@ impl Float.accept_exit(v: UniPass) -> None {
     v.exit_float(self);
 }
 
+impl ForeverStmt.accept_exit(v: UniPass) -> None {
+    v.exit_forever_stmt(self);
+}
+
 impl FormattedValue.accept_exit(v: UniPass) -> None {
     v.exit_formatted_value(self);
 }
@@ -636,10 +636,6 @@ impl FuncSignature.accept_exit(v: UniPass) -> None {
 
 impl GenCompr.accept_exit(v: UniPass) -> None {
     v.exit_gen_compr(self);
-}
-
-impl GlobalStmt.accept_exit(v: UniPass) -> None {
-    v.exit_global_stmt(self);
 }
 
 impl GlobalVars.accept_exit(v: UniPass) -> None {
@@ -822,12 +818,12 @@ impl NativeBlock.accept_exit(v: UniPass) -> None {
     v.exit_native_block(self);
 }
 
-impl NonLocalStmt.accept_exit(v: UniPass) -> None {
-    v.exit_non_local_stmt(self);
-}
-
 impl Null.accept_exit(v: UniPass) -> None {
     v.exit_null(self);
+}
+
+impl OpenStmt.accept_exit(v: UniPass) -> None {
+    v.exit_open_stmt(self);
 }
 
 impl ParamVar.accept_exit(v: UniPass) -> None {
@@ -932,10 +928,6 @@ impl VisitStmt.accept_exit(v: UniPass) -> None {
 
 impl WhileStmt.accept_exit(v: UniPass) -> None {
     v.exit_while_stmt(self);
-}
-
-impl ForeverStmt.accept_exit(v: UniPass) -> None {
-    v.exit_forever_stmt(self);
 }
 
 impl WithStmt.accept_exit(v: UniPass) -> None {

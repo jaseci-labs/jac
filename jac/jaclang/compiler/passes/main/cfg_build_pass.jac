@@ -5,6 +5,8 @@ import from jaclang.jac0core.passes { UniPass }
 import type from jaclang.jac0core.program { JacProgram }
 
 obj CFGBuildPass(UniPass) {
+    static has PROVIDES: tuple = ('cfg', );
+
     def before_pass -> None;
     def link_bbs(source: uni.UniCFGNode, target: uni.UniCFGNode) -> None;
     def _link_sequential(body: Sequence[uni.CodeBlockStmt]) -> None;
@@ -73,6 +75,7 @@ obj CFGBuildPass(UniPass) {
     def exit_switch_case(nd: uni.SwitchCase) -> None;
     def exit_with_stmt(nd: uni.WithStmt) -> None;
     def exit_typed_ctx_block(nd: uni.TypedCtxBlock) -> None;
+    def exit_open_stmt(nd: uni.OpenStmt) -> None;
     def exit_jsx_slot(nd: uni.JsxSlot) -> None;
     def exit_ability(nd: uni.Ability) -> None;
     def exit_archetype(nd: uni.Archetype) -> None;

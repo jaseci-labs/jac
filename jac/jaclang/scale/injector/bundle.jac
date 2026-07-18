@@ -60,7 +60,7 @@ def is_excluded(rel: Path) -> bool {
     ) {
         return False;
     }
-    # The staged admin console the gateway serves directly.
+
     if len(parts) >= 2 and parts[0] == ".jac" and parts[1] == "admin" {
         return False;
     }
@@ -96,13 +96,6 @@ def _is_dev_section(name: str) -> bool {
 }
 
 
-"""Materialize the database backend the deploy provisions into the shipped
-manifest. The deployer injects the connection URI (e.g. MONGODB_URI) into
-every service pod, so the pod's `jac install` must close over the matching
-data capability; a project with no declared [plugins.scale.*] intent would
-otherwise boot straight into an ImportError (#7137). scale_intent_from_config
-prefers a top-level [scale] table over [plugins.scale], so the appended
-section follows whichever form the project uses."""
 def bake_database_intent(toml_text: str, backend: str) -> str {
     if not backend {
         return toml_text;
@@ -178,8 +171,6 @@ def sanitized_jac_toml(base: Path, provisioned_database: str = "") -> (str | Non
 
 
 def det_tar_member(info: tarfile.TarInfo) -> tarfile.TarInfo {
-    # Bundles are content-addressed; wall-clock mtimes and uid/gid would give
-    # identical content a new digest every deploy, defeating seed skip-if-present.
     info.mtime = 0;
     info.uid = 0;
     info.gid = 0;
@@ -190,16 +181,12 @@ def det_tar_member(info: tarfile.TarInfo) -> tarfile.TarInfo {
 
 
 def open_det_tar(buf: io.BytesIO) -> tuple[tarfile.TarFile, any] {
-    # gzip stamps the current time into its header - zero it for determinism.
     gz = gzip.GzipFile(fileobj=buf, mode="wb", mtime=0);
     return (tarfile.open(fileobj=gz, mode="w"), gz);
 }
 
 
 def _precompile_app(base: Path, pod_binary: bytes) -> Path {
-    # Seal the app's modules with the pod binary into _precompiled/MANIFEST.json
-    # so the deploy artifact is a valid .jab. The seal is mandatory: an
-    # incomplete seal raises rather than shipping a cold-compile fallback.
     stage_root = Path(tempfile.mkdtemp(prefix="jac-app-precompile-"));
     stage = stage_root / "app";
     try {
@@ -211,8 +198,7 @@ def _precompile_app(base: Path, pod_binary: bytes) -> Path {
             dest.parent.mkdir(parents=True, exist_ok=True);
             shutil.copy2(str(path), str(dest));
         }
-        # The precompiler discovers a package by its __init__; app projects are
-        # flat, so mark the staged copy (the marker's .jir is not packed).
+
         marker = stage / "__init__.jac";
         if not marker.exists() {
             marker.write_text("");
@@ -221,7 +207,7 @@ def _precompile_app(base: Path, pod_binary: bytes) -> Path {
         jac_path.write_bytes(pod_binary);
         jac_path.chmod(0o755);
         script = Path(str(__file__)).parent.parent.parent / "utils" / "precompile_bytecode.jac";
-        # --seal emits the MANIFEST.json that makes the tree a sealed image.
+
         result = subprocess.run(
             [str(jac_path), "run", str(script), str(stage_root), "--seal"],
             capture_output=True,
@@ -247,10 +233,6 @@ def _precompile_app(base: Path, pod_binary: bytes) -> Path {
 
 
 def pack_jab(project_dir: str, provisioned_database: str, pod_binary: bytes) -> bytes {
-    # Pack the app into a sealed .jab: project source, the sealed _precompiled/
-    # image (MANIFEST.json at tar root), and jac.toml. The gzip-tar IS a valid
-    # .jab (both materialize_jab and a plain `tar xzf` accept it), so pods load
-    # the manifest-verified image instead of cold-compiling on boot.
     if not pod_binary {
         raise ValueError(
             "pack_jab requires the pod binary to seal the app image; none given."
@@ -258,9 +240,7 @@ def pack_jab(project_dir: str, provisioned_database: str, pod_binary: bytes) -> 
     }
     base = Path(project_dir).resolve();
     staged = _precompile_app(base, pod_binary);
-    # staged is <stage_root>/app; the whole mkdtemp tree must be removed even if
-    # a tar.add below raises, or a full project copy leaks in /tmp on every
-    # failed deploy (accumulates on a retrying deploy driver).
+
     try {
         buf = io.BytesIO();
         (tar, gz) = open_det_tar(buf);

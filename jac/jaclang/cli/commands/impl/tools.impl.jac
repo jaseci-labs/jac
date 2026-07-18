@@ -19,25 +19,28 @@ impl tool(tool: str, args: list = []) -> int {
     if tool == "grammar" {
         import from jaclang.cli.commands.analysis { grammar }
         output = "";
+        strict = False;
         i = 0;
         while i < len(args) {
             a = args[i];
             if a in ("-o", "--output") {
                 if i + 1 >= len(args) {
-                    console.error("Usage: jac tool grammar [-o <file>]");
+                    console.error("Usage: jac tool grammar [-o <file>] [--strict]");
                     return 1;
                 }
                 i += 1;
                 output = args[i];
             } elif a.startswith("--output=") {
                 output = a.split("=", 1)[1];
+            } elif a == "--strict" {
+                strict = True;
             } else {
                 console.error(f"jac tool grammar: unknown argument '{a}'");
                 return 1;
             }
             i += 1;
         }
-        return grammar(output=output);
+        return grammar(output=output, strict=strict);
     }
     if hasattr(AstTool, tool) {
         try {
@@ -224,9 +227,7 @@ impl dot(
                 format=format
             );
         } except Exception as e {
-            console.print(f"Error while generating graph: {e}");
-            import traceback;
-            traceback.print_exc();
+            console.error(f"Error generating graph: {e}");
             jac_machine.close();
             return 1;
         }

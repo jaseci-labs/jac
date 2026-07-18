@@ -68,7 +68,7 @@ def:pub __jacReportError(
 
 def:pub __jacInstallErrorHandlers -> None;
 
-def:pub ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement;
+def:pub ErrorFallback(error: any, resetErrorBoundary: any) -> JsxElement;
 
 def:pub errorOverlay(filePath: str, errors: str) -> JsxElement;
 
