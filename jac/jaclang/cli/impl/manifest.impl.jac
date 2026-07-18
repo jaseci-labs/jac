@@ -1,70 +1,358 @@
-import json;
-import from pathlib { Path }
+glob _COMMAND_ROUTES: list = [
+         (
+             'ai',
+             'Launch an interactive Jac coding agent',
+             'general',
+             '',
+             False,
+             'jaclang.cli.commands.ai',
+             'ai',
+             []
+         ),
+         (
+             'browse',
+             'Headless browser automation over CDP (open, click, snapshot, ...)',
+             'tools',
+             '',
+             True,
+             'jaclang.cli.commands.browse',
+             'browse',
+             []
+         ),
+         (
+             'build',
+             'Build a sealed .jab artifact (type-checks first)',
+             'build',
+             '',
+             False,
+             'jaclang.cli.commands.build',
+             'build',
+             ['providers', 'client']
+         ),
+         (
+             'check',
+             'Type check Jac files',
+             'analysis',
+             'core',
+             False,
+             'jaclang.cli.commands.analysis',
+             'check',
+             []
+         ),
+         (
+             'clean',
+             'Clean project build artifacts',
+             'project',
+             '',
+             False,
+             'jaclang.cli.commands.project',
+             'clean',
+             ['providers']
+         ),
+         (
+             'code',
+             "Query code structure via the compiler (grep's structural successor)",
+             'analysis',
+             '',
+             False,
+             'jaclang.cli.commands.code',
+             'code',
+             []
+         ),
+         (
+             'completions',
+             'Generate shell completion script',
+             'tools',
+             '',
+             True,
+             'jaclang.cli.commands.tools',
+             'completions',
+             []
+         ),
+         (
+             'config',
+             'Manage Jac configuration',
+             'config',
+             '',
+             False,
+             'jaclang.cli.commands.config',
+             'config',
+             []
+         ),
+         (
+             'create',
+             'Create a new Jac project',
+             'project',
+             'core',
+             False,
+             'jaclang.cli.commands.project',
+             'create',
+             ['providers', 'templates']
+         ),
+         (
+             'db',
+             'Inspect, rescue, and manage Jac persistence databases',
+             'db',
+             '',
+             False,
+             'jaclang.cli.commands.db',
+             'db',
+             []
+         ),
+         (
+             'dev',
+             'Serve with hot reload and live compilation',
+             'execution',
+             'core',
+             False,
+             'jaclang.cli.commands.execution',
+             'dev',
+             ['providers']
+         ),
+         (
+             'dot',
+             'Generate graph visualization (DOT format)',
+             'tools',
+             '',
+             True,
+             'jaclang.cli.commands.tools',
+             'dot',
+             []
+         ),
+         (
+             'fmt',
+             'Format Jac source code',
+             'analysis',
+             'core',
+             False,
+             'jaclang.cli.commands.analysis',
+             'format',
+             []
+         ),
+         (
+             'gen-jir-registry',
+             'Regenerate jir_registry.jac from unitree node classes',
+             'tools',
+             '',
+             True,
+             'jaclang.cli.commands.tools',
+             'gen_jir_registry',
+             []
+         ),
+         (
+             'gen-uni-dispatch',
+             'Regenerate static enter_node/exit_node dispatch for UniPass subclasses',
+             'tools',
+             '',
+             True,
+             'jaclang.cli.commands.tools',
+             'gen_uni_dispatch',
+             []
+         ),
+         (
+             'gen_parser',
+             'Generate Jac parser (internal use)',
+             'analysis',
+             '',
+             True,
+             'jaclang.cli.commands.analysis',
+             'gen_parser',
+             []
+         ),
+         (
+             'guide',
+             'Show curated Jac reference guides',
+             'general',
+             'learn',
+             False,
+             'jaclang.cli.commands.guide',
+             'guide',
+             []
+         ),
+         (
+             'install',
+             'Install project dependencies',
+             'project',
+             '',
+             False,
+             'jaclang.cli.commands.project',
+             'install',
+             ['providers']
+         ),
+         (
+             'lsp',
+             'Start Jac language server',
+             'tools',
+             '',
+             False,
+             'jaclang.cli.commands.tools',
+             'lsp',
+             []
+         ),
+         (
+             'model',
+             'Manage byllm local-model weights (Gemma 4 and friends)',
+             'config',
+             '',
+             False,
+             'jaclang.byllm.cli',
+             'model',
+             []
+         ),
+         (
+             'nacompile',
+             "Compile a Jac file to a standalone native binary (prefer 'jac build --as native' for projects)",
+             'transform',
+             '',
+             True,
+             'jaclang.cli.commands.nacompile',
+             'nacompile',
+             []
+         ),
+         (
+             'ninja',
+             'Open the built-in jac editor (fused Neovim + LSP + tree-sitter)',
+             'tools',
+             '',
+             False,
+             'jaclang.cli.commands.tools',
+             'ninja',
+             []
+         ),
+         (
+             'precommit',
+             'Run fmt (--lintfix) + check using jac.toml lint settings; installable as a git hook',
+             'analysis',
+             '',
+             True,
+             'jaclang.cli.commands.analysis',
+             'precommit',
+             []
+         ),
+         (
+             'remove',
+             'Remove a dependency from the project',
+             'project',
+             '',
+             False,
+             'jaclang.cli.commands.project',
+             'remove',
+             ['providers']
+         ),
+         (
+             'retheme',
+             'Re-theme a jac-shadcn project: regenerate global.css from [jac-shadcn]',
+             'project',
+             '',
+             False,
+             'jaclang.cli.shadcn.cli',
+             'retheme',
+             []
+         ),
+         (
+             'run',
+             'Run a Jac program',
+             'execution',
+             'core',
+             False,
+             'jaclang.cli.commands.execution',
+             'run',
+             ['providers']
+         ),
+         (
+             'scale',
+             'Manage scale deployments: local microservices (status/stop/restart/logs) and platform deployments (status/destroy on a .jac app)',
+             'microservices',
+             '',
+             False,
+             'jaclang.scale.plugin',
+             'scale_cmd',
+             ['providers']
+         ),
+         (
+             'setup',
+             'Setup a build target (one-time initialization)',
+             'project',
+             '',
+             False,
+             'jaclang.runtimelib.client.cli',
+             'setup',
+             ['providers', 'client']
+         ),
+         (
+             'start',
+             'Start server for a Jac program',
+             'execution',
+             'core',
+             False,
+             'jaclang.cli.commands.execution',
+             'start',
+             ['providers', 'client']
+         ),
+         (
+             'test',
+             'Run Jac test suite',
+             'analysis',
+             'core',
+             False,
+             'jaclang.cli.commands.analysis',
+             'test',
+             []
+         ),
+         (
+             'tool',
+             'Run AST tools',
+             'tools',
+             '',
+             False,
+             'jaclang.cli.commands.tools',
+             'tool',
+             []
+         ),
+         (
+             'update',
+             'Update project dependencies to latest compatible versions',
+             'project',
+             '',
+             False,
+             'jaclang.cli.commands.project',
+             'update',
+             ['providers']
+         ),
+         (
+             'x',
+             'Run an installed CLI tool (console-script) under the Jac runtime',
+             'execution',
+             '',
+             False,
+             'jaclang.cli.commands.execution',
+             'x',
+             ['providers']
+         )
+     ];
 
 glob _COMMANDS: dict[str, CommandMeta] = {},
      _COMMANDS_LOADED: bool = False;
-
-def _manifest_data_path -> Path {
-    return Path(__file__).parent / '_manifest_data.json';
-}
 
 def _ensure_commands_loaded {
     global _COMMANDS,_COMMANDS_LOADED;
     if _COMMANDS_LOADED {
         return;
     }
-    path = _manifest_data_path();
-    payload = json.loads(path.read_text(encoding='utf-8'));
-    raw_commands = payload.get('commands', []);
-    for raw in raw_commands {
-        meta = _parse_command(raw);
+    for row in _COMMAND_ROUTES {
+        meta = CommandMeta(
+            name=row[0],
+            help=row[1],
+            group=row[2],
+            tier=row[3],
+            hidden=row[4],
+            handler_module=row[5],
+            handler_name=row[6],
+            needs=row[7]
+        );
         _COMMANDS[meta.name] = meta;
     }
     _COMMANDS_LOADED = True;
-}
-
-def _parse_arg(raw: dict) -> ArgMeta {
-    kind_raw = raw['kind'];
-    if isinstance(kind_raw, str) and kind_raw.startswith('ArgKind.') {
-        kind_raw = kind_raw.split('.', 1)[1];
-    }
-    choices = raw.get('choices');
-    return ArgMeta(
-        name=raw['name'],
-        kind=ArgKind[kind_raw],
-        typ=raw.get('typ', 'str'),
-        `default=raw.get('default'),
-        help=raw.get('help', ''),
-        short=raw.get('short'),
-        choices=list(choices) if choices else None,
-        required=bool(raw.get('required', False)),
-        dest=raw.get('dest'),
-        metavar=raw.get('metavar')
-    );
-}
-
-def _parse_command(raw: dict) -> CommandMeta {
-    examples: list[tuple[str, str]] = [];
-    for entry in raw.get('examples', []) {
-        if len(entry) >= 2 {
-            examples.append((entry[0], entry[1]));
-        } elif len(entry) == 1 {
-            examples.append((entry[0], ''));
-        }
-    }
-    args = [_parse_arg(a) for a in raw.get('args', [])];
-    return CommandMeta(
-        name=raw['name'],
-        help=raw['help'],
-        description=raw.get('description', ''),
-        group=raw.get('group', 'general'),
-        tier=raw.get('tier', ''),
-        hidden=bool(raw.get('hidden', False)),
-        examples=examples,
-        args=args,
-        handler_module=raw['handler_module'],
-        handler_name=raw['handler_name']
-    );
 }
 
 impl validate_manifest -> list[str] {

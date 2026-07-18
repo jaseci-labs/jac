@@ -27,6 +27,7 @@ obj CommandRegistry {
 
     def get_groups -> list[str];
     def finalize -> argparse.ArgumentParser;
+    def build_command_parser(spec: CommandSpec) -> argparse.ArgumentParser;
     def _build_subparser(
         subparsers: any, spec: CommandSpec
     ) -> argparse.ArgumentParser;

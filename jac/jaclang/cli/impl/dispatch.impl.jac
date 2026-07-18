@@ -1,10 +1,9 @@
 import os;
 import sys;
-import argparse;
-import from jaclang.cli.command { ArgKind }
-import from jaclang.cli.manifest { ArgMeta, CommandMeta }
+import from jaclang.cli.command { ArgKind, CommandSpec }
+import from jaclang.cli.manifest { CommandMeta }
 
-def _load_project_config {
+def _discover_project_config {
     try {
         import from jaclang.jac0core.helpers { MalformedJacTomlError }
     } except Exception {
@@ -19,8 +18,6 @@ def _load_project_config {
         if config is not None {
             add_venv_to_path(config);
         }
-        _initialize_provider_registry();
-        _initialize_template_registry();
     } except MalformedJacTomlError as exc {
         _exit_on_malformed_jac_toml(exc);
     } except Exception { }
@@ -49,116 +46,25 @@ def _initialize_template_registry {
     } except Exception { }
 }
 
-def _add_argument(parser: argparse.ArgumentParser, arg: ArgMeta) {
-    kwargs: dict = {'help': arg.help};
-    if arg.choices {
-        kwargs['choices'] = list(arg.choices);
-    }
-    if arg.metavar {
-        kwargs['metavar'] = arg.metavar;
-    }
-    if arg.dest {
-        kwargs['dest'] = arg.dest;
-    }
+def _load_command_spec(command_name: str, meta: CommandMeta) -> CommandSpec {
+    import importlib;
+    import from jaclang.cli.registry { get_registry }
 
-    if arg.kind == ArgKind.POSITIONAL {
-        if arg.default is not None {
-            kwargs['nargs'] = '?';
-            kwargs['default'] = arg.default;
-        }
-        parser.add_argument(arg.name, **kwargs);
-    } elif arg.kind == ArgKind.MULTI {
-        if arg.name in ('paths', 'packages', 'names') {
-            kwargs['nargs'] = '+' if arg.default is None else '*';
-            if arg.default is not None {
-                kwargs['default'] = arg.default;
-            }
-            parser.add_argument(arg.name, **kwargs);
-        } else {
-            kwargs['nargs'] = '*';
-            if arg.default is not None {
-                kwargs['default'] = arg.default;
-            }
-            if arg.short {
-                parser.add_argument(f"-{arg.short}", f"--{arg.name}", **kwargs);
-            } else {
-                parser.add_argument(f"--{arg.name}", **kwargs);
-            }
-        }
-    } elif arg.kind == ArgKind.APPEND {
-        kwargs['action'] = 'append';
-        kwargs['nargs'] = '+';
-        kwargs['default'] = None;
-        if arg.short {
-            parser.add_argument(f"-{arg.short}", f"--{arg.name}", **kwargs);
-        } else {
-            parser.add_argument(f"--{arg.name}", **kwargs);
-        }
-    } elif arg.kind == ArgKind.REMAINDER {
-        kwargs['nargs'] = argparse.REMAINDER;
-        parser.add_argument(arg.name, **kwargs);
-    } elif arg.kind == ArgKind.FLAG or arg.typ == 'bool' {
-        kwargs['action'] = 'store_true';
-        kwargs['default'] = arg.default if arg.default is not None else False;
-        shared_dest = kwargs.get('dest') or arg.name.replace('-', '_');
-        kwargs['dest'] = shared_dest;
-        if arg.short {
-            parser.add_argument(f"-{arg.short}", f"--{arg.name}", **kwargs);
-        } else {
-            parser.add_argument(f"--{arg.name}", **kwargs);
-        }
-        parser.add_argument(
-            f"--no-{arg.name}",
-            action='store_false',
-            dest=shared_dest,
-            help=f"Disable {arg.name}"
-        );
-    } else {
-        typ = int if arg.typ == 'int' else str;
-        kwargs['type'] = typ;
-        kwargs['default'] = arg.default;
-        if arg.required {
-            kwargs['required'] = True;
-        }
-        if arg.short {
-            parser.add_argument(f"-{arg.short}", f"--{arg.name}", **kwargs);
-        } else {
-            parser.add_argument(f"--{arg.name}", **kwargs);
-        }
+    importlib.import_module(meta.handler_module);
+    spec = get_registry().get(command_name);
+    if spec is None {
+        raise KeyError(command_name);
     }
+    return spec;
 }
 
-def _build_command_parser(meta: CommandMeta) -> argparse.ArgumentParser {
-    description = meta.description or meta.help;
-    if meta.examples {
-        description += "\n\nExamples:\n";
-        for (cmd, desc) in meta.examples {
-            description += f"  {cmd}\n";
-            if desc {
-                description += f"      {desc}\n";
-            }
-        }
-    }
-
-    parser = argparse.ArgumentParser(
-        prog=f"jac {meta.name}",
-        description=description,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        add_help=True
-    );
-    for arg in meta.args {
-        _add_argument(parser, arg);
-    }
-    return parser;
-}
-
-def _extract_script_args(meta: CommandMeta) -> list[str] {
+def _extract_script_args(spec: CommandSpec) -> list[str] {
     raw = sys.argv[1:];
     if len(raw) < 2 {
         return [];
     }
 
-    all_args = meta.args;
+    all_args = spec.args;
     has_remainder = any(a.kind == ArgKind.REMAINDER for a in all_args);
     if not has_remainder {
         return [];
@@ -174,7 +80,7 @@ def _extract_script_args(meta: CommandMeta) -> list[str] {
         if arg.kind in (ArgKind.POSITIONAL, ArgKind.MULTI, ArgKind.REMAINDER) {
             continue;
         }
-        if arg.kind == ArgKind.FLAG or arg.typ == 'bool' {
+        if arg.kind == ArgKind.FLAG or arg.typ == bool {
             continue;
         }
         value_flags.add(f"--{arg.name}");
@@ -276,8 +182,17 @@ def _requests_help(cmd_argv: list[str]) -> bool {
     return False;
 }
 
+def _command_argv(command_name: str) -> list[str] {
+    return (
+        sys.argv[2:]
+            if len(sys.argv) > 1 and sys.argv[1] == command_name
+            else sys.argv[1:]
+    );
+}
+
 impl run_selected_command(command_name: str) -> None {
     import from jaclang.cli.manifest { get_command_meta }
+    import from jaclang.cli.registry { get_registry }
 
     meta = get_command_meta(command_name);
     if meta is None {
@@ -285,37 +200,30 @@ impl run_selected_command(command_name: str) -> None {
         raise SystemExit(2);
     }
 
-    parser = _build_command_parser(meta);
-    cmd_argv = (
-        sys.argv[2:]
-            if len(sys.argv) > 1 and sys.argv[1] == command_name
-            else sys.argv[1:]
-    );
+    spec = _load_command_spec(command_name, meta);
+    parser = get_registry().build_command_parser(spec);
 
-    if _requests_help(cmd_argv) {
-        parser.parse_known_args(cmd_argv);
+    if _requests_help(_command_argv(command_name)) {
+        parser.parse_known_args(_command_argv(command_name));
     }
 
     import from jaclang.cli.console { console }
-    import from jaclang.cli.loader { load_handler }
-    import from jaclang.cli.registry_adapter { manifest_to_spec }
     import from jaclang.cli.executor { get_executor }
 
-    _load_project_config();
-
-    if command_name in ('build', 'start', 'setup') {
+    _discover_project_config();
+    if 'templates' in meta.needs {
+        _initialize_template_registry();
+    }
+    if 'providers' in meta.needs {
+        _initialize_provider_registry();
+    }
+    if 'client' in meta.needs {
         import jaclang.runtimelib.client.cli;
     }
 
-    handler = load_handler(command_name);
-    spec = manifest_to_spec(meta, handler);
-    script_args = _extract_script_args(meta);
+    script_args = _extract_script_args(spec);
 
-    cmd_argv = (
-        sys.argv[2:]
-            if len(sys.argv) > 1 and sys.argv[1] == command_name
-            else sys.argv[1:]
-    );
+    cmd_argv = _command_argv(command_name);
     (args, unknown) = parser.parse_known_args(cmd_argv);
     if unknown {
         if command_name == 'test' and any(not u.startswith('-') for u in unknown) {

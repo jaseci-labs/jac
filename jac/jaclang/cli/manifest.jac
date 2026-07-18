@@ -1,5 +1,3 @@
-import from jaclang.cli.command { ArgKind }
-
 glob VERB_BUDGET: int = 28,
      TOMBSTONED_VERBS: dict[str, str] = {
          "add": "jac install <pkg>",
@@ -50,30 +48,15 @@ glob VERB_BUDGET: int = 28,
      },
      TIER_ORDER: list[str] = ["core", "learn"];
 
-obj ArgMeta {
-    has name: str,
-        kind: ArgKind,
-        typ: str = "str",
-        `default: any = None,
-        help: str = "",
-        short: str | None = None,
-        choices: list[any] | None = None,
-        required: bool = False,
-        dest: str | None = None,
-        metavar: str | None = None;
-}
-
 obj CommandMeta {
     has name: str,
         help: str,
-        description: str,
         group: str,
         tier: str,
         hidden: bool,
-        examples: list[tuple[str, str]],
-        args: list[ArgMeta],
         handler_module: str,
-        handler_name: str;
+        handler_name: str,
+        needs: list[str] = [];
 }
 
 def validate_manifest -> list[str];

@@ -27,7 +27,6 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
 JAC_ROOT = REPO / "jac"
-MANIFEST = JAC_ROOT / "jaclang" / "cli" / "_manifest_data.json"
 
 # The authoritative core registration modules (must match the
 # _CORE_REGISTRATION_MODULES list in jaclang/cli/registry.jac). Loading any
@@ -69,14 +68,39 @@ _PROBE_SINGLE = (
 )
 
 
+_OWNING_PROBE = (
+    "import sys, json\n"
+    f"sys.path.insert(0, {str(JAC_ROOT)!r})\n"
+    "from jaclang.cli.manifest import get_command_meta\n"
+    "names = json.loads(sys.argv[1])\n"
+    "out = {}\n"
+    "for n in names:\n"
+    "    m = get_command_meta(n)\n"
+    "    hm = (m.handler_module if m else '') or ''\n"
+    "    if hm.startswith('jaclang.cli.commands.'):\n"
+    "        out[n] = hm.split('.')[-1]\n"
+    "print('OWNING=' + json.dumps(out))\n"
+)
+
+
 def _command_owning_module() -> dict[str, str]:
-    data = json.loads(MANIFEST.read_text(encoding="utf-8"))
-    owning: dict[str, str] = {}
-    for cmd in data["commands"]:
-        hm = cmd.get("handler_module") or ""
-        if hm.startswith("jaclang.cli.commands."):
-            owning[cmd["name"]] = hm.split(".")[-1]
-    return owning
+    # Source of truth is the compact route table in jaclang.cli.manifest; read
+    # it in a subprocess so importing jaclang here cannot pollute the isolation
+    # probes below.
+    proc = subprocess.run(
+        [sys.executable, "-c", _OWNING_PROBE, json.dumps(TARGET_COMMANDS)],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "JAC_BENCH_ROOT": str(JAC_ROOT)},
+    )
+    assert proc.returncode == 0, (
+        f"owning-module probe failed (rc={proc.returncode}):\n{proc.stderr[-1500:]}"
+    )
+    for line in proc.stdout.splitlines():
+        if line.startswith("OWNING="):
+            return json.loads(line.split("=", 1)[1])
+    raise AssertionError(f"no OWNING= line in stdout:\n{proc.stdout[-1000:]}")
 
 
 def _parse_probe(stdout: str) -> list[str]:

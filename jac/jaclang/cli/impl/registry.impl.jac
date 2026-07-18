@@ -101,6 +101,31 @@ impl CommandRegistry.finalize -> argparse.ArgumentParser {
     return self.parser;
 }
 
+impl CommandRegistry.build_command_parser(
+    spec: CommandSpec
+) -> argparse.ArgumentParser {
+    description = spec.description or spec.help;
+    if spec.examples {
+        description += "\n\nExamples:\n";
+        for (cmd, desc) in spec.examples {
+            description += f"  {cmd}\n";
+            if desc {
+                description += f"      {desc}\n";
+            }
+        }
+    }
+    parser = argparse.ArgumentParser(
+        prog=f"jac {spec.name}",
+        description=description,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        add_help=True
+    );
+    for arg in spec.args {
+        self._add_argument(parser, arg);
+    }
+    return parser;
+}
+
 impl CommandRegistry._build_subparser(
     subparsers: any, spec: CommandSpec
 ) -> argparse.ArgumentParser {
