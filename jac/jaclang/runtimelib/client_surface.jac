@@ -33,13 +33,3 @@ def runtime_import_source(name: str, backend: (object | None) = None) -> str {
     }
     return "@jac/runtime";
 }
-
-def backend_jsx_factory_name(backend: (object | None) = None) -> str {
-    if backend is not None {
-        name = backend.jsx_factory_name();
-        if isinstance(name, str) and name {
-            return name;
-        }
-    }
-    return "__jacJsx";
-}
