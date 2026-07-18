@@ -9,12 +9,12 @@ policy - see IMPLEMENTATION.md / PLAN.md). Updated 2026-07.
 
 ## Before merge (housekeeping)
 
-- [ ] Push unpushed commits on `rust-ffi` (3 local: lambda fix + demo-comment refresh + gitignore)
-- [x] Land uncommitted binder / synth / docs / test changes (~1.5k LOC) — working tree clean (2026-07-17)
+- [x] Push unpushed commits on `rust-ffi` - pushed 26 commits (through ffi-lanes 3.5 flagship) 2026-07-18
+- [x] Land uncommitted binder / synth / docs / test changes (~1.5k LOC) - working tree clean (2026-07-17)
 - [x] `docs/docs/reference/language/rust-bridges.md` already tracked (2026-07-17)
-- [x] Refresh stale comments in demo crates (`jac-bridge-map`/`jac-bridge-list`) — done 2026-07-17; scalar `f64-param` note left as-is (still accurate: na miscompiles float params)
+- [x] Refresh stale comments in demo crates (`jac-bridge-map`/`jac-bridge-list`) - done 2026-07-17; scalar `f64-param` note left as-is (still accurate: na miscompiles float params)
 - [x] `ndarray/` (upstream reference clone) + `.pi-subagents/` gitignored (2026-07-17)
-- [ ] PR description already updated; keep in sync if scope shifts
+- [x] PR description updated 2026-07-18 - added Lanes Phase 2 (wide serde lane) + Phase 3 (py-interop) rows, fixed M6.3 async (was "Not started"), corrected nested containers (now shipped), added py-interop test plan entries
 
 ### Pre-existing na-test breaks (surfaced by the 2026-07-17 upstream merge probe; NOT merge-caused)
 
