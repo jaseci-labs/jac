@@ -19,10 +19,10 @@ enum WriteOp {
 obj WriteIntent {
     has op: WriteOp,
         anchor: Anchor,
-        fields: set[str] by postinit,
-        edges_added: list[UUID] by postinit,
-        edges_removed: list[UUID] by postinit,
-        depends_on: set[UUID] by postinit,
+        fields: set[str] postinit,
+        edges_added: list[UUID] postinit,
+        edges_removed: list[UUID] postinit,
+        depends_on: set[UUID] postinit,
         cas_version: (int | None) = None;
 
     def postinit {
@@ -43,10 +43,10 @@ obj WriteIntent {
 
 
 obj ApplyReport {
-    has applied: list[UUID] by postinit,
-        failed: dict[UUID, str] by postinit,
-        skipped: dict[UUID, str] by postinit,
-        conflicts: list[WriteConflict] by postinit;
+    has applied: list[UUID] postinit,
+        failed: dict[UUID, str] postinit,
+        skipped: dict[UUID, str] postinit,
+        conflicts: list[WriteConflict] postinit;
 
     def postinit {
         self.applied = [];
@@ -73,7 +73,7 @@ obj ApplyReport {
 
 
 obj ChangeSet {
-    has intents: dict[UUID, WriteIntent] by postinit;
+    has intents: dict[UUID, WriteIntent] postinit;
 
     def postinit {
         self.intents = {};

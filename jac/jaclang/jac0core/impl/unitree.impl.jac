@@ -415,6 +415,7 @@ impl UniScopeNode._init_scope(
     self.kid_scope: list[UniScopeNode] = [];
     self.names_in_scope: dict[(str, Symbol)] = {};
     self.names_in_scope_overload: dict[(str, list[Symbol])] = {};
+    self.implicit_rebinds: dict[(str, Symbol)] = {};
 }
 
 impl UniScopeNode.lookup(
@@ -1818,13 +1819,6 @@ impl CastExpr.postinit -> None {
 }
 
 
-impl GlobalStmt.postinit -> None {
-    self.target = `list(self.target);
-    UniNode.postinit(self);
-    CodeBlockStmt.postinit(self);
-}
-
-
 impl Assignment.postinit -> None {
     self.target = `list(self.target);
     UniNode.postinit(self);
@@ -2607,10 +2601,8 @@ impl CommentToken.init(
     col_end: int,
     pos_start: int,
     pos_end: int,
-    kid: Sequence[UniNode],
-    is_inline: bool = False
+    kid: Sequence[UniNode]
 ) -> None {
-    self.is_inline = is_inline;
     Token.init(
         self,
         orig_src=orig_src,

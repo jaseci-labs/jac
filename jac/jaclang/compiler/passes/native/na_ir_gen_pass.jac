@@ -80,12 +80,12 @@ glob HDR_MAGIC: int = 44061,
      HDR_MAGIC_SHIFT_BASE: int = 44061 * 4294967296;
 
 obj NaIRGenPass(ModuleCodegenPass) {
-    has llvm_module: ir.Module by postinit,
-        type_map: dict[str, ir.Type] by postinit,
-        complex_struct_type: object by postinit,
-        range_struct_type: object by postinit,
-        slice_struct_type: object by postinit,
-        jacval_type: object by postinit,
+    has llvm_module: ir.Module postinit,
+        type_map: dict[str, ir.Type] postinit,
+        complex_struct_type: object postinit,
+        range_struct_type: object postinit,
+        slice_struct_type: object postinit,
+        jacval_type: object postinit,
         _builder: (ir.IRBuilder | None) = None,
         func_symtab: dict[str, ir.Function] = {},
         local_vars: dict[str, ir.AllocaInstr] = {},
@@ -482,6 +482,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
 
     def _codegen_field_aug_assign(
         target: uni.AtomTrailer, rhs: ir.Value, aug_op: str
+    ) -> (ir.Value | None);
+
+    def _apply_scalar_aug_op(
+        current: ir.Value, rhs: ir.Value, aug_op: str
     ) -> (ir.Value | None);
 
     def _codegen_field_assign(target: uni.AtomTrailer, value: ir.Value) -> None;

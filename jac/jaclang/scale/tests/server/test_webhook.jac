@@ -513,7 +513,6 @@ glob wh_fixtures_dir: Path = Path(__file__).parent.parent / "fixtures",
 
 """Start the shared MongoDB container on first use and return its connection URI."""
 def _shared_mongo_uri -> str {
-    global _wh_mongo_container;
     if _wh_mongo_container is None {
         _wh_mongo_container = MongoDbContainer("mongo:latest");
         _wh_mongo_container.start();
@@ -524,7 +523,6 @@ def _shared_mongo_uri -> str {
 
 """Stop the shared MongoDB container at process exit."""
 def _stop_shared_mongo {
-    global _wh_mongo_container;
     if _wh_mongo_container is not None {
         with contextlib.suppress(Exception) {
             _wh_mongo_container.stop();

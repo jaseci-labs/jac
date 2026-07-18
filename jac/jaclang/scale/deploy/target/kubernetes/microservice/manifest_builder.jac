@@ -35,10 +35,6 @@ def _is_named_list(items: list) -> bool {
 
 
 def merge_manifest_overlay(base: any, overlay: any) -> any {
-    # Kubernetes-flavored merge: maps merge recursively; lists whose members
-    # all carry a "name" (containers, volumes, env, initContainers, mounts)
-    # merge by that name with unmatched overlay entries appended; any other
-    # value replaces.
     if isinstance(base, dict) and isinstance(overlay, dict) {
         merged = dict(base);
         for (key, value) in overlay.items() {
@@ -87,8 +83,6 @@ obj MicroserviceManifestBuilder {
         _bundle_object_key: str = "",
         _toolchain_object_key: str = "",
         microservices_config: dict[str, any] = {},
-        # --dry-run: render manifests from config alone -- no client build, no
-        # binary/console download, no cluster reads (issue #7431).
         dry_run: bool = False;
 
     def _ms_cfg -> dict[str, any] {
@@ -139,8 +133,6 @@ obj MicroserviceManifestBuilder {
             return;
         }
         if self.dry_run {
-            # The bundle only affects what ships to the gateway pod, never the
-            # manifests, so a dry run can skip the build outright (issue #7431).
             console.print(
                 f"dry-run: skipped the host client bundle build ({client_entry})."
             );
@@ -257,10 +249,6 @@ obj MicroserviceManifestBuilder {
     ) -> dict[str, dict[str, any]] {
         app_name = app_config.app_name or self.k8s_config.app_name;
 
-        # Auto-discover services from `sv import` so a microservice app deploys
-        # with no [scale.microservices.routes] section (explicit routes
-        # still win). Mirrors the local-serve path; cache the result so the
-        # gateway's JAC_SV_ROUTES env and the ingress rules see the same routes.
         import from jaclang.scale.runtime.discovery.discovery { resolve_routes }
         ms_cfg = dict(self._ms_cfg());
         proj = self.project_dir or app_config.code_folder;
@@ -680,8 +668,7 @@ obj MicroserviceManifestBuilder {
         overlay = svc_cfg.get("deployment_overlay");
         if isinstance(overlay, dict) and overlay {
             manifest = merge_manifest_overlay(manifest, overlay);
-            # Identity and routing fields are load-bearing for apply/destroy
-            # and Service selectors; an overlay must not detach them.
+
             manifest["metadata"]["name"] = f"{k8s_name}-deployment";
             manifest["metadata"]["namespace"] = self.k8s_config.namespace;
             meta_labels = manifest["metadata"].get("labels", {});

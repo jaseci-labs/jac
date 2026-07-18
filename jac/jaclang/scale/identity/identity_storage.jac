@@ -22,7 +22,6 @@ import type from pymongo.collection { Collection }
 import from jaclang.jac0core.constant { Constants as Con }
 import from jaclang.scale.config.config_loader { get_scale_config }
 
-"""Raised by storage backends when an identity uniqueness constraint fires."""
 obj IdentityTakenError(Exception) {}
 
 obj IdentityStorage {
@@ -94,10 +93,10 @@ obj MongoIdentityStorage(IdentityStorage) {
 
 obj SqliteIdentityStorage(IdentityStorage) {
     has db_path: str,
-        _engine: Engine by postinit,
-        _table: Table by postinit,
-        _identity_lookups: Table by postinit,
-        _sso_lookups: Table by postinit;
+        _engine: Engine postinit,
+        _table: Table postinit,
+        _identity_lookups: Table postinit,
+        _sso_lookups: Table postinit;
 
     def postinit -> None;
     def _store_user(user_doc: dict[str, any]) -> None;

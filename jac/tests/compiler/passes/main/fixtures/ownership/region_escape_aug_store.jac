@@ -5,7 +5,6 @@ obj Buffer {
 glob hot: list[Buffer] = [];
 
 def run {
-    global hot;
     in Region() {
         x = Buffer();
         hot += [x];
