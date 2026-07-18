@@ -2752,6 +2752,7 @@ impl TypeEvaluator._is_strict_site(nd: uni.UniNode) -> bool {
 }
 
 impl TypeEvaluator._in_native_context -> bool {
+    import os;
     import from jaclang.jac0core.ext_registry { is_native_module }
     if self._pass is None {
         return False;
@@ -2768,7 +2769,22 @@ impl TypeEvaluator._in_native_context -> bool {
     if mod is None or mod.loc is None {
         return False;
     }
-    return is_native_module(mod.loc.mod_path);
+    if is_native_module(mod.loc.mod_path) {
+        return True;
+    }
+
+    prog = self._pass?.prog;
+    if (
+        prog is not None
+        and getattr(prog, "_auto_promote_native", False)
+        and getattr(prog, "_auto_promote_target", "")
+        and mod.loc.mod_path
+    ) {
+        return os.path.realpath(mod.loc.mod_path) == os.path.realpath(
+            prog._auto_promote_target
+        );
+    }
+    return False;
 }
 
 impl TypeEvaluator._is_typing_special_form(ty: TypeBase, name: str) -> bool {

@@ -76,7 +76,7 @@ def na_side -> list {
         );
     }
     probe.append("}");
-    return run_na_probe(SO, probe, "conf.jac", "conf", strip_blank=True);
+    return run_na_probe(SO, probe, "conf.na.jac", "conf", strip_blank=True);
 }
 
 
