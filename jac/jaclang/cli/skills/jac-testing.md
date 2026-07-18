@@ -36,6 +36,7 @@ A `test "some name"` block becomes unittest case `test_some_name` (spaces -> und
 ## File naming - two traps
 
 - **Never name files `test_*.jac`** (e.g. `test_utils.jac`) - the `test_` prefix collides with Python's test-module import machinery. Use `utils_tests.jac`, or the annex form below.
+- **Calling a `def:priv` endpoint from a `.test.jac` annex draws `W2037`** ("private to module") - the annex counts as a separate module for access modifiers even though it sees the declarations. Warning-only; tests still run. For a clean `jac check`, put those tests in the main file or use in-file `test` blocks.
 - **`<mod>.test.jac` is an ANNEX, not a standalone file.** Like `.impl.jac`, it attaches to a same-basename module: `people.test.jac` pairs with `people.jac`, and you run `jac test people.jac`. A `.test.jac` with no base module fails with `No module named '<mod>'`. The annex sees the module's declarations without imports - ideal for keeping tests out of the main file.
 
 ## Graph state: parallel workers + a persisted root
