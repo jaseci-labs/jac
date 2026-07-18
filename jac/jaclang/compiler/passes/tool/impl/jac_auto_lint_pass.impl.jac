@@ -975,16 +975,13 @@ impl JacAutoLintPass.exit_func_call(nd: uni.FuncCall) -> None {
 impl JacAutoLintPass._collect_atom_trailers(
     uni_node: uni.UniNode, results: list
 ) -> None {
+    if uni_node is None {
+        return;
+    }
     if isinstance(uni_node, uni.AtomTrailer) {
         results.append(uni_node);
     }
-    if uni_node?.kid {
-        for kid in uni_node.kid {
-            if kid is not None {
-                self._collect_atom_trailers(kid, results);
-            }
-        }
-    }
+    results.extend(uni_node.get_all_sub_nodes(uni.AtomTrailer));
 }
 
 impl JacAutoLintPass._expr_to_key(expr: uni.Expr) -> (str | None) {
