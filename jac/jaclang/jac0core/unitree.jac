@@ -935,7 +935,8 @@ obj Assignment(AstTypedVarNode, EnumBlockStmt, CodeBlockStmt) {
         value: Expr | YieldExpr | None,
         mutable: bool = True,
         aug_op: (Token | None) = None,
-        na_move_lowerable: bool = False;
+        na_move_lowerable: bool = False,
+        na_overwrite_consumed: bool = False;
 
     def postinit -> None;
 }
@@ -1715,8 +1716,7 @@ obj CommentToken(Token) {
         col_end: int,
         pos_start: int,
         pos_end: int,
-        kid: Sequence[UniNode],
-        is_inline: bool = False
+        kid: Sequence[UniNode]
     ) -> None;
 }
 

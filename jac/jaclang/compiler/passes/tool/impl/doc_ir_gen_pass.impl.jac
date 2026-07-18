@@ -1903,8 +1903,15 @@ impl DocIRGenPass.exit_archetype(nd: uni.Archetype) -> None {
                 body_parts.append(self.hard_line());
             }
             if (
-                (prev_item and (type(prev_item) is not type(i)))
-                or (prev_item and not self.is_one_line(prev_item))
+                (
+                    (prev_item and (type(prev_item) is not type(i)))
+                    or (prev_item and not self.is_one_line(prev_item))
+                )
+                and not (
+                    prev_item
+                    and (self.effective_first_line(i) <= (prev_item.loc.last_line + 1))
+                    and (self.effective_first_line(i) < i.loc.first_line)
+                )
             ) {
                 body_parts.append(self.hard_line());
             }
@@ -2084,6 +2091,7 @@ impl DocIRGenPass.exit_module(nd: uni.Module) -> None {
             if (prev_kid and self.has_gap(prev_kid, i)) {
                 parts.append(self.hard_line());
             }
+            self._rescue_lost_comments(nd, parts, i);
             parts.append(i.gen.doc_ir);
         } else {
             if (
@@ -2100,7 +2108,7 @@ impl DocIRGenPass.exit_module(nd: uni.Module) -> None {
                     src_lines = nd.source.code.split('\n');
 
                     start = prev_kid.loc.last_line;
-                    end = i.loc.first_line - 1;
+                    end = self.effective_first_line(i) - 1;
                     consecutive_blanks = 0;
                     for line_idx in range(start, min(end, len(src_lines))) {
                         if not src_lines[line_idx].strip() {
@@ -2115,13 +2123,53 @@ impl DocIRGenPass.exit_module(nd: uni.Module) -> None {
                     }
                 }
             }
+            self._rescue_lost_comments(nd, parts, i);
             parts.append(i.gen.doc_ir);
         }
         parts.append(self.hard_line());
         prev_kid = i;
         first_kid = False;
     }
+    self._rescue_lost_comments(nd, parts, None);
     nd.gen.doc_ir = self.concat(parts, ast_node=nd);
+}
+
+impl DocIRGenPass._rescue_lost_comments(
+    nd: uni.Module, parts: list[doc.DocType], next_kid: (uni.UniNode | None)
+) -> None {
+    if not (isinstance(nd, uni.Module) and nd.source and nd.source.comments) {
+        return;
+    }
+    if self._emitted_comment_ids is None {
+        self._emitted_comment_ids = set();
+    }
+    mod_dc = nd.gen.doc_comments;
+    own_ids: set[int] = set();
+    if mod_dc is not None {
+        for c in (mod_dc.leading + mod_dc.trailing_inline + mod_dc.trailing_own) {
+            own_ids.add(id(c));
+        }
+    }
+    limit = self.effective_first_line(next_kid) if (next_kid is not None) else None;
+    prev_line: (int | None) = None;
+    for c in nd.source.comments {
+        if ((id(c) in self._emitted_comment_ids) or (id(c) in own_ids)) {
+            continue;
+        }
+        if not self._comment_is_live(c) {
+            continue;
+        }
+        if (limit is not None and (c.loc.first_line >= limit)) {
+            continue;
+        }
+        if (prev_line is not None and ((prev_line + 1) < c.loc.first_line)) {
+            parts.append(self.hard_line());
+        }
+        parts.append(self.text(c.value, source_token=c));
+        parts.append(self.hard_line());
+        self._emitted_comment_ids.add(id(c));
+        prev_line = c.loc.last_line;
+    }
 }
 
 impl DocIRGenPass.remove_all_spaces(doc_node: doc.DocType) -> doc.DocType {
@@ -2220,7 +2268,7 @@ impl DocIRGenPass.add_body_stmt_with_spacing(
 }
 
 impl DocIRGenPass.has_gap(prev_kid: uni.UniNode, curr_kid: uni.UniNode) -> bool {
-    return ((prev_kid.loc.last_line + 1) < curr_kid.loc.first_line);
+    return ((prev_kid.loc.last_line + 1) < self.effective_first_line(curr_kid));
 }
 
 impl DocIRGenPass.is_one_line(nd: uni.UniNode) -> bool {
@@ -2471,4 +2519,117 @@ impl DocIRGenPass.space -> doc.Text {
 
 impl DocIRGenPass.text(text: str, source_token: (uni.Token | None) = None) -> doc.Text {
     return doc.Text(text, source_token=source_token);
+}
+
+impl DocIRGenPass.line_suffix(contents: doc.DocType) -> doc.LineSuffix {
+    return doc.LineSuffix(contents);
+}
+
+impl DocIRGenPass.break_parent -> doc.BreakParent {
+    return doc.BreakParent();
+}
+
+impl DocIRGenPass.exit_node(nd: uni.UniNode) -> None {
+    super.exit_node(nd);
+    if nd.gen.doc_comments is not None {
+        self._wrap_doc_comments(nd);
+    }
+}
+
+impl DocIRGenPass._comment_is_live(c: uni.CommentToken) -> bool {
+    if self._live_comment_ids is None {
+        src = self.ir_in.source if isinstance(self.ir_in, uni.Module) else None;
+        self._live_comment_ids = {id(lc) for lc in (src.comments if src else [])};
+    }
+    return id(c) in self._live_comment_ids;
+}
+
+impl DocIRGenPass.effective_first_line(nd: uni.UniNode) -> int {
+    dc = nd.gen.doc_comments;
+    if (dc is not None and dc.leading) {
+        for c in dc.leading {
+            if self._comment_is_live(c) {
+                return c.loc.first_line;
+            }
+        }
+    }
+    return nd.loc.first_line;
+}
+
+impl DocIRGenPass._wrap_doc_comments(nd: uni.UniNode) -> None {
+    dc = nd.gen.doc_comments;
+    if dc is None {
+        return;
+    }
+    base = nd.gen.doc_ir;
+    leading = [
+        c
+        for c in dc.leading
+        if self._comment_is_live(c)
+    ];
+    trailing_inline = [
+        c
+        for c in dc.trailing_inline
+        if self._comment_is_live(c)
+    ];
+    trailing_own = [
+        c
+        for c in dc.trailing_own
+        if self._comment_is_live(c)
+    ];
+    if self._emitted_comment_ids is None {
+        self._emitted_comment_ids = set();
+    }
+    for c in (leading + trailing_inline + trailing_own) {
+        self._emitted_comment_ids.add(id(c));
+    }
+    if leading {
+        pre: list[doc.DocType] = [doc.Line(hard=True, fresh=True)];
+        prev_last: (int | None) = None;
+        for c in leading {
+            if (prev_last is not None and ((prev_last + 1) < c.loc.first_line)) {
+                pre.append(self.hard_line());
+            }
+            pre.append(self.text(c.value, source_token=c));
+            pre.append(self.hard_line());
+            prev_last = c.loc.last_line;
+        }
+        if (prev_last is not None and ((prev_last + 1) < nd.loc.first_line)) {
+            pre.append(self.hard_line());
+        }
+        pre.append(base);
+        base = self.concat(pre);
+    }
+    if trailing_inline {
+        inline_parts: list[doc.DocType] = [base];
+        for c in trailing_inline {
+            inline_parts.append(
+                self.line_suffix(
+                    self.concat([self.text('  '), self.text(c.value, source_token=c)])
+                )
+            );
+        }
+        inline_parts.append(self.break_parent());
+        base = self.concat(inline_parts);
+    }
+    if trailing_own {
+        post: list[doc.DocType] = [];
+        own_prev = nd.loc.last_line;
+        for c in trailing_own {
+            post.append(self.hard_line());
+            if ((own_prev + 1) < c.loc.first_line) {
+                post.append(self.hard_line());
+            }
+            post.append(self.text(c.value, source_token=c));
+            own_prev = c.loc.last_line;
+        }
+        if dc.indent_trailing_own {
+            base = self.concat(
+                [base, self.indent(self.concat(post)), self.hard_line()]
+            );
+        } else {
+            base = self.concat([base, *post]);
+        }
+    }
+    nd.gen.doc_ir = base;
 }

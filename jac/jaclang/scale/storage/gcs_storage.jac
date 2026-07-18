@@ -1,12 +1,6 @@
-"""Google Cloud Storage / Firebase Storage implementation for Jac."""
 import from typing { Any, BinaryIO, Generator }
 import from jaclang.scale.storage.bucket_storage { BucketStorage }
 
-"""GCS storage provider.
-
-This implementation uses google-cloud-storage to interact with Google Cloud
-Storage buckets, including Firebase Storage buckets.
-"""
 class GcsStorage(BucketStorage) {
     has bucket: str,
         public_read: bool = False,
