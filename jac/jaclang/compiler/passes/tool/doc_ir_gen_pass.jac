@@ -1,21 +1,23 @@
-"""
-DocIrGenPass for Jaseci Ast.
-
-This is a pass for generating DocIr for Jac code.
-"""
 import from collections.abc { Sequence }
 import jaclang.compiler.passes.tool.doc_ir as doc;
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.constant { Tokens as Tok }
+import from jaclang.jac0core.constant { Tokens as Tok, is_mut_kind }
 import from jaclang.jac0core.passes { UniPass }
-"""DocIrGenPass generate DocIr for Jac code."""
+
 obj DocIRGenPass(UniPass) {
+    has _live_comment_ids: (set[int] | None) = None,
+        _emitted_comment_ids: (set[int] | None) = None;
+
+    def _comment_is_live(c: uni.CommentToken) -> bool;
+    def _rescue_lost_comments(
+        nd: uni.Module, parts: list[doc.DocType], next_kid: (uni.UniNode | None)
+    ) -> None;
+
     def text(text: str, source_token: (uni.Token | None) = None) -> doc.Text;
     def space -> doc.Text;
     def line(hard: bool = False, literal: bool = False) -> doc.Line;
     def hard_line -> doc.Line;
     def tight_line -> doc.Line;
-    def literal_line -> doc.Line;
     def group(
         contents: doc.DocType,
         break_contiguous: bool = False,
@@ -35,13 +37,21 @@ obj DocIRGenPass(UniPass) {
     ) -> doc.IfBreak;
 
     def align(contents: doc.DocType, n: (int | None) = None) -> doc.Align;
+    def line_suffix(contents: doc.DocType) -> doc.LineSuffix;
+    def break_parent -> doc.BreakParent;
+    def exit_node(nd: uni.UniNode) -> None;
+    def _wrap_doc_comments(nd: uni.UniNode) -> None;
+    def effective_first_line(nd: uni.UniNode) -> int;
     def join(separator: doc.DocType, parts: list[doc.DocType]) -> doc.DocType;
     def join_with_space(parts: list[doc.DocType]) -> doc.DocType;
-    def join_with_line(parts: list[doc.DocType]) -> doc.DocType;
     def _child_docs(nd: uni.UniNode) -> list[doc.DocType];
-    def _assign_concat(nd: uni.UniNode) -> None;
     def _assign_group_concat(nd: uni.UniNode) -> None;
     def _assign_space_group(nd: uni.UniNode) -> None;
+    def _assign_semi_stmt_doc_ir(nd: uni.UniNode) -> None;
+    def _assign_compr_doc_ir(nd: uni.UniNode) -> None;
+    def _assign_else_doc_ir(nd: uni.UniNode, body: Sequence[uni.UniNode]) -> None;
+    def _emit_keyword_block(nd: uni.UniNode, kw: Tok) -> None;
+    def _assign_case_block_doc_ir(nd: uni.UniNode, case_cls: type) -> None;
     def intersperse(
         items: list[doc.DocType], separator: doc.DocType
     ) -> list[doc.DocType];
@@ -51,10 +61,7 @@ obj DocIRGenPass(UniPass) {
     ) -> doc.DocType;
 
     def format_comprehension(parts: list[doc.DocType]) -> doc.DocType;
-    """Lay out a comma-delimited literal (list/set/tuple): flat with a space
-    after each comma, or one element per line when it must break."""
     def format_comma_collection(nd: uni.UniNode) -> doc.DocType;
-
     def is_one_line(nd: uni.UniNode) -> bool;
     def has_gap(prev_kid: uni.UniNode, curr_kid: uni.UniNode) -> bool;
     def add_body_stmt_with_spacing(
@@ -65,9 +72,8 @@ obj DocIRGenPass(UniPass) {
 
     def is_within(kid_node: uni.UniNode, block: Sequence[uni.UniNode]) -> bool;
     def trim_trailing_line(parts: list[doc.DocType]) -> None;
-    """Emit 'to cl:/sv:/na:' section-header form for an implicit context block."""
-    def emit_section_header_block(nd: uni.UniNode) -> None;
-
+    def jsx_whitespace -> doc.DocType;
+    def jsx_mixed_child_parts(children: Sequence[uni.UniNode]) -> list[doc.DocType];
     def remove_all_spaces(doc_node: doc.DocType) -> doc.DocType;
     def exit_module(nd: uni.Module) -> None;
     def exit_import(nd: uni.Import) -> None;
@@ -95,6 +101,7 @@ obj DocIRGenPass(UniPass) {
     def exit_has_var(nd: uni.HasVar) -> None;
     def exit_arch_has(nd: uni.ArchHas) -> None;
     def exit_while_stmt(nd: uni.WhileStmt) -> None;
+    def exit_forever_stmt(nd: uni.ForeverStmt) -> None;
     def exit_in_for_stmt(nd: uni.InForStmt) -> None;
     def exit_iter_for_stmt(nd: uni.IterForStmt) -> None;
     def exit_try_stmt(nd: uni.TryStmt) -> None;
@@ -135,8 +142,6 @@ obj DocIRGenPass(UniPass) {
     def exit_server_block(nd: uni.ServerBlock) -> None;
     def exit_native_block(nd: uni.NativeBlock) -> None;
     def exit_module_code(nd: uni.ModuleCode) -> None;
-    def exit_global_stmt(nd: uni.GlobalStmt) -> None;
-    def exit_non_local_stmt(nd: uni.NonLocalStmt) -> None;
     def exit_visit_stmt(nd: uni.VisitStmt) -> None;
     def exit_connect_op(nd: uni.ConnectOp) -> None;
     def exit_disconnect_op(nd: uni.DisconnectOp) -> None;
@@ -167,6 +172,7 @@ obj DocIRGenPass(UniPass) {
     def exit_sem_def(nd: uni.SemDef) -> None;
     def exit_event_signature(nd: uni.EventSignature) -> None;
     def exit_typed_ctx_block(nd: uni.TypedCtxBlock) -> None;
+    def exit_open_stmt(nd: uni.OpenStmt) -> None;
     def exit_token(nd: uni.Token) -> None;
     def exit_semi(nd: uni.Semi) -> None;
     def exit_name(nd: uni.Name) -> None;

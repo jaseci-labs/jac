@@ -3,8 +3,8 @@
 cl {
     # Lambdas and higher-order helpers
     def lambda_examples()  -> dict {
-        adder = lambda  a: int , b: int: a + b;
-        scaler = lambda  value: int , factor: int: value * factor;
+        adder = lambda  (a: int , b: int) { a + b; };
+        scaler = lambda  (value: int , factor: int) { value * factor; };
         numbers = [1, 2, 3, 4];
         doubled = [scaler(n, 2) for n in numbers];
         filtered = [
@@ -187,7 +187,7 @@ cl {
 
         return <div>
             {filteredTodos.map(
-                lambda  todo: any  -> any{ return <TodoItem
+                lambda  (todo: any)  -> any{ return <TodoItem
                     key={jid(todo)}
                     todo={todo}
                     toggleTodo={toggleTodo}
@@ -209,7 +209,7 @@ cl {
 
         return <div>
             {props.filteredTodos.map(
-                lambda  todo: any  -> any{ return <TodoItem
+                lambda  (todo: any)  -> any{ return <TodoItem
                     key={jid(todo)}
                     todo={todo}
                     toggleTodo={props.toggleTodo}

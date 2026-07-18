@@ -1,86 +1,42 @@
-"""Test declarative routing system.
+"""Test the canonical `@jac/runtime` routing surface.
 
-Bare-serve and jac-client expose the same React Router v6-shaped surface.
-These tests exercise bare-serve's bundle (jac-client's plugin override is
-inactive in pytest), verifying that the new routing primitives — `Routes`,
-`Route`, `Link`, `Navigate`, `Outlet`, `useNavigate` / `useLocation` /
-`useParams` — flow through codegen with the popstate-driven URL signal
-underneath.
+Routing is React Router v6-shaped and backed by react-router-dom in the single
+canonical client runtime (`jaclang/runtimelib/client_runtime.cl.jac`). The old
+bare-serve DOM router (popstate/pushState/createSignal path-signal) has been
+removed in favour of one React-backed runtime, so these tests verify the
+runtime exposes the routing surface the compiler emits against rather than
+inspecting a hand-rolled bundle.
 """
 
 import from pathlib { Path }
-import from jaclang { JacRuntime as Jac }
+import jaclang;
 
-glob FIXTURES = str(Path(__file__).parent / "fixtures");
+glob RUNTIME_SRC = (
+         Path(jaclang.__file__).resolve().parent / "runtimelib" / "client_runtime.cl.jac"
+     ).read_text();
 
-test "router compiles" {
-    (module, ) = Jac.jac_import("test_router", FIXTURES);
-    builder = Jac.get_client_bundle_builder();
-    bundle = builder.build(module);
-
-    # React Router v6-shaped routing primitives.
-    assert "function Router(" in bundle.code;
-    assert "function Routes(" in bundle.code;
-    assert "function Route(" in bundle.code;
-    assert "function Link(" in bundle.code;
-    assert "function Navigate(" in bundle.code;
-    assert "function Outlet" in bundle.code;
-    assert "function navigate(" in bundle.code;
-    assert "function useNavigate" in bundle.code;
-    assert "function useLocation" in bundle.code;
-    assert "function useParams" in bundle.code;
-
-    # Fixture's test functions are present in the bundle.
-    assert "function test_router_basic" in bundle.code;
-    assert "function test_router_navigation" in bundle.code;
-    assert "function test_router_guards" in bundle.code;
+test "runtime exposes the React Router v6 routing surface" {
+    routing_surface = [
+        "Router",
+        "Routes",
+        "Route",
+        "Link",
+        "Navigate",
+        "Outlet",
+        "useNavigate",
+        "useLocation",
+        "useParams",
+        "useRouter",
+        "navigate"
+    ];
+    for sym in routing_surface {
+        assert sym in RUNTIME_SRC , f"routing surface symbol '{sym}' missing from @jac/runtime";
+    }
 }
 
-test "router event listeners" {
-    (module, ) = Jac.jac_import("test_router", FIXTURES);
-    builder = Jac.get_client_bundle_builder();
-    bundle = builder.build(module);
-
-    # popstate listener is wired in `_ensureRouter` so back/forward buttons
-    # update the path signal.
-    assert "popstate" in bundle.code;
-    assert "addEventListener" in bundle.code;
-
-    # Path source is window.location.pathname (no hash routing).
-    assert "__jacGetPath" in bundle.code;
-    assert "window.location.pathname" in bundle.code;
-}
-
-test "router uses reactive signal" {
-    (module, ) = Jac.jac_import("test_router", FIXTURES);
-    builder = Jac.get_client_bundle_builder();
-    bundle = builder.build(module);
-
-    # Router's path is a reactive signal — `_ensureRouter` calls createSignal
-    # and exposes the setter as `setPath`.
-    assert "createSignal" in bundle.code;
-    assert "setPath" in bundle.code;
-}
-
-test "router no hash references" {
-    (module, ) = Jac.jac_import("test_router", FIXTURES);
-    builder = Jac.get_client_bundle_builder();
-    bundle = builder.build(module);
-
-    # Hash-based ROUTING should not be present — bare-serve uses pathname
-    # via popstate, not hashchange. (`useLocation` does expose
-    # `location.hash` as a value the way React Router does, so we don't
-    # forbid the substring outright; we forbid the routing wiring.)
-    assert "hashchange" not in bundle.code;
-    assert "__jacGetHashPath" not in bundle.code;
-}
-
-test "router uses pushstate navigation" {
-    (module, ) = Jac.jac_import("test_router", FIXTURES);
-    builder = Jac.get_client_bundle_builder();
-    bundle = builder.build(module);
-
-    # `navigate(path)` pushes to History API and updates the signal.
-    assert "pushState" in bundle.code;
-    assert "window.history.pushState" in bundle.code;
+test "runtime routing is react-router-backed" {
+    assert "react-router-dom" in RUNTIME_SRC , "routing should be backed by react-router-dom";
+    # The removed bare-serve DOM-router internals must not reappear.
+    assert "__jacGetHashPath" not in RUNTIME_SRC;
+    assert "__jacGetPath" not in RUNTIME_SRC;
 }

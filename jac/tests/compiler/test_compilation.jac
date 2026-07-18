@@ -5,13 +5,12 @@ fixture files without errors, and test compilation-level behaviour.
 """
 
 import os;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.cli.commands { analysis }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     EXAMPLES = os.path.join(JAC_ROOT, "examples"),
+glob EXAMPLES = os.path.join(JAC_ROOT, "examples"),
      FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"
      ),
@@ -103,12 +102,12 @@ test "obj hasvar initialization" {
         'Missing "postinit" method required by uninitialized attribute(s).',
         "    9 | obj Test2 {",
         "   10 |     has var1: str;",
-        "   11 |     has var2: int by postinit;",
+        "   11 |     has var2: int postinit;",
         "      |         ^^^^",
         "   12 | }",
         "Non default attribute 'var4' follows default attribute",
         "   17 |     has var2: int = 42;",
-        "   18 |     has var3: int by postinit;  # <-- This is fine.",
+        "   18 |     has var3: int postinit;  # <-- This is fine.",
         "   19 |     has var4: int;  # <-- This should be syntax error.",
         "      |         ^^^^",
         "   20 |",

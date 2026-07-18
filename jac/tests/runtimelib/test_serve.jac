@@ -8,8 +8,10 @@ import from contextlib { redirect_stdout, redirect_stderr, suppress }
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from unittest.mock { MagicMock, patch }
+import from http.server { ThreadingHTTPServer }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.cli.commands { execution }
+import from jaclang.runtimelib.server { JacAPIServer }
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures");
 
@@ -120,13 +122,13 @@ test "faux flag prints endpoint docs" {
         assert "client_page" in output;
         # Verify summary is present
         assert "TOTAL:" in output;
-        # 12 functions / 40 endpoints: the doc lists jaclang framework helpers
-        # imported into every module (connect, spawn, on_entry, set_trigger, …)
-        # alongside user functions — a pre-existing _collect_functions leak that
-        # the compiler-emitted `set_trigger` decorator extends by one.
-        assert "12 functions" in output;
+        # 2 functions / 20 endpoints: only the two user functions (add_numbers,
+        # greet) are exposed. _collect_functions skips jaclang framework helpers
+        # (connect, spawn, on_entry, set_trigger, …) that the compiler imports
+        # into every module's namespace, so they no longer leak as endpoints.
+        assert "2 functions" in output;
         assert "5 walkers" in output;
-        assert "40 endpoints" in output;
+        assert "20 endpoints" in output;
         # Verify parameter details are included
         assert "required" in output;
         assert "optional" in output;
@@ -212,9 +214,7 @@ test "start without main jac error" {
 
             output = captured_output.getvalue();
             assert "main.jac" in output;
-            assert "not found" in output.lower();
-            assert "Current directory" in output;
-            assert "Please specify a file" in output;
+            assert "No such file or directory" in output;
         } finally {
             os.chdir(original_cwd);
         }
@@ -261,7 +261,7 @@ test "start with nonexistent file error" {
             assert result == 1;
 
             output = captured_output.getvalue();
-            assert "not found" in output.lower();
+            assert "No such file or directory" in output;
         } finally {
             os.chdir(original_cwd);
         }
@@ -270,8 +270,8 @@ test "start with nonexistent file error" {
 
 # --- Dev Mode Tests ---
 test "jac start dev auto-installs watchdog even when not in jac.toml" {
-    mock_installer = MagicMock();
-    mock_installer.install_package.return_value = True;
+    mock_provider = MagicMock();
+    mock_provider.install_specs.return_value = True;
     mock_config = MagicMock();
 
     # Simulate watchdog not being installed, and a jac.toml that does NOT list watchdog
@@ -280,11 +280,10 @@ test "jac start dev auto-installs watchdog even when not in jac.toml" {
         side_effect=[False, True],
     ) {
         with patch(
-            "jaclang.project.dependencies.DependencyInstaller"
-        ) as mock_di_class {
+            "jaclang.project.providers.get_python_provider", return_value=mock_provider
+        ) {
             with patch("jaclang.project.config.get_config") as mock_get_config {
-                with patch("jaclang.project.dependencies.add_venv_to_path") {
-                    mock_di_class.return_value = mock_installer;
+                with patch("jaclang.project.pyvenv.add_venv_to_path") {
                     mock_get_config.return_value = mock_config;
                     result = execution._ensure_watchdog_installed();
                 }
@@ -293,5 +292,48 @@ test "jac start dev auto-installs watchdog even when not in jac.toml" {
     }
 
     assert result is True;
-    mock_installer.install_package.assert_called_once_with(["watchdog>=3.0.0"]);
+    mock_provider.install_specs.assert_called_once();
+    assert mock_provider.install_specs.call_args.args[1] == ["watchdog>=3.0.0"];
+}
+
+test "dev banner headlines vite port not api port" {
+    with TemporaryDirectory() as tmpdir {
+        captured_output = io.StringIO();
+        with patch(
+            "jaclang.cli.commands.execution._get_network_ips", return_value=[]
+        ) {
+            with redirect_stdout(captured_output) {
+                execution._print_startup_message(
+                    dev=True,
+                    no_client=False,
+                    primary_port=8000,
+                    api_port=8001,
+                    base_path=tmpdir
+                );
+            }
+        }
+        output = captured_output.getvalue();
+        assert "Local:     http://localhost:8000/" in output;
+        assert "App:  http://localhost:8000/" in output;
+        assert "API:  http://localhost:8001/" in output;
+    }
+}
+
+# --- Server construction ---
+"""The stdlib fallback server must be threading: on a plain (non-threading)
+HTTPServer one in-flight SSE stream or slow handler monopolizes the accept
+loop and every other client hangs with no response."""
+test "api server binds a threading http server" {
+    with TemporaryDirectory() as tmpdir {
+        port = get_free_port();
+        Jac.set_base_path(tmpdir);
+        srv = JacAPIServer(module_name="serve_api", port=port, base_path=tmpdir);
+        try {
+            assert isinstance(srv.server, ThreadingHTTPServer) , f"expected ThreadingHTTPServer, got {type(
+                srv.server
+            ).__name__}";
+        } finally {
+            srv.server.server_close();
+        }
+    }
 }

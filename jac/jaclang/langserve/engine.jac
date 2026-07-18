@@ -1,5 +1,3 @@
-"""Living Workspace of Jac project."""
-
 import asyncio;
 import logging;
 import os;
@@ -16,7 +14,7 @@ import from jaclang.jac0core.constant { SymbolType }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.cli.console { console }
 import from jaclang.jac0core.bccache { discover_base_file, discover_annex_files }
-import from jaclang.compiler.type_system.type_utils { get_completion_items }
+import from jaclang.compiler.type_system.type_utils { doc_of_sym, get_completion_items }
 import from jaclang.compiler.type_system.types {
     ClassType,
     FunctionType,
@@ -24,6 +22,9 @@ import from jaclang.compiler.type_system.types {
     ModuleType,
     TypeBase
 }
+import from jaclang.jac0core.constant { TOKEN_MAP }
+import from jaclang.jac0core.parser.lexer { tokenize_full }
+import from jaclang.jac0core.parser.tokens { TokenKind }
 import from jaclang.jac0core.unitree { UniScopeNode }
 import from .sem_manager { SemTokManager }
 import from jaclang.lsp { uris }
@@ -36,26 +37,24 @@ import from .rwlock { ReadWriteLock }
 
 obj Task {
     has file_uri: str,
-        task_id: int by postinit,
-        cancel_token: threading.Event | None by postinit;
+        task_id: int postinit,
+        cancel_token: threading.Event | None postinit;
 
     static has _task_id: int = 0;
 
     def postinit -> None;
 }
 
-"""Jac Language Server, manages JacProgram and LSP."""
 obj JacLangServer(JacProgram, LanguageServer) {
     has sem_managers: dict = {},
-        module_manager: ModuleManager | None by postinit,
-        # Task management
+        module_manager: ModuleManager | None postinit,
         pipe: deque = deque(maxlen=1),
         dirty_files: dict[str, bool] = {},
         last_task: Task | None = None,
-        worker_future: Future | None by postinit,
-        _state_lock: ReadWriteLock by postinit,
+        worker_future: Future | None postinit,
+        _state_lock: ReadWriteLock postinit,
         _work_event: threading.Event = threading.Event(),
-        _idle_event: threading.Event by postinit,
+        _idle_event: threading.Event postinit,
         _shutdown_called: bool = False,
         _debounce_timer: threading.Timer | None = None;
 
@@ -65,21 +64,20 @@ obj JacLangServer(JacProgram, LanguageServer) {
     has diagnostics: dict[str, list] { getter; }
 
     def _clear_alerts_for_file(file_path: str) -> None;
-    def get_ir(file_path: str) -> Optional[uni.Module];
-    def update_modules(file_path: str, build: uni.Module, need: bool = True) -> None;
+    def update_modules(
+        file_path: str,
+        build: uni.Module,
+        need: bool = True,
+        files: (list[str] | None) = None
+    ) -> None;
+
     def type_check_file(
         file_uri: str, cancel_token: threading.Event | None = None
     ) -> bool;
 
     def type_check(file_uri: str) -> None;
     def _do_type_check(file_uri: str) -> None;
-    """React to an external change at `file_uri`: drop the file's IR from
-    `JacProgram` caches and queue a re-check for every open document that
-    transitively imports it. Idempotent and safe to call from any LSP
-    event handler. The owning file's own re-check is not queued here —
-    callers normally pair this with `type_check(file_uri)` for that."""
     def _fanout_dependents(file_uri: str) -> None;
-
     def get_token_at_position(
         file_path: str, position: lspt.Position
     ) -> Optional[uni.UniNode];
@@ -101,6 +99,13 @@ obj JacLangServer(JacProgram, LanguageServer) {
         ty: TypeBase | uni.UniScopeNode
     ) -> lspt.CompletionList;
 
+    def get_scope_completion(scope: uni.UniScopeNode) -> lspt.CompletionList;
+    def get_scope_at_position(
+        file_path: str, line: int, col: int
+    ) -> Optional[uni.UniScopeNode];
+
+    def _flush_completion_state(file_uri: str) -> None;
+    def _position_in_string_or_comment(file_uri: str, line: int, col: int) -> bool;
     def rename_module(old_path: str, new_path: str) -> None;
     def close_module(uri: str) -> None;
     def delete_module(uri: str) -> None;

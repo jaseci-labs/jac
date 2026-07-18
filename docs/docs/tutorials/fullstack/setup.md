@@ -1,6 +1,6 @@
 # Full-Stack Project Setup
 
-Jac's `jac-client` plugin lets you build full-stack web applications where the frontend (React-style JSX components) and backend (walkers, functions, graph operations) live in the same codebase -- even the same file. The compiler separates client and server code automatically: client-side code -- a `.cl.jac` file or anything inside a `cl { }` block -- compiles to JavaScript and runs in the browser, while everything else compiles to Python and runs on the server.
+Jac's built-in client framework lets you build full-stack web applications where the frontend (React-style JSX components) and backend (walkers, functions, graph operations) live in the same codebase -- even the same file. The compiler separates client and server code automatically: client-side code -- a `.cl.jac` file or anything inside a `cl { }` block -- compiles to JavaScript and runs in the browser, while everything else compiles to Python and runs on the server.
 
 This means no separate frontend repository, no REST API boilerplate, and no manual data serialization. When a client component calls a server function, the compiler generates the HTTP layer for you. Hot Module Replacement (HMR) is built in, so changes to both frontend and backend code reflect instantly during development.
 
@@ -10,7 +10,7 @@ In this tutorial, you'll set up a full-stack project, understand the file struct
 >
 > - Completed: [Installation](../../quick-guide/install.md)
 > - Familiar with: HTML/CSS basics, React concepts helpful
-> - Install: `pip install jaseci`
+> - Install: `curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash` (installs the self-contained `jac` binary -- no Python, pip, or uv required)
 > - Time: ~15 minutes
 
 ---
@@ -18,7 +18,7 @@ In this tutorial, you'll set up a full-stack project, understand the file struct
 ## Create a Project
 
 ```bash
-jac create --use client myapp
+jac create --use web-static myapp
 cd myapp
 ```
 
@@ -84,9 +84,7 @@ react = "^18.2.0"
 react-dom = "^18.2.0"
 react-router-dom = "^6.22.0"
 react-error-boundary = "^5.0.0"
-react-hook-form = "^7.71.0"
 zod = "^4.3.6"
-"@hookform/resolvers" = "^5.2.2"
 
 [dependencies.npm.dev]
 vite = "^6.4.1"
@@ -101,7 +99,7 @@ watchdog = ">=3.0.0"
 [serve]
 base_route_app = "app"
 
-[plugins.client]
+[client]
 ```
 
 ---
@@ -233,13 +231,13 @@ cl {
 
 ```bash
 # Add a package
-jac add --npm lodash
+jac install --npm lodash
 
 # Add dev dependency
-jac add --npm --dev @types/react
+jac install --npm --dev @types/react
 
 # Install all dependencies
-jac add --npm
+jac install --npm
 ```
 
 Or in `jac.toml`:
@@ -253,7 +251,7 @@ axios = "^1.6.0"
 Then use in frontend:
 
 !!! note "npm imports and `jac check`"
-    npm packages bundle correctly at build time, but the static checker has no `.d.ts`-like stubs for them yet, so `jac check` reports their attributes as Unknown. The code below runs as written under `jac start`.
+    `jac check` reads installed npm `.d.ts` files for client imports when available; packages or constructs without declarations still type as foreign `any`. The code below runs as written under `jac start`.
 
 ```jac
 cl {
@@ -278,10 +276,10 @@ name = "myapp"
 version = "0.1.0"
 entry-point = "main.jac"
 
-[plugins.client]
+[client]
 # Client-specific config
 
-[plugins.client.configs.postcss]
+[client.configs.postcss]
 plugins = ["tailwindcss", "autoprefixer"]
 
 [dependencies]
@@ -327,5 +325,5 @@ Click the button - the count should increase!
 - [Components](components.md) - Build reusable UI components
 - [State Management](state.md) - Reactive state with hooks
 - [Backend Integration](backend.md) - Connect to walkers
-- [Building a Desktop App](desktop.md) - Package the same app as a native PyTauri desktop target (`pip install jac-desktop`; see [jac-desktop Reference](../../reference/plugins/jac-desktop.md))
+- [Building a Desktop App](desktop.md) - Package the same app as a single `jac nacompile`d binary that embeds the OS webview - no Rust toolchain (ships with `jaclang` core; see [jac-desktop Reference](../../reference/plugins/jac-desktop.md))
 - [Build an AI Day Planner](../first-app/build-ai-day-planner.md) - Complete full-stack example with AI

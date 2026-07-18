@@ -1,0 +1,89 @@
+impl Tool.postinit -> None {
+    try {
+        annotations = get_type_hints(self.func);
+    } except Exception {
+        annotations = getattr(self.func, '__annotations__', {}) or {};
+    }
+    with suppress(Exception) {
+        self.func.__annotations__ = annotations;
+    }
+    self.description = Tool.get_func_description(self.func);
+    if self.func?._jac_semstr_inner {
+        self.params_desc = self.func._jac_semstr_inner;
+    } else {
+        self.params_desc = {name: str(type) for (name, type) in annotations.items()};
+    }
+
+    if self.func?._serialize is not None {
+        self.serialize = self.func._serialize;
+    }
+    if self.func?._timeout_sec is not None {
+        self.timeout_sec = self.func._timeout_sec;
+    }
+}
+
+impl Tool.__call__(*args: list, **kwargs: dict) -> object {
+    if self.is_finish_tool() {
+        return self.func(*args, **kwargs);
+    }
+    try {
+        return self.func(*args, **kwargs);
+    } except Exception as e {
+        logger.exception("Tool execution failed");
+        return f"Tool error: {e}";
+    }
+}
+
+impl Tool.get_name -> str {
+    return self.func.__name__;
+}
+
+impl Tool.get_func_description(func: Callable) -> str {
+    if func?._jac_semstr {
+        return func._jac_semstr;
+    }
+    return func.__doc__ or func.__name__;
+}
+
+impl Tool.make_finish_tool(resp_type: type) -> Tool {
+    def finish_tool(final_output: object) -> object {
+        try {
+            return TypeAdapter(resp_type).validate_python(final_output);
+        } except Exception as e {
+            raise FinishToolError(
+                f"finish_tool output does not match expected type '{resp_type.__name__}': {e}"
+            );
+        }
+    }
+    finish_tool.__annotations__["return"] = resp_type;
+    finish_tool.__annotations__["final_output"] = resp_type;
+    return Tool(
+        func=finish_tool,
+        description="This tool is used to finish the tool calls and return the final output.",
+        params_desc={"final_output": "The final output of the tool calls.",},
+    );
+}
+
+impl Tool.is_finish_tool -> bool {
+    return self.get_name() == "finish_tool";
+}
+
+impl Tool.get_json_schema -> dict[str, object] {
+    return tool_to_schema(self.func, self.description, self.params_desc, self.info);
+}
+
+impl Tool.parse_arguments(args_json: dict) -> dict {
+    args = {};
+    annotations: dict = {};
+    try {
+        annotations = self.func.__annotations__;
+    } except AttributeError {
+        annotations = get_type_hints(self.func);
+    }
+    for (arg_name, arg_json) in args_json.items() {
+        if arg_type := annotations.get(arg_name) {
+            args[arg_name] = TypeAdapter(arg_type).validate_python(arg_json);
+        }
+    }
+    return args;
+}

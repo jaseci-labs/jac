@@ -10,24 +10,6 @@ impl PyJacAstLinkPass.exit_k_w_pair(nd: uni.KWPair) -> None {
     }
 }
 
-impl PyJacAstLinkPass.exit_non_local_stmt(nd: uni.NonLocalStmt) -> None {
-    if (not nd.gen.py_ast or (len(nd.gen.py_ast) < len(nd.target))) {
-        return;
-    }
-    for (x, y) in enumerate(nd.target) {
-        self.link_jac_py_nodes(jac_node=y, py_nodes=[nd.gen.py_ast[x]]);
-    }
-}
-
-impl PyJacAstLinkPass.exit_global_stmt(nd: uni.GlobalStmt) -> None {
-    if (not nd.gen.py_ast or (len(nd.gen.py_ast) < len(nd.target))) {
-        return;
-    }
-    for (x, y) in enumerate(nd.target) {
-        self.link_jac_py_nodes(jac_node=y, py_nodes=[nd.gen.py_ast[x]]);
-    }
-}
-
 impl PyJacAstLinkPass.exit_expr_as_item(nd: uni.ExprAsItem) -> None {
     self.link_jac_py_nodes(jac_node=nd.expr, py_nodes=nd.gen.py_ast);
     if nd.alias {
@@ -128,7 +110,6 @@ impl PyJacAstLinkPass.exit_module_path(nd: uni.ModulePath) -> None {
     }
 }
 
-"""Link jac name ast to py ast nodes."""
 impl PyJacAstLinkPass.link_jac_py_nodes(
     jac_node: uni.UniNode, py_nodes: list[ast3.AST]
 ) -> None {

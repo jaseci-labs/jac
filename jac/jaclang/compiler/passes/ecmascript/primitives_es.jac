@@ -1,13 +1,3 @@
-"""ECMAScript backend primitive emitter implementations.
-
-Maps Jac primitive methods and operators to their JavaScript equivalents.
-Where no direct JS equivalent exists, calls are emitted to the Jac JS
-runtime library (_jac.str.partition, _jac.list.remove, etc.).
-
-Each emitter is a stateless singleton; backend context is passed per-call
-via ESEmitCtx.
-"""
-
 import from jaclang.compiler.primitives {
     IntEmitter,
     FloatEmitter,
@@ -23,13 +13,10 @@ import from jaclang.compiler.primitives {
     BuiltinEmitter
 }
 
-# --- Context ----------------------------------------------------------------
 obj ESEmitCtx {
-    """ES emission context — carries the JS code generator."""
     has unparser: object;
 }
 
-# --- Helpers -----------------------------------------------------------------
 def _mcall(target: str, method: str, args: list[str]) -> str {
     """Emit target.method(arg1, arg2, ...).""";
     if len(args) > 0 {
@@ -59,12 +46,20 @@ def _binop(left: str, op: str, right: str) -> str {
     return "(" + left + " " + op + " " + right + ")";
 }
 
+def _one_arg_cb(fn: str, seq: str, method: str, cb_body: str) -> str {
+    """Emit seq.method(cb) with cb receiving exactly one element.
 
-# =============================================================================
-#  Numeric Types
-# =============================================================================
+    Python's map/filter call the callback with just the element, while JS's
+    Array.prototype.map/filter also pass (index, array) -- which a two-arity
+    callable such as `int(x, base)` reads as a radix.  Binding `fn` and `seq`
+    as parameters keeps them evaluated once, in the enclosing scope, so a
+    call-expression callback is not re-run per element.
+    """;
+    return "((_f, _s) => _s." + method + "((_v) => " + cb_body + "))(" + fn + ", " + seq + ")";
+}
+
+
 class ESIntEmitter(IntEmitter[(str, ESEmitCtx)]) {
-    # --- Named methods ---
     def emit_bit_length(
         self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -88,7 +83,7 @@ class ESIntEmitter(IntEmitter[(str, ESEmitCtx)]) {
     def emit_from_bytes(
         self: ESIntEmitter, ctx: ESEmitCtx, args: list[str]
     ) -> (str | None);
-    # --- Arithmetic operators ---
+
     def emit_op_add(
         self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -116,7 +111,7 @@ class ESIntEmitter(IntEmitter[(str, ESEmitCtx)]) {
     def emit_op_pow(
         self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
-    # --- Bitwise operators ---
+
     def emit_op_and(
         self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -137,7 +132,6 @@ class ESIntEmitter(IntEmitter[(str, ESEmitCtx)]) {
         self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
 
-    # --- Comparison operators ---
     def emit_op_eq(
         self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -161,7 +155,7 @@ class ESIntEmitter(IntEmitter[(str, ESEmitCtx)]) {
     def emit_op_ge(
         self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
-    # --- Unary operators ---
+
     def emit_op_neg(
         self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -176,7 +170,6 @@ class ESIntEmitter(IntEmitter[(str, ESEmitCtx)]) {
 }
 
 class ESFloatEmitter(FloatEmitter[(str, ESEmitCtx)]) {
-    # --- Named methods ---
     def emit_is_integer(
         self: ESFloatEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -196,7 +189,7 @@ class ESFloatEmitter(FloatEmitter[(str, ESEmitCtx)]) {
     def emit_fromhex(
         self: ESFloatEmitter, ctx: ESEmitCtx, args: list[str]
     ) -> (str | None);
-    # --- Arithmetic operators ---
+
     def emit_op_add(
         self: ESFloatEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -224,7 +217,7 @@ class ESFloatEmitter(FloatEmitter[(str, ESEmitCtx)]) {
     def emit_op_pow(
         self: ESFloatEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
-    # --- Comparison operators ---
+
     def emit_op_eq(
         self: ESFloatEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -248,7 +241,7 @@ class ESFloatEmitter(FloatEmitter[(str, ESEmitCtx)]) {
     def emit_op_ge(
         self: ESFloatEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
-    # --- Unary operators ---
+
     def emit_op_neg(
         self: ESFloatEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -259,12 +252,10 @@ class ESFloatEmitter(FloatEmitter[(str, ESEmitCtx)]) {
 }
 
 class ESComplexEmitter(ComplexEmitter[(str, ESEmitCtx)]) {
-    # --- Named methods ---
     def emit_conjugate(
         self: ESComplexEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
 
-    # --- Arithmetic operators ---
     def emit_op_add(
         self: ESComplexEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -284,7 +275,7 @@ class ESComplexEmitter(ComplexEmitter[(str, ESEmitCtx)]) {
     def emit_op_pow(
         self: ESComplexEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
-    # --- Comparison operators ---
+
     def emit_op_eq(
         self: ESComplexEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -292,7 +283,7 @@ class ESComplexEmitter(ComplexEmitter[(str, ESEmitCtx)]) {
     def emit_op_ne(
         self: ESComplexEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
-    # --- Unary operators ---
+
     def emit_op_neg(
         self: ESComplexEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -303,13 +294,6 @@ class ESComplexEmitter(ComplexEmitter[(str, ESEmitCtx)]) {
 }
 
 class ESBoolEmitter(ESIntEmitter) {
-    """Bool-specific emitter.
-
-    Inherits all int operations but overrides bitwise operators so that
-    ``True & False`` yields ``false`` (boolean) rather than ``0`` (number)
-    in the JS output, matching Python semantics where bool & bool → bool.
-    """
-    # Override bitwise ops to return boolean
     def emit_op_and(
         self: ESBoolEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -323,11 +307,7 @@ class ESBoolEmitter(ESIntEmitter) {
     ) -> (str | None);
 }
 
-# =============================================================================
-#  String Types
-# =============================================================================
 class ESStrEmitter(StrEmitter[(str, ESEmitCtx)]) {
-    # Case conversion
     def emit_capitalize(
         self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -352,7 +332,6 @@ class ESStrEmitter(StrEmitter[(str, ESEmitCtx)]) {
         self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
 
-    # Search
     def emit_count(
         self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -381,7 +360,6 @@ class ESStrEmitter(StrEmitter[(str, ESEmitCtx)]) {
         self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
 
-    # Modification
     def emit_replace(
         self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -406,7 +384,6 @@ class ESStrEmitter(StrEmitter[(str, ESEmitCtx)]) {
         self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
 
-    # Split and join
     def emit_split(
         self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -431,7 +408,6 @@ class ESStrEmitter(StrEmitter[(str, ESEmitCtx)]) {
         self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
 
-    # Formatting and alignment
     def emit_format(
         self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -460,7 +436,6 @@ class ESStrEmitter(StrEmitter[(str, ESEmitCtx)]) {
         self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
 
-    # Character tests
     def emit_isalnum(
         self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -509,11 +484,10 @@ class ESStrEmitter(StrEmitter[(str, ESEmitCtx)]) {
         self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
 
-    # Encoding
     def emit_encode(
         self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
-    # Translation
+
     def emit_translate(
         self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -521,7 +495,7 @@ class ESStrEmitter(StrEmitter[(str, ESEmitCtx)]) {
     def emit_maketrans(
         self: ESStrEmitter, ctx: ESEmitCtx, args: list[str]
     ) -> (str | None);
-    # --- Arithmetic operators ---
+
     def emit_op_add(
         self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -533,7 +507,7 @@ class ESStrEmitter(StrEmitter[(str, ESEmitCtx)]) {
     def emit_op_mod(
         self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
-    # --- Comparison operators ---
+
     def emit_op_eq(
         self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -557,14 +531,13 @@ class ESStrEmitter(StrEmitter[(str, ESEmitCtx)]) {
     def emit_op_ge(
         self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
-    # --- Membership operators ---
+
     def emit_op_contains(
         self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
 }
 
 class ESBytesEmitter(BytesEmitter[(str, ESEmitCtx)]) {
-    # Decoding
     def emit_decode(
         self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -576,7 +549,7 @@ class ESBytesEmitter(BytesEmitter[(str, ESEmitCtx)]) {
     def emit_fromhex(
         self: ESBytesEmitter, ctx: ESEmitCtx, args: list[str]
     ) -> (str | None);
-    # Search
+
     def emit_count(
         self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -605,7 +578,6 @@ class ESBytesEmitter(BytesEmitter[(str, ESEmitCtx)]) {
         self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
 
-    # Modification
     def emit_replace(
         self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -630,7 +602,6 @@ class ESBytesEmitter(BytesEmitter[(str, ESEmitCtx)]) {
         self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
 
-    # Split and join
     def emit_split(
         self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -655,7 +626,6 @@ class ESBytesEmitter(BytesEmitter[(str, ESEmitCtx)]) {
         self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
 
-    # Case (ASCII only)
     def emit_capitalize(
         self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -676,7 +646,6 @@ class ESBytesEmitter(BytesEmitter[(str, ESEmitCtx)]) {
         self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
 
-    # Character tests (ASCII only)
     def emit_isalnum(
         self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -709,7 +678,6 @@ class ESBytesEmitter(BytesEmitter[(str, ESEmitCtx)]) {
         self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
 
-    # Alignment
     def emit_center(
         self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -730,7 +698,6 @@ class ESBytesEmitter(BytesEmitter[(str, ESEmitCtx)]) {
         self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
 
-    # Translation
     def emit_translate(
         self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -738,7 +705,7 @@ class ESBytesEmitter(BytesEmitter[(str, ESEmitCtx)]) {
     def emit_maketrans(
         self: ESBytesEmitter, ctx: ESEmitCtx, args: list[str]
     ) -> (str | None);
-    # --- Arithmetic operators ---
+
     def emit_op_add(
         self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -750,7 +717,7 @@ class ESBytesEmitter(BytesEmitter[(str, ESEmitCtx)]) {
     def emit_op_mod(
         self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
-    # --- Comparison operators ---
+
     def emit_op_eq(
         self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -774,17 +741,13 @@ class ESBytesEmitter(BytesEmitter[(str, ESEmitCtx)]) {
     def emit_op_ge(
         self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
-    # --- Membership operators ---
+
     def emit_op_contains(
         self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
 }
 
-# =============================================================================
-#  Collection Types
-# =============================================================================
 class ESListEmitter(ListEmitter[(str, ESEmitCtx)]) {
-    # --- Named methods ---
     def emit_append(
         self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -828,7 +791,7 @@ class ESListEmitter(ListEmitter[(str, ESEmitCtx)]) {
     def emit_copy(
         self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
-    # --- Arithmetic operators ---
+
     def emit_op_add(
         self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -836,7 +799,7 @@ class ESListEmitter(ListEmitter[(str, ESEmitCtx)]) {
     def emit_op_mul(
         self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
-    # --- Comparison operators ---
+
     def emit_op_eq(
         self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -860,12 +823,11 @@ class ESListEmitter(ListEmitter[(str, ESEmitCtx)]) {
     def emit_op_ge(
         self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
-    # --- Membership operators ---
+
     def emit_op_contains(
         self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
 
-    # --- In-place operators ---
     def emit_op_iadd(
         self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -876,7 +838,6 @@ class ESListEmitter(ListEmitter[(str, ESEmitCtx)]) {
 }
 
 class ESDictEmitter(DictEmitter[(str, ESEmitCtx)]) {
-    # --- Named methods ---
     def emit_get(
         self: ESDictEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -920,11 +881,11 @@ class ESDictEmitter(DictEmitter[(str, ESEmitCtx)]) {
     def emit_fromkeys(
         self: ESDictEmitter, ctx: ESEmitCtx, args: list[str]
     ) -> (str | None);
-    # --- Bitwise operators (dict merge) ---
+
     def emit_op_or(
         self: ESDictEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
-    # --- Comparison operators ---
+
     def emit_op_eq(
         self: ESDictEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -932,19 +893,17 @@ class ESDictEmitter(DictEmitter[(str, ESEmitCtx)]) {
     def emit_op_ne(
         self: ESDictEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
-    # --- Membership operators ---
+
     def emit_op_contains(
         self: ESDictEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
 
-    # --- In-place operators ---
     def emit_op_ior(
         self: ESDictEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
 }
 
 class ESSetEmitter(SetEmitter[(str, ESEmitCtx)]) {
-    # --- Named methods (mutation) ---
     def emit_add(
         self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -964,7 +923,7 @@ class ESSetEmitter(SetEmitter[(str, ESEmitCtx)]) {
     def emit_clear(
         self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
-    # --- Named methods (set algebra) ---
+
     def emit_union(
         self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -981,7 +940,6 @@ class ESSetEmitter(SetEmitter[(str, ESEmitCtx)]) {
         self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
 
-    # --- Named methods (in-place set algebra) ---
     def emit_update(
         self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -998,7 +956,6 @@ class ESSetEmitter(SetEmitter[(str, ESEmitCtx)]) {
         self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
 
-    # --- Named methods (tests) ---
     def emit_issubset(
         self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -1014,7 +971,7 @@ class ESSetEmitter(SetEmitter[(str, ESEmitCtx)]) {
     def emit_copy(
         self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
-    # --- Set algebra operators ---
+
     def emit_op_or(
         self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -1030,7 +987,7 @@ class ESSetEmitter(SetEmitter[(str, ESEmitCtx)]) {
     def emit_op_xor(
         self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
-    # --- Comparison operators (subset/superset) ---
+
     def emit_op_eq(
         self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -1054,12 +1011,11 @@ class ESSetEmitter(SetEmitter[(str, ESEmitCtx)]) {
     def emit_op_gt(
         self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
-    # --- Membership operators ---
+
     def emit_op_contains(
         self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
 
-    # --- In-place operators ---
     def emit_op_ior(
         self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -1078,7 +1034,6 @@ class ESSetEmitter(SetEmitter[(str, ESEmitCtx)]) {
 }
 
 class ESFrozensetEmitter(FrozensetEmitter[(str, ESEmitCtx)]) {
-    # --- Named methods ---
     def emit_union(
         self: ESFrozensetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -1110,7 +1065,7 @@ class ESFrozensetEmitter(FrozensetEmitter[(str, ESEmitCtx)]) {
     def emit_copy(
         self: ESFrozensetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
-    # --- Set algebra operators ---
+
     def emit_op_or(
         self: ESFrozensetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -1126,7 +1081,7 @@ class ESFrozensetEmitter(FrozensetEmitter[(str, ESEmitCtx)]) {
     def emit_op_xor(
         self: ESFrozensetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
-    # --- Comparison operators (subset/superset) ---
+
     def emit_op_eq(
         self: ESFrozensetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -1150,14 +1105,13 @@ class ESFrozensetEmitter(FrozensetEmitter[(str, ESEmitCtx)]) {
     def emit_op_gt(
         self: ESFrozensetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
-    # --- Membership operators ---
+
     def emit_op_contains(
         self: ESFrozensetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
 }
 
 class ESTupleEmitter(TupleEmitter[(str, ESEmitCtx)]) {
-    # --- Named methods ---
     def emit_count(
         self: ESTupleEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -1165,7 +1119,7 @@ class ESTupleEmitter(TupleEmitter[(str, ESEmitCtx)]) {
     def emit_index(
         self: ESTupleEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
-    # --- Arithmetic operators ---
+
     def emit_op_add(
         self: ESTupleEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -1173,7 +1127,7 @@ class ESTupleEmitter(TupleEmitter[(str, ESEmitCtx)]) {
     def emit_op_mul(
         self: ESTupleEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
-    # --- Comparison operators ---
+
     def emit_op_eq(
         self: ESTupleEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -1197,14 +1151,13 @@ class ESTupleEmitter(TupleEmitter[(str, ESEmitCtx)]) {
     def emit_op_ge(
         self: ESTupleEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
-    # --- Membership operators ---
+
     def emit_op_contains(
         self: ESTupleEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
 }
 
 class ESRangeEmitter(RangeEmitter[(str, ESEmitCtx)]) {
-    # --- Named methods ---
     def emit_count(
         self: ESRangeEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -1212,7 +1165,7 @@ class ESRangeEmitter(RangeEmitter[(str, ESEmitCtx)]) {
     def emit_index(
         self: ESRangeEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
-    # --- Comparison operators ---
+
     def emit_op_eq(
         self: ESRangeEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
@@ -1220,15 +1173,12 @@ class ESRangeEmitter(RangeEmitter[(str, ESEmitCtx)]) {
     def emit_op_ne(
         self: ESRangeEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
-    # --- Membership operators ---
+
     def emit_op_contains(
         self: ESRangeEmitter, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None);
 }
 
-# =============================================================================
-#  Builtin Functions
-# =============================================================================
 class ESBuiltinEmitter(BuiltinEmitter[(str, ESEmitCtx)]) {
     def emit_print(
         self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
@@ -1393,7 +1343,7 @@ class ESBuiltinEmitter(BuiltinEmitter[(str, ESEmitCtx)]) {
     def emit_ascii(
         self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
     ) -> (str | None);
-    # Type conversion builtins
+
     def emit_str(
         self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
     ) -> (str | None);

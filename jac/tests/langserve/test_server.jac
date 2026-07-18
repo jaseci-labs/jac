@@ -3,7 +3,7 @@
 import contextlib;
 import os;
 import sys;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 
 import jaclang.lsp.types as lspt;
 
@@ -12,8 +12,9 @@ import from jaclang.langserve.engine { JacLangServer }
 import from jaclang.lsp { uris }
 import from jaclang.lsp.server { Workspace }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     FIXTURE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures"),
+glob FIXTURE_DIR = os.path.join(
+         os.path.dirname(os.path.abspath(__file__)), "fixtures"
+     ),
      EXAMPLES_DIR = os.path.join(JAC_ROOT, "examples"),
      PASSES_FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"
@@ -266,16 +267,16 @@ test "test_go_to_definition_md_path" {
             (7, 17, "typing.pyi:0:0-0:0"),
             (9, 18, "jaclang/jac0core/__init__.py:0:0-0:0"),
             (9, 25, "jaclang/jac0core/unitree.jac:0:0-0:0"),
-            (10, 34, "jac/jaclang/__init__.py:22:"),
+            (10, 34, "jaclang/__init__.py:17:"),
             (11, 35, "jaclang/jac0core/constant.jac:0:0-0:0"),
-            (11, 47, "jaclang/jac0core/constant.jac:4:5-4:15"),
+            (11, 47, "jaclang/jac0core/constant.jac:2:5-2:15"),
             (13, 47, "jaclang/compiler/type_system/type_utils.jac:0:0-0:0"),
             (14, 34, "jaclang/compiler/type_system/__init__.py:0:0-0:0"),
-            (18, 5, "compiler/type_system/types.jac:61:4-61:12"),
+            (18, 5, "compiler/type_system/types.jac:38:4-38:12"),
             (20, 34, "jaclang/jac0core/unitree.jac:0:0-0:0"),
             (22, 22, "tests/langserve/fixtures/circle.jac:7:5-7:8"),
             (23, 28, "jaclang/lsp/uris.jac:0:0-0:0"),
-            (24, 40, "jaclang/lsp/server.jac:115:4-115:18"),
+            (24, 40, "jaclang/lsp/server.jac:92:4-92:18"),
             (26, 31, "jaclang/lsp/types.jac:0:0-0:0"),
 
         ];
@@ -395,6 +396,7 @@ test "test_completion" {
         lsp.type_check_file(base_module_file);
 
         test_cases: list[Case] = [
+            # Member access after `foo.`
             Case(pos=lspt.Position(8, 8), expected=["bar", "baz"]),
 
         ];
@@ -408,6 +410,162 @@ test "test_completion" {
             for completion in case.expected {
                 assert completion in str(completions);
             }
+        }
+    } finally {
+        teardown_test();
+    }
+}
+
+test "test_completion_identifier_and_keywords" {
+    import asyncio;
+    import tempfile;
+
+    setup_test();
+    try {
+        lsp = create_server();
+        with tempfile.TemporaryDirectory() as td {
+            path = os.path.join(td, "completion_ident.jac");
+            uri = uris.from_fs_path(path);
+            # Member access after `self.`
+            with open(path, "w") as f {
+                f.write(
+                    """class Foo {
+    has bar: int;
+    has baz: int;
+    def greet {
+        self.
+    }
+}
+"""
+                );
+            }
+            lsp.type_check_file(uri);
+            members = asyncio.run(
+                lsp.get_completion(uri, lspt.Position(4, 13), completion_trigger=".")
+            );
+            member_labels = [i.label for i in members.items];
+            assert "bar" in member_labels;
+            assert "baz" in member_labels;
+            # Prefix `pr` on its own line → scope symbols + builtins + keywords
+            with open(path, "w") as f {
+                f.write(
+                    """class Foo {
+    has bar: int;
+    def greet {
+        pr
+    }
+}
+"""
+                );
+            }
+            lsp.type_check_file(uri);
+            ident = asyncio.run(
+                lsp.get_completion(uri, lspt.Position(3, 10), completion_trigger=None)
+            );
+            ident_labels = [i.label for i in ident.items];
+            assert "print" in ident_labels , f"expected print in {ident_labels[:30]}";
+            assert "self" in ident_labels;
+            assert "return" in ident_labels , "expected keyword 'return'";
+            assert "walker" in ident_labels , "expected keyword 'walker'";
+            # Inside `self` (KW_SELF, not NAME) → scope completions
+            with open(path, "w") as f {
+                f.write(
+                    """class Foo {
+    has bar: int;
+    def greet {
+        self
+    }
+}
+"""
+                );
+            }
+            lsp.type_check_file(uri);
+            on_self = asyncio.run(
+                lsp.get_completion(uri, lspt.Position(3, 10), completion_trigger=None)
+            );
+            on_self_labels = [i.label for i in on_self.items];
+            assert "print" in on_self_labels;
+            assert len(on_self_labels) > 0;
+            # Blank line inside method body → scope + keywords
+            with open(path, "w") as f {
+                f.write(
+                    """class Foo {
+    has bar: int;
+    def greet {
+        x = 1;
+
+    }
+}
+"""
+                );
+            }
+            lsp.type_check_file(uri);
+            blank = asyncio.run(
+                lsp.get_completion(uri, lspt.Position(4, 8), completion_trigger=None)
+            );
+            blank_labels = [i.label for i in blank.items];
+            assert "print" in blank_labels;
+            assert "x" in blank_labels or "self" in blank_labels;
+            assert "if" in blank_labels;
+        }
+    } finally {
+        teardown_test();
+    }
+}
+
+test "test_completion_suppressed_in_string_and_comment" {
+    # Scope-fallback completions must not leak into string literals or comments,
+    # but must still work inside an f-string's interpolated expression.
+    import asyncio;
+    import tempfile;
+
+    setup_test();
+    try {
+        lsp = create_server();
+        with tempfile.TemporaryDirectory() as td {
+            path = os.path.join(td, "completion_text.jac");
+            uri = uris.from_fs_path(path);
+            with open(path, "w") as f {
+                f.write(
+                    """class Foo {
+    has bar: int;
+    def greet {
+        print("hello world");
+        # a comment here
+        s = f"val {name} end";
+    }
+}
+"""
+                );
+            }
+            lsp.type_check_file(uri);
+            # Inside the string literal -> no completions
+            in_string = asyncio.run(
+                lsp.get_completion(uri, lspt.Position(3, 18), completion_trigger=None)
+            );
+            assert len(in_string.items) == 0 , "expected no completions inside a string";
+            # Inside the line comment -> no completions
+            in_comment = asyncio.run(
+                lsp.get_completion(uri, lspt.Position(4, 14), completion_trigger=None)
+            );
+            assert len(in_comment.items) == 0 , "expected no completions inside a comment";
+            # Inside the f-string literal text -> no completions
+            in_fstring_text = asyncio.run(
+                lsp.get_completion(uri, lspt.Position(5, 15), completion_trigger=None)
+            );
+            assert len(in_fstring_text.items) == 0 , "expected no completions in f-string text";
+            # Inside the f-string interpolated expression -> completions still work
+            in_fstring_expr = asyncio.run(
+                lsp.get_completion(uri, lspt.Position(5, 20), completion_trigger=None)
+            );
+            expr_labels = [i.label for i in in_fstring_expr.items];
+            assert len(expr_labels) > 0 , "expected completions inside f-string expression";
+            assert "print" in expr_labels;
+            # Control: typing at a normal identifier position still completes
+            on_ident = asyncio.run(
+                lsp.get_completion(uri, lspt.Position(3, 9), completion_trigger=None)
+            );
+            assert len(on_ident.items) > 0 , "expected completions at a normal position";
         }
     } finally {
         teardown_test();

@@ -1,0 +1,132 @@
+name: Nightly
+
+# Cron canaries against the shipped artifacts. On workflow_dispatch every job
+# runs; on schedule each job matches its own cron.
+
+on:
+  schedule:
+    - cron: '0 3 * * *'   # notes-app CEF smoke
+    - cron: '17 8 * * *'  # installer against the LIVE latest release
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  notes-app-cef-smoke:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up jac (build the binary)
+      uses: ./.github/actions/setup-jac
+
+    - name: Install display deps
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 \
+          libcups2 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 \
+          libasound2
+
+    - name: Build notes-app example
+      run: |
+        cd jac/examples/notes-app
+        jac build --client cef
+
+    - name: Bundle existence audit
+      working-directory: jac/examples/notes-app
+      run: |
+        BUNDLE=.jac/client/cef
+        test -f $BUNDLE/libcef.so
+        test -f $BUNDLE/cef-subprocess
+        test -f $BUNDLE/minimal-fonts.conf
+        test -f $BUNDLE/icudtl.dat
+        test -d $BUNDLE/locales
+        ldd $BUNDLE/notes-app | grep 'not found' && exit 1 || true
+
+    - name: Headless smoke with timeout (X11)
+      working-directory: jac/examples/notes-app/.jac/client/cef
+      run: |
+        Xvfb :99 -screen 0 1280x720x24 &
+        XVFB_PID=$!
+        DISPLAY=:99 \
+        FONTCONFIG_FILE=$PWD/minimal-fonts.conf \
+        JAC_CEF_DISABLE_GPU=1 \
+        OZONE_PLATFORM=x11 \
+        timeout 30s ./notes-app 2>&1 | tee /tmp/notes-app.log &
+        SMOKE_PID=$!
+        sleep 10
+        grep -q "startup: cef_initialize ok" /tmp/notes-app.log \
+          || (cat /tmp/notes-app.log && exit 1)
+        kill $SMOKE_PID $XVFB_PID 2>/dev/null || true
+
+    - name: Upload logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: notes-app-logs
+        path: /tmp/notes-app.log
+
+  # Exercises the real `curl ... | bash` path daily: install.sh breakage is
+  # usually caused by release/tag changes elsewhere, which the PR-time check in
+  # ci.yml (path-gated on scripts/install.sh) can never catch.
+  installer-live:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '17 8 * * *' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86_64
+          - os: macos-14
+            platform: macos-aarch64
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Require a native binary asset on the latest release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if ! gh release view --repo "$GITHUB_REPOSITORY" \
+               --json assets --jq '.assets[].name' 2>/dev/null \
+               | grep -q "jac-.*-${{ matrix.platform }}$"; then
+            echo "::error::Latest GitHub Release has no jac-*-${{ matrix.platform }} asset; 'curl ... | bash' is broken for this platform."
+            exit 1
+          fi
+
+      - name: "install: download + run the binary"
+        env:
+          # install.sh authenticates its GitHub API calls when a token is set;
+          # shared runners (macOS especially) exhaust the unauthenticated
+          # per-IP rate limit.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/install.sh
+
+      - name: "install: verify jac"
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          which jac
+          jac --version
+
+      - name: "install: run a test program"
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          echo 'with entry { print("hello from the jac binary"); }' > /tmp/test_install.jac
+          jac /tmp/test_install.jac
+
+      - name: "install: uninstall"
+        run: bash scripts/install.sh --uninstall
+
+      - name: "install: verify removal"
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          if command -v jac &>/dev/null; then
+            echo "FAIL: jac still found after uninstall"
+            exit 1
+          fi
+          echo "PASS: jac removed"

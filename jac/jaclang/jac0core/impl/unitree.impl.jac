@@ -1,6 +1,3 @@
-"""Implementation for unitree constructs."""
-
-"""Initialize ast."""
 impl UniNode.postinit -> None {
     self.parent = None;
     self.kid = [x.set_parent(self) for x in self.kid];
@@ -11,7 +8,6 @@ impl UniNode.postinit -> None {
 }
 
 
-"""Lazy initialization of sub node table."""
 impl UniNode._sub_node_tab.getter -> dict[(type, list[UniNode])] {
     if (self.__sub_node_tab is None) {
         self.__sub_node_tab = {};
@@ -20,7 +16,6 @@ impl UniNode._sub_node_tab.getter -> dict[(type, list[UniNode])] {
     return self.__sub_node_tab;
 }
 
-"""Construct sub node table."""
 impl UniNode._construct_sub_node_tab -> None {
     for i in self.kid {
         if not i {
@@ -41,32 +36,32 @@ impl UniNode._construct_sub_node_tab -> None {
     }
 }
 
-"""Get symbol table.
+impl UniNode._invalidate_sub_node_tab -> None {
+    cur: (UniNode | None) = self;
+    while cur is not None and cur.__sub_node_tab is not None {
+        cur.__sub_node_tab = None;
+        cur = cur.parent;
+    }
+}
 
-For version conditionals, some scopes (IfStmt, ElseStmt) are unlinked.
-We skip unlinked scopes and return the first linked scope (or Module root).
-"""
 impl UniNode.sym_tab.getter -> UniScopeNode {
     nd: (UniNode | None) = self;
-    # TODO: Refactor this wile doing JS symtab
+
     while nd is not None {
         if isinstance(nd, UniScopeNode) {
-            # Module is always valid (root scope)
             if isinstance(nd, Module) {
                 return nd;
             }
-            # Linked scope (has parent_scope set)
+
             if nd.parent_scope is not None {
                 return nd;
             }
-            # Unlinked scope - continue up
         }
         nd = nd.parent;
     }
     raise ValueError("No scope found");
 }
 
-"""Add kid left."""
 impl UniNode.add_kids_left(
     nodes: Sequence[UniNode], pos_update: bool = True, parent_update: bool = False
 ) -> UniNode {
@@ -81,10 +76,10 @@ impl UniNode.add_kids_left(
             i.parent = self;
         }
     }
+    self._invalidate_sub_node_tab();
     return self;
 }
 
-"""Add kid right."""
 impl UniNode.add_kids_right(
     nodes: Sequence[UniNode], pos_update: bool = True, parent_update: bool = False
 ) -> UniNode {
@@ -99,10 +94,10 @@ impl UniNode.add_kids_right(
             i.parent = self;
         }
     }
+    self._invalidate_sub_node_tab();
     return self;
 }
 
-"""Insert kids at position."""
 impl UniNode.insert_kids_at_pos(
     nodes: Sequence[UniNode], pos: int, pos_update: bool = True
 ) -> UniNode {
@@ -113,20 +108,20 @@ impl UniNode.insert_kids_at_pos(
         }
         self.loc.update_token_range(*self.resolve_tok_range());
     }
+    self._invalidate_sub_node_tab();
     return self;
 }
 
-"""Set kids."""
 impl UniNode.set_kids(nodes: Sequence[UniNode]) -> UniNode {
     self.kid = [*nodes];
     for i in nodes {
         i.parent = self;
     }
     self.loc.update_token_range(*self.resolve_tok_range());
+    self._invalidate_sub_node_tab();
     return self;
 }
 
-"""Set parent."""
 impl UniNode.set_parent(parent: UniNode) -> UniNode {
     self.parent = parent;
     return self;
@@ -163,13 +158,11 @@ impl UniNode.gen_token(name: Tok, value: (str | None) = None) -> Token {
     );
 }
 
-"""Get all sub nodes of type."""
-impl UniNode.get_all_sub_nodes(typ: type[T], brute_force: bool = True) -> list[T] {
+impl UniNode.get_all_sub_nodes(typ: type[T]) -> list[T] {
     import from jaclang.jac0core.passes { UniPass }
-    return UniPass.get_all_sub_nodes(nd=self, typ=typ, brute_force=brute_force);
+    return UniPass.get_all_sub_nodes(nd=self, typ=typ);
 }
 
-"""Get parent of type."""
 impl UniNode.find_parent_of_type(typ: type[T]) -> (T | None) {
     import from jaclang.jac0core.passes { UniPass }
     return UniPass.find_parent_of_type(nd=self, typ=typ);
@@ -184,63 +177,81 @@ impl UniNode.parent_of_type(typ: type[T]) -> T {
     }
 }
 
-"""Check if this node is in a client-side context.
-
-        This covers:
-        - Nodes inside an explicit cl {} block in a .jac file
-        - Nodes inside a function marked with CLIENT context in .cl.jac files
-        - Overridden by sv {} blocks (server takes precedence)
-
-        Uses single traversal for efficiency since this is called frequently.
-        """
-impl UniNode.in_client_context -> bool {
+impl UniNode.codespace -> CodeContext {
+    import from jaclang.jac0core.ext_registry { is_client_module, is_native_module }
     nd: (UniNode | None) = self.parent;
     while (nd is not None) {
         if isinstance(nd, ServerBlock) {
-            return False;
+            return CodeContext.SERVER;
         }
         if isinstance(nd, ClientBlock) {
-            return True;
+            return CodeContext.CLIENT;
+        }
+        if isinstance(nd, NativeBlock) {
+            return CodeContext.NATIVE;
         }
         if isinstance(nd, Ability) {
             context = nd.code_context;
             if (context == CodeContext.CLIENT) {
-                return True;
+                return CodeContext.CLIENT;
             }
-        }
-        nd = nd.parent;
-    }
-    return False;
-}
-
-"""Check if this node is in a native context.
-
-        This covers:
-        - Nodes inside an explicit na {} block in a .jac file
-        - Nodes inside a function marked with NATIVE context in .na.jac files
-        - Overridden by sv {} or cl {} blocks
-        """
-impl UniNode.in_native_context -> bool {
-    nd: (UniNode | None) = self.parent;
-    while (nd is not None) {
-        if isinstance(nd, (ServerBlock, ClientBlock)) {
-            return False;
-        }
-        if isinstance(nd, NativeBlock) {
-            return True;
-        }
-        if isinstance(nd, Ability) {
-            context = nd.code_context;
             if (context == CodeContext.NATIVE) {
+                return CodeContext.NATIVE;
+            }
+        }
+        if isinstance(nd, Module) {
+            mp = nd.loc.mod_path if nd.loc is not None else '';
+            if mp and is_native_module(mp) {
+                return CodeContext.NATIVE;
+            }
+            if mp and is_client_module(mp) {
+                return CodeContext.CLIENT;
+            }
+            return CodeContext.SERVER;
+        }
+        nd = nd.parent;
+    }
+    return CodeContext.SERVER;
+}
+
+impl UniNode.in_client_context -> bool {
+    return self.codespace() == CodeContext.CLIENT;
+}
+
+impl UniNode.in_native_context -> bool {
+    return self.codespace() == CodeContext.NATIVE;
+}
+
+impl Module.declares_codespace(ctx: CodeContext, path_hint: str = '') -> bool {
+    import from jaclang.jac0core.ext_registry { is_client_module, is_native_module }
+    mp = self.loc.mod_path
+        if (self.loc is not None and self.loc.mod_path)
+        else path_hint;
+    if ctx == CodeContext.NATIVE and bool(mp) and is_native_module(mp) {
+        return True;
+    }
+    if ctx == CodeContext.CLIENT and bool(mp) and is_client_module(mp) {
+        return True;
+    }
+    if self.body {
+        for _stmt in self.body {
+            if ctx == CodeContext.NATIVE and isinstance(_stmt, NativeBlock) {
+                return True;
+            }
+            if ctx == CodeContext.CLIENT and isinstance(_stmt, ClientBlock) {
+                return True;
+            }
+
+            if ctx != CodeContext.SERVER
+            and isinstance(_stmt, ContextAwareNode)
+            and _stmt.code_context == ctx {
                 return True;
             }
         }
-        nd = nd.parent;
     }
     return False;
 }
 
-"""Return dict representation of node."""
 impl UniNode.to_dict -> dict[(str, str)] {
     ret = {
         'node': str(`type(self).__name__),
@@ -261,17 +272,14 @@ impl UniNode.to_dict -> dict[(str, str)] {
     return ret;
 }
 
-"""Print ast."""
 impl UniNode.pp(depth: (int | None) = None) -> str {
     return print_ast_tree(self, max_depth=depth);
 }
 
-"""Print ast."""
 impl UniNode.printgraph -> str {
     return printgraph_ast_tree(self);
 }
 
-"""Flatten ast."""
 impl UniNode.flatten -> list[UniNode] {
     ret: list[UniNode] = [self];
     for k in self.kid {
@@ -288,7 +296,6 @@ impl UniNode.unparse -> str {
 }
 
 
-"""Initialize."""
 impl Symbol.init(
     defn: NameAtom,
     access: SymbolAccess,
@@ -304,22 +311,18 @@ impl Symbol.init(
     self.semstr = '';
 }
 
-"""Get decl."""
 impl Symbol.decl.getter -> NameAtom {
     return self.defn[0];
 }
 
-"""Get name."""
 impl Symbol.sym_name.getter -> str {
     return self.decl.sym_name;
 }
 
-"""Get sym_type."""
 impl Symbol.sym_type.getter -> SymbolType {
     return self.decl.sym_category;
 }
 
-"""Return a full path of the symbol."""
 impl Symbol.sym_dotted_name.getter -> str {
     out = [self.defn[0].sym_name];
     current_tab: (UniScopeNode | None) = self.parent_tab;
@@ -331,7 +334,6 @@ impl Symbol.sym_dotted_name.getter -> str {
     return '.'.join(out);
 }
 
-"""Get symbol table."""
 impl Symbol.symbol_table.getter -> (UniScopeNode | None) {
     if self.parent_tab {
         return self.parent_tab.find_scope(self.sym_name);
@@ -339,24 +341,72 @@ impl Symbol.symbol_table.getter -> (UniScopeNode | None) {
     return None;
 }
 
-"""Add defn."""
+impl Symbol.storage.getter -> SymbolStorage {
+    owner = self.parent_tab;
+    while (
+        owner is not None
+        and not isinstance(owner, UniScopeNode.get_python_scoping_nodes())
+    ) {
+        owner = owner.parent_scope;
+    }
+    if (owner is None) or isinstance(owner, Module) {
+        return SymbolStorage.MODULE_GLOBAL;
+    }
+    if isinstance(owner, (Archetype, Enum)) {
+        return SymbolStorage.CLASS_FIELD;
+    }
+
+    if isinstance(self.decl.name_of, ParamVar) {
+        return SymbolStorage.PARAM;
+    }
+
+    barriers = UniScopeNode.get_python_scoping_nodes();
+    def_scope: (UniNode | None) = self.decl.parent;
+    while (
+        def_scope is not None
+        and not isinstance(def_scope, barriers)
+        and not isinstance(def_scope, LambdaExpr)
+    ) {
+        def_scope = def_scope.parent;
+    }
+    for use in self.uses {
+        cur = use.parent;
+        while (
+            cur is not None
+            and not isinstance(cur, barriers)
+            and not isinstance(cur, LambdaExpr)
+        ) {
+            cur = cur.parent;
+        }
+        if (cur is None) or (cur is def_scope) {
+            continue;
+        }
+
+        if isinstance(cur, ImplDef) and (cur.decl_link is def_scope) {
+            continue;
+        }
+        if isinstance(def_scope, ImplDef) and (def_scope.decl_link is cur) {
+            continue;
+        }
+        return SymbolStorage.CAPTURED;
+    }
+    return SymbolStorage.LOCAL;
+}
+
 impl Symbol.add_defn(nd: NameAtom) -> None {
     self.defn.append(nd);
     nd.sym = self;
 }
 
-"""Add use."""
 impl Symbol.add_use(nd: NameAtom) -> None {
     self.uses.append(nd);
     nd.sym = self;
 }
 
-"""Repr."""
 impl Symbol.__repr__ -> str {
     return f"Symbol({self.sym_name}, {self.sym_type}, {self.access},{self.defn})";
 }
 
-"""Initialize."""
 impl UniScopeNode._init_scope(
     name: str, parent_scope: (UniScopeNode | None) = None
 ) -> None {
@@ -365,23 +415,9 @@ impl UniScopeNode._init_scope(
     self.kid_scope: list[UniScopeNode] = [];
     self.names_in_scope: dict[(str, Symbol)] = {};
     self.names_in_scope_overload: dict[(str, list[Symbol])] = {};
+    self.implicit_rebinds: dict[(str, Symbol)] = {};
 }
 
-
-"""Get type."""
-impl UniScopeNode.get_type -> SymbolType {
-    if isinstance(self, AstSymbolNode) {
-        return self.sym_category;
-    }
-    return SymbolType.VAR;
-}
-
-"""Get parent."""
-impl UniScopeNode.get_parent -> (UniScopeNode | None) {
-    return self.parent_scope;
-}
-
-"""Lookup a variable in the symbol table."""
 impl UniScopeNode.lookup(
     name: str, deep: bool = True, incl_inner_scope: bool = False
 ) -> (Symbol | None) {
@@ -404,7 +440,7 @@ impl UniScopeNode.lookup(
             }
         }
     }
-    # If not found and we're in/under an ImplDef, check the declaration's symbol table
+
     impl_def: ImplDef | None = (
         self if isinstance(self, ImplDef) else self.find_parent_of_type(ImplDef)
     );
@@ -416,7 +452,6 @@ impl UniScopeNode.lookup(
     return None;
 }
 
-"""Lookup all overloads of a symbol in the symbol table."""
 impl UniScopeNode.lookup_all(name: str, deep: bool = True) -> list[Symbol] {
     result: list[Symbol] = [];
     if name in self.names_in_scope {
@@ -434,12 +469,6 @@ impl UniScopeNode.lookup_all(name: str, deep: bool = True) -> list[Symbol] {
     return result;
 }
 
-"""Set a variable in the symbol table.
-
-        Returns original symbol as collision if single check fails, none
-otherwise.
-        Also updates node.sym to create pointer to symbol.
-        """
 impl UniScopeNode.insert(
     nd: AstSymbolNode,
     access_spec: AstAccessNode | None | SymbolAccess = None,
@@ -469,7 +498,6 @@ impl UniScopeNode.insert(
     return collision;
 }
 
-"""Find a scope in the symbol table."""
 impl UniScopeNode.find_scope(name: str) -> (UniScopeNode | None) {
     for k in self.kid_scope {
         if (k.scope_name == name) {
@@ -479,14 +507,39 @@ impl UniScopeNode.find_scope(name: str) -> (UniScopeNode | None) {
     return None;
 }
 
-"""Push a new scope onto the symbol table."""
+impl UniScopeNode.get_enclosing_captures -> list[Symbol] {
+    out: list[Symbol] = [];
+    func_scopes = (Ability, ImplDef, LambdaExpr, Test);
+    for name in self.get_all_sub_nodes(Name) {
+        sym = name.sym;
+        if (sym is None) {
+            continue;
+        }
+        tab = sym.parent_tab;
+        if ((tab is None) or (tab is self) or not isinstance(tab, func_scopes)) {
+            continue;
+        }
+
+        scope = self.parent_scope;
+        while (scope is not None) {
+            if (scope is tab) {
+                if sym not in out {
+                    out.append(sym);
+                }
+                break;
+            }
+            scope = scope.parent_scope;
+        }
+    }
+    return out;
+}
+
 impl UniScopeNode.link_kid_scope(key_node: UniScopeNode) -> UniScopeNode {
     key_node.parent_scope = self;
     self.kid_scope.append(key_node);
     return self.kid_scope[-1];
 }
 
-"""Insert into symbol table."""
 impl UniScopeNode.def_insert(
     nd: AstSymbolNode,
     access_spec: AstAccessNode | None | SymbolAccess = None,
@@ -508,7 +561,6 @@ impl UniScopeNode.def_insert(
     return nd.sym;
 }
 
-"""Link chain of containing names to symbol."""
 impl UniScopeNode.chain_def_insert(node_list: list[AstSymbolNode]) -> None {
     if not node_list {
         return;
@@ -526,7 +578,6 @@ impl UniScopeNode.chain_def_insert(node_list: list[AstSymbolNode]) -> None {
     }
 }
 
-"""Link to symbol."""
 impl UniScopeNode.use_lookup(
     nd: AstSymbolNode, sym_table: (UniScopeNode | None) = None
 ) -> (Symbol | None) {
@@ -543,7 +594,6 @@ impl UniScopeNode.use_lookup(
     return nd.sym;
 }
 
-"""Link chain of containing names to symbol."""
 impl UniScopeNode.chain_use_lookup(node_list: Sequence[AstSymbolNode]) -> None {
     if not node_list {
         return;
@@ -568,7 +618,6 @@ impl UniScopeNode.chain_use_lookup(node_list: Sequence[AstSymbolNode]) -> None {
     }
 }
 
-"""Update python context for definition."""
 impl UniScopeNode.update_py_ctx_for_def(nd: AstSymbolNode) -> None {
     nd.name_spec.py_ctx_func = ast3.Store;
     if (isinstance(nd, (TupleVal, ListVal)) and nd.values) {
@@ -594,17 +643,14 @@ impl UniScopeNode.update_py_ctx_for_def(nd: AstSymbolNode) -> None {
     }
 }
 
-"""Pretty print."""
 impl UniScopeNode.sym_pp(depth: (int | None) = None) -> str {
-    return print_symtab_tree(root=self, depth=depth);
+    return print_symtab_tree(root_node=self, depth=depth);
 }
 
-"""Generate dot graph for sym table."""
 impl UniScopeNode.sym_printgraph -> str {
     return printgraph_symtab_tree(self);
 }
 
-"""Repr."""
 impl UniScopeNode.__repr__ -> str {
     out = f"{self.scope_name} {super().__repr__()}:\n";
     for (k, v) in self.names_in_scope.items() {
@@ -640,7 +686,6 @@ impl AstSymbolNode.py_ctx_func.getter -> type[ast3.AST] {
     return self.name_spec.py_ctx_func;
 }
 
-"""Get type symbol table."""
 impl AstSymbolNode.type_sym_tab.getter -> (UniScopeNode | None) {
     return self.name_spec.type_sym_tab;
 }
@@ -667,18 +712,11 @@ impl AstAccessNode.public_access.getter -> bool {
     return (self.access_type == SymbolAccess.PUBLIC);
 }
 
-"""Initialize with code context.
-
-        Args:
-            code_context: Code execution context (SERVER or CLIENT), defaults to
-SERVER
-        """
 impl ContextAwareNode.postinit -> None {
     self.code_context = CodeContext.SERVER;
 }
 
 
-"""Return the original context token (cl or sv) if present on this node."""
 impl ContextAwareNode._source_context_token -> (Token | None) {
     for kid in self.kid {
         if (isinstance(kid, Token) and (kid.name in (Tok.KW_CLIENT, Tok.KW_SERVER))) {
@@ -693,21 +731,17 @@ impl WalkerStmtOnlyNode.postinit -> None {
 }
 
 
-"""Initialize basic block statement node."""
 impl UniCFGNode.postinit -> None {
     self.bb_in = [];
     self.bb_out = [];
-    # Pyright-style optimization: track symbols affected (assigned/narrowed) in this branch.
-    # If a symbol is not in affected_symbols, we can skip backward traversal through this node.
+
     self.affected_symbols = set();
 }
 
-"""Initialize ConditionalNode (CFG branch point with true/false targets)."""
 impl ConditionalNode.postinit -> None {
     UniCFGNode.postinit(self);
 }
 
-"""Initialize CfgExpr (expression-level CFG wrapper)."""
 impl CfgExpr.postinit -> None {
     UniNode.postinit(self);
     Expr.postinit(self);
@@ -715,18 +749,32 @@ impl CfgExpr.postinit -> None {
 }
 
 
-"""Get head by walking up the CFG iteratively."""
 impl UniCFGNode.get_head -> UniCFGNode {
     nd = self;
     while (
         nd.bb_in
         and (len(nd.bb_in) == 1)
         and not isinstance(
-            nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode, InnerCompr)
+            nd,
+            (
+                InForStmt,
+                IterForStmt,
+                WhileStmt,
+                ForeverStmt,
+                ConditionalNode,
+                InnerCompr
+            )
         )
         and not isinstance(
             nd.bb_in[0],
-            (InForStmt, IterForStmt, WhileStmt, ConditionalNode, InnerCompr)
+            (
+                InForStmt,
+                IterForStmt,
+                WhileStmt,
+                ForeverStmt,
+                ConditionalNode,
+                InnerCompr
+            )
         )
         and nd.bb_in[0].bb_out
         and (len(nd.bb_in[0].bb_out) == 1)
@@ -736,18 +784,32 @@ impl UniCFGNode.get_head -> UniCFGNode {
     return nd;
 }
 
-"""Get tail by walking down the CFG iteratively."""
 impl UniCFGNode.get_tail -> UniCFGNode {
     nd = self;
     while (
         nd.bb_out
         and (len(nd.bb_out) == 1)
         and not isinstance(
-            nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode, InnerCompr)
+            nd,
+            (
+                InForStmt,
+                IterForStmt,
+                WhileStmt,
+                ForeverStmt,
+                ConditionalNode,
+                InnerCompr
+            )
         )
         and not isinstance(
             nd.bb_out[0],
-            (InForStmt, IterForStmt, WhileStmt, ConditionalNode, InnerCompr)
+            (
+                InForStmt,
+                IterForStmt,
+                WhileStmt,
+                ForeverStmt,
+                ConditionalNode,
+                InnerCompr
+            )
         )
         and nd.bb_out[0].bb_in
         and (len(nd.bb_out[0].bb_in) == 1)
@@ -764,7 +826,6 @@ impl Expr.postinit -> None {
 }
 
 
-"""Initialize code block statement node."""
 impl CodeBlockStmt.postinit -> None {
     UniCFGNode.postinit(self);
 }
@@ -792,7 +853,6 @@ impl NameAtom.sym_category.getter -> SymbolType {
     return self._sym_category;
 }
 
-"""Create symbol."""
 impl NameAtom.create_symbol(
     access: SymbolAccess,
     parent_tab: (UniScopeNode | None) = None,
@@ -809,7 +869,6 @@ impl NameAtom.clean_type.getter -> str {
     return '';
 }
 
-"""Resolve semantic token."""
 impl NameAtom.sem_token.getter -> (tuple[(SemTokType, SemTokMod)] | None) {
     if isinstance(self.name_of, BuiltinType) {
         return (SemTokType.CLASS, SemTokMod.DECLARATION);
@@ -847,16 +906,13 @@ impl NameAtom.sem_token.getter -> (tuple[(SemTokType, SemTokMod)] | None) {
         return (SemTokType.FUNCTION, SemTokMod.DEFINITION);
     }
     if self.sym {
-        # Before falling through to PROPERTY, check if the node's resolved type
-        # is a function/overloaded type. This handles imported functions where
-        # sym.decl.name_of is a plain Name (import alias) rather than Ability.
         if self.type is not None
         and type(self.type).__name__ in ('FunctionType', 'OverloadedType') {
             return (SemTokType.FUNCTION, SemTokMod.DEFINITION);
         }
         return (SemTokType.PROPERTY, SemTokMod.DEFINITION);
     }
-    # Handle __getattr__ dynamic attributes (explicitly marked by type checker)
+
     if self.is_getattr_resolved {
         return (SemTokType.PROPERTY, SemTokMod.DEFINITION);
     }
@@ -880,14 +936,6 @@ impl Module.postinit -> None {
 }
 
 
-"""Get the base module path that this annex file belongs to.
-
-        Uses discover_base_file to find the base .jac file for annex files
-        (.impl.jac, .test.jac). Handles all discovery scenarios:
-        - Same directory: foo.impl.jac -> foo.jac
-        - Module-specific folder: foo.impl/bar.impl.jac -> foo.jac
-        - Shared folder: impl/foo.impl.jac -> foo.jac
-        """
 impl Module.annexable_by.getter -> (str | None) {
     if self.stub_only {
         return None;
@@ -895,7 +943,6 @@ impl Module.annexable_by.getter -> (str | None) {
     return discover_base_file(self.loc.mod_path);
 }
 
-"""Get all sub nodes of type."""
 impl Module.format -> str {
     import from jaclang.compiler.passes.tool.doc_ir_gen_pass { DocIRGenPass }
     import from jaclang.compiler.passes.tool.jac_formatter_pass { JacFormatPass }
@@ -908,16 +955,40 @@ impl Module.format -> str {
 impl Module.unparse(requires_format: bool = True) -> str {
     import from jaclang.compiler.passes.tool.normalize_pass { NormalizePass }
     import from jaclang.jac0core.program { JacProgram }
-    NormalizePass(ir_in=self, prog=JacProgram());
-    if requires_format {
-        return self.format();
+
+    own_path = self.loc.mod_path;
+    saved_body = self.body;
+    saved_kid = self.kid;
+    head_kid = [
+        k
+        for k in saved_kid
+        if (not k.loc.mod_path) or (k.loc.mod_path == own_path)
+    ];
+    filtered = len(head_kid) != len(saved_kid);
+    if filtered {
+        self.body = [
+            st
+            for st in saved_body
+            if (not st.loc.mod_path) or (st.loc.mod_path == own_path)
+        ];
+        self.set_kids(nodes=head_kid or [EmptyToken()]);
     }
-    import from jaclang.compiler.passes.tool.unparse_pass { UnparsePass }
-    UnparsePass(ir_in=self, prog=JacProgram());
-    return self.gen.jac;
+    try {
+        NormalizePass(ir_in=self, prog=JacProgram());
+        if requires_format {
+            return self.format();
+        }
+        import from jaclang.compiler.passes.tool.unparse_pass { UnparsePass }
+        UnparsePass(ir_in=self, prog=JacProgram());
+        return self.gen.jac;
+    } finally {
+        if filtered {
+            self.body = saved_body;
+            self.set_kids(nodes=saved_kid);
+        }
+    }
 }
 
-"""Initialize whole program node."""
 impl ProgramModule.postinit -> None {
     self.main = self.main_mod or Module.make_stub();
     self.kid = [self.main];
@@ -978,8 +1049,7 @@ impl Test.postinit -> None {
         else self.name.value;
     self.body = `list(self.body);
     UniNode.postinit(self);
-    # Only insert synthetic name into kids if no description string present
-    # (the description String is already in the kid list from the parser)
+
     if (self.description is None and self.name not in self.kid) {
         self.insert_kids_at_pos([self.name], pos=1, pos_update=False);
     }
@@ -1032,19 +1102,6 @@ impl Import.postinit -> None {
     ContextAwareNode.postinit(self);
 }
 
-
-"""Check if import is python."""
-impl Import.is_py.getter -> bool {
-    if (self.hint and (self.hint.tag.value == 'py')) {
-        return True;
-    }
-    if not self.hint {
-        return not self.__jac_detected;
-    }
-    return False;
-}
-
-"""Check if import is jac."""
 impl Import.is_jac.getter -> bool {
     if (self.hint and (self.hint.tag.value == 'jac')) {
         return True;
@@ -1055,29 +1112,24 @@ impl Import.is_jac.getter -> bool {
     return False;
 }
 
-"""Check if import is jac."""
 impl Import.__jac_detected.getter -> bool {
+    import from jaclang.jac0core.ext_registry { is_jac, INIT_FILES }
     if self.from_loc {
-        if self.from_loc.resolve_relative_path().endswith(('.jac', '.cl.jac')) {
+        if is_jac(self.from_loc.resolve_relative_path()) {
             return True;
         }
         if os.path.isdir(self.from_loc.resolve_relative_path()) {
-            if os.path.exists(
-                os.path.join(self.from_loc.resolve_relative_path(), '__init__.jac')
-            ) {
-                return True;
-            }
-            if os.path.exists(
-                os.path.join(self.from_loc.resolve_relative_path(), '__init__.cl.jac')
-            ) {
-                return True;
+            for init_name in INIT_FILES {
+                if os.path.exists(
+                    os.path.join(self.from_loc.resolve_relative_path(), init_name)
+                ) {
+                    return True;
+                }
             }
             for i in self.items {
                 if (
                     isinstance(i, ModuleItem)
-                    and self.from_loc.resolve_relative_path(i.name.value).endswith(
-                        ('.jac', '.cl.jac')
-                    )
+                    and is_jac(self.from_loc.resolve_relative_path(i.name.value))
                 ) {
                     return True;
                 }
@@ -1085,10 +1137,8 @@ impl Import.__jac_detected.getter -> bool {
         }
     }
     return `any(
-        (
-            isinstance(i, ModulePath)
-            and i.resolve_relative_path().endswith(('.jac', '.cl.jac'))
-        ) for i in self.items
+        (isinstance(i, ModulePath) and is_jac(i.resolve_relative_path()))
+        for i in self.items
     );
 }
 
@@ -1098,7 +1148,6 @@ impl ModulePath.postinit -> None {
 }
 
 
-"""Check if this modulepath is from import."""
 impl ModulePath.is_import_from.getter -> bool {
     if (self.parent and isinstance(self.parent, Import)) {
         return (self.parent.from_loc == self);
@@ -1106,7 +1155,6 @@ impl ModulePath.is_import_from.getter -> bool {
     return False;
 }
 
-"""Get path string."""
 impl ModulePath.dot_path_str.getter -> str {
     if (self.path and (len(self.path) == 1) and isinstance(self.path[0], String)) {
         return (('.' * self.level) + self.path[0].lit_value);
@@ -1116,40 +1164,54 @@ impl ModulePath.dot_path_str.getter -> str {
     );
 }
 
-"""Convert an import target string into a relative file path."""
+impl ModulePath.base_module_name.getter -> str {
+    if (self.path and (len(self.path) == 1) and isinstance(self.path[0], String)) {
+        return self.path[0].lit_value;
+    }
+    return '.'.join([p.value for p in self.path] if self.path else []);
+}
+
 impl ModulePath.resolve_relative_path(target_item: (str | None) = None) -> str {
+    bundled = self.native_bundled_path();
+    if bundled is not None {
+        return bundled;
+    }
     target = self.dot_path_str + (f".{target_item}" if target_item else '');
     return resolve_relative_path(target, self.loc.mod_path);
 }
 
-"""Convert an import target string into a list of file paths, one per segment.
+impl ModulePath.native_bundled_path -> (str | None) {
+    import os;
+    import from jaclang.jac0core.codeinfo {
+        is_bundled_native_module,
+        resolve_native_module
+    }
+    mod_path = self.loc.mod_path if self.loc else None;
+    is_native = self.in_native_context()
+    or (mod_path is not None and mod_path.endswith('.na.jac'));
+    if not is_native {
+        return None;
+    }
+    base = self.dot_path_str;
+    if not is_bundled_native_module(base) {
+        return None;
+    }
+    base_dir = os.path.dirname(mod_path) if mod_path else os.getcwd();
+    (_src, full_path) = resolve_native_module(base, base_dir);
+    return full_path;
+}
 
-Resolves the FULL dotted path first (which uses sys.path, importlib, etc.)
-and then derives intermediate paths by walking up the directory tree.
-This ensures that intermediate package directories (e.g., 'jaclang.cli')
-resolve correctly even when per-prefix resolution would fail.
-"""
 impl ModulePath.resolve_relative_path_list -> list[str] {
     parts = self.dot_path_str.split('.');
     if not parts {
         return [];
     }
-    # Resolve the full dotted path — this uses the most robust resolution
-    # (sys.path, importlib, typeshed, etc.) and is the authoritative result.
-    full_path = resolve_relative_path(self.dot_path_str, self.loc.mod_path);
-    # Derive intermediate paths by walking up the directory tree.
-    # e.g., jaclang.cli.console -> .../jaclang/cli/console.jac
-    #   console -> .../jaclang/cli/console.jac (the full resolved path)
-    #   cli     -> .../jaclang/cli/            (parent directory)
-    #   jaclang -> .../jaclang/                (grandparent directory)
-    # For each intermediate directory, check for __init__.jac or __init__.py
-    # so that get_type_of_module() can import them properly.
+
+    full_path = self.resolve_relative_path();
+
     paths: list[str] = [''] * len(parts);
     paths[-1] = full_path;
-    # Walk up from the resolved path's parent directory.
-    # When the full path is a package __init__ file (e.g., pkg/__init__.py),
-    # dirname gives us the package dir itself (which represents the last
-    # segment), so we need to go one level further up.
+
     full_basename = os.path.basename(full_path);
     cur_dir = os.path.dirname(full_path);
     if full_basename.startswith('__init__') {
@@ -1166,8 +1228,6 @@ impl ModulePath.resolve_relative_path_list -> list[str] {
             }
         }
         if not init_found {
-            # Namespace package (no __init__) — use the directory path itself
-            # so get_type_of_module can handle it via is_dir() check.
             paths[i] = cur_dir;
         }
         cur_dir = os.path.dirname(cur_dir);
@@ -1181,7 +1241,6 @@ impl ModuleItem.postinit -> None {
 }
 
 
-"""Get import parent."""
 impl ModuleItem.from_parent.getter -> Import {
     if (not self.parent or not isinstance(self.parent, Import)) {
         raise ValueError('Import parent not found. Not Possible.');
@@ -1189,7 +1248,6 @@ impl ModuleItem.from_parent.getter -> Import {
     return self.parent;
 }
 
-"""Get relevant module path."""
 impl ModuleItem.from_mod_path.getter -> ModulePath {
     if not self.from_parent.from_loc {
         raise ValueError('Module items should have module path. Not Possible.');
@@ -1197,15 +1255,13 @@ impl ModuleItem.from_mod_path.getter -> ModulePath {
     return self.from_parent.from_loc;
 }
 
-"""Resolve the absolute path for this specific module item."""
 impl ModuleItem.resolve_relative_path -> str {
-    # Get the item name (handles both Name and Token types)
     item_name = self.name.value if isinstance(self.name, Name) else None;
-    # For star imports (*) or default imports, just return parent module path
+
     if item_name is None {
         return self.from_mod_path.resolve_relative_path();
     }
-    # Resolve: parent_module.item_name (e.g., llvmlite.ir)
+
     return self.from_mod_path.resolve_relative_path(target_item=item_name);
 }
 
@@ -1244,6 +1300,16 @@ impl Archetype._get_impl_resolved_body -> list {
 impl Archetype.is_abstract.getter -> bool {
     body = self._get_impl_resolved_body();
     return `any((isinstance(i, Ability) and i.is_abstract) for i in body);
+}
+
+impl Archetype.arch_kind.getter -> (str | None) {
+    return {
+        SymbolType.NODE_ARCH: "node",
+        SymbolType.EDGE_ARCH: "edge",
+        SymbolType.WALKER_ARCH: "walker"
+    }.get(
+        self.sym_category
+    );
 }
 
 impl Archetype.get_has_vars -> list[HasVar] {
@@ -1396,7 +1462,6 @@ impl Ability.is_method.getter -> bool {
     return (self.method_owner is not None);
 }
 
-"""Check if this ability is a class method."""
 impl Ability.is_cls_method.getter -> bool {
     return (
         self.is_classmethod
@@ -1445,28 +1510,6 @@ impl Ability.is_genai_ability.getter -> bool {
     return isinstance(self.body, Expr);
 }
 
-"""Get the range of positional arguments for this ability.
-
-        Returns -1 for maximum number of arguments if there is an unpacked
-parameter (e.g., *args).
-        """
-impl Ability.get_pos_argc_range -> tuple[(int, int)] {
-    (mn, mx) = (0, 0);
-    if isinstance(self.signature, FuncSignature) {
-        for param in self.signature.params {
-            if param.unpack {
-                if (param.unpack == Tok.STAR_MUL) {
-                    mx = -1;
-                }
-                break;
-            }
-            mn += 1;
-            mx += 1;
-        }
-    }
-    return (mn, mx);
-}
-
 impl Ability.py_resolve_name -> str {
     if (self.name_ref is None) {
         event_type = 'entry'
@@ -1485,6 +1528,25 @@ impl Ability.py_resolve_name -> str {
     }
 }
 
+impl Ability.event_trigger_type_names -> (list[str] | None) {
+    if self.event_triggers is None {
+        return None;
+    }
+    names: list[str] = [];
+    for t in self.event_triggers {
+        for part in t.mangle().split("|") {
+            name = part.strip();
+            if name.startswith("type[") and name.endswith("]") {
+                name = name[5:-1];
+            }
+            if name and name not in names {
+                names.append(name);
+            }
+        }
+    }
+    return names;
+}
+
 impl FuncSignature.postinit -> None {
     self.posonly_params = `list(self.posonly_params);
     self.params = `list(self.params) if self.params else [];
@@ -1493,7 +1555,6 @@ impl FuncSignature.postinit -> None {
 }
 
 
-"""Return all parameters in the declared order."""
 impl FuncSignature.get_parameters -> list[ParamVar] {
     params = self.posonly_params + self.params;
     if self.varargs {
@@ -1584,6 +1645,14 @@ impl TypedCtxBlock.postinit -> None {
 }
 
 
+impl OpenStmt.postinit -> None {
+    self.body = `list(self.body);
+    UniNode.postinit(self);
+    UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
+    CodeBlockStmt.postinit(self);
+}
+
+
 impl IfStmt.postinit -> None {
     self.body = `list(self.body);
     UniNode.postinit(self);
@@ -1662,6 +1731,14 @@ impl WhileStmt.postinit -> None {
 }
 
 
+impl ForeverStmt.postinit -> None {
+    self.body = `list(self.body);
+    UniNode.postinit(self);
+    UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
+    CodeBlockStmt.postinit(self);
+}
+
+
 impl WithStmt.postinit -> None {
     self.body = `list(self.body);
     UniNode.postinit(self);
@@ -1699,7 +1776,6 @@ impl DeleteStmt.postinit -> None {
 }
 
 
-"""Get Python AST targets (without setting ctx)."""
 impl DeleteStmt.py_ast_targets.getter -> list[ast3.AST] {
     return [i.gen.py_ast[0] for i in self.target.values]
         if (isinstance(self.target, TupleVal) and self.target.values)
@@ -1725,7 +1801,6 @@ impl VisitStmt.postinit -> None {
 }
 
 
-"""Initialize disengage statement node."""
 impl DisengageStmt.postinit -> None {
     UniNode.postinit(self);
     WalkerStmtOnlyNode.postinit(self);
@@ -1741,13 +1816,6 @@ impl AwaitExpr.postinit -> None {
 impl CastExpr.postinit -> None {
     UniNode.postinit(self);
     Expr.postinit(self);
-}
-
-
-impl GlobalStmt.postinit -> None {
-    self.target = `list(self.target);
-    UniNode.postinit(self);
-    CodeBlockStmt.postinit(self);
 }
 
 
@@ -1793,6 +1861,28 @@ impl LambdaExpr.postinit -> None {
     UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
 }
 
+impl LambdaExpr.captures.getter -> list[Symbol] {
+    return self.get_enclosing_captures();
+}
+
+impl LambdaExpr.tail_return_expr -> Expr | None {
+    """Implicit return: a braced body consisting of a single expression
+    statement returns that expression's value. Any other body (multiple
+    statements, or a non-expression statement) uses an explicit `return`.""";
+    if not (isinstance(self.body, Sequence) and not isinstance(self.body, Expr)) {
+        return None;
+    }
+    stmts = [
+        s
+        for s in self.body
+        if not isinstance(s, Semi)
+    ];
+    if (len(stmts) == 1 and isinstance(stmts[0], ExprStmt)) {
+        return stmts[0].expr;
+    }
+    return None;
+}
+
 
 impl UnaryExpr.postinit -> None {
     UniNode.postinit(self);
@@ -1812,12 +1902,16 @@ impl MultiString.postinit -> None {
     AstSymbolStubNode._init_stub(self, sym_type=SymbolType.STRING);
 }
 
-impl MultiString.lit_value.getter -> str {
-    parts: list[str] = [];
+impl MultiString.lit_value.getter -> str | bytes {
+    parts: list[str | bytes] = [];
     for s in self.strings {
         if isinstance(s, String) {
             parts.append(s.lit_value);
         }
+    }
+
+    if parts and isinstance(parts[0], `bytes) {
+        return b"".join(parts);
     }
     return "".join(parts);
 }
@@ -1940,6 +2034,7 @@ impl YieldExpr.postinit -> None {
 
 impl FuncCall.postinit -> None {
     self.params = `list(self.params) if self.params else [];
+    self.callee_decl = None;
     UniNode.postinit(self);
     Expr.postinit(self);
 }
@@ -2007,7 +2102,6 @@ impl JsxElement.postinit -> None {
 }
 
 
-"""Get the source line after the opening tag's '>' token (body start)."""
 impl JsxElement.get_body_start_line -> (int | None) {
     if not self.kid {
         return None;
@@ -2023,7 +2117,6 @@ impl JsxElement.get_body_start_line -> (int | None) {
     return None;
 }
 
-"""Get the source line of the closing tag's '</' token (body end)."""
 impl JsxElement.get_body_end_line -> (int | None) {
     if not self.kid {
         return None;
@@ -2070,28 +2163,6 @@ impl JsxText.postinit -> None {
 }
 
 
-"""Normalize JSX text whitespace (single source of truth).
-
-    Implements Babel's JSX text-content rules so the rendered output
-    matches what React/Babel produce:
-
-      1. Split the raw text on line breaks.
-      2. Convert tabs to spaces; strip leading whitespace from every
-         line except the first, and trailing whitespace from every line
-         except the last. (i.e. only newline-crossing whitespace is
-         trimmed; same-line whitespace at the boundaries is preserved.)
-      3. Lines that are empty after step 2 are dropped entirely.
-      4. Surviving lines are joined with a single space separator.
-
-    Consequences:
-      - "{a} {b}" (single space, no newline) -> " "  (preserved)
-      - "}\n  {"  (whitespace with newline)  -> ""   (dropped)
-      - "  hello\n    world  " -> "  hello world  " (cross-line ws becomes
-        a single space; first-line leading ws and last-line trailing ws
-        are preserved.)
-
-    Returning "" tells the codegen to skip this child.
-    """
 impl JsxText.get_normalized_text -> str {
     import re;
     raw = self.value.value if isinstance(self.value, Token) else str(self.value);
@@ -2099,8 +2170,7 @@ impl JsxText.get_normalized_text -> str {
         return "";
     }
     lines = re.split(r'\r\n|\n|\r', raw);
-    # Index of the last line that contains any non-space/tab character.
-    # Used to suppress the trailing inter-line space after the final line.
+
     last_non_empty = -1;
     for i in range(len(lines)) {
         if re.search(r'[^ \t]', lines[i]) {
@@ -2284,7 +2354,6 @@ impl Name.init(
     self._sym_name = '';
     self._sym_category = SymbolType.UNKNOWN;
     self._py_ctx_func = ast3.Load;
-    self.js_decl_kind = None;
     Expr.postinit(self);
     AstSymbolNode._init_symbol(
         self, sym_name=value, name_spec=self, sym_category=SymbolType.VAR
@@ -2364,14 +2433,12 @@ impl Literal.init(
     Expr.postinit(self);
 }
 
-"""Return literal value in its python type."""
 impl Literal.lit_value.getter -> int | str | float | bool | None | Callable[
     ([], Any)
 ] | EllipsisType {
     raise NotImplementedError;
 }
 
-"""Return literal value in its python type."""
 impl BuiltinType.lit_value.getter -> Callable[([], Any)] {
     if (self.value not in Literal.type_map) {
         raise TypeError(f"ICE: {self.value} is not a callable builtin");
@@ -2454,13 +2521,10 @@ impl String.lit_value.getter -> str {
             }
             if not is_raw {
                 result = self.value;
-                # Use ast3.literal_eval to correctly handle escape sequences (\n, \t,
-                # \x1b, etc.) and non-ASCII Unicode chars (e.g. emojis), consistent
-                # with how normal string literals are handled above.
+
                 try {
                     result = ast3.literal_eval(f'"{result}"');
                 } except (ValueError, SyntaxError) {
-                    # Fallback to manual handling if decode fails
                     placeholder = '\x00';
                     result = result.replace('\\\\', placeholder);
                     result = result.replace('\\n', '\n');
@@ -2501,7 +2565,6 @@ impl EmptyToken.init(orig_src: (Source | None) = None) -> None {
     );
 }
 
-"""Initialize token."""
 impl Semi.init(
     orig_src: Source,
     name: str,
@@ -2538,10 +2601,8 @@ impl CommentToken.init(
     col_end: int,
     pos_start: int,
     pos_end: int,
-    kid: Sequence[UniNode],
-    is_inline: bool = False
+    kid: Sequence[UniNode]
 ) -> None {
-    self.is_inline = is_inline;
     Token.init(
         self,
         orig_src=orig_src,
@@ -2558,23 +2619,6 @@ impl CommentToken.init(
     self.loc = CodeLocInfo(*self.resolve_tok_range());
 }
 
-impl CommentToken.left_node.getter -> (UniNode | None) {
-    if (self.parent and ((idx := self.parent.kid.index(self)) > 0)) {
-        return self.parent.kid[(idx - 1)];
-    }
-    return None;
-}
-
-impl CommentToken.right_node.getter -> (UniNode | None) {
-    if (
-        self.parent
-        and ((idx := self.parent.kid.index(self)) < (len(self.parent.kid) - 1))
-    ) {
-        return self.parent.kid[(idx + 1)];
-    }
-    return None;
-}
-
 impl Source.init(source: str, mod_path: str) -> None {
     super.init(self);
     self.value = source;
@@ -2584,7 +2628,6 @@ impl Source.init(source: str, mod_path: str) -> None {
     self.inline_suppressions = {};
 }
 
-"""Return the source code as string."""
 impl Source.code.getter -> str {
     return self.value;
 }

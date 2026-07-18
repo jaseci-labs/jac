@@ -1,12 +1,3 @@
-"""JIR (Jac IR) serialization: writer and reader for the unified IR.
-
-The writer performs a post-order walk of the unitree, assigning each node
-a sequential ID. Each node's constructor fields, scope overlay, CFG overlay,
-and symbol bindings are serialized into a compact binary stream.
-
-The reader reconstructs the tree by reading the node stream, rebuilding
-kid/parent, scope chains, symbol tables, and CFG edges.
-"""
 import struct;
 import sys;
 import zlib;
@@ -15,7 +6,6 @@ import from jaclang.jac0core.jir_registry {
     FieldKind,
     IDX_TO_SPEC,
     NAME_TO_IDX,
-    NodeSpec,
     get_class_mapping
 }
 import type from jaclang.jac0core.unitree {
@@ -29,13 +19,9 @@ import type from jaclang.jac0core.unitree {
     Token
 }
 
-# --- Constants ---
-"""Sentinel value for None node references."""
 glob SENTINEL_NONE: int = 0xFFFFFE,
      EXTERNAL_REF: int = 0xFFFFFF;
 
-# --- LEB128 varint (module-private, inlined for performance) ---
-"""Encode an unsigned integer as LEB128 varint, appending to buf."""
 def _write_varint(buf: bytearray, value: int) {
     while value >= 0x80 {
         buf.append((value & 0x7F) | 0x80);
@@ -44,7 +30,6 @@ def _write_varint(buf: bytearray, value: int) {
     buf.append(value & 0x7F);
 }
 
-"""Decode an unsigned LEB128 varint. Returns (value, new_pos)."""
 def _read_varint(data: (bytes | memoryview), pos: int) -> tuple[int, int] {
     result = 0;
     shift = 0;
@@ -60,11 +45,9 @@ def _read_varint(data: (bytes | memoryview), pos: int) -> tuple[int, int] {
     return (result, pos);
 }
 
-# --- String Pool (private, used only by writer/reader) ---
-"""Deduplicated string table for serialization."""
 obj _StringPool {
-    has _strings: list[str] by postinit,
-        _index: dict[str, int] by postinit;
+    has _strings: list[str] postinit,
+        _index: dict[str, int] postinit;
 
     def postinit {
         self._strings = [];
@@ -102,7 +85,6 @@ obj _StringPool {
     }
 }
 
-"""Deserialize a string pool from data at pos. Returns (pool, new_pos)."""
 def _deserialize_string_pool(
     data: (bytes | memoryview), pos: int
 ) -> tuple[_StringPool, int] {
@@ -117,19 +99,15 @@ def _deserialize_string_pool(
     return (pool, pos);
 }
 
-# =============================================================================
-# JirWriter
-# =============================================================================
-"""Serialize a Module tree to JIR binary format."""
 obj JirWriter {
-    has _pool: _StringPool by postinit,
-        _node_ids: dict[int, int] by postinit,
-        _nodes: list[object] by postinit,
-        _buf: bytearray by postinit,
-        _parent_scope_links: list[tuple[int, int]] by postinit,
-        _name_of_links: list[tuple[int, int]] by postinit,
-        _overload_entries: list[tuple[int, str, list[int]]] by postinit,
-        _inherited_scope_entries: list[tuple[int, int, bool, list[str]]] by postinit;
+    has _pool: _StringPool postinit,
+        _node_ids: dict[int, int] postinit,
+        _nodes: list[object] postinit,
+        _buf: bytearray postinit,
+        _parent_scope_links: list[tuple[int, int]] postinit,
+        _name_of_links: list[tuple[int, int]] postinit,
+        _overload_entries: list[tuple[int, str, list[int]]] postinit,
+        _inherited_scope_entries: list[tuple[int, int, bool, list[str]]] postinit;
 
     def postinit {
         self._pool = _StringPool();
@@ -158,29 +136,20 @@ obj JirWriter {
     def _count_symbols(module: Module) -> int;
 }
 
-# =============================================================================
-# JirReader
-# =============================================================================
-"""Deserialize JIR binary back to a Module tree."""
 obj JirReader {
     has _skip_loc: bool = True,
         _source_path: str = "",
         _pool: (_StringPool | None) = None,
-        _nodes: list[object] by postinit,
+        _nodes: list[object] postinit,
         _class_map: (dict[str, type] | None) = None,
         _uni_types: (tuple[type, ...] | None) = None,
-        _enum_cache: (dict[str, dict[str, object]] | None) = None,
-        bytecode_section: (bytes | None) = None,
-        mtir_section: (bytes | None) = None,
-        llvm_ir_section: (bytes | None) = None,
-        interop_section: (bytes | None) = None;
+        _enum_cache: (dict[str, dict[str, object]] | None) = None;
 
     def postinit {
         self._nodes = [];
     }
 
     def read_module(data: bytes) -> (Module | None);
-    def _read_trailing_sections(data: bytes) -> dict[int, bytes];
     def _wire_source(module: Module) -> None;
     def _fix_param_kinds -> None;
     def _init_caches -> None;

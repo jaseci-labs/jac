@@ -1,6 +1,25 @@
 """Left navigation sidebar for Little X."""
 
-import from "lucide-react" { Home, Compass, Hash, User, Feather, LogOut }
+import from "lucide-react" {
+    Home,
+    Compass,
+    Hash,
+    User,
+    Feather,
+    LogOut,
+    MoreHorizontal
+}
+import from .ui.button { Button }
+import from .ui.avatar { Avatar, AvatarImage, AvatarFallback }
+import from .ui.badge { Badge }
+import from .ui.dropdown_menu {
+    DropdownMenu,
+    DropdownMenuTrigger,
+    DropdownMenuContent,
+    DropdownMenuGroup,
+    DropdownMenuItem
+}
+import from ..lib.utils { cn }
 
 def:pub Sidebar(
     activeTab: str,
@@ -11,73 +30,132 @@ def:pub Sidebar(
     onNavigate: Callable[[str], None],
     onLogout: Callable[[], None],
 ) -> JsxElement {
+    nav_base = "h-12 w-full justify-start gap-4 rounded-full px-4 text-lg font-medium";
+    initial = displayUsername[0].upper() if displayUsername else "?";
+
     return
-        <aside className="lx-sidebar-left">
-            <div className="lx-brand">
+        <aside
+            className="sticky top-0 hidden h-screen w-20 shrink-0 flex-col gap-1 border-r border-border px-2 py-4 md:flex xl:w-64 xl:px-3"
+        >
+            <div className="mb-2 flex items-center gap-2 px-2 xl:px-3">
                 <img
                     src="/static/assets/littlex-logo.svg"
-                    className="lx-brand-logo"
+                    className="size-9"
                     alt="little-x"
                 />
-                <span className="lx-brand-name">LITTLE-X</span>
+                <span
+                    className="hidden font-display text-xl font-black tracking-tight text-primary xl:inline"
+                >
+                    LITTLE-X
+                </span>
             </div>
-            <nav className="lx-nav">
-                <div
-                    className={"lx-nav-item" + (
-                        " lx-nav-item-active" if activeTab == "feed" else ""
+            <nav className="flex flex-col gap-1">
+                <Button
+                    variant="ghost"
+                    className={cn(
+                        nav_base,
+                        "text-primary bg-primary/10"
+                            if activeTab == "feed"
+                            else "text-foreground"
                     )}
                     onClick={lambda { onNavigate("feed"); }}
                 >
-                    <Home size={22}/>
-                    <span>Home</span>
-                </div>
-                <div
-                    className={"lx-nav-item" + (
-                        " lx-nav-item-active" if activeTab == "explore" else ""
+                    <Home size={24}/>
+                    <span className="hidden xl:inline">Home</span>
+                </Button>
+                <Button
+                    variant="ghost"
+                    className={cn(
+                        nav_base,
+                        "text-primary bg-primary/10"
+                            if activeTab == "explore"
+                            else "text-foreground"
                     )}
                     onClick={lambda { onNavigate("explore"); }}
                 >
-                    <Compass size={22}/>
-                    <span>Explore</span>
-                </div>
-                <div
-                    className={"lx-nav-item" + (
-                        " lx-nav-item-active" if activeTab == "channels" else ""
+                    <Compass size={24}/>
+                    <span className="hidden xl:inline">Explore</span>
+                </Button>
+                <Button
+                    variant="ghost"
+                    className={cn(
+                        nav_base,
+                        "text-primary bg-primary/10"
+                            if activeTab == "channels"
+                            else "text-foreground"
                     )}
                     onClick={lambda { onNavigate("channels"); }}
                 >
-                    <Hash size={22}/>
-                    <span>Channels</span>
-                </div>
-                <div
-                    className={"lx-nav-item" + (
-                        " lx-nav-item-active" if activeTab == "profile" else ""
+                    <Hash size={24}/>
+                    <span className="hidden xl:inline">Channels</span>
+                </Button>
+                <Button
+                    variant="ghost"
+                    className={cn(
+                        nav_base,
+                        "relative text-primary bg-primary/10"
+                            if activeTab == "profile"
+                            else "relative text-foreground"
                     )}
                     onClick={lambda { onNavigate("profile"); }}
                 >
-                    <User size={22}/>
-                    <span>Profile</span>
+                    <User size={24}/>
+                    <span className="hidden xl:inline">Profile</span>
                     {if notifCount > 0 {
-                        <span className="lx-nav-badge">{str(notifCount)}</span>
+                        <Badge
+                            className="absolute left-7 top-1.5 size-5 justify-center p-0 text-[0.65rem] xl:left-auto xl:right-4"
+                        >
+                            {str(notifCount)}
+                        </Badge>
                     }}
-                </div>
+                </Button>
             </nav>
-            <button className="lx-compose-btn" onClick={lambda { onNavigate("feed"); }}>
-                <Feather size={18}/>
-                <span>Post</span>
-            </button>
-            <div style={{"flex": "1"}}/>
-            <div className="lx-sidebar-user">
-                <img className="lx-avatar" src={profileAvatar} alt={profileUsername}/>
-                <div className="lx-sidebar-user-info">
-                    <div className="lx-sidebar-user-name">{displayUsername}</div>
-                    <div className="lx-sidebar-user-handle">
-                        {"@" + displayUsername}
-                    </div>
-                </div>
-                <button className="lx-logout-icon-btn" onClick={lambda { onLogout(); }}>
-                    <LogOut size={18}/>
-                </button>
-            </div>
+            <Button
+                className="mt-3 h-12 w-12 rounded-full font-semibold shadow-lg shadow-primary/20 xl:w-full"
+                onClick={lambda { onNavigate("feed"); }}
+            >
+                <Feather size={20}/>
+                <span className="hidden xl:inline">Post</span>
+            </Button>
+            <div className="flex-1"/>
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild={True}>
+                    <Button
+                        variant="ghost"
+                        className="h-auto w-full justify-start gap-2 rounded-full p-2"
+                    >
+                        <Avatar className="size-9 shrink-0">
+                            <AvatarImage src={profileAvatar} alt={profileUsername}/>
+                            <AvatarFallback>{initial}</AvatarFallback>
+                        </Avatar>
+                        <div className="hidden min-w-0 flex-1 text-left xl:block">
+                            <div
+                                className="truncate text-sm font-semibold text-foreground"
+                            >
+                                {displayUsername}
+                            </div>
+                            <div className="truncate text-xs text-muted-foreground">
+                                {"@" + displayUsername}
+                            </div>
+                        </div>
+                        <MoreHorizontal
+                            size={18}
+                            className="hidden shrink-0 text-muted-foreground xl:block"
+                        />
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuGroup>
+                        <DropdownMenuItem
+                            variant="destructive"
+                            onClick={lambda { onLogout(); }}
+                        >
+                            <LogOut size={15}/>
+                            Log out @
+                            {displayUsername}
+                        </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                </DropdownMenuContent>
+            </DropdownMenu>
         </aside>;
 }

@@ -1,32 +1,22 @@
-"""Client bundle generation utilities for Jac web front-ends."""
 import hashlib;
-import json;
 import os;
-import from collections.abc { Iterable, Sequence }
+import from collections.abc { Iterable }
 import from pathlib { Path }
 import from types { ModuleType }
-import from typing { Any, NamedTuple }
-import from jaclang.jac0core.modresolver { convert_to_js_import_path }
+import from typing { Any }
 import type from jaclang.jac0core.codeinfo { ClientManifest }
 import type from jaclang.jac0core.unitree { Module }
 
-"""Raised when the client bundle cannot be generated."""
 class ClientBundleError(RuntimeError) {}
 
-"""Look up a module in one program's hub (single-hub, recompiles on miss in the
-caller); see the impl for why the bundler must not span programs."""
+class MissingBunError(ClientBundleError) {}
+
 def _lookup_module_in_hub(path_key: str, hub: dict) -> (Module | None);
 
-"""Run EsastGenPass if JS missing (Windows may skip ES pass during initial compile)."""
 def _ensure_js_generated(mod: Module, program: any) -> None;
 
-"""Result of processing client imports."""
-class ProcessedImports(NamedTuple) {
-    has import_pieces: list[str],
-        bundled_module_names: set[str];
-}
+def _prebuilt_bundle(module: ModuleType, source_path: Path) -> (ClientBundle | None);
 
-"""Container for a compiled client bundle."""
 obj ClientBundle {
     has module_name: str,
         code: str,
@@ -40,17 +30,12 @@ obj _CachedBundle {
         bundle: ClientBundle;
 }
 
-"""Compile Jac modules and runtime support into a browser-ready bundle."""
 obj ClientBundleBuilder {
     has runtime_path: (Path | None) = None,
         _cache: dict[(str, _CachedBundle)] = {};
 
     def postinit -> None;
     def build(module: ModuleType, force: bool = False) -> ClientBundle;
-    def _process_imports(
-        manifest: (ClientManifest | None), module_path: Path
-    ) -> ProcessedImports;
-
     def _extract_client_exports(manifest: (ClientManifest | None)) -> list[str];
     def _extract_client_globals(
         manifest: (ClientManifest | None), module: ModuleType
@@ -58,14 +43,5 @@ obj ClientBundleBuilder {
 
     def _compile_bundle(module: ModuleType, module_path: Path) -> ClientBundle;
     def _compile_to_js(source_path: Path) -> tuple[str, Module];
-    static def _strip_import_statements(
-        js_code: str, bundled_modules: set[str]
-    ) -> str;
-
     static def _signature(paths: Iterable[Path]) -> str;
-    static def _generate_registration_js(
-        module_name: str,
-        client_functions: Sequence[str],
-        client_globals: dict[(str, Any)]
-    ) -> str;
 }

@@ -180,8 +180,11 @@ obj Pawn(Piece) {
             }
         }
 
-        # Diagonal captures using set of offsets
-        capture_offsets: set[int] = {-1,1};  # Set value
+        # Diagonal captures. (A `set[int]` here used to silently iterate to
+        # nothing on the native backend -- set iteration is unsupported and now
+        # raises E5090 rather than dropping the loop body; see the #6470 audit.
+        # A list iterates correctly and the two offsets are already distinct.)
+        capture_offsets: list[int] = [-1, 1];
         for dc in capture_offsets {
             nc = col + dc;
             if board.is_valid_pos(new_row, nc) {
@@ -386,13 +389,11 @@ def create_piece(kind: PieceKind, color: Color, row: int, col: int) -> Piece {
 glob _rand_state: int = 12345;
 
 def seed_random(seed: int) -> None {
-    global _rand_state;
     _rand_state = seed;
 }
 
 def random_int(max_val: int) -> int {
     # Simple LCG random number generator
-    global _rand_state;
     _rand_state = (_rand_state * 1103515245 + 12345) % 2147483648;
     if max_val <= 0 {
         return 0;
@@ -756,7 +757,7 @@ obj Board {
 
 # ===================== Game =====================
 obj Game {
-    has board: Board by postinit,
+    has board: Board postinit,
         current_turn: Color = Color.WHITE,
         is_over: bool = False,
         move_count: int = 0;

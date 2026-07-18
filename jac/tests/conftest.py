@@ -1,10 +1,5 @@
-"""Shared pytest fixtures for jac/tests directory.
+"""Shared pytest fixtures for jac/tests directory."""
 
-Plugin management is configured here to apply only to core jac tests,
-not to package-specific tests like jac-byllm, jac-client, etc.
-"""
-
-import contextlib
 from typing import Any
 
 import pytest
@@ -26,41 +21,35 @@ def disable_rich_console_formatting(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 # =============================================================================
-# Plugin Management - Core Jac Tests Only
+# Test Utilities
 # =============================================================================
 
-# Store unregistered plugins for session-level management
-_external_plugins: list[tuple[str, Any]] = []
 
+def get_object(filename: str, id: str, main: bool = True) -> dict[str, Any]:
+    """Get an object by ID from a Jac program.
 
-def pytest_configure(config: pytest.Config) -> None:
-    """Disable external plugins at the start of the jac test session.
+    This is a test utility for inspecting object state. It runs under the
+    system context (no user root), so access checks always pass.
 
-    External plugins (jac-scale, jac-client, etc.) are disabled during core jac tests
-    to ensure a clean test environment without MongoDB connections or other
-    plugin-specific dependencies.
+    Args:
+        filename: Path to the .jac file
+        id: Object ID to retrieve
+        main: Treat the module as __main__ (default: True)
 
-    NOTE: This only applies to tests in jac/tests/, not to package-specific tests.
+    Returns:
+        Dictionary containing the object's state
     """
-    from jaclang.jac0core.runtime import JacRuntimeImpl, plugin_manager
+    from jaclang.cli.commands.cli_helpers import proc_file
+    from jaclang.jac0core.runtime import JacRuntime as Jac
 
-    global _external_plugins
-    for name, plugin in list(plugin_manager.list_name_plugin()):
-        if plugin is JacRuntimeImpl or name in (
-            "JacRuntimeImpl",
-            "JacRuntimeInterfaceImpl",
-        ):
-            continue
-        _external_plugins.append((name, plugin))
-        plugin_manager.unregister(plugin=plugin, name=name)
-
-
-def pytest_unconfigure(config: pytest.Config) -> None:
-    """Re-register external plugins at the end of the jac test session."""
-    from jaclang.jac0core.runtime import plugin_manager
-
-    global _external_plugins
-    for name, plugin in _external_plugins:
-        with contextlib.suppress(ValueError):
-            plugin_manager.register(plugin, name=name)
-    _external_plugins.clear()
+    base, mod, mach = proc_file(filename)
+    try:
+        Jac.jac_import(
+            target=mod, base_path=base, override_name="__main__" if main else None
+        )
+        obj = Jac.get_object(id)
+        if not obj:
+            raise ValueError(f"Object with id {id} not found.")
+        return obj.__jac__.__getstate__()
+    finally:
+        mach.close()

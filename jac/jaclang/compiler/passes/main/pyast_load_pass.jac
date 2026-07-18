@@ -1,18 +1,3 @@
-"""
-Python AST to Jac AST Conversion Pass for the Jac compiler.
-
-This pass transforms Python AST nodes into equivalent Jac AST nodes by:
-
-1. Converting Python modules, classes, functions, and expressions to their Jac equivalents
-2. Preserving source location information and symbol relationships
-3. Handling Python-specific constructs and adapting them to Jac's object model
-4. Supporting both standard Python modules and type stub (.pyi) files
-5. Creating appropriate symbol tables and scopes for the converted nodes
-
-This pass is crucial for Python interoperability, allowing Python code to be imported
-and used within Jac programs while maintaining type information and semantic relationships.
-"""
-
 import ast as py_ast;
 import os;
 import re;
@@ -20,29 +5,39 @@ import from collections.abc { Sequence }
 import from threading { Event }
 import from typing { TypeAlias, TypeVar, cast }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.constant { Tokens as Tok }
+import from jaclang.jac0core.constant { Tokens as Tok, RESERVED_IDENT_NAMES }
 import from jaclang.jac0core.diagnostics { E5041, E5042 }
-import from jaclang.jac0core.helpers { evaluate_version_condition }
 import from jaclang.jac0core.passes.transform { Transform }
 import type from jaclang.jac0core.program { JacProgram }
 
-glob T = TypeVar('T', bound=uni.UniNode);
+glob T = TypeVar('T', bound=uni.UniNode),
+     _reserved_keywords = RESERVED_IDENT_NAMES;
 
-"""Jac Parser."""
 obj PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]) {
     has ir_in: uni.PythonModuleAst,
         prog: JacProgram,
         cancel_token: Event | None = None,
-        mod_path: str by postinit,
-        orig_src: str by postinit,
-        _source_lines: list[str] by postinit,
-        in_type_annotation: bool by postinit,
-        in_match_pattern: bool by postinit,
-        in_fstring_expr: bool by postinit;
+        mod_path: str postinit,
+        orig_src: str postinit,
+        _source_lines: list[str] postinit,
+        in_type_annotation: bool postinit,
+        in_match_pattern: bool postinit,
+        in_fstring_expr: bool postinit;
 
     def postinit -> None;
     def _get_source_segment(nd: py_ast.AST) -> (str | None);
+    def _strip_string_continuations(seg: str) -> str;
     def nu(nd: T) -> T;
+    def name_node(
+        nd: py_ast.AST,
+        value: str,
+        name_tok: Tok = Tok.NAME,
+        col_end: int = -1,
+        col_start: int = -1,
+        end_line: int = -1,
+        is_kwesc: bool = False
+    ) -> uni.Name;
+
     def convert(nd: py_ast.AST) -> uni.UniNode;
     def transform(ir_in: uni.PythonModuleAst) -> uni.Module;
     def extract_with_entry(
@@ -65,7 +60,6 @@ obj PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]) {
     def proc_async_for(nd: py_ast.AsyncFor) -> uni.InForStmt;
     def proc_while(nd: py_ast.While) -> uni.WhileStmt;
     def proc_if(nd: py_ast.If) -> uni.IfStmt;
-    def _flatten_version_conditionals(body: list[uni.UniNode]) -> list[uni.UniNode];
     def proc_with(nd: py_ast.With) -> uni.WithStmt;
     def proc_async_with(nd: py_ast.AsyncWith) -> uni.WithStmt;
     def proc_raise(nd: py_ast.Raise) -> uni.RaiseStmt;
@@ -87,8 +81,11 @@ obj PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]) {
     def proc_expr(nd: py_ast.Expr) -> uni.ExprStmt;
     def proc_formatted_value(nd: py_ast.FormattedValue) -> uni.FormattedValue;
     def proc_function_type(nd: py_ast.FunctionType) { }
+    def proc_interactive(nd: py_ast.Interactive) { }
+    def proc_template_str(nd: py_ast.AST) -> uni.UniNode;
+    def proc_interpolation(nd: py_ast.AST) -> uni.UniNode;
     def proc_generator_exp(nd: py_ast.GeneratorExp) -> uni.GenCompr;
-    def proc_global(nd: py_ast.Global) -> uni.GlobalStmt;
+    def proc_global(nd: py_ast.Global) -> uni.Semi;
     def proc_if_exp(nd: py_ast.IfExp) -> uni.IfElseExpr;
     def proc_import(nd: py_ast.Import) -> uni.Import;
     def proc_import_from(nd: py_ast.ImportFrom) -> uni.Import;
@@ -107,9 +104,10 @@ obj PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]) {
     def proc_match_value(nd: py_ast.MatchValue) -> uni.MatchValue;
     def proc_name(nd: py_ast.Name) -> uni.Name;
     def proc_named_expr(nd: py_ast.NamedExpr) -> uni.AtomUnit;
-    def proc_nonlocal(nd: py_ast.Nonlocal) -> uni.NonLocalStmt;
+    def proc_nonlocal(nd: py_ast.Nonlocal) -> uni.Semi;
     def proc_pass(nd: py_ast.Pass) -> uni.Semi;
     def proc_set(nd: py_ast.Set) -> uni.SetVal;
+    def _proc_compr(nd: py_ast.AST, compr_cls: type) -> uni.UniNode;
     def proc_set_comp(nd: py_ast.SetComp) -> uni.ListCompr;
     def proc_slice(nd: py_ast.Slice) -> uni.IndexSlice;
     def proc_starred(nd: py_ast.Starred) -> uni.UnaryExpr;

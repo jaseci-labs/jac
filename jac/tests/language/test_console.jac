@@ -2,17 +2,14 @@
 
 import os;
 import subprocess;
-import from pathlib { Path }
-import jaclang;
-
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
+import from tests.support { JAC_ROOT }
+glob FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
      ERR_FILE = os.path.join(
          JAC_ROOT, "tests", "langserve", "fixtures", "circle_pure_err.jac"
      ),
      EDGE_CASES_FILE = os.path.join(FIXTURES, "console_edge_cases.jac"),
      FSTRING_ENCODING_FILE = os.path.join(FIXTURES, "fstring_encoding.jac"),
-     CHECK_W0062_BRACKETS = os.path.join(FIXTURES, "check_diag_brackets_w0062.jac"),
+     CHECK_E0049_BRACKETS = os.path.join(FIXTURES, "check_diag_brackets_e0049.jac"),
      CHECK_E1001_BRACKETS = os.path.join(FIXTURES, "check_diag_brackets_e1001.jac"),
      ESC = '\x1b[';
 
@@ -115,10 +112,10 @@ test "Windows console encoding handles unencodable Unicode" {
 # comprehensions, leaving misleading snippets like `x = [?:Task];` or
 # `tasks = ;` underneath the carets.)
 # =============================================================================
-test "jac check W0062 snippet preserves bracketed traversal" {
-    (stdout, stderr) = run_jac(['check', CHECK_W0062_BRACKETS]);
+test "jac check E0049 snippet preserves bracketed traversal" {
+    (stdout, stderr) = run_jac(['check', CHECK_E0049_BRACKETS]);
     combined = stdout + stderr;
-    assert 'W0062' in combined , f"W0062 not emitted: {combined!r}";
+    assert 'E0049' in combined , f"E0049 not emitted: {combined!r}";
     assert '[root()-->][?:Task]' in combined , f"Bracketed traversal stripped from snippet: {combined!r}";
 }
 

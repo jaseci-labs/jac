@@ -3,12 +3,12 @@
 import os;
 import tempfile;
 import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import from tempfile { NamedTemporaryFile, TemporaryDirectory }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     FIXTURE_DIR = os.path.join(
+glob FIXTURE_DIR = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "ecmascript", "fixtures"
      ),
      _test_tmp_dir: str = tempfile.mkdtemp(prefix="jac_test_codegen_");
@@ -155,13 +155,14 @@ test "endpoint effects follow helper calls" {
 }
 
 test "jac call function sends params directly" {
-    jac_root = Path(jaclang.__file__).resolve().parent.parent.parent;
+    # The framework-agnostic surface (incl. __jacCallFunction) now lives in the
+    # shared core runtime; the per-framework shim re-exports it.
     runtime_path = (
-        jac_root / "jac-client" / "jac_client" / "plugin" / "impl" / "client_runtime.impl.jac"
+        Path(jaclang.__file__).resolve().parent / "runtimelib" / "impl" / "client_runtime_core.impl.jac"
     );
 
     if not runtime_path.exists() {
-        return;  # skip if jac-client not found
+        return;  # skip if runtime impl not found
     }
 
     content = runtime_path.read_text();
@@ -170,4 +171,74 @@ test "jac call function sends params directly" {
     assert '"args": args' not in content , 'client_runtime should NOT wrap params in "args" object';
     assert "'args': args" not in content , "client_runtime should NOT wrap params in 'args' object";
     assert "JSON.stringify(args)" in content , "client_runtime should send params directly with JSON.stringify(args)";
+}
+
+test "lowercase client components get PascalCase runtime names with export contract intact" {
+    mod = compile_inline(
+        "cl {\n"
+        "    def:pub page() -> JsxElement {\n"
+        "        return <div>home</div>;\n"
+        "    }\n"
+        "    def:pub Counter() -> JsxElement {\n"
+        "        return <p>c</p>;\n"
+        "    }\n"
+        "    def:pub helper() -> str {\n"
+        "        return \"x\";\n"
+        "    }\n"
+        "}\n"
+    );
+    js = mod.gen.js;
+    # React Fast Refresh/DevTools detect components by PascalCase function.name;
+    # the lowercase alias keeps the export name and in-module references working.
+    assert "function Page()" in js;
+    assert "const page = Page;" in js;
+    assert "page" in mod.gen.client_manifest.exports;
+    assert "Page" not in mod.gen.client_manifest.exports;
+    # Already-PascalCase components and non-component functions are untouched
+    assert "function Counter()" in js;
+    assert "const Counter" not in js;
+    assert "function helper()" in js;
+    assert "function Helper" not in js;
+    # Mixed module (helper export) must NOT be stamped hot-swap-eligible
+    assert "/*jac:refresh-boundary*/" not in js;
+}
+
+test "component-only modules are stamped as fast-refresh boundaries" {
+    mod = compile_inline(
+        "cl {\n"
+        "    def:pub Card() -> JsxElement {\n"
+        "        return <div>card</div>;\n"
+        "    }\n"
+        "    def:pub CardTitle() -> JsxElement {\n"
+        "        return <h2>t</h2>;\n"
+        "    }\n"
+        "}\n"
+    );
+    js = mod.gen.js;
+    # Several components in one file: all exported, module stamped eligible
+    assert "function Card()" in js;
+    assert "function CardTitle()" in js;
+    assert "/*jac:refresh-boundary*/" in js;
+
+    glob_mod = compile_inline("cl {\n    glob:pub PRODUCTS = [1, 2];\n}\n");
+    # Value exports are never swap-safe: no stamp, dev server full-reloads
+    assert "/*jac:refresh-boundary*/" not in glob_mod.gen.js;
+}
+
+test "component rename is skipped when the PascalCase name is already taken" {
+    mod = compile_inline(
+        "cl {\n"
+        "    def:pub Page() -> JsxElement {\n"
+        "        return <p>explicit</p>;\n"
+        "    }\n"
+        "    def:pub page() -> JsxElement {\n"
+        "        return <div>home</div>;\n"
+        "    }\n"
+        "}\n"
+    );
+    js = mod.gen.js;
+    # Renaming would emit two `function Page` declarations -- must fall back
+    assert js.count("function Page()") == 1;
+    assert "function page()" in js;
+    assert "const page" not in js;
 }

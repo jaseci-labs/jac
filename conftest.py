@@ -19,7 +19,7 @@ def isolate_jac_context(tmp_path: Path) -> Generator[Path, None, None]:
     """
     from jaclang.jac0core.runtime import JacRuntime as Jac
 
-    original_base_path = Jac.base_path_dir
+    original_base_path = Jac.get_base_path_dir()
     original_exec_ctx = Jac.exec_ctx
     # Set base_path to unique temp directory for each test
     # This ensures parallel tests don't share database files

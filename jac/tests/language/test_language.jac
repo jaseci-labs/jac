@@ -10,11 +10,11 @@ import sys;
 import os;
 import json;
 import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.jac0core.runtime { JacRuntime }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
+glob FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
      EXAMPLES = os.path.join(JAC_ROOT, "examples"),
      COMPILER_FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "fixtures");
 
@@ -190,6 +190,15 @@ test "disconnect" {
     assert "['GenericEdge', 'GenericEdge', 'GenericEdge']" in lines[5];
 }
 
+test "typed disconnect" {
+    output = run_jac(os.path.join(FIXTURES, "disconn_typed.jac"));
+    lines = output.split("\n");
+    assert "edges: 2" in lines[0];
+    assert "after E disconnect: 0" in lines[1];
+    assert "F survives: 1" in lines[2];
+    assert "after F disconnect: 0" in lines[3];
+}
+
 test "simple archs" {
     output = run_jac(os.path.join(FIXTURES, "simple_archs.jac"));
     assert output.split("\n")[0] == "1 2 0";
@@ -305,6 +314,8 @@ test "lambda expr" {
     lines = output.split("\n");
     assert lines[0] == "9";
     assert lines[1] == "567";
+    assert lines[2] == "7";
+    assert lines[3] == "None";
 }
 
 test "override walker inherit" {
@@ -324,7 +335,9 @@ test "hash init check" {
 
 test "edge expr not type" {
     output = run_jac(os.path.join(FIXTURES, "edgetypeissue.jac"));
-    assert "[x()]" in output;
+    # A single-node connect returns the node itself, not a list.
+    assert "x()" in output;
+    assert "[x()]" not in output;
 }
 
 test "blank with entry" {
@@ -612,6 +625,17 @@ test "while else" {
     assert "Num:  4" in lines[0];
     assert "Num:  3" in lines[1];
     assert "Completed" in lines[2];
+}
+
+test "forever loop" {
+    output = run_jac(os.path.join(FIXTURES, "forever_loop.jac"));
+    lines = output.split("\n");
+    assert "Iter:  1" in lines[0];
+    assert "Iter:  2" in lines[1];
+    assert "Iter:  3" in lines[2];
+    assert "Done:  3" in lines[3];
+    assert "Sum:  30" in lines[4];  # 2+4+6+8+10, odds skipped via continue
+    assert "Nested:  2 2" in lines[5];  # inner break exits inner loop only
 }
 
 test "funccall genexpr" {
@@ -907,4 +931,9 @@ test "as cast is type erased" {
 test "as cast does not disturb with/except alias" {
     output = run_jac(os.path.join(FIXTURES, "as_cast_with_except.jac"));
     assert output == "with-ternary-ok\nwith-paren-cast-ok\nboom\n";
+}
+
+test "deep walker chain does not hit recursion limit" {
+    output = run_jac(os.path.join(FIXTURES, "deep_walker_chain.jac"));
+    assert "1500" in output , f"Walker should visit all 1500 nodes: {output}";
 }

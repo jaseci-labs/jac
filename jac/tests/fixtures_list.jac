@@ -31,7 +31,6 @@ glob MICRO_JAC_FILES: list[str] = [
          "examples/day_planner/walkers/frontend.cl.jac",
          "examples/day_planner/walkers/main.jac",
          "examples/littleX/components/AuthForm.cl.jac",
-         "examples/littleX/components/Button.cl.jac",
          "examples/littleX/components/ChannelsTab.cl.jac",
          "examples/littleX/components/Composer.cl.jac",
          "examples/littleX/components/ExploreTab.cl.jac",
@@ -45,8 +44,8 @@ glob MICRO_JAC_FILES: list[str] = [
          "examples/littleX/frontend.cl.jac",
          "examples/littleX/frontend.impl.jac",
          "examples/littleX/main.jac",
-         "examples/littleX/server.jac",
-         "examples/littleX/test_littlex.jac",
+         "examples/littleX/social_graph.jac",
+         "examples/littleX/tests/test_littlex.jac",
          "examples/mini_todo/bench_local.jac",
          "examples/mini_todo/main.jac",
          "examples/mini_todo/test_local.jac"

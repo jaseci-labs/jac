@@ -1,15 +1,4 @@
-"""Native (LLVM) backend primitive emitter implementations.
-
-Each emitter is a stateless singleton; backend context is passed per-call
-via NativeEmitCtx, which provides typed access to the LLVM builder and
-pass infrastructure.
-
-All methods currently return None, meaning the dispatch layer falls through
-to the existing inline codegen in the pass impl files. As inline codegen is
-extracted into emitter methods, they will return ir.Value results instead.
-"""
-
-import from llvmlite { ir }
+import from jaclang.compiler.passes.native.llvm { ir }
 import from jaclang.compiler.primitives {
     IntEmitter,
     FloatEmitter,
@@ -25,19 +14,15 @@ import from jaclang.compiler.primitives {
     BuiltinEmitter
 }
 import type from jaclang.compiler.passes.native.na_ir_gen_pass { NaIRGenPass }
+import from jaclang.jac0core.diagnostics { E5092 }
 
-# --- Context ----------------------------------------------------------------
 obj NativeEmitCtx {
-    """Native emission — provides typed access to LLVM infrastructure.
-
-    Created per dispatch call with the appropriate type_key.
-    """
     has pass_ref: NaIRGenPass,
-        type_key: str = "";
+        type_key: str = "",
+        call_kwargs: dict = {};
 }
 
 
-"""Get the LLVM IR builder from the pass, asserting it is set."""
 def get_builder(p: NaIRGenPass) -> ir.IRBuilder {
     b = p.builder;
     assert b is not None , "Builder should be set in pass_ref";
@@ -45,9 +30,6 @@ def get_builder(p: NaIRGenPass) -> ir.IRBuilder {
 }
 
 
-# =============================================================================
-#  Numeric Types
-# =============================================================================
 class NativeIntEmitter(IntEmitter[(ir.Value, NativeEmitCtx)]) {
     def emit_bit_length(
         self: NativeIntEmitter,
@@ -126,12 +108,6 @@ class NativeFloatEmitter(FloatEmitter[(ir.Value, NativeEmitCtx)]) {
 
 
 class NativeBoolEmitter(NativeIntEmitter) {
-    """Bool-specific emitter.
-
-    Inherits all int operations but overrides bitwise operators so that
-    True & False yields False (bool i1) rather than 0 (i64), matching
-    Python semantics where bool & bool -> bool.
-    """
     def emit_op_and(
         self: NativeBoolEmitter,
         ctx: NativeEmitCtx,
@@ -156,12 +132,10 @@ class NativeBoolEmitter(NativeIntEmitter) {
 
 
 class NativeComplexEmitter(ComplexEmitter[(ir.Value, NativeEmitCtx)]) {
-    """Helper: load real and imag from a JacComplex pointer."""
     def _load_parts(
         self: NativeComplexEmitter, ctx: NativeEmitCtx, val: ir.Value
     ) -> (tuple | None);
 
-    """Helper: create a new JacComplex from real and imag f64 values."""
     def _make_complex(
         self: NativeComplexEmitter, ctx: NativeEmitCtx, real: ir.Value, imag: ir.Value
     ) -> ir.Value;
@@ -238,11 +212,7 @@ class NativeComplexEmitter(ComplexEmitter[(ir.Value, NativeEmitCtx)]) {
 }
 
 
-# =============================================================================
-#  String Types
-# =============================================================================
 class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
-    # Case conversion
     def emit_capitalize(
         self: NativeStrEmitter,
         ctx: NativeEmitCtx,
@@ -289,7 +259,6 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
-    # Search
     def emit_count(
         self: NativeStrEmitter,
         ctx: NativeEmitCtx,
@@ -339,7 +308,6 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
-    # Modification
     def emit_replace(
         self: NativeStrEmitter,
         ctx: NativeEmitCtx,
@@ -382,7 +350,6 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
-    # Split and join
     def emit_split(
         self: NativeStrEmitter,
         ctx: NativeEmitCtx,
@@ -425,7 +392,6 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
-    # Formatting and alignment
     def emit_format(
         self: NativeStrEmitter,
         ctx: NativeEmitCtx,
@@ -475,8 +441,6 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
-    # Character tests
-    """Helper: loop over chars, call C ctype function, return 1 if all pass."""
     def _emit_char_test(
         self: NativeStrEmitter,
         ctx: NativeEmitCtx,
@@ -570,7 +534,6 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
-    # Encoding
     def emit_encode(
         self: NativeStrEmitter,
         ctx: NativeEmitCtx,
@@ -578,7 +541,6 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
-    # Decoding (str-typed i8* from .encode(); native str is already UTF-8)
     def emit_decode(
         self: NativeStrEmitter,
         ctx: NativeEmitCtx,
@@ -586,7 +548,6 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
-    # Translation
     def emit_translate(
         self: NativeStrEmitter,
         ctx: NativeEmitCtx,
@@ -601,7 +562,6 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
 
 
 class NativeBytesEmitter(BytesEmitter[(ir.Value, NativeEmitCtx)]) {
-    # Decoding
     def emit_decode(
         self: NativeBytesEmitter,
         ctx: NativeEmitCtx,
@@ -620,7 +580,6 @@ class NativeBytesEmitter(BytesEmitter[(ir.Value, NativeEmitCtx)]) {
         self: NativeBytesEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
     ) -> (ir.Value | None);
 
-    # Search
     def emit_count(
         self: NativeBytesEmitter,
         ctx: NativeEmitCtx,
@@ -670,7 +629,6 @@ class NativeBytesEmitter(BytesEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
-    # Modification
     def emit_replace(
         self: NativeBytesEmitter,
         ctx: NativeEmitCtx,
@@ -713,7 +671,6 @@ class NativeBytesEmitter(BytesEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
-    # Split and join
     def emit_split(
         self: NativeBytesEmitter,
         ctx: NativeEmitCtx,
@@ -756,7 +713,6 @@ class NativeBytesEmitter(BytesEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
-    # Case (ASCII only)
     def emit_capitalize(
         self: NativeBytesEmitter,
         ctx: NativeEmitCtx,
@@ -792,7 +748,6 @@ class NativeBytesEmitter(BytesEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
-    # Character tests (ASCII only)
     def emit_isalnum(
         self: NativeBytesEmitter,
         ctx: NativeEmitCtx,
@@ -849,7 +804,6 @@ class NativeBytesEmitter(BytesEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
-    # Alignment
     def emit_center(
         self: NativeBytesEmitter,
         ctx: NativeEmitCtx,
@@ -885,7 +839,6 @@ class NativeBytesEmitter(BytesEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
-    # Translation
     def emit_translate(
         self: NativeBytesEmitter,
         ctx: NativeEmitCtx,
@@ -899,9 +852,6 @@ class NativeBytesEmitter(BytesEmitter[(ir.Value, NativeEmitCtx)]) {
 }
 
 
-# =============================================================================
-#  Collection Types
-# =============================================================================
 class NativeListEmitter(ListEmitter[(ir.Value, NativeEmitCtx)]) {
     def emit_append(
         self: NativeListEmitter,
@@ -944,7 +894,6 @@ class NativeListEmitter(ListEmitter[(ir.Value, NativeEmitCtx)]) {
         target: ir.Value,
         args: list[ir.Value]
     ) -> (ir.Value | None) {
-        # del list[idx]: shift elements from idx+1 leftward, then decrement length.
         if not args {
             return None;
         }
@@ -957,7 +906,7 @@ class NativeListEmitter(ListEmitter[(ir.Value, NativeEmitCtx)]) {
         i32 = ir.IntType(32);
         i64 = ir.IntType(64);
         del_idx = args[0];
-        # release element at del_idx before shifting
+
         if isinstance(helpers["elem_type"], ir.PointerType) {
             if p.rc_release_simple_fn is None {
                 p._emit_rc_helpers();
@@ -973,7 +922,7 @@ class NativeListEmitter(ListEmitter[(ir.Value, NativeEmitCtx)]) {
         cur_len = b.load(len_ptr, name="delat.len");
         func = b.basic_block.function;
         entry_bb = b.basic_block;
-        # shift_start = del_idx + 1, computed in entry_bb before branch
+
         shift_start = b.add(del_idx, ir.Constant(i64, 1), name="delat.start");
         loop_bb = func.append_basic_block(name="delat.loop");
         body_bb = func.append_basic_block(name="delat.body");
@@ -987,7 +936,6 @@ class NativeListEmitter(ListEmitter[(ir.Value, NativeEmitCtx)]) {
         b.position_at_start(body_bb);
         prev = b.sub(si, ir.Constant(i64, 1), name="delat.prev");
         if isinstance(helpers["elem_type"], ir.PointerType) {
-            # Raw GEP+store: avoid spurious retain/release from __list_set_ptr during shift.
             _sh_dpp = b.gep(
                 target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="sh_dpp"
             );
@@ -1138,7 +1086,6 @@ class NativeDictEmitter(DictEmitter[(ir.Value, NativeEmitCtx)]) {
 
 
 class NativeSetEmitter(SetEmitter[(ir.Value, NativeEmitCtx)]) {
-    # Mutation
     def emit_add(
         self: NativeSetEmitter,
         ctx: NativeEmitCtx,
@@ -1174,11 +1121,6 @@ class NativeSetEmitter(SetEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
-    # Set algebra
-    def _emit_set_iterate(
-        self: NativeSetEmitter, ctx: NativeEmitCtx, source: ir.Value, prefix: str
-    ) -> tuple;
-
     def emit_union(
         self: NativeSetEmitter,
         ctx: NativeEmitCtx,
@@ -1207,7 +1149,6 @@ class NativeSetEmitter(SetEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
-    # In-place set algebra
     def emit_update(
         self: NativeSetEmitter,
         ctx: NativeEmitCtx,
@@ -1236,7 +1177,16 @@ class NativeSetEmitter(SetEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
-    # Tests
+    def _emit_set_relation(
+        self: NativeSetEmitter,
+        ctx: NativeEmitCtx,
+        iter_set: ir.Value,
+        probe_set: ir.Value,
+        prefix: str,
+        chk: str,
+        exit_on_hit: bool
+    ) -> (ir.Value | None);
+
     def emit_issubset(
         self: NativeSetEmitter,
         ctx: NativeEmitCtx,
@@ -1268,7 +1218,6 @@ class NativeSetEmitter(SetEmitter[(ir.Value, NativeEmitCtx)]) {
 
 
 class NativeFrozensetEmitter(FrozensetEmitter[(ir.Value, NativeEmitCtx)]) {
-    """Frozenset emitter — delegates to set emitter since frozenset uses same LLVM type."""
     def _get_set_emitter(
         self: NativeFrozensetEmitter, ctx: NativeEmitCtx
     ) -> (object | None);
@@ -1332,7 +1281,6 @@ class NativeFrozensetEmitter(FrozensetEmitter[(ir.Value, NativeEmitCtx)]) {
 
 
 class NativeTupleEmitter(TupleEmitter[(ir.Value, NativeEmitCtx)]) {
-    """Helper: get struct type and element count from context."""
     def _get_struct_info(
         self: NativeTupleEmitter, ctx: NativeEmitCtx, target: ir.Value
     ) -> (object | None);
@@ -1417,12 +1365,10 @@ class NativeTupleEmitter(TupleEmitter[(ir.Value, NativeEmitCtx)]) {
 
 
 class NativeRangeEmitter(RangeEmitter[(ir.Value, NativeEmitCtx)]) {
-    """Helper: load start, stop, step from JacRange pointer."""
     def _load_range(
         self: NativeRangeEmitter, ctx: NativeEmitCtx, target: ir.Value
     ) -> (tuple | None);
 
-    """Helper: check if val is in range(start, stop, step)."""
     def _in_range(
         self: NativeRangeEmitter,
         ctx: NativeEmitCtx,
@@ -1469,9 +1415,6 @@ class NativeRangeEmitter(RangeEmitter[(ir.Value, NativeEmitCtx)]) {
 }
 
 
-# =============================================================================
-#  Builtin Functions
-# =============================================================================
 class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
     def emit_print(
         self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
@@ -1582,11 +1525,11 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         p = ctx.pass_ref;
         b = get_builder(p);
         i64 = ir.IntType(64);
-        # int hash = identity
+
         if isinstance(arg_val.type, ir.IntType) {
             return p._coerce_type(arg_val, i64);
         }
-        # string hash = djb2
+
         i8p = ir.IntType(8).as_pointer();
         if isinstance(arg_val.type, ir.PointerType) and arg_val.type == i8p {
             i8 = ir.IntType(8);
@@ -1644,10 +1587,7 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
             return buf_ptr;
         }
         if isinstance(arg_val.type, ir.DoubleType) {
-            fmt = p._get_snprintf_fmt("%g");
-            fmt_ptr = b.bitcast(fmt, i8p, name="repr.fmt.ptr");
-            b.call(snprintf, [buf_ptr, ir.Constant(i64, 64), fmt_ptr, arg_val]);
-            return buf_ptr;
+            return p._emit_float_repr(arg_val);
         }
         if isinstance(arg_val.type, ir.PointerType) and arg_val.type == i8p {
             fmt = p._get_snprintf_fmt("'%s'");
@@ -1707,7 +1647,7 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
             "snprintf", ir.IntType(32), [i8p, i64, i8p], var_arg=True
         );
         buf = b.call(rc_alloc_fn, [ir.Constant(i64, 32)], name="hex.buf");
-        # Check if negative
+
         arg_val = args[0];
         zero = ir.Constant(i64, 0);
         is_neg = b.icmp_signed("<", arg_val, zero, name="hex.neg");
@@ -1770,7 +1710,7 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         snprintf = p._get_or_declare_extern(
             "snprintf", ir.IntType(32), [i8p, i64, i8p], var_arg=True
         );
-        # Allocate buffer: "0b" + up to 64 digits + sign + null = 68
+
         buf = b.call(rc_alloc_fn, [ir.Constant(i64, 68)], name="bin.buf");
         arg_val = args[0];
         zero = ir.Constant(i64, 0);
@@ -1787,7 +1727,7 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         reverse_bb = func.append_basic_block(name="bin.reverse");
         done_bb = func.append_basic_block(name="bin.done");
         b.cbranch(is_zero, zero_bb, prefix_bb);
-        # Zero case: "0b0"
+
         b.position_at_start(zero_bb);
         fmt_zero = p._get_snprintf_fmt("0b0");
         fmt_zero_ptr = b.bitcast(fmt_zero, i8p, name="bin.fmt.zero");
@@ -1795,12 +1735,12 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
             snprintf, [buf, ir.Constant(i64, 68), fmt_zero_ptr], name="bin.zero.snp"
         );
         b.branch(done_bb);
-        # Write prefix: "-0b" or "0b"
+
         b.position_at_start(prefix_bb);
-        neg_ch = ir.Constant(i8, 45);  # '-'
-        zero_ch = ir.Constant(i8, 48);  # '0'
-        b_ch = ir.Constant(i8, 98);  # 'b'
-        # Write sign if negative
+        neg_ch = ir.Constant(i8, 45);
+        zero_ch = ir.Constant(i8, 48);
+        b_ch = ir.Constant(i8, 98);
+
         start_off_val = b.select(
             is_neg, ir.Constant(i64, 1), ir.Constant(i64, 0), name="bin.start"
         );
@@ -1813,7 +1753,7 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         b.store(b_ch, b_ptr);
         digit_start = b.add(b_off, ir.Constant(i64, 1), name="bin.digit.start");
         b.branch(loop_bb);
-        # Extract digits (reverse order)
+
         b.position_at_start(loop_bb);
         val = b.phi(i64, name="bin.val");
         off = b.phi(i64, name="bin.off");
@@ -1833,11 +1773,11 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         val.add_incoming(new_val, body_bb);
         off.add_incoming(new_off, body_bb);
         b.branch(loop_bb);
-        # Reverse the digit portion and null-terminate
+
         b.position_at_start(reverse_bb);
         null_ptr = b.gep(buf, [off], name="bin.null.ptr");
         b.store(ir.Constant(i8, 0), null_ptr);
-        # Reverse digits between digit_start and off-1
+
         rev_entry = b.basic_block;
         rev_loop = func.append_basic_block(name="bin.rev.loop");
         rev_body = func.append_basic_block(name="bin.rev.body");
@@ -1878,6 +1818,12 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         p = ctx.pass_ref;
         base = args[0];
         exp = args[1];
+        if len(args) >= 3
+        and isinstance(base.type, ir.IntType)
+        and isinstance(exp.type, ir.IntType)
+        and isinstance(args[2].type, ir.IntType) {
+            return self.emit_pow_mod(ctx, base, exp, args[2]);
+        }
         if isinstance(base.type, ir.IntType) and isinstance(exp.type, ir.IntType) {
             return p._codegen_int_pow(base, exp);
         }
@@ -1889,6 +1835,69 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
             return get_builder(p).call(pow_fn, [base, exp], name="pow.result");
         }
         return None;
+    }
+
+    def emit_pow_mod(
+        self: NativeBuiltinEmitter,
+        ctx: NativeEmitCtx,
+        base: ir.Value,
+        exp: ir.Value,
+        mod: ir.Value
+    ) -> (ir.Value | None) {
+        p = ctx.pass_ref;
+        b = get_builder(p);
+        i64 = ir.IntType(64);
+        one = ir.Constant(i64, 1);
+        zero = ir.Constant(i64, 0);
+        base64 = p._coerce_type(base, i64);
+        exp64 = p._coerce_type(exp, i64);
+        mod64 = p._coerce_type(mod, i64);
+        mod_is_zero = b.icmp_signed("==", mod64, zero, name="powm.mod.zero");
+        p._emit_runtime_raise(
+            mod_is_zero, "ValueError", "pow() 3rd argument cannot be 0"
+        );
+        base0 = b.srem(base64, mod64, name="powm.base0");
+        func = b.basic_block.function;
+        entry_bb = b.basic_block;
+        loop_bb = func.append_basic_block(name="powm.loop");
+        body_bb = func.append_basic_block(name="powm.body");
+        odd_bb = func.append_basic_block(name="powm.odd");
+        even_bb = func.append_basic_block(name="powm.even");
+        done_bb = func.append_basic_block(name="powm.done");
+        b.branch(loop_bb);
+        b.position_at_start(loop_bb);
+        acc = b.phi(i64, name="powm.acc");
+        cur = b.phi(i64, name="powm.cur");
+        left = b.phi(i64, name="powm.left");
+        acc.add_incoming(one, entry_bb);
+        cur.add_incoming(base0, entry_bb);
+        left.add_incoming(exp64, entry_bb);
+        alive = b.icmp_signed(">", left, zero, name="powm.alive");
+        b.cbranch(alive, body_bb, done_bb);
+        b.position_at_start(body_bb);
+        bit = b.and_(left, one, name="powm.bit");
+        is_odd = b.icmp_signed("==", bit, one, name="powm.isodd");
+        b.cbranch(is_odd, odd_bb, even_bb);
+        b.position_at_start(odd_bb);
+        acc_mul = b.mul(acc, cur, name="powm.acc.mul");
+        acc_new = b.srem(acc_mul, mod64, name="powm.acc.new");
+        b.branch(even_bb);
+        b.position_at_start(even_bb);
+        acc_next = b.phi(i64, name="powm.acc.next");
+        acc_next.add_incoming(acc, body_bb);
+        acc_next.add_incoming(acc_new, odd_bb);
+        cur_sq = b.mul(cur, cur, name="powm.cur.sq");
+        cur_next = b.srem(cur_sq, mod64, name="powm.cur.next");
+        left_next = b.ashr(left, one, name="powm.left.next");
+        acc.add_incoming(acc_next, even_bb);
+        cur.add_incoming(cur_next, even_bb);
+        left.add_incoming(left_next, even_bb);
+        b.branch(loop_bb);
+        b.position_at_start(done_bb);
+
+        fixed = b.add(acc, mod64, name="powm.fix");
+        fixed = b.srem(fixed, mod64, name="powm.fix.rem");
+        return fixed;
     }
 
     def emit_divmod(
@@ -1943,7 +1952,6 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
     ) -> (ir.Value | None);
 
-    # Type conversion builtins
     def emit_str(
         self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
     ) -> (ir.Value | None);

@@ -1,13 +1,79 @@
-"""Implementation of the shared guide store."""
-
 import from pathlib { Path }
 
-# Diagnostic codes that map directly to a specific guide. A code listed here
-# wins over the category fallback below. Currently empty -- diagnostics route
-# to a guide via the category fallback.
-glob _CODE_GUIDE_MAP: dict[str, str] = {},
-     # Fallback by diagnostic Category value when no exact code match is found.
+glob _CODE_GUIDE_MAP: dict[str, str] = {
+         "E0077": "jac-impl-files",
+         "W0060": "jac-core-cheatsheet",
+         "W0061": "jac-sv-persistence",
+         "E1050": "jac-walker-patterns",
+         "E1102": "jac-cl-components",
+         "E1104": "jac-npm-packages",
+         "E1105": "jac-mobui",
+         "E1301": "jac-native-memory",
+         "E1302": "jac-native-memory",
+         "E1303": "jac-native-memory",
+         "E1304": "jac-native-memory",
+         "E1306": "jac-native-memory",
+         "E1307": "jac-native-memory",
+         "E1308": "jac-native-memory",
+         "E1309": "jac-native-memory",
+         "E1401": "jac-native-memory",
+         "E1402": "jac-native-memory",
+         "E1403": "jac-native-memory",
+         "E1404": "jac-native-memory",
+         "E1405": "jac-native-memory",
+         "E1406": "jac-native-memory",
+         "W1310": "jac-native-memory",
+         "E2004": "jac-has-fields",
+         "E2025": "jac-npm-packages",
+         "W2075": "jac-sv-persistence",
+         "W3037": "jac-types",
+
+     },
      _CATEGORY_GUIDE_MAP: dict[str, str] = {"type": "jac-types",};
+
+glob GUIDE_GROUP_ORDER: list[str] = [
+         "Start here",
+         "Language",
+         "Graph & OSP",
+         "AI",
+         "Server",
+         "Client & fullstack",
+         "Native",
+         "Tooling & workflow",
+         "Other",
+
+     ],
+     _START_HERE_ORDER: list[str] = ["jac-project-kinds", "jac-core-cheatsheet"],
+     _GUIDE_GROUP_MAP: dict[str, str] = {
+         "jac-project-kinds": "Start here",
+         "jac-core-cheatsheet": "Start here",
+         "jac-types": "Language",
+         "jac-has-fields": "Language",
+         "jac-impl-files": "Language",
+         "jac-python-interop": "Language",
+         "jac-concurrency": "Language",
+         "jac-node-edge-patterns": "Graph & OSP",
+         "jac-walker-patterns": "Graph & OSP",
+         "jac-by-llm": "AI",
+         "jac-fullstack-patterns": "Client & fullstack",
+         "jac-npm-packages": "Client & fullstack",
+         "jac-shadcn-components": "Client & fullstack",
+         "jac-desktop-app": "Client & fullstack",
+         "jac-mobile-app": "Client & fullstack",
+         "jac-mobui": "Client & fullstack",
+         "jac-scaffold": "Tooling & workflow",
+         "jac-config": "Tooling & workflow",
+         "jac-testing": "Tooling & workflow",
+         "jac-debugging": "Tooling & workflow",
+         "jac-packaging": "Tooling & workflow",
+
+     },
+     _GUIDE_GROUP_PREFIXES: dict[str, str] = {
+         "jac-sv-": "Server",
+         "jac-cl-": "Client & fullstack",
+         "jac-native": "Native",
+
+     };
 
 impl guides_dir -> Path {
     import jaclang;
@@ -66,7 +132,8 @@ impl list_guides -> list[Guide] {
         return [];
     }
     guides: list[Guide] = [];
-    for f in sorted(gdir.glob("*.md")) {
+
+    for f in sorted(gdir.glob("*.md"), key=lambda (p: Path) { p.stem; }) {
         g = parse_guide(f);
         if g is not None {
             guides.append(g);
@@ -77,6 +144,42 @@ impl list_guides -> list[Guide] {
 
 impl get_guide(name: str) -> Guide | None {
     return parse_guide(guides_dir() / f"{name}.md");
+}
+
+impl guide_group(name: str) -> str {
+    explicit = _GUIDE_GROUP_MAP.get(name);
+    if explicit is not None {
+        return explicit;
+    }
+    for (prefix, group) in _GUIDE_GROUP_PREFIXES.items() {
+        if name.startswith(prefix) {
+            return group;
+        }
+    }
+    return "Other";
+}
+
+impl grouped_guides -> list[tuple[str, list[Guide]]] {
+    buckets: dict[str, list[Guide]] = {};
+
+    for g in list_guides() {
+        buckets.setdefault(guide_group(g.name), []).append(g);
+    }
+    start = buckets.get("Start here");
+    if start is not None {
+        start.sort(
+            key=lambda (g: Guide) { (
+                _START_HERE_ORDER.index(g.name)
+                    if g.name in _START_HERE_ORDER
+                    else len(_START_HERE_ORDER)
+            ); }
+        );
+    }
+    return [
+        (group, buckets[group])
+        for group in GUIDE_GROUP_ORDER
+        if group in buckets
+    ];
 }
 
 impl search_guides(query: str) -> list[Guide] {

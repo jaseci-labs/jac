@@ -1,36 +1,8 @@
-"""Console utilities for terminal output.
-
-This module provides utilities for terminal output using pure Python.
-It is split into two collaborators:
-
-- `JacConsole` — the *facade*. It owns the 15-method output surface, terminal
-  capability detection (NO_COLOR / NO_EMOJI / isatty / TERM), and stream
-  routing. Every method composes its output once and delegates the actual
-  drawing to a renderer.
-- `ConsoleRenderer` — the swappable *backend*. The base class renders with raw
-  ANSI. Plugins (like jac-super) subclass it to render with Rich, and install
-  their renderer on the facade. They do NOT re-implement the facade methods, so
-  the surface can never drift between implementations.
-
-The split makes terminal styling a structural trust boundary: caller data is
-carried as `Span`s with no style, which every renderer must emit verbatim —
-markup/ANSI is never interpreted in user content.
-"""
 import os;
 import sys;
 import from contextlib { contextmanager, AbstractContextManager }
 import from typing { cast }
 
-"""Caller-supplied text that must be emitted verbatim.
-
-Terminal markup (Rich's `[tag]...[/tag]`, raw ANSI) is an injection surface:
-a path, URL, diagnostic snippet, or source line that happens to contain
-square brackets must never be interpreted as styling. Wrapping such a value
-in `Content` marks it as tainted so every renderer emits its characters
-unchanged. Passing a bare `str` to the data-bearing console methods is already
-treated as `Content` by default; this type exists so callers can be explicit
-and self-documenting at trust boundaries.
-"""
 obj Content {
     has text: str;
 
@@ -39,30 +11,88 @@ obj Content {
     }
 }
 
-"""One run of text on a line, with an optional semantic style role.
-
-`style` names a *role* ('success', 'error', 'muted', 'url', …), not a color —
-each renderer maps roles to its own palette. `style is None` marks the run as
-caller data: renderers emit it verbatim, never styled or markup-parsed. Lines
-are composed by the facade as `list[Span]` and handed to `ConsoleRenderer.emit`.
-"""
 obj Span {
     has text: str,
         style: str | None = None;
 }
 
-"""Swappable rendering backend for the console facade.
+obj _Spinner {
+    has text: str,
+        stream: any,
+        frames: list[str],
+        style_prefix: str,
+        reset: str,
+        interval: float = 0.08,
+        _stop: any postinit,
+        _thread: any = None;
 
-The base implementation renders with raw ANSI escape codes. Subclasses override
-these primitives to render differently (e.g. jac-super's Rich backend). The
-facade calls `configure` once after capability detection, then routes every
-method through these primitives.
-"""
+    def postinit {
+        import from threading { Event }
+        self._stop = Event();
+    }
+
+    def update(text: str = '') {
+        self.text = text;
+    }
+
+    def clear {
+        try {
+            self.stream.write("\r\033[K");
+            self.stream.flush();
+        } except (BrokenPipeError, OSError) {
+            ;
+        }
+    }
+
+    def _run {
+        idx = 0;
+        while not self._stop.is_set() {
+            frame = self.frames[idx % len(self.frames)];
+            try {
+                self.stream.write(
+                    f"\r{self.style_prefix}{frame}{self.reset} {self.text}"
+                );
+                self.stream.flush();
+            } except (BrokenPipeError, OSError) {
+                return;
+            }
+            idx += 1;
+            self._stop.wait(self.interval);
+        }
+    }
+
+    def start {
+        import from threading { Thread }
+        self._thread = Thread(target=self._run, daemon=True);
+        self._thread.start();
+    }
+
+    def stop {
+        self._stop.set();
+        if self._thread is not None {
+            self._thread.join(timeout=1.0);
+        }
+        self.clear();
+    }
+}
+
+obj _NullStatus {
+    def update(text: str = '') -> None {
+        return;
+    }
+
+    def clear -> None {
+        return;
+    }
+}
+
 obj ConsoleRenderer {
     has use_emoji: bool = True,
-        use_color: bool = True;
+        use_color: bool = True,
+        _active_status: any = None;
 
     def configure(use_emoji: bool, use_color: bool) -> None;
+    def clear_status -> None;
     def emit(spans: list[Span], stream: any = None) -> None;
     def emit_raw(args: list, stream: any, style: str | None, kwargs: dict) -> None;
     def header(title: str, version: str | None = None) -> None;
@@ -79,16 +109,10 @@ obj ConsoleRenderer {
     def spinner_ctx(text: str) -> object;
 }
 
-"""Console utility class for terminal output in Jac CLI.
-
-This is the facade. It detects capabilities and delegates drawing to a
-`ConsoleRenderer`. The base console uses the ANSI renderer; plugins install a
-different renderer via the `get_console` hook without overriding these methods.
-"""
 obj JacConsole {
     has use_emoji: bool = True,
         use_color: bool = True,
-        _renderer: ConsoleRenderer by postinit;
+        _renderer: ConsoleRenderer postinit;
 
     def postinit -> None;
     def _make_renderer -> ConsoleRenderer;
@@ -117,20 +141,14 @@ obj JacConsole {
     def print_watching(pattern: str, count: int) -> None;
 }
 
-# Lazy initialization to avoid circular imports
 glob _console_instance: JacConsole | None = None;
 
 def _get_console -> JacConsole;
 
-# Basic proxy class that lazily initializes the console on first access
-# This allows plugins to override via the hook system while avoiding circular imports
 class _ConsoleProxy {
     def __getattr__(self: _ConsoleProxy, name: str) -> any {
         return getattr(_get_console(), name);
     }
 }
 
-# Export the proxy as console - provides clean attribute access with lazy initialization.
-# The annotation lets the type checker resolve `console.print(...)` etc. against the
-# JacConsole interface; the cast satisfies the proxy-to-JacConsole assignment.
 glob console: JacConsole = cast(JacConsole, _ConsoleProxy());

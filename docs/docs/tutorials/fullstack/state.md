@@ -62,12 +62,12 @@ cl {
         return <form>
             <input
                 value={name}
-                onChange={lambda e: ChangeEvent { name = e.target.value; }}
+                onChange={lambda (e: ChangeEvent) { name = e.target.value; }}
                 placeholder="Name"
             />
             <input
                 value={email}
-                onChange={lambda e: ChangeEvent { email = e.target.value; }}
+                onChange={lambda (e: ChangeEvent) { email = e.target.value; }}
                 placeholder="Email"
             />
             <button
@@ -105,7 +105,7 @@ cl {
         return <div>
             <input
                 value={input_text}
-                onChange={lambda e: ChangeEvent { input_text = e.target.value; }}
+                onChange={lambda (e: ChangeEvent) { input_text = e.target.value; }}
             />
             <button onClick={lambda -> None { add_todo(); }}>Add</button>
 
@@ -182,7 +182,7 @@ cl {
         return <div>
             <input
                 value={query}
-                onChange={lambda e: ChangeEvent { query = e.target.value; }}
+                onChange={lambda (e: ChangeEvent) { query = e.target.value; }}
             />
             <ul>
                 {[<li>{r}</li> for r in results]}
@@ -285,6 +285,35 @@ cl {
 
 The field must be constructed (`= Ref()` / `= Ref(initial)`); a bare `has r: Ref[T];` is rejected ([E2025](../../reference/diagnostics.md)) because, like every other `has`-field, it needs a value. `.current` is typed `T | None`, so null-check it before use.
 
+### Forwarding a ref into your component
+
+The example above uses a ref *inside* a component. The other direction -- letting a **parent** attach a ref to a component *you* wrote -- requires the component to **forward** that ref to a real DOM node. A component opts in by declaring a trailing parameter typed `Ref`, a 1:1 match with React's `forwardRef((props, ref) => ...)` render signature:
+
+```jac
+cl {
+    def:pub FancyInput(props: any, ref: Ref[HTMLInputElement]) -> JsxElement {
+        return <input ref={ref} className="fancy" {**props} />;
+    }
+}
+```
+
+This lowers to `const FancyInput = forwardRef(function FancyInput(props, ref) { ... })`, so a parent can point its own ref at the component and reach the underlying `<input>`:
+
+```jac
+cl {
+    def:pub ParentForm() -> JsxElement {
+        has inputRef: Ref[HTMLInputElement] = Ref();
+        return <FancyInput ref={inputRef} placeholder="Type here" />;
+    }
+}
+```
+
+- Only the **last** parameter qualifies, and it must be typed `Ref` (or `Ref[T]`). Named props before it destructure as usual; `ref` stays the trailing positional argument and is never folded into the props bundle.
+- `forwardRef` is auto-imported from React; you do not import it yourself.
+- A component that declares no `ref` parameter compiles exactly as before -- this is opt-in and zero-cost.
+
+Forwarding is what makes a component usable as a [radix](npm-and-libraries.md) `asChild` trigger -- `DropdownMenuTrigger`, `Tooltip.Trigger`, `Popover.Trigger`, and friends attach a ref to their child to use as a positioning anchor, so a component that cannot forward a ref leaves that anchor null and the menu/popover silently never opens.
+
 ---
 
 ## useContext - Global State
@@ -306,8 +335,8 @@ cl {
         value = {
             "user": user,
             "theme": theme,
-            "setUser": lambda u: any -> None { user = u; },
-            "setTheme": lambda t: str -> None { theme = t; }
+            "setUser": lambda (u: any) -> None { user = u; },
+            "setTheme": lambda (t: str) -> None { theme = t; }
         };
 
         return <AppContext.Provider value={value}>
@@ -371,7 +400,7 @@ cl {
             localStorage.setItem(key, JSON.stringify(value));
         }, [value]);
 
-        return (value, lambda v: any -> None { value = v; });
+        return (value, lambda (v: any) -> None { value = v; });
     }
 
     def:pub Settings() -> JsxElement {
@@ -457,7 +486,7 @@ cl {
         return <form>
             <input
                 value={form_data["name"]}
-                onChange={lambda e: ChangeEvent { update_field("name", e.target.value); }}
+                onChange={lambda (e: ChangeEvent) { update_field("name", e.target.value); }}
             />
             {errors.get("name") and <span className="error">{errors["name"]}</span>}
         </form>;

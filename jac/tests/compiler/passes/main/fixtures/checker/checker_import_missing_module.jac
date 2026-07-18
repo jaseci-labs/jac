@@ -5,7 +5,7 @@ import nonexistent_module as nm;
 
 with entry {
     a: int = stats.norm.cdf(0);
-    d: float = optimize.minimize_scalar(lambda  x: int: x ** 2).fun;
+    d: float = optimize.minimize_scalar(lambda  (x: int) { x ** 2; }).fun;
     result = helper_func();
     b: int = foo();
     c = nm.some_func();

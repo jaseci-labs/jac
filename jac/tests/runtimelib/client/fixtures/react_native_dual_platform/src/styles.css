@@ -1,0 +1,14 @@
+.platform-header {
+    padding: 16px;
+    background-color: #f3f4f6;
+}
+
+.platform-title {
+    font-size: 24px;
+    font-weight: bold;
+}
+
+.platform-badge {
+    font-size: 12px;
+    color: #6b7280;
+}

@@ -2,7 +2,49 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **byLLM** (formerly MTLLM). For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## byllm 0.6.12 (Latest Release)
+## byllm 0.6.19 (Latest Release)
+
+### New Features
+
+- **Feature: Re-architected `visit [-->] by llm` routing**: LLM-guided traversal now renders each candidate as an **(edge, node) pair**, so routing can decide on the connecting edge's type/attributes, not just node data, and auto-injects the walker's state and the current node into the prompt (no more smuggling context through `incl_info`). Candidate, field, and ability descriptions are sourced from **MTIR semstrings** rather than runtime reflection. The model's choice is constrained to a runtime-synthesised enum of **descriptive handles** (the node class name, disambiguated), and a new `select` parameter controls cardinality (`select=1 | k | (min, max) | "all"`). Replaces the previous node-only mechanism that returned an unconstrained `list[int]`. (#6767)
+
+### Refactors
+
+- **Refactor: remove dead code in byllm** (part 2/2, companion to #7032): dropped never-called methods and unused module-level globals. Behavior preserved.
+- **Refactor: Scale references updated for the core fold-in**: Comments referencing the former `jac-scale` plugin (e.g. the SSE-worker notes) now refer to the built-in scale backend, which lives in core jaclang as `jaclang.scale`. No behavior change.
+
+## byllm 0.6.18
+
+### Bug Fixes
+
+- **Fix: byLLM's missing-jaclang hint points at the binary, not PyPI**: the import-time error shown when `jaclang` cannot be found no longer says `pip install jaclang` (jaclang is no longer published to PyPI -- it ships inside the `jac` binary). It now tells the user to run byLLM under `jac` or `jac install -e` the plugin.
+- **Streaming: Retry transient mid-stream drops**: streaming calls now use an inter-chunk read timeout and retry the same model on transient transport errors (stall, dropped connection, brief 5xx) instead of hanging on litellm's default timeout, emitting a `stream_reset` event so consumers discard partial output.
+
+## byllm 0.6.17
+
+### Bug Fixes
+
+- **Fix: Streaming `by llm()` no longer crashes when consumed from a foreign thread Context**: `Model.invoke()` now resets the `ContextVar` Token immediately in the originating Context before returning the streaming generator. A new `_stream_with_telemetry` wrapper drives each `next()` call via `contextvars.copy_context()`, so the generator is safe to pull from jac-scale's SSE thread-pool worker (or any foreign Context) without raising `ValueError: Token was created in a different Context`.
+- **Fix: Clear error on max_tokens-truncated tool calls**: When a response is cut off at the token limit mid tool-call, byLLM now returns a clear "output truncated, retry with a smaller payload" error instead of executing the tool with partial arguments and failing with a misleading "missing required argument".
+
+## byllm 0.6.15
+
+### New Features
+
+- **Feature: Retry structured-output generation on empty or malformed responses**: A non-streaming `by llm()` call with a structured (non-`str`) return type now regenerates when the output is empty or cannot be parsed, instead of failing on the first bad generation. Between attempts byLLM resets to the original prompt and injects a corrective message that restates the failure, echoes the rejected output, and re-shows the JSON schema. The new `max_output_retries` knob (retries after the first attempt, default `3`, `0` disables) resolves per-call > per-object > `jac.toml` `[plugins.byllm.call_params]` > default; on exhaustion the raised `OutputConversionError` reports the attempt count and preserves `raw_output`. (jaseci-labs/jaseci#6538)
+- **Feature: MockLLM testing primitives for structured output and errors**: `MockRawResponse` feeds text through the real `parse_response` (so malformed JSON raises `OutputConversionError` and valid JSON parses to the typed object), `MockError` raises a wrapped exception, and `MockLLM.seen_prompts` records the prompt seen per attempt. These let tests drive the structured-output and retry paths through real `by llm()` calls; existing MockLLM behavior is unchanged. (jaseci-labs/jaseci#6538)
+
+### Bug Fixes
+
+- **Fix: streamed text answers now reach the response channel**: When a tool-enabled `-> str`/`None` agent finished by writing plain text instead of calling the hidden finish tool, byLLM left the reply on the internal `thought` stream and never emitted it on the `chunk` (answer) channel, so consumers that read only the answer channel received an empty response. The terminal text is now delivered as the answer `chunk`, reusing what the model already produced with no re-prompt and no extra LLM call. Structured returns and the existing finish-tool path are unchanged.
+
+## byllm 0.6.14
+
+### New Features
+
+- **Feat: Multimodal tool results are provider-portable**: Tool-result images are now rerouted into a trailing user message at request time, unblocking providers that reject  images in `role: "tool"` (e.g. OpenAI) while Anthropic continues to work.
+
+## byllm 0.6.12
 
 ### New Features
 

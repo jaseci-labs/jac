@@ -2,11 +2,16 @@ import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.program { JacProgram }
 import from .sem_manager { SemTokManager }
 
-"""Handles Jac module, semantic manager, and alert management."""
 obj ModuleManager {
     has program: JacProgram,
         sem_managers: dict;
 
-    def update(file_path: str, build: uni.Module, update_annexed: bool = True) -> None;
+    def update(
+        file_path: str,
+        build: uni.Module,
+        update_annexed: bool = True,
+        files: (list[str] | None) = None
+    ) -> None;
+
     def clear_alerts_for_file(file_path_fs: str) -> None;
 }

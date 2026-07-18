@@ -1,14 +1,25 @@
 # Downloaded raylib release + extraction cache
 .build/
 
-# Shared library staged by demo.sh
+# Shared library staged by demo.sh (incl. versioned SONAME symlinks)
 libraylib.so
+libraylib.so.*
 libraylib*.dylib
 
 # Compiled native binaries
 /shooter
+/shooter_zig
+/shooter_zig.o
 /smoke
 
-# Jac native IR cache
+# Benchmark scratch files (switch written by demo.sh, result by the binaries)
+.bench_seconds
+.bench_result
+
+# Jac build & cache artifacts
+.jac/
+*.jir
+*.jbc
+# legacy native IR cache (superseded by .jac/cache/native)
 .jac_ir/
 __pycache__/

@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use Jac or the Jaseci stack in your research, please cite it as below."
+title: "Jaseci: The Jac Programming Language and Runtime Stack"
+authors:
+  - family-names: Mars
+    given-names: Jason
+  - name: "The Jaseci Project Contributors"
+repository-code: "https://github.com/jaseci-labs/jaseci"
+url: "https://docs.jaseci.org"
+license: MIT

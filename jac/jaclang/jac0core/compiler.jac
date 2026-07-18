@@ -1,4 +1,3 @@
-"""Jac Compiler - handles all compilation operations separate from program state."""
 import ast as py_ast;
 import atexit;
 import marshal;
@@ -6,6 +5,7 @@ import os;
 import sys;
 import types;
 import from threading { Event }
+import from contextvars { ContextVar }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.jir {
     SEC_BYTECODE,
@@ -13,14 +13,17 @@ import from jaclang.jac0core.jir {
     SEC_LLVM_IR,
     SEC_INTEROP,
     SEC_NATIVE_OBJ,
+    SEC_MODKEY,
     FLAG_PRECOMPILED,
     get_module_cache_path,
     is_module_cache_valid,
+    jir_matches_source,
+    compute_module_key,
+    cache_mode,
     read_bytecode_only,
     read_sections,
     SECTIONS_MAGIC,
-    HEADER_SIZE,
-    write_sections
+    HEADER_SIZE
 }
 import from jaclang.jac0core.compile_options { CompileOptions }
 import from jaclang.jac0core.helpers { read_file_with_encoding }
@@ -38,220 +41,225 @@ import from jaclang.jac0core.passes {
 }
 import from jaclang.jac0core.program { JacProgram }
 
-"""Symbol table build schedule."""
 def get_symtab_ir_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     return [ASTValidationPass, SymTabBuildPass, DeclImplMatchPass];
 }
 
-glob _ir_sched_loading = False,
-     _codegen_sched_loading = False,
-     _typecheck_sched_loading = False;
+glob _ir_sched_loading = ContextVar('jac_ir_sched_loading', default=False),
+     _codegen_sched_loading = ContextVar('jac_codegen_sched_loading', default=False),
+     _typecheck_sched_loading = ContextVar(
+         'jac_typecheck_sched_loading', default=False
+     );
 
-"""Boundary analysis schedule: the single producer of cross-boundary interop
-    facts for every module (server / client / native).
+def expand_with_requirements(
+    passes: list[type[Transform[uni.Module, uni.Module]]],
+    providers: dict[str, type[Transform[uni.Module, uni.Module]]]
+) -> list[type[Transform[uni.Module, uni.Module]]] {
+    out: list[type[Transform[uni.Module, uni.Module]]] = [];
+    for p in passes {
+        for tag in (getattr(p, 'REQUIRES', ()) or ()) {
+            prov = providers.get(tag);
+            if prov is not None and prov not in out and prov not in passes {
+                out.append(prov);
+            }
+        }
+        if p not in out {
+            out.append(p);
+        }
+    }
+    return out;
+}
 
-    Runs unconditionally. `BoundaryAnalysisPass` is statically imported, so it
-    has no lazy-compile re-entrancy hazard and must NOT be gated on the
-    `_*_sched_loading` flags — doing so dropped interop facts whenever an
-    unrelated loader was mid-bootstrap during a concurrent compile.
-    """
 def get_boundary_analysis_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     return [BoundaryAnalysisPass];
 }
 
-"""Full IR generation schedule.
+def get_bootstrap_ir_sched -> list[type[Transform[uni.Module, uni.Module]]] {
+    return [
+        ASTValidationPass,
+        SymTabBuildPass,
+        DeclImplMatchPass,
+        SemanticAnalysisPass
+    ];
+}
 
-    Uses a re-entrancy guard: when compiling the pass modules that this
-    schedule depends on (CFGBuildPass, etc.), importing them would
-    trigger recursive compilation. The guard detects this and falls back
-    to the basic schedule (symtab + semantic analysis only), which uses
-    only jac0core passes.
-    """
-def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
-    global _ir_sched_loading;
-    if _ir_sched_loading {
-        return [
-            ASTValidationPass,
-            SymTabBuildPass,
-            DeclImplMatchPass,
-            SemanticAnalysisPass
-        ];
+def get_ir_gen_sched(
+    is_internal: bool = False, gen_mtir: bool = True
+) -> list[type[Transform[uni.Module, uni.Module]]] {
+    if _ir_sched_loading.get() {
+        return get_bootstrap_ir_sched();
     }
-    _ir_sched_loading = True;
+    _tok = _ir_sched_loading.set(True);
     try {
         import from jaclang.compiler.passes.main.cfg_build_pass { CFGBuildPass }
-        import from jaclang.compiler.passes.main.mtir_gen_pass { MTIRGenPass }
         import from jaclang.compiler.passes.main.sem_def_match_pass { SemDefMatchPass }
-        import from jaclang.compiler.passes.main.unitree_enrich_pass {
-            UniTreeEnrichPass
+        import from jaclang.compiler.passes.main.capability_check_pass {
+            CapabilityCheckPass
         }
-        # Pre-compile shared analysis modules so codegen passes can import them
+        import from jaclang.compiler.passes.main.jsx_intrinsic_guard_pass {
+            JsxIntrinsicGuardPass
+        }
+
         import jaclang.compiler.symbol_utils;
         import jaclang.compiler.passes.main.layout_pass;
-        # JSX `{...}` slot bodies are NOT desugared here: the surface AST is
-        # kept faithful through analysis (ASTValidationPass enforces the slot
-        # body rules) and the accumulator-IIFE lowering happens at cl codegen
-        # time in EsastGenPass, so the formatter/unparser round-trip the
-        # author's template verbatim from real tokens.
-        return [
+        import jaclang.compiler.type_registry;
+
+        passes: list[type[Transform[uni.Module, uni.Module]]] = [
             ASTValidationPass,
             SymTabBuildPass,
             DeclImplMatchPass,
             SemanticAnalysisPass,
             SemDefMatchPass,
-            CFGBuildPass,
-            MTIRGenPass,
-            UniTreeEnrichPass
+            CFGBuildPass
         ];
+        if gen_mtir {
+            import from jaclang.compiler.passes.main.mtir_gen_pass { MTIRGenPass }
+            passes.append(MTIRGenPass);
+        }
+        passes.append(CapabilityCheckPass);
+        passes.append(JsxIntrinsicGuardPass);
+        return passes;
     } except ImportError {
-        return [
-            ASTValidationPass,
-            SymTabBuildPass,
-            DeclImplMatchPass,
-            SemanticAnalysisPass
-        ];
+        if is_internal {
+            return get_bootstrap_ir_sched();
+        }
+        raise;
     } finally {
-        _ir_sched_loading = False;
+        _ir_sched_loading.reset(_tok);
     }
 }
 
-"""Type checking schedule.
-
-    Same re-entrancy guard as get_ir_gen_sched: when compiling the
-    pass modules that this schedule depends on (TypeCheckPass, etc.),
-    importing them would trigger recursive compilation. The guard
-    detects this and returns an empty schedule, skipping type checking
-    for only those bootstrap modules.
-    """
-def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
-    global _typecheck_sched_loading;
-    if _typecheck_sched_loading {
+def get_cfg_sched -> list[type[Transform[uni.Module, uni.Module]]] {
+    if _ir_sched_loading.get() {
         return [];
     }
-    _typecheck_sched_loading = True;
+    _tok = _ir_sched_loading.set(True);
     try {
-        import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
+        import from jaclang.compiler.passes.main.cfg_build_pass { CFGBuildPass }
+        return [CFGBuildPass];
+    } except ImportError {
+        return [];
+    } finally {
+        _ir_sched_loading.reset(_tok);
+    }
+}
+
+def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
+    if _typecheck_sched_loading.get() {
+        return [];
+    }
+    _tok = _typecheck_sched_loading.set(True);
+    try {
         import from jaclang.compiler.passes.main.static_analysis_pass {
             StaticAnalysisPass
         }
-        import from jaclang.compiler.passes.main.portability_check_pass {
-            PortabilityCheckPass
+        import from jaclang.compiler.passes.main.access_check_pass { AccessCheckPass }
+        import from jaclang.compiler.passes.main.capability_check_pass {
+            NativeCapabilityCheckPass,
+            PortabilityWarnPass
         }
-        import from jaclang.compiler.passes.main.unitree_enrich_pass {
-            UniTreeEnrichPass
+        import from jaclang.compiler.passes.main.ownership_check_pass {
+            OwnershipCheckPass
         }
         import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacLintCheckPass }
         return [
-            TypeCheckPass,
             StaticAnalysisPass,
-            PortabilityCheckPass,
-            UniTreeEnrichPass,
+            AccessCheckPass,
+            OwnershipCheckPass,
+            NativeCapabilityCheckPass,
+            PortabilityWarnPass,
             JacLintCheckPass
         ];
     } except ImportError {
         return [];
     } finally {
-        _typecheck_sched_loading = False;
+        _typecheck_sched_loading.reset(_tok);
     }
 }
 
-"""Inference-only schedule for native compilation.
-
-    The native backend (NaIRGenPass) lowers Expr.type into ir.Type instead
-    of re-deriving structure from annotation AST, so it needs the central
-    TypeEvaluator to have populated Expr.type before codegen. This schedule
-    runs only TypeCheckPass — the diagnostic-emitting passes (Static /
-    Portability / Lint) and the duplicate UniTreeEnrichPass (already run at
-    the tail of get_ir_gen_sched) are intentionally omitted: rerunning them
-    mutates AST state that NaIRGenPass and the cross-module linker depend on.
-
-    Same re-entrancy guard as get_type_check_sched.
-    """
-def get_native_inference_sched -> list[type[Transform[uni.Module, uni.Module]]] {
-    global _typecheck_sched_loading;
-    if _typecheck_sched_loading {
+def get_inference_sched -> list[type[Transform[uni.Module, uni.Module]]] {
+    if _typecheck_sched_loading.get() {
         return [];
     }
-    _typecheck_sched_loading = True;
+    _tok = _typecheck_sched_loading.set(True);
     try {
-        import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
-        return [TypeCheckPass];
+        import from jaclang.compiler.passes.main.type_checker_pass { TypeInferencePass }
+
+        import from jaclang.compiler.type_system.type_evaluator { TypeEvaluator }
+
+        stub_path = os.path.join(
+            os.path.dirname(__file__),
+            '..',
+            'vendor',
+            'typeshed',
+            'stdlib',
+            'builtins.pyi'
+        );
+        if not os.path.exists(stub_path) {
+            return [];
+        }
+        return [TypeInferencePass];
     } except ImportError {
         return [];
     } finally {
-        _typecheck_sched_loading = False;
+        _typecheck_sched_loading.reset(_tok);
     }
 }
 
-"""Full Python code generation schedule.
-
-    Same re-entrancy guard as get_ir_gen_sched: when compiling the
-    pass modules this depends on, falls back to bytecode-only generation.
-    """
-def get_py_code_gen -> list[type[Transform[uni.Module, uni.Module]]] {
-    global _codegen_sched_loading;
-    if _codegen_sched_loading or _ir_sched_loading {
+def get_py_code_gen(
+    native: bool = True
+) -> list[type[Transform[uni.Module, uni.Module]]] {
+    if _codegen_sched_loading.get() or _ir_sched_loading.get() {
         return [PyastGenPass, PyBytecodeGenPass];
     }
-    _codegen_sched_loading = True;
+    _tok = _codegen_sched_loading.set(True);
     try {
         import from jaclang.compiler.passes.ecmascript { EsastGenPass }
         import from jaclang.compiler.passes.main.pyjac_ast_link_pass {
             PyJacAstLinkPass
         }
-        # InteropAnalysis + WalkerEffects were merged into BoundaryAnalysisPass,
-        # which now runs once in the shared front-end (get_boundary_analysis_sched)
-        # rather than here in codegen.
+
         passes: list[type[Transform[uni.Module, uni.Module]]] = [EsastGenPass];
-        import from jaclang.compiler.passes.native { NaIRGenPass, NativeCompilePass }
-        passes.extend([NaIRGenPass, NativeCompilePass]);
+        if native {
+            import from jaclang.compiler.passes.main.rc_facts_pass { RcFactsPass }
+            import from jaclang.compiler.passes.native {
+                NaIRGenPass,
+                NativeCompilePass
+            }
+            passes.extend(
+                expand_with_requirements(
+                    [NaIRGenPass, NativeCompilePass], {'rc-facts': RcFactsPass}
+                )
+            );
+        }
         passes.extend([PyastGenPass, PyJacAstLinkPass, PyBytecodeGenPass]);
         return passes;
     } except ImportError {
         return [PyastGenPass, PyBytecodeGenPass];
     } finally {
-        _codegen_sched_loading = False;
+        _codegen_sched_loading.reset(_tok);
     }
 }
 
-"""Format schedule. If auto_lint=True, includes auto-linting pass.
-
-    Note: Annex modules (.impl.jac, .test.jac) are loaded by the caller
-    (jac_file_formatter) via parse-only, NOT through JacAnnexPass which
-    triggers cascading compilation of the entire import graph.
-    """
 def get_format_sched(
     auto_lint: bool = False
 ) -> list[type[Transform[uni.Module, uni.Module]]] {
-    import from jaclang.compiler.passes.tool.comment_injection_pass {
-        CommentInjectionPass
-    }
+    import from jaclang.compiler.passes.tool.comment_attach_pass { CommentAttachPass }
     import from jaclang.compiler.passes.tool.doc_ir_gen_pass { DocIRGenPass }
     import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacAutoLintPass }
     import from jaclang.compiler.passes.tool.jac_formatter_pass { JacFormatPass }
     if auto_lint {
-        return [JacAutoLintPass, DocIRGenPass, CommentInjectionPass, JacFormatPass];
+        return [CommentAttachPass, JacAutoLintPass, DocIRGenPass, JacFormatPass];
     } else {
-        return [DocIRGenPass, CommentInjectionPass, JacFormatPass];
+        return [CommentAttachPass, DocIRGenPass, JacFormatPass];
     }
 }
 
-"""Lint-only schedule. Runs lint rules for error reporting without formatting.
-
-    Note: Annex modules are loaded by the caller (jac_file_linter) via
-    parse-only to avoid cascading compilation through the import graph.
-    """
 def get_lint_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacAutoLintPass }
     return [JacAutoLintPass];
 }
 
-"""Recursively replace a string in all co_filename fields of marshal bytes.
-
-Used for precompiled bundles: call with (bc, sentinel, real_root) to expand
-sentinel paths at load time, or with (bc, real_root, sentinel) to embed
-sentinel paths at build time.  Returns raw_bc unchanged on any error.
-"""
 def patch_co_filenames_bytes(raw_bc: bytes, find: str, replace: str) -> bytes {
     try {
         import types as _types;
@@ -269,11 +277,10 @@ def patch_co_filenames_bytes(raw_bc: bytes, find: str, replace: str) -> bytes {
     }
 }
 
-"""Tracks and displays progress during first-run compilation of internal modules."""
 obj _SetupProgress {
     has _banner_shown: bool = False,
         _compile_count: int = 0,
-        _seen_files: set[str] by postinit,
+        _seen_files: set[str] postinit,
         _jaclang_root: (str | None) = None;
 
     def postinit -> None;
@@ -286,11 +293,6 @@ obj _SetupProgress {
 
 glob setup_progress = _SetupProgress();
 
-"""Coerce a module to a specific code context by unfolding its target block type.
-
-Unfolds elements from `unfold_type` blocks, keeps `skip_types` blocks as-is,
-and sets `context` on all remaining ContextAwareNode elements.
-"""
 def _coerce_module(
     module: uni.Module,
     unfold_type: type,
@@ -338,7 +340,6 @@ def _coerce_module(
     module.set_kids(nodes=new_kid or [uni.EmptyToken()]);
 }
 
-"""Coerce a .cl.jac module to client context."""
 def _coerce_client_module(module: uni.Module) {
     _coerce_module(
         module,
@@ -349,7 +350,6 @@ def _coerce_client_module(module: uni.Module) {
     );
 }
 
-"""Coerce a .sv.jac module to server context."""
 def _coerce_server_module(module: uni.Module) {
     _coerce_module(
         module,
@@ -359,7 +359,6 @@ def _coerce_server_module(module: uni.Module) {
     );
 }
 
-"""Coerce a .na.jac module to native context."""
 def _coerce_native_module(module: uni.Module) {
     _coerce_module(
         module,
@@ -369,17 +368,14 @@ def _coerce_native_module(module: uni.Module) {
     );
 }
 
-"""Jac Compiler singleton.
-
-    Maintains separate module hub for jaclang.* modules (internal_program)
-    vs user modules (target_program passed to methods).
-    """
 obj JacCompiler {
     with entry {
         _jaclang_root: (str | None) = None;
     }
 
-    has _internal_program: (JacProgram | None) = None;
+    has _internal_program: (JacProgram | None) = None,
+        _internal_bytecode_depth: int = 0;
+
     has internal_program: JacProgram { getter; }
 
     @classmethod
@@ -394,9 +390,14 @@ obj JacCompiler {
         full_target: str, target_program: JacProgram
     ) -> (object | None);
 
+    static def _check_native_abi(layout: any, full_target: str) -> None;
     def get_bytecode(
         full_target: str, target_program: JacProgram
     ) -> (types.CodeType | None);
+
+    def _evict_internal_unit(
+        full_target: str, actual_program: JacProgram, result: uni.Module
+    ) -> None;
 
     def _load_native_from_cache(
         full_target: str,
@@ -416,7 +417,11 @@ obj JacCompiler {
         full_target: str, actual_program: JacProgram, secs: dict[int, bytes]
     ) -> None;
 
-    def _get_precompiled_jir_bytecode(full_target: str) -> (bytes | None);
+    def _get_precompiled_jir_bytecode(
+        full_target: str, allow_unsealed: bool = True
+    ) -> (bytes | None);
+
+    def _sealed_jir_data(full_target: str) -> (tuple[bytes, str] | None);
     def _build_interop_dict(result: uni.Module) -> dict;
     def _deserialize_interop_table(cached_interop: dict[str, any]) -> InteropManifest;
     def parse_str(
@@ -447,16 +452,21 @@ obj JacCompiler {
         cancel_token: (Event | None) = None
     ) -> None;
 
-    """Count codegen-blocking errors attributed to a specific module file."""
     static def _count_module_blocking_errors(
         target_program: JacProgram, mod_path: str
     ) -> int;
 
+    static def _count_module_errors(target_program: JacProgram, mod_path: str) -> int;
+    static def _module_scoped_errors(
+        target_program: JacProgram, mod_path: str
+    ) -> bool;
+
+    static def _scrub_native_artifacts_on_error(
+        target_program: JacProgram, mod: uni.Module
+    ) -> bool;
+
     static def _prepare_tool_program(
-        source_str: str,
-        file_path: str,
-        load_impl_annexes: bool = False,
-        load_test_annexes: bool = False
+        source_str: str, file_path: str
     ) -> tuple[JacProgram, (uni.Module | None)];
 
     static def jac_file_formatter(

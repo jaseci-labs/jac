@@ -1,260 +1,172 @@
-"""Tests for client bundle generation."""
+"""Tests for the core client bundle builder base.
 
-import re;
+The base `ClientBundleBuilder` provides the shared compile-to-JS + manifest
+extraction + caching used by the built-in client framework's Vite/Bun builder.
+Concrete bundling (`_compile_bundle`) is provided by the built-in client
+framework that ships with jaclang core; invoked standalone the base raises,
+since there is a single client pathway (Vite/Bun) and no bare-serve inline
+bundler anymore.
+"""
+
 import from pathlib { Path }
 import from jaclang { JacRuntime as Jac }
+import from jaclang.runtimelib.client_bundle { ClientBundleBuilder, ClientBundleError }
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures");
 
-test "build bundle for module" {
+test "base builder compiles a client module to JS and extracts its manifest surface" {
     (module, ) = Jac.jac_import("client_app", FIXTURES);
-    builder = Jac.get_client_bundle_builder();
-    bundle = builder.build(module);
-
-    assert "function __jacJsx" in bundle.code;
-    # Check that registration mechanism is present
-    assert "moduleFunctions[funcName] = funcRef;" in bundle.code;
-    assert "scope[funcName] = funcRef;" in bundle.code;
-    assert "moduleGlobals[gName] = existing;" in bundle.code;
-    assert "scope[gName] = defaultValue;" in bundle.code;
-    # Check that actual client functions and globals are defined
-    assert "function client_page()" in bundle.code;
-    assert "class ButtonProps" in bundle.code;
-    assert 'let API_LABEL = "Runtime Test";' in bundle.code;
-    # Check hydration logic is present
-    assert "__jacHydrateFromDom" in bundle.code;
-    assert "__jacEnsureHydration" in bundle.code;
-    assert 'getElementById("__jac_init__")' in bundle.code;
-    assert 'getElementById("__jac_root")' in bundle.code;
-    # Check globals iteration logic
-    assert "for (const gName of __objectKeys(payloadGlobals))" in bundle.code;
-    assert "client_page" in bundle.client_functions;
-    assert "ButtonProps" in bundle.client_functions;
-    assert "API_LABEL" in bundle.client_globals;
-    assert len(bundle.hash) > 10;
-
-    cached = builder.build(module);
-    assert bundle.hash == cached.hash;
-    assert bundle.code == cached.code;
+    builder = ClientBundleBuilder();
+    source_path = Path(module.__file__.replace(".py", ".jac")).resolve();
+    (js, mod) = builder._compile_to_js(source_path);
+    assert js;  # ES output was generated
+    manifest = mod.gen.client_manifest if mod else None;
+    exports = builder._extract_client_exports(manifest);
+    assert isinstance(exports, list);
+    globals_map = builder._extract_client_globals(manifest, module);
+    assert isinstance(globals_map, dict);
 }
 
-test "build bundle with cl import" {
-    (module, ) = Jac.jac_import("client_app_with_import", FIXTURES);
-    builder = Jac.get_client_bundle_builder();
-    bundle = builder.build(module);
-
-    # Check that client_runtime functions are included in the bundle
-    assert "function renderJsxTree" in bundle.code;
-    assert "function jacLogin" in bundle.code;
-
-    # Check that our client code is present
-    assert "function test_page()" in bundle.code;
-    assert 'let APP_TITLE = "Import Test App";' in bundle.code;
-
-    # Verify the @jac/runtime comment is present (inlined by bundler)
-    assert "// @jac/runtime" in bundle.code;
-
-    # IMPORTANT: Ensure no ES6 import statements are in the bundle
-    assert "import {" not in bundle.code;
-    assert 'from "@jac/runtime"' not in bundle.code;
-
-    # Check that client functions are registered
-    assert "test_page" in bundle.client_functions;
-    assert "APP_TITLE" in bundle.client_globals;
-
-    # Ensure the bundle has a valid hash
-    assert len(bundle.hash) > 10;
-}
-
-test "build bundle with relative import" {
-    (module, ) = Jac.jac_import("client_app_with_relative_import", FIXTURES);
-    builder = Jac.get_client_bundle_builder();
-    bundle = builder.build(module);
-
-    # Check that the imported module is included
-    assert "// Imported .jac module: .client_ui_components" in bundle.code;
-    assert "function Button(" in bundle.code;
-    assert "function Card(" in bundle.code;
-    assert "function handleClick(" in bundle.code;
-
-    # Check that main_page is present
-    assert "function main_page()" in bundle.code;
-
-    # Check that transitive imports are included
-    assert "// Imported .jac module: @jac/runtime" in bundle.code;
-    assert "function createState(" in bundle.code;
-    assert "function navigate(" in bundle.code;
-
-    # IMPORTANT: Ensure NO import statements remain
-    assert "import {" not in bundle.code;
-    assert "from './" not in bundle.code;
-    assert 'from "./' not in bundle.code;
-
-    # Check that all modules are bundled in the correct order
-    client_runtime_pos = bundle.code.find("// Imported .jac module: @jac/runtime");
-    ui_components_pos = bundle.code.find(
-        "// Imported .jac module: .client_ui_components"
-    );
-    main_page_pos = bundle.code.find("function main_page()");
-
-    assert ui_components_pos > client_runtime_pos;
-    assert main_page_pos > ui_components_pos;
-
-    # Verify client functions are registered
-    assert "main_page" in bundle.client_functions;
-}
-
-test "no import statements in bundle" {
-    (module, ) = Jac.jac_import("client_app_with_relative_import", FIXTURES);
-    builder = Jac.get_client_bundle_builder();
-    bundle = builder.build(module);
-
-    # Split bundle into lines and check for any import statements
-    lines = bundle.code.split("\n");
-    import_lines = [
-        line
-        for line in lines
-        if line.strip().startswith("import ") and " from " in line
-    ];
-
-    # Should be exactly 0 import statements
-    assert len(import_lines) == 0 , f"Found {len(
-        import_lines
-    )} import statement(s) in bundle: {import_lines[:3]}";
-
-    # Also verify using regex pattern
-    import_pattern = r'^\s*import\s+.*\s+from\s+["\'].*["\'];?\s*$';
-    import_matches = [
-        line
-        for line in lines
-        if re.match(import_pattern, line)
-    ];
-    assert len(import_matches) == 0 , f"Found import statements matching pattern: {import_matches[:3]}";
-}
-
-test "transitive imports included" {
-    (module, ) = Jac.jac_import("client_app_with_relative_import", FIXTURES);
-    builder = Jac.get_client_bundle_builder();
-    bundle = builder.build(module);
-
-    # Check that all three modules are present
-    assert "// Imported .jac module: @jac/runtime" in bundle.code;
-    assert "// Imported .jac module: .client_ui_components" in bundle.code;
-
-    # Verify runtime functions are defined
-    assert "function createState(" in bundle.code;
-    assert "function navigate(" in bundle.code;
-
-    # Verify that createState is actually callable (definition before usage)
-    create_state_def_pos = bundle.code.find("function createState(");
-    create_state_usage_pos = bundle.code.find("createState(");
-    assert create_state_def_pos < create_state_usage_pos , "createState must be defined before it's used";
-}
-
-test "bundle size reasonable" {
-    # Simple module without imports
-    (simple_module, ) = Jac.jac_import("client_app", FIXTURES);
-    builder = Jac.get_client_bundle_builder();
-    simple_bundle = builder.build(simple_module);
-
-    # Module with imports
-    (import_module, ) = Jac.jac_import("client_app_with_relative_import", FIXTURES);
-    import_bundle = builder.build(import_module);
-
-    # Bundle with imports should be larger
-    assert len(import_bundle.code) > len(simple_bundle.code) , "Bundle with imports should be larger than simple bundle";
-
-    # But not unreasonably large (should be less than 10x)
-    assert len(import_bundle.code) < len(simple_bundle.code) * 10 , "Bundle should not be unreasonably large";
-}
-
-test "import path conversion" {
-    import from jaclang.jac0core.modresolver { convert_to_js_import_path }
-
-    # Test single dot (current directory)
-    assert convert_to_js_import_path(".module") == "./module.js";
-
-    # Test double dot (parent directory)
-    assert convert_to_js_import_path("..module") == "../module.js";
-
-    # Test triple dot (grandparent directory)
-    assert convert_to_js_import_path("...module") == "../../module.js";
-
-    # Test absolute import (no dots)
-    assert convert_to_js_import_path("module") == "module";
-}
-
-test "cl block functions exported" {
-    (module, ) = Jac.jac_import("client_ui_components", FIXTURES);
-    builder = Jac.get_client_bundle_builder();
-    bundle = builder.build(module);
-
-    # Functions defined inside cl block should be in client_functions
-    assert "Button" in bundle.client_functions;
-    assert "Card" in bundle.client_functions;
-    assert "handleClick" in bundle.client_functions;
-
-    # Check that functions are actually defined in the bundle
-    assert "function Button(" in bundle.code;
-    assert "function Card(" in bundle.code;
-    assert "function handleClick(" in bundle.code;
-}
-
-test "bundle caching with imports" {
-    (module, ) = Jac.jac_import("client_app_with_relative_import", FIXTURES);
-    builder = Jac.get_client_bundle_builder();
-
-    # Build bundle first time
-    bundle1 = builder.build(module);
-
-    # Build bundle second time (should use cache)
-    bundle2 = builder.build(module);
-
-    # Should be identical
-    assert bundle1.hash == bundle2.hash;
-    assert bundle1.code == bundle2.code;
-    assert bundle1.client_functions == bundle2.client_functions;
-
-    # Force rebuild
-    bundle3 = builder.build(module, force=True);
-
-    # Should still be identical
-    assert bundle1.hash == bundle3.hash;
-    assert bundle1.code == bundle3.code;
-}
-
-# =============================================================================
-# Windows: JS generation and path normalization
-# =============================================================================
-test "JS bundle generated not empty on Windows" {
-    # Windows may skip EsastGenPass during initial compilation due to re-entrancy guards.
-    # This test verifies JS code is actually generated (not empty).
+test "base builder bundling requires the built-in client framework" {
     (module, ) = Jac.jac_import("client_app", FIXTURES);
-    builder = Jac.get_client_bundle_builder();
-    bundle = builder.build(module);
-
-    # Bundle must have actual JS code, not be empty
-    assert len(bundle.code) > 100 , "JS bundle is empty or too small - EsastGenPass may have been skipped";
-    assert "function" in bundle.code , "No functions in JS bundle - generation failed";
+    builder = ClientBundleBuilder();
+    source_path = Path(module.__file__.replace(".py", ".jac")).resolve();
+    raised = False;
+    try {
+        builder._compile_bundle(module, source_path);
+    } except ClientBundleError as err {
+        raised = True;
+        assert "built-in client framework" in str(err);
+    }
+    assert raised , "base _compile_bundle should raise ClientBundleError without the plugin";
 }
 
-test "no backslashes in JS import paths" {
-    # Windows backslashes in JS import paths break Vite builds.
-    # All import paths must use forward slashes.
-    (module, ) = Jac.jac_import("client_app_with_relative_import", FIXTURES);
-    builder = Jac.get_client_bundle_builder();
-    bundle = builder.build(module);
+test "dev vite config registers the port reporter; build config does not" {
+    import tempfile;
+    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
+    with tempfile.TemporaryDirectory() as tmp {
+        bundler = ViteBundler(Path(tmp));
+        entry = Path(tmp) / "main.js";
+        dev_config = bundler.create_vite_config(entry, is_dev=True);
+        dev_content = dev_config.read_text();
+        # The plugin writes the bound port to .dev-port on "listening" —
+        # the jac CLI reads it instead of parsing Vite's stdout.
+        assert "jac-port-reporter" in dev_content;
+        assert ".dev-port" in dev_content;
+        # Build errors surface through Vite's native overlay in dev mode
+        assert "jac-build-error-overlay" in dev_content;
+        assert ".jac-build-error.json" in dev_content;
+        # Force-reload plugin: rescues export-set edits that Fast Refresh would
+        # otherwise swallow, reloading (jacTriggered) when the jac dev server
+        # bumps .jac-force-reload
+        assert "jacForceReload()," in dev_content;
+        assert ".jac-force-reload" in dev_content;
+        assert 'type: "full-reload", path: "*", jacTriggered: true' in dev_content;
+        build_content = bundler.create_vite_config(entry, is_dev=False).read_text();
+        assert "jac-port-reporter" not in build_content;
+        assert "jac-build-error-overlay" not in build_content;
+        assert "jacForceReload" not in build_content;
+    }
+}
 
-    # Check that no backslashes appear in import/from statements or module markers
-    lines = bundle.code.split("\n");
-    for line in lines {
-        # Check import/from statements
-        if "from " in line or "import " in line {
-            assert "\\" not in line , f"Backslash in JS import path breaks Vite: {line}";
-        }
-        # Check module comment markers (e.g., "// Imported .jac module: .client_ui_components")
-        if "// Imported .jac module:" in line {
-            assert "\\" not in line , f"Backslash in module marker breaks paths: {line}";
-        }
+test "dev vite config registers error reporter; overlay is gated to module-load errors only" {
+    import tempfile;
+    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
+    with tempfile.TemporaryDirectory() as tmp {
+        bundler = ViteBundler(Path(tmp));
+        entry = Path(tmp) / "main.js";
+        dev_cfg = bundler.create_vite_config(entry, is_dev=True);
+        dev_content = dev_cfg.read_text();
+        assert "jac-error-reporter" in dev_content;
+        # Overlay must only fire for module-load failures, not every runtime error
+        assert 'phase === "load"' in dev_content;
+        build_cfg = bundler.create_vite_config(entry, is_dev=False);
+        build_content = build_cfg.read_text();
+        assert "jac-error-reporter" not in build_content;
+    }
+}
+
+test "dev index.html loads entry via dynamic import and tags load errors with phase flag" {
+    import tempfile;
+    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
+    with tempfile.TemporaryDirectory() as tmp {
+        bundler = ViteBundler(Path(tmp));
+        bundler._ensure_dev_index_html(Path(tmp));
+        content = (Path(tmp) / "index.html").read_text();
+        # Entry must load via dynamic import so the error handler is installed first
+        assert 'import("/compiled/_entry.js")' in content;
+        assert '<script type="module" src="/compiled/_entry.js">' not in content;
+        assert 'import.meta.hot' in content;
+        assert 'window.addEventListener("error"' in content;
+        assert 'window.addEventListener("unhandledrejection"' in content;
+        # Load errors must carry the phase flag so the overlay is not triggered
+        # for unrelated runtime errors that fire after the app has loaded
+        assert 'phase: "load"' in content;
+        assert '.catch(function() {})' in content;
+    }
+}
+
+test "dev config wires fast refresh and index.html installs the hook before the entry" {
+    import tempfile;
+    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
+    with tempfile.TemporaryDirectory() as tmp {
+        bundler = ViteBundler(Path(tmp));
+        entry = Path(tmp) / "main.js";
+        dev_cfg = bundler.create_vite_config(entry, is_dev=True);
+        dev_content = dev_cfg.read_text();
+        assert 'import jacFastRefresh from "./jac-fast-refresh.js"' in dev_content;
+        assert "jacFastRefresh()," in dev_content;
+        plugin_js = (dev_cfg.parent / "jac-fast-refresh.js").read_text();
+        # Boundary mirrors @vitejs/plugin-react: register exports, self-accept,
+        # invalidate (full reload) when the new exports are not swap-safe
+        assert "registerExportsForReactRefresh" in plugin_js;
+        assert "import.meta.hot.accept" in plugin_js;
+        assert "validateRefreshBoundaryAndEnqueueUpdate" in plugin_js;
+        assert "import.meta.hot.invalidate" in plugin_js;
+        # Only modules the compiler stamped as component-only are instrumented;
+        # unstamped modules (globs, helpers, router wiring) keep full reload
+        assert '/*jac:refresh-boundary*/' in plugin_js;
+        bundler._ensure_dev_index_html(Path(tmp));
+        html = (Path(tmp) / "index.html").read_text();
+        assert "injectIntoGlobalHook" in html;
+        # The refresh hook must install before React loads with the app entry
+        assert html.index('"/@react-refresh"') < html.index(
+            'import("/compiled/_entry.js")'
+        );
+        build_content = bundler.create_vite_config(entry, is_dev=False).read_text();
+        assert "jacFastRefresh" not in build_content;
+    }
+}
+
+test "dev config wires the layered dev-status bridge; build config does not" {
+    import tempfile;
+    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
+    with tempfile.TemporaryDirectory() as tmp {
+        bundler = ViteBundler(Path(tmp));
+        entry = Path(tmp) / "main.js";
+        dev_cfg = bundler.create_vite_config(entry, is_dev=True);
+        dev_content = dev_cfg.read_text();
+        assert 'import jacDevStatus, { reportClientLoad } from "./jac-dev-status.js"' in dev_content;
+        assert "jacDevStatus()," in dev_content;
+        # Browser load-phase failures feed the client slot via the reporter
+        assert "reportClientLoad(data)" in dev_content;
+        plugin_js = (dev_cfg.parent / "jac-dev-status.js").read_text();
+        # Vite slot: set from Vite's own error payloads, cleared on recovery
+        # payloads; jac-layer payloads are excluded (tracked in-process)
+        assert '".jac-dev-status.json"' in plugin_js;
+        assert '.startsWith("jac")' in plugin_js;
+        assert '"full-reload"' in plugin_js;
+        # Jac-recovery reloads must not clear a still-broken Vite layer, and
+        # clearing needs a connected client to re-arm a persisting error
+        assert "!payload.jacTriggered" in plugin_js;
+        assert "server.ws.clients.size > 0" in plugin_js;
+        assert "jacTriggered: true" in dev_content;
+        # Client slot clears only on the browser's clean-load beacon
+        assert '"jac:client-ready"' in plugin_js;
+        bundler._ensure_dev_index_html(Path(tmp));
+        html = (Path(tmp) / "index.html").read_text();
+        assert 'import.meta.hot.send("jac:client-ready")' in html;
+        build_content = bundler.create_vite_config(entry, is_dev=False).read_text();
+        assert "jacDevStatus" not in build_content;
     }
 }

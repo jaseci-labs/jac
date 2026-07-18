@@ -1,14 +1,13 @@
-"""REST API Server for Jac Programs."""
 import asyncio;
 import dataclasses;
 import hashlib;
-import html;
 import inspect;
 import json;
 import os;
 import secrets;
+import sqlite3;
+import threading;
 import from collections.abc { Callable }
-import from contextlib { suppress }
 import from http.server { BaseHTTPRequestHandler, HTTPServer }
 import from inspect { iscoroutine, isgenerator }
 import from pathlib { Path }
@@ -23,13 +22,7 @@ import from typing {
 import from urllib.parse { parse_qs, urlparse }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
 import from jaclang.runtimelib.context { CallState, ExecutionContext }
-import from jaclang.runtimelib.transport {
-    BaseTransport,
-    TransportRequest,
-    TransportResponse,
-    HTTPTransport,
-    Meta
-}
+import from jaclang.runtimelib.transport { TransportResponse, HTTPTransport, Meta }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.project.config { get_config }
 import from jaclang.runtimelib.scheduler { Scheduler }
@@ -41,36 +34,11 @@ glob JsonValue: TypeAlias = None | str | int | float | bool | list['JsonValue'] 
      ],
      StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 500, 503)];
 
-"""Base response container (HTTP-specific, kept for backward compatibility)."""
-obj Response {
-    has status: StatusCode,
-        body: JsonValue,
-        content_type: str = 'application/json';
-}
-
-"""User authentication data."""
-obj UserData {
-    has username: str,
-        token: str,
-        root_id: str;
-}
-
-"""Manage users and their persistent roots (SQLite-backed).
-
-The `_lock` serializes access to `_conn`. Under the async server we now
-dispatch UserManager reads through `asyncio.to_thread`, which means
-multiple worker threads can hit the same sqlite3 Connection object
-concurrently. Even with `check_same_thread=False`, Python's sqlite3
-module can raise `InterfaceError: bad parameter or other API misuse`
-when cursor state is touched concurrently. The lock serializes cursor
-creation so readers don't trample each other. Long-term, a native async
-driver (aiosqlite) or per-thread connection pool would obviate this.
-"""
 obj UserManager {
     has base_path: str,
-        _db_path: str by postinit,
-        _conn: any by postinit,
-        _lock: any by postinit;
+        _db_path: str postinit,
+        _conn: (sqlite3.Connection | None) postinit,
+        _lock: threading.RLock postinit;
 
     def postinit -> None;
     def _ensure_connection -> None;
@@ -78,6 +46,7 @@ obj UserManager {
     def authenticate(username: str, password: str) -> (dict[(str, str)] | None);
     def validate_token(token: str) -> (str | None);
     def get_root_id(username: str) -> (str | None);
+    def reset_root(username: str) -> (str | None);
     def get_user(username: str) -> (dict[(str, str)] | None);
     def user_exists(username: str) -> bool;
     def update_username(current_username: str, new_username: str) -> dict[str, str];
@@ -86,27 +55,9 @@ obj UserManager {
     ) -> dict[str, str];
 
     def close -> None;
-    # Async hot-path mirror: `get_root_id` touches a blocking SQLite read
-    # on every request and runs under async handlers, so offload it.
     async def aget_root_id(username: str) -> (str | None);
 }
 
-"""Manages execution contexts for user operations.
-
-Exposes two execution surfaces per call kind:
-
-- `*_sync` variants: for sync user code (functions / walkers without
-  `__jac_async__`). Run the user code via `asyncio.to_thread` so blocking
-  IO inside it (sleep, requests, byllm, SQLite writes) does not stall the
-  event loop. Surrounding context setup, report collection, and commit
-  stay on the loop.
-- `*_async` variants: for async user code. `await` the coroutine on the
-  loop directly — no thread hop.
-
-`spawn_walker` and `execute_function` remain as thin dispatchers that pick
-the right variant based on walker metadata / function kind. They are
-preserved for backwards compatibility with external callers (jac-scale).
-"""
 obj ExecutionManager {
     has base_path: str,
         user_manager: UserManager;
@@ -141,7 +92,6 @@ obj ExecutionManager {
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 }
 
-"""Introspects and caches module metadata."""
 obj ModuleIntrospector {
     has module_name: str,
         base_path: (str | None),
@@ -152,7 +102,7 @@ obj ModuleIntrospector {
         _client_manifest: dict[(str, Any)] = {},
         _bundle: any = None,
         _bundle_error: (str | None) = None,
-        _bundle_builder: any by postinit,
+        _bundle_builder: any postinit,
         _function_access: dict[(str, bool)] = {},
         _walker_access: dict[(str, bool)] = {};
 
@@ -161,6 +111,7 @@ obj ModuleIntrospector {
     def _load_manifest -> None;
     def _extract_access_levels -> None;
     def _collect_cross_boundary_endpoints -> None;
+    def _register_sealed_bindings(sm: dict[str, any], img_root: str) -> None;
     def _fill_endpoint_effect_defaults -> None;
     def _collect_functions -> dict[str, Callable[(..., Any)]];
     def _collect_walkers -> dict[str, type[WalkerArchetype]];
@@ -168,6 +119,7 @@ obj ModuleIntrospector {
     def get_functions -> dict[str, Callable[(..., Any)]];
     def get_walkers -> dict[str, type[WalkerArchetype]];
     def get_client_functions -> dict[str, Callable[(..., Any)]];
+    def resolve_root_app(configured: str = "") -> str;
     def introspect_callable(func: Callable[(..., Any)]) -> dict[str, any];
     def introspect_walker(walker_cls: type[WalkerArchetype]) -> dict[str, any];
     def ensure_bundle -> str;
@@ -177,10 +129,8 @@ obj ModuleIntrospector {
 
     def is_auth_required_for_function(func_name: str) -> bool;
     def is_auth_required_for_walker(walker_name: str) -> bool;
-    def _collect_client_globals -> dict[str, any];
 }
 
-"""Build and send HTTP responses."""
 obj ResponseBuilder {
     static def send_json(
         handler: BaseHTTPRequestHandler,
@@ -198,14 +148,6 @@ obj ResponseBuilder {
     static def _add_custom_headers(handler: BaseHTTPRequestHandler) -> None;
 }
 
-"""Base route handler."""
-obj RouteHandler {
-    has introspector: ModuleIntrospector,
-        execution_manager: ExecutionManager,
-        user_manager: UserManager;
-}
-
-"""Handle authentication routes."""
 obj AuthHandler {
     has introspector: ModuleIntrospector,
         execution_manager: ExecutionManager,
@@ -224,7 +166,6 @@ obj AuthHandler {
     def get_user_info(token: str) -> TransportResponse;
 }
 
-"""Handle introspection routes."""
 obj IntrospectionHandler {
     has introspector: ModuleIntrospector,
         execution_manager: ExecutionManager,
@@ -236,7 +177,6 @@ obj IntrospectionHandler {
     def get_walker_info(name: str) -> TransportResponse;
 }
 
-"""Handle execution routes."""
 obj ExecutionHandler {
     has introspector: ModuleIntrospector,
         execution_manager: ExecutionManager,
@@ -251,28 +191,19 @@ obj ExecutionHandler {
     ) -> TransportResponse;
 }
 
-"""REST API Server for Jac programs."""
 obj JacAPIServer {
     has module_name: str,
         port: int = 8000,
         base_path: str = "",
-        # True when this instance was spawned by another consumer's
-        # eager sv-to-sv spawn pass. Siblings skip their own eager-spawn
-        # step to avoid a cold-start race where multiple consumers each
-        # try to bring up the same transitive provider in parallel. The
-        # parent's spawn pass is the sole source of spawns; siblings
-        # fall back to the normal lazy _ensure_available path for
-        # anything the parent missed.
         is_sv_sibling: bool = False,
-        user_manager: UserManager by postinit,
-        execution_manager: ExecutionManager by postinit,
-        introspector: ModuleIntrospector by postinit,
-        auth_handler: AuthHandler by postinit,
-        introspection_handler: IntrospectionHandler by postinit,
-        execution_handler: ExecutionHandler by postinit,
-        transport: BaseTransport by postinit,
-        server: any by postinit,
-        scheduler: Scheduler by postinit;
+        user_manager: UserManager postinit,
+        execution_manager: ExecutionManager postinit,
+        introspector: ModuleIntrospector postinit,
+        auth_handler: AuthHandler postinit,
+        introspection_handler: IntrospectionHandler postinit,
+        execution_handler: ExecutionHandler postinit,
+        server: (HTTPServer | None) postinit,
+        scheduler: Scheduler postinit;
 
     obj RestSpecs {
         has method: str = "",
@@ -289,13 +220,6 @@ obj JacAPIServer {
 
     def get_functions -> dict[str, Callable[(..., Any)]];
     def get_walkers -> dict[str, type[WalkerArchetype]];
-    def introspect_callable(func: Callable[(..., Any)]) -> dict[str, any];
-    def introspect_walker(walker_cls: type[WalkerArchetype]) -> dict[str, any];
-    def render_client_page(
-        function_name: str, args: dict[(str, Any)], username: str
-    ) -> dict[str, any];
-
-    def get_client_bundle_code -> str;
     def print_endpoint_docs -> None;
     def _ensure_sv_siblings -> None;
     def start(
@@ -305,5 +229,4 @@ obj JacAPIServer {
     ) -> None;
 }
 
-"""Print comprehensive documentation for all endpoints that would be generated."""
 def print_endpoint_docs(server: JacAPIServer) -> None;

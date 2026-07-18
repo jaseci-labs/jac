@@ -1,0 +1,176 @@
+import json;
+
+
+def _jacpyembed_import_block -> str {
+    return (
+        "import from jacpyembed {\n"
+        "    def jac_engine_boot() -> i32;\n"
+        "    def jpy_Py_Finalize() -> None;\n"
+        "    def jpy_PyRun_SimpleString(cmd: str) -> i32;\n"
+        "    def jpy_PyImport_AddModule(name: str) -> int;\n"
+        "    def jpy_PyModule_GetDict(module: int) -> int;\n"
+        "    def jpy_PyRun_String(s: str, start: i32, g: int, l: int) -> int;\n"
+        "    def jpy_PyLong_AsLong(o: int) -> int;\n"
+        "    def jpy_PyEval_SaveThread() -> int;\n"
+        "    def jpy_PyEval_RestoreThread(s: int) -> None;\n"
+        "    def jpy_PyGILState_Ensure() -> int;\n"
+        "    def jpy_PyGILState_Release(state: int) -> None;\n"
+        "    def jpy_PyObject_CallOneArg(fn: int, arg: int) -> int;\n"
+        "    def jpy_PyUnicode_FromString(s: str) -> int;\n"
+        "    def jpy_PyUnicode_AsUTF8(pyobj: int) -> str;\n"
+        "    def jpy_Py_DecRef(pyobj: int) -> None;\n"
+        "}\n"
+    );
+}
+
+
+def _host_boot_py(
+    app_name: str,
+    mode: str,
+    entry_rel: str = "",
+    dispatch_timeout_s: float = 30.0,
+    dispatch_max_queue: int = 128,
+    dispatch_debug: bool = False,
+    plugin_configs: dict = None
+) -> str {
+    config = {
+        "app_name": app_name,
+        "mode": mode,
+        "entry_rel": entry_rel,
+        "dispatch": {
+            "timeout_s": dispatch_timeout_s,
+            "max_queue": dispatch_max_queue,
+            "debug": dispatch_debug
+        },
+        "plugins": plugin_configs if plugin_configs is not None else {}
+    };
+    config_literal = json.dumps(
+        json.dumps(config, ensure_ascii=False), ensure_ascii=False
+    );
+    return (
+        "from jaclang.runtimelib.client.targets.desktop.native import host_boot\n"
+        f"_ctx = host_boot.boot({config_literal})\n"
+    );
+}
+
+
+def _generate_host_source(
+    title: str,
+    width: int,
+    height: int,
+    app_name: str,
+    entry_rel: str = "",
+    dispatch_timeout_s: float = 30.0,
+    dispatch_max_queue: int = 128,
+    dispatch_debug: bool = False,
+    plugin_configs: dict = None
+) -> str {
+    boot_py = _host_boot_py(
+        app_name,
+        "webview",
+        entry_rel,
+        dispatch_timeout_s,
+        dispatch_max_queue,
+        dispatch_debug,
+        plugin_configs
+    );
+
+    bootstrap_js = (
+        "(function(){try{"
+        "window.__JAC_DESKTOP__=true;window.__JAC_BROKER__='/__jac';"
+        "window.__JAC_NATIVE__=true;"
+        "}catch(e){}})();"
+    );
+
+    boot_error_html = (
+        "<!doctype html><html><head><meta charset=\"utf-8\">"
+        "<title>Backend failed to start</title><style>"
+        "body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:0;"
+        "display:flex;align-items:center;justify-content:center;height:100vh;"
+        "background:#0b0f17;color:#e6edf3}"
+        ".card{max-width:34rem;padding:2rem;text-align:center}"
+        "h1{font-size:1.3rem;margin:0 0 .75rem}"
+        "p{color:#8b949e;line-height:1.55;margin:.5rem 0}"
+        "code{color:#d29922;font-family:ui-monospace,monospace}"
+        "</style></head><body><div class=\"card\">"
+        "<h1>⚠️ The app backend failed to start</h1>"
+        "<p>The in-process server could not be initialized, so the app cannot "
+        "run. The full error was written to the terminal / log output.</p>"
+        "<p>Resolve the reported issue and restart the app.</p>"
+        "</div></body></html>"
+    );
+    return (
+        '"""Generated native desktop host - do not edit (jac-desktop)."""\n'
+        "import from webview { def webview_create(debug: i32, window: int) -> int; }\n"
+        "import from webview { Webview, respond, HINT_NONE, LAST_WEBVIEW_HANDLE, run_main_loop }\n" + _jacpyembed_import_block() + "glob PY_EVAL: i32 = 258;\n"
+        f"glob BOOT_PY: str = {json.dumps(boot_py, ensure_ascii=False)};\n"
+        f"glob BOOTSTRAP_JS: str = {json.dumps(bootstrap_js, ensure_ascii=False)};\n"
+        f"glob BOOT_ERROR_HTML: str = {json.dumps(
+            boot_error_html, ensure_ascii=False
+        )};\n"
+        "glob _PH_DISPATCH: int = 0;\n"
+        "def _jac_invoke_handler(id: int, req: int, wv_handle: int) {\n"
+        "    gstate = jpy_PyGILState_Ensure();\n"
+        "    py_req = jpy_PyUnicode_FromString(req as str);\n"
+        "    py_result = jpy_PyObject_CallOneArg(_PH_DISPATCH, py_req);\n"
+        "    if py_result == 0 {\n"
+        "        jpy_Py_DecRef(py_req);\n"
+        "        jpy_PyGILState_Release(gstate);\n"
+        "        respond(\n"
+        "            wv_handle, id, \"{\\\"ok\\\":false,\\\"error\\\":{\\\"code\\\":\\\"DISPATCH_CRASHED\\\"}}\"\n"
+        "        );\n"
+        "        return;\n"
+        "    }\n"
+        "    result_str = jpy_PyUnicode_AsUTF8(py_result);\n"
+        "    jpy_Py_DecRef(py_req);\n"
+        "    respond(wv_handle, id, result_str);\n"
+        "    jpy_Py_DecRef(py_result);\n"
+        "    jpy_PyGILState_Release(gstate);\n"
+        "}\n"
+        "def _stash_wv_in_python(h: int) {\n"
+        "    jpy_PyRun_SimpleString(f\"_ctx.setup_webview({h})\");\n"
+        "}\n"
+        "with entry {\n"
+        "    engine_rc: i32 = jac_engine_boot();\n"
+        "    boot_rc: i32 = -1;\n"
+        "    main_mod: int = 0;\n"
+        "    d: int = 0;\n"
+        "    url = \"\";\n"
+        "    if engine_rc == 0 {\n"
+        "        boot_rc = jpy_PyRun_SimpleString(BOOT_PY);\n"
+        "    }\n"
+        "    if engine_rc == 0 and boot_rc == 0 {\n"
+        "        main_mod = jpy_PyImport_AddModule(\"__main__\");\n"
+        "        d = jpy_PyModule_GetDict(main_mod);\n"
+        "        _PH_DISPATCH = jpy_PyRun_String(\"_ctx.dispatch\", PY_EVAL, d, d);\n"
+        "        port = jpy_PyLong_AsLong(jpy_PyRun_String(\"_ctx.port\", PY_EVAL, d, d));\n"
+        "        dev_port = jpy_PyLong_AsLong(jpy_PyRun_String(\"_ctx.dev_port\", PY_EVAL, d, d));\n"
+        "        target_port = dev_port if dev_port > 0 else port;\n"
+        "        url = f\"http://127.0.0.1:{target_port}/\";\n"
+        "    }\n"
+        "    _wv_raw = webview_create(0, 0);\n"
+        "    LAST_WEBVIEW_HANDLE = _wv_raw;\n"
+        "    wv = Webview(handle=_wv_raw);\n"
+        f"    wv.title({json.dumps(title, ensure_ascii=False)});\n"
+        f"    wv.size({width}, {height}, HINT_NONE);\n"
+        "    wv.on_load(BOOTSTRAP_JS);\n"
+        "    wv.bind(\"__jac_invoke\", _jac_invoke_handler);\n"
+        "    healthy: bool = engine_rc == 0 and boot_rc == 0;\n"
+        "    if healthy {\n"
+        "        _stash_wv_in_python(_wv_raw);\n"
+        "        wv.navigate(url);\n"
+        "    } else {\n"
+        "        wv.html(BOOT_ERROR_HTML);\n"
+        "    }\n"
+        "    if engine_rc == 0 {\n"
+        "        ts = jpy_PyEval_SaveThread();\n"
+        "        run_main_loop();\n"
+        "        jpy_PyEval_RestoreThread(ts);\n"
+        "        jpy_PyRun_SimpleString(\"from jaclang.runtimelib.client.targets.desktop.native import inprocess_dispatch; inprocess_dispatch.shutdown()\");\n"
+        "        jpy_Py_Finalize();\n"
+        "    } else {\n"
+        "        run_main_loop();\n"
+        "    }\n"
+        "}\n"
+    );
+}

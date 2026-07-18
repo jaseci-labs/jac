@@ -1,12 +1,3 @@
-"""JavaScript runtime object for Jac primitive operations.
-
-Provides the _jac runtime that bridges Python-like primitive methods
-to their JavaScript implementations. Organized by type namespace.
-
-Injected as `const _jac = <this object>;` into generated JS modules
-that reference _jac.* calls from the primitive emitters.
-"""
-
 glob JAC_RUNTIME_JS_OBJECT: str = r"""{
   int: {
     bit_length(n) {
@@ -341,7 +332,8 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
         let j = s.length;
         while (j > 0 && chars.indexOf(s[j - 1]) !== -1) j--;
         return s.slice(0, j);
-      }
+      },
+      join: (s, parts) => Array.from(parts, x => String(x)).join(s)
     },
     _list: {
       append: (a, x) => { a.push(x); return null; },
@@ -1080,6 +1072,14 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
     }
   },
 
+  // Builtin types as first-class values -- `map(int, xs)`, `key=str`,
+  // `f = int`, `[str, int]`.  In Python `int` is a single object playing two
+  // roles, so it lowers to a single object here too: a callable whose body is
+  // generated from the same emitters the direct-call path uses (so
+  // `f = int; f(x)` can never drift from `int(x)`), carrying the
+  // `__jac_type__` tag that isinstance/issubclass compare against.
+  types: __JAC_TYPES_RUNTIME__,
+
   builtin: {
     round(n, ndigits) {
       if (ndigits === undefined) return Math.round(n);
@@ -1118,7 +1118,10 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
       return result;
     },
     map(fn, ...iterables) {
-      if (iterables.length === 1) return [...iterables[0]].map(fn);
+      // Python hands the callback exactly one element per iterable, while JS's
+      // `Array.prototype.map` would also hand it (index, array) -- which a
+      // two-arity callable like `int(x, base)` reads as a radix.
+      if (iterables.length === 1) return [...iterables[0]].map((v) => fn(v));
       const arrays = iterables.map(it => [...it]);
       const len = Math.min(...arrays.map(a => a.length));
       const result = [];
@@ -1128,9 +1131,65 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
       return result;
     },
     filter(fn, iterable) {
-      return [...iterable].filter(fn || (x => x));
+      return [...iterable].filter((v) => fn ? fn(v) : v);
+    },
+    // The Python type of a builtin-type value, as a tag string.  A builtin type
+    // reaches classinfo position in either of the two spellings the compiler
+    // emits: the runtime type object (`_jac.types.int`, which carries the tag)
+    // or the bare tag itself (an erased annotation, or `_typename` output).
+    _typeTag(t) {
+      return (t !== null && t !== undefined && t.__jac_type__) || t;
+    },
+    // Python subclass relation over builtin-type tags. `object` is the
+    // universal base and `bool` is a subclass of `int`; `tuple` and `frozenset`
+    // share JS representations with `list`/`set`, so fold those aliases to
+    // their runtime tag first. One source of truth so isinstance and issubclass
+    // can never disagree.
+    _tagSubclass(subTag, superTag) {
+      const fold = (t) => {
+        const tag = _jac.builtin._typeTag(t);
+        return tag === "tuple" ? "list" : tag === "frozenset" ? "set" : tag;
+      };
+      const sub = fold(subTag), sup = fold(superTag);
+      if (sup === "object") return true;
+      if (sub === sup) return true;
+      if (sup === "int" && sub === "bool") return true;
+      return false;
+    },
+    isinstance(o, classinfo) {
+      // isinstance(x, (A, B, ...)) -- the tuple of types lowers to a JS array;
+      // match if `o` is an instance of any member.
+      if (Array.isArray(classinfo)) {
+        for (const c of classinfo) {
+          if (_jac.builtin.isinstance(o, c)) return true;
+        }
+        return false;
+      }
+      // Builtin type: compare the value's runtime type against its tag via the
+      // shared subclass relation.  Checked before the constructor branch --
+      // a type object is a callable too, and `o instanceof int` is meaningless.
+      const tag = _jac.builtin._typeTag(classinfo);
+      if (typeof tag === "string") {
+        return _jac.builtin._tagSubclass(_jac.poly._typename(o), tag);
+      }
+      // User archetype / JS constructor.
+      if (typeof classinfo === "function") return o instanceof classinfo;
+      return false;
     },
     issubclass(cls, classinfo) {
+      if (Array.isArray(classinfo)) {
+        for (const c of classinfo) {
+          if (_jac.builtin.issubclass(cls, c)) return true;
+        }
+        return false;
+      }
+      // When either side names a builtin type, compare by the shared subclass
+      // relation (covers `object`, `bool` ⊂ `int`, and identity).
+      const subTag = _jac.builtin._typeTag(cls);
+      const supTag = _jac.builtin._typeTag(classinfo);
+      if (typeof subTag === "string" || typeof supTag === "string") {
+        return _jac.builtin._tagSubclass(subTag, supTag);
+      }
       if (cls === classinfo) return true;
       let proto = cls;
       while (proto) {
@@ -1290,17 +1349,8 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
 
   exc: __JAC_EXC_RUNTIME__
 }""",
-     # JS globals shadowed by builtin exception names; defined under an aliased
-     # local name and re-exported under their real name so generated code can
-     # reference _jac.exc.<RealName> without colliding with the host global.
      _JS_RESERVED_EXC_NAMES: set[str] = {"TypeError", "ReferenceError"};
 
-"""Build the `_jac.exc` IIFE from the canonical exception hierarchy.
-
-Emits one JS class per exception (in topological order so each `extends`
-references an already-declared parent) and returns the export map, all derived
-from JAC_TYPE_REGISTRY so the hierarchy lives in exactly one place.
-"""
 def _build_exc_runtime_js -> str {
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     lines: list[str] = ["(() => {"];
@@ -1319,33 +1369,97 @@ def _build_exc_runtime_js -> str {
             (name + ": " + local) if name in _JS_RESERVED_EXC_NAMES else name
         );
     }
-    lines.append("    return { " + ", ".join(exports) + " };");
+    lines.append("    const _all = { " + ", ".join(exports) + " };");
+
+    lines.append("    function matches(e, name) {");
+    lines.append("      if (name === 'BaseException') return true;");
+    lines.append(
+        "      if (name === 'Exception') return (e instanceof _all.Exception) || !(e instanceof _all.BaseException);"
+    );
+    lines.append("      const cls = _all[name];");
+    lines.append("      return cls ? (e instanceof cls) : false;");
+    lines.append("    }");
+    lines.append("    return Object.assign(_all, { matches });");
     lines.append("  })()");
     return "\n".join(lines);
 }
 
-"""Return the fully-assembled `_jac` runtime object literal (raw JS string)."""
-def build_jac_runtime_js -> str {
-    return JAC_RUNTIME_JS_OBJECT.replace(
-        "__JAC_EXC_RUNTIME__", _build_exc_runtime_js()
+def _build_types_runtime_js -> str {
+    import from jaclang.jac0core.constant { TOKEN_MAP }
+    import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
+    import from jaclang.compiler.passes.ecmascript.primitives_es {
+        ESBuiltinEmitter,
+        ESEmitCtx
+    }
+    emitter = ESBuiltinEmitter();
+    ctx = ESEmitCtx(unparser=JSCodeGenerator());
+    entries: list[str] = [];
+    for (tok, name) in sorted(TOKEN_MAP.items()) {
+        if not tok.startswith("TYP_") {
+            continue;
+        }
+        emit_fn = getattr(emitter, "emit_" + name, None);
+        if emit_fn is None {
+            continue;
+        }
+
+        bodies: list[(str | None)] = [];
+        for argv in ([], ["a[0]"], ["a[0]", "a[1]"]) {
+            try {
+                bodies.append(emit_fn(ctx, argv));
+            } except Exception {
+                bodies.append(None);
+            }
+        }
+        supported = [
+            b
+            for b in bodies
+            if b is not None
+        ];
+        if not supported {
+            continue;
+        }
+        (zero, one, two) = (
+            bodies[0] or supported[0],
+            bodies[1] or supported[-1],
+            bodies[2] or (bodies[1] or supported[-1])
+        );
+        if zero == one and one == two {
+            body = "(" + one + ")";
+        } elif one == two {
+            body = "a.length === 0 ? (" + zero + ") : (" + one + ")";
+        } else {
+            body = (
+                "a.length === 0 ? (" + zero + ") : a.length === 1 ? (" + one + ") : (" + two + ")"
+            );
+        }
+        entries.append("    " + name + ': _t("' + name + '", (...a) => ' + body + ")");
+    }
+    return "\n".join(
+        [
+            "(() => {",
+            "    const _t = (tag, fn) => Object.assign(fn, {",
+            "      __jac_type__: tag,",
+            "      toString: () => \"<class '\" + tag + \"'>\"",
+            "    });",
+            "    return {",
+            ",\n".join(entries),
+            "    };",
+            "  })()"
+        ]
     );
 }
 
-"""Memoized compiled-kernel JS (declarations only; no `_jac`, no exports)."""
+def build_jac_runtime_js -> str {
+    return JAC_RUNTIME_JS_OBJECT.replace(
+        "__JAC_EXC_RUNTIME__", _build_exc_runtime_js()
+    ).replace(
+        "__JAC_TYPES_RUNTIME__", _build_types_runtime_js()
+    );
+}
+
 glob _OSP_KERNEL_JS_CACHE: list[str] = [];
 
-"""Compile the portable Object-Spatial kernel (`osp_kernel.jac`) to JS for cl
-injection and return its declarations only.
-
-`osp_kernel.jac` is the single source of truth for OSP traversal across every
-backend (#6146). A cl module that runs a walker locally (rather than via the
-`__jacSpawn` server RPC) needs the kernel's `osp_spawn` / `osp_visit` /
-`osp_disengage` / `osp_report` and its `OspRuntime` / `WalkerDesc` / `NodeDesc`
-/ `Slot` classes inlined in the emitted JS. The kernel's own injected
-`const _jac = ...` runtime and its `export {...}` statement are stripped: the
-host module already supplies `_jac` (via `needs_jac_runtime`) and manages its
-own exports, so re-emitting either would redeclare `_jac` or place an illegal
-nested `export`. Compiled once and memoized."""
 def build_osp_kernel_js -> str {
     if _OSP_KERNEL_JS_CACHE {
         return _OSP_KERNEL_JS_CACHE[0];
@@ -1359,16 +1473,15 @@ def build_osp_kernel_js -> str {
     import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
     import from jaclang.compiler.passes.ecmascript { estree as es }
     src = os.path.join(os.path.dirname(jaclang.__file__), "jac0core", "osp_kernel.jac");
-    # The kernel is a plain `.jac` (server-default context); compile a copy
-    # named `.cl.jac` so its module-level decls are coerced to client context
-    # and the ES pass emits them.
+
     tmp_dir = tempfile.mkdtemp();
     cl_copy = os.path.join(tmp_dir, "osp_kernel.cl.jac");
     shutil.copyfile(src, cl_copy);
     js = "";
     try {
         prog = JacProgram();
-        ir = prog.compile(file_path=cl_copy, no_cgen=True);
+
+        ir = prog.compile(file_path=cl_copy, no_cgen=True, type_check=True);
         program = EsastGenPass(ir_in=ir, prog=prog).ir_out.gen.es_ast;
         kept: list = [];
         if isinstance(program, es.Program) {
@@ -1385,10 +1498,42 @@ def build_osp_kernel_js -> str {
                 kept.append(stmt);
             }
         }
-        js = es_to_js(es.Program(body=kept, sourceType='module'));
+        js = es_to_js(es.Program(body=kept));
     } finally {
         shutil.rmtree(tmp_dir, ignore_errors=True);
     }
     _OSP_KERNEL_JS_CACHE.append(js);
     return js;
+}
+
+def build_osp_graph_js -> str {
+    return r"""
+function __ospConn(srcs, tgts, makeEdge, undirected) {
+  srcs = Array.isArray(srcs) ? srcs : [srcs];
+  tgts = Array.isArray(tgts) ? tgts : [tgts];
+  for (const s of srcs) for (const t of tgts) {
+    const e = makeEdge ? makeEdge() : {};
+    e.__src = s; e.__tgt = t; e.__undirected = !!undirected;
+    (s.__edges ??= []).push(e); (t.__edges ??= []).push(e);
+  }
+  return tgts.length === 1 ? tgts[0] : tgts;
+}
+function __ospRefs(nodes, dir, edgeTag, edgesOnly) {
+  nodes = Array.isArray(nodes) ? nodes : [nodes];
+  const seen = new Set(), out = [];
+  for (const n of nodes) for (const e of (n.__edges || [])) {
+    if (edgeTag != null && e.__tag !== edgeTag) continue;
+    const eff = e.__undirected ? 3 : dir;
+    if ((eff === 2 || eff === 3) && e.__src === n) {
+      const o = edgesOnly ? e : e.__tgt;
+      if (!seen.has(o)) { seen.add(o); out.push(o); }
+    }
+    if ((eff === 1 || eff === 3) && e.__tgt === n) {
+      const o = edgesOnly ? e : e.__src;
+      if (!seen.has(o)) { seen.add(o); out.push(o); }
+    }
+  }
+  return out;
+}
+""";
 }

@@ -1,0 +1,21 @@
+[project]
+name = "wasm_host_app"
+version = "1.0.0"
+description = "Regression fixture: client imports @jac/wasm_host (issue #7189)"
+entry-point = "main.jac"
+
+[dependencies.npm]
+react = "^18.2.0"
+react-dom = "^18.2.0"
+
+[dependencies.npm.dev]
+vite = "^6.4.1"
+"@vitejs/plugin-react" = "^4.2.1"
+
+[serve]
+base_route_app = "app"
+
+[client]
+
+[client.app_meta_data]
+title = "Wasm Host Import"

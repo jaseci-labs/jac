@@ -1,0 +1,4 @@
+[project]
+name = "cl-fullstack-fixture"
+version = "0.0.0"
+description = "Hermetic backend fixture for cl test-runner integration tests"

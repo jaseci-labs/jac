@@ -1,10 +1,3 @@
-"""Shared helper methods for list/dict/set container codegen.
-
-These extract common patterns that were previously duplicated across
-lists.impl.jac, dicts.impl.jac, and sets.impl.jac.
-"""
-
-"""Create a container 'new' function that allocates an empty RC-managed container."""
 impl NaIRGenPass._emit_container_new_fn(
     fn_name: str, container_ptr_type: ir.Type, data_types: list, dtor_fn: object = None
 ) -> ir.Function {
@@ -15,8 +8,10 @@ impl NaIRGenPass._emit_container_new_fn(
     b = ir.IRBuilder(bb);
     result = self._emit_rc_alloc_container(b, container_ptr_type, data_types);
     container_ptr = result[0];
-    # Set a meaningful type tag (e.g. "list_Move") so debug output shows the container type
-    # instead of the default "raw". Derived from the dtor function name.
+
+    if self._nogc_headerless() {
+        dtor_fn = None;
+    }
     if dtor_fn is not None and self.rc_set_type_fn is not None {
         _dtor_name = dtor_fn?.name or str(dtor_fn);
         _type_name = _dtor_name[len("__rc_release_"):]
@@ -27,23 +22,118 @@ impl NaIRGenPass._emit_container_new_fn(
         );
         self._emit_set_type_tag(b, _cont_raw_i8, _type_name);
     }
-    # RC: store the typed destructor function pointer at container_ptr - 8
-    # so __rc_release_simple can dispatch to it when refcount hits zero.
+
     if dtor_fn is not None {
         _i8p_n = ir.IntType(8).as_pointer();
         _i64_n = ir.IntType(64);
         _i64p_n = _i64_n.as_pointer();
         _raw_n = b.bitcast(container_ptr, _i8p_n, name="new_raw");
-        _dtor_slot_n = b.gep(_raw_n, [ir.Constant(_i64_n, -8)], name="dtor_slot");
+        _dtor_slot_n = b.gep(
+            _raw_n, [ir.Constant(_i64_n, HDR_DTOR_OFF)], name="dtor_slot"
+        );
         _dtor_slot_i64_n = b.bitcast(_dtor_slot_n, _i64p_n, name="dtor_slot_i64");
         _dtor_i64_n = b.ptrtoint(dtor_fn, _i64_n, name="dtor_i64");
         b.store(_dtor_i64_n, _dtor_slot_i64_n);
     }
+
+    _ptr_data_fields = [
+        (i + 2, dt)
+        for (i, dt) in enumerate(data_types)
+        if isinstance(dt, ir.PointerType)
+    ];
+    _cont_type_name = self._container_type_name(dtor_fn);
+    _cont_has_trace = False;
+    if _ptr_data_fields and self._gc_mode() == "cycles" {
+        _cont_trace_fn = self._emit_container_trace_fn(
+            f"__rc_trace_{_cont_type_name}", container_ptr_type, _ptr_data_fields
+        );
+        _cont_has_trace = self._register_trace_pair(dtor_fn, _cont_trace_fn);
+    }
+    self._require_trace_fn(_cont_type_name, bool(_ptr_data_fields), _cont_has_trace);
     b.ret(container_ptr);
     return new_fn;
 }
 
-"""Create a container 'len' function that returns the len field (struct index 0)."""
+impl NaIRGenPass._container_type_name(dtor_fn: object) -> str {
+    if dtor_fn is None {
+        return "container";
+    }
+    _dtor_name = dtor_fn?.name or str(dtor_fn);
+    if _dtor_name.startswith("__rc_release_") {
+        return _dtor_name[len("__rc_release_"):];
+    }
+    return "container";
+}
+
+impl NaIRGenPass._emit_container_trace_fn(
+    trace_fn_name: str, container_ptr_type: ir.Type, pointer_data_fields: list
+) -> ir.Function {
+    i8_ptr = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    visitor_ptype = ir.FunctionType(ir.VoidType(), [i8_ptr]).as_pointer();
+    trace_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr, i8_ptr]);
+
+    try {
+        _existing = self.llvm_module.get_global(trace_fn_name);
+        if isinstance(_existing, ir.Function) and not _existing.blocks {
+            trace_fn = _existing;
+            trace_fn.linkage = "private";
+        } else {
+            trace_fn = ir.Function(self.llvm_module, trace_fnty, name=trace_fn_name);
+            trace_fn.linkage = "private";
+        }
+    } except KeyError {
+        trace_fn = ir.Function(self.llvm_module, trace_fnty, name=trace_fn_name);
+        trace_fn.linkage = "private";
+    }
+    trace_fn.args[0].name = "obj";
+    trace_fn.args[1].name = "vis";
+
+    entry_bb = trace_fn.append_basic_block("entry");
+    done_bb = trace_fn.append_basic_block("done");
+    b = ir.IRBuilder(entry_bb);
+    _vis = b.bitcast(trace_fn.args[1], visitor_ptype, name="vis.fn");
+    _cont = b.bitcast(trace_fn.args[0], container_ptr_type, name="cont.typed");
+    _len = b.load(
+        b.gep(_cont, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.ptr"),
+        name="len"
+    );
+
+    for (field_idx, _elem_type) in pointer_data_fields {
+        _data_arr = b.load(
+            b.gep(
+                _cont,
+                [ir.Constant(i32, 0), ir.Constant(i32, field_idx)],
+                name=f"data{field_idx}.ptr"
+            ),
+            name=f"data{field_idx}"
+        );
+        _iv = b.alloca(i64, name=f"ti{field_idx}");
+        b.store(ir.Constant(i64, 0), _iv);
+        cond_bb = trace_fn.append_basic_block(f"tcond{field_idx}");
+        body_bb = trace_fn.append_basic_block(f"tbody{field_idx}");
+        end_bb = trace_fn.append_basic_block(f"tend{field_idx}");
+        b.branch(cond_bb);
+        b = ir.IRBuilder(cond_bb);
+        _i = b.load(_iv, name="ti");
+        b.cbranch(b.icmp_unsigned("<", _i, _len, name="tcmp"), body_bb, end_bb);
+        b = ir.IRBuilder(body_bb);
+        _elem = b.load(
+            b.gep(_data_arr, [b.load(_iv, name="ti2")], name="elem.ptr"),
+            name="elem.val"
+        );
+        b.call(_vis, [b.bitcast(_elem, i8_ptr, name="elem.i8")]);
+        b.store(b.add(b.load(_iv, name="ti3"), ir.Constant(i64, 1), name="tinc"), _iv);
+        b.branch(cond_bb);
+        b = ir.IRBuilder(end_bb);
+    }
+    b.branch(done_bb);
+    b = ir.IRBuilder(done_bb);
+    b.ret_void();
+    return trace_fn;
+}
+
 impl NaIRGenPass._emit_container_len_fn(
     fn_name: str, container_ptr_type: ir.Type
 ) -> ir.Function {
@@ -62,13 +152,6 @@ impl NaIRGenPass._emit_container_len_fn(
     return len_fn;
 }
 
-"""Create a container destructor with RC preamble, element release loops, and array cleanup.
-
-Args:
-    fn_name: Name for the release function
-    container_ptr_type: Pointer type of the container struct
-    data_fields: List of (field_index, elem_type) tuples for each data array
-"""
 impl NaIRGenPass._emit_container_release_fn(
     fn_name: str, container_ptr_type: ir.Type, data_fields: list
 ) -> ir.Function {
@@ -77,9 +160,7 @@ impl NaIRGenPass._emit_container_release_fn(
     i64 = ir.IntType(64);
     free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
     release_fnty = ir.FunctionType(ir.VoidType(), [container_ptr_type]);
-    # Get-or-create: the function may have been forward-declared by _emit_list/dict/set_helpers
-    # so that _emit_container_new_fn could reference its address. In that case, fill in the body
-    # of the existing declaration instead of creating a duplicate.
+
     try {
         _existing_fn = self.llvm_module.get_global(fn_name);
         if isinstance(_existing_fn, ir.Function) and not _existing_fn.blocks {
@@ -94,12 +175,34 @@ impl NaIRGenPass._emit_container_release_fn(
         release_fn.linkage = "private";
     }
     release_fn.args[0].name = "container";
+    i8 = ir.IntType(8);
     (b, done_bb) = self._emit_rc_destructor_preamble(release_fn, container_ptr_type);
     for (field_idx, elem_type) in data_fields {
         if isinstance(elem_type, ir.PointerType) {
+            _cycles_on = self._gc_mode() == "cycles";
+            if _cycles_on and self.rc_collecting_gv is None {
+                self._emit_rc_helpers();
+            }
+            rel_elems_bb = release_fn.append_basic_block("release_elems");
+            post_elems_bb = release_fn.append_basic_block("post_elems");
+            if _cycles_on {
+                _cont_coll = b.load(self.rc_collecting_gv, name="cont.collecting");
+                b.cbranch(
+                    b.icmp_unsigned(
+                        "!=", _cont_coll, ir.Constant(i8, 0), name="cont.mid.coll"
+                    ),
+                    post_elems_bb,
+                    rel_elems_bb
+                );
+            } else {
+                b.branch(rel_elems_bb);
+            }
+            b = ir.IRBuilder(rel_elems_bb);
             b = self._emit_rc_release_elem_loop(
                 b, release_fn, release_fn.args[0], field_idx
             );
+            b.branch(post_elems_bb);
+            b = ir.IRBuilder(post_elems_bb);
         }
         data_p = b.gep(
             release_fn.args[0],
@@ -115,7 +218,7 @@ impl NaIRGenPass._emit_container_release_fn(
             [b.bitcast(data_f, i8_ptr, name=f"data{field_idx}.cast")]
         );
     }
-    # Remove from live-objects list, then log and free the container struct.
+
     if self.rc_alloc_fn is None {
         self._emit_rc_helpers();
     }
@@ -123,14 +226,14 @@ impl NaIRGenPass._emit_container_release_fn(
     _i64c = ir.IntType(64);
     _i64_ptr_c = _i64c.as_pointer();
     _cont_i8 = b.bitcast(release_fn.args[0], _i8pc, name="cont.i8");
-    _cont_raw = b.gep(_cont_i8, [ir.Constant(_i64c, -32)], name="cont.raw");
-    # Read alloc_id (ptr-32) and type_tag (ptr-24) for the log message
+    _cont_raw = b.gep(
+        _cont_i8, [ir.Constant(_i64c, HDR_ALLOC_ID_OFF)], name="cont.raw"
+    );
+
     _cl_aid_ptr = b.bitcast(_cont_raw, _i64_ptr_c, name="cl.aid.ptr");
     _cl_aid_raw = b.load(_cl_aid_ptr, name="cl.aid.raw");
-    _cl_aid = b.and_(
-        _cl_aid_raw, ir.Constant(_i64c, 4294967295), name="cl.aid"
-    );  # strip magic
-    _cl_tag_raw = b.gep(_cont_i8, [ir.Constant(_i64c, -24)], name="cl.tag.raw");
+    _cl_aid = b.and_(_cl_aid_raw, ir.Constant(_i64c, 4294967295), name="cl.aid");
+    _cl_tag_raw = b.gep(_cont_i8, [ir.Constant(_i64c, HDR_TAG_OFF)], name="cl.tag.raw");
     _cl_tag_pp = b.bitcast(_cl_tag_raw, _i8pc.as_pointer(), name="cl.tag.pp");
     _cl_tag = b.load(_cl_tag_pp, name="cl.tag");
     log_free_cont_bb = release_fn.append_basic_block("log_free_cont");
@@ -158,16 +261,6 @@ impl NaIRGenPass._emit_container_release_fn(
     return release_fn;
 }
 
-"""Emit a linear search loop over a data array, comparing each element to a search value.
-
-Sets up: entry -> loop_cond -> loop_body -> (found | not_found)
-with an increment block for the loop counter.
-
-Returns (found_builder, not_found_builder, idx_alloca) where:
-- found_builder: IRBuilder at the found block (element matched at idx_alloca)
-- not_found_builder: IRBuilder at the not-found block (exhausted all elements)
-- idx_alloca: Alloca holding the matching index (valid in found block)
-"""
 impl NaIRGenPass._emit_linear_search_loop(
     func: ir.Function,
     entry_builder: ir.IRBuilder,
@@ -186,19 +279,19 @@ impl NaIRGenPass._emit_linear_search_loop(
     found_bb = func.append_basic_block("found");
     not_found_bb = func.append_basic_block("not.found");
     entry_builder.branch(loop_cond);
-    # Loop condition: idx < len
+
     b = ir.IRBuilder(loop_cond);
     idx = b.load(idx_alloca, name="idx");
     cmp = b.icmp_signed("<", idx, arr_len, name="cmp");
     b.cbranch(cmp, loop_body, not_found_bb);
-    # Loop body: load element, compare
+
     b = ir.IRBuilder(loop_body);
     idx_body = b.load(idx_alloca, name="idx.body");
     elem_ptr = b.gep(arr, [idx_body], name="elem.ptr");
     elem_val = b.load(elem_ptr, name="elem.val");
     elem_eq = self._emit_key_comparison(b, elem_type, elem_val, search_val, elem_size);
     b.cbranch(elem_eq, found_bb, incr_bb);
-    # Increment block
+
     b = ir.IRBuilder(incr_bb);
     idx_incr = b.load(idx_alloca, name="idx.incr");
     next_idx = b.add(idx_incr, ir.Constant(i64, 1), name="next.idx");
@@ -207,7 +300,6 @@ impl NaIRGenPass._emit_linear_search_loop(
     return (ir.IRBuilder(found_bb), ir.IRBuilder(not_found_bb), idx_alloca);
 }
 
-"""Create a function that returns element at index from a container data array."""
 impl NaIRGenPass._emit_array_get_fn(
     fn_name: str, container_ptr_type: ir.Type, elem_type: ir.Type, data_field_idx: int
 ) -> ir.Function {
@@ -231,17 +323,6 @@ impl NaIRGenPass._emit_array_get_fn(
     return get_fn;
 }
 
-"""Emit an element/key comparison for container lookup.
-
-Dispatches based on type:
-- IntType: icmp_signed ==
-- i8* (string): strcmp == 0
-- PointerType with known size: memcmp == 0
-- PointerType (unknown size): icmp_unsigned ==
-- Fallback: icmp_signed ==
-
-Returns an i1 value (true if equal).
-"""
 impl NaIRGenPass._emit_key_comparison(
     b: ir.IRBuilder,
     key_type: ir.Type,
@@ -253,6 +334,33 @@ impl NaIRGenPass._emit_key_comparison(
     i64 = ir.IntType(64);
     if isinstance(key_type, ir.IntType) {
         return b.icmp_signed("==", stored_val, search_val, name="key.eq");
+    } elif self._is_bytes_type(key_type) {
+        _i32 = ir.IntType(32);
+        _z0 = ir.Constant(_i32, 0);
+        _z1 = ir.Constant(_i32, 1);
+        llen = b.load(
+            b.gep(stored_val, [_z0, _z0], name="key.by.llp"), name="key.by.ll"
+        );
+        rlen = b.load(
+            b.gep(search_val, [_z0, _z0], name="key.by.rlp"), name="key.by.rl"
+        );
+        ldata = b.bitcast(
+            b.gep(stored_val, [_z0, _z1], name="key.by.ldp"), i8_ptr, name="key.by.ld"
+        );
+        rdata = b.bitcast(
+            b.gep(search_val, [_z0, _z1], name="key.by.rdp"), i8_ptr, name="key.by.rd"
+        );
+        minlen = b.select(
+            b.icmp_signed("<", llen, rlen, name="key.by.lt"),
+            llen,
+            rlen,
+            name="key.by.min"
+        );
+        memcmp_fn = self._get_or_declare_extern("memcmp", _i32, [i8_ptr, i8_ptr, i64]);
+        cmpr = b.call(memcmp_fn, [ldata, rdata, minlen], name="key.by.cmp");
+        len_eq = b.icmp_signed("==", llen, rlen, name="key.by.leneq");
+        data_eq = b.icmp_signed("==", cmpr, _z0, name="key.by.dataeq");
+        return b.and_(len_eq, data_eq, name="key.by.eq");
     } elif key_type == i8_ptr {
         strcmp_fn = self._get_or_declare_extern(
             "strcmp", ir.IntType(32), [i8_ptr, i8_ptr]
@@ -280,18 +388,6 @@ impl NaIRGenPass._emit_key_comparison(
     }
 }
 
-"""Allocate an RC-managed container struct and its data arrays.
-
-Args:
-    b: IRBuilder positioned in the entry block of the constructor
-    container_ptr_type: The pointer type of the container struct
-    data_types: List of element types for the data arrays (1 for list/set, 2 for dict)
-    initial_cap: Initial capacity (default 8)
-
-Returns:
-    (container_ptr, data_pointers...) tuple — the RC-allocated container
-    and the stored data array pointers.
-"""
 impl NaIRGenPass._emit_rc_alloc_container(
     b: ir.IRBuilder, container_ptr_type: ir.Type, data_types: list, initial_cap: int = 8
 ) -> tuple {
@@ -299,26 +395,30 @@ impl NaIRGenPass._emit_rc_alloc_container(
     i32 = ir.IntType(32);
     i8_ptr = ir.IntType(8).as_pointer();
     malloc_fn = self._get_or_declare_extern("malloc", i8_ptr, [i64]);
-    # Allocate container struct via rc_alloc
+
     null_ptr = ir.Constant(container_ptr_type, None);
     size_gep = b.gep(null_ptr, [ir.Constant(i32, 1)], name="sizeof");
     struct_size = b.ptrtoint(size_gep, i64, name="size");
-    raw = b.call(self.rc_alloc_fn, [struct_size], name="raw");
+    if self._nogc_headerless() {
+        raw = b.call(malloc_fn, [struct_size], name="raw");
+    } else {
+        raw = b.call(self.rc_alloc_fn, [struct_size], name="raw");
+    }
     container_ptr = b.bitcast(raw, container_ptr_type, name="container");
-    # len = 0
+
     len_p = b.gep(
         container_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.ptr"
     );
     b.store(ir.Constant(i64, 0), len_p);
-    # cap = initial_cap
+
     cap_p = b.gep(
         container_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="cap.ptr"
     );
     b.store(ir.Constant(i64, initial_cap), cap_p);
-    # Allocate data arrays
+
     data_ptrs = [];
     for (i, dtype) in enumerate(data_types) {
-        field_idx = i + 2;  # fields 0=len, 1=cap, 2+=data
+        field_idx = i + 2;
         elem_null = ir.Constant(dtype.as_pointer(), None);
         elem_gep = b.gep(elem_null, [ir.Constant(i32, 1)], name=f"elem{i}.sizeof");
         elem_size = b.ptrtoint(elem_gep, i64, name=f"elem{i}.size");
@@ -338,19 +438,6 @@ impl NaIRGenPass._emit_rc_alloc_container(
     return tuple([container_ptr] + data_ptrs);
 }
 
-"""Emit capacity-doubling grow logic for a data array.
-
-Doubles capacity, mallocs new array, memcpys old data, frees old array,
-stores new array back. Returns the new data pointer.
-
-Args:
-    b: IRBuilder positioned in the grow basic block
-    arr_ptr: GEP pointer to the data array field in the container
-    elem_type: Element type of the array
-    cur_len: Current length (for memcpy size)
-    cap_ptr: GEP pointer to the capacity field
-    cur_cap: Current capacity value
-"""
 impl NaIRGenPass._emit_grow_array(
     b: ir.IRBuilder,
     arr_ptr: ir.Value,
@@ -378,28 +465,19 @@ impl NaIRGenPass._emit_grow_array(
     old_i8 = b.bitcast(old_data, i8_ptr, name="old.i8");
     new_i8 = b.bitcast(new_data, i8_ptr, name="new.i8");
     b.call(memcpy_fn, [new_i8, old_i8, old_bytes]);
-    if self.rc_safe_free_fn is None {
-        self._emit_rc_helpers();
+    if self._nogc_headerless() {
+        _free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
+        b.call(_free_fn, [old_i8]);
+    } else {
+        if self.rc_safe_free_fn is None {
+            self._emit_rc_helpers();
+        }
+        b.call(self.rc_safe_free_fn, [old_i8]);
     }
-    b.call(self.rc_safe_free_fn, [old_i8]);
     b.store(new_data, arr_ptr);
     return new_data;
 }
 
-"""Emit the standard RC destructor preamble: null-check, then proceed.
-
-With the dtor_ptr RC design, typed destructors are ONLY called by
-__rc_release_simple when refcount has already reached zero. The destructor
-does NOT need to decrement the refcount; it only needs to guard against
-a null pointer and then proceed with child cleanup + freeing self.
-
-Creates the basic block structure:
-    entry -> (free_bb if non-null, done_bb if null)
-
-Returns:
-    (free_bb_builder, done_bb) — caller should emit cleanup in free_bb,
-    then branch to done_bb and emit ret_void there.
-"""
 impl NaIRGenPass._emit_rc_destructor_preamble(
     release_fn: ir.Function, ptr_type: ir.Type
 ) -> tuple {
@@ -408,30 +486,16 @@ impl NaIRGenPass._emit_rc_destructor_preamble(
     free_bb = release_fn.append_basic_block("do_free");
     done_bb = release_fn.append_basic_block("done");
     b = ir.IRBuilder(entry_bb);
-    # Null check — skip if pointer is null (defensive)
+
     is_null = b.icmp_unsigned(
         "==", release_fn.args[0], ir.Constant(ptr_type, None), name="is.null"
     );
     b.cbranch(is_null, done_bb, free_bb);
-    # Return builder positioned at free_bb and the done_bb for later use
+
     free_builder = ir.IRBuilder(free_bb);
     return (free_builder, done_bb);
 }
 
-"""Emit a loop that releases all pointer-typed elements in a container data array.
-
-Iterates data[0..len-1] calling rc_release_simple on each element.
-Used for list data, dict keys, dict vals, and set elems.
-
-Args:
-    b: IRBuilder positioned in the free block
-    release_fn: The destructor function (to append basic blocks)
-    container_arg: The container pointer argument (release_fn.args[0])
-    data_field_idx: Struct field index of the data array (2 for list/set, 2 or 3 for dict)
-
-Returns:
-    Updated IRBuilder positioned after the loop.
-"""
 impl NaIRGenPass._emit_rc_release_elem_loop(
     b: ir.IRBuilder,
     release_fn: ir.Function,
@@ -441,7 +505,10 @@ impl NaIRGenPass._emit_rc_release_elem_loop(
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     i8_ptr = ir.IntType(8).as_pointer();
-    # Load len and data array
+    if self.rc_release_simple_fn is None {
+        self._emit_rc_helpers();
+    }
+
     len_p = b.gep(
         container_arg, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.ptr.rel"
     );
@@ -452,7 +519,7 @@ impl NaIRGenPass._emit_rc_release_elem_loop(
         name="data.ptr.rel"
     );
     data_arr = b.load(data_p, name="data.rel");
-    # Loop: i = 0; while i < len { release(data[i]); i++ }
+
     loop_alloca = b.alloca(i64, name="loop.rel");
     b.store(ir.Constant(i64, 0), loop_alloca);
     lcond = release_fn.append_basic_block("loop.cond.rel");

@@ -1,8 +1,3 @@
-"""Implementation of analysis commands (check, lint, format, test, gen_parser).
-
-Direct implementations - no delegation to cli.jac.
-"""
-
 import from pathlib { Path }
 import from fnmatch { fnmatch }
 import from jaclang.cli.console { console }
@@ -13,25 +8,36 @@ import from jaclang.cli.check_report {
     print_final_summary
 }
 
-"""Run type checker for specified .jac files."""
+def _maybe_malloc_trim {
+    try {
+        import ctypes;
+        ctypes.CDLL("libc.so.6").malloc_trim(0);
+    } except (ImportError, OSError, AttributeError, ValueError) { }
+}
+
 impl check(
     paths: list,
     print_errs: bool = True,
-    ignore: list = [],
-    disable_error_code: list = [],
+    ignore: (list | None) = None,
+    disable_error_code: (list | None) = None,
     parse_only: bool = False,
-    nowarn: bool = False
+    nowarn: bool = False,
+    lint_only: bool = False,
+    fix: bool = False
 ) -> int {
     import from jaclang.jac0core.program { JacProgram }
-    import from jaclang.project.config { JacConfig, get_config, set_config }
+    import from jaclang.jac0core.diagnostic_utils { resolve_diagnostic_tokens }
     import from time { time }
+    if lint_only {
+        return lint(paths=paths, fix=fix, ignore=ignore);
+    }
     if isinstance(paths, str) {
         paths = [paths];
     }
     start_time = time();
-    ignore_list = _normalize_ignore_patterns(ignore);
-    (suppressed_codes, unknown_codes) = _resolve_disable_error_codes(
-        disable_error_code
+    ignore_list = _normalize_ignore_patterns(ignore or []);
+    (suppressed_codes, unknown_codes) = resolve_diagnostic_tokens(
+        disable_error_code or []
     );
     if unknown_codes {
         console.warning(
@@ -40,25 +46,10 @@ impl check(
             )
         );
     }
-    added_suppress_codes: list[str] = [];
-    created_config = False;
-    if suppressed_codes {
-        cfg = get_config();
-        if cfg is None {
-            cfg = JacConfig();
-            set_config(cfg);
-            created_config = True;
-        }
-        for code in suppressed_codes {
-            if code not in cfg.check.suppress {
-                cfg.check.suppress.append(code);
-                added_suppress_codes.append(code);
-            }
-        }
-    }
-    # Helper to process and store single file result
+
+    total_files = failed_files=total_errors=total_warnings=0;
+
     def process_file_result(file_path: str, idx: int, total: int) {
-        nonlocal total_files , total_errors , total_warnings , failed_files;
         total_files += 1;
         (success, errs, warns, errors_list, warnings_list) = check_single_file(
             prog, file_path
@@ -66,7 +57,6 @@ impl check(
         total_errors += errs;
         total_warnings += warns;
 
-        # Print progress line
         print_file_progress(file_path, success, idx, total);
 
         if not success {
@@ -78,7 +68,7 @@ impl check(
             );
         }
     }
-    # Store failed file results for later detailed output
+
     failed_results: list[dict] = [];
     def check_single_file(
         prog: JacProgram, file_path: str
@@ -90,9 +80,7 @@ impl check(
             console.error(f"File '{file_path}' does not exist.");
             return (False, 1, 0, [], []);
         }
-        # If the file is an annex (.impl.jac or .test.jac), compile the base
-        # file instead so the full annex pipeline runs (DeclImplMatchPass, etc.).
-        # Then filter errors/warnings to only those originating from the annex file.
+
         annex_filter_path: (str | None) = None;
         base_path = discover_base_file(file_path);
         if base_path is not None {
@@ -106,15 +94,20 @@ impl check(
             prog.compile(
                 file_path=file_path,
                 options=CompileOptions(
-                    type_check=not parse_only, no_cgen=True, force_target_program=True
+                    type_check=not parse_only,
+                    no_cgen=True,
+                    force_target_program=True,
+                    suppress_codes=suppressed_codes
                 )
             );
+
+            for m in prog.mod.hub.values() {
+                m.terminals = [];
+                m.src_terminals = [];
+            }
             new_errors = prog.errors_had[err_start:];
             new_warnings = prog.warnings_had[warn_start:];
-            # Filter out errors/warnings from ignored files and non-.jac files
-            # By default, only show errors from .jac files (not from Python stdlib, stubs, etc.)
-            # TODO: This is ad-hoc, need proper error handling across
-            # different file types; will be addressed in future refactor.
+
             def filter_issues(issues: list) -> list {
                 return [
                     i
@@ -122,12 +115,12 @@ impl check(
                     if i.loc
                     and i.loc.mod_path
                     and i.loc.mod_path.endswith(".jac")
-                    and not any(p in i.loc.mod_path for p in ignore_list)
+                    and not _should_ignore(i.loc.mod_path, ignore_list)
                 ];
             }
             filtered_errors = filter_issues(new_errors);
             filtered_warnings = filter_issues(new_warnings);
-            # If checking an annex file, further filter to only errors from that file
+
             if annex_filter_path is not None {
                 filtered_errors = [
                     e
@@ -153,103 +146,38 @@ impl check(
         } except Exception as e {
             console.error(f"Error checking '{file_path}': {e}");
             return (False, 1, 0, [], []);
+        } finally {
+            prog.release_compile_closure();
         }
     }
-    try {
-        total_files = failed_files=total_errors=total_warnings=0;
-        prog = JacProgram();
-        (all_files, had_path_errors) = _iter_jac_files(paths, ignore_list);
-        total_to_check = len(all_files);
-        for (idx, jac_file_path) in enumerate(all_files, 1) {
-            process_file_result(jac_file_path, idx, total_to_check);
-        }
-        # Print FAILURES section and summary
-        if print_errs and len(failed_results) > 0 {
-            print_failures(failed_results, nowarn);
-        }
-        if failed_files > 0 {
-            print_failed_summary(failed_results);
-        }
-        # Print final summary line
-        elapsed = time() - start_time;
-        print_final_summary(total_files - failed_files, failed_files, elapsed);
-        return 1 if (total_errors > 0 or had_path_errors) else 0;
-    } finally {
-        if added_suppress_codes {
-            cfg = get_config();
-            if cfg is not None {
-                for code in added_suppress_codes {
-                    if code in cfg.check.suppress {
-                        cfg.check.suppress.remove(code);
-                    }
-                }
-            }
-            if created_config {
-                set_config(None);
-            }
-        }
+    prog = JacProgram();
+    (all_files, had_path_errors) = _iter_jac_files(paths, ignore_list);
+    total_to_check = len(all_files);
+    for (idx, jac_file_path) in enumerate(all_files, 1) {
+        process_file_result(jac_file_path, idx, total_to_check);
+
+        _maybe_malloc_trim();
     }
+
+    if print_errs and len(failed_results) > 0 {
+        print_failures(failed_results, nowarn);
+    }
+    if failed_files > 0 {
+        print_failed_summary(failed_results);
+    }
+
+    elapsed = time() - start_time;
+    print_final_summary(total_files - failed_files, failed_files, elapsed);
+    return 1 if (total_errors > 0 or had_path_errors) else 0;
 }
 
-"""Resolve --disable-error-code tokens into known diagnostic codes.
-
-Accepts space-separated items from CLI and also comma-delimited chunks, e.g.
-["E1030,W2001", "W3001"].
-"""
-def _resolve_disable_error_codes(
-    disable_error_codes: list
-) -> tuple[list[str], list[str]] {
-    import from jaclang.jac0core.diagnostics { DIAGNOSTICS, LINT_ALIASES }
-    resolved: list[str] = [];
-    unknown: list[str] = [];
-    seen: set[str] = set();
-    unknown_seen: set[str] = set();
-    if not disable_error_codes {
-        return (resolved, unknown);
-    }
-    for raw_item in disable_error_codes {
-        if not isinstance(raw_item, str) {
-            continue;
-        }
-        for part in raw_item.split(",") {
-            token = part.strip();
-            if not token {
-                continue;
-            }
-            canonical = token.upper();
-            if canonical in DIAGNOSTICS {
-                if canonical not in seen {
-                    seen.add(canonical);
-                    resolved.append(canonical);
-                }
-                continue;
-            }
-            alias_code = LINT_ALIASES.get(token.lower());
-            if alias_code and alias_code in DIAGNOSTICS {
-                if alias_code not in seen {
-                    seen.add(alias_code);
-                    resolved.append(alias_code);
-                }
-                continue;
-            }
-            if canonical not in unknown_seen {
-                unknown_seen.add(canonical);
-                unknown.append(canonical);
-            }
-        }
-    }
-    return (resolved, unknown);
-}
-
-"""Lint .jac files and report violations."""
-impl lint(paths: list, fix: bool = False, ignore: list = []) -> int {
+impl lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int {
     import from jaclang.jac0core.program { JacProgram }
     if isinstance(paths, str) {
         paths = [paths];
     }
-    ignore_list = _normalize_ignore_patterns(ignore);
+    ignore_list = _normalize_ignore_patterns(ignore or []);
     def lint_report_file(file_path: str) -> tuple[bool, int] {
-        # Lint-only: report errors without formatting or writing files
         path_obj = Path(file_path);
         if not path_obj.exists() {
             console.error(f"File '{file_path}' does not exist.");
@@ -272,8 +200,7 @@ impl lint(paths: list, fix: bool = False, ignore: list = []) -> int {
             return (False, 1);
         }
     }
-    def lint_fix_file(file_path: str) -> tuple[bool, int, int] {
-        # Lint+fix: apply fixes and write files back
+    def lint_fix_file(file_path: str, covered: set[str]) -> tuple[bool, int, int] {
         path_obj = Path(file_path);
         if not path_obj.exists() {
             console.error(f"File '{file_path}' does not exist.");
@@ -292,7 +219,7 @@ impl lint(paths: list, fix: bool = False, ignore: list = []) -> int {
                 err_count = len(prog.errors_had) or 1;
                 return (False, err_count, err_count);
             }
-            # Block on comment displacement errors (formatter bug)
+
             has_format_error = any(
                 e.code is not None and e.code.code == "E5051" for e in prog.errors_had
             );
@@ -303,7 +230,7 @@ impl lint(paths: list, fix: bool = False, ignore: list = []) -> int {
                 err_count = len(prog.errors_had);
                 return (False, err_count, err_count);
             }
-            # Count fixed warnings and unfixable errors
+
             fixed_count = 0;
             unfixable_count = 0;
             for warning in prog.warnings_had {
@@ -315,7 +242,7 @@ impl lint(paths: list, fix: bool = False, ignore: list = []) -> int {
                 unfixable_count += 1;
             }
             error_count = fixed_count + unfixable_count;
-            # Write if there were lint violations that were fixed
+
             if fixed_count > 0 {
                 changed = formatted_code != original_code;
                 if changed {
@@ -323,14 +250,40 @@ impl lint(paths: list, fix: bool = False, ignore: list = []) -> int {
                         f.write(formatted_code);
                     }
                 }
-                for impl_mod in prog.mod.main.impl_mod {
-                    impl_path = impl_mod.loc.mod_path;
-                    impl_formatted = impl_mod.gen.jac;
-                    impl_original = impl_mod.source.code;
-                    if (impl_formatted != impl_original) {
-                        with open(impl_path, 'w', encoding='utf-8') as f {
-                            f.write(impl_formatted);
-                        }
+            }
+
+            import from jaclang.jac0core.bccache { discover_annex_files }
+            import os;
+            annex_paths = (
+                discover_annex_files(str(path_obj), '.impl.jac') + discover_annex_files(
+                    str(path_obj), '.test.jac'
+                )
+            );
+            for annex_path in annex_paths {
+                if os.path.realpath(annex_path) in covered {
+                    continue;
+                }
+                try {
+                    annex_prog = JacProgram.jac_file_formatter(
+                        annex_path, auto_lint=True
+                    );
+                    annex_formatted = annex_prog.mod.main.gen.jac;
+                    annex_original = annex_prog.mod.main.source.code;
+                } except Exception {
+                    continue;
+                }
+                for warning in annex_prog.warnings_had {
+                    console.warning(f"{warning}");
+                    error_count += 1;
+                }
+                for error in annex_prog.errors_had {
+                    console.error(f"{error}");
+                    error_count += 1;
+                    unfixable_count += 1;
+                }
+                if (annex_formatted and annex_formatted != annex_original) {
+                    with open(annex_path, 'w', encoding='utf-8') as f {
+                        f.write(annex_formatted);
                     }
                 }
             }
@@ -345,10 +298,12 @@ impl lint(paths: list, fix: bool = False, ignore: list = []) -> int {
     total_errors = 0;
     total_unfixable = 0;
     (all_files, had_path_errors) = _iter_jac_files(paths, ignore_list);
+    import os;
+    covered: set[str] = {os.path.realpath(f) for f in all_files};
     for file_path in all_files {
         total_files += 1;
         if fix {
-            (success, errors, unfixable) = lint_fix_file(file_path);
+            (success, errors, unfixable) = lint_fix_file(file_path, covered);
             total_unfixable += unfixable;
         } else {
             (success, errors) = lint_report_file(file_path);
@@ -381,14 +336,21 @@ impl lint(paths: list, fix: bool = False, ignore: list = []) -> int {
     return 0;
 }
 
-"""Format a single .jac file (standalone for parallel execution).
-
-Returns dict with: path, success, changed, errors, syntax_errors, warnings_strs, errors_strs,
-and optionally formatted_code/impl_results for deferred writes.
-"""
-def _format_single_file_worker(file_path: str, lintfix: bool, check: bool) -> dict {
+def _format_single_file_worker(
+    file_path: str,
+    lintfix: bool,
+    check: bool,
+    covered: (set[str] | None) = None,
+    cache_stamp: str = "",
+    cache_anchor: str = "",
+    logical_path: str = ""
+) -> dict {
+    import os;
     import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.jac0core.helpers { read_file_with_encoding }
     path_obj = Path(file_path);
+
+    effective_logical = logical_path or file_path;
     result: dict = {
         'path': file_path,
         'success': False,
@@ -398,14 +360,114 @@ def _format_single_file_worker(file_path: str, lintfix: bool, check: bool) -> di
         'warnings_strs': [],
         'errors_strs': [],
         'formatted_code': None,
-        'impl_results': []
+        'impl_results': [],
+        'cache_status': 'off'
     };
     if not path_obj.exists() {
         result['syntax_errors'] = [f"File '{file_path}' does not exist."];
         return result;
     }
+
+    fcache = None;
+    cache_key = "";
+    cfg_fp = "";
+    cfg: any = None;
+    key_logical = "";
+    annex_ok = True;
+    annex_error_count = 0;
+
+    annex_paths: list[str] = [];
+    annex_formatted_map: dict[str, str] = {};
+    annex_logical_map: dict[str, str] = {};
+    if lintfix {
+        import from jaclang.jac0core.bccache { discover_annex_files }
+
+        annex_paths = (
+            discover_annex_files(file_path, '.impl.jac') + discover_annex_files(
+                file_path, '.test.jac'
+            )
+        );
+        if logical_path {
+            phys_parent = str(Path(file_path).resolve().parent);
+            log_parent = str(Path(logical_path).parent);
+            for ap in annex_paths {
+                try {
+                    rel = os.path.relpath(ap, phys_parent);
+                    annex_logical_map[ap] = str(Path(log_parent) / rel);
+                } except ValueError {
+                    annex_logical_map[ap] = ap;
+                }
+            }
+        }
+    }
+    if cache_stamp {
+        try {
+            import from jaclang.cli.format_cache {
+                FormatCache,
+                config_fingerprint,
+                frame_unit,
+                canonical_logical_path,
+                default_format_cache_dir
+            }
+            import from jaclang.project.config { get_config_for_path }
+
+            cfg = get_config_for_path(Path(effective_logical));
+            if cfg is not None {
+                cache_dir = cfg.get_cache_dir();
+            } else {
+                anchor = Path(cache_anchor) if cache_anchor else path_obj;
+                cache_dir = default_format_cache_dir(anchor);
+                cfg = None;
+            }
+
+            fcache = FormatCache(cache_dir, enabled=True, formatter_stamp=cache_stamp);
+
+            unit_parts = [path_obj.read_bytes()];
+            for ap in annex_paths {
+                ap_obj = Path(ap);
+                if ap_obj.exists() {
+                    unit_parts.append(ap_obj.read_bytes());
+                }
+            }
+            unit_bytes = frame_unit(unit_parts);
+            cfg_fp = config_fingerprint(cfg, lintfix);
+            project_root = str(cfg.project_root)
+                if (cfg is not None and cfg.project_root)
+                else (cache_anchor);
+            key_logical = (
+                canonical_logical_path(effective_logical, project_root)
+                    if lintfix
+                    else ""
+            );
+            cache_key = fcache.make_key(
+                unit_bytes,
+                lintfix=lintfix,
+                config_fingerprint=cfg_fp,
+                logical_path=key_logical
+            );
+            if fcache.is_clean(cache_key) {
+                result['cache_status'] = 'hit';
+                result['success'] = True;
+                result['changed'] = False;
+                result['errors'] = 0;
+                return result;
+            }
+            result['cache_status'] = 'miss';
+        } except (OSError, ValueError, TypeError, ImportError, AttributeError) {
+            fcache = None;
+            cache_key = "";
+        }
+    }
+
     try {
-        prog = JacProgram.jac_file_formatter(str(path_obj), auto_lint=lintfix);
+        if logical_path {
+            source_str = read_file_with_encoding(str(path_obj));
+            prog = JacProgram.jac_str_formatter(
+                source_str, effective_logical, auto_lint=lintfix
+            );
+        } else {
+            prog = JacProgram.jac_file_formatter(str(path_obj), auto_lint=lintfix);
+        }
         if prog.errors_had {
             has_format_error = any(
                 e.code is not None and e.code.code == "E5051" for e in prog.errors_had
@@ -426,27 +488,65 @@ def _format_single_file_worker(file_path: str, lintfix: bool, check: bool) -> di
             }
             changed = formatted_code != original_code;
             result['changed'] = changed;
-            # Store formatted code for writing later (if not check mode)
+
             if changed and not check {
                 result['formatted_code'] = formatted_code;
             }
-            # Check impl modules
-            for impl_mod in prog.mod.main.impl_mod {
-                impl_path = impl_mod.loc.mod_path;
-                impl_formatted = impl_mod.gen.jac;
-                impl_original = impl_mod.source.code;
-                if impl_formatted != impl_original {
-                    result['changed'] = True;
-                    if not check {
-                        result['impl_results'].append((impl_path, impl_formatted));
+
+            if lintfix {
+                for annex_path in annex_paths {
+                    if covered is not None
+                    and (os.path.realpath(annex_path) in covered) {
+                        continue;
+                    }
+                    annex_logical = annex_logical_map.get(annex_path, annex_path);
+                    try {
+                        if logical_path {
+                            annex_src = read_file_with_encoding(annex_path);
+                            annex_prog = JacProgram.jac_str_formatter(
+                                annex_src, annex_logical, auto_lint=True
+                            );
+                        } else {
+                            annex_prog = JacProgram.jac_file_formatter(
+                                annex_path, auto_lint=True
+                            );
+                        }
+                        annex_formatted = annex_prog.mod.main.gen.jac;
+                        annex_original = annex_prog.mod.main.source.code;
+                    } except (OSError, ValueError, TypeError, AttributeError) as e {
+                        annex_ok = False;
+                        annex_error_count += 1;
+                        result['errors_strs'].append(
+                            f"Error formatting annex '{annex_path}': {e}"
+                        );
+                        continue;
+                    }
+                    for warning in annex_prog.warnings_had {
+                        result['warnings_strs'].append(str(warning));
+                    }
+                    for error in annex_prog.errors_had {
+                        result['errors_strs'].append(str(error));
+                        annex_ok = False;
+                        annex_error_count += 1;
+                    }
+                    annex_formatted_map[annex_path] = (
+                        annex_formatted if annex_formatted is not None else ""
+                    );
+                    if (annex_formatted and annex_formatted != annex_original) {
+                        result['changed'] = True;
+                        if not check {
+                            result['impl_results'].append(
+                                (annex_path, annex_formatted)
+                            );
+                        }
                     }
                 }
             }
-        } except Exception {
+        } except (OSError, ValueError, TypeError, AttributeError) {
             result['syntax_errors'] = [str(e) for e in prog.errors_had];
             return result;
         }
-        # Collect warnings/errors as strings for later printing
+
         lint_errors = 0;
         if lintfix {
             for warning in prog.warnings_had {
@@ -456,9 +556,56 @@ def _format_single_file_worker(file_path: str, lintfix: bool, check: bool) -> di
                 result['errors_strs'].append(str(error));
                 lint_errors += 1;
             }
+            lint_errors += annex_error_count;
         }
         result['success'] = True;
         result['errors'] = lint_errors;
+
+        if (
+            fcache is not None
+            and cache_key
+            and result['success']
+            and not result['syntax_errors']
+            and result['errors'] == 0
+            and annex_ok
+        ) {
+            try {
+                import from jaclang.cli.format_cache { frame_unit }
+
+                if not result['changed'] {
+                    fcache.mark_clean(cache_key);
+                } elif not check {
+                    main_clean = (
+                        formatted_code.encode() if changed else path_obj.read_bytes()
+                    );
+                    new_parts = [main_clean];
+                    for ap in annex_paths {
+                        if ap in annex_formatted_map {
+                            new_parts.append(annex_formatted_map[ap].encode());
+                        } elif Path(ap).exists() {
+                            new_parts.append(Path(ap).read_bytes());
+                        } else {
+                            annex_ok = False;
+                            break;
+                        }
+                    }
+                    if annex_ok {
+                        new_unit = frame_unit(new_parts);
+                        fcache.mark_clean(
+                            fcache.make_key(
+                                new_unit,
+                                lintfix=lintfix,
+                                config_fingerprint=cfg_fp,
+                                logical_path=key_logical
+                            )
+                        );
+                    }
+                }
+            } except (OSError, ValueError, TypeError, AttributeError) {
+                ;
+            }
+        }
+
         return result;
     } except Exception as e {
         result['syntax_errors'] = [f"Error formatting '{file_path}': {e}"];
@@ -466,16 +613,38 @@ def _format_single_file_worker(file_path: str, lintfix: bool, check: bool) -> di
     }
 }
 
-"""Format .jac files with improved code style."""
 impl format(
-    paths: list, to_screen: bool = False, lintfix: bool = False, check: bool = False
+    paths: list,
+    to_screen: bool = False,
+    lintfix: bool = False,
+    check: bool = False,
+    cache: bool = False,
+    cache_anchor: str = "",
+    path_map: dict | None = None,
+    cache_stats: dict | None = None
 ) -> int {
     import from concurrent.futures { ProcessPoolExecutor, as_completed }
     import os;
     if isinstance(paths, str) {
         paths = [paths];
     }
-    # Track unformatted files for check mode
+
+    cache_stamp = "";
+
+    if cache and not to_screen {
+        import from jaclang.cli.format_cache {
+            FORMAT_CACHE_SCHEMA_VERSION,
+            formatter_pipeline_revision
+        }
+        import from jaclang.cli.cli { jac_version }
+        try {
+            rev = formatter_pipeline_revision();
+            cache_stamp = f"jfmt:{FORMAT_CACHE_SCHEMA_VERSION}:{jac_version()}:{rev}";
+        } except (OSError, ValueError, TypeError, ImportError, AttributeError) {
+            cache_stamp = "";
+        }
+    }
+
     unformatted_files: list[str] = [];
     failed_results: list = [];
 
@@ -486,7 +655,9 @@ impl format(
         return 1 if had_path_errors else 0;
     }
 
-    # Use parallel processing for multiple files (unless outputting to screen)
+    remap = path_map if path_map is not None else {};
+    covered: set[str] = {os.path.realpath(f) for f in all_files};
+
     use_parallel = total_files > 1 and not to_screen;
     max_workers = min(os.cpu_count() or 4, total_files, 8);
 
@@ -496,15 +667,20 @@ impl format(
         try {
             import multiprocessing as mp;
             ctx = mp.get_context("fork") if os.name != "nt" else None;
-            pool_cls = (
-                ProcessPoolExecutor
-                    if ctx is None
-                    else lambda **kw : ProcessPoolExecutor(mp_context=ctx, **kw)
-            );
-            with pool_cls(max_workers=max_workers) as executor {
+            with ProcessPoolExecutor(
+                max_workers=max_workers, mp_context=ctx
+            ) as executor {
                 futures = {
-                    executor.submit(_format_single_file_worker, fp, lintfix, check): fp
-                    for fp in all_files
+                    executor.submit(
+                        _format_single_file_worker,
+                        fp,
+                        lintfix,
+                        check,
+                        covered,
+                        cache_stamp,
+                        cache_anchor,
+                        remap.get(fp, "")
+                    ): fp for fp in all_files
                 };
                 completed = 0;
                 for future in as_completed(futures) {
@@ -526,32 +702,62 @@ impl format(
                                 'warnings_strs': [],
                                 'errors_strs': [],
                                 'formatted_code': None,
-                                'impl_results': []
+                                'impl_results': [],
+                                'cache_status': 'off'
                             }
                         );
                     }
                 }
             }
-        } except Exception {
-            # Fall back to sequential processing if multiprocessing fails
+        } except Exception as e {
+            console.print(
+                f"Parallel formatting unavailable ({type(e).__name__}: {e}); "
+                "falling back to serial."
+            );
+            results = [];
             use_parallel = False;
         }
     }
     if not use_parallel {
-        # Single file: show filename
         for fp in all_files {
-            console.print(f"Formatting {fp}...");
-            results.append(_format_single_file_worker(fp, lintfix, check));
+            console.print(f"Formatting {fp}");
+            results.append(
+                _format_single_file_worker(
+                    fp,
+                    lintfix,
+                    check,
+                    covered,
+                    cache_stamp,
+                    cache_anchor,
+                    remap.get(fp, "")
+                )
+            );
         }
     }
 
-    # Process results: write files, print messages, aggregate stats
+    if cache_stamp {
+        hits = sum(
+            1
+            for r in results
+            if r.get('cache_status') == 'hit'
+        );
+        misses = sum(
+            1
+            for r in results
+            if r.get('cache_status') == 'miss'
+        );
+        if cache_stats is not None {
+            cache_stats["hits"] = hits;
+            cache_stats["misses"] = misses;
+            cache_stats["examined"] = hits + misses;
+        }
+    }
+
     failed_files = 0;
     changed_files = 0;
     total_errors = 0;
 
     for res in results {
-        # Print warnings/errors from this file
         for w in res['warnings_strs'] {
             console.warning(w);
         }
@@ -571,13 +777,9 @@ impl format(
             if check {
                 unformatted_files.append(res['path']);
             } else {
-                # Write formatted code
                 if res['formatted_code'] is not None {
                     try {
                         if to_screen {
-                            # markup=False, highlight=False: prevent Rich from
-                            # interpreting Jac syntax like [root()-->], [?:Todo],
-                            # or [todo] as markup tags and silently stripping them.
                             console.print(
                                 res['formatted_code'], markup=False, highlight=False
                             );
@@ -590,7 +792,6 @@ impl format(
                         console.error(f"Error writing to '{res['path']}': {e}");
                     }
                 }
-                # Write impl files
                 for (impl_path, impl_code) in res['impl_results'] {
                     try {
                         if to_screen {
@@ -607,8 +808,7 @@ impl format(
             }
         }
     }
-    # Print syntax error summary grouped by file
-    # Note: errors are strings (for multiprocessing), not Alert objects
+
     if failed_results {
         import from jaclang.cli.check_report { separator }
         console.print("");
@@ -616,19 +816,19 @@ impl format(
         for r in failed_results {
             console.print(separator(str(r['path']), char='_'));
             for e in r['errors'] {
-                console.error(e);  # Already a string
+                console.error(e);
             }
             console.print("");
         }
         print_failed_summary(failed_results);
     }
-    # In check mode, report all issues together
+
     if check {
         has_errors = False;
         if len(unformatted_files) > 0 {
             console.error("The following files are not properly formatted:");
             for file in unformatted_files {
-                console.error(f"  jac format --lintfix {file}");
+                console.error(f"  jac fmt --lintfix {file}");
             }
             has_errors = True;
         }
@@ -651,7 +851,7 @@ impl format(
         }
         return 0;
     }
-    # Non-check mode summary
+
     if (((len(paths) == 1) and Path(paths[0]).is_dir()) or (failed_files > 0)) {
         summary_msg = f"Formatted {(total_files - failed_files)}/{total_files} '.jac' files ({changed_files} changed).";
         if failed_files > 0 {
@@ -672,19 +872,322 @@ impl format(
     return 0;
 }
 
-"""Run the test suite in the specified .jac file or directory."""
+impl precommit(
+    paths: (list | None) = None,
+    staged: bool = False,
+    verify: bool = False,
+    install: bool = False,
+    force: bool = False,
+    cache_stats: dict | None = None
+) -> int {
+    import os;
+    import shutil;
+    import subprocess;
+    import tempfile;
+    import from jaclang.project.config { get_config }
+    if install {
+        return _install_precommit_hook(force);
+    }
+    targets: list[str] = [];
+    rel_targets: list[str] = [];
+    git_root = "";
+    if staged {
+        try {
+            git_root = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                capture_output=True,
+                text=True,
+                check=True
+            ).stdout.strip();
+            completed = subprocess.run(
+                ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
+                capture_output=True,
+                text=True,
+                check=True
+            );
+        } except Exception as e {
+            console.error(f"Could not read staged files from git: {e}");
+            return 1;
+        }
+        for line in completed.stdout.splitlines() {
+            candidate = line.strip();
+            if not candidate.endswith(".jac") {
+                continue;
+            }
+            abs_candidate = os.path.join(git_root, candidate);
+            if os.path.exists(abs_candidate) {
+                rel_targets.append(candidate);
+                targets.append(abs_candidate);
+            }
+        }
+        if not targets {
+            console.success("No staged '.jac' files to check.");
+            return 0;
+        }
+    } elif paths {
+        targets = list(paths);
+    } else {
+        config = get_config();
+        targets = [str(config.project_root)] if config?.project_root else ["."];
+    }
+
+    fmt_targets = targets;
+    tmp_root: (str | None) = None;
+    path_map: dict = {};
+    if staged and verify {
+        dirty = _staged_dirty_files(git_root, rel_targets);
+        if dirty {
+            tmp_root = tempfile.mkdtemp(prefix="jac-precommit-");
+            try {
+                checkout_paths = list(rel_targets);
+                try {
+                    import from jaclang.jac0core.bccache { discover_annex_files }
+                    rel_set = {r for r in rel_targets};
+                    annex_rel: list[str] = [];
+                    for rel in rel_targets {
+                        abs_t = os.path.join(git_root, rel);
+                        if not os.path.exists(abs_t) {
+                            continue;
+                        }
+                        for ap in (
+                            discover_annex_files(abs_t, '.impl.jac') + discover_annex_files(
+                                abs_t, '.test.jac'
+                            )
+                        ) {
+                            ap_rel = os.path.relpath(ap, git_root).replace(os.sep, "/");
+                            if ap_rel not in rel_set {
+                                annex_rel.append(ap_rel);
+                            }
+                        }
+                    }
+                    if annex_rel {
+                        ls_out = subprocess.run(
+                            ["git", "ls-files", "--"] + annex_rel,
+                            capture_output=True,
+                            text=True,
+                            cwd=git_root,
+                            check=True
+                        ).stdout;
+                        for line in ls_out.splitlines() {
+                            tracked = line.strip();
+                            if tracked and tracked not in rel_set {
+                                rel_set.add(tracked);
+                                checkout_paths.append(tracked);
+                            }
+                        }
+                    }
+                } except Exception { }
+                subprocess.run(
+                    [
+                        "git",
+                        "checkout-index",
+                        "-f",
+                        f"--prefix={tmp_root}{os.sep}",
+                        "--"
+                    ] + checkout_paths,
+                    check=True,
+                    cwd=git_root
+                );
+                fmt_targets = [os.path.join(tmp_root, rel) for rel in rel_targets];
+
+                path_map = {
+                    os.path.join(tmp_root, rel): os.path.join(git_root, rel)
+                    for rel in rel_targets
+                };
+                console.print("[precommit] Verifying staged content (index checkout).");
+            } except Exception as e {
+                shutil.rmtree(tmp_root, ignore_errors=True);
+                tmp_root = None;
+                fmt_targets = targets;
+                path_map = {};
+                console.warning(
+                    f"[precommit] Could not check out the staged blobs ({e}); "
+                    "verifying the WORKTREE copies instead -- staged content "
+                    "that differs from the worktree was NOT verified."
+                );
+            }
+        }
+    }
+    console.print("precommit: formatting (--lintfix)", style="muted");
+    fmt_ret = format(
+        fmt_targets,
+        to_screen=False,
+        lintfix=True,
+        check=verify,
+        cache=True,
+        cache_anchor=git_root,
+        path_map=path_map,
+        cache_stats=cache_stats
+    );
+    if tmp_root {
+        shutil.rmtree(tmp_root, ignore_errors=True);
+    }
+    run_typecheck = True;
+    pc_config = get_config();
+    if pc_config {
+        run_typecheck = pc_config.precommit.typecheck;
+    }
+    if run_typecheck {
+        console.print("[precommit] Running check...");
+        check_ret = check(targets);
+    } else {
+        console.print("[precommit] Skipping check ([precommit] typecheck = false).");
+        check_ret = 0;
+    }
+    if not verify
+    and check_ret == 0
+    and fmt_ret == 0
+    and staged
+    and _staged_dirty_files(git_root, rel_targets) {
+        fmt_ret = 1;
+    }
+    if not verify and check_ret == 0 and fmt_ret != 0 {
+        console.warning(
+            "Pre-commit applied formatting/lint fixes — review the changes, "
+            "re-stage them, and commit again."
+        );
+        return 1;
+    }
+    if fmt_ret != 0 or check_ret != 0 {
+        console.error("Pre-commit checks failed.");
+        if verify and fmt_ret != 0 {
+            console.error(
+                "Run 'jac precommit' (without --verify) to apply formatting "
+                "fixes, then re-stage."
+            );
+        }
+        return 1;
+    }
+    console.success("Pre-commit checks passed.");
+    return 0;
+}
+
+def _staged_dirty_files(git_root: str, rel_targets: list[str]) -> list[str] {
+    import subprocess;
+    if not git_root or not rel_targets {
+        return [];
+    }
+    try {
+        out = subprocess.run(
+            ["git", "diff", "--name-only", "--"] + rel_targets,
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=git_root
+        ).stdout;
+    } except Exception {
+        return [];
+    }
+    return [
+        line.strip()
+        for line in out.splitlines()
+        if line.strip()
+    ];
+}
+
+def _install_precommit_hook(force: bool = False) -> int {
+    import os;
+    import stat;
+    import subprocess;
+    try {
+        completed = subprocess.run(
+            ["git", "rev-parse", "--git-dir"],
+            capture_output=True,
+            text=True,
+            check=True
+        );
+    } except Exception as e {
+        console.error(f"Not a git repository (or git unavailable): {e}");
+        return 1;
+    }
+    git_dir = completed.stdout.strip();
+    hooks_dir = os.path.join(git_dir, "hooks");
+    os.makedirs(hooks_dir, exist_ok=True);
+    hook_path = os.path.join(hooks_dir, "pre-commit");
+    if os.path.exists(hook_path) {
+        try {
+            with open(hook_path, encoding="utf-8", errors="replace") as f {
+                existing = f.read();
+            }
+        } except Exception {
+            existing = "";
+        }
+
+        is_framework = "generated by pre-commit" in existing;
+        if not (is_framework or force) {
+            console.warning(f"A pre-commit hook already exists at '{hook_path}'.");
+            console.warning(
+                "Re-run 'jac precommit --install --force' to replace it "
+                "(the old hook is kept as pre-commit.bak)."
+            );
+            return 1;
+        }
+        backup_path = hook_path + ".bak";
+        try {
+            os.replace(hook_path, backup_path);
+        } except Exception as e {
+            console.error(f"Could not back up the existing hook: {e}");
+            return 1;
+        }
+        kind = "pre-commit framework hook" if is_framework else "existing hook";
+        console.print(f"Replaced {kind} (backup at '{backup_path}').");
+    }
+    hook_body = (
+        "#!/bin/sh\n"
+        "# Installed by `jac precommit --install`\n"
+        "exec jac precommit --staged --verify\n"
+    );
+    try {
+        with open(hook_path, "w", encoding="utf-8") as f {
+            f.write(hook_body);
+        }
+        mode = os.stat(hook_path).st_mode;
+        os.chmod(hook_path, mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH);
+    } except Exception as e {
+        console.error(f"Failed to write hook: {e}");
+        return 1;
+    }
+    console.success(f"Installed git pre-commit hook at '{hook_path}'.");
+    console.print("It runs: jac precommit --staged --verify");
+    return 0;
+}
+
 impl `test(
-    filepath: str = "",
+    paths: list = [],
     test_name: str = "",
     filter: str = "",
     xit: bool = False,
     maxfail: int = None,
     directory: str = "",
-    verbose: bool = False
+    verbose: bool = False,
+    ignore: str = ""
 ) -> int {
+    import os;
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
-    # e.g. jac test --test_name "typevar7 constrained operations"  (no filepath given)
-    if (test_name and not filepath) {
+
+    if isinstance(paths, str) {
+        paths = [paths];
+    }
+
+    if (not paths and not directory) {
+        import from jaclang.project.config { get_config }
+        cfg = get_config();
+        if (cfg and cfg.test.directory) {
+            directory = cfg.test.directory;
+            if (cfg.project_root and not os.path.isabs(directory)) {
+                directory = os.path.join(str(cfg.project_root), directory);
+            }
+            if not Path(directory).is_dir() {
+                console.error(
+                    f"Error: [test] directory '{cfg.test.directory}' "
+                    f"(resolved to '{directory}') does not exist."
+                );
+                return 1;
+            }
+        }
+    }
+
+    if (test_name and not paths) {
         console.error(
             "Error: --test_name requires a filepath. "
             "Running by name across all files is ambiguous.\n"
@@ -692,25 +1195,93 @@ impl `test(
         );
         return 1;
     }
-    # e.g. jac test test_typevar.jac  (run from wrong directory)
-    if (filepath and not Path(filepath).exists()) {
-        console.error(
-            f"Error: File not found: '{filepath}'\n"
-            "Make sure you are in the correct directory or provide the full path.\n"
-            f"Usage: jac test /full/path/to/{filepath}"
-        );
-        return 1;
+
+    for fp in paths {
+        if not Path(fp).exists() {
+            console.error(
+                f"Error: File not found: '{fp}'\n"
+                "Make sure you are in the correct directory or provide the full path.\n"
+                f"Usage: jac test /full/path/to/{fp}"
+            );
+            return 1;
+        }
+    }
+
+    run_pytest = not os.environ.get('JAC_TEST_NATIVE', '');
+    if run_pytest {
+        try {
+            import pytest;
+        } except ImportError {
+            run_pytest = False;
+        }
+        if run_pytest {
+            pargs: list[str] = [];
+
+            targets = paths or ([directory] if directory else []);
+            for target in targets {
+                pargs.append(target);
+            }
+
+            if directory and not paths {
+                pargs.append('--jac-test-dir');
+                pargs.append(str(Path(directory).resolve()));
+            }
+
+            if ignore {
+                pargs.append('--ignore=' + ignore);
+            }
+
+            jobs = os.environ.get('JAC_TEST_JOBS', '');
+            if not jobs {
+                import from jaclang.project.config { get_config }
+                jobs_cfg = get_config();
+                jobs = jobs_cfg.dev.test_jobs if jobs_cfg else 'auto';
+            }
+
+            if jobs and jobs != '0' and not test_name {
+                pargs.append('-n');
+                pargs.append(jobs);
+            }
+            if xit {
+                pargs.append('-x');
+            }
+            if maxfail {
+                pargs.append('--maxfail');
+                pargs.append(str(maxfail));
+            }
+            if test_name {
+                pargs.append('-k');
+                pargs.append(' and '.join(test_name.split()) or test_name);
+            } elif filter {
+                pargs.append('-k');
+                pargs.append(filter);
+            }
+            if verbose {
+                pargs.append('-vv');
+            }
+            return int(pytest.main(pargs));
+        }
     }
     normalized_name = test_name.strip().replace(' ', '_') if test_name else '';
-    failcount = Jac.run_test(
-        filepath=filepath,
-        func_name=('test_' + normalized_name) if normalized_name else None,
-        filter=filter,
-        xit=xit,
-        maxfail=maxfail,
-        directory=directory,
-        verbose=verbose
-    );
+    func_name = ('test_' + normalized_name) if normalized_name else None;
+
+    run_targets = paths or [""];
+    failcount = 0;
+    for fp in run_targets {
+        failcount += Jac.run_test(
+            filepath=fp,
+            func_name=func_name,
+            filter=filter,
+            xit=xit,
+            maxfail=maxfail,
+            directory=directory,
+            verbose=verbose
+        );
+
+        if xit and failcount > 0 {
+            break;
+        }
+    }
     if failcount {
         console.error(f"Tests failed: {failcount}");
         return 1;
@@ -718,7 +1289,6 @@ impl `test(
     return 0;
 }
 
-"""Generate static parser."""
 impl gen_parser -> int {
     import from jaclang.compiler { gen_all_parsers }
     gen_all_parsers();
@@ -726,8 +1296,7 @@ impl gen_parser -> int {
     return 0;
 }
 
-"""Extract grammar from the Jac parser."""
-impl grammar(lark: bool = False, output: str = "") -> int {
+impl grammar(output: str = "", strict: bool = False) -> int {
     import from jaclang.jac0core.program { JacProgram }
     import from jaclang.compiler.passes.tool.grammar_extract_pass { GrammarExtractPass }
     import jaclang;
@@ -748,28 +1317,26 @@ impl grammar(lark: bool = False, output: str = "") -> int {
         console.error("No grammar rules extracted.");
         return 1;
     }
-    text = pass_.emit_lark() if lark else pass_.emit_ebnf();
+    text = pass_.emit_ebnf();
     if output {
         with open(output, "w", encoding="utf-8") as f {
             f.write(text);
             f.write("\n");
         }
-        fmt_name = "Lark" if lark else "EBNF";
-        console.success(
-            f"{fmt_name} grammar ({len(pass_.rules)} rules) written to {output}"
-        );
-    } else {
+        console.success(f"EBNF grammar ({len(pass_.rules)} rules) written to {output}");
+    } elif not strict {
         console.print(text);
+    }
+    if strict {
+        console.print(pass_.emit_diagnostics());
     }
     return 0;
 }
 
-"""Iterate over .jac files from a list of paths (files or directories).
-
-Expands directories recursively, filters by ignore patterns.
-Returns (file_list, had_errors) where had_errors is True if any path was invalid.
-"""
-def _iter_jac_files(paths: list, ignore_list: list = []) -> tuple[list[str], bool] {
+def _iter_jac_files(
+    paths: list, ignore_list: (list | None) = None
+) -> tuple[list[str], bool] {
+    ignore_list = ignore_list or [];
     result: list[str] = [];
     had_errors = False;
     for path in paths {
@@ -795,7 +1362,6 @@ def _iter_jac_files(paths: list, ignore_list: list = []) -> tuple[list[str], boo
     return (result, had_errors);
 }
 
-"""Normalize ignore patterns by stripping whitespace and trailing slashes."""
 def _normalize_ignore_patterns(ignore: list) -> list {
     normalized = [];
     for p in (ignore or []) {
@@ -807,40 +1373,7 @@ def _normalize_ignore_patterns(ignore: list) -> list {
     return normalized;
 }
 
-"""Check if a file path should be ignored based on patterns.
-Supports exact matches, wildcard patterns (e.g., 'jac-*'), and
-path patterns containing '/' (e.g., 'jac-client/*/config_loader.impl.jac').
-
-Path patterns (containing '/') are matched against the full file path using
-fnmatch, so they can target specific files in specific packages. Simple
-patterns (no '/') are matched against each individual path component, which
-preserves the existing behavior of matching bare filenames.
-"""
 def _should_ignore(file_path: str, ignore_patterns: list) -> bool {
-    if not ignore_patterns {
-        return False;
-    }
-    path_parts = Path(file_path).parts;
-    # Normalize file path to use forward slashes for consistent matching
-    normalized_path = '/'.join(path_parts);
-    # Patterns are already normalized in ignore_list
-    for pattern in ignore_patterns {
-        if '/' in pattern {
-            # Path pattern: match against the full normalized path.
-            # This allows patterns like 'jac-client/*/config_loader.impl.jac'
-            # to target specific files in specific packages.
-            if fnmatch(normalized_path, '*/' + pattern)
-            or fnmatch(normalized_path, pattern) {
-                return True;
-            }
-        } else {
-            # Simple pattern: match against each path component (existing behavior)
-            for part in path_parts {
-                if fnmatch(part, pattern) {
-                    return True;
-                }
-            }
-        }
-    }
-    return False;
+    import from jaclang.jac0core.helpers { path_matches_exclude }
+    return path_matches_exclude(file_path, ignore_patterns);
 }

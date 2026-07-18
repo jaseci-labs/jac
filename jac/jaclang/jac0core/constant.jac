@@ -1,7 +1,5 @@
-"""Constants across the project."""
-import from enum { Enum, IntEnum, IntFlag, StrEnum }
+import from enum { IntFlag, StrEnum }
 
-"""Symbol types."""
 enum SymbolType {
     MODULE = 'module',
     MOD_VAR = 'mod_var',
@@ -34,7 +32,6 @@ enum SymbolType {
     }
 }
 
-"""LSP Token types for Jac."""
 enum JacSemTokenType: int {
     NAMESPACE = 0,
     TYPE = 1,
@@ -69,7 +66,6 @@ enum JacSemTokenType: int {
     }
 }
 
-"""LSP Token modifiers for Jac."""
 class JacSemTokenModifier(IntFlag) {
     with entry {
         DECLARATION = 1 << 0;
@@ -84,11 +80,9 @@ class JacSemTokenModifier(IntFlag) {
         DEFAULT_LIBRARY = 1 << 9;
     }
 
-    """Return the string list of token modifiers."""
     static def as_str_list -> list[str];
 }
 
-"""Token constants for Jac."""
 class Constants(StrEnum) {
     with entry {
         HERE = 'here';
@@ -98,11 +92,9 @@ class Constants(StrEnum) {
         SUPER_ROOT_UUID = '00000000-0000-0000-0000-000000000000';
     }
 
-    """Return the string representation of the token."""
     def __str__(self: Constants) -> str;
 }
 
-"""Code execution context for client/server/native separation."""
 enum CodeContext {
     SERVER = 'server',
     CLIENT = 'client',
@@ -120,14 +112,18 @@ enum CodeContext {
     }
 }
 
-"""Edge direction indicator."""
-enum EdgeDir {
-    IN = 1,
-    OUT = 2,
-    ANY = 3
+enum EdgeDir { IN = 1, OUT = 2, ANY = 3 }
+
+enum OwnershipKind { NONE = 0, OWN = 1, BORROW = 2, MUT_BORROW = 3, IMM = 4 }
+
+def is_borrow_kind(k: OwnershipKind) -> bool {
+    return k == OwnershipKind.BORROW or k == OwnershipKind.MUT_BORROW;
 }
 
-"""Symbol access levels."""
+def is_mut_kind(k: OwnershipKind) -> bool {
+    return k == OwnershipKind.MUT_BORROW;
+}
+
 enum SymbolAccess {
     PRIVATE = 'private',
     PUBLIC = 'public',
@@ -139,7 +135,19 @@ enum SymbolAccess {
     }
 }
 
-"""Token constants for the lexer."""
+enum SymbolStorage {
+    LOCAL = 'local',
+    PARAM = 'param',
+    MODULE_GLOBAL = 'module_global',
+    CAPTURED = 'captured',
+    CLASS_FIELD = 'class_field',
+    with entry {
+        def __str__(self: SymbolStorage) -> str {
+            return self.value;
+        }
+    }
+}
+
 class Tokens(StrEnum) {
     with entry {
         FLOAT = 'FLOAT';
@@ -226,9 +234,9 @@ class Tokens(StrEnum) {
         KW_ELIF = 'KW_ELIF';
         KW_ELSE = 'KW_ELSE';
         KW_FOR = 'KW_FOR';
-        KW_TO = 'KW_TO';
         KW_BY = 'KW_BY';
         KW_WHILE = 'KW_WHILE';
+        KW_FOREVER = 'KW_FOREVER';
         KW_CONTINUE = 'KW_CONTINUE';
         KW_BREAK = 'KW_BREAK';
         KW_DISENGAGE = 'KW_DISENGAGE';
@@ -303,8 +311,6 @@ class Tokens(StrEnum) {
         CARROW_L_P2 = 'CARROW_L_P2';
         CARROW_R_P1 = 'CARROW_R_P1';
         CARROW_R_P2 = 'CARROW_R_P2';
-        GLOBAL_OP = 'GLOBAL_OP';
-        NONLOCAL_OP = 'NONLOCAL_OP';
         KW_HERE = 'KW_HERE';
         KW_VISITOR = 'KW_VISITOR';
         KW_SELF = 'KW_SELF';
@@ -346,20 +352,13 @@ class Tokens(StrEnum) {
         F_TEXT_SQ = 'F_TEXT_SQ';
         F_TEXT_TDQ = 'F_TEXT_TDQ';
         F_TEXT_TSQ = 'F_TEXT_TSQ';
-        RF_TEXT_DQ = 'RF_TEXT_DQ';
-        RF_TEXT_SQ = 'RF_TEXT_SQ';
-        RF_TEXT_TDQ = 'RF_TEXT_TDQ';
-        RF_TEXT_TSQ = 'RF_TEXT_TSQ';
         D_LBRACE = 'D_LBRACE';
         D_RBRACE = 'D_RBRACE';
         CONV = 'CONV';
-        F_FORMAT_TEXT = 'F_FORMAT_TEXT';
     }
 }
 
-"""Token name to string value mapping."""
 glob TOKEN_MAP: dict[str, str] = {
-         'ABILITY_OP': ':can:',
          'ADD_EQ': '+=',
          'ARROW_BI': '<-->',
          'ARROW_L': '<--',
@@ -375,7 +374,6 @@ glob TOKEN_MAP: dict[str, str] = {
          'BW_AND': '&',
          'BW_AND_EQ': '&=',
          'BW_NOT': '~',
-         'BW_NOT_EQ': '~=',
          'BW_OR': '|',
          'BW_OR_EQ': '|=',
          'BW_XOR': '^',
@@ -387,7 +385,6 @@ glob TOKEN_MAP: dict[str, str] = {
          'CARROW_R': '++>',
          'CARROW_R_P1': '+>:',
          'CARROW_R_P2': ':+>',
-         'CLASS_OP': ':class:',
          'COLON': ':',
          'COMMA': ',',
          'COMMENT': '#',
@@ -400,7 +397,6 @@ glob TOKEN_MAP: dict[str, str] = {
          'DOT_FWD': '.>',
          'D_LBRACE': '{{',
          'D_RBRACE': '}}',
-         'EDGE_OP': ':edge:',
          'EE': '==',
          'ELLIPSIS': '...',
          'EQ': '=',
@@ -409,7 +405,6 @@ glob TOKEN_MAP: dict[str, str] = {
          'FLOOR_DIV_EQ': '//=',
          'F_DQ_END': '"',
          'F_DQ_START': 'f"',
-         'F_FORMAT_TEXT': '',
          'F_SQ_END': "'",
          'F_SQ_START': "f'",
          'F_TDQ_END': '"""',
@@ -420,7 +415,6 @@ glob TOKEN_MAP: dict[str, str] = {
          'F_TEXT_TSQ': '',
          'F_TSQ_END': "'''",
          'F_TSQ_START': "f'''",
-         'GLOBAL_OP': 'global',
          'GT': '>',
          'GTE': '>=',
          'HEX': '0x',
@@ -434,7 +428,7 @@ glob TOKEN_MAP: dict[str, str] = {
          'JSX_TAG_END': '>',
          'JSX_TEXT': '',
          'KWESC_NAME': '`',
-         'KW_ABSTRACT': 'abs',
+         'KW_ABSTRACT': 'abst',
          'KW_AND': 'and',
          'KW_AS': 'as',
          'KW_ASSERT': 'assert',
@@ -461,6 +455,7 @@ glob TOKEN_MAP: dict[str, str] = {
          'KW_FINALLY': 'finally',
          'KW_FLOW': 'flow',
          'KW_FOR': 'for',
+         'KW_FOREVER': 'forever',
          'KW_FROM': 'from',
          'KW_GLOBAL': 'glob',
          'KW_HAS': 'has',
@@ -500,7 +495,6 @@ glob TOKEN_MAP: dict[str, str] = {
          'KW_SUPER': 'super',
          'KW_SWITCH': 'switch',
          'KW_TEST': 'test',
-         'KW_TO': 'to',
          'KW_TRY': 'try',
          'KW_VISIT': 'visit',
          'KW_VISITOR': 'visitor',
@@ -523,12 +517,9 @@ glob TOKEN_MAP: dict[str, str] = {
          'MUL_EQ': '*=',
          'NAME': '',
          'NE': '!=',
-         'NODE_OP': ':node:',
-         'NONLOCAL_OP': 'nonlocal',
          'NOT': 'not',
          'NULL': 'None',
          'NULL_OK': '?',
-         'OBJECT_OP': ':obj:',
          'OCT': '0o',
          'PIPE_BKWD': '<|',
          'PIPE_FWD': '|>',
@@ -539,10 +530,6 @@ glob TOKEN_MAP: dict[str, str] = {
          'RF_DQ_START': 'rf"',
          'RF_SQ_START': "rf'",
          'RF_TDQ_START': 'rf"""',
-         'RF_TEXT_DQ': '',
-         'RF_TEXT_SQ': '',
-         'RF_TEXT_TDQ': '',
-         'RF_TEXT_TSQ': '',
          'RF_TSQ_START': "rf'''",
          'RPAREN': ')',
          'RSHIFT': '>>',
@@ -575,7 +562,6 @@ glob TOKEN_MAP: dict[str, str] = {
          'TYP_U64': 'u64',
          'TYP_F32': 'f32',
          'TYP_F64': 'f64',
-         'WALKER_OP': ':walker:',
          'WALRUS_EQ': ':=',
          'WS': ' '
      },
@@ -622,3 +608,11 @@ glob TOKEN_MAP: dict[str, str] = {
          '#F8F8FF',
          '#F0FFFF'
      ];
+
+glob NON_ESCAPED_KEYWORDS: set = {'float', 'int', 'str', 'bool', 'self'};
+
+glob RESERVED_IDENT_NAMES: set = {
+         v
+         for v in TOKEN_MAP.values()
+         if v not in NON_ESCAPED_KEYWORDS
+     };

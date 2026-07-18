@@ -16,7 +16,7 @@ _planning/diagnostics_implementation_progress.md.
 """
 
 import os;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import pytest;
 import jaclang;
 import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
@@ -25,8 +25,7 @@ import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.parser.parser { parse }
 import from jaclang.runtimelib.test { parametrize }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     FIXTURES = os.path.join(
+glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"
      ),
      CHECKER_FIXTURES = os.path.join(
@@ -245,7 +244,7 @@ test "E0025: gte (>=) does not fire" {
 }
 
 test "E0025: lambda syntax unaffected" {
-    (prog, had_err) = parse_with_prog('with entry { f = lambda x: int : x + 1; }');
+    (prog, had_err) = parse_with_prog('with entry { f = lambda (x: int) { x + 1; }; }');
     assert not had_err;
     assert not has_diagnostic_code(prog, "E0025");
 }
@@ -312,7 +311,7 @@ test "E0052: typed parameter is valid" {
 }
 
 test "E0052: lambda params do not require annotations" {
-    (has_err, _) = parse_and_validate('with entry { f = lambda x: x + 1; }');
+    (has_err, _) = parse_and_validate('with entry { f = lambda (x) { x + 1; }; }');
     assert not has_err;
 }
 
@@ -403,15 +402,23 @@ test "E0076: duplicate method definition" {
     assert has_diagnostic_code(prog, "E0076");
 }
 
+test "E0076: Python __init__ and init are distinct methods" {
+    # Issue #6556: a Python class with both `__init__` and a plain `init`
+    # method (e.g. Pillow's PIL.ImageFile.PyCodec) is valid Python; raising
+    # `__init__` to Jac's `init` constructor must not collide with it.
+    (prog, _) = compile_only("parser_E0076_py_init_distinct.py");
+    assert not has_diagnostic_code(prog, "E0076");
+}
+
 test "E0077: empty f-string expression" {
     pytest.skip("E0077 not yet implemented");
     (has_err, _) = parse_and_validate('with entry { x = f"hello {}"; }');
     assert has_err;
 }
 
-test "E0062: nonlocal at module level" {
+test "removed nonlocal directive is a parse error" {
     (has_err, prog) = parse_and_validate('with entry { nonlocal x; }');
-    assert has_err or (prog is not None and has_diagnostic_code(prog, "E0062"));
+    assert has_err;
 }
 
 test "E0063: glob at module level is valid" {
@@ -634,6 +641,18 @@ test "E1042: missing await on sv-imported call (issue #6236)" {
     f"errors={[str(e) for e in prog.errors_had]}";
 }
 
+test "E1042: sv->sv import call is synchronous, not an awaitable coroutine" {
+    # An sv->sv import (a server consuming another server) lowers to a
+    # synchronous `def` stub, so binding its result to a concrete type
+    # without `await` is correct and must NOT raise E1042. Uses the SAME
+    # provider as the cl->sv fixture above, which still must raise it --
+    # the check is sensitive to the importing module's context, not just
+    # the `sv import` keyword.
+    (prog, _) = compile_and_check("type_E1042_sv_sync_call_server.jac");
+    assert count_diagnostic_code(prog, "E1042") == 0 , f"sv->sv call must not be flagged as a missing-await coroutine; "
+    f"errors={[str(e) for e in prog.errors_had]}";
+}
+
 # --- Collections ---
 test "E1180: tuple index out of range" {
     pytest.skip("E1180 not yet implemented");
@@ -695,6 +714,13 @@ test "E2055: return in finally block" {
 test "W2058: None comparison with ==" {
     (prog, _) = compile_and_check("semantic_W2058_none_eq.jac");
     assert has_diagnostic_code(prog, "W2058", in_warnings=True);
+}
+
+test "W2029: python-style property decorators in an obj" {
+    (prog, _) = compile_and_check("semantic_W2029_property_decorators.jac");
+    # One per decorator: '@property', '@val.getter', '@val.setter', '@val.deleter'.
+    # The '@property' inside the Python-compat 'class' is exempt, like W2006/W2007.
+    assert count_diagnostic_code(prog, "W2029", in_warnings=True) == 4;
 }
 
 # --- Mutability / Assignment (INFRA-1) ---
@@ -871,60 +897,60 @@ test "E5080: unsupported feature in backend" {
 
 
 # ══════════════════════════════════════════════════════════════════
-#  PARSER DEPRECATION WARNINGS (W0061)
+#  REMOVED PAREN FILTER SYNTAX (E0048)
 # ══════════════════════════════════════════════════════════════════
-test "W0061: deprecated paren filter syntax" {
-    (prog, _) = compile_only("parser_W0061_deprecated_paren_filter.jac");
-    assert has_diagnostic_code(prog, "W0061", in_warnings=True) , "Old (?:...) filter syntax should emit W0061 deprecation warning";
+test "E0048: removed paren filter syntax errors" {
+    (prog, _) = compile_only("parser_E0048_removed_paren_filter.jac");
+    assert has_diagnostic_code(prog, "E0048") , "Removed (?:...) filter syntax should emit E0048 error";
 }
 
-test "W0061: bracket filter no warning" {
-    (prog, _) = compile_only("parser_W0061_bracket_filter_ok.jac");
-    assert not has_diagnostic_code(prog, "W0061", in_warnings=True) , "New [?:...] bracket filter syntax should not emit W0061";
+test "E0048: bracket filter no error" {
+    (prog, _) = compile_only("parser_E0048_bracket_filter_ok.jac");
+    assert not has_diagnostic_code(prog, "E0048") , "Bracket filter syntax [?:...] should not emit E0048";
 }
 
-test "W0061: multiple deprecated filters emit multiple warnings" {
+test "E0048: multiple removed filters emit multiple errors" {
     prog = JacProgram();
     prog.compile(
         use_str='with entry { x = [1,2](?a<1); y = [3,4](?a>2); }', file_path="test.jac"
     );
-    assert count_diagnostic_code(prog, "W0061", in_warnings=True) == 2 , "Each deprecated filter occurrence should emit its own W0061";
+    assert count_diagnostic_code(prog, "E0048") == 2 , "Each removed filter occurrence should emit its own E0048";
 }
 
-test "W0061: edge ref with deprecated filter" {
+test "E0048: edge ref with removed filter" {
     prog = JacProgram();
     prog.compile(
         use_str='walker W { can go with entry { visit [-->](?:Foo); } }',
         file_path="test.jac"
     );
-    assert has_diagnostic_code(prog, "W0061", in_warnings=True) , "Deprecated filter inside edge ref should emit W0061";
+    assert has_diagnostic_code(prog, "E0048") , "Removed filter inside edge ref should emit E0048";
 }
 
-test "W0061: edge ref with bracket filter no warning" {
+test "E0048: edge ref with bracket filter no error" {
     prog = JacProgram();
     prog.compile(
         use_str='walker W { can go with entry { visit [-->][?:Foo]; } }',
         file_path="test.jac"
     );
-    assert not has_diagnostic_code(prog, "W0061", in_warnings=True) , "Bracket filter after edge ref should not emit W0061";
+    assert not has_diagnostic_code(prog, "E0048") , "Bracket filter after edge ref should not emit E0048";
 }
 
-test "W0061: filter inside edge chain warns" {
+test "E0048: filter inside edge chain errors" {
     prog = JacProgram();
     prog.compile(
         use_str='walker W { can go with entry { visit [-->(?:Foo)]; } }',
         file_path="test.jac"
     );
-    assert has_diagnostic_code(prog, "W0061", in_warnings=True) , "(?:...) inside edge chain should also emit W0061 deprecation";
+    assert has_diagnostic_code(prog, "E0048") , "(?:...) inside edge chain should also emit E0048";
 }
 
-test "W0061: bracket filter inside edge chain no warning" {
+test "E0048: bracket filter inside edge chain no error" {
     prog = JacProgram();
     prog.compile(
         use_str='walker W { can go with entry { visit [-->[?:Foo]]; } }',
         file_path="test.jac"
     );
-    assert not has_diagnostic_code(prog, "W0061", in_warnings=True) , "Bracket filter [?:...] inside edge chain should not emit W0061";
+    assert not has_diagnostic_code(prog, "E0048") , "Bracket filter [?:...] inside edge chain should not emit E0048";
 }
 
 
@@ -937,7 +963,6 @@ glob MUST_REJECT_NEW: dict[str, str] = {
          "E0053_double_kwargs": "def foo(**a: int, **b: str) { }",
          "E0059_literal_lhs": "with entry { 42 = x; }",
          "E0059_binop_lhs": "with entry { a + b = x; }",
-         "E0062_nonlocal_module": "with entry { nonlocal x; }",
          "E0071_bare_except_first": "with entry { try { x=1; } except { } except ValueError as e { } }",
          "E0075_dup_base": "obj A { }\nobj B(A, A) { }",
          "E0077_empty_fstring": 'with entry { x = f"{}"; }'
@@ -949,7 +974,6 @@ glob MUST_REJECT_NEW: dict[str, str] = {
      };
 
 glob IMPLEMENTED_REJECT: set[str] = {
-         "E0062_nonlocal_module",
          "E0063_glob_inside_func",
          "E0071_bare_except_first",
          "E0075_dup_base"
@@ -1088,6 +1112,43 @@ test "redundant `{...}` slot wrapping inside slot body raises E2023" {
     );
 }
 
+test "redundant `{expr}` slot wrapping inside slot body raises E2028 (issue #6733)" {
+    # `RedundantExprSlotWrap` re-wraps three *expression* bodies — a string
+    # literal `{"none"}`, an arithmetic expr `{n + 1}` and a JSX element
+    # `{<li>{n}</li>}`. Before #6733 these fell through to the misleading
+    # `E0002 Missing ';'` (pointing at the *next* line). The parser now
+    # recovers the wrap and reports the redundancy as E2028 at the `{` — the
+    # expression sibling of the control-flow E2023, co-located in the parser —
+    # with no E0002 cascade.
+    (program, _) = compile_and_check("view_body_rules.jac");
+    n = count_diagnostic_code(program, "E2028");
+    assert n >= 3 , (
+        f"E2028 should fire once per redundant single-expression wrap, got {n}"
+    );
+    # The two statement wraps (`RedundantSlotWrap`) stay the E2023 error; the
+    # expression wraps must not inflate that count.
+    e2023 = count_diagnostic_code(program, "E2023");
+    assert e2023 == 2 , (
+        f"only the two control-flow wraps stay E2023 errors, got {e2023}"
+    );
+    parse_cascade = count_diagnostic_code(program, "E0002");
+    assert parse_cascade == 0 , (
+        f"E2028 recovery must avoid the E0002 parse cascade, got {parse_cascade} E0002 errors"
+    );
+}
+
+test "genuine collection literals in a slot body are not mistaken for slot wraps" {
+    # A multi-element set `{1, 2}` and a dict `{a: 1}` are real collection
+    # expressions, not redundant single-expression slot wraps — the `,`/`:`
+    # disambiguates them, so the parser leaves them as collection literals and
+    # must NOT raise E2028. Uses `parse_with_prog` so the parser diagnostics
+    # (E2028 is parser-emitted) are captured.
+    src = 'def:pub C(a: int) -> JsxElement { ' + 'return <ul>{for x in [a] { {1, 2}; {a: 1}; }}</ul>; }';
+    (prog, _) = parse_with_prog(src);
+    n = count_diagnostic_code(prog, "E2028");
+    assert n == 0 , f"genuine collection literals must not raise E2028, got {n}";
+}
+
 test "view body check warns on a keyless while (W2019)" {
     (program, _) = compile_and_check("view_body_rules.jac");
     # Shallow `while { <span/> }` AND nested `while { try { <span/> } }` AND
@@ -1105,12 +1166,15 @@ test "view body check warns on a keyless while (W2019)" {
 # ══════════════════════════════════════════════════════════════════
 with entry {
     parametrize(
-        "new reject", list(MUST_REJECT_NEW.items()), reject_test, id_fn=lambda x : x[0]
+        "new reject",
+        list(MUST_REJECT_NEW.items()),
+        reject_test,
+        id_fn=lambda (x) { x[0]; }
     );
     parametrize(
         "new validate reject",
         list(MUST_VALIDATE_NEW.items()),
         validate_reject_test,
-        id_fn=lambda x : x[0]
+        id_fn=lambda (x) { x[0]; }
     );
 }

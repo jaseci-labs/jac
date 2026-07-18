@@ -1,5 +1,3 @@
-"""Random value generator for type-based fake data (non-LLM fallback)."""
-
 import inspect;
 import random;
 import string;
@@ -9,7 +7,6 @@ import from collections { deque }
 import from dataclasses { is_dataclass, fields as dc_fields, MISSING }
 import from datetime { date, datetime, time, timedelta }
 import from decimal { Decimal }
-import from functools { wraps }
 import from typing {
     Annotated,
     Literal,
@@ -32,8 +29,6 @@ def _is_namedtuple(tp: any) -> bool;
 
 def _is_enum(tp: any) -> bool;
 
-def _safe_subclasses(tp: any) -> list[type];
-
 def _unwrap_annotated(tp: any) -> any;
 
 def _unwrap_newtype(tp: any) -> any;
@@ -43,5 +38,3 @@ def _choose_from(seq: any) -> any;
 def _random_primitive(tp: any) -> any;
 
 def random_value_for_type(tp: any, *, _depth: int = 0, _max_depth: int = 10) -> any;
-
-def returns_fake(func: any) -> any;
