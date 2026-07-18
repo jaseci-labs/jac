@@ -1,7 +1,6 @@
 import ast as ast3;
 import from collections.abc { Sequence }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.passes { UniPass }
 import from jaclang.jac0core.passes.transform { Transform }
 import from jaclang.jac0core.constant { SymbolType }
 import from jaclang.jac0core.diagnostics {
@@ -25,6 +24,8 @@ obj StaticAnalysisPass(Transform[uni.Module, uni.Module]) {
     has ir_in: uni.Module,
         prog: any,
         cancel_token: any = None;
+
+    static has PROVIDES: tuple = ('static-checks', );
 
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;

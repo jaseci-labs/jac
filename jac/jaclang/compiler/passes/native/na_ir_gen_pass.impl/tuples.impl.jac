@@ -81,7 +81,7 @@ impl NaIRGenPass._infer_unpack_struct_ptr(nd: object) -> (ir.Type | None) {
 
 impl NaIRGenPass._codegen_tuple_unpack(
     targets: list, tuple_val: ir.Value, tuple_node: (object | None)
-) -> None {
+) -> bool {
     struct_type: (ir.LiteralStructType | None) = None;
     is_value = False;
     if isinstance(tuple_val.type, ir.LiteralStructType) {
@@ -106,9 +106,11 @@ impl NaIRGenPass._codegen_tuple_unpack(
         }
     }
     if struct_type is None {
-        return;
+        return False;
     }
 
+    retain_fields = not is_value and not self._is_owned(tuple_val);
+    pending_old: list = [];
     for (i, target) in enumerate(targets) {
         if i >= len(struct_type.elements) {
             break;
@@ -128,15 +130,32 @@ impl NaIRGenPass._codegen_tuple_unpack(
             elem_val = self.builder.load(elem_ptr, name=f"unpack.{i}");
         }
 
+        rc_field = retain_fields and isinstance(elem_val.type, ir.PointerType);
         if var_name in self.local_vars {
             alloca = self.local_vars[var_name];
+            if rc_field and isinstance(alloca.type.pointee, ir.PointerType) {
+                self._emit_rc_retain(elem_val, op="unpack", loc="");
+                pending_old.append(self.builder.load(alloca, name=f"unpack.{i}.old"));
+            }
             self.builder.store(elem_val, alloca);
         } else {
             alloca = self._entry_alloca(elem_val.type, var_name);
+            if rc_field {
+                _saved_block = self.builder.block;
+                self.builder.position_after(alloca);
+                self.builder.store(ir.Constant(elem_val.type, None), alloca);
+                self.builder.position_at_end(_saved_block);
+                self._emit_rc_retain(elem_val, op="unpack", loc="");
+            }
             self.builder.store(elem_val, alloca);
             self.local_vars[var_name] = alloca;
         }
     }
+
+    for old_val in pending_old {
+        self._emit_rc_release_simple(old_val, op="unpack_old", loc="");
+    }
+    return True;
 }
 
 impl NaIRGenPass._get_struct_size(struct_type: ir.LiteralStructType) -> int {

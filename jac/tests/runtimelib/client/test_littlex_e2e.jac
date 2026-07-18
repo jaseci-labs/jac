@@ -89,7 +89,7 @@ def _copy_littlex_into(dest: any) {
 
 """Scaffold littleX into a temp project dir and install npm deps.
 
-Returns ``(project_dir, jac_cmd, env)``. Fails the test if ``jac add --npm``
+Returns ``(project_dir, jac_cmd, env)``. Fails the test if ``jac install --npm``
 fails (bun/npm unavailable or a dependency cannot be resolved).
 """
 def _setup_littlex_project(temp_dir: any) -> tuple {
@@ -104,7 +104,7 @@ def _setup_littlex_project(temp_dir: any) -> tuple {
     env = get_env_with_bun();
 
     add_result = run(
-        [*jac_cmd, "add", "--npm"],
+        [*jac_cmd, "install", "--npm"],
         cwd=project_dir,
         capture_output=True,
         text=True,
@@ -112,7 +112,7 @@ def _setup_littlex_project(temp_dir: any) -> tuple {
     );
     if add_result.returncode != 0 {
         pytest.fail(
-            f"jac add --npm failed for littleX (bun/npm unavailable?)\n"
+            f"jac install --npm failed for littleX (bun/npm unavailable?)\n"
             f"STDOUT:\n{add_result.stdout[:2000]}\n"
             f"STDERR:\n{add_result.stderr[:2000]}\n"
         );

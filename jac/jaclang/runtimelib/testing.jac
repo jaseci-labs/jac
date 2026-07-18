@@ -1,7 +1,6 @@
 import io;
 import json;
 import re;
-import from http.server { BaseHTTPRequestHandler }
 import from pathlib { Path }
 import from typing { Any }
 import from urllib.parse { urlencode }
@@ -26,7 +25,6 @@ obj JacTestClient {
         _server: (JacAPIServer | None) = None,
         _handler_class: (type | None) = None,
         _auth_token: (str | None) = None,
-        _current_user: (str | None) = None,
         _hot_reloader: (Any | None) = None,
         _config: (JacConfig | None) = None;
 

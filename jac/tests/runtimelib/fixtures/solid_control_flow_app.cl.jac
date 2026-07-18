@@ -21,7 +21,7 @@ def:pub app() -> JsxElement {
         <ul data-testid="list">
             {[<li key={label}>{label}</li> for label in labels]}
         </ul>
-        <button data-testid="toggle" onClick={lambda e: any { show = not show; }}>
+        <button data-testid="toggle" onClick={lambda (e: any) { show = not show; }}>
             toggle
         </button>
         {<p data-testid="shown">visible</p> if show else <p data-testid="hidden">hidden</p>}

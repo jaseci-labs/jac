@@ -6,8 +6,7 @@ import from typing { Any, Optional, cast }
 import from jaclang.cli.console { console }
 import from jaclang.runtimelib.watcher { FileChangeEvent }
 import from jaclang.runtimelib.client.targets.react_native.common {
-    resolve_node_runner,
-    resolve_rn_project_dir
+    resolve_node_runner
 }
 import from jaclang.runtimelib.client.targets.react_native.build {
     lint_native_incompatible_usage,
@@ -16,6 +15,7 @@ import from jaclang.runtimelib.client.targets.react_native.build {
     stage_native_image_assets,
     stage_compiled_entry,
     strip_css_imports,
+    write_api_base_shim,
     write_native_entry
 }
 import from jaclang.runtimelib.client.targets.client_dev_common {
@@ -69,7 +69,11 @@ def inject_dev_api_base_url(rn_dir: Path, api_url: str) -> Optional[str] {
     expo["extra"] = extra;
     cfg["expo"] = expo;
     config_path.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8");
-    console.print(f"  ✔ app.json → expo.extra.apiBaseUrl = {api_url}", style="success");
+
+    write_api_base_shim(rn_dir, api_url);
+    console.print(
+        f"  ✔ app.json + __jacApiBase.js → apiBaseUrl = {api_url}", style="success"
+    );
     return original;
 }
 

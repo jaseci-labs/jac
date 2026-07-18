@@ -22,7 +22,7 @@ typescript = "^5.3.3"
 [serve]
 base_route_app = "app"
 
-[plugins.client]
+[client]
 
-[plugins.client.app_meta_data]
+[client.app_meta_data]
 title = "Fullstack Base"

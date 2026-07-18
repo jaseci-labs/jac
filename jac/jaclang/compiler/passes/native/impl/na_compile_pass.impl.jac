@@ -455,24 +455,6 @@ impl NativeCompilePass._compile_and_link_native_imports(
             import from jaclang.jac0core.compile_options { CompileOptions }
             import_options = CompileOptions(skip_native_engine=True, type_check=False);
             try {
-                import re as _own_re;
-                with open(real_path, "r") as _src_f {
-                    _src_txt = _src_f.read();
-                }
-                _owned_seen: set[str] = set();
-                for _def_m in _own_re.finditer(
-                    r"\bdef(?::[A-Za-z_, ]+)?\s+([A-Za-z_]\w*)\s*\(", _src_txt
-                ) {
-                    _owned_seen.add(_def_m.group(1));
-                }
-                for _glob_m in _own_re.finditer(
-                    r"(?:\bglob|,)\s*([A-Za-z_]\w*)\s*:", _src_txt
-                ) {
-                    _owned_seen.add(_glob_m.group(1));
-                }
-                meta.owned_symbols = list(_owned_seen);
-            } except Exception { }
-            try {
                 imported_ir = self.prog.compile(
                     file_path=full_path, options=import_options
                 );
@@ -484,6 +466,30 @@ impl NativeCompilePass._compile_and_link_native_imports(
                 self.emit(E5024, path=full_path, error="No LLVM IR generated");
                 continue;
             }
+            _owned_seen: set[str] = set();
+            for _ab in imported_ir.get_all_sub_nodes(uni.Ability) {
+                _ab_name = _ab.name_ref.sym_name if _ab.name_ref else None;
+                if _ab_name {
+                    _owned_seen.add(_ab_name);
+                    _encl_arch = _ab.find_parent_of_type(uni.Archetype);
+                    if _encl_arch is not None and _encl_arch.name {
+                        _owned_seen.add(f"{_encl_arch.name.value}.{_ab_name}");
+                    }
+                }
+            }
+            for _gvs in imported_ir.get_all_sub_nodes(uni.GlobalVars) {
+                for _asgn in _gvs.assignments {
+                    _tgts = _asgn.target
+                        if isinstance(_asgn.target, (list, tuple))
+                        else [(_asgn.target)];
+                    for _tgt in _tgts {
+                        if isinstance(_tgt, uni.Name) {
+                            _owned_seen.add(_tgt.value);
+                        }
+                    }
+                }
+            }
+            meta.owned_symbols = sorted(_owned_seen);
             imported_llvm_str_raw = str(imported_ir.gen.llvm_ir);
             meta.clib_paths = imported_ir.gen._clib_paths or [];
             meta.clib_symbol_lib = imported_ir.gen._clib_symbol_lib or {};

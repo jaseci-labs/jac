@@ -15,8 +15,6 @@ obj PyJacAstLinkPass(UniPass) {
     def exit_param_var(nd: uni.ParamVar) -> None;
     def exit_except(nd: uni.Except) -> None;
     def exit_expr_as_item(nd: uni.ExprAsItem) -> None;
-    def exit_global_stmt(nd: uni.GlobalStmt) -> None;
-    def exit_non_local_stmt(nd: uni.NonLocalStmt) -> None;
     def exit_k_w_pair(nd: uni.KWPair) -> None;
     def exit_atom_trailer(nd: uni.AtomTrailer) -> None;
 }

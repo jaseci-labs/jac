@@ -4,14 +4,16 @@ import from jaclang.scale.injector.bundle {
     APP_MOUNT_PATH,
     TOOLCHAIN_SUBDIR
 }
-import from jaclang.scale.injector.binary { overlay_pod_path }
+import from jaclang.scale.injector.pvc_injector {
+    BUNDLE_VOLUME_NAME,
+    BUNDLE_MOUNT_PATH
+}
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
 
 
 def build_service_apt_prefix(k8s_config: KubernetesConfig) -> str {
-    # apt install for the service container (not the discarded init layer).
     packages = k8s_config.service_dependencies;
     if not packages {
         return "";
@@ -27,8 +29,7 @@ def build_service_apt_prefix(k8s_config: KubernetesConfig) -> str {
         }
     }
     pkg_list = ' '.join(sorted(set(packages)));
-    # Trailing ` && ` (not `;`) chains the install into the app-start command so
-    # a failed apt aborts the container boot instead of starting without the deps.
+
     return (
         "export DEBIAN_FRONTEND=noninteractive && "
         "apt-get update && apt-get install -y --no-install-recommends "
@@ -38,7 +39,7 @@ def build_service_apt_prefix(k8s_config: KubernetesConfig) -> str {
 
 
 def build_runtime_install_commands(
-    k8s_config: KubernetesConfig, overlay_source: bool = False
+    k8s_config: KubernetesConfig, prefer_image_binary: bool = False
 ) -> list[str] {
     config = k8s_config;
     commands: list[str] = [];
@@ -48,7 +49,6 @@ def build_runtime_install_commands(
 
     commands.append('export DEBIAN_FRONTEND=noninteractive');
 
-    # apt only for declared packages: the binary bundles bun+python and the overlay ships as a tar, so the default boot needs nothing from apt.
     if config.additional_packages {
         commands.append(
             'echo \'APT::Sandbox::User "root";\' > /etc/apt/apt.conf.d/00sandbox'
@@ -67,7 +67,20 @@ def build_runtime_install_commands(
     }
 
     tc = f"{APP_MOUNT_PATH}/{TOOLCHAIN_SUBDIR}";
-    commands.append(f'install -m 0755 "{tc}/bin/jac" "$HOME/.local/bin/jac"');
+    if prefer_image_binary {
+        commands.append(
+            'if [ -x /usr/local/bin/jac ]; '
+            'then ln -sf /usr/local/bin/jac "$HOME/.local/bin/jac"; '
+            f'else install -m 0755 "{tc}/bin/jac" "$HOME/.local/bin/jac"; fi'
+        );
+    } else {
+        commands.append(
+            'if [ -x /usr/local/bin/jac ] && [ "$(sha256sum /usr/local/bin/jac '
+            f"| cut -d' ' -f1)\" = \"$(sha256sum \"{tc}/bin/jac\" | cut -d' ' -f1)\" ]; "
+            'then ln -sf /usr/local/bin/jac "$HOME/.local/bin/jac"; '
+            f'else install -m 0755 "{tc}/bin/jac" "$HOME/.local/bin/jac"; fi'
+        );
+    }
     commands.append('export PATH="$HOME/.local/bin:$PATH"');
     commands.append(
         'if ! command -v jac >/dev/null 2>&1; then echo "[jac-scale] FATAL: '
@@ -76,14 +89,6 @@ def build_runtime_install_commands(
         'redeploy)." >&2; exit 1; fi'
     );
 
-    if overlay_source {
-        overlay_rel = overlay_pod_path();
-        commands.append(
-            f"grep -q '^\\[dev\\]' {APP_MOUNT_PATH}/jac.toml || "
-            f"printf '\\n[dev]\\njaclang_source = \"{overlay_rel}\"\\n' "
-            f'>> {APP_MOUNT_PATH}/jac.toml'
-        );
-    }
     return commands;
 }
 
@@ -101,27 +106,38 @@ def runtime_container_env -> list[dict[str, str]] {
 }
 
 
-def _first_boot_install -> str {
-    # Adopt jir seeds via system python3 BEFORE any jac invocation (jac would compile the overlay first); best-effort fallback compiles as before (#7138).
-    adopt = f"{APP_MOUNT_PATH}/{TOOLCHAIN_SUBDIR}/jir-seed/_adopt.py";
-    return (
-        f'if [ -f "{adopt}" ]; then '
-        f'python3 "{adopt}" '
-        f'|| echo "[jac-scale] jir-seed adoption failed; compiling from source"; '
-        f'fi; '
-        f'jac install'
-    );
-}
-
-
 def build_bootstrap_init_container(
-    k8s_config: KubernetesConfig, base_image: str, overlay_source: bool = False
+    k8s_config: KubernetesConfig, base_image: str, is_gateway: bool = True
 ) -> dict[str, any] {
-    commands = build_runtime_install_commands(k8s_config, overlay_source);
+    import from jaclang.scale.injector.binary { OFFICIAL_IMAGE }
+    prefer_image_binary = base_image.startswith(f"{OFFICIAL_IMAGE}:experimental-");
+    commands = build_runtime_install_commands(k8s_config, prefer_image_binary);
     commands.append(f'cd {APP_MOUNT_PATH}');
-    commands.append(_first_boot_install());
+
+    cache = f"{BUNDLE_MOUNT_PATH}/.cache";
+    commands.append(
+        f'if mkdir -p {cache}/pip 2>/dev/null; then '
+        f'if [ "$(du -sm {cache} 2>/dev/null | cut -f1)" -gt 512 ] 2>/dev/null; then '
+        f'rm -rf {cache}/pip && mkdir -p {cache}/pip; fi; '
+        f'export PIP_CACHE_DIR={cache}/pip; '
+        f'fi'
+    );
+
+    commands.append(f'export PIP_PREFIX="{APP_MOUNT_PATH}/.jac/venv"');
+
+    if not is_gateway {
+        commands.append("export JAC_CLIENT_SKIP_NPM_INSTALL=1");
+    } else {
+        commands.append(
+            'if [ -f .jac/client/dist/index.html ]; then echo "[jac-scale] '
+            'prebuilt client dist found; skipping the npm closure"; '
+            "export JAC_CLIENT_SKIP_NPM_INSTALL=1; else echo \"[jac-scale] no "
+            'prebuilt client dist; full install"; fi'
+        );
+    }
+    commands.append("jac install");
     script = ' && '.join(commands);
-    return {
+    container: dict[str, any] = {
         "name": "jac-bootstrap",
         "image": base_image,
         "command": ["bash", "-c"],
@@ -135,6 +151,22 @@ def build_bootstrap_init_container(
             },
             "seccompProfile": {"type": "RuntimeDefault"}
         },
-        "volumeMounts": [{"name": APP_VOLUME_NAME, "mountPath": APP_MOUNT_PATH}]
+        "volumeMounts": [
+            {"name": APP_VOLUME_NAME, "mountPath": APP_MOUNT_PATH},
+            {"name": BUNDLE_VOLUME_NAME, "mountPath": BUNDLE_MOUNT_PATH}
+        ]
     };
+    policy = image_pull_policy(base_image);
+    if policy {
+        container["imagePullPolicy"] = policy;
+    }
+    return container;
+}
+
+
+def image_pull_policy(image: str) -> str {
+    import from jaclang.scale.injector.binary { OFFICIAL_IMAGE }
+    return "Always"
+        if image.endswith(":dev") or image.startswith(f"{OFFICIAL_IMAGE}:experimental-")
+        else "";
 }

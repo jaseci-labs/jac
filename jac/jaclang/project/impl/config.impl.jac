@@ -122,6 +122,20 @@ def _deep_merge(base: dict, `override: dict) -> dict {
     return result;
 }
 
+impl JacConfig._section_map -> dict {
+    return {
+        "run": self.run,
+        "build": self.build,
+        "test": self.test,
+        "serve": self.serve,
+        "format": self.format,
+        "dot": self.dot,
+        "cache": self.cache,
+        "environment": self.environment,
+        "client": self.client
+    };
+}
+
 impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> None {
     if profile_name not in self.environments {
         return;
@@ -143,17 +157,7 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
         }
     }
 
-    section_map: dict = {
-        "run": self.run,
-        "build": self.build,
-        "test": self.test,
-        "serve": self.serve,
-        "format": self.format,
-        "dot": self.dot,
-        "cache": self.cache,
-        "environment": self.environment,
-        "client": self.client
-    };
+    section_map = self._section_map();
     for (section, obj) in section_map.items() {
         if section in profile {
             for (key, value) in profile[section].items() {
@@ -199,8 +203,14 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
         }
     }
 
-    if "plugins" in profile {
-        self.plugins = _deep_merge(self.plugins, profile["plugins"]);
+    for _feat in ("byllm", "scale", "client", "mcp", "desktop") {
+        if _feat in profile and isinstance(profile[_feat], dict) {
+            if _feat in self.plugins {
+                self.plugins[_feat] = _deep_merge(self.plugins[_feat], profile[_feat]);
+            } else {
+                self.plugins[_feat] = profile[_feat];
+            }
+        }
     }
 
     if "dependencies" in profile {
@@ -245,17 +255,7 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
     }
     data = read_toml_with_encoding(str(toml_path));
     data = _interpolate_recursive(data);
-    section_map: dict = {
-        "run": self.run,
-        "build": self.build,
-        "test": self.test,
-        "serve": self.serve,
-        "format": self.format,
-        "dot": self.dot,
-        "cache": self.cache,
-        "environment": self.environment,
-        "client": self.client
-    };
+    section_map = self._section_map();
     for (section, obj) in section_map.items() {
         if section in data {
             for (key, value) in data[section].items() {
@@ -306,24 +306,32 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
             }
         }
     }
-    if "plugins" in data {
-        plugins_data = data["plugins"];
-        if "discovery" in plugins_data {
-            self.plugins_config.discovery = plugins_data["discovery"];
+    if "gc" in data {
+        gc_data = data["gc"];
+        if "default" in gc_data {
+            _gcd = str(gc_data["default"]).strip().lower();
+            if _gcd in ("cycles", "rc", "none") {
+                self.gc.default = _gcd;
+            }
         }
-        if "enabled" in plugins_data {
-            self.plugins_config.enabled = plugins_data["enabled"];
+        if "enforce" in gc_data and isinstance(gc_data["enforce"], dict) {
+            enf = gc_data["enforce"];
+            if "modules" in enf {
+                self.gc.enforce.modules = [str(_m) for _m in enf["modules"]];
+            }
+            if "grandfathered" in enf {
+                self.gc.enforce.grandfathered = [
+                    str(_m) for _m in enf["grandfathered"]
+                ];
+            }
         }
-        if "disabled" in plugins_data {
-            self.plugins_config.disabled = plugins_data["disabled"];
-        }
-        for (key, value) in plugins_data.items() {
-            if isinstance(value, dict) {
-                if key in self.plugins {
-                    self.plugins[key] = _deep_merge(self.plugins[key], value);
-                } else {
-                    self.plugins[key] = value;
-                }
+    }
+    for _feat in ("byllm", "scale", "client", "mcp", "desktop") {
+        if _feat in data and isinstance(data[_feat], dict) {
+            if _feat in self.plugins {
+                self.plugins[_feat] = _deep_merge(self.plugins[_feat], data[_feat]);
+            } else {
+                self.plugins[_feat] = data[_feat];
             }
         }
     }
@@ -435,12 +443,23 @@ impl JacConfig.save -> None {
         raise ValueError("No toml_path set, cannot save configuration");
     }
 
+    import copy;
+    text = "";
+    old_doc: dict[str, any] = {};
     if self.toml_path.exists() {
-        import from jaclang.jac0core.helpers { read_toml_with_encoding }
-        doc = read_toml_with_encoding(str(self.toml_path));
-    } else {
-        doc = {};
+        import tomllib;
+        import from jaclang.jac0core.helpers {
+            MalformedJacTomlError,
+            read_file_with_encoding
+        }
+        text = read_file_with_encoding(str(self.toml_path));
+        try {
+            old_doc = tomllib.loads(text);
+        } except tomllib.TOMLDecodeError as exc {
+            raise MalformedJacTomlError(str(self.toml_path), exc);
+        }
     }
+    doc = copy.deepcopy(old_doc);
 
     old_deps = doc.get("dependencies", {});
     sub_tables = {
@@ -484,24 +503,23 @@ impl JacConfig.save -> None {
         }
     }
 
-    if self.plugins_config.disabled is not None {
-        if self.plugins_config.disabled {
-            if "plugins" not in doc {
-                doc["plugins"] = {};
-            }
-            doc["plugins"]["disabled"] = self.plugins_config.disabled;
-        } elif "disabled" in doc.get("plugins", {}) {
-            del doc["plugins"]["disabled"];
-            if not doc["plugins"] {
-                del doc["plugins"];
-            }
+    if text {
+        updated = _toml_minimal_update(
+            text, old_doc, doc, ["dependencies", "dev-dependencies"]
+        );
+        if updated is not None {
+            self._write_toml_text(updated);
+            return;
         }
     }
-
     self.persist_doc(doc);
 }
 
 impl JacConfig.persist_doc(doc: dict[str, any]) -> None {
+    self._write_toml_text(serialize_toml(doc));
+}
+
+impl JacConfig._write_toml_text(text: str) -> None {
     if self.toml_path is None {
         raise ValueError("No toml_path set, cannot save configuration");
     }
@@ -517,7 +535,7 @@ impl JacConfig.persist_doc(doc: dict[str, any]) -> None {
         );
     }
     with open(self.toml_path, "w") as f {
-        f.write(serialize_toml(doc));
+        f.write(text);
     }
 }
 
@@ -532,6 +550,313 @@ def _quote_key(key: str) -> str {
         return f'"{escaped}"';
     }
     return key;
+}
+
+def _toml_flatten_into(
+    view: dict[tuple, dict[str, any]], path: tuple, table: dict[str, any]
+) {
+    flat: dict[str, any] = {};
+    for (k, v) in table.items() {
+        if isinstance(v, dict) {
+            _toml_flatten_into(view, path + (k, ), v);
+        } else {
+            flat[k] = v;
+        }
+    }
+    view[path] = flat;
+}
+
+def _toml_flatten(
+    doc: dict[str, any], roots: list[str]
+) -> dict[tuple, dict[str, any]] | None {
+    view: dict[tuple, dict[str, any]] = {};
+    for root_key in roots {
+        if root_key not in doc {
+            continue;
+        }
+        table = doc[root_key];
+        if not isinstance(table, dict) {
+            return None;
+        }
+        _toml_flatten_into(view, (root_key, ), table);
+    }
+    return view;
+}
+
+def _toml_token_alt(name: str) -> str {
+    import re;
+    alts: list[str] = [];
+    if name and not _needs_quoting(name) {
+        alts.append(re.escape(name));
+    }
+    basic = name.replace("\\", "\\\\").replace('"', '\\"');
+    alts.append(re.escape(f'"{basic}"'));
+    if "'" not in name {
+        alts.append(re.escape(f"'{name}'"));
+    }
+    return "(?:" + "|".join(alts) + ")";
+}
+
+def _toml_find_span(lines: list[str], parts: tuple) -> tuple[int, int] | None {
+    import re;
+    header_re = re.compile(
+        r"^\s*\[\s*" + r"\s*\.\s*".join([_toml_token_alt(p) for p in parts]) + r"\s*\]\s*(?:#.*)?$"
+    );
+    header = -1;
+    for (i, line) in enumerate(lines) {
+        if header_re.match(line) {
+            if header >= 0 {
+                return None;
+            }
+            header = i;
+        }
+    }
+    if header < 0 {
+        return None;
+    }
+    end = len(lines);
+    for j in range(header + 1, len(lines)) {
+        if lines[j].lstrip().startswith("[") {
+            end = j;
+            break;
+        }
+    }
+    return (header, end);
+}
+
+def _toml_find_key(
+    lines: list[str], span: tuple[int, int], key: str
+) -> tuple[int, int] | None {
+    import re;
+    key_re = re.compile(r"^\s*" + _toml_token_alt(key) + r"\s*=\s*");
+    found = -1;
+    value_start = -1;
+    for i in range(span[0] + 1, span[1]) {
+        m = key_re.match(lines[i]);
+        if m {
+            if found >= 0 {
+                return None;
+            }
+            found = i;
+            value_start = m.end();
+        }
+    }
+    if found < 0 {
+        return None;
+    }
+    return (found, value_start);
+}
+
+def _toml_value_end(line: str, start: int) -> int | None {
+    n = len(line);
+    if start >= n {
+        return None;
+    }
+    c = line[start];
+    if c in ('"', "'") {
+        if line[start:start + 3] == c * 3 {
+            closing = line.find(c * 3, start + 3);
+            return closing + 3 if closing >= 0 else None;
+        }
+        j = start + 1;
+        while j < n {
+            if line[j] == "\\" and c == '"' {
+                j += 2;
+                continue;
+            }
+            if line[j] == c {
+                return j + 1;
+            }
+            j += 1;
+        }
+        return None;
+    }
+    if c in ("[", "{") {
+        depth = 0;
+        in_str = "";
+        j = start;
+        while j < n {
+            ch = line[j];
+            if in_str {
+                if ch == "\\" and in_str == '"' {
+                    j += 2;
+                    continue;
+                }
+                if ch == in_str {
+                    in_str = "";
+                }
+            } elif ch in ('"', "'") {
+                in_str = ch;
+            } elif ch in ("[", "{") {
+                depth += 1;
+            } elif ch in ("]", "}") {
+                depth -= 1;
+                if depth == 0 {
+                    return j + 1;
+                }
+            }
+            j += 1;
+        }
+        return None;
+    }
+    j = start;
+    while j < n and line[j] != "#" {
+        j += 1;
+    }
+    while j > start and line[j - 1] in (" ", "\t") {
+        j -= 1;
+    }
+    return j if j > start else None;
+}
+
+def _toml_replace_key(
+    lines: list[str], parts: tuple, key: str, value_text: str
+) -> bool {
+    import re;
+    span = _toml_find_span(lines, parts);
+    if span is None {
+        return False;
+    }
+    hit = _toml_find_key(lines, span, key);
+    if hit is None {
+        return False;
+    }
+    (idx, value_start) = hit;
+    line = lines[idx];
+    value_end = _toml_value_end(line, value_start);
+    if value_end is None or not re.match(r"^\s*(?:#.*)?$", line[value_end:]) {
+        return False;
+    }
+    lines[idx] = line[:value_start] + value_text + line[value_end:];
+    return True;
+}
+
+def _toml_delete_key(lines: list[str], parts: tuple, key: str) -> bool {
+    span = _toml_find_span(lines, parts);
+    if span is None {
+        return False;
+    }
+    hit = _toml_find_key(lines, span, key);
+    if hit is None {
+        return False;
+    }
+    lines.pop(hit[0]);
+    return True;
+}
+
+def _toml_insert_key(
+    lines: list[str], parts: tuple, key: str, value_text: str
+) -> bool {
+    span = _toml_find_span(lines, parts);
+    if span is None {
+        return False;
+    }
+    at = span[0];
+    for j in range(span[0] + 1, span[1]) {
+        stripped = lines[j].strip();
+        if stripped and not stripped.startswith("#") {
+            at = j;
+        }
+    }
+    lines.insert(at + 1, f"{_quote_key(key)} = {value_text}");
+    return True;
+}
+
+def _toml_append_section(lines: list[str], parts: tuple, flat: dict[str, any]) {
+    while lines and not lines[-1].strip() {
+        lines.pop();
+    }
+    if lines {
+        lines.append("");
+    }
+    header = ".".join([_quote_key(p) for p in parts]);
+    lines.append(f"[{header}]");
+    for (k, v) in flat.items() {
+        lines.append(f"{_quote_key(k)} = {toml_value(v)}");
+    }
+    lines.append("");
+}
+
+def _toml_remove_section(lines: list[str], parts: tuple) -> bool {
+    span = _toml_find_span(lines, parts);
+    if span is None {
+        return False;
+    }
+    for _ in range(span[1] - span[0]) {
+        lines.pop(span[0]);
+    }
+    return True;
+}
+
+def _toml_minimal_update(
+    text: str, old_doc: dict[str, any], new_doc: dict[str, any], roots: list[str]
+) -> str | None {
+    old_view = _toml_flatten(old_doc, roots);
+    new_view = _toml_flatten(new_doc, roots);
+    if old_view is None or new_view is None {
+        return None;
+    }
+    lines: list[str] = text.split("\n");
+    for path in sorted(set(old_view.keys()) | set(new_view.keys())) {
+        old_flat = old_view.get(path);
+        new_flat = new_view.get(path);
+        if new_flat is None {
+            if not _toml_remove_section(lines, path) and old_flat {
+                return None;
+            }
+            continue;
+        }
+        if old_flat is None {
+            if new_flat {
+                if _toml_find_span(lines, path) is not None {
+                    return None;
+                }
+                _toml_append_section(lines, path, new_flat);
+            }
+            continue;
+        }
+        removed = [
+            k
+            for k in old_flat.keys()
+            if k not in new_flat
+        ];
+        added = {
+            k: v
+            for (k, v) in new_flat.items()
+            if k not in old_flat
+        };
+        changed = {
+            k: v
+            for (k, v) in new_flat.items()
+            if k in old_flat and old_flat[k] != v
+        };
+        if not (removed or added or changed) {
+            continue;
+        }
+        if _toml_find_span(lines, path) is None {
+            if removed or changed or old_flat {
+                return None;
+            }
+            _toml_append_section(lines, path, added);
+            continue;
+        }
+        for k in removed {
+            if not _toml_delete_key(lines, path, k) {
+                return None;
+            }
+        }
+        for (k, v) in changed.items() {
+            if not _toml_replace_key(lines, path, k, toml_value(v)) {
+                return None;
+            }
+        }
+        for (k, v) in added.items() {
+            if not _toml_insert_key(lines, path, k, toml_value(v)) {
+                return None;
+            }
+        }
+    }
+    return "\n".join(lines);
 }
 
 impl serialize_toml(data: dict[str, any], prefix: str = "") -> str {
@@ -780,6 +1105,27 @@ impl _parse_toml_data(
             dir=build_data.get("dir", ".jac")
         );
     }
+    if "gc" in data {
+        gc_data = data["gc"];
+        _gc_default = str(gc_data.get("default", "cycles")).strip().lower();
+        if _gc_default not in ("cycles", "rc", "none") {
+            import from jaclang.cli.console { console }
+            console.warning(
+                f"[gc] default='{gc_data.get('default')}' is not one of "
+                "'cycles', 'rc', 'none'; defaulting to 'cycles'."
+            );
+            _gc_default = "cycles";
+        }
+        enforce_cfg = GcEnforceConfig();
+        if "enforce" in gc_data and isinstance(gc_data["enforce"], dict) {
+            enf = gc_data["enforce"];
+            enforce_cfg = GcEnforceConfig(
+                modules=[str(_m) for _m in enf.get("modules", [])],
+                grandfathered=[str(_m) for _m in enf.get("grandfathered", [])]
+            );
+        }
+        config.gc = GcConfig(default=_gc_default, enforce=enforce_cfg);
+    }
     if "test" in data {
         test_data = data["test"];
         config.test = TestConfig(
@@ -886,17 +1232,9 @@ impl _parse_toml_data(
             test_jobs=str(dev_data.get("test_jobs", "auto"))
         );
     }
-    if "plugins" in data {
-        plugins_data = data["plugins"];
-        config.plugins_config = PluginsConfig(
-            discovery=plugins_data.get("discovery", "auto"),
-            enabled=plugins_data.get("enabled", []),
-            disabled=plugins_data.get("disabled", [])
-        );
-        for (key, value) in plugins_data.items() {
-            if isinstance(value, dict) {
-                config.plugins[key] = value;
-            }
+    for _feat in ("byllm", "scale", "client", "mcp", "desktop") {
+        if _feat in data and isinstance(data[_feat], dict) {
+            config.plugins[_feat] = data[_feat];
         }
     }
     if "environment" in data {
@@ -946,7 +1284,6 @@ impl _interpolate_recursive(`obj: any) -> any {
 impl get_config(
     start_path: Path | None = None, force_discover: bool = False
 ) -> JacConfig | None {
-    global _config,_config_explicit,_config_by_root;
     if _config is None or force_discover {
         _config = JacConfig.discover(start_path=start_path);
 
@@ -960,7 +1297,6 @@ impl get_config(
 }
 
 impl set_config(config: JacConfig) -> None {
-    global _config,_config_explicit,_config_by_root;
     _config = config;
 
     _config_explicit = config is not None;
@@ -973,7 +1309,6 @@ impl get_explicit_config -> JacConfig | None {
 }
 
 impl get_config_for_path(start_path: Path) -> JacConfig | None {
-    global _config_by_root;
     explicit = get_explicit_config();
     if explicit is not None {
         return explicit;

@@ -57,7 +57,6 @@ def _make_compiler(proj: Path) -> tuple[any, Path] {
     compiler = builder._get_compiler().jac_client_compiler;
     out_dir = proj / "out";
     compiler.compiled_dir = out_dir;
-    global _orig_compile_module;
     _orig_compile_module = compiler.jac_compiler.compile_module;
     compiler.jac_compiler.compile_module = _compile_then_clear_hub;
     return (compiler, out_dir);
@@ -98,7 +97,7 @@ test "per-file source map resolves a deep JS line to the exact .jac line" {
         sm = SourceMap(
             sources=data["sources"],
             source_comments={},
-            _index=_parse_mappings(data["mappings"], len(data["sources"]))
+            _index=_parse_mappings(data["mappings"])
         );
         # Find the generated JS line carrying the `marker` assignment.
         js_lines = (out_dir / "app.js").read_text().splitlines();

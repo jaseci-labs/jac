@@ -16,7 +16,7 @@ font = "figtree"
 radius = "large"
 menuAccent = "subtle"
 menuColor = "default"
-[plugins.client.vite]
+[client.vite]
 plugins = ["tailwindcss()"]
 lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 
@@ -56,7 +56,7 @@ watchdog = ">=3.0.0"
 [serve]
 base_route_app = "app"
 
-[plugins.client.app_meta_data]
+[client.app_meta_data]
 title = "Little-X"
 description = "A decentralized social platform built with Jac"
 keywords = "little-x social jac jaseci"

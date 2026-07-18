@@ -1,24 +1,11 @@
-"""`jac model` CLI subcommand for managing bundled local LLM weights.
-
-Provides three actions on the local-model cache:
-  - jac model list                  Show bundled aliases + download status
-  - jac model pull <alias>          Download weights for an alias
-  - jac model rm   <alias>          Delete cached weights for an alias
-
-The download path is the same `ensure_model` used by the runtime, so a
-successful `pull` warms the cache and removes the first-run prompt.
-"""
-
 import os;
 import sys;
 import from jaclang.cli.registry { get_registry, CommandRegistry }
 import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.console { console }
-import from jaclang.jac0core.runtime { hookimpl }
 
 glob registry: CommandRegistry = get_registry();
 
-"""Format a byte count as a human-friendly string (KB / MB / GB)."""
 def _human_bytes(n: int) -> str {
     f = float(n);
     for unit in ["B", "KB", "MB", "GB", "TB"] {
@@ -30,11 +17,6 @@ def _human_bytes(n: int) -> str {
     return f"{f:.1f} PB";
 }
 
-"""Implementation of `jac model`.
-
-Dispatches on the positional `action` argument. Returns the process
-exit code (0 on success, non-zero on user-visible errors).
-"""
 def _cmd_model(action: str = "list", alias: str = "") -> int {
     import from jaclang.byllm.local_runtime { LOCAL_MODELS, list_local_aliases }
     import from jaclang.byllm.model_cache {
@@ -113,9 +95,6 @@ def _cmd_model(action: str = "list", alias: str = "") -> int {
     return 2;
 }
 
-# Registration: top-level `jac model` subcommand.
-# Decorator runs at module import; the JacCmd hook below ensures byllm
-# is loaded into the registry before argparse is finalised.
 @registry.command(
     name="model",
     help="Manage byllm local-model weights (Gemma 4 and friends)",
@@ -140,16 +119,8 @@ def _cmd_model(action: str = "list", alias: str = "") -> int {
         ("jac model rm gemma-4-e4b", "Delete cached weights for an alias"),
 
     ],
-    group="config",
-    source="byllm"
+    group="config"
 )
 def model(action: str = "list", alias: str = "") -> int {
     return _cmd_model(action, alias);
-}
-
-class JacCmd {
-    @hookimpl
-    static def create_cmd {
-        return;
-    }
 }

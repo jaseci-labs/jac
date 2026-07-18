@@ -15,6 +15,8 @@ def _lookup_module_in_hub(path_key: str, hub: dict) -> (Module | None);
 
 def _ensure_js_generated(mod: Module, program: any) -> None;
 
+def _prebuilt_bundle(module: ModuleType, source_path: Path) -> (ClientBundle | None);
+
 obj ClientBundle {
     has module_name: str,
         code: str,

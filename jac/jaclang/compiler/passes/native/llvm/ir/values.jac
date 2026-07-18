@@ -344,12 +344,6 @@ class _ConstOpMixin(object) {
     def bitcast(self: _ConstOpMixin, typ: Any) -> object { }
 
     """
-        Convert floating-point to unsigned integer.
-        """
-    @_castop('fptoui')
-    def fptoui(self: _ConstOpMixin, typ: Any) -> object { }
-
-    """
         Convert unsigned integer to floating-point.
         """
     @_castop('uitofp')
@@ -1320,27 +1314,6 @@ class Block(NamedValue) {
             name = '"{0}"'.format(name);
         }
         return name;
-    }
-}
-
-"""
-    The address of a basic block.
-    """
-class BlockAddress(Value) {
-    def init(self: BlockAddress, function: Any, basic_block: Any) -> object {
-        assert isinstance(function, Function);
-        assert isinstance(basic_block, Block);
-        self.type = types.IntType(8).as_pointer();
-        self.function = function;
-        self.basic_block = basic_block;
-    }
-    def __str__(self: BlockAddress) -> object {
-        return '{0} {1}'.format(self.type, self.get_reference());
-    }
-    def get_reference(self: BlockAddress) -> object {
-        return "blockaddress({0}, {1})".format(
-            self.function.get_reference(), self.basic_block.get_reference()
-        );
     }
 }
 

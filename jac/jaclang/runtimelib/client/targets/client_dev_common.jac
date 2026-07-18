@@ -3,7 +3,7 @@ import shutil;
 import socket;
 import subprocess;
 import from pathlib { Path }
-import from typing { Optional }
+import from typing { Any, Optional, cast }
 import from jaclang.cli.console { console }
 import from jaclang.runtimelib.client.targets.build_common { SUBPROCESS_TIMEOUT_SHORT }
 import from jaclang.runtimelib.watcher { FileChangeEvent }
@@ -137,12 +137,63 @@ def start_backend_server_common(entry_file: Path, project_dir: Path, port: int) 
     );
 }
 
+def prepare_vite_dev_compilation(project_dir: Path, entry_file: Path) -> tuple {
+    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
+    import from jaclang.runtimelib.client.vite_client_bundle {
+        make_client_bundle_builder
+    }
+
+    console.print("  Preparing compilation for Vite dev…", style="muted");
+    bundler = ViteBundler(project_dir=project_dir);
+    package_json_path = bundler._get_client_dir() / "configs" / "package.json";
+    if not package_json_path.exists() {
+        bundler.create_package_json();
+    }
+    builder = make_client_bundle_builder(project_dir);
+    if not builder.vite_package_json or not builder.vite_package_json.exists() {
+        builder.vite_package_json = package_json_path;
+    }
+    compiler = builder._get_compiler();
+    compiler.compiled_dir.mkdir(parents=True, exist_ok=True);
+    (_, mod, _) = compiler.jac_compiler.compile_module(entry_file);
+    if not mod {
+        raise RuntimeError(f"Failed to compile client entry module: {entry_file}");
+    }
+    compiler.compile(mod, entry_file);
+    console.print("  ✔ Client modules compiled for dev mode", style="success");
+    return (bundler, compiler);
+}
+
 obj _ClientHmrHandler {
     has compiler: any,
         entry_file: Path,
         project_dir: Path;
 
-    def on_event(evt: FileChangeEvent) -> None abs;
+    def on_event(evt: FileChangeEvent) -> None {
+        try {
+            pth = evt.path or "";
+            if not pth or not pth.endswith(".jac") {
+                return;
+            }
+            try {
+                Path(pth).resolve().relative_to(self.project_dir.resolve());
+            } except ValueError {
+                return;
+            }
+            invalidate_runtime_module_cache([pth, str(self.entry_file)]);
+            compile_out = cast(
+                Any, self.compiler.jac_compiler.compile_module(self.entry_file)
+            );
+            mod2 = compile_out[1];
+            if not mod2 {
+                return;
+            }
+            self.compiler.compile(mod2, self.entry_file);
+            console.print("  ✔ Client recompiled after save", style="success");
+        } except Exception as e {
+            console.error(f"  HMR recompile failed: {e}");
+        }
+    }
 }
 
 def invalidate_runtime_module_cache(paths: list[str]) -> None {

@@ -2,9 +2,7 @@ import json;
 import os;
 import subprocess;
 import from pathlib { Path }
-import from typing { Any, cast }
 import from jaclang.cli.console { console }
-import from jaclang.runtimelib.watcher { FileChangeEvent }
 import from jaclang.runtimelib.client.config_loader { JacClientConfig }
 import from jaclang.runtimelib.client.targets.mobile.common { SUBPROCESS_TIMEOUT_SHORT }
 import from jaclang.runtimelib.client.targets.node_tooling_common {
@@ -13,7 +11,6 @@ import from jaclang.runtimelib.client.targets.node_tooling_common {
 import from jaclang.runtimelib.client.targets.client_dev_common {
     assert_port_available,
     ensure_watchdog_common,
-    invalidate_runtime_module_cache,
     setup_android_port_reverse_common,
     start_backend_server_common
 }
@@ -31,7 +28,7 @@ def _assert_mobile_port_available(port: int, role: str) {
         "capacitor.config.json match what the server actually binds. Stop "
         "the conflicting process, choose a different port "
         f"(e.g. --port {port + 100}), or set "
-        "[plugins.client].vite.server.port in jac.toml."
+        "[client].vite.server.port in jac.toml."
     );
 }
 
@@ -41,7 +38,7 @@ def _warn_mobile_dev_api_url(project_dir: Path) {
         if ("localhost" in base.lower()) or ("127.0.0.1" in base) {
             console.warning(
                 "  Physical devices cannot reach localhost on your PC. "
-                "Clear [plugins.client.api] base_url for same-origin dev proxy, "
+                "Clear [client.api] base_url for same-origin dev proxy, "
                 "or set base_url to your machine's LAN URL."
             );
         }
@@ -64,39 +61,6 @@ def _mobile_setup_android_port_reverse(vite_port: int, server_port: int) {
 
 def _mobile_ensure_watchdog -> bool {
     return ensure_watchdog_common("the WebView");
-}
-
-def _mobile_hmr_on_jac_changed(
-    event: FileChangeEvent, compiler: any, entry_file: Path, project_dir: Path
-) -> None {
-    try {
-        pth = event.path or "";
-        if not pth {
-            return;
-        }
-        if not pth.endswith(".jac") {
-            return;
-        }
-        try {
-            Path(pth).resolve().relative_to(project_dir.resolve());
-        } except ValueError {
-            return;
-        }
-        invalidate_runtime_module_cache([pth, str(entry_file)]);
-        compile_out = cast(Any, compiler.jac_compiler.compile_module(entry_file));
-        mod2 = compile_out[1];
-        if not mod2 {
-            return;
-        }
-        compiler.compile(mod2, entry_file);
-        try {
-            console.print("  ✔ Client recompiled after save", style="success");
-        } except Exception { }
-    } except Exception as e {
-        try {
-            console.error(f"  HMR recompile failed: {e}");
-        } except Exception { }
-    }
 }
 
 def _mobile_start_backend_server(

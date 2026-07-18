@@ -10,32 +10,13 @@ import from jaclang.scale.jserver.jserver {
     ParameterType
 }
 import from jaclang.scale.config.config_loader { get_scale_config }
+import from jaclang.scale.admin.service_urls { service_base_url }
 
 glob logger = logging.getLogger(__name__);
 
 
 def _tempo_base_url -> str {
-    env = os.getenv("TEMPO_URL", "").strip();
-    if env {
-        return env.rstrip("/");
-    }
-    app_name = os.getenv("K8S_APP_NAME", "").strip();
-    if not app_name {
-        try {
-            k8s_cfg = get_scale_config().get_kubernetes_config();
-            raw = str(k8s_cfg.get("app_name", "") or "").strip();
-            expanded = os.path.expandvars(raw);
-            if expanded and "${" not in expanded {
-                app_name = expanded;
-            }
-        } except Exception {
-            app_name = "";
-        }
-    }
-    if not app_name {
-        return "http://localhost:3200";
-    }
-    return f"http://{app_name}-tempo-service:3200";
+    return service_base_url("TEMPO_URL", "tempo-service", 3200);
 }
 
 
@@ -177,7 +158,7 @@ def _flatten_tempo_trace(payload: dict) -> dict {
         }
     }
 
-    spans.sort(key=lambda s : s.get("start_ns", 0));
+    spans.sort(key=lambda (s) { s.get("start_ns", 0); });
     total_ms = (max_end - min_start) / 1_000_000.0 if (max_end and min_start) else 0;
     return {
         "spans": spans,
@@ -208,7 +189,7 @@ impl JacAPIServerTraces.register_traces_endpoints -> None {
             tags=["Traces"],
             summary="Service dropdown options",
             description=(
-                "Microservices declared in [plugins.scale.microservices.routes] "
+                "Microservices declared in [scale.microservices.routes] "
                 "+ 'gateway'. Used by the admin TracesPage service filter."
             )
         )
@@ -286,7 +267,7 @@ impl JacAPIServerTraces.register_traces_endpoints -> None {
             );
         }
 
-        traces.sort(key=lambda x : x.get("start_ns", 0), reverse=True);
+        traces.sort(key=lambda (x) { x.get("start_ns", 0); }, reverse=True);
         return JSONResponse(
             content={
                 "ok": True,

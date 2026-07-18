@@ -34,12 +34,6 @@ impl NaIRGenPass._clib_struct_layout(name: str) -> tuple {
     return foreign_struct_layout(self._foreign_model(), name);
 }
 
-impl NaIRGenPass._classify_clib_struct(name: str) -> dict {
-    import from jaclang.compiler.targets.abi { classify_struct }
-    (size, align, scalars) = self._clib_struct_layout(name);
-    return classify_struct(size, align, scalars, str(self.llvm_module.triple or ""));
-}
-
 impl NaIRGenPass._clib_has_nested(name: str) -> bool {
     for (_fn, nested) in self._foreign_fields_of(name) {
         if nested is not None {

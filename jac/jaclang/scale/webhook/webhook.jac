@@ -12,23 +12,6 @@ import from jaclang.scale.persistence.mongo_db { MongoDb }
 
 glob logger = logging.getLogger(__name__);
 
-class CreateApiKeyRequest(BaseModel) {
-    has name: str = Field(..., description='A friendly name for the API key'),
-        expiry_days: int | None = Field(
-            None, description='Number of days until expiry (default from config)'
-        );
-}
-
-class ApiKeyResponse(BaseModel) {
-    has api_key: str = Field(..., description='The generated API key'),
-        api_key_id: str = Field(..., description='Unique identifier for the API key'),
-        name: str = Field(..., description='Friendly name for the API key'),
-        created_at: str = Field(..., description='ISO timestamp of creation'),
-        expires_at: str | None = Field(
-            None, description='ISO timestamp of expiry, or null if no expiry'
-        );
-}
-
 obj WebhookUtils {
     static def generate_signature(payload: bytes, secret: str) -> str;
     static def verify_signature(payload: bytes, signature: str, secret: str) -> bool;

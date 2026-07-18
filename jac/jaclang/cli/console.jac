@@ -23,7 +23,7 @@ obj _Spinner {
         style_prefix: str,
         reset: str,
         interval: float = 0.08,
-        _stop: any by postinit,
+        _stop: any postinit,
         _thread: any = None;
 
     def postinit {
@@ -112,7 +112,7 @@ obj ConsoleRenderer {
 obj JacConsole {
     has use_emoji: bool = True,
         use_color: bool = True,
-        _renderer: ConsoleRenderer by postinit;
+        _renderer: ConsoleRenderer postinit;
 
     def postinit -> None;
     def _make_renderer -> ConsoleRenderer;

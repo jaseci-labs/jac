@@ -2,11 +2,11 @@
 
 def:pub ActiveItems(items: list) -> JsxElement {
     activeRows = items.filter(
-        lambda item: any -> bool {
+        lambda (item: any) -> bool {
             return item.active;
         }
     ).map(
-        lambda item: any -> any {
+        lambda (item: any) -> any {
             return <li className="active">{item.name}</li>;
         }
     );

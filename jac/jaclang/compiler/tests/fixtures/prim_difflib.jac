@@ -1,6 +1,6 @@
 """Bundled native `difflib` cross-backend equivalence fixture (#6978 Phase 3).
 
-The SAME `import from difflib { SequenceMatcher, get_close_matches }` binds
+The SAME `import from difflib { Match, SequenceMatcher, get_close_matches }` binds
 CPython's `difflib` on the sv (Python) backend and the bundled
 `na_stdlib/difflib.na.jac` Mechanism-B module on the na (native LLVM) backend.
 
@@ -15,24 +15,24 @@ non-popular seed can extend into), `g4*` pins the equal-ratio tie-break
 keywords, and `err*` pin the ValueError paths. ES/JS opts out.
 """
 
-import from difflib { SequenceMatcher, get_close_matches }
+import from difflib { Match, SequenceMatcher, get_close_matches }
 
 
 def difflib_py -> dict {
     sm1 = SequenceMatcher(None, "abcde", "abfde");
-    bl1 = sm1.get_matching_blocks();
+    bl1: list[Match] = sm1.get_matching_blocks();
     m1: int = 0;
     i1: int = 0;
     while i1 < len(bl1) {
-        m1 += bl1[i1][2];
+        m1 += bl1[i1].size;
         i1 += 1;
     }
     sm2 = SequenceMatcher(None, "kitten", "sitting");
-    bl2 = sm2.get_matching_blocks();
+    bl2: list[Match] = sm2.get_matching_blocks();
     m2: int = 0;
     i2: int = 0;
     while i2 < len(bl2) {
-        m2 += bl2[i2][2];
+        m2 += bl2[i2].size;
         i2 += 1;
     }
     g1 = get_close_matches("appel", ["ape", "apple", "peach", "puppy", "apples"]);
@@ -51,19 +51,19 @@ def difflib_py -> dict {
         xi += 1;
     }
     sm3 = SequenceMatcher(None, aj_a, aj_b);
-    bl3 = sm3.get_matching_blocks();
+    bl3: list[Match] = sm3.get_matching_blocks();
     m3: int = 0;
     i3: int = 0;
     while i3 < len(bl3) {
-        m3 += bl3[i3][2];
+        m3 += bl3[i3].size;
         i3 += 1;
     }
     sm4 = SequenceMatcher(None, aj_a, aj_b, False);
-    bl4 = sm4.get_matching_blocks();
+    bl4: list[Match] = sm4.get_matching_blocks();
     m4: int = 0;
     i4: int = 0;
     while i4 < len(bl4) {
-        m4 += bl4[i4][2];
+        m4 += bl4[i4].size;
         i4 += 1;
     }
 
@@ -83,9 +83,9 @@ def difflib_py -> dict {
         "m1": m1,
         "l1": len("abcde") + len("abfde"),
         "nb1": len(bl1),
-        "b1i": bl1[0][0],
-        "b1j": bl1[0][1],
-        "b1k": bl1[0][2],
+        "b1i": bl1[0].a,
+        "b1j": bl1[0].b,
+        "b1k": bl1[0].size,
         "m2": m2,
         "l2": len("kitten") + len("sitting"),
         "g1n": len(g1),
@@ -106,9 +106,9 @@ def difflib_py -> dict {
         "ajnb_on": len(bl3),
         "ajm_off": m4,
         "ajnb_off": len(bl4),
-        "ajb1i": bl4[1][0],
-        "ajb1j": bl4[1][1],
-        "ajb1k": bl4[1][2],
+        "ajb1i": bl4[1].a,
+        "ajb1j": bl4[1].b,
+        "ajb1k": bl4[1].size,
         "errn": errn,
         "errc": errc
     };
@@ -123,19 +123,19 @@ cl def difflib_cl -> dict {
 na {
     def difflib_na -> dict[str, any] {
         sm1: SequenceMatcher = SequenceMatcher(None, "abcde", "abfde");
-        bl1: list[list[int]] = sm1.get_matching_blocks();
+        bl1: list[Match] = sm1.get_matching_blocks();
         m1: int = 0;
         i1: int = 0;
         while i1 < len(bl1) {
-            m1 += bl1[i1][2];
+            m1 += bl1[i1].size;
             i1 += 1;
         }
         sm2: SequenceMatcher = SequenceMatcher(None, "kitten", "sitting");
-        bl2: list[list[int]] = sm2.get_matching_blocks();
+        bl2: list[Match] = sm2.get_matching_blocks();
         m2: int = 0;
         i2: int = 0;
         while i2 < len(bl2) {
-            m2 += bl2[i2][2];
+            m2 += bl2[i2].size;
             i2 += 1;
         }
         g1: list[str] = get_close_matches(
@@ -158,19 +158,19 @@ na {
             xi += 1;
         }
         sm3: SequenceMatcher = SequenceMatcher(None, aj_a, aj_b);
-        bl3: list[list[int]] = sm3.get_matching_blocks();
+        bl3: list[Match] = sm3.get_matching_blocks();
         m3: int = 0;
         i3: int = 0;
         while i3 < len(bl3) {
-            m3 += bl3[i3][2];
+            m3 += bl3[i3].size;
             i3 += 1;
         }
         sm4: SequenceMatcher = SequenceMatcher(None, aj_a, aj_b, False);
-        bl4: list[list[int]] = sm4.get_matching_blocks();
+        bl4: list[Match] = sm4.get_matching_blocks();
         m4: int = 0;
         i4: int = 0;
         while i4 < len(bl4) {
-            m4 += bl4[i4][2];
+            m4 += bl4[i4].size;
             i4 += 1;
         }
 
@@ -190,9 +190,9 @@ na {
             "m1": m1,
             "l1": len("abcde") + len("abfde"),
             "nb1": len(bl1),
-            "b1i": bl1[0][0],
-            "b1j": bl1[0][1],
-            "b1k": bl1[0][2],
+            "b1i": bl1[0].a,
+            "b1j": bl1[0].b,
+            "b1k": bl1[0].size,
             "m2": m2,
             "l2": len("kitten") + len("sitting"),
             "g1n": len(g1),
@@ -213,9 +213,9 @@ na {
             "ajnb_on": len(bl3),
             "ajm_off": m4,
             "ajnb_off": len(bl4),
-            "ajb1i": bl4[1][0],
-            "ajb1j": bl4[1][1],
-            "ajb1k": bl4[1][2],
+            "ajb1i": bl4[1].a,
+            "ajb1j": bl4[1].b,
+            "ajb1k": bl4[1].size,
             "errn": errn,
             "errc": errc
         };

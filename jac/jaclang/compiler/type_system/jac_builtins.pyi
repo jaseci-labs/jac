@@ -40,6 +40,7 @@ __all__ = [
     "DSFunc",
     "EdgeDir",
     "LLMModel",
+    "Region",
     # Fixed-width numeric types
     "i8",
     "u8",
@@ -115,6 +116,11 @@ class JsxElement:
 class OPath: ...
 class DSFunc: ...
 
+# First-class region handle: an ownable, sendable, escape-checked allocation
+# extent opened by `in <handle> { ... }`. On managed backends the handle is a
+# no-op; native codegen gives it arena semantics.
+class Region: ...
+
 class EdgeDir:
     OUT: int
     IN: int
@@ -174,6 +180,10 @@ def printgraph(
 ) -> str: ...
 def restspec(**specs: object) -> Callable[..., Any]: ...
 def schedule(**kwargs: object) -> Callable[..., Any]: ...
+
+_ManagedT = TypeVar("_ManagedT")
+
+def managed(x: _ManagedT) -> _ManagedT: ...
 
 # Returns a sentinel object that the JSX flattener turns into raw HTML
 # (`dangerouslySetInnerHTML` on jac-client, `innerHTML` on bare-serve).

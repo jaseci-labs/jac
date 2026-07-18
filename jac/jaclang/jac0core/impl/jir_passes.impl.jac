@@ -242,6 +242,23 @@ impl JirWriter._write_symbol(buf: bytearray, sym: Symbol) -> None {
     _write_varint(buf, self._pool.intern(access_str));
 
     buf.append(1 if sym.imported else 0);
+
+    try {
+        buf.append(int(sym.ownership.value) & 0xFF);
+    } except Exception {
+        buf.append(0);
+    }
+    _fact_flags = 0;
+    if getattr(sym, 'param_rebound', False) {
+        _fact_flags |= 1;
+    }
+    if getattr(sym, 'na_escapes', False) {
+        _fact_flags |= 2;
+    }
+    if getattr(sym, 'na_stack_ok', False) {
+        _fact_flags |= 4;
+    }
+    buf.append(_fact_flags);
 }
 
 impl JirWriter._write_field(
@@ -432,36 +449,10 @@ impl JirReader.read_module(data: bytes) -> (Module | None) {
                 self._wire_source(last_node);
             }
             self._fix_param_kinds();
-
-            import from jaclang.jac0core.jir {
-                SEC_BYTECODE,
-                SEC_MTIR,
-                SEC_LLVM_IR,
-                SEC_INTEROP
-            }
-            secs = self._read_trailing_sections(data);
-            self.bytecode_section = secs.get(SEC_BYTECODE);
-            self.mtir_section = secs.get(SEC_MTIR);
-            self.llvm_ir_section = secs.get(SEC_LLVM_IR);
-            self.interop_section = secs.get(SEC_INTEROP);
             return last_node;
         }
     }
     return None;
-}
-
-impl JirReader._read_trailing_sections(data: bytes) -> dict[int, bytes] {
-    import from jaclang.jac0core.jir { HEADER_SIZE, SECTIONS_MAGIC, read_sections }
-    try {
-        magic_bytes: any = SECTIONS_MAGIC;
-        pos = data.find(magic_bytes, HEADER_SIZE);
-        if pos < 0 {
-            return {};
-        }
-        return read_sections(data, pos + len(magic_bytes));
-    } except Exception {
-        return {};
-    }
 }
 
 impl JirReader._wire_source(module: Module) -> None {
@@ -563,7 +554,8 @@ impl JirReader._init_caches -> None {
         SymbolAccess,
         SymbolType,
         EdgeDir,
-        CodeContext
+        CodeContext,
+        OwnershipKind
     }
     import from jaclang.jac0core.codeinfo { CodeLocInfo }
     import ast as ast3;
@@ -612,7 +604,8 @@ impl JirReader._init_caches -> None {
         'sym_type': SymbolType,
         'access': SymbolAccess,
         'edge_dir': EdgeDir,
-        'code_context': CodeContext
+        'code_context': CodeContext,
+        'ownership': OwnershipKind
     };
     for (fname, enum_cls) in enum_mapping.items() {
         cache: dict[str, object] = {};
@@ -1017,6 +1010,17 @@ impl JirReader._read_symbol(data: (bytes | memoryview), pos: int) -> tuple {
     imported = bool(data[pos]);
     pos += 1;
 
+    import from jaclang.jac0core.constant { OwnershipKind }
+    _own_raw = data[pos];
+    pos += 1;
+    try {
+        _ownership = OwnershipKind(_own_raw);
+    } except (ValueError, KeyError) {
+        _ownership = OwnershipKind.NONE;
+    }
+    _fact_flags = data[pos];
+    pos += 1;
+
     defn_nodes = [];
     for nid in defn_ids {
         n = self._resolve_node(nid);
@@ -1036,6 +1040,10 @@ impl JirReader._read_symbol(data: (bytes | memoryview), pos: int) -> tuple {
     sym.access = access;
     sym.parent_tab = None;
     sym.semstr = '';
+    sym.ownership = _ownership;
+    sym.param_rebound = bool(_fact_flags & 1);
+    sym.na_escapes = bool(_fact_flags & 2);
+    sym.na_stack_ok = bool(_fact_flags & 4);
 
     for d in defn_nodes {
         if isinstance(d, NameAtom) {
