@@ -1739,8 +1739,8 @@ obj PythonModuleAst(EmptyToken) {
 }
 
 obj CModuleAst(EmptyToken) {
-    has orig_src: Source by postinit,
-        file_path: str by postinit;
+    has orig_src: Source postinit,
+        file_path: str postinit;
 
     def init(ast: object, orig_src: Source) -> None;
 }
