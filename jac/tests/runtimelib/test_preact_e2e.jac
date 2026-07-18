@@ -70,7 +70,7 @@ def _write_preact_project(dest: Path) {
         '"@vitejs/plugin-react" = "^4.2.1"\n'
         'typescript = "^5.3.3"\n'
         '\n'
-        '[plugins.client]\n',
+        '[client]\n',
         encoding="utf-8",
     );
     shutil.copy(Path(FIXTURES) / "preact_counter_app.jac", dest / "main.jac");

@@ -5,7 +5,7 @@ import from jaclang.byllm._optdeps.loguru { logger }
 
 
 def _class_info(arch: object) -> object {
-    import from jaclang.byllm.plugin { fetch_mtir }
+    import from jaclang.jac0core.mtp { fetch_mtir }
     try {
         return fetch_mtir(type(arch));
     } except Exception {

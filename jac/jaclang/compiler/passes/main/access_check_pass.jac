@@ -21,6 +21,8 @@ obj AccessCheckPass(Transform[uni.Module, uni.Module]) {
         cancel_token: any = None,
         _enforce: bool = False;
 
+    static has PROVIDES: tuple = ('access-checks', );
+
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;
     def _read_enforce -> bool;

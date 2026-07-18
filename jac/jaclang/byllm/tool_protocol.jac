@@ -1,41 +1,10 @@
-"""Tool-call normalisation for backends without native tool calling.
-
-Frontier cloud providers (OpenAI, Anthropic, Gemini) accept a `tools=` list
-and do two things server-side: render the tools into the prompt, and parse the
-model's reply back into a structured `tool_calls` field. byllm's local route
-(in-process llama.cpp) gets neither -- the GGUF's own chat template renders
-tools inconsistently and llama-cpp's generic handler leaves the model's
-tool-call text sitting in `content`, so the ReAct loop sees zero tool calls.
-
-This module is the tool-call counterpart of `schema.inject_schema_hint`: byllm
-owns the protocol on both ends instead of reverse-engineering each model's
-native format.
-
-  - `inject_tool_hint`  -- request side: render the tool schemas and a strict,
-                           byllm-defined call protocol into the system message,
-                           and drop the structured `tools` field so the local
-                           backend's unreliable native template is not engaged.
-  - `recover_tool_calls` -- response side: when a reply carries no structured
-                           `tool_calls`, lift a tool call back out of the
-                           message content into the OpenAI-shaped field the
-                           ReAct loop already consumes.
-
-Both are gated by `BaseLLM.supports_native_tools`, so the cloud/litellm path is
-left completely untouched.
-"""
-
 import json;
 import re;
 import uuid;
 import from types { SimpleNamespace }
 
-# Marker used to keep `inject_tool_hint` idempotent within a single request.
 glob _TOOL_PROTOCOL_HEADER = "# Calling tools";
 
-#===============================================================================
-# REQUEST SIDE -- render tools + protocol into the prompt
-#===============================================================================
-"""Render one OpenAI tool-schema dict into a compact prompt description."""
 def _render_tool(tool: object) -> str {
     if not isinstance(tool, dict) {
         return "";
@@ -73,7 +42,6 @@ def _render_tool(tool: object) -> str {
 }
 
 
-"""Build the full tool-use protocol block from a list of tool schemas."""
 def format_tools_for_prompt(tools: list) -> str {
     rendered: list[str] = [];
     for tool in tools {
@@ -93,11 +61,6 @@ def format_tools_for_prompt(tools: list) -> str {
 }
 
 
-"""Append `block` to the first system message; prepend one when none exists.
-
-Returns a new list -- the caller's input is not mutated. Idempotent: a second
-call within the same request detects the protocol header and is a no-op.
-"""
 def attach_tool_hint(messages: list, block: str) -> list {
     out: list = list(messages);
     sys_idx = -1;
@@ -118,15 +81,14 @@ def attach_tool_hint(messages: list, block: str) -> list {
     if not isinstance(target_raw, dict) {
         return messages;
     }
-    # byllm always builds system messages with plain string content; skip
-    # injection for any other shape rather than risk corrupting it.
+
     body = target_raw.get("content", "");
     if not isinstance(body, str) {
         return messages;
     }
     body_text = str(body);
     if _TOOL_PROTOCOL_HEADER in body_text {
-        return messages;  # already injected -- idempotent
+        return messages;
     }
     target: dict = dict(target_raw);
     target["content"] = body_text.rstrip() + "\n\n" + block;
@@ -135,7 +97,6 @@ def attach_tool_hint(messages: list, block: str) -> list {
 }
 
 
-"""Read an attribute off a value that may be a dict or an object."""
 def _field(val: object, key: str) -> object {
     if isinstance(val, dict) {
         return val.get(key);
@@ -144,13 +105,6 @@ def _field(val: object, key: str) -> object {
 }
 
 
-"""Pull (name, arguments-dict) out of one tool-call, dict or object shaped.
-
-Handles the OpenAI native shape (`function.name`/`function.arguments`), the
-`SimpleNamespace` shape `recover_tool_calls` produces, and a flat
-`{name, arguments}` dict. Arguments arrive as a JSON string or a dict; both
-normalise to a dict.
-"""
 def _tool_call_name_args(tc: object) -> tuple[str, dict] {
     fn = _field(tc, "function");
     name = _field(tc, "name") or _field(fn, "name");
@@ -170,22 +124,9 @@ def _tool_call_name_args(tc: object) -> tuple[str, dict] {
 }
 
 
-"""Linearise tool-call and tool-result messages into plain user/assistant text.
-
-Models without a tool-aware chat template (the in-process GGUFs, and ollama
-families such as gemma whose template has no `tool` role) silently drop
-`role:"tool"` result messages and mis-render assistant `tool_calls` -- so a
-ReAct loop feeds them an answer they never see and they re-issue the same call
-forever. This rewrites the transcript into the exact text shape the protocol
-advertises: an assistant `tool_calls` message becomes the `<tool_call>{...}</tool_call>`
-text the model itself would emit, and a tool result becomes a `<tool_response>`
-the model reads as ordinary user input. The structured history is untouched;
-only the about-to-be-sent copy is linearised.
-"""
 def linearize_tool_messages(messages: list) -> list {
     out: list = [];
     for m in messages {
-        # A tool result: identified by tool_call_id (set only on ToolCallResultMsg).
         if _field(m, "tool_call_id") is not None {
             name = str(_field(m, "name") or "tool");
             content = _field(m, "content");
@@ -218,20 +159,6 @@ def linearize_tool_messages(messages: list) -> list {
 }
 
 
-"""Request-side tool-protocol injection.
-
-Called from `BaseLLM.make_model_params` for backends that lack native tool
-calling. Renders the tool schemas into the system prompt, linearises any prior
-tool-call/result messages into text the model can read, and removes the
-structured `tools` / `tool_choice` params so the backend's own (and unreliable)
-tool template is not triggered. No-op when there are no tools.
-
-When `tool_choice == "none"` the caller explicitly wants a pure-text reply
-(byLLM's final-answer pass works this way): tools are dropped but the
-protocol is NOT advertised, so the model is not tempted to emit another
-tool call instead of the answer. The transcript is still linearised so any
-tool results already in history remain readable.
-"""
 def inject_tool_hint(params: dict) -> dict {
     tools = params.get("tools");
     msgs = params.get("messages");
@@ -256,17 +183,12 @@ def inject_tool_hint(params: dict) -> dict {
     out["messages"] = attach_tool_hint(linearize_tool_messages(msgs), block);
     out.pop("tools", None);
     out.pop("tool_choice", None);
-    # Halt generation at the end of the first tool call. Without it, weaker
-    # open-weight models run past `</tool_call>` and hallucinate an entire
-    # multi-turn transcript -- fabricated tool results and follow-up calls --
-    # in a single reply, which derails the ReAct loop. A hard stop forces one
-    # call per turn so the loop feeds back real results.
+
     out["stop"] = _merge_stop(out.get("stop"), ["</tool_call>"]);
     return out;
 }
 
 
-"""Merge protocol stop strings with any the caller already set, de-duped."""
 def _merge_stop(existing: object, extra: list[str]) -> list[str] {
     out: list[str] = [];
     if isinstance(existing, str) and existing {
@@ -286,14 +208,6 @@ def _merge_stop(existing: object, extra: list[str]) -> list[str] {
     return out;
 }
 
-#===============================================================================
-# RESPONSE SIDE -- recover tool calls from message content
-#===============================================================================
-"""Return the balanced `open_ch..close_ch` substring starting at `start`.
-
-Tracks nesting depth while respecting `"`/`'` string literals so brackets
-inside strings do not throw off the count. Returns None when unbalanced.
-"""
 def _balanced(text: str, start: int, open_ch: str, close_ch: str) -> str | None {
     depth = 0;
     in_str = False;
@@ -329,13 +243,6 @@ def _balanced(text: str, start: int, open_ch: str, close_ch: str) -> str | None 
 }
 
 
-"""Pull a {name, arguments} pair out of one call-shaped object, or None.
-
-Small models are wildly inconsistent in how they key a tool call, so accept
-the common spellings: name via `name`/`tool`/`tool_name`/`function` (the last
-either a plain name string or a nested `{"name", "arguments"}` object), and
-arguments via `arguments`/`parameters`/`args`/`tool_args`/`input`.
-"""
 def _call_fields(cobj: object) -> dict | None {
     if not isinstance(cobj, dict) {
         return None;
@@ -349,8 +256,7 @@ def _call_fields(cobj: object) -> dict | None {
         or cobj.get("tool_args")
         or cobj.get("input")
     );
-    # `function` is a plain name string in some shapes, a nested
-    # `{"name", "arguments"}` object (OpenAI native) in others.
+
     if isinstance(func, dict) {
         name = name or func.get("name");
         args = (
@@ -366,15 +272,6 @@ def _call_fields(cobj: object) -> dict | None {
 }
 
 
-"""Find the first JSON object in `content` that looks like a tool call.
-
-Works whether the model wrapped the call in `<tool_call>` tags, a ```json
-fence, or emitted bare JSON, and whether the call is a flat
-`{"name", "arguments"}` object or sits inside a `{"tool_calls": [...]}` /
-`{"tool_call": {...}}` envelope (the shape ollama-served models stream as
-text). When `tool_names` is non-empty, objects whose name is not a real tool
-are skipped. Returns {name, arguments, raw, pos}.
-"""
 def _extract_json_call(content: str, tool_names: list) -> dict | None {
     i = 0;
     while i < len(content) {
@@ -390,8 +287,6 @@ def _extract_json_call(content: str, tool_names: list) -> dict | None {
                 parsed = None;
             }
             if isinstance(parsed, dict) {
-                # Unwrap a `tool_calls`/`tool_call` envelope; otherwise treat the
-                # object itself as the candidate call.
                 wrapped = parsed.get("tool_calls") or parsed.get("tool_call");
                 candidates: list = [];
                 if isinstance(wrapped, list) {
@@ -429,10 +324,6 @@ def _extract_json_call(content: str, tool_names: list) -> dict | None {
 }
 
 
-"""Split a function-argument string on its top-level commas.
-
-Commas inside quotes or nested brackets are not treated as separators.
-"""
 def _split_top_level(text: str) -> list[str] {
     parts: list[str] = [];
     buf = "";
@@ -474,7 +365,6 @@ def _split_top_level(text: str) -> list[str] {
 }
 
 
-"""Parse one argument value token: JSON literal, quoted string, or bare word."""
 def _parse_value(token: str) -> object {
     t = token.strip();
     if not t {
@@ -490,11 +380,6 @@ def _parse_value(token: str) -> object {
 }
 
 
-"""Parse a `key=value`/`key: value`, ... argument string into a dict.
-
-Accepts both `=` and `:` separators -- small models use either depending on
-whether they think they are writing a call or an object literal.
-"""
 def _parse_kwargs(argstr: str) -> dict {
     out: dict = {};
     for part in _split_top_level(argstr) {
@@ -508,13 +393,6 @@ def _parse_kwargs(argstr: str) -> dict {
 }
 
 
-"""Find the first `tool_name(...)` or `tool_name{...}` call in `content`.
-
-Only call expressions whose name is in `tool_names` are accepted, so prose
-or code snippets that merely mention a function are not misread as a call.
-Small models emit both paren and brace forms, so both are scanned.
-Returns {name, arguments, raw, pos} or None.
-"""
 def _extract_paren_call(content: str, tool_names: list) -> dict | None {
     for m in re.finditer("([A-Za-z_][A-Za-z0-9_]*)\\s*([\\(\\{])", content) {
         name = m.group(1);
@@ -539,12 +417,6 @@ def _extract_paren_call(content: str, tool_names: list) -> dict | None {
 }
 
 
-"""Find the first tool call in `content`, in JSON or paren-call form.
-
-Small open-weight models are inconsistent -- the same turn may use a JSON
-`<tool_call>` envelope for one tool and `finish_tool(arg=...)` paren syntax
-for another -- so both forms are scanned and the earliest one wins.
-"""
 def _extract_first_tool_call(content: str, tool_names: list) -> dict | None {
     json_call = _extract_json_call(content, tool_names);
     paren_call = _extract_paren_call(content, tool_names);
@@ -560,13 +432,6 @@ def _extract_first_tool_call(content: str, tool_names: list) -> dict | None {
 }
 
 
-"""Coerce a reply message (litellm `Message` object or dict) to a plain dict.
-
-The cloud/litellm non-streaming path hands back a `Message` *object*, while the
-in-process and streaming paths build plain dicts. Normalising to a dict here
-lets the whole text tool protocol operate on one shape and -- crucially -- lets
-`recover_tool_calls` write `tool_calls` back in a form the ReAct loop reads.
-"""
 def coerce_message_dict(message: object) -> dict {
     if isinstance(message, dict) {
         return message;
@@ -581,19 +446,6 @@ def coerce_message_dict(message: object) -> dict {
 }
 
 
-"""Response-side tool-call recovery.
-
-Two jobs on an OpenAI-shaped reply: strip model-specific control tokens (e.g.
-gemma's `<|channel>` reasoning markers) from the content, and -- when the reply
-carries no structured `tool_calls` -- lift a tool call out of the text into
-`tool_calls` in the same `SimpleNamespace` shape the local connector's
-`wrap_tool_call` produces, so `BaseLLM.dispatch_*` consumes it identically to a
-native tool call.
-
-Accepts either a dict or a litellm `Message` object, normalises to a dict, and
-returns it -- callers must use the return value, since an object input cannot be
-mutated into the dict the ReAct loop expects.
-"""
 def recover_tool_calls(message: object, tool_names: list[str] | None = None) -> dict {
     msg: dict = coerce_message_dict(message);
     names: list[str] = tool_names if tool_names is not None else [];
@@ -601,9 +453,7 @@ def recover_tool_calls(message: object, tool_names: list[str] | None = None) -> 
     if not isinstance(content, str) or not content {
         return msg;
     }
-    # Normalise / strip control tokens some local models emit:
-    #  - gemma renders quote characters inside tool calls as `<|"|>` tokens;
-    #  - `<|channel>thought` reasoning headers and `<token|>` closers.
+
     stripped = content.replace("<|\"|>", "\"").replace("<|'|>", "'");
     stripped = re.sub("<\\|[a-z_]+>[a-z]*", "", stripped);
     stripped = re.sub("<[a-z_]+\\|>", "", stripped);
@@ -612,7 +462,7 @@ def recover_tool_calls(message: object, tool_names: list[str] | None = None) -> 
         msg["content"] = content;
     }
     if msg.get("tool_calls") {
-        return msg;  # already structured -- nothing more to do
+        return msg;
     }
     call = _extract_first_tool_call(content, names);
     if call is None {
@@ -638,8 +488,7 @@ def recover_tool_calls(message: object, tool_names: list[str] | None = None) -> 
         function=SimpleNamespace(name=str(call["name"]), arguments=json.dumps(args))
     );
     msg["tool_calls"] = [tool_call];
-    # Strip the consumed tool-call JSON (and its envelope tags) from the
-    # content so it does not resurface as a stray "thought" in the stream.
+
     raw = call.get("raw");
     if isinstance(raw, str) and raw {
         cleaned = str(content).replace(raw, "");

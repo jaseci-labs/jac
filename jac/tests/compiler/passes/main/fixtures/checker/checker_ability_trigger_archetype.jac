@@ -20,8 +20,8 @@ edge Road { has length: int = 0; }
 edge Friend { has since: int = 0; }
 obj NotAnArch { has v: int = 0; }
 
-walker WalkerOne { can ping with `root entry { ; } }
-walker WalkerTwo { can ping with `root entry { ; } }
+walker WalkerOne { can ping with Root entry { ; } }
+walker WalkerTwo { can ping with Root entry { ; } }
 
 walker BadWalker {
     # Walker triggers must be node/edge/Root.
@@ -54,7 +54,7 @@ walker GoodWalker {
     # Concrete node/edge/Root triggers.
     can at_place with Place entry { ; }
     can at_road  with Road exit   { ; }
-    can at_root  with `root entry { ; }
+    can at_root  with Root entry { ; }
     # Tuple and union of valid archetypes.
     can at_nodes with (Place, City) entry { ; }
     can at_mixed with Place | Road exit   { ; }

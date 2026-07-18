@@ -15,8 +15,10 @@ observability/health is broken.
 import from "lucide-react" { Stethoscope, RefreshCw, Check, X, Minus, AlertTriangle }
 
 import from react { useEffect }
+import from ....components.common.PageHeader { PageHeader }
 import from ....context.AuthContext { useAuth }
 import from ....services.opsService { getOpsHealth }
+import from ....utils.api { getErrorMessage }
 
 # Per-signal display labels. Keys match the backend `signals` dict.
 glob SIGNAL_ORDER = ["traces", "logs", "metrics", "mongo", "redis", "admin_api"],
@@ -45,7 +47,7 @@ def:pub OpsPage -> JsxElement {
                 signals = result["data"]["signals"] or {};
                 errorMsg = "";
             } elif result["error"] {
-                errorMsg = result["error"]["message"] or "Failed to load self-check";
+                errorMsg = getErrorMessage(result, "Failed to load self-check");
             }
         } except Exception as e {
             console.error("loadHealth error:", e);
@@ -149,26 +151,24 @@ def:pub OpsPage -> JsxElement {
     }
 
     # ---- render ------------------------------------------------------
+    # Deviates from the stock PageHeader refresh: disabled while
+    # loading, spinning icon - so it rides in the `right` slot.
+    refreshBtn = <button
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-surface-2 text-fg border border-line hover:bg-line transition-colors disabled:opacity-60"
+        onClick={lambda { loadHealth(); }}
+        disabled={isLoading}
+    >
+        <RefreshCw className={"w-3.5 h-3.5 " + (isLoading and "animate-spin" or "")}/>
+        Refresh
+    </button>;
+
     return
         <div className="space-y-4">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                    <Stethoscope className="w-5 h-5 text-accent"/>
-                    <h1 className="text-lg font-semibold text-fg">Signal Self-Check</h1>
-                </div>
-                <button
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-surface-2 text-fg border border-line hover:bg-line transition-colors disabled:opacity-60"
-                    onClick={lambda { loadHealth(); }}
-                    disabled={isLoading}
-                >
-                    <RefreshCw
-                        className={"w-3.5 h-3.5 " + (
-                            isLoading and "animate-spin" or ""
-                        )}
-                    />
-                    Refresh
-                </button>
-            </div>
+            <PageHeader
+                icon={Stethoscope}
+                title="Signal Self-Check"
+                right={refreshBtn}
+            />
             <p className="text-sm text-muted">
                 Each signal's causal chain, evaluated top-down. The first red step is the diagnosis - no kubectl needed.
             </p>

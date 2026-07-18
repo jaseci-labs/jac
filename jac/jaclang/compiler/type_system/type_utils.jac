@@ -20,17 +20,12 @@ obj PropertyWriteResult {
 obj ClassMember {
     has symbol: Symbol,
         class_type: types.ClassType,
-        overloads: list[Symbol],
-        is_instance_member: bool = True,
-        is_class_member: bool = False,
-        is_slots_member: bool = False,
-        is_class_var: bool = False,
-        is_read_only: bool = False,
-        is_type_declared: bool = False,
-        skipped_undeclared_type: bool = False;
+        overloads: list[Symbol];
 }
 
-def compute_mro_linearization(cls: types.ClassType) -> None;
+def compute_mro_linearization(
+    cls: types.ClassType, _visiting: (set | None) = None
+) -> None;
 
 def primitive_type_name_of(ty: (types.TypeBase | None)) -> (str | None);
 
@@ -56,7 +51,8 @@ obj ParamAssignmentTracker {
 obj CompletionItem {
     has label: str,
         kind: int,
-        detail: (str | None) = None;
+        detail: (str | None) = None,
+        documentation: (str | None) = None;
 }
 
 enum CompletionItemKind {
@@ -86,6 +82,10 @@ enum CompletionItemKind {
     Operator = 24,
     TypeParameter = 25,
 }
+
+def doc_of_sym(sym: Symbol) -> (str | None);
+
+def completion_item_from_sym(name: str, sym: Symbol) -> CompletionItem;
 
 def completion_kind_from_sym(sym: Symbol) -> int;
 

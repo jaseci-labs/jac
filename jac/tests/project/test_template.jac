@@ -239,7 +239,7 @@ test "register template from dict" {
     template_dir = Path(fixture_path("templates/minimal"));
     template = load_template_from_directory(template_dir);
     registry.register(template.to_dict());
-    assert registry.has_template("minimal");
+    assert registry.get("minimal") is not None;
 }
 
 test "get registered template" {

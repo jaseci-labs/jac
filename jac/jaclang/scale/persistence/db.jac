@@ -40,7 +40,6 @@ obj DeleteResult {
 
 def get_mongo_client(uri: (str | None) = None) -> MongoClient {
     require_optional("pymongo", "data.mongo");
-    global _mongo_clients;
 
     resolved_uri = _resolve_uri(uri, DatabaseType.MONGODB);
 
@@ -55,7 +54,6 @@ def get_mongo_client(uri: (str | None) = None) -> MongoClient {
 
 def get_redis_client(uri: (str | None) = None) -> Redis {
     require_optional("redis", "data.redis");
-    global _redis_clients;
 
     resolved_uri = _resolve_uri(uri, DatabaseType.REDIS);
 
@@ -70,7 +68,6 @@ def get_redis_client(uri: (str | None) = None) -> Redis {
 
 def get_firestore_client(project_id: (str | None) = None) -> FirestoreClient {
     require_optional("google.cloud.firestore", "storage.firebase");
-    global _firestore_clients;
 
     resolved_project_id = _resolve_uri(project_id, DatabaseType.FIRESTORE);
 
@@ -85,50 +82,7 @@ def get_firestore_client(project_id: (str | None) = None) -> FirestoreClient {
 
 def get_firestore_db(db_name: str = 'jac_db', project_id: (str | None) = None) -> Db;
 
-def close_mongo_client(uri: (str | None) = None) {
-    global _mongo_clients;
-
-    try {
-        resolved_uri = _resolve_uri(uri, DatabaseType.MONGODB);
-        if resolved_uri in _mongo_clients {
-            _mongo_clients[resolved_uri].close();
-            del _mongo_clients[resolved_uri];
-        }
-    } except ValueError { }
-}
-
-def close_redis_client(uri: (str | None) = None) {
-    global _redis_clients;
-
-    try {
-        resolved_uri = _resolve_uri(uri, DatabaseType.REDIS);
-        if resolved_uri in _redis_clients {
-            _redis_clients[resolved_uri].close();
-            del _redis_clients[resolved_uri];
-        }
-    } except ValueError { }
-}
-
-def close_firestore_client(project_id: (str | None) = None) {
-    global _firestore_clients;
-
-    try {
-        resolved_project_id = _resolve_uri(project_id, DatabaseType.FIRESTORE);
-        if resolved_project_id in _firestore_clients {
-            client = _firestore_clients[resolved_project_id];
-            try {
-                if hasattr(client, 'close') {
-                    client.close();
-                }
-            } except Exception { }
-            del _firestore_clients[resolved_project_id];
-        }
-    } except ValueError { }
-}
-
 def close_all_db_connections {
-    global _mongo_clients,_redis_clients,_firestore_clients;
-
     for client in _mongo_clients.values() {
         try {
             client.close();
@@ -158,75 +112,78 @@ obj Db {
         db_name: str = 'jac_db',
         db_type: DatabaseType = DatabaseType.MONGODB;
 
-    def _get_mongo_collection(col_name: str) -> Collection abs;
-    def _get_firestore_collection(col_name: str) -> any abs;
-    def _get_redis_key(col_name: str, key: str) -> str abs;
-    def get(key: str, col_name: str = 'default') -> dict | None abs;
-    def set(key: str, value: dict, col_name: str = 'default') -> str abs;
-    def delete(key: str, col_name: str = 'default') -> int abs;
-    def exists(key: str, col_name: str = 'default') -> bool abs;
+    def _get_mongo_collection(col_name: str) -> Collection abst;
+    def _get_firestore_collection(col_name: str) -> any abst;
+    def _get_redis_key(col_name: str, key: str) -> str abst;
+    def get(key: str, col_name: str = 'default') -> dict | None abst;
+    def set(key: str, value: dict, col_name: str = 'default') -> str abst;
+    def delete(key: str, col_name: str = 'default') -> int abst;
+    def exists(key: str, col_name: str = 'default') -> bool abst;
     def find_one(
         col_name: str, filter: dict, projection: dict | None = None
-    ) -> dict | None abs;
+    ) -> dict | None abst;
 
     def find(
         col_name: str,
         filter: dict,
         projection: dict | None = None,
         limit: int | None = None
-    ) -> Cursor | list abs;
+    ) -> Cursor | list abst;
 
-    def count_documents(col_name: str, filter: dict) -> int abs;
+    def count_documents(col_name: str, filter: dict) -> int abst;
     def create_index(
         col_name: str, keys: dict, unique: bool = False, name: str | None = None
-    ) -> str abs;
+    ) -> str abst;
 
     def insert_one(
         col_name: str, document: dict
-    ) -> PyMongoInsertOneResult | InsertResult abs;
+    ) -> PyMongoInsertOneResult | InsertResult abst;
 
     def update_one(
         col_name: str, filter: dict, update_data: dict, upsert_mode: bool = False
-    ) -> PyMongoUpdateResult | UpdateResult abs;
+    ) -> PyMongoUpdateResult | UpdateResult abst;
 
     def delete_one(
         col_name: str, filter: dict
-    ) -> PyMongoDeleteResult | DeleteResult abs;
+    ) -> PyMongoDeleteResult | DeleteResult abst;
 
     def insert_many(
         col_name: str, documents: list
-    ) -> PyMongoInsertManyResult | InsertManyResult abs;
+    ) -> PyMongoInsertManyResult | InsertManyResult abst;
 
     def update_many(
         col_name: str, filter: dict, update_data: dict, upsert_mode: bool = False
-    ) -> PyMongoUpdateResult | UpdateResult abs;
+    ) -> PyMongoUpdateResult | UpdateResult abst;
 
     def delete_many(
         col_name: str, filter: dict
-    ) -> PyMongoDeleteResult | DeleteResult abs;
+    ) -> PyMongoDeleteResult | DeleteResult abst;
 
-    def find_by_id(col_name: str, id: str) -> dict | None abs;
+    def find_by_id(col_name: str, id: str) -> dict | None abst;
     def update_by_id(
         col_name: str, id: str, update_data: dict, upsert_mode: bool = False
-    ) -> PyMongoUpdateResult | UpdateResult abs;
+    ) -> PyMongoUpdateResult | UpdateResult abst;
 
-    def delete_by_id(col_name: str, id: str) -> PyMongoDeleteResult | DeleteResult abs;
+    def delete_by_id(
+        col_name: str, id: str
+    ) -> PyMongoDeleteResult | DeleteResult abst;
+
     def set_with_ttl(
         key: str, value: dict, ttl: int, col_name: str = 'default'
-    ) -> bool abs;
+    ) -> bool abst;
 
-    def incr(key: str, col_name: str = 'default') -> int abs;
-    def expire(key: str, seconds: int, col_name: str = 'default') -> bool abs;
-    def scan_keys(pattern: str, col_name: str = 'default') -> list[str] abs;
+    def incr(key: str, col_name: str = 'default') -> int abst;
+    def expire(key: str, seconds: int, col_name: str = 'default') -> bool abst;
+    def scan_keys(pattern: str, col_name: str = 'default') -> list[str] abst;
     def set_nx_with_ttl(
         key: str, value: dict, ttl: int, col_name: str = 'default'
-    ) -> bool abs;
+    ) -> bool abst;
 
     def delete_if_equals(
         key: str, expected_value: dict, col_name: str = 'default'
-    ) -> bool abs;
+    ) -> bool abst;
 
     def find_nodes(
         node_type: str, filter: dict = None, col_name: str = '_anchors'
-    ) -> list abs;
+    ) -> list abst;
 }

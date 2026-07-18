@@ -97,16 +97,8 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
                         }
                         continue;
                     }
-
-                    flags = type_utils.compute_module_source_flags(str(path));
                     mod_type = types.ModuleType(
-                        mod_name=node_.name.sym_name,
-                        file_uri=path,
-                        symbol_table=mod,
-                        is_stub_file=flags.is_stub_file,
-                        is_stdlib_stub=flags.is_stdlib_stub,
-                        is_typing_stub=flags.is_typing_stub,
-                        is_builtin_stub=flags.is_builtin_stub,
+                        mod_name=node_.name.sym_name, file_uri=path, symbol_table=mod,
                     );
 
                     node_.name.type = mod_type;
@@ -220,8 +212,13 @@ impl TypeEvaluator._resolve_star_import_symbol(
 impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
     import from jaclang.jac0core.modresolver { is_untyped_third_party_module }
     if node_.path {
-        if node_.path[-1].type {
-            return node_.path[-1].type;
+        last_type = node_.path[-1].type;
+
+        if last_type
+        and not (
+            isinstance(last_type, types.UnknownType) and not last_type.is_diagnosed
+        ) {
+            return last_type;
         }
         path_list = node_.resolve_relative_path_list();
 
@@ -284,15 +281,10 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
             mod: uni.Module = self._import_module_from_path(
                 mod_path, importer_path=self._resolve_importer_path(node_)
             );
-            flags = type_utils.compute_module_source_flags(mod_path);
             mod_type = types.ModuleType(
                 mod_name=npath.value,
                 file_uri=Path(mod_path).resolve(),
                 symbol_table=mod,
-                is_stub_file=flags.is_stub_file,
-                is_stdlib_stub=flags.is_stdlib_stub,
-                is_typing_stub=flags.is_typing_stub,
-                is_builtin_stub=flags.is_builtin_stub,
             );
             npath.type = mod_type;
             npath._sym_category = SymbolType.MODULE;
@@ -306,6 +298,55 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
         return node_.path[-1].type;
     }
     return types.UnknownType();
+}
+
+impl TypeEvaluator._resolve_submodule_attr(
+    base_type: types.ModuleType, attr_name: str
+) -> (types.ModuleType | None) {
+    import from jaclang.jac0core.modresolver { is_untyped_third_party_module }
+    if base_type.file_uri is None {
+        return None;
+    }
+    base_path = Path(base_type.file_uri);
+    is_pkg_dir = base_path.is_dir();
+    if not is_pkg_dir and base_path.stem != "__init__" {
+        return None;
+    }
+    mod_dir = base_path if is_pkg_dir else base_path.parent;
+    for ext in (".jac", ".py", ".pyi") {
+        candidates = [
+            (mod_dir / f"{attr_name}{ext}").resolve(),
+            (mod_dir / attr_name / f"__init__{ext}").resolve(),
+
+        ];
+        for path in candidates {
+            if not path.exists() {
+                continue;
+            }
+            path_str = str(path);
+            if path_str in self._module_type_cache {
+                cached = self._module_type_cache[path_str];
+                if isinstance(cached, types.ModuleType) {
+                    return cached;
+                }
+            }
+            if is_untyped_third_party_module(path_str) {
+                return types.ModuleType(
+                    mod_name=attr_name,
+                    file_uri=path,
+                    symbol_table=None,
+                    is_external=True,
+                );
+            }
+            mod = self._import_module_from_path(path_str);
+            mod_type = types.ModuleType(
+                mod_name=attr_name, file_uri=path, symbol_table=mod
+            );
+            self._module_type_cache[path_str] = mod_type;
+            return mod_type;
+        }
+    }
+    return None;
 }
 
 impl TypeEvaluator._import_module_from_path(

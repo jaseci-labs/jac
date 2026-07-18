@@ -21,7 +21,7 @@ impl separator(text: str, char: str = '=', total_width: int = 80) -> str {
 impl print_file_progress(file_path: str, success: bool, idx: int, total: int) -> None {
     import from jaclang.cli.console { console }
     percentage = int((idx / total) * 100);
-    status = "PASSED" if success else "FAILED";
+    status = "ok" if success else "FAILED";
     console.print(f"{file_path} {status} [{percentage}%]");
 }
 

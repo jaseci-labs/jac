@@ -225,14 +225,6 @@ impl jac2js(filename: str) -> int {
     }
 }
 
-impl js(filename: str) -> int {
-    console.warning(
-        "'jac js' is deprecated and will be removed in a future release. "
-        "Use 'jac jac2js' instead."
-    );
-    return jac2js(filename);
-}
-
 impl jac2c(filename: str) -> int {
     import from jaclang.jac0core.program { JacProgram }
     if not filename.endswith('.jac') {

@@ -1,10 +1,12 @@
 import from jaclang.scale.config.app_config { AppConfig }
-import from jaclang.scale.config.dev_config { DevDeploy }
 import from jaclang.scale.models.deploy_context { DeployContext }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
-import from jaclang.scale.deploy.autoscale.autoscaler { DEFAULT_CPU_UTILIZATION_TARGET }
+import from jaclang.scale.deploy.autoscale.autoscaler {
+    DEFAULT_CPU_UTILIZATION_TARGET,
+    DEFAULT_MEMORY_UTILIZATION_TARGET
+}
 
 
 glob GATEWAY_NAME: str = "__gateway__",
@@ -19,17 +21,69 @@ def k8s_safe_name(svc_name: str) -> str {
 }
 
 
+def _is_named_list(items: list) -> bool {
+    if not items {
+        return False;
+    }
+    for item in items {
+        if not isinstance(item, dict) or "name" not in item {
+            return False;
+        }
+    }
+    return True;
+}
+
+
+def merge_manifest_overlay(base: any, overlay: any) -> any {
+    if isinstance(base, dict) and isinstance(overlay, dict) {
+        merged = dict(base);
+        for (key, value) in overlay.items() {
+            merged[key] = merge_manifest_overlay(base.get(key), value)
+                if key in base
+                else value;
+        }
+        return merged;
+    }
+    if (
+        isinstance(base, list)
+        and isinstance(overlay, list)
+        and _is_named_list(base)
+        and _is_named_list(overlay)
+    ) {
+        overlay_by_name = {item["name"]: item for item in overlay};
+        merged_list: list = [];
+        for item in base {
+            item_name = item["name"];
+            if item_name in overlay_by_name {
+                merged_list.append(
+                    merge_manifest_overlay(item, overlay_by_name.pop(item_name))
+                );
+            } else {
+                merged_list.append(item);
+            }
+        }
+        for item in overlay {
+            if item["name"] in overlay_by_name {
+                merged_list.append(item);
+            }
+        }
+        return merged_list;
+    }
+    return overlay;
+}
+
+
 obj MicroserviceManifestBuilder {
     has k8s_config: KubernetesConfig,
         secrets: dict[str, str] = {},
         deploy_context: DeployContext = DeployContext(),
         logger: any = None,
         no_image: bool = True,
-        dev: DevDeploy = DevDeploy(),
         project_dir: str = "",
         _bundle_object_key: str = "",
         _toolchain_object_key: str = "",
-        microservices_config: dict[str, any] = {};
+        microservices_config: dict[str, any] = {},
+        dry_run: bool = False;
 
     def _ms_cfg -> dict[str, any] {
         if self.microservices_config {
@@ -53,12 +107,12 @@ obj MicroserviceManifestBuilder {
         proj = self.project_dir or app_config.code_folder;
         self._build_client_bundle(proj);
         selection = select_injector(
-            self.dev,
             self.k8s_config.bundle_storage_class,
             k8s_safe_name(self.k8s_config.app_name),
             self.k8s_config.namespace,
             proj,
-            provisioned_database=("mongo" if self.k8s_config.mongodb_enabled else "")
+            provisioned_database=("mongo" if self.k8s_config.mongodb_enabled else ""),
+            dry_run=self.dry_run
         );
         injector: PvcInjector = selection[0];
         self._toolchain_object_key = str(selection[1]);
@@ -69,6 +123,7 @@ obj MicroserviceManifestBuilder {
         import os;
         import subprocess;
         import from jaclang.cli.console { console }
+        import from jaclang.scale.runtime.context.util { jac_executable }
         client_entry = self._client_entry();
         if not client_entry {
             return;
@@ -77,11 +132,20 @@ obj MicroserviceManifestBuilder {
         if not os.path.isfile(entry_abs) {
             return;
         }
+        if self.dry_run {
+            console.print(
+                f"dry-run: skipped the host client bundle build ({client_entry})."
+            );
+            return;
+        }
         dist = os.path.join(project_dir, ".jac", "client", "dist");
         console.print(f"Building the client bundle on the host ({client_entry}).");
         try {
             subprocess.run(
-                ["jac", "build", client_entry], cwd=project_dir, check=True, timeout=900
+                [jac_executable(), "build", client_entry, "--client", "web"],
+                cwd=project_dir,
+                check=True,
+                timeout=900
             );
             if os.path.isfile(os.path.join(dist, "index.html")) {
                 console.print("Client bundle built; shipping it to the gateway pod.");
@@ -171,7 +235,7 @@ obj MicroserviceManifestBuilder {
         } elif getattr(self.k8s_config, "ops_console_mutations", False) {
             if self.logger {
                 self.logger.warning(
-                    "[plugins.scale.kubernetes].ops_console_mutations is set but "
+                    "[scale.kubernetes].ops_console_mutations is set but "
                     "ops_console is false; no Ops Console RBAC will be provisioned. "
                     "Set ops_console = true to enable it."
                 );
@@ -185,10 +249,6 @@ obj MicroserviceManifestBuilder {
     ) -> dict[str, dict[str, any]] {
         app_name = app_config.app_name or self.k8s_config.app_name;
 
-        # Auto-discover services from `sv import` so a microservice app deploys
-        # with no [plugins.scale.microservices.routes] section (explicit routes
-        # still win). Mirrors the local-serve path; cache the result so the
-        # gateway's JAC_SV_ROUTES env and the ingress rules see the same routes.
         import from jaclang.scale.runtime.discovery.discovery { resolve_routes }
         ms_cfg = dict(self._ms_cfg());
         proj = self.project_dir or app_config.code_folder;
@@ -199,8 +259,8 @@ obj MicroserviceManifestBuilder {
         if not routes {
             raise ValueError(
                 "No microservices found to deploy: declare "
-                "[plugins.scale.microservices.routes] in jac.toml, or add "
-                "`sv import` / `to sv:` services under the project root so they "
+                "[scale.microservices.routes] in jac.toml, or add "
+                "`sv import` / `sv { }` services under the project root so they "
                 "can be auto-discovered."
             );
         }
@@ -575,14 +635,10 @@ obj MicroserviceManifestBuilder {
         return {"exec": {"command": ["sh", "-c", "sleep 5"]}};
     }
 
-    def _k8s_safe_name(svc_name: str) -> str {
-        return k8s_safe_name(svc_name);
-    }
-
     def _build_deployment_manifest(
         svc_name: str, pod_spec: dict[str, any]
     ) -> dict[str, any] {
-        k8s_name = self._k8s_safe_name(svc_name);
+        k8s_name = k8s_safe_name(svc_name);
         role: str = "gateway" if svc_name == GATEWAY_NAME else "microservice";
         labels: dict[str, str] = {
             "app": k8s_name,
@@ -591,7 +647,7 @@ obj MicroserviceManifestBuilder {
         };
         svc_cfg = self._service_config(svc_name);
         replicas: int = int(svc_cfg.get("replicas", 1));
-        return {
+        manifest: dict[str, any] = {
             "apiVersion": "apps/v1",
             "kind": "Deployment",
             "metadata": {
@@ -609,10 +665,25 @@ obj MicroserviceManifestBuilder {
                 "template": {"metadata": {"labels": labels}, "spec": pod_spec}
             }
         };
+        overlay = svc_cfg.get("deployment_overlay");
+        if isinstance(overlay, dict) and overlay {
+            manifest = merge_manifest_overlay(manifest, overlay);
+
+            manifest["metadata"]["name"] = f"{k8s_name}-deployment";
+            manifest["metadata"]["namespace"] = self.k8s_config.namespace;
+            meta_labels = manifest["metadata"].get("labels", {});
+            meta_labels.update(labels);
+            manifest["metadata"]["labels"] = meta_labels;
+            manifest["spec"]["selector"] = {"matchLabels": {"app": k8s_name}};
+            tmpl_labels = manifest["spec"]["template"]["metadata"].get("labels", {});
+            tmpl_labels.update({"app": k8s_name, "managed": "jac-scale"});
+            manifest["spec"]["template"]["metadata"]["labels"] = tmpl_labels;
+        }
+        return manifest;
     }
 
     def _build_service_manifest(svc_name: str) -> dict[str, any] {
-        k8s_name = self._k8s_safe_name(svc_name);
+        k8s_name = k8s_safe_name(svc_name);
         port: int = self.k8s_config.container_port;
         spec: dict[str, any] = {
             "type": "ClusterIP",
@@ -653,6 +724,9 @@ obj MicroserviceManifestBuilder {
             "min": int(hpa.get("min", 1)),
             "max": int(hpa.get("max", 3)),
             "cpu_target": int(hpa.get("cpu_target", DEFAULT_CPU_UTILIZATION_TARGET)),
+            "memory_target": int(
+                hpa.get("memory_target", DEFAULT_MEMORY_UTILIZATION_TARGET)
+            ),
             "triggers": raw_triggers
         };
     }
@@ -742,7 +816,7 @@ obj MicroserviceManifestBuilder {
         if not cfg.get("enabled", True) {
             return None;
         }
-        k8s_name = self._k8s_safe_name(svc_name);
+        k8s_name = k8s_safe_name(svc_name);
         max_u: int = int(cfg.get("max_unavailable", 1));
         return {
             "apiVersion": "policy/v1",
@@ -812,6 +886,13 @@ obj MicroserviceManifestBuilder {
             "livenessProbe": self._build_liveness_probe(),
             "lifecycle": {"preStop": self._build_prestop_hook()}
         };
+        import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
+            image_pull_policy
+        }
+        pull_policy = image_pull_policy(resolved_image);
+        if pull_policy {
+            container["imagePullPolicy"] = pull_policy;
+        }
 
         container["startupProbe"] = self._build_startup_probe();
         resources = self._build_resources(svc_cfg, svc_name == GATEWAY_NAME);
@@ -864,7 +945,7 @@ obj MicroserviceManifestBuilder {
             build_bootstrap_init_container(
                 self.k8s_config,
                 self.k8s_config.python_image,
-                self.dev.overlays_source()
+                is_gateway=(svc_name == GATEWAY_NAME)
             )
         );
         return spec;

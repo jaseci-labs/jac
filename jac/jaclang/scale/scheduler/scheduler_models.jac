@@ -1,8 +1,3 @@
-"""Request/response models for the /jobs scheduler endpoints.
-
-These power the auto-generated OpenAPI / Swagger schema — giving users a
-concrete body example instead of an empty schema placeholder.
-"""
 import from typing { Literal }
 import from pydantic { BaseModel, ConfigDict, Field }
 

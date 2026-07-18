@@ -77,18 +77,18 @@ cl def csv_cl -> dict {
 
 na {
     def csv_na -> dict[str, any] {
-        r1: list[list[str]] = reader(["a,b,c", "1,2,3"]);
-        r2: list[list[str]] = reader(["\"a,b\",c", "\"x\"\"y\",z"]);
-        r3: list[list[str]] = reader(["a, b ,c"]);
-        r4: list[list[str]] = reader(["a,,c", ",x,"]);
-        r5: list[list[str]] = reader([""]);
-        r6: list[list[str]] = reader(["a\"b,c"]);
-        r7: list[list[str]] = reader(["\"a\"b,c"]);
-        r8: list[list[str]] = reader(["\"abc"]);
-        r9: list[list[str]] = reader(["\"a,b\nc\""]);
-        r10: list[list[str]] = reader(["a" + chr(0) + "b,c"]);
-        r11: list[list[str]] = reader(["a,b\n", "\n", "c,d\n"]);
-        r12: list[list[str]] = reader(["x,\r\n"]);
+        r1: list[list[str]] = list(reader(["a,b,c", "1,2,3"]));
+        r2: list[list[str]] = list(reader(["\"a,b\",c", "\"x\"\"y\",z"]));
+        r3: list[list[str]] = list(reader(["a, b ,c"]));
+        r4: list[list[str]] = list(reader(["a,,c", ",x,"]));
+        r5: list[list[str]] = list(reader([""]));
+        r6: list[list[str]] = list(reader(["a\"b,c"]));
+        r7: list[list[str]] = list(reader(["\"a\"b,c"]));
+        r8: list[list[str]] = list(reader(["\"abc"]));
+        r9: list[list[str]] = list(reader(["\"a,b\nc\""]));
+        r10: list[list[str]] = list(reader(["a" + chr(0) + "b,c"]));
+        r11: list[list[str]] = list(reader(["a,b\n", "\n", "c,d\n"]));
+        r12: list[list[str]] = list(reader(["x,\r\n"]));
         return {
             "n1": len(r1),
             "r0c0": r1[0][0],

@@ -64,7 +64,7 @@ test "pyfunc 1" {
     assert 'assert (x == 5) , "x should be equal to 5";' in output;
     assert "if not (x == y) {" in output;
     assert "squares_dict = {x: (x ** 2) for x in numbers};" in output;
-    assert '\n"""Say hello"""\n@my_decorator\n\n def say_hello() -> object {' in output;
+    assert '\n"""Say hello"""\n@my_decorator\n\ndef say_hello() -> object {' in output;
 }
 
 test "pyfunc 2" {
@@ -389,6 +389,35 @@ test "list methods" {
     assert "Created 5 items." in stdout_value;
 }
 
+test "introspection lists archetypes" {
+    # Guards JacIntrospection._list_members_of, which calls inspect.getmembers:
+    # runtime.jac must keep `import inspect` (a bare `from inspect import getfile`
+    # does not bind the module) or list_walkers/nodes/edges raise NameError.
+    import from jaclang.jac0core.archetype {
+        WalkerArchetype,
+        NodeArchetype,
+        EdgeArchetype
+    }
+    import types;
+
+    mod = types.ModuleType("_introspect_probe");
+    class ProbeWalk(WalkerArchetype) {}
+    class ProbeNode(NodeArchetype) {}
+    class ProbeEdge(EdgeArchetype) {}
+    for cls in [ProbeWalk, ProbeNode, ProbeEdge] {
+        cls.__module__ = "_introspect_probe";
+        setattr(mod, cls.__name__, cls);
+    }
+    Jac.loaded_modules["_introspect_probe"] = mod;
+    try {
+        assert Jac.list_walkers("_introspect_probe") == ["ProbeWalk"];
+        assert Jac.list_nodes("_introspect_probe") == ["ProbeNode"];
+        assert Jac.list_edges("_introspect_probe") == ["ProbeEdge"];
+    } finally {
+        Jac.loaded_modules.pop("_introspect_probe", None);
+    }
+}
+
 test "walker dynamic update" {
     _tmpdir = tempfile.mkdtemp();
     Jac.set_base_path(_tmpdir);
@@ -608,8 +637,8 @@ test "by operator" {
     assert result == 1;
     stdout_value = captured_output.getvalue();
     assert "by" in stdout_value.lower();
-    assert "not" in stdout_value.lower();
-    assert "implemented" in stdout_value.lower();
+    assert "requires" in stdout_value.lower();
+    assert "visitable" in stdout_value.lower();
 }
 
 # -- read_file_with_encoding tests --

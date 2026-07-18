@@ -4,7 +4,7 @@ import from collections.abc { Callable, Generator, Iterable }
 import from uuid { UUID }
 
 import from jaclang.jac0core.archetype { Anchor, Root }
-import from jaclang.runtimelib.changeset { ApplyReport, ChangeSet, WriteIntent }
+import from jaclang.runtimelib.changeset { ApplyReport, ChangeSet }
 import from jaclang.runtimelib.memory { PersistentMemory }
 
 glob __all__ = ["SqlAlchemyMemory"];
@@ -12,10 +12,10 @@ glob __all__ = ["SqlAlchemyMemory"];
 
 obj SqlAlchemyMemory(PersistentMemory) {
     has url: str,
-        __mem__: dict[UUID, Anchor] by postinit,
-        __lock__: threading.RLock by postinit,
-        _engine: (object | None) by postinit,
-        _anchors: object by postinit;
+        __mem__: dict[UUID, Anchor] postinit,
+        __lock__: threading.RLock postinit,
+        _engine: (object | None) postinit,
+        _anchors: object postinit;
 
     def postinit -> None;
     def is_available -> bool;

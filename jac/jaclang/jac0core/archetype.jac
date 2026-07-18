@@ -202,13 +202,10 @@ obj Root(NodeArchetype) {
     def __repr__ -> str;
 }
 
-enum TriggerKind { UNRESOLVED = -1, UNTYPED = 0, ON_LOC = 1, ON_WALKER = 2, OTHER = 3 }
-
 obj ObjectSpatialFunction {
     has name: str,
         func: Callable[([any, any], Any)],
-        trigger_override: any = _NO_TRIGGER,
-        kind: TriggerKind = TriggerKind.UNRESOLVED;
+        trigger_override: any = _NO_TRIGGER;
 
     @cached_property
     def trigger -> (type | UnionType | tuple[((type | UnionType), ...)] | None);

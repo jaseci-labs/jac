@@ -11,19 +11,16 @@ glob hits: int = 0;
 
 # No parameter list and no return type -> must behave like `def tick() -> None`.
 def tick {
-    global hits;
     hits = hits + 1;
 }
 
 # Same shape, but written with an explicit empty parameter list. Already worked;
 # kept here so the two forms can be asserted equivalent.
 def tick_parens() {
-    global hits;
     hits = hits + 1;
 }
 
 def run_ticks(n: int) -> int {
-    global hits;
     hits = 0;
     i: int = 0;
     while i < n {
@@ -34,7 +31,6 @@ def run_ticks(n: int) -> int {
 }
 
 def run_ticks_parens(n: int) -> int {
-    global hits;
     hits = 0;
     i: int = 0;
     while i < n {

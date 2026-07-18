@@ -8,7 +8,7 @@ import from pathlib { Path }
 def _create_jac_toml_with_pwa(temp_dir: str, pwa_config: dict | None = None) -> str {
     pwa_section = "";
     if pwa_config is not None {
-        pwa_lines = ["[plugins.client.pwa]"];
+        pwa_lines = ["[client.pwa]"];
         for (key, value) in pwa_config.items() {
             if isinstance(value, bool) {
                 pwa_lines.append(f'{key} = {str(value).lower()}');
@@ -319,7 +319,7 @@ test "pwa enabled with empty section" {
         try {
             os.chdir(temp_dir);
             # Create jac.toml with empty PWA section (just the header)
-            toml_content = '[project]\nname = "test-app"\nversion = "1.0.0"\n\n[plugins.client.pwa]\n';
+            toml_content = '[project]\nname = "test-app"\nversion = "1.0.0"\n\n[client.pwa]\n';
             with open("jac.toml", "w") as f {
                 f.write(toml_content);
             }

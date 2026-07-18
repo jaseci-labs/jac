@@ -151,10 +151,14 @@ def _find_or_create(uri: str, rid: str, barrier: any) -> str {
     attempt = 0;
     while attempt < 5 {
         attempt += 1;
-        ranch: any = Serializer.deserialize(coll.find_one({"_id": rid})["data"]);
-        if coll.count_documents(
-            {"arch_type": "OccProfile", "data._linked": True}
-        ) > 0 {
+        rdoc: any = coll.find_one({"_id": rid});
+        ranch: any = Serializer.deserialize(rdoc["data"]);
+        # The root's edge list is committed atomically by _put_node_atomic, so a
+        # linked child edge is the authoritative convergence signal. The data._linked
+        # flag is set by a separate, non-atomic update AFTER the atomic edge-add
+        # returns; gating "found" on it races the window between the two writes and
+        # lets a retrying loser create a second child (both threads return "created").
+        if len(rdoc["data"].get("edges", [])) > 0 {
             return "found";
         }
         if not waited {
