@@ -2126,7 +2126,15 @@ impl JacRuntime.get_shared_root -> Root {
         }
         _shared_root_resolver[1] = root_id;
     }
-    shared_anchor = JacRuntimeInterface.get_context().mem.get(UUID(root_id));
+    ctx = JacRuntimeInterface.get_context();
+    shared_anchor = ctx.mem.get(UUID(root_id));
+    if shared_anchor is None {
+        new_root = Root();
+        new_root.__jac__.id = UUID(root_id);
+        JacRuntimeInterface.save(new_root);
+        ctx.mem.commit(new_root.__jac__);
+        shared_anchor = new_root.__jac__;
+    }
     shared = shared_anchor.archetype if shared_anchor else None;
     if not isinstance(shared, Root) {
         raise RuntimeError(

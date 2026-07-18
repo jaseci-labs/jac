@@ -96,12 +96,15 @@ def prepare_inprocess_runtime(
 
         _register_endpoint_profile(server, endpoint_profile);
 
+        import from jaclang.scale.identity.guest_root { compute_guest_root_id }
         _um = server.user_manager;
         if _um.get_root_id(Con.GUEST.value) is None {
-            _um.create_internal_user(Con.GUEST.value, "__no_password__");
+            _um.create_internal_user(
+                Con.GUEST.value, "__no_password__", root_id=compute_guest_root_id()
+            );
         }
         def _shared_root_id -> (str | None) {
-            return _um.get_root_id(Con.GUEST.value);
+            return _um.resolve_shared_root_id();
         }
         Jac.set_shared_root_resolver(_shared_root_id);
 

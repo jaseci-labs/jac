@@ -20,7 +20,8 @@ impl IdentityStorage.verify_password(password: str, password_hash: str) -> bool 
 impl IdentityStorage.create_user(
     identities: list[dict[str, any]],
     credential: dict[str, any],
-    profile: dict[str, any] | None = None
+    profile: dict[str, any] | None = None,
+    root_id: str | None = None
 ) -> dict[str, any] {
     import from jaclang.jac0core.constructs { Root }
     import from jaclang { JacRuntime as Jac }
@@ -78,16 +79,19 @@ impl IdentityStorage.create_user(
     }
 
     user_root = Root();
+    if root_id {
+        user_root.__jac__.id = uuid.UUID(root_id);
+    }
     Jac.save(user_root);
     Jac.commit(user_root);
-    root_id = user_root.__jac__.id.hex;
+    resolved_root_id = user_root.__jac__.id.hex;
 
     user_doc = {
         'user_id': user_id,
         'status': 'active',
         'identities': normalized_identities,
         'credentials': credentials,
-        'root_id': root_id,
+        'root_id': resolved_root_id,
         'role': 'user',
         'profile': profile or {},
         'created_at': now,

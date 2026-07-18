@@ -52,15 +52,23 @@ impl JacScaleUserManager.create_user(username: str, password: str) -> dict[str, 
 impl JacScaleUserManager.create_user_with_identities(
     identities: list[dict[str, any]],
     credential: dict[str, any],
-    profile: dict[str, any] | None = None
+    profile: dict[str, any] | None = None,
+    root_id: str | None = None
 ) -> dict[str, any] {
-    return self._identity_storage.create_user(identities, credential, profile);
+    return self._identity_storage.create_user(
+        identities, credential, profile, root_id
+    );
 }
 
 impl JacScaleUserManager.create_internal_user(
-    username: str, password: str, role: str = 'user'
+    username: str, password: str, role: str = 'user',
+    root_id: str | None = None
 ) -> dict[str, any] {
-    result = self.create_user(username, password);
+    result = self.create_user_with_identities(
+        identities=[{'type': 'username', 'value': username}],
+        credential={'type': 'password', 'password': password},
+        root_id=root_id
+    );
     if result.get('user_id') and role != 'user' {
         self.set_user_role(result['user_id'], role);
     }
@@ -117,6 +125,29 @@ impl JacScaleUserManager.get_root_id(user_id: str) -> str | None {
         _root_id_request_cache.set(new_cache);
     }
     return result;
+}
+
+impl JacScaleUserManager.resolve_shared_root_id -> str {
+    import from uuid { UUID }
+    import from jaclang import JacRuntime as Jac;
+    import from jaclang.jac0core.constructs { Root }
+    import from jaclang.scale.identity.guest_root { compute_guest_root_id }
+
+    guest = self.get_user(Con.GUEST.value);
+    stored = guest.get('root_id') if guest else None;
+    if stored {
+        anchor = Jac.get_context().mem.get(UUID(stored));
+        if anchor is not None and isinstance(anchor.archetype, Root) {
+            return stored;
+        }
+    }
+    deterministic = compute_guest_root_id();
+    if guest and stored != deterministic {
+        self._identity_storage.update_user_fields(
+            guest['user_id'], {'root_id': deterministic}
+        );
+    }
+    return deterministic;
 }
 
 impl JacScaleUserManager.ensure_user_root(user_id: str) -> str | None {
