@@ -507,8 +507,14 @@ fn extractPayload(
         defer gpa.free(buf);
 
         var dec = PayloadDecoder.init(dctx, zbuf, buf);
+        // `.executable_bit_only` honours the source exec bit that `tarZstDir`
+        // now records in each header, so a materialized tree's `python3.14`
+        // and any bundled wheel tools stay spawnable (pip during py-interop
+        // bundle assembly). Non-exec files still land 0o644. Replaces the old
+        // `.ignore` + per-consumer chmod workaround (get_bun et al., which stay
+        // as harmless redundancy). See [[desktop-payload-execbit-drop]].
         try std.tar.extract(io, dest, &dec.reader, .{
-            .mode_mode = .ignore,
+            .mode_mode = .executable_bit_only,
             .strip_components = 0,
         });
 

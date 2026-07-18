@@ -1808,7 +1808,15 @@ fn tarZstDir(io: Io, gpa: Allocator, a: Allocator, stage: []const u8, out: []con
             else => {
                 const bytes = try stage_dir.readFileAlloc(io, entry.path, a, .unlimited);
                 defer a.free(bytes);
-                try tw.writeFileBytes(entry.path, bytes, .{});
+                // Record the source file's permission bits so the exec bit
+                // survives the round-trip. The matching extract at
+                // `materialize` uses `.executable_bit_only`; with mode 0 the
+                // tar header falls back to 0o644 and any 0o755 file (the pip
+                // wheel `.so`s, the payload's own tools) loses +x -> EACCES on
+                // spawn. See [[desktop-payload-execbit-drop]].
+                const st = try stage_dir.statFile(io, entry.path, .{});
+                const mode: u32 = @intCast(st.permissions.toMode() & 0o777);
+                try tw.writeFileBytes(entry.path, bytes, .{ .mode = mode });
             },
         }
     }
@@ -1889,10 +1897,14 @@ test "tarZstDir round-trips through the launcher's payload decoder" {
     const stage = try std.fmt.allocPrint(a, "{s}/stage", .{base});
     try Dir.cwd().createDirPath(io, try std.fmt.allocPrint(a, "{s}/python/bin", .{stage}));
     const text = "#!/bin/sh\nexec fake python\n" ** 64;
-    try Dir.cwd().writeFile(io, .{
-        .sub_path = try std.fmt.allocPrint(a, "{s}/python/bin/python", .{stage}),
-        .data = text,
-    });
+    // Write the "python" entry executable so we can prove the exec bit survives
+    // the pack -> zstd -> unpack round-trip (the 3.3.0 fix).
+    {
+        const py_path = try std.fmt.allocPrint(a, "{s}/python/bin/python", .{stage});
+        var pyf = try Dir.cwd().createFile(io, py_path, .{ .permissions = .executable_file });
+        defer pyf.close(io);
+        try pyf.writeStreamingAll(io, text);
+    }
     const big = try a.alloc(u8, 3 * zstd.block_size_max + 12345);
     var prng = std.Random.DefaultPrng.init(42);
     prng.random().bytes(big);
@@ -1916,8 +1928,15 @@ test "tarZstDir round-trips through the launcher's payload decoder" {
     try Dir.cwd().createDirPath(io, dest);
     var dest_dir = try Dir.cwd().openDir(io, dest, .{});
     defer dest_dir.close(io);
-    try std.tar.extract(io, dest_dir, &dec.reader, .{ .mode_mode = .ignore, .strip_components = 0 });
+    try std.tar.extract(io, dest_dir, &dec.reader, .{ .mode_mode = .executable_bit_only, .strip_components = 0 });
 
     try testing.expectEqualStrings(text, try dest_dir.readFileAlloc(io, "python/bin/python", a, .unlimited));
     try testing.expectEqualSlices(u8, big, try dest_dir.readFileAlloc(io, "python/big.bin", a, .unlimited));
+
+    // The exec bit rode through the round-trip; the plain data file did not
+    // acquire one.
+    const py_st = try dest_dir.statFile(io, "python/bin/python", .{});
+    try testing.expect(py_st.permissions.toMode() & 0o111 != 0);
+    const bin_st = try dest_dir.statFile(io, "python/big.bin", .{});
+    try testing.expect(bin_st.permissions.toMode() & 0o111 == 0);
 }
