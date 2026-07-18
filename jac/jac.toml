@@ -7,9 +7,12 @@ description = "Jac programming language - Python-like syntax, compiles to Python
 license = "MIT"
 readme = "README.md"
 requires_python = ">=3.14"
-# No runtime PyPI deps: native LLVM is the in-tree LLVMPY_* shim, statically
-# linked by Zig (jac/native + `zig build fetch-llvm`), not the llvmlite wheel.
-dependencies = []
+# Native LLVM is the in-tree LLVMPY_* shim, statically linked by Zig
+# (jac/native + `zig build fetch-llvm`), not the llvmlite wheel — no llvmlite dep.
+dependencies = [
+    "pycparser>=2.22",  # c2jac C-source front-end parser
+    "pcpp>=1.30",  # c2jac C preprocessor (pure-Python; no system toolchain needed)
+]
 
 [project.urls]
 Repository = "https://github.com/jaseci-labs/jaseci"
@@ -44,6 +47,16 @@ exclude = [
     "docs/*",
     "*/examples/*",
     "*/tests/*",
+    # Folded-in scale subsystem: large self-contained subsystem whose inline
+    # comments (k8s/deploy/observability logic) are kept, not deslopped. This is
+    # the config that governs jac/jaclang/scale/** (nearest jac.toml wins).
+    "*/scale/*",
+    # Folded-in byllm subsystem (the `by llm()` feature): same rationale as scale
+    # -- a large self-contained subsystem whose inline comments are kept.
+    "*/byllm/*",
+    # c2jac C-to-Jac transpiler: a large self-contained subsystem whose inline
+    # comments document C-idiom-to-Jac mapping and coupling constraints, kept.
+    "*/c2jac/*",
     "console.impl.jac",
     "cli_boot.jac",
     # Files whose comments/docstrings are load-bearing, so they are NOT deslopped:
