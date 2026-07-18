@@ -587,7 +587,13 @@ jobs:
       run: echo "TEST_ENV=true" >> $GITHUB_ENV
 
     - name: Run all client tests
-      run: jac test jac/tests/runtimelib/client --ignore jac/tests/runtimelib/client/test_inprocess_dispatch.jac
+      # test_pyinterop_flagship (polars + cryptography bundles) is heavy pip +
+      # patchelf + repack work; it runs in its own parallel test-pyinterop-flagship
+      # job so it neither serializes into this suite nor triples its wall time.
+      run: >
+        jac test jac/tests/runtimelib/client
+        --ignore jac/tests/runtimelib/client/test_inprocess_dispatch.jac
+        --ignore jac/tests/runtimelib/client/test_pyinterop_flagship.jac
 
     - name: Re-run in-process sv dispatch against the built-in scale backend
       # Pins mirror jac/jaclang/project/capabilities.jac.
@@ -600,6 +606,30 @@ jobs:
           "email-validator>=2.3.0,<3.0.0" "python-dotenv>=1.2.1,<2.0.0" \
           --global
         jac test -vv jac/tests/runtimelib/client/test_inprocess_dispatch.jac
+
+  # FFI-LANES 3.5 flagship acceptance: the two PyO3 wheels the py tier exists to
+  # inherit (polars, a native compute kernel; cryptography, an openssl-vendoring
+  # wheel that stresses symbol interposition) get pip-installed into a slim
+  # runtime payload, grafted onto an nacompiled na host, and booted with no host
+  # Python. Split from test-client so the ~60 MB polars install + patchelf +
+  # repack runs in parallel instead of tripling that suite's wall time.
+  test-pyinterop-flagship:
+    needs: build-jac
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up jac (build the binary)
+      uses: ./.github/actions/setup-jac
+
+    - name: Set environment for testing
+      run: echo "TEST_ENV=true" >> $GITHUB_ENV
+
+    - name: Bundle + boot flagship wheels (polars, cryptography) with no host python
+      run: jac test -vv jac/tests/runtimelib/client/test_pyinterop_flagship.jac
 
   test-packages-and-docs:
     needs: [changes, build-jac]

@@ -1341,9 +1341,22 @@ these first; the adversarial suite already contains skip-gated tests waiting on 
       whose `rust_bridges_survives_save_and_reload` test was red on HEAD.
       Tests: 3 new in `test_config.jac` (parse / add-remove / save-reload),
       all 138 green; live `jac add py:`/`remove py:` CLI verified.
-- [ ] 3.5 Acceptance: an na binary doing a polars groupby, shipped to a machine
+- [x] 3.5 Acceptance: an na binary doing a polars groupby, shipped to a machine
       with no Python; flagship-wheel smoke tests (orjson, polars, cryptography)
       in a CI job; docs section positioning rust: (performance) vs py: (variety).
+      `test_pyinterop_flagship.jac`: a shared `_bundle_and_run` (nacompile host ->
+      `_assemble_pyinterop_payload([wheel])` -> `__graftrt` -> run) drives two
+      hosts -- polars `group_by('g').agg(sum).sort` asserting {a:4,b:6}, and a
+      cryptography Fernet encrypt/decrypt round-trip (the openssl-interposition
+      check). orjson stays in 3.3.4. CI: a dedicated `test-pyinterop-flagship`
+      job runs it (setup-jac fused binary + pip network); test-client `--ignore`s
+      it so the ~60 MB polars install + patchelf + repack runs in parallel, not
+      serialized into that suite. Docs: new `py-interop.md` (rust:/py: =
+      performance/variety table, `jac add py:`, `[py-interop]`, `--as binary
+      --with_py_interop`, GIL/interposition/platform-tag limits) in the mkdocs
+      nav + a cross-link tip in `rust-bridges.md`. v1 host-platform-only.
+      Parse/type-checked via `tool ir py` (fused-runtime + pip gated at runtime,
+      like the sibling pyinterop tests -- not runnable in this worktree).
 
 ### Phase 4 -- Productionization backlog (post-lanes, order by demand)
 

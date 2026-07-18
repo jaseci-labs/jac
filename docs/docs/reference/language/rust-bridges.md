@@ -12,6 +12,12 @@ typed Jac objects and functions with native strings, lists, and dicts.
     native backend. The CPython runtime (`jac run`) can load bridges via ctypes
     for development, but **na is the ship bar**.
 
+!!! tip "Rust bridges are the *performance* tier"
+    For breadth over speed -- inheriting the existing PyPI extension ecosystem
+    (`polars`, `cryptography`, ...) at the PyO3-boundary cost -- see the
+    [Python Interop Tier](py-interop.md). `jac add rust:` and `jac add py:`
+    make the performance-vs-variety trade explicit and user-chosen.
+
 This page is the reference for the **developer-facing** surface: the import
 syntax, the `jac add rust:` / `[rust-bridges]` dependency mechanism, how
 `jac install` resolves a bridge, the local-build requirements, the environment
