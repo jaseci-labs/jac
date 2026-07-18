@@ -638,6 +638,48 @@ test "if statement outside lambda still breaks" {
     );
 }
 
+"""Golden output: a nested if/elif/else chain in normal Jac must keep each
+body block indented one level beneath its own condition. This pins down
+`is_body_member` — which distinguishes a statement's body-block members
+from its condition/elif/else clause kids — for the nested case, proving the
+identity-based membership check is behavior-preserving rather than just
+asserted by the broader suite."""
+test "nested if elif else golden output" {
+    source = (
+        'def foo(x: int) -> None {\n'
+        '    if x > 10 {\n'
+        '        if x > 20 {\n'
+        '            a();\n'
+        '        } elif x > 15 {\n'
+        '            b();\n'
+        '        } else {\n'
+        '            c();\n'
+        '        }\n'
+        '    } elif x > 5 {\n'
+        '        d();\n'
+        '    } else {\n'
+        '        e();\n'
+        '    }\n'
+        '}\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted: str = prog.mod.main.gen.jac or "";
+    # Already-canonical source must round-trip byte-for-byte.
+    assert formatted == source , (
+        "nested if/elif/else not formatted to canonical golden output:\n" + "\n".join(
+            unified_diff(source.splitlines(), formatted.splitlines())
+        )
+    );
+
+    # Idempotency: formatting the output again must not change it.
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert not prog2.errors_had;
+    assert formatted == prog2.mod.main.gen.jac , (
+        "nested if/elif/else formatting is not idempotent"
+    );
+}
+
 """Regression: JSX elements make two independent flat/break decisions —
 one for the opening tag (attributes) and one for the children. There are
 three buckets this test locks in:

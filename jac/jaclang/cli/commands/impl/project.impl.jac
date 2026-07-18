@@ -689,7 +689,7 @@ impl install(
         return 0;
     }
 
-    editable = [p for group in (editable or []) for p in group];
+    editable = flatten_append(editable);
     if editable {
         import from jaclang.publish.builder { WheelBuilder }
 

@@ -5021,11 +5021,13 @@ impl Parser.parse_import_stmt -> Import {
 
     from_loc: ModulePath | None = None;
     is_clib_import = False;
+    clib_header: String | None = None;
     if self.match_tok(TokenKind.KW_FROM) {
         kid.append(self.make_uni_token(self.previous()));
         result = self.parse_from_path();
         from_loc = result[0];
         is_clib_import = result[1];
+        clib_header = result[2];
         kid.append(from_loc);
     }
 
@@ -5094,7 +5096,8 @@ impl Parser.parse_import_stmt -> Import {
         is_typed=is_typed,
         kid=kid,
         doc=None,
-        clib_decls=clib_decls
+        clib_decls=clib_decls,
+        clib_header=clib_header
     );
 }
 
@@ -5103,6 +5106,29 @@ impl Parser.parse_from_path -> tuple {
     level = 0;
     path_kid: list = [];
     is_clib_import = False;
+    clib_header: String | None = None;
+    if self.check_name()
+    and self.current().value == "clib"
+    and self.check_peek(TokenKind.LPAREN) {
+        clib_kw = self.advance();
+        path_kid.append(self.make_name(clib_kw));
+        path_kid.append(self.make_uni_token(self.expect(TokenKind.LPAREN)));
+        lib_node = self.make_string(self.expect(TokenKind.STRING));
+        path_names.append(lib_node);
+        path_kid.append(lib_node);
+        path_kid.append(self.make_uni_token(self.expect(TokenKind.COMMA)));
+        hdr_kw = self.expect(TokenKind.NAME);
+        if hdr_kw.value != "header" {
+            self.error("clib() expects a `header=` argument");
+        }
+        path_kid.append(self.make_name(hdr_kw));
+        path_kid.append(self.make_uni_token(self.expect(TokenKind.EQ)));
+        clib_header = self.make_string(self.expect(TokenKind.STRING));
+        path_kid.append(clib_header);
+        path_kid.append(self.make_uni_token(self.expect(TokenKind.RPAREN)));
+        from_loc = ModulePath(path=path_names, level=level, alias=None, kid=path_kid);
+        return (from_loc, True, clib_header);
+    }
     if self.check_any(TokenKind.DOT, TokenKind.ELLIPSIS) {
         while self.check_any(TokenKind.DOT, TokenKind.ELLIPSIS) {
             if self.check(TokenKind.ELLIPSIS) {
@@ -5144,7 +5170,7 @@ impl Parser.parse_from_path -> tuple {
         path_kid = [EmptyToken()];
     }
     from_loc = ModulePath(path=path_names, level=level, alias=None, kid=path_kid);
-    return (from_loc, is_clib_import);
+    return (from_loc, is_clib_import, clib_header);
 }
 
 impl Parser.parse_import_items(kid: list, is_clib_import: bool) -> tuple {

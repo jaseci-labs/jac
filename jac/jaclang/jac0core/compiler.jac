@@ -232,6 +232,8 @@ def get_py_code_gen(
                 )
             );
         }
+        import from jaclang.compiler.passes.c { CGenPass }
+        passes.append(CGenPass);
         passes.extend([PyastGenPass, PyJacAstLinkPass, PyBytecodeGenPass]);
         return passes;
     } except ImportError {
