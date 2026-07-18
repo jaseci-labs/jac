@@ -96,6 +96,18 @@ def _inject_entry_pe(llvm_ir_str: str) -> str {
 }
 
 
+def _first_defined_rc_symbol(llvm_ir_str: str, base: str) -> str {
+    import re;
+    m = re.search(
+        r'define[^\n]*@"?(' + re.escape(base) + r'(?:\.\d+)?)"?\s*\(', llvm_ir_str
+    );
+    if m {
+        return m.group(1);
+    }
+    return "";
+}
+
+
 def _inject_shared_init(
     llvm_ir_str: str, transitive_sources: list[str]
 ) -> tuple[str, list[str]] {
@@ -125,17 +137,19 @@ def _inject_shared_init(
     );
     extra_exports: list[str] = [];
 
-    if "__rc_retain" in llvm_ir_str {
+    _retain_sym = _first_defined_rc_symbol(llvm_ir_str, "__rc_retain");
+    if _retain_sym {
         parts.append(
             "define void @jac_retain(ptr %p) {\nentry:\n"
-            "  call void @__rc_retain(ptr %p)\n  ret void\n}"
+            "  call void @" + _retain_sym + "(ptr %p)\n  ret void\n}"
         );
         extra_exports.append("jac_retain");
     }
-    if "__rc_release_simple" in llvm_ir_str {
+    _release_sym = _first_defined_rc_symbol(llvm_ir_str, "__rc_release_simple");
+    if _release_sym {
         parts.append(
             "define void @jac_release(ptr %p) {\nentry:\n"
-            "  call void @__rc_release_simple(ptr %p)\n  ret void\n}"
+            "  call void @" + _release_sym + "(ptr %p)\n  ret void\n}"
         );
         extra_exports.append("jac_release");
     }
@@ -539,6 +553,38 @@ impl nacompile(
     obj_bytes = target_machine.emit_object(mod);
     console.print(f"  Object code emitted ({len(obj_bytes)} bytes).");
 
+    _magic = bytes(obj_bytes[:4]);
+    _is_elf = _magic == b"\x7fELF";
+    _is_macho = _magic in [
+        b"\xcf\xfa\xed\xfe",
+        b"\xfe\xed\xfa\xcf",
+        b"\xce\xfa\xed\xfe",
+        b"\xfe\xed\xfa\xce"
+    ];
+
+    _fmt_ok = True;
+    _want = "";
+    if is_windows {
+        _want = "COFF";
+        _fmt_ok = not (_is_elf or _is_macho);
+    } elif is_macos {
+        _want = "Mach-O";
+        _fmt_ok = _is_macho;
+    } elif not is_wasm {
+        _want = "ELF";
+        _fmt_ok = _is_elf;
+    }
+    if not _fmt_ok {
+        console.error(
+            f"emit_object produced a non-{_want} object for the requested target "
+            f"(first 4 bytes: {_magic.hex()}). target-machine triple="
+            f"{target_machine.triple!r}, module triple={mod.triple!r}, host default="
+            f"{llvm.get_default_triple()!r}. This llvmlite build cannot emit {_want} "
+            f"for this target; pin a compatible llvmlite or build via the cross path."
+        );
+        return 1;
+    }
+
     if is_windows {
         import from jaclang.compiler.passes.native.pe_linker { PeLinker }
 
@@ -561,7 +607,11 @@ impl nacompile(
         }
 
         if not success {
-            console.error("PE linking failed: could not parse object file.");
+            _peek: bytes = obj_bytes[:8] if len(obj_bytes) >= 8 else obj_bytes;
+            console.error(
+                f"PE linking failed: could not parse object file "
+                f"(first 8 bytes: {_peek.hex()}, size: {len(obj_bytes)})."
+            );
             return 1;
         }
     } elif is_macos {

@@ -1575,9 +1575,10 @@ impl JacAPIServer.postinit -> None {
         user_manager=self.user_manager
     );
     self.scheduler = Scheduler.instance();
-
     if self.port > 0 {
         self.server = Jac.create_server(self, '0.0.0.0', self.port);
+    } elif self.port == 0 and os.environ.get("JAC_ALLOW_EPHEMERAL_PORT") == "1" {
+        self.server = Jac.create_server(self, '127.0.0.1', 0);
     } else {
         self.server = None;
     }
@@ -2458,6 +2459,7 @@ impl JacAPIServer.start(
             );
             console.print(file=sys.stderr);
         }
+        write_server_ready_file(self.port);
         if on_ready {
             try {
                 on_ready(self.port);
@@ -2472,6 +2474,16 @@ impl JacAPIServer.start(
         } finally {
             self.scheduler.stop();
         }
+    }
+}
+
+impl write_server_ready_file(port: int) -> None {
+    import from pathlib { Path }
+    ready_file = os.environ.get("JAC_SERVER_READY_FILE", "");
+    if ready_file {
+        try {
+            Path(ready_file).write_text(str(port), encoding="utf-8");
+        } except OSError { }
     }
 }
 

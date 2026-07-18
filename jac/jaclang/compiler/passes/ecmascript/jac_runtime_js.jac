@@ -333,6 +333,7 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
         while (j > 0 && chars.indexOf(s[j - 1]) !== -1) j--;
         return s.slice(0, j);
       },
+      // Python `sep.join(iterable)` — polymorphic `_jac.poly.call(sep, "join", ...)`.
       join: (s, parts) => Array.from(parts, x => String(x)).join(s)
     },
     _list: {

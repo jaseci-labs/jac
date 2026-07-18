@@ -132,6 +132,8 @@ def _build_export_trie(symbols: list[tuple[str, int]]) -> bytes {
         return bytes([0, 0]);
     }
 
+    symbols = sorted(symbols, key=lambda x : -len(x[0]));
+
     term_nodes: list[bytes] = [];
     for (name, addr) in symbols {
         info = _encode_uleb128(EXPORT_SYMBOL_FLAGS_KIND_REGULAR) + _encode_uleb128(
@@ -699,8 +701,9 @@ impl MachOLinker.build_executable -> bytes {
         or sec.name == "__eh_frame" {
             continue;
         }
-        is_text = sec.segname == "__TEXT"
-        and (sec.flags & S_ATTR_PURE_INSTRUCTIONS) != 0;
+
+        _code_attr = S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS;
+        is_text = (sec.flags & _code_attr) != 0;
         is_rodata = sec.segname == "__TEXT" and not is_text and len(sec.data) > 0;
         is_data = sec.segname == "__DATA";
 
@@ -1587,8 +1590,9 @@ impl MachOLinker.build_shared_object -> bytes {
         or sec.name == "__eh_frame" {
             continue;
         }
-        is_text = sec.segname == "__TEXT"
-        and (sec.flags & S_ATTR_PURE_INSTRUCTIONS) != 0;
+
+        _code_attr = S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS;
+        is_text = (sec.flags & _code_attr) != 0;
         is_rodata = sec.segname == "__TEXT" and not is_text and len(sec.data) > 0;
         is_data = sec.segname == "__DATA";
         sec_key = f"{sec.segname}:{sec.name}";
@@ -1962,9 +1966,11 @@ impl MachOLinker.build_shared_object -> bytes {
     }
 
     export_pairs: list[tuple[str, int]] = [];
+    _unresolved_exports: list[str] = [];
     for nm in self.export_symbols {
         _mn = _resolve_macho_name(local_sym_map, nm);
         if _mn is None {
+            _unresolved_exports.append(nm);
             continue;
         }
         (seg, off) = local_sym_map[_mn];
@@ -1973,6 +1979,19 @@ impl MachOLinker.build_shared_object -> bytes {
         );
 
         export_pairs.append((_mn, va));
+    }
+    if _unresolved_exports {
+        import warnings;
+        _sym_sample = list(local_sym_map.keys())[:30];
+        warnings.warn(
+            f"MachO shared-object: {len(_unresolved_exports)} export symbol(s) "
+            f"not found in local_sym_map and will be absent from the export trie "
+            f"(dlsym will fail): {_unresolved_exports}. "
+            f"Section breakdown: code={len(code_data)}B rodata={len(rodata_data)}B "
+            f"data={len(data_data)}B. "
+            f"First 30 local symbols: {_sym_sample}",
+            stacklevel=2
+        );
     }
     export_trie = _build_export_trie(export_pairs);
 

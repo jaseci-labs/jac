@@ -1,0 +1,102 @@
+name: Run tests for TUI macOS
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'jac/jaclang/cli/ai_tui_na/**'
+      - 'jac/launcher/pyembed.zig'
+      - 'jac/build.zig'
+      - '.github/workflows/test-tui-macos.yml'
+      - '.github/actions/setup-jac/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'jac/jaclang/cli/ai_tui_na/**'
+      - 'jac/launcher/pyembed.zig'
+      - 'jac/build.zig'
+      - '.github/workflows/test-tui-macos.yml'
+      - '.github/actions/setup-jac/**'
+  workflow_dispatch:
+
+# Cross-compile the SOLE shipped TUI backend (the embed host,
+# ai_tui_na/host_embed.na.jac -> bin/jac-ai-tui) to Darwin on a Linux runner and
+# assert the result is a well-formed Mach-O that links libSystem. This replaces
+# the retired in-process backend's gate (build.sh -> libtui.dylib): the embed
+# host imports `jacpyembed`, so its cross-compile also needs a Darwin
+# libjacpyembed.dylib shim, produced up front via `zig build pyembed -Dtarget`.
+# A Darwin binary cannot run on Linux, so the gate is static (file + load-command
+# assertions), matching what the old workflow could verify for the darwin artifact.
+
+jobs:
+  test-macos-cross-compile:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Set up jac (build the binary, cached)
+        uses: ./.github/actions/setup-jac
+
+      # setup-jac only installs zig on a binary-cache miss; the shim cross-compile
+      # below needs zig regardless, so set it up explicitly.
+      - name: Set up Zig 0.16.0
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+          use-cache: false
+
+      - name: Cross-compile the libjacpyembed shim -> Darwin arm64
+        working-directory: jac
+        run: zig build pyembed -Dtarget=aarch64-macos --summary all
+
+      - name: Assert the shim is Mach-O arm64
+        working-directory: jac/jaclang/runtimelib/client/targets/desktop/native
+        run: |
+          FILE_OUT="$(file libjacpyembed.dylib)"
+          echo "file: $FILE_OUT"
+          echo "$FILE_OUT" | grep -q "Mach-O 64-bit" \
+            || { echo "FAIL: shim not Mach-O 64-bit"; exit 1; }
+          echo "$FILE_OUT" | grep -q "arm64" \
+            || { echo "FAIL: shim not arm64"; exit 1; }
+          echo "ok: shim is Mach-O 64-bit arm64"
+
+      - name: Cross-compile the embed TUI host -> Darwin (host_embed.na.jac)
+        working-directory: jac/jaclang/cli/ai_tui_na
+        run: JAC_AI_TUI_TARGET=darwin bash build_embed.sh --no-trailer
+
+      - name: Assert bin/jac-ai-tui is Mach-O 64-bit
+        working-directory: jac/jaclang/cli/ai_tui_na
+        run: |
+          FILE_OUT="$(file bin/jac-ai-tui)"
+          echo "file: $FILE_OUT"
+          echo "$FILE_OUT" | grep -q "Mach-O 64-bit" \
+            || { echo "FAIL: not Mach-O 64-bit"; exit 1; }
+          echo "ok: Mach-O 64-bit confirmed"
+
+      - name: Assert bin/jac-ai-tui links libSystem
+        working-directory: jac/jaclang/cli/ai_tui_na
+        run: |
+          # strings is always available on Linux and reads Mach-O bytes fine;
+          # /usr/lib/libSystem.B.dylib appears verbatim in the LC_LOAD_DYLIB cmd.
+          if strings bin/jac-ai-tui | grep -q "libSystem"; then
+            echo "ok: libSystem load command present (strings)"
+          else
+            # Last-resort: byte search via Python (no external deps).
+            python3 - <<'PY'
+            data = open("bin/jac-ai-tui", "rb").read()
+            if b"libSystem.B.dylib" not in data:
+              raise SystemExit("FAIL: no libSystem load command in bin/jac-ai-tui")
+            print("ok: libSystem load command present (byte search)")
+          PY
+          fi
+
+      - name: Assert the staged shim is beside the host
+        working-directory: jac/jaclang/cli/ai_tui_na
+        run: |
+          test -f bin/libjacpyembed.dylib \
+            || { echo "FAIL: bin/libjacpyembed.dylib not staged"; exit 1; }
+          file bin/libjacpyembed.dylib | grep -q "Mach-O 64-bit" \
+            || { echo "FAIL: staged shim not Mach-O 64-bit"; exit 1; }
+          echo "ok: Darwin shim staged $ORIGIN-adjacent to the host"

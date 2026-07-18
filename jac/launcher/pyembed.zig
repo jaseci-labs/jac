@@ -49,6 +49,7 @@ const PyEvalRestoreThread_t = *const fn (s: ?*anyopaque) callconv(.c) void;
 const PyGILStateEnsure_t = *const fn () callconv(.c) c_int;
 const PyGILStateRelease_t = *const fn (s: c_int) callconv(.c) void;
 const PyObjectCallOneArg_t = *const fn (callable: ?*anyopaque, arg: ?*anyopaque) callconv(.c) ?*anyopaque;
+const PyObjectCallNoArgs_t = *const fn (callable: ?*anyopaque) callconv(.c) ?*anyopaque;
 const PyUnicodeFromString_t = *const fn (s: [*:0]const u8) callconv(.c) ?*anyopaque;
 const PyUnicodeAsUTF8_t = *const fn (o: ?*anyopaque) callconv(.c) ?[*:0]const u8;
 const PyDecRef_t = *const fn (o: ?*anyopaque) callconv(.c) void;
@@ -70,6 +71,7 @@ var p_restore_thread: PyEvalRestoreThread_t = undefined;
 var p_gil_ensure: PyGILStateEnsure_t = undefined;
 var p_gil_release: PyGILStateRelease_t = undefined;
 var p_call_one: PyObjectCallOneArg_t = undefined;
+var p_call_noargs: PyObjectCallNoArgs_t = undefined;
 var p_uni_from: PyUnicodeFromString_t = undefined;
 var p_uni_utf8: PyUnicodeAsUTF8_t = undefined;
 var p_decref: PyDecRef_t = undefined;
@@ -113,6 +115,11 @@ export fn jac_engine_boot() c_int {
         envOpt("TMPDIR"),
         @intCast(std.c.getuid()),
         @intCast(std.c.getpid()),
+        // JAC_RT_DIR: set by the `jac ai --tui` dispatch when IT runs on a fused
+        // runtime, so this (trailerless, payload-baked) host reuses the CLI's
+        // already-materialized rt instead of self-booting a trailer it lacks.
+        // Unset in dev, where this host is the self-contained trailered build.
+        envOpt("JAC_RT_DIR"),
         &rt_buf,
     ) catch return fail("runtime bring-up failed (trailer payload not materialized?)");
 
@@ -141,6 +148,7 @@ export fn jac_engine_boot() c_int {
     p_gil_ensure = emb.symOrErr(PyGILStateEnsure_t, "PyGILState_Ensure") catch return fail("missing PyGILState_Ensure");
     p_gil_release = emb.symOrErr(PyGILStateRelease_t, "PyGILState_Release") catch return fail("missing PyGILState_Release");
     p_call_one = emb.symOrErr(PyObjectCallOneArg_t, "PyObject_CallOneArg") catch return fail("missing PyObject_CallOneArg");
+    p_call_noargs = emb.symOrErr(PyObjectCallNoArgs_t, "PyObject_CallNoArgs") catch return fail("missing PyObject_CallNoArgs");
     p_uni_from = emb.symOrErr(PyUnicodeFromString_t, "PyUnicode_FromString") catch return fail("missing PyUnicode_FromString");
     p_uni_utf8 = emb.symOrErr(PyUnicodeAsUTF8_t, "PyUnicode_AsUTF8") catch return fail("missing PyUnicode_AsUTF8");
     p_decref = emb.symOrErr(PyDecRef_t, "Py_DecRef") catch return fail("missing Py_DecRef");
@@ -188,6 +196,9 @@ export fn jpy_PyGILState_Release(s: c_int) void {
 }
 export fn jpy_PyObject_CallOneArg(callable: ?*anyopaque, arg: ?*anyopaque) ?*anyopaque {
     return p_call_one(callable, arg);
+}
+export fn jpy_PyObject_CallNoArgs(callable: ?*anyopaque) ?*anyopaque {
+    return p_call_noargs(callable);
 }
 export fn jpy_PyUnicode_FromString(s: [*:0]const u8) ?*anyopaque {
     return p_uni_from(s);

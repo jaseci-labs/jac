@@ -229,4 +229,6 @@ obj JacAPIServer {
     ) -> None;
 }
 
+def write_server_ready_file(port: int) -> None;
+
 def print_endpoint_docs(server: JacAPIServer) -> None;

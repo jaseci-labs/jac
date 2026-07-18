@@ -37,7 +37,9 @@ glob PT_NULL = 0,
      PT_LOAD = 1,
      PT_DYNAMIC = 2,
      PT_INTERP = 3,
-     PT_PHDR = 6;
+     PT_PHDR = 6,
+     PT_GNU_STACK = 0x6474e551,
+     PT_GNU_RELRO = 0x6474e552;
 
 glob PF_X = 0x1,
      PF_W = 0x2,
@@ -61,7 +63,12 @@ glob DT_NULL = 0,
      DT_RUNPATH = 29,
      DT_SONAME = 14,
      DT_INIT_ARRAY = 25,
-     DT_INIT_ARRAYSZ = 27;
+     DT_INIT_ARRAYSZ = 27,
+     DT_FLAGS = 30,
+     DT_FLAGS_1 = 0x6ffffffb;
+
+glob DF_BIND_NOW = 0x8,
+     DF_1_NOW = 0x1;
 
 glob ET_DYN = 3;
 
@@ -1725,7 +1732,7 @@ impl ElfLinker.build_shared_object -> bytes {
     num_dynsyms = len(dynsym_names);
 
     ehdr_size = 64;
-    num_phdrs = 4;
+    num_phdrs = 6;
     phdr_size = num_phdrs * 56;
     cur_offset = ehdr_size + phdr_size;
     cur_offset = _align(cur_offset, 8);
@@ -1812,13 +1819,19 @@ impl ElfLinker.build_shared_object -> bytes {
         dyn_entries.append((DT_INIT_ARRAY, 0));
         dyn_entries.append((DT_INIT_ARRAYSZ, init_arr_size));
     }
+
+    dyn_entries.append((DT_FLAGS, DF_BIND_NOW));
+    dyn_entries.append((DT_FLAGS_1, DF_1_NOW));
     dyn_entries.append((DT_NULL, 0));
     dynamic_size = len(dyn_entries) * 16;
     cur_offset = dynamic_foff + dynamic_size;
-    cur_offset = _align(cur_offset, 8);
+
+    cur_offset = _align(cur_offset, PAGE_SIZE);
     data_foff = cur_offset;
     cur_offset += len(data_blob);
     data_seg_size = cur_offset - data_seg_foff;
+
+    relro_size = data_foff - data_seg_foff;
     total_file_size = data_seg_foff + data_seg_size;
 
     hash_vaddr = BASE_VADDR + hash_foff;
@@ -2345,6 +2358,26 @@ impl ElfLinker.build_shared_object -> bytes {
         dynamic_size,
         dynamic_size,
         8
+    );
+    phdr_off += 56;
+
+    struct.pack_into(
+        "<IIQQQQQQ", output, phdr_off, PT_GNU_STACK, PF_R | PF_W, 0, 0, 0, 0, 0, 0
+    );
+    phdr_off += 56;
+
+    struct.pack_into(
+        "<IIQQQQQQ",
+        output,
+        phdr_off,
+        PT_GNU_RELRO,
+        PF_R,
+        data_seg_foff,
+        data_seg_vaddr,
+        data_seg_vaddr,
+        relro_size,
+        relro_size,
+        1
     );
 
     output[hash_foff:hash_foff + len(hash_data)] = hash_data;

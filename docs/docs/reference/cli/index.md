@@ -809,7 +809,7 @@ Three commands make Jac projects legible to (and drivable by) AI agents -- inclu
 Launch an interactive Jac coding agent in your project. Runs against your configured byLLM model -- including fully local models, so it works without an API key.
 
 ```bash
-jac ai [prompt] [-m MODEL] [--n_ctx N] [--safe] [-q] [--ui]
+jac ai [prompt] [-m MODEL] [--n_ctx N] [--safe] [-q] [--ui] [--tui]
 ```
 
 | Option | Description | Default |
@@ -820,6 +820,7 @@ jac ai [prompt] [-m MODEL] [--n_ctx N] [--safe] [-q] [--ui]
 | `-s, --safe` | Confirm every file write and code execution | off |
 | `-q, --quiet` | Compact output: hide live reasoning, timings, and step detail | off |
 | `-u, --ui` | Open the agent in a web UI with a live phase-graph visualizer | off |
+| `--tui` | Open the agent in a native terminal UI (alt-screen renderer; mutually exclusive with `--ui`) | off |
 
 **Examples:**
 
@@ -835,6 +836,9 @@ jac ai -m local:gemma-4-e4b
 
 # Web UI with live phase-graph visualization
 jac ai --ui
+
+# Native terminal UI (alt-screen renderer)
+jac ai --tui
 ```
 
 ### jac code

@@ -435,6 +435,46 @@ test "Mach-O dylib export trie uses bare (non-underscored) :pub names (macOS hos
 }
 
 
+test "Mach-O export trie resolves both symbols when one name is a prefix of another (macOS host only)" {
+    # Regression for the tui_render / tui_render_buf prefix-masking bug.
+    # In the flat export trie the root carries one edge per symbol. dyld commits
+    # to the FIRST edge whose label is a prefix of the query; without sorting edges
+    # by descending length, a shorter name (jrender) would appear before the longer
+    # one (jrender_buf), causing dyld to follow jrender's edge and then report
+    # "symbol not found" for jrender_buf (no children for the remaining _buf suffix).
+    triple = llvm.get_default_triple();
+    if not (sys.platform == "darwin" and "apple" in triple) {
+        return;
+    }
+    (relobj, exports) = emit_shared_object("shared_export_prefix.na.jac", triple);
+    d = tempfile.mkdtemp();
+    out = os.path.join(d, "libprefix_roundtrip.dylib");
+    ok = MachOLinker.link(
+        obj_bytes=relobj,
+        output_path=out,
+        needed_libs=["/usr/lib/libSystem.B.dylib"],
+        shared=True,
+        export_symbols=exports,
+        init_funcs=["__jac_shared_init"],
+        soname="libprefix_roundtrip.dylib"
+    );
+    assert ok , "MachOLinker.link(shared=True) returned False";
+
+    import ctypes;
+    lib = ctypes.CDLL(out);
+    fn_render = lib?.jrender;
+    assert fn_render is not None , "jrender missing from export trie (prefix masking regression)";
+    fn_render.restype = ctypes.c_int64;
+    fn_render.argtypes = [];
+    assert fn_render() == 1 , "jrender returned wrong value";
+    fn_render_buf = lib?.jrender_buf;
+    assert fn_render_buf is not None , "jrender_buf missing from export trie (prefix masking regression)";
+    fn_render_buf.restype = ctypes.c_int64;
+    fn_render_buf.argtypes = [];
+    assert fn_render_buf() == 2 , "jrender_buf returned wrong value";
+}
+
+
 test "PE dll has IMAGE_FILE_DLL, export directory, and a non-zero entry" {
     (relobj, exports) = emit_shared_object(FIXTURE, "x86_64-pc-windows-msvc");
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d {

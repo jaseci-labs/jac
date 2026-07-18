@@ -137,6 +137,7 @@ pub fn main(init: std.process.Init) !void {
         env.get("TMPDIR"),
         @intCast(std.c.getuid()),
         @intCast(std.c.getpid()),
+        null, // no rt override: the CLI binary always boots its own trailer
         &rt_buf,
     ) catch die("runtime bring-up failed (payload not materialized?)");
 

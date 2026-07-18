@@ -267,20 +267,37 @@ pub fn open(
     tmpdir: ?[]const u8,
     uid: u32,
     pid: i32,
+    rt_override: ?[]const u8,
     rt_out: []u8,
 ) !Embed {
     // 1. Materialize (first run) or locate (warm) the runtime tree.
-    const rt = try runtime.materialize(
-        io,
-        gpa,
-        exe_path,
-        xdg_cache_home,
-        home,
-        tmpdir,
-        uid,
-        pid,
-        rt_out,
-    );
+    //
+    // `rt_override` (the shim's JAC_RT_DIR) lets a trailerless host borrow a
+    // runtime its embedder already materialized: when it points at a complete
+    // (`.ok`-bearing) tree, skip the trailer read entirely and bring the
+    // interpreter up against that tree. This is how the payload-baked embed TUI
+    // host -- which carries NO trailer -- reuses the fused `jac` CLI's rt instead
+    // of self-extracting a second copy. A missing/incomplete override falls back
+    // to the trailer path (and errors there if the host carries none).
+    const rt = blk: {
+        if (rt_override) |ro| {
+            if (ro.len > 0 and ro.len <= rt_out.len and runtime.pathExists(io, ro, ".ok")) {
+                @memcpy(rt_out[0..ro.len], ro);
+                break :blk rt_out[0..ro.len];
+            }
+        }
+        break :blk try runtime.materialize(
+            io,
+            gpa,
+            exe_path,
+            xdg_cache_home,
+            home,
+            tmpdir,
+            uid,
+            pid,
+            rt_out,
+        );
+    };
 
     // 2. Env: jac-namespaced markers ONLY. The interpreter's own configuration
     //    (home, search paths, utf8, ...) goes through initInterpreter's PEP 741

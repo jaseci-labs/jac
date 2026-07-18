@@ -565,6 +565,11 @@ impl JacBuiltin.printgraph(
 
 
 impl JacCmd.run_ai_agent(req: object) -> int {
+    r: any = req;
+    if bool(r?.tui) {
+        import from jaclang.cli.ai_tui.run_tui_embed { run_tui_embed }
+        return run_tui_embed(req);
+    }
     try {
         import from jaclang.cli.ai_agent { run_agent }
     } except ImportError {
@@ -1630,13 +1635,16 @@ impl JacServe.create_server(
     for _ in range(max_retries) {
         try {
             server = ThreadingHTTPServer((host, current_port), handler_class);
-            if current_port != port {
+            actual_port = server.server_address[1];
+            if actual_port != port {
                 import from jaclang.cli.console { console }
-                console.print(
-                    f"  Port {port} is in use, using port {current_port} instead",
-                    style="warning"
-                );
-                jac_server.port = current_port;
+                if port != 0 {
+                    console.print(
+                        f"  Port {port} is in use, using port {actual_port} instead",
+                        style="warning"
+                    );
+                }
+                jac_server.port = actual_port;
             }
             return server;
         } except OSError as e {

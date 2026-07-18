@@ -1,4 +1,5 @@
 import os;
+import from jaclang.cli.console { console }
 import from jaclang.compiler.code_intel { CodeIntelligence }
 
 
@@ -9,6 +10,7 @@ obj AgentRequest {
         safe: bool = False,
         quiet: bool = False,
         ui: bool = False,
+        tui: bool = False,
         cwd: str = "",
         code_intel: CodeIntelligence | None = None;
 }
@@ -20,7 +22,8 @@ def build_agent_request(
     n_ctx: int = 0,
     safe: bool = False,
     quiet: bool = False,
-    ui: bool = False
+    ui: bool = False,
+    tui: bool = False
 ) -> AgentRequest {
     cwd = os.getcwd();
     return AgentRequest(
@@ -30,7 +33,17 @@ def build_agent_request(
         safe=safe,
         quiet=quiet,
         ui=ui,
+        tui=tui,
         cwd=cwd,
         code_intel=CodeIntelligence(proj_dir=cwd, lazy=True)
     );
+}
+
+
+def validate_agent_request(req: AgentRequest) -> int {
+    if req.ui and req.tui {
+        console.error("`jac ai`: `--ui` and `--tui` are mutually exclusive.");
+        return 1;
+    }
+    return 0;
 }

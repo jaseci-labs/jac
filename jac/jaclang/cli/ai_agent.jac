@@ -87,7 +87,16 @@ obj BrowseTools {
     def _browse_shutdown;
 }
 
-glob _THINK_WIDTH = 40;
+glob _THINK_WIDTH = 40,
+     _TOOL_ERROR_PREFIX: str = "Tool error:";
+
+obj _NullSink {
+    def write(*args: any, **kwargs: any) { }
+    def flush(*args: any, **kwargs: any) { }
+    def print(*args: any, **kwargs: any) { }
+}
+
+glob _null_sink = _NullSink();
 
 obj TurnRenderer {
     def print_banner;
@@ -115,6 +124,7 @@ obj TurnRenderer {
     def render_stream(event_stream: any) -> dict;
     def route_stream_event(event: any) -> None;
     def _emit_call_usage(data: any, phase: str) -> None;
+    def _is_tool_error_result(result: any) -> bool;
 }
 
 obj AgentEventBus {
@@ -163,7 +173,7 @@ obj AgentRuntime {
     has cfg: AgentConfig = AgentConfig(),
         ws: Workspace = Workspace(),
         ledger: Ledger | None = None,
-        active_session: AgentSession | None = None,
+        active_run: AgentRun | None = None,
         turn_wrote: bool = False,
         bus: AgentEventBus = AgentEventBus(),
         files: FileTools = FileTools(),
@@ -305,35 +315,35 @@ node PhaseState {
 
     def tools -> list;
     def directive -> str;
-    def step(visitor: AgentSession) -> dict;
-    def halt(visitor: AgentSession) -> bool;
+    def step(visitor: AgentRun) -> dict;
+    def halt(visitor: AgentRun) -> bool;
 }
 
 node Plan(PhaseState) {
     has desc: str = "Explore and decide the approach";
 
     override def directive -> str;
-    can run with AgentSession entry;
+    can run with AgentRun entry;
 }
 
 node Build(PhaseState) {
     has desc: str = "Write and edit the code";
 
     override def directive -> str;
-    can run with AgentSession entry;
+    can run with AgentRun entry;
 }
 
 node QA(PhaseState) {
     has desc: str = "Type-check, run, and verify";
 
     override def directive -> str;
-    can run with AgentSession entry;
+    can run with AgentRun entry;
 }
 
 node Done {
     has desc: str = "Objective built and verified";
 
-    can finish with AgentSession entry;
+    can finish with AgentRun entry;
 }
 
 glob TOOL_SPECS: list[ToolSpec] = [
@@ -467,7 +477,7 @@ with entry {
 def build_pipeline -> Plan;
 
 
-walker AgentSession {
+walker AgentRun {
     has objective: str,
         ledger: Ledger,
         stats: TurnStats,
@@ -495,11 +505,25 @@ def ui_stream -> any;
 def ui_call_detail(call_id: int) -> dict;
 def ui_phase_context(phase: str) -> dict;
 def ui_settings -> dict;
+
+
+obj ApplySettingsResult {
+    has ok: bool = False,
+        error: str = "",
+        model: str = "",
+        needs_key: bool = False,
+        key_env: str = "";
+}
+
+
 def ui_apply_settings(
     model: str, api_key: str, base_url: str, temperature: str, n_ctx: str
-) -> dict;
+) -> ApplySettingsResult;
 
 def _run_ui_server(r: any) -> int;
+
+def register_ui_provider_error(exc: any) -> None;
+def _install_ui_provider_capture(target_bus: any = None) -> None;
 
 glob _MODEL_PRESETS: list[str] = [
          "anthropic/claude-opus-4-7",

@@ -507,8 +507,10 @@ fn extractPayload(
         defer gpa.free(buf);
 
         var dec = PayloadDecoder.init(dctx, zbuf, buf);
+        // The payload is sha256-verified before extraction. Preserve only the
+        // executable bit needed by the embedded TUI host; never setuid/setgid.
         try std.tar.extract(io, dest, &dec.reader, .{
-            .mode_mode = .ignore,
+            .mode_mode = .executable_bit_only,
             .strip_components = 0,
         });
 
@@ -555,7 +557,7 @@ fn gcStale(io: Io, root: []const u8, keep_key: *const [RT_KEY_LEN]u8) void {
 }
 
 /// True if `<dir>/<name>` exists and is openable.
-fn pathExists(io: Io, dir: []const u8, name: []const u8) bool {
+pub fn pathExists(io: Io, dir: []const u8, name: []const u8) bool {
     var buf: [MAX_PATH]u8 = undefined;
     const p = std.fmt.bufPrint(&buf, "{s}/{s}", .{ dir, name }) catch return false;
     const f = Io.Dir.cwd().openFile(io, p, .{}) catch return false;

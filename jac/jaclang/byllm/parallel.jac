@@ -156,7 +156,7 @@ def dispatch_batch(tool_calls: list) -> any {
     }
 
     if _any_serialize(tool_calls) {
-        _plog.info(
+        _plog.debug(
             "batch dispatch=sequential reason=serialize size=%d tools=%s", n, names
         );
         for tc in tool_calls {
@@ -166,7 +166,7 @@ def dispatch_batch(tool_calls: list) -> any {
     }
 
     workers = min(n, _POOL_SIZE);
-    _plog.info(
+    _plog.debug(
         "batch dispatch=parallel size=%d workers=%d tools=%s", n, workers, names
     );
     t_batch = time.time();
@@ -191,7 +191,7 @@ def dispatch_batch(tool_calls: list) -> any {
     }
 
     wall_ms = int((time.time() - t_batch) * 1000);
-    _plog.info(
+    _plog.debug(
         "batch done=parallel size=%d workers=%d wall_ms=%d", n, workers, wall_ms
     );
 }

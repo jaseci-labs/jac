@@ -703,6 +703,10 @@ impl NaIRGenPass._emit_is_strip_char(
     );
 }
 
+impl NaIRGenPass._codegen_str_strip(str_val: ir.Value) -> (ir.Value | None) {
+    return self._codegen_str_strip_chars(str_val, None, True, True);
+}
+
 impl NaIRGenPass._codegen_str_strip_chars(
     str_val: ir.Value, charset: (ir.Value | None), do_left: bool, do_right: bool
 ) -> (ir.Value | None) {

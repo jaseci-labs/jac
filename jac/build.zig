@@ -180,6 +180,9 @@ pub fn build(b: *std.Build) void {
         b.fmt("jaclang/runtimelib/client/targets/desktop/native/{s}", .{pyembed_basename}),
     );
 
+    b.step("pyembed", "Build the libjacpyembed shim only")
+        .dependOn(&pyembed_place.step);
+
     // --- unit tests (pure Zig, no libpython) -------------------------------
     addTests(b, target, optimize);
 
@@ -333,6 +336,13 @@ pub fn build(b: *std.Build) void {
         if (skip_precompile) {
             mk.addArg("--skip-precompile");
         }
+        // The embedded NA TUI host (jac-ai-tui) is built into the payload via
+        // the package build_embed.sh so `jac ai --tui` runs offline with no
+        // first-run nacompile. -Dskip-tui drops it for faster iteration (the TUI
+        // then compiles on first run using the bundled toolchain).
+        if (b.option(bool, "skip-tui", "mkpayload: skip building the embedded NA TUI renderer (compiles on first run)") orelse false) {
+            mk.addArg("--skip-tui");
+        }
         // Editable dev binary: ship a payload WITHOUT the bundled compiler and
         // reroute `import jaclang` to a live source dir at startup (see
         // _jac_finder.py apply_dev_source_override). This skips the ~100 MB tree
@@ -361,6 +371,24 @@ pub fn build(b: *std.Build) void {
                     "Run `zig build fetch-llvm` once first (then -Ddev places it automatically).",
                 .{d},
             );
+        }
+
+        // Bundle byLLM + its LLM stack into the payload so the shipped
+        // `jac ai --tui` runs the real agent fully offline -- no runtime
+        // JAC_AI_TUI_BYLLM_SRC / JAC_AI_TUI_DEPS seams. Default ON for a normal
+        // release build (the embedded TUI host is useless without an agent
+        // backend); -Dskip-byllm opts out for faster iteration (the TUI then
+        // needs the seams at runtime). Skipped in linked-source/dev mode: there
+        // is no bundled site to install into. byLLM lives in the sibling
+        // jac-byllm checkout (../jac-byllm); -Dbyllm-dir overrides. (Options are
+        // registered unconditionally so they appear in --help and never error in
+        // dev mode.) The ~200 MB dep closure isn't content-tracked -- it is an
+        // external sibling dir LazyPath can't escape to; the --bundle-byllm path
+        // is the cache key, and -Dpayload-progress disables caching for iteration.
+        const skip_byllm = b.option(bool, "skip-byllm", "mkpayload: skip bundling byLLM + its LLM deps (jac ai --tui then needs runtime byllm seams)") orelse false;
+        const byllm_dir = b.option([]const u8, "byllm-dir", "Bundle byLLM from this dir (containing byllm/ + jac.toml) instead of ../jac-byllm") orelse b.pathFromRoot("../jac-byllm");
+        if (link_dir == null and !skip_byllm) {
+            mk.addArg(b.fmt("--bundle-byllm={s}", .{byllm_dir}));
         }
 
         // Persistent JIR precompile cache (mirrors .pbs-build/.llvm-build/

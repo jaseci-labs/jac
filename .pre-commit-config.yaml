@@ -8,6 +8,7 @@ exclude: |
         ^jac/jaclang/vendor/|
         ^jac/jaclang/compiler/passes/native/llvm/|
         ^jac/jaclang/compiler/passes/native/wasm_rt/vendor/|
+        ^jac/tests/golden/|
         ^$
     )
 
@@ -99,4 +100,7 @@ repos:
         args: [--lintfix, --cache]
         files: \.jac$
         require_serial: true
-        exclude: (/fixtures/|_err\.jac$|_syntax_err\.jac$|^scripts/|jir_registry\.jac$)
+        # ai_tui_na/: jac fmt --lintfix rewrites the truthiness ternaries
+        # these native files need into `x or y`, which ICEs the native compiler
+        # (see jac.toml [check.lint].exclude). Must be skipped, not reformatted.
+        exclude: (/fixtures/|_err\.jac$|_syntax_err\.jac$|^scripts/|/ai_tui_na/|jir_registry\.jac$)

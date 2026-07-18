@@ -141,7 +141,8 @@ impl JFastApiServer.run_server(
             host=host,
             port=port,
             log_config=log_config,
-            timeout_graceful_shutdown=int(drain_timeout)
+            timeout_graceful_shutdown=int(drain_timeout),
+            timeout_keep_alive=120
         );
         server = uvicorn.Server(config);
         install_signal_drain(server, timeout_s=drain_timeout);
@@ -162,7 +163,8 @@ impl JFastApiServer.run_server(
                 host=host,
                 port=current_port,
                 log_config=log_config,
-                timeout_graceful_shutdown=int(drain_timeout)
+                timeout_graceful_shutdown=int(drain_timeout),
+                timeout_keep_alive=120
             );
             server = uvicorn.Server(config);
             install_signal_drain(server, timeout_s=drain_timeout);

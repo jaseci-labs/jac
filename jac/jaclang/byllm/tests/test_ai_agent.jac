@@ -2,7 +2,7 @@
 
 The agent groups its tools into capability objects on a single `AgentRuntime`
 composition root -- `agent.files`, `agent.proc`, `agent.semantic`, `agent.guides`,
-`agent.web` -- drives phases with an `AgentSession` walker, and renders the live
+`agent.web` -- drives phases with an `AgentRun` walker, and renders the live
 view through `agent.view`. These tests exercise that surface:
 
 - the file toolbox (writes/edits reach disk, with inline compiler feedback and
@@ -71,9 +71,15 @@ def arm(proj: str, events: list, feedback: bool = True) -> CodeIntelligence {
 }
 
 
-"""Run a thunk with stdout captured; return what it printed."""
+"""Run a thunk with stdout captured; return what it printed.
+
+The agent's _term_output_enabled() guard suppresses console.print when
+stdout is not a tty (so the terminal UI is not corrupted).  Patch isatty on the
+StringIO cap so captured-output tests still see terminal prints.
+"""
 def capturing(run: any) -> str {
     cap = io.StringIO();
+    setattr(cap, "isatty", lambda -> bool { return True; });
     old = sys.stdout;
     sys.stdout = cap;
     try {
@@ -209,13 +215,13 @@ test "the note tool records onto the active session's ledger" {
     proj = make_project();
     events: list = [];
     arm(proj, events);
-    ai.agent.active_session = ai.AgentSession(
+    ai.agent.active_run = ai.AgentRun(
         objective="x", ledger=ai.Ledger(), stats=ai.TurnStats()
     );
 
     out = ai.agent.note("the build directory is app/");
     assert "noted:" in out , out;
-    assert "the build directory is app/" in ai.agent.active_session.ledger.notes;
+    assert "the build directory is app/" in ai.agent.active_run.ledger.notes;
 
     shutil.rmtree(proj, ignore_errors=True);
 }
@@ -274,7 +280,182 @@ test "the renderer turns an event stream into the live view and turn tallies" {
 }
 
 
-test "a scripted MockLLM drives the AgentSession walker through its phases" {
+test "ui sessions suppress tool error results from the live transcript" {
+    ai.agent.cfg.verbose = True;
+    ai.agent.bus.events = [];
+    ai.agent.bus._next_id = 1;
+    ai.agent.bus.active_feed = True;
+    stream = [
+        StreamEv(event_type="tool_call", data={"tool": "read_guide", "args": {}}),
+        StreamEv(
+            event_type="tool_result",
+            data={
+                "tool": "read_guide",
+                "result": "Tool error: GuideTools.read_guide() missing 1 required positional argument: 'name'"
+            }
+        ),
+        StreamEv(
+            event_type="tool_timing", data={"tool": "read_guide", "duration_ms": 2.0}
+        ),
+        StreamEv(event_type="chunk", data={"content": "Recovered."}),
+        StreamEv(event_type="steps_done", data={})
+    ];
+
+    events_snapshot: list = [];
+    try {
+        out = capturing(lambda { ai.agent.view.render_stream(stream); });
+        events_snapshot = list(ai.agent.bus.events);
+    } finally {
+        ai.agent.bus.active_feed = False;
+        ai.agent.bus.events = [];
+        ai.agent.bus._next_id = 1;
+    }
+
+    assert "Tool error:" not in out , out;
+    answer_text = "".join(
+        str(ev.get("text", ""))
+        for ev in events_snapshot
+        if ev.get("kind") == "answer"
+    );
+    assert "Recovered." in answer_text , events_snapshot;
+    assert not [
+        ev
+        for ev in events_snapshot
+        if ev.get("kind") == "tool_result" and "Tool error:" in str(ev.get("text", ""))
+    ] , events_snapshot;
+}
+
+
+test "ui mode keeps non-error results that merely contain the tool-error prefix" {
+    # Regression guard for the stringly-typed sniff: a legitimate tool result
+    # whose text happens to contain the canonical "Tool error:" prefix
+    # mid-sentence must NOT be classified as an error and suppressed. The old
+    # substring (`in`) check wrongly dropped it; startswith keeps it.
+    ai.agent.cfg.verbose = True;
+    ai.agent.bus.events = [];
+    ai.agent.bus._next_id = 1;
+    ai.agent.bus.active_feed = True;
+    stream = [
+        StreamEv(event_type="tool_call", data={"tool": "read_guide", "args": {}}),
+        StreamEv(
+            event_type="tool_result",
+            data={
+                "tool": "read_guide",
+                "result": "See the Tool error: section of the docs for recovery."
+            }
+        ),
+        StreamEv(event_type="tool_timing", data={"duration_ms": 1.0}),
+        StreamEv(event_type="steps_done", data={})
+    ];
+    events_snapshot: list = [];
+    try {
+        capturing(lambda { ai.agent.view.render_stream(stream); });
+        events_snapshot = list(ai.agent.bus.events);
+    } finally {
+        ai.agent.bus.active_feed = False;
+        ai.agent.bus.events = [];
+        ai.agent.bus._next_id = 1;
+    }
+    kept = [
+        ev
+        for ev in events_snapshot
+        if ev.get("kind") == "tool_result"
+    ];
+    assert len(kept) == 1 , events_snapshot;
+    assert "See the Tool error: section" in str(kept[0].get("text", "")) , kept[0];
+}
+
+
+test "ui mode keeps model stream on the bus and off stdout" {
+    ai.agent.cfg.verbose = True;
+    ai.agent.bus.events = [];
+    ai.agent.bus._next_id = 1;
+    ai.agent.bus.active_feed = True;
+    stream = [
+        StreamEv(event_type="thought", data={"content": "Planning the change. "}),
+        StreamEv(event_type="chunk", data={"content": "Done."}),
+        StreamEv(event_type="steps_done", data={})
+    ];
+    events_snapshot: list = [];
+    try {
+        out = capturing(lambda { ai.agent.view.render_stream(stream); });
+        events_snapshot = list(ai.agent.bus.events);
+    } finally {
+        ai.agent.bus.active_feed = False;
+        ai.agent.bus.events = [];
+        ai.agent.bus._next_id = 1;
+    }
+
+    assert out == "" , f"stdout should be empty in UI mode, got: {out!r}";
+    answer_text = "".join(
+        [
+            str(ev.get("text", ""))
+            for ev in events_snapshot
+            if ev.get("kind") == "answer"
+        ]
+    );
+    reasoning_text = "".join(
+        [
+            str(ev.get("text", ""))
+            for ev in events_snapshot
+            if ev.get("kind") == "reasoning"
+        ]
+    );
+    assert "Done." in answer_text , events_snapshot;
+    assert "Planning the change." in reasoning_text , events_snapshot;
+}
+
+
+test "ui mode routes tool invocations to tool events for the transcript" {
+    ai.agent.cfg.verbose = True;
+    ai.agent.bus.events = [];
+    ai.agent.bus._next_id = 1;
+    ai.agent.bus.active_feed = True;
+    stream = [
+        StreamEv(
+            event_type="tool_call",
+            data={"tool": "read_file", "args": {"path": "main.jac"}}
+        ),
+        StreamEv(event_type="tool_result", data={"result": "ok"}),
+        StreamEv(event_type="tool_timing", data={"duration_ms": 1.0}),
+        StreamEv(event_type="chunk", data={"content": "ok"}),
+        StreamEv(event_type="steps_done", data={})
+    ];
+    events_snapshot: list = [];
+    try {
+        out = capturing(lambda { ai.agent.view.render_stream(stream); });
+        events_snapshot = list(ai.agent.bus.events);
+    } finally {
+        ai.agent.bus.active_feed = False;
+        ai.agent.bus.events = [];
+        ai.agent.bus._next_id = 1;
+    }
+
+    assert "read_file(path=main.jac" not in out , out;
+    tool_calls = [
+        ev
+        for ev in events_snapshot
+        if ev.get("kind") == "tool" and str(ev.get("name", "")) == "read_file"
+    ];
+    assert len(tool_calls) == 1 , events_snapshot;
+    # `node` mirrors `name` so the native TUI's wire serializer can head the
+    # tool-call row; the desktop ActivityFeed reads `name`.
+    assert str(tool_calls[0].get("node", "")) == "read_file" , tool_calls[0];
+    assert "read_file(path=main.jac" in str(tool_calls[0].get("text", "")) , tool_calls[
+        0
+    ];
+    # Tool invocations must NOT overload kind=="call" -- that kind is reserved
+    # for model/token-usage rows (TokenStream). A token-less call row here
+    # would flood the desktop token-usage stream.
+    assert not [
+        ev
+        for ev in events_snapshot
+        if ev.get("kind") == "call"
+    ] , events_snapshot;
+}
+
+
+test "a scripted MockLLM drives the AgentRun walker through its phases" {
     proj = make_project();
     events: list = [];
     arm(proj, events);
@@ -310,7 +491,7 @@ test "a scripted MockLLM drives the AgentSession walker through its phases" {
         }
     );
 
-    out = capturing(lambda { AgentSessionSpawn(proj); });
+    out = capturing(lambda { AgentRunSpawn(proj); });
 
     # The Build phase wrote the file through the real file tool.
     assert Path(feat).exists() , out;
@@ -324,9 +505,9 @@ test "a scripted MockLLM drives the AgentSession walker through its phases" {
 }
 
 
-"""Spawn an AgentSession bounded to two steps so the walk halts after QA."""
-def AgentSessionSpawn(objective: str) {
-    ai.AgentSession(
+"""Spawn an AgentRun bounded to two steps so the walk halts after QA."""
+def AgentRunSpawn(objective: str) {
+    ai.AgentRun(
         objective=objective, ledger=ai.Ledger(), stats=ai.TurnStats(), max_steps=2
     ) spawn root;
 }

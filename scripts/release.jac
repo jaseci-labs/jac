@@ -63,11 +63,11 @@ def parse_args -> argparse.Namespace {
 
 def main -> None {
     args = parse_args();
-    repo_root = Path(__file__).resolve().parent.parent;
-    releases: list[dict] = [];
+    repo_root = Path(__file__ or ".").resolve().parent.parent;
+    releases: list[dict[str, str]] = [];
     for (pkg_name, pkg_info) in PACKAGES.items() {
         attr_name = pkg_name.replace("-", "_");
-        bump_type = getattr(args, attr_name);
+        bump_type = str(getattr(args, attr_name));
         if (bump_type != "skip") {
             releases.append(
                 {
@@ -145,13 +145,10 @@ def main -> None {
             f"{name} {new_ver}" for (name, _, new_ver) in version_updates
         )
     );
+    rel_by_name: dict[str, dict[str, str]] = {r["name"]: r for r in releases};
     pr_body = "## Release\n\n";
     for (name, old, new_ver) in version_updates {
-        rel = next(
-            r
-            for r in releases
-            if (r["name"] == name)
-        );
+        rel = rel_by_name[name];
         pr_body += f"### {name}\n";
         pr_body += f"- Version: {old} → {new_ver}\n";
         pr_body += f"- Bump type: {rel['bump']}\n\n";

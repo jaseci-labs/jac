@@ -6,14 +6,20 @@ plugin hook), so this verifies the request contract only.
 """
 
 import from jaclang.cli.agent_api { build_agent_request }
-
+import io;
+import sys;
+import from jaclang.cli.commands { ai as ai_cmd }
 
 test "build_agent_request carries the flags and a CodeIntelligence handle" {
-    req = build_agent_request("do a thing", "openai/gpt-4o", 16384, True);
+    req = build_agent_request(
+        "do a thing", "openai/gpt-4o", 16384, True, False, False, True
+    );
     assert req.prompt == "do a thing";
     assert req.model == "openai/gpt-4o";
     assert req.n_ctx == 16384;
     assert req.safe == True;
+    assert req.ui == False;
+    assert req.tui == True;
     assert req.cwd;
     assert req.code_intel is not None;
 }

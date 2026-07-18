@@ -145,12 +145,14 @@ pub fn main(init: std.process.Init) !void {
             try fetchTypeshed(io, gpa, a, argv[2]);
         },
         .mkpayload => {
-            if (n < 5) die("usage: payload mkpayload <pbs-python-dir> <repo-root> <out.tar.zst> [--shim=PATH] [--skip-precompile] [--link-source=PATH] [--precompiled-cache=DIR] [--nvim=DIR] [--seal] [--debug-src]\n(--seal: freeze bootstrap + emit MANIFEST.json; the payload boots from JIR, sources ship for tracebacks)", .{});
+            if (n < 5) die("usage: payload mkpayload <pbs-python-dir> <repo-root> <out.tar.zst> [--shim=PATH] [--pyembed=PATH] [--skip-precompile] [--skip-tui] [--bundle-byllm=PATH] [--link-source=PATH] [--musl=PATH] [--wasm-libc=PATH] [--precompiled-cache=DIR] [--nvim=DIR] [--ninja-link=PATH] [--seal] [--debug-src]\n(--seal: freeze bootstrap + emit MANIFEST.json; the payload boots from JIR, sources ship for tracebacks)", .{});
             // Trailing flags (after the positional pbs/root/out, see build.zig):
             var shim_so: ?[]const u8 = null;
             var pyembed_so: ?[]const u8 = null;
             var bun_bin: ?[]const u8 = null;
             var skip_precompile = false;
+            var skip_tui = false;
+            var byllm_root: ?[]const u8 = null;
             var link_source: ?[]const u8 = null;
             var musl_dir: ?[]const u8 = null;
             var wasm_libc_dir: ?[]const u8 = null;
@@ -170,6 +172,10 @@ pub fn main(init: std.process.Init) !void {
                     bun_bin = arg["--bun=".len..];
                 } else if (std.mem.eql(u8, arg, "--skip-precompile")) {
                     skip_precompile = true;
+                } else if (std.mem.eql(u8, arg, "--skip-tui")) {
+                    skip_tui = true;
+                } else if (std.mem.startsWith(u8, arg, "--bundle-byllm=")) {
+                    byllm_root = arg["--bundle-byllm=".len..];
                 } else if (std.mem.startsWith(u8, arg, "--link-source=")) {
                     link_source = arg["--link-source=".len..];
                 } else if (std.mem.startsWith(u8, arg, "--musl=")) {
@@ -188,7 +194,7 @@ pub fn main(init: std.process.Init) !void {
                     debug_src = true;
                 }
             }
-            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, pyembed_so, bun_bin, skip_precompile, link_source, musl_dir, wasm_libc_dir, precompiled_cache, nvim_dir, ninja_link, seal, debug_src);
+            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, pyembed_so, bun_bin, skip_precompile, skip_tui, byllm_root, link_source, musl_dir, wasm_libc_dir, precompiled_cache, nvim_dir, ninja_link, seal, debug_src);
         },
         .@"typeshed-sha" => {
             if (n < 3) die("usage: payload typeshed-sha <commit>", .{});
@@ -914,6 +920,15 @@ fn mkPayload(
     // Null in linked-source / standalone packs (dev uses an on-demand copy).
     bun_bin: ?[]const u8,
     skip_precompile: bool,
+    // Skip building the embedded NA TUI host (jac-ai-tui). The TUI then
+    // nacompiles on first `jac ai --tui` run using the bundled toolchain --
+    // for faster iteration when the TUI is not under test.
+    skip_tui: bool,
+    // Bundle byLLM + its LLM stack into the staged site so the shipped binary
+    // runs the real `jac ai --tui` agent fully offline. An absolute path to the
+    // jac-byllm checkout (the dir holding byllm/ + jac.toml); null skips bundling
+    // (the TUI then needs the runtime JAC_AI_TUI_BYLLM_SRC/_DEPS seams).
+    byllm_root: ?[]const u8,
     // Editable dev binary: an absolute path to the dir CONTAINING jaclang/. When
     // set, the compiler is NOT bundled -- the payload ships only CPython + the
     // bootstrap shims + the test runner, and a baked `site/jac_linked_source`
@@ -1065,6 +1080,18 @@ fn mkPayload(
             log("==> bundling libjacpyembed shim ({s})", .{pso});
             try Dir.cwd().copyFile(pso, Dir.cwd(), try std.fmt.allocPrint(a, "{s}/{s}", .{ dst_dir, pso_base }), io, .{});
         }
+
+        // Embed the self-hosting `jac ai --tui` host (jac-ai-tui) so the TUI runs
+        // offline with no first-run nacompile. It is the sole TUI backend; the old
+        // in-process (libtui.so) / subprocess (jac-na-tui) renderers are retired,
+        // so the payload no longer bakes them. Baked trailerless: the host borrows
+        // the fused CLI's materialized rt via JAC_RT_DIR at launch instead of
+        // carrying a second ~108MB runtime copy. nacompile's pure-Jac ELF/Mach-O
+        // linkers need no system clang/ld. Skipped under --skip-tui (the live tree
+        // then compiles on first run).
+        if (!skip_tui) {
+            try buildEmbed(io, gpa, a, parent_env, py, pbs_py_dir, site, work, pyembed_so);
+        }
     }
 
     // Contained bun runtime: bundle the fetched bun inside the client package at
@@ -1115,6 +1142,12 @@ fn mkPayload(
     Dir.cwd().deleteTree(io, try std.fmt.allocPrint(a, "{s}/__pycache__", .{site})) catch {};
     _ = runChild(io, &.{ py, "-m", "pip", "install", "--quiet", "pytest", "pytest-xdist", "watchdog>=3.0.0", "tomlkit", "--target", site }, null, false);
 
+    // Bundle byLLM + its LLM stack so the shipped `jac ai --tui` runs the real
+    // agent offline. Like pytest above, AFTER precompile so the precompiler's
+    // jaclang-only package walk never tries to JIR-compile byLLM's .jac modules.
+    // Linked-source builds never get here (build.zig omits --bundle-byllm then).
+    if (byllm_root) |br| try buildByllm(io, gpa, a, py, br, site);
+
     try stageTree(io, gpa, a, pbs_py_dir, site, stage, musl_dir, wasm_libc_dir);
 
     // Precompile the staged stdlib + site to HASH-based .pyc. Must run AFTER
@@ -1141,6 +1174,242 @@ fn mkPayload(
     log("==> packing tar | zstd -{d}", .{PAYLOAD_ZSTD_LEVEL});
     try tarZstDir(io, gpa, a, stage, out);
     log("==> payload: {s}", .{out});
+}
+
+/// Build the self-hosting embed TUI host (host_embed.na.jac -> bin/jac-ai-tui)
+/// into the staged site via the package's build_embed.sh `--no-trailer`. That
+/// emits the ~472KB trailerless ELF plus its $ORIGIN-adjacent libjacpyembed shim
+/// -- NO appended runtime payload: at launch the `jac ai --tui` dispatch hands it
+/// JAC_RT_DIR pointing at the fused CLI's already-materialized rt, so the host
+/// reuses one runtime tree instead of baking (and self-extracting) a second copy.
+/// nacompile's pure-Jac ELF/Mach-O linkers need no system clang/ld; the staged
+/// jaclang + LLVM shim placed above are the only inputs. stageTree then packs
+/// site/jaclang/cli/ai_tui_na/bin/ with the rest of `site`.
+fn buildEmbed(io: Io, gpa: Allocator, a: Allocator, parent_env: *std.process.Environ.Map, py: []const u8, pbs_py_dir: []const u8, site: []const u8, work: []const u8, pyembed_so: ?[]const u8) !void {
+    // The host DT_NEEDEDs libjacpyembed; without the shim staged above there is
+    // nothing to link or load against, so the host is unbuildable -- skip cleanly.
+    const pso = pyembed_so orelse {
+        log("==> no libjacpyembed shim; skipping embed TUI host build", .{});
+        return;
+    };
+    const buildsh = try std.fmt.allocPrint(a, "{s}/jaclang/cli/ai_tui_na/build_embed.sh", .{site});
+    if (!fileExists(io, buildsh)) {
+        log("==> ai_tui_na/build_embed.sh not present; skipping embed TUI host build", .{});
+        return;
+    }
+    const tui_target = switch (builtin.os.tag) {
+        .linux => "linux",
+        .macos => "darwin",
+        else => {
+            log("==> host OS unsupported for the embed TUI host build; skipping", .{});
+            return;
+        },
+    };
+    // The shim was staged $ORIGIN-adjacent under desktop/native/ just above; pass
+    // its path to build_embed.sh (whose own REPO_ROOT heuristic can't see into the
+    // staged tree). Basename matches build.zig's per-OS emit.
+    const pso_base = std.fs.path.basename(pso);
+    const staged_shim = try std.fmt.allocPrint(a, "{s}/jaclang/runtimelib/client/targets/desktop/native/{s}", .{ site, pso_base });
+    log("==> building embed TUI host (jac-ai-tui, trailerless) via build_embed.sh", .{});
+
+    // Hermetic env (same contract precompile() uses): scratch HOME out of `site`,
+    // DONTWRITEBYTECODE so importing jaclang leaves no __pycache__ the later
+    // `pip install --target` would refuse, and JAC_PY routes the toolchain to the
+    // staged tree (no $JAC_BIN / repo zig-out / .venv to fall back on).
+    const emb_home = try std.fmt.allocPrint(a, "{s}/embedhome", .{work});
+    try Dir.cwd().createDirPath(io, emb_home);
+
+    var env = try cloneEnv(gpa, parent_env);
+    defer env.deinit();
+    try env.put("PYTHONHOME", try std.fmt.allocPrint(a, "{s}/install", .{pbs_py_dir}));
+    try env.put("PYTHONPATH", site);
+    try env.put("PYTHONUTF8", "1");
+    try env.put("PYTHONDONTWRITEBYTECODE", "1");
+    try env.put("HOME", emb_home);
+    try env.put("PATH", "/usr/bin:/bin");
+    try env.put("JAC_PY", py);
+    try env.put("JAC_AI_TUI_TARGET", tui_target);
+    try env.put("JAC_PYEMBED_SHIM", staged_shim);
+
+    _ = runChild(io, &.{ "/usr/bin/env", "bash", buildsh, "--no-trailer" }, &env, false);
+    log("==> embed TUI host built", .{});
+}
+
+/// Bundle byLLM (the real `jac ai --tui` agent backend) + its LLM-stack deps
+/// into the staged site so the fused binary runs the agent fully offline -- no
+/// runtime JAC_AI_TUI_BYLLM_SRC / JAC_AI_TUI_DEPS seams needed. byLLM itself is
+/// pure Jac+Python source, copied straight from the checkout like jaclang, plus
+/// a synthesized dist-info carrying its [jac] entry points so the plugin still
+/// registers via entry_points(group='jac'); its deps (litellm + the openai/
+/// pydantic/tiktoken/tokenizers closure, loguru, httpx, pillow) come from PyPI
+/// via pip --target, pinned to byllm jac.toml's [dependencies] constraints
+/// (cp314-ABI wheels -- matches the bundled CPython 3.14). Both run AFTER
+/// precompile (see caller), so the precompiler's jaclang-only walk is untouched.
+/// The byLLM source dir absent -> skip cleanly (the TUI then needs the runtime
+/// seams); a pip-install failure is fatal (a build asked to bundle byLLM must
+/// not silently ship a broken offline agent).
+fn buildByllm(io: Io, gpa: Allocator, a: Allocator, py: []const u8, byllm_root: []const u8, site: []const u8) !void {
+    const toml_path = try std.fmt.allocPrint(a, "{s}/jac.toml", .{byllm_root});
+    const pkg_src = try std.fmt.allocPrint(a, "{s}/byllm", .{byllm_root});
+    var pkg_dir = Dir.cwd().openDir(io, pkg_src, .{ .iterate = true }) catch {
+        log("==> byLLM checkout not found at {s}; skipping (jac ai --tui will need runtime byllm seams)", .{byllm_root});
+        return;
+    };
+    defer pkg_dir.close(io);
+    if (!fileExists(io, toml_path)) {
+        log("==> no jac.toml at {s}; skipping byLLM bundle", .{byllm_root});
+        return;
+    }
+    log("==> bundling byLLM (real jac ai --tui agent) from {s}", .{byllm_root});
+
+    // 1) byLLM package source -> site/byllm (pure Jac+Python; no wheel build).
+    try copyTree(io, gpa, a, pkg_dir, try std.fmt.allocPrint(a, "{s}/byllm", .{site}), skipByllm);
+
+    // 2) Synthesize a dist-info so importlib.metadata sees byLLM and its [jac]
+    //    entry points back the plugin (entry_points(group='jac') in
+    //    jaclang/jac0core/helpers.jac load_plugins_with_disabling). Version +
+    //    entry points come from the checkout's jac.toml.
+    const toml = try Dir.cwd().readFileAlloc(io, toml_path, a, .unlimited);
+    const ver = tomlString(toml, "version") orelse "0.0.0";
+    const di = try std.fmt.allocPrint(a, "{s}/byllm-{s}.dist-info", .{ site, ver });
+    try Dir.cwd().createDirPath(io, di);
+    try Dir.cwd().writeFile(io, .{
+        .sub_path = try std.fmt.allocPrint(a, "{s}/METADATA", .{di}),
+        .data = try std.fmt.allocPrint(a, "Metadata-Version: 2.1\nName: byllm\nVersion: {s}\n", .{ver}),
+    });
+    try Dir.cwd().writeFile(io, .{
+        .sub_path = try std.fmt.allocPrint(a, "{s}/entry_points.txt", .{di}),
+        .data = try byllmEntryPointsTxt(a, toml),
+    });
+
+    // 3) pip-install the [dependencies] closure into site. Clear stray bytecode
+    //    first (pip --target refuses a populated dir with conflicting pyc).
+    Dir.cwd().deleteTree(io, try std.fmt.allocPrint(a, "{s}/__pycache__", .{site})) catch {};
+    const reqs = try byllmRequirements(a, toml);
+    if (reqs.len == 0) die("mkpayload: byLLM jac.toml has no [dependencies]", .{});
+    var pip: std.ArrayList([]const u8) = .empty;
+    try pip.appendSlice(a, &.{ py, "-m", "pip", "install", "--quiet" });
+    try pip.appendSlice(a, reqs);
+    try pip.appendSlice(a, &.{ "--target", site });
+    log("==> pip-installing byLLM deps ({d} pinned: litellm + LLM stack)", .{reqs.len});
+    _ = runChild(io, pip.items, null, false);
+
+    // 4) Trim the freshly installed closure of runtime-dead BYTECODE: pip
+    //    compiles every module on install, so the whole tree gets
+    //    `__pycache__`/`*.pyc` -- dead in the payload (the fused rt regenerates
+    //    pyc into its own writable cache on first import). Bytecode only: the
+    //    staged site also holds jaclang/vendor/typeshed's `*.pyi` stubs, which
+    //    the type checker / NA compiler need, so `.pyi` is deliberately NOT
+    //    pruned. Every importable `.py`, native `.so`, stub, and dist-info stays
+    //    intact, so this cannot break an offline import or a `jac check`.
+    const freed = pruneSite(io, gpa, a, site) catch 0;
+    log("==> byLLM bundled (real agent offline); trimmed ~{d} MiB bytecode", .{freed >> 20});
+}
+
+/// Strip runtime-dead bytecode caches from a `pip --target` tree in place:
+/// removes every `__pycache__/` dir and loose `*.pyc`/`*.pyo` file under `site`,
+/// returning the bytes freed. Everything else -- importable `.py`, native `.so`,
+/// `.pyi` stubs (jaclang/vendor/typeshed is load-bearing for the type checker),
+/// and dist-info metadata -- is left untouched. Collect-then-delete (never
+/// mutate the tree while the walker iterates it). Best-effort: a failed
+/// stat/unlink is skipped, not fatal -- a slightly larger payload still works.
+fn pruneSite(io: Io, gpa: Allocator, a: Allocator, site: []const u8) !u64 {
+    var dir = Dir.cwd().openDir(io, site, .{ .iterate = true }) catch return 0;
+    defer dir.close(io);
+    var files: std.ArrayList([]const u8) = .empty;
+    var dirs: std.ArrayList([]const u8) = .empty;
+    var freed: u64 = 0;
+    var walker = try dir.walk(gpa);
+    defer walker.deinit();
+    while (try walker.next(io)) |entry| {
+        if (entry.kind == .directory) {
+            if (std.mem.eql(u8, entry.basename, "__pycache__"))
+                try dirs.append(a, try a.dupe(u8, entry.path));
+        } else if (std.mem.endsWith(u8, entry.basename, ".pyc") or
+            std.mem.endsWith(u8, entry.basename, ".pyo"))
+        {
+            if (dir.statFile(io, entry.path, .{})) |st| {
+                freed += st.size;
+            } else |_| {}
+            try files.append(a, try a.dupe(u8, entry.path));
+        }
+    }
+    for (files.items) |p| dir.deleteFile(io, p) catch {};
+    for (dirs.items) |p| dir.deleteTree(io, p) catch {};
+    return freed;
+}
+
+/// byLLM source hygiene: drop caches, compiled bytecode, and any stray
+/// packaging metadata copied alongside the package.
+fn skipByllm(p: []const u8) bool {
+    return std.mem.indexOf(u8, p, "__pycache__") != null or
+        std.mem.indexOf(u8, p, ".egg-info") != null or
+        std.mem.endsWith(u8, p, ".pyc");
+}
+
+const TomlKV = struct { key: []const u8, val: []const u8 };
+
+/// Collect `key = "value"` entries under the `[header]` table (until the next
+/// `[...]` header), skipping blanks/`#` comments. The value is taken between the
+/// first pair of quotes, so a trailing inline `# comment` after the closing
+/// quote is ignored; a bare (unquoted) value runs to the next space/`#`.
+fn tomlTable(a: Allocator, toml: []const u8, header: []const u8) ![]TomlKV {
+    var out: std.ArrayList(TomlKV) = .empty;
+    const want = try std.fmt.allocPrint(a, "[{s}]", .{header});
+    var in = false;
+    var lines = std.mem.splitScalar(u8, toml, '\n');
+    while (lines.next()) |line| {
+        const t = std.mem.trim(u8, line, " \t\r");
+        if (t.len == 0 or t[0] == '#') continue;
+        if (t[0] == '[') {
+            in = std.mem.eql(u8, t, want);
+            continue;
+        }
+        if (!in) continue;
+        const eq = std.mem.indexOfScalar(u8, t, '=') orelse continue;
+        const key = std.mem.trim(u8, t[0..eq], " \t");
+        const rest = std.mem.trim(u8, t[eq + 1 ..], " \t");
+        if (rest.len == 0) continue;
+        var val: []const u8 = undefined;
+        if (rest[0] == '"') {
+            const close = std.mem.indexOfScalar(u8, rest[1..], '"') orelse continue;
+            val = rest[1 .. 1 + close];
+        } else {
+            const end = std.mem.indexOfAny(u8, rest, " \t#") orelse rest.len;
+            val = rest[0..end];
+        }
+        if (key.len != 0) try out.append(a, .{ .key = key, .val = val });
+    }
+    return out.items;
+}
+
+/// byLLM jac.toml `[dependencies]` -> pip requirement strings (`name` + spec,
+/// e.g. `litellm>=1.70.0,<=1.82.6`; a bare `*` spec becomes just `name`).
+/// jaclang is intentionally NOT in that table (host-provided), so it is excluded.
+fn byllmRequirements(a: Allocator, toml: []const u8) ![][]const u8 {
+    const kvs = try tomlTable(a, toml, "dependencies");
+    var reqs: std.ArrayList([]const u8) = .empty;
+    for (kvs) |kv| {
+        const spec = if (std.mem.eql(u8, kv.val, "*")) "" else kv.val;
+        try reqs.append(a, try std.fmt.allocPrint(a, "{s}{s}", .{ kv.key, spec }));
+    }
+    return reqs.items;
+}
+
+/// byLLM jac.toml `[entrypoints.jac]` -> a dist-info `entry_points.txt` body
+/// under the `[jac]` group (unquoted `name = module:attr` lines), so the bundled
+/// byLLM plugin is discovered exactly as the pip-installed one is.
+fn byllmEntryPointsTxt(a: Allocator, toml: []const u8) ![]const u8 {
+    const kvs = try tomlTable(a, toml, "entrypoints.jac");
+    var buf: std.ArrayList(u8) = .empty;
+    try buf.appendSlice(a, "[jac]\n");
+    for (kvs) |kv| {
+        try buf.appendSlice(a, kv.key);
+        try buf.appendSlice(a, " = ");
+        try buf.appendSlice(a, kv.val);
+        try buf.append(a, '\n');
+    }
+    return buf.items;
 }
 
 /// `<pbs>/install/bin/python3.14`, falling back to `python3`.
@@ -1265,7 +1534,6 @@ fn precompile(io: Io, gpa: Allocator, a: Allocator, parent_env: *std.process.Env
     }
 }
 
-
 /// Stage the runtime tree: shared libpython + stdlib + the assembled site.
 fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site: []const u8, stage: []const u8, musl_dir: ?[]const u8, wasm_libc_dir: ?[]const u8) !void {
     log("==> staging runtime tree (shared libpython + stdlib + site)", .{});
@@ -1360,10 +1628,10 @@ fn precompilePyc(io: Io, a: Allocator, py: []const u8, stage: []const u8) void {
     const stdlib = std.fmt.allocPrint(a, "{s}/python/lib/python{s}", .{ stage, py_ver }) catch return;
     const site_dir = std.fmt.allocPrint(a, "{s}/site", .{stage}) catch return;
     _ = runChild(io, &.{
-        py,       "-m",              "compileall",
-        "--invalidation-mode", "unchecked-hash",
-        "-q",     "-f",              "-j",
-        "0",      stdlib,            site_dir,
+        py,                    "-m",             "compileall",
+        "--invalidation-mode", "unchecked-hash", "-q",
+        "-f",                  "-j",             "0",
+        stdlib,                site_dir,
     }, null, true);
 }
 
@@ -1675,6 +1943,11 @@ fn skipJaclang(p: []const u8) bool {
         // The LLVMPY_* shim is placed fresh via --shim, not copied from the
         // (gitignored, build-placed) source-tree artifact -- skip it here.
         std.mem.indexOf(u8, p, "libjacllvm.") != null or
+        // The NA TUI bin artifacts (the embed host jac-ai-tui + its shim, plus the
+        // dev tree's bulky libtui.so/libopentui.so and stale per-OS test builds)
+        // are gitignored; buildEmbed compiles the host fresh into the staged bin/,
+        // so skip the source-tree copies here.
+        std.mem.indexOf(u8, p, "cli/ai_tui_na/bin") != null or
         // Same for the libjacpyembed desktop shim (placed via --pyembed).
         std.mem.indexOf(u8, p, "libjacpyembed.") != null or
         std.mem.indexOf(u8, p, "jacpyembed.dll") != null or
@@ -1808,7 +2081,17 @@ fn tarZstDir(io: Io, gpa: Allocator, a: Allocator, stage: []const u8, out: []con
             else => {
                 const bytes = try stage_dir.readFileAlloc(io, entry.path, a, .unlimited);
                 defer a.free(bytes);
-                try tw.writeFileBytes(entry.path, bytes, .{});
+                // Carry the file's on-disk POSIX mode into the tar header so the
+                // runtime extract (`.executable_bit_only`) can restore exec bits.
+                // The embed TUI host (cli/ai_tui_na/bin/jac-ai-tui) is the one
+                // executable in the payload; without its exec bit the dispatch's
+                // execve fails EACCES. mode 0 -> the tar writer's 0o664 default
+                // (Windows has no exec bit; the build tool only runs on posix).
+                const mode: u32 = if (builtin.os.tag == .windows) 0 else blk: {
+                    const st = stage_dir.statFile(io, entry.path, .{}) catch break :blk 0;
+                    break :blk @intCast(st.permissions.toMode());
+                };
+                try tw.writeFileBytes(entry.path, bytes, .{ .mode = mode });
             },
         }
     }
@@ -1868,6 +2151,56 @@ test "stageFloor stages the floor allow-list + CA bundle, skips non-floor archiv
     try testing.expect(!fileExists(io, exp(a, stage, try std.fmt.allocPrint(a, "{s}/libX11.a", .{osarch}))));
 }
 
+test "byllm jac.toml parsing: [dependencies] -> pip reqs, [entrypoints.jac] -> entry_points.txt" {
+    const gpa = testing.allocator;
+    var arena_state = std.heap.ArenaAllocator.init(gpa);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+
+    // A faithful slice of jac-byllm/jac.toml: inline comment after a quoted spec,
+    // a bare `*`, and unrelated tables that must NOT leak into either result.
+    const toml =
+        \\[project]
+        \\name = "byllm"
+        \\version = "0.6.18"
+        \\
+        \\[dependencies]
+        \\# jaclang is host-provided, intentionally absent here.
+        \\litellm = ">=1.70.0,<=1.82.6"  # SECURITY: v1.82.7+ yanked
+        \\loguru = ">=0.7.2,<0.8.0"
+        \\httpx = ">=0.27.0"
+        \\pillow = ">=12.0.0,<13.0.0"
+        \\
+        \\[optional-dependencies.tools]
+        \\wikipedia = "*"
+        \\
+        \\[entrypoints.jac]
+        \\byllm = "byllm.plugin:JacRuntime"
+        \\byllm_plugin_config = "byllm.plugin_config:JacByllmPluginConfig"
+        \\byllm_cli = "byllm.cli:JacCmd"
+        \\
+    ;
+
+    const reqs = try byllmRequirements(a, toml);
+    try testing.expectEqual(@as(usize, 4), reqs.len);
+    try testing.expectEqualStrings("litellm>=1.70.0,<=1.82.6", reqs[0]); // inline comment dropped
+    try testing.expectEqualStrings("loguru>=0.7.2,<0.8.0", reqs[1]);
+    try testing.expectEqualStrings("httpx>=0.27.0", reqs[2]);
+    try testing.expectEqualStrings("pillow>=12.0.0,<13.0.0", reqs[3]);
+
+    const eps = try byllmEntryPointsTxt(a, toml);
+    try testing.expectEqualStrings(
+        \\[jac]
+        \\byllm = byllm.plugin:JacRuntime
+        \\byllm_plugin_config = byllm.plugin_config:JacByllmPluginConfig
+        \\byllm_cli = byllm.cli:JacCmd
+        \\
+    , eps);
+
+    // version is read via the existing helper the synthesizer uses.
+    try testing.expectEqualStrings("0.6.18", tomlString(toml, "version").?);
+}
+
 // The production payload pipe end-to-end: libzstd ENCODE (this tool, exactly
 // as mkpayload runs it) -> the launcher's own `runtime.PayloadDecoder` +
 // std.tar DECODE. Guards the two-sided encode/decode contract (level +
@@ -1892,6 +2225,7 @@ test "tarZstDir round-trips through the launcher's payload decoder" {
     try Dir.cwd().writeFile(io, .{
         .sub_path = try std.fmt.allocPrint(a, "{s}/python/bin/python", .{stage}),
         .data = text,
+        .flags = .{ .permissions = Dir.Permissions.executable_file },
     });
     const big = try a.alloc(u8, 3 * zstd.block_size_max + 12345);
     var prng = std.Random.DefaultPrng.init(42);
@@ -1916,8 +2250,54 @@ test "tarZstDir round-trips through the launcher's payload decoder" {
     try Dir.cwd().createDirPath(io, dest);
     var dest_dir = try Dir.cwd().openDir(io, dest, .{});
     defer dest_dir.close(io);
-    try std.tar.extract(io, dest_dir, &dec.reader, .{ .mode_mode = .ignore, .strip_components = 0 });
+    try std.tar.extract(io, dest_dir, &dec.reader, .{ .mode_mode = .executable_bit_only, .strip_components = 0 });
 
     try testing.expectEqualStrings(text, try dest_dir.readFileAlloc(io, "python/bin/python", a, .unlimited));
+    const python_mode = (try dest_dir.statFile(io, "python/bin/python", .{})).permissions.toMode();
+    try testing.expect(python_mode & 0o111 != 0); // executable bit survived pack+extract
     try testing.expectEqualSlices(u8, big, try dest_dir.readFileAlloc(io, "python/big.bin", a, .unlimited));
+}
+
+test "pruneSite drops bytecode caches, keeps importable source + typeshed-style .pyi stubs" {
+    const io = testing.io;
+    const gpa = testing.allocator;
+    var arena_state = std.heap.ArenaAllocator.init(gpa);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var base_buf: [MAX_PATH]u8 = undefined;
+    const base = base_buf[0..try tmp.dir.realPath(io, &base_buf)];
+
+    const site = try std.fmt.allocPrint(a, "{s}/site", .{base});
+    const pkg = try std.fmt.allocPrint(a, "{s}/litellm", .{site});
+    const cache = try std.fmt.allocPrint(a, "{s}/__pycache__", .{pkg});
+    try Dir.cwd().createDirPath(io, cache);
+    // Runtime-dead bytecode: a __pycache__ child + a loose .pyc.
+    try Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(a, "{s}/main.cpython-314.pyc", .{cache}), .data = "BYTECODEXXXX" });
+    try Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(a, "{s}/stale.pyc", .{pkg}), .data = "BYTECODE" });
+    // Load-bearing stub: typeshed (and typed packages) ship .pyi the checker
+    // needs -- pruneSite must NOT touch these.
+    const ts = try std.fmt.allocPrint(a, "{s}/jaclang/vendor/typeshed/stdlib", .{site});
+    try Dir.cwd().createDirPath(io, ts);
+    try Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(a, "{s}/builtins.pyi", .{ts}), .data = "class int: ...\n" });
+    try Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(a, "{s}/main.pyi", .{pkg}), .data = "stub" });
+    // Must survive: importable source + a native extension + dist-info.
+    try Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(a, "{s}/main.py", .{pkg}), .data = "x = 1\n" });
+    try Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(a, "{s}/_native.so", .{pkg}), .data = "\x7fELF" });
+    try Dir.cwd().createDirPath(io, try std.fmt.allocPrint(a, "{s}/byllm-0.6.18.dist-info", .{site}));
+    try Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(a, "{s}/byllm-0.6.18.dist-info/METADATA", .{site}), .data = "Name: byllm\n" });
+
+    const freed = try pruneSite(io, gpa, a, site);
+    try testing.expect(freed > 0); // counted the .pyc bytes it removed
+
+    try testing.expect(!fileExists(io, cache)); // whole __pycache__ gone
+    try testing.expect(!fileExists(io, try std.fmt.allocPrint(a, "{s}/stale.pyc", .{pkg})));
+    // .pyi stubs survive -- typeshed AND any typed package's stubs.
+    try testing.expect(fileExists(io, try std.fmt.allocPrint(a, "{s}/builtins.pyi", .{ts})));
+    try testing.expect(fileExists(io, try std.fmt.allocPrint(a, "{s}/main.pyi", .{pkg})));
+    try testing.expect(fileExists(io, try std.fmt.allocPrint(a, "{s}/main.py", .{pkg})));
+    try testing.expect(fileExists(io, try std.fmt.allocPrint(a, "{s}/_native.so", .{pkg})));
+    try testing.expect(fileExists(io, try std.fmt.allocPrint(a, "{s}/byllm-0.6.18.dist-info/METADATA", .{site})));
 }

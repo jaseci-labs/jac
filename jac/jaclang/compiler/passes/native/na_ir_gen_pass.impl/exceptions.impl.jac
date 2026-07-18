@@ -227,6 +227,10 @@ impl NaIRGenPass._get_or_register_exc_type(exc_name: str) -> int {
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     type_id = JAC_TYPE_REGISTRY.exception_type_id(exc_name);
     self._exc_type_registry[exc_name] = type_id;
+
+    if "Exception" not in self._exc_type_registry {
+        self._exc_type_registry["Exception"] = 0;
+    }
     return type_id;
 }
 

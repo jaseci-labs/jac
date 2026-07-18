@@ -1,0 +1,26 @@
+.jac_ir/
+bin/
+libc_tty.na.jac
+tty_plat.na.jac
+libjacpyembed.so
+libjacpyembed.dylib
+_golden_harness.na.jac
+_golden_run.sh
+golden_out.txt
+# Staged flat copies of tui/ and components/ (build_embed / build_selftest).
+component.na.jac
+container.na.jac
+focus.na.jac
+process_terminal.na.jac
+virtual_terminal.na.jac
+frame_renderer.na.jac
+input_types.na.jac
+tui.na.jac
+theme_obj.na.jac
+input_router.na.jac
+transcript.na.jac
+status.na.jac
+editor_view.na.jac
+autocomplete_view.na.jac
+warn_view.na.jac
+chrome.na.jac

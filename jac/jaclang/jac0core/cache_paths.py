@@ -12,10 +12,11 @@ are project-aware and therefore resolved in ``jaclang.jac0core.jir`` via
 ``get_module_cache_path``/``get_native_cache_dir(source_path)``, which fall
 back to the project's ``.jac/cache`` when inside a project.
 
-Platform roots:
-    Linux:   ~/.cache/jac/jir/             ($XDG_CACHE_HOME honored)
-    macOS:   ~/Library/Caches/jac/jir/
-    Windows: %LOCALAPPDATA%/jac/cache/jir/
+Platform roots (Linux examples; macOS uses ``~/Library/Caches`` and Windows
+uses ``%LOCALAPPDATA%/jac/cache`` in place of ``~/.cache/jac``):
+    JIR module cache:    ~/.cache/jac/jir/
+
+$XDG_CACHE_HOME is honored on Linux.
 """
 
 import os
@@ -23,17 +24,28 @@ import sys
 from pathlib import Path
 
 
+def _platform_cache_base() -> Path:
+    """The OS-appropriate cache base, before any ``jac/...`` suffix is applied.
+
+    Shared by every global cache dir (JIR, bootstrap bytecode) so
+    the win/darwin/linux resolution rule lives in exactly one place.
+    """
+    if sys.platform == "win32":
+        return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+    elif sys.platform == "darwin":
+        return Path.home() / "Library" / "Caches"
+    else:
+        xdg = os.environ.get("XDG_CACHE_HOME")
+        return Path(xdg) if xdg else (Path.home() / ".cache")
+
+
 def get_jir_cache_dir() -> Path:
     """Return the platform-appropriate global cache directory for JIR files."""
     if sys.platform == "win32":
-        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
-        return base / "jac" / "cache" / "jir"
-    elif sys.platform == "darwin":
-        return Path.home() / "Library" / "Caches" / "jac" / "jir"
-    else:
-        xdg = os.environ.get("XDG_CACHE_HOME")
-        base = Path(xdg) if xdg else (Path.home() / ".cache")
-        return base / "jac" / "jir"
+        # Windows nests under an extra 'cache' segment for parity with the
+        # platform's AppData/.../cache convention.
+        return _platform_cache_base() / "jac" / "cache" / "jir"
+    return _platform_cache_base() / "jac" / "jir"
 
 
 def get_bootstrap_cache_dir() -> Path:

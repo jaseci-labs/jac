@@ -1534,6 +1534,10 @@ impl TurnRenderer._ci_event(info: any) {
     );
 }
 
+impl TurnRenderer._is_tool_error_result(result: any) -> bool {
+    return str(result).startswith(_TOOL_ERROR_PREFIX);
+}
+
 impl TurnRenderer._emit_call_usage(data: any, phase: str) -> None {
     if not agent.bus.active_feed {
         return;
@@ -1559,9 +1563,12 @@ impl TurnRenderer._emit_call_usage(data: any, phase: str) -> None {
 }
 
 impl TurnRenderer.render_stream(event_stream: any) -> dict {
-    out: any = sys.stdout;
+    is_ui = bool(agent.bus.active_feed);
 
-    is_tty = bool(out?.isatty) and bool(out.isatty());
+    out: any = _null_sink if is_ui else sys.stdout;
+    con: any = _null_sink if is_ui else console;
+
+    is_tty = (not is_ui) and bool(sys.stdout?.isatty) and bool(sys.stdout.isatty());
 
     n_read = 0;
     n_write = 0;
@@ -1597,14 +1604,18 @@ impl TurnRenderer.render_stream(event_stream: any) -> dict {
         }
         (result, ms) = (pend_result["result"], pend_result["ms"]);
         pend_result = None;
-        agent.bus.emit("tool_result", {"text": truncate(str(result), 4000)});
+        rtext = truncate(str(result), 4000);
+
+        if not (is_ui and agent.view._is_tool_error_result(result)) {
+            agent.bus.emit("tool_result", {"text": rtext});
+        }
         lines = agent.view._result_snippet(result, 3 if agent.cfg.verbose else 1);
         tail = f"   {agent.view._fmt_ms(ms)}"
             if (agent.cfg.verbose and ms is not None)
             else "";
-        console.print(f"      ↳ {lines[0]}{tail}", style="dim");
+        con.print(f"      ↳ {lines[0]}{tail}", style="dim");
         for ln in lines[1:] {
-            console.print(f"        {ln}", style="dim");
+            con.print(f"        {ln}", style="dim");
         }
     }
     try {
@@ -1679,11 +1690,16 @@ impl TurnRenderer.render_stream(event_stream: any) -> dict {
                 gen = agent.view._fmt_gen(last_llm_ms, last_llm_tokens)
                     if agent.cfg.verbose
                     else "";
-                console.print(
+                con.print(
                     f"  ⏺ {agent.view.fmt_tool_call(tool, args)}{gen}", style="cyan"
                 );
                 agent.bus.emit(
-                    "tool", {"name": tool, "text": agent.view.fmt_tool_call(tool, args)}
+                    "tool",
+                    {
+                        "name": tool,
+                        "node": tool,
+                        "text": agent.view.fmt_tool_call(tool, args)
+                    }
                 );
                 last_llm_ms = 0.0;
                 last_llm_tokens = 0;
@@ -1709,7 +1725,7 @@ impl TurnRenderer.render_stream(event_stream: any) -> dict {
                 clear_think();
                 end_line();
                 flush_result();
-                console.print("");
+                con.print("");
             }
         }
         clear_think();
@@ -1791,8 +1807,8 @@ sem AgentRuntime.note = "Record a short note that stays visible to every later p
 sem AgentRuntime.note.text = "The note to remember.";
 
 impl AgentRuntime.note(text: str) -> str {
-    if agent.active_session is not None {
-        agent.active_session.ledger.remember(text);
+    if agent.active_run is not None {
+        agent.active_run.ledger.remember(text);
         agent.bus.publish_ledger();
         return f"noted: {text}";
     }
@@ -1813,8 +1829,8 @@ impl PhaseState.directive -> str {
     return f"Carry out the {type(self).__name__} state now.";
 }
 
-impl PhaseState.step(visitor: AgentSession) -> dict {
-    agent.active_session = visitor;
+impl PhaseState.step(visitor: AgentRun) -> dict {
+    agent.active_run = visitor;
     label = type(self).__name__;
     console.print(f"\n  ● {label}", style="bold blue");
 
@@ -1845,7 +1861,7 @@ impl PhaseState.step(visitor: AgentSession) -> dict {
     return result;
 }
 
-impl PhaseState.halt(visitor: AgentSession) -> bool {
+impl PhaseState.halt(visitor: AgentRun) -> bool {
     if agent.bus.cancel_requested {
         return True;
     }
@@ -1891,7 +1907,7 @@ impl QA.directive -> str {
 
 sem run_phase.directive = "A short instruction kicking off the current phase.";
 
-impl Plan.run with AgentSession entry {
+impl Plan.run with AgentRun entry {
     if agent.bus.cancel_requested {
         return;
     }
@@ -1921,7 +1937,7 @@ impl Plan.run with AgentSession entry {
     }
 }
 
-impl Build.run with AgentSession entry {
+impl Build.run with AgentRun entry {
     if agent.bus.cancel_requested {
         return;
     }
@@ -1955,7 +1971,7 @@ impl Build.run with AgentSession entry {
     }
 }
 
-impl QA.run with AgentSession entry {
+impl QA.run with AgentRun entry {
     if agent.bus.cancel_requested {
         return;
     }
@@ -2049,7 +2065,7 @@ impl build_pipeline -> Plan {
     return plan;
 }
 
-impl AgentSession.begin{
+impl AgentRun.begin{
     visit build_pipeline();
 }
 
@@ -2062,9 +2078,7 @@ impl run_turn(message: str) {
         agent.ledger = ledger;
     }
     started = time.time();
-    session = AgentSession(
-        objective=message, ledger=ledger, stats=TurnStats()
-    ) spawn root;
+    session = AgentRun(objective=message, ledger=ledger, stats=TurnStats()) spawn root;
     if agent.cfg.show_stats {
         st = session.stats;
         agent.view.print_stats(
@@ -2262,6 +2276,134 @@ impl run_agent(req: object) -> int {
     return 0;
 }
 
+glob _ui_recent_errors: dict = {},
+     _ui_recent_errors_lock = threading.Lock(),
+     _ui_output_capture_installed = False,
+     _ui_emit_tls: any = None,
+     _ui_capture_bus: any = None,
+     _UI_PROVIDER_DEDUP_S = 2.0;
+
+def _ui_provider_fingerprint(text: str) -> str {
+    t = " ".join(text.strip().lower().split());
+    if t.startswith("provider:") {
+        t = t[len("provider:"):].strip();
+    }
+    if t.startswith("llm ") and ":" in t {
+        (head, _, tail) = t.partition(":");
+        if "error" in head or "failed" in head {
+            t = tail.strip();
+        }
+    }
+    return t[:240];
+}
+
+def _ui_purge_stale_provider_errors(now: float) {
+    stale: list[str] = [];
+    for (key, ts) in _ui_recent_errors.items() {
+        if now - ts > _UI_PROVIDER_DEDUP_S {
+            stale.append(key);
+        }
+    }
+    for key in stale {
+        _ui_recent_errors.pop(key, None);
+    }
+}
+
+def _ui_remember_provider_error(text: str) {
+    _ui_recent_errors_lock.acquire();
+    try {
+        now = time.monotonic();
+        _ui_purge_stale_provider_errors(now);
+        _ui_recent_errors[_ui_provider_fingerprint(text)] = now;
+    } finally {
+        _ui_recent_errors_lock.release();
+    }
+}
+
+def _ui_is_duplicate_provider_error(text: str) -> bool {
+    dup: bool = False;
+    _ui_recent_errors_lock.acquire();
+    try {
+        now = time.monotonic();
+        _ui_purge_stale_provider_errors(now);
+        fp = _ui_provider_fingerprint(text);
+        for (key, ts) in _ui_recent_errors.items() {
+            if now - ts > _UI_PROVIDER_DEDUP_S {
+                continue;
+            }
+            if key in fp or fp in key {
+                dup = True;
+                break;
+            }
+        }
+    } finally {
+        _ui_recent_errors_lock.release();
+    }
+    return dup;
+}
+
+def _ui_bus_emit_guarded(kind: str, text: str) {
+    global _ui_emit_tls;
+    if _ui_emit_tls is None {
+        _ui_emit_tls = threading.local();
+    }
+    if getattr(_ui_emit_tls, "active", False) {
+        return;
+    }
+    bus = _ui_capture_bus;
+    if bus is None {
+        return;
+    }
+    if kind == "error" and _ui_is_duplicate_provider_error(text) {
+        return;
+    }
+    _ui_emit_tls.active = True;
+    try {
+        bus.emit(kind, {"text": text});
+        if kind == "error" {
+            _ui_remember_provider_error(text);
+        }
+    } finally {
+        _ui_emit_tls.active = False;
+    }
+}
+
+def _ui_loguru_sink(message: any) {
+    import traceback;
+
+    record = message.record;
+    text = str(record["message"]);
+    exc = record.get("exception");
+    if exc is not None {
+        text += "\n" + "".join(
+            traceback.format_exception(exc.type, exc.value, exc.traceback)
+        );
+    }
+    level_no = int(record["level"].no);
+    kind = "error" if level_no >= 40 else "system";
+    _ui_bus_emit_guarded(kind, f"provider: {text}");
+}
+
+impl register_ui_provider_error(exc: any) -> None {
+    _ui_remember_provider_error(str(exc));
+}
+
+impl _install_ui_provider_capture(target_bus: any = None) -> None {
+    global _ui_output_capture_installed,_ui_capture_bus;
+    _ui_capture_bus = target_bus if target_bus is not None else agent.bus;
+    if _ui_output_capture_installed {
+        return;
+    }
+    import from loguru { logger }
+    logger.remove();
+    logger.add(_ui_loguru_sink, level="WARNING");
+    try {
+        import litellm;
+        litellm.suppress_debug_info = True;
+    } except Exception { }
+    _ui_output_capture_installed = True;
+}
+
 impl ui_configure -> None {
     proj = os.environ.get("JAC_AI_UI_PROJECT") or os.getcwd();
     agent.ws.cwd = os.path.normpath(proj);
@@ -2312,7 +2454,11 @@ def _ui_turn_worker(prompt: str) {
             verify_and_continue();
         }
     } except Exception as e {
-        agent.bus.emit("error", {"text": f"agent error: {e}"});
+        err_text = f"provider: {e}";
+        if not _ui_is_duplicate_provider_error(err_text) {
+            agent.bus.emit("error", {"text": err_text});
+        }
+        register_ui_provider_error(e);
 
         msg = str(e).lower();
         if (
@@ -2555,14 +2701,17 @@ impl ui_settings -> dict {
 
 impl ui_apply_settings(
     model: str, api_key: str, base_url: str, temperature: str, n_ctx: str
-) -> dict {
+) -> ApplySettingsResult {
+    global agent_model;
+
+
     if agent.bus.status == "running" or agent.bus.status == "stopping" {
-        return {
-            "ok": False,
-            "error": "Cannot apply settings while a turn is running -- stop it first.",
-            "needs_key": agent.bus.needs_key,
-            "key_env": agent.bus.key_env
-        };
+        return ApplySettingsResult(
+            ok=False,
+            error="Cannot apply settings while a turn is running -- stop it first.",
+            needs_key=agent.bus.needs_key,
+            key_env=agent.bus.key_env
+        );
     }
     if api_key.strip() {
         agent.cfg.api_key = api_key.strip();
@@ -2596,24 +2745,24 @@ impl ui_apply_settings(
             "system", {"text": f"Settings applied; using {agent_model.model_name}."}
         );
         agent.bus.publish_full();
-        return {
-            "ok": True,
-            "error": "",
-            "model": str(agent_model.model_name),
-            "needs_key": agent.bus.needs_key,
-            "key_env": agent.bus.key_env
-        };
+        return ApplySettingsResult(
+            ok=True,
+            error="",
+            model=str(agent_model.model_name),
+            needs_key=agent.bus.needs_key,
+            key_env=agent.bus.key_env
+        );
     } except Exception as e {
         _refresh_key_status();
         agent.bus.emit("error", {"text": f"Settings error: {e}"});
         agent.bus.publish_full();
-        return {
-            "ok": False,
-            "error": str(e),
-            "model": "",
-            "needs_key": agent.bus.needs_key,
-            "key_env": agent.bus.key_env
-        };
+        return ApplySettingsResult(
+            ok=False,
+            error=str(e),
+            model="",
+            needs_key=agent.bus.needs_key,
+            key_env=agent.bus.key_env
+        );
     }
 }
 
