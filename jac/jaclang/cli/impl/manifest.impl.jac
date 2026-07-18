@@ -335,7 +335,7 @@ glob _COMMANDS: dict[str, CommandMeta] = {},
      _COMMANDS_LOADED: bool = False;
 
 def _ensure_commands_loaded {
-    global _COMMANDS,_COMMANDS_LOADED;
+    global _COMMANDS_LOADED;
     if _COMMANDS_LOADED {
         return;
     }
