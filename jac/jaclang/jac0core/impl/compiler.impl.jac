@@ -1026,6 +1026,8 @@ impl JacCompiler._count_module_blocking_errors(
     target_program: JacProgram, mod_path: str
 ) -> int {
     count = 0;
+    norm = os.path.normpath(mod_path);
+    prefix = (norm[:-4] if norm.endswith('.jac') else norm) + '.';
     for e in target_program.errors_had {
         if e.code is None or not e.code.blocks_codegen {
             continue;
@@ -1035,7 +1037,7 @@ impl JacCompiler._count_module_blocking_errors(
         } except Exception {
             continue;
         }
-        if e_path == mod_path {
+        if e_path == norm or e_path.startswith(prefix) {
             count += 1;
         }
     }
