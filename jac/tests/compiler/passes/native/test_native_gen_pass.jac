@@ -40,6 +40,22 @@ def get_func(eng: object, name: str, restype: type | None, *argtypes: type) -> o
     return functype(addr);
 }
 
+"""Current resident-set-size of this process in kB (Linux), or -1 if the
+/proc interface is unavailable (e.g. macOS) so callers can skip the gate."""
+def _rss_kb -> int {
+    if not os.path.exists("/proc/self/status") {
+        return -1;
+    }
+    with open("/proc/self/status") as f {
+        for line in f {
+            if line.startswith("VmRSS") {
+                return int(line.split()[1]);
+            }
+        }
+    }
+    return -1;
+}
+
 # --- TestNativeArithmeticExecution ---
 test "arithmetic add" {
     (eng, _) = compile_native("arithmetic.na.jac");
@@ -56,6 +72,30 @@ test "arithmetic multiply" {
     assert mul(5, 6) == 30;
     assert mul(-3, 7) == -21;
     assert mul(0, 999) == 0;
+}
+
+# Regression: sub-64-bit integer arithmetic must run at the operands'
+# true width, not force i64 overflow intrinsics (i32/i16/i8 kernels).
+test "arithmetic narrow int width" {
+    (eng, _) = compile_native("narrow_int_truediv.na.jac");
+    add32 = get_func(eng, "add32", ctypes.c_int32, ctypes.c_int32, ctypes.c_int32);
+    assert add32(3, 4) == 7;
+    sub32 = get_func(eng, "sub32", ctypes.c_int32, ctypes.c_int32, ctypes.c_int32);
+    assert sub32(10, 3) == 7;
+    mul32 = get_func(eng, "mul32", ctypes.c_int32, ctypes.c_int32, ctypes.c_int32);
+    assert mul32(6, 7) == 42;
+}
+
+# Regression: `/` is true division (Python semantics) -- int / int is a
+# float, while `//` stays integer floor division.
+test "arithmetic true division" {
+    (eng, _) = compile_native("narrow_int_truediv.na.jac");
+    td = get_func(eng, "truediv", ctypes.c_double, ctypes.c_int64, ctypes.c_int64);
+    assert td(3, 4) == 0.75;
+    assert td(10, 2) == 5.0;
+    fd = get_func(eng, "floordiv", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
+    assert fd(3, 4) == 0;
+    assert fd(7, 2) == 3;
 }
 
 # --- Function pointers in struct fields (the OSP dispatch-slot shape) ---
@@ -1012,6 +1052,37 @@ test "builtins strip split" {
     (eng, _) = compile_native("builtins.na.jac");
     f = get_func(eng, "test_strip_split", ctypes.c_int64);
     assert f() == 2;
+}
+
+test "builtins split and slice do not leak (#6814)" {
+    (eng, _) = compile_native("builtins.na.jac");
+    f_split = get_func(
+        eng, "split_count", ctypes.c_int64, ctypes.c_char_p, ctypes.c_char_p
+    );
+    f_slice = get_func(eng, "slice_half_len", ctypes.c_int64, ctypes.c_char_p);
+    many = b",".join([b"x"] * 200);
+    big = b"x" * 10000;
+    # Correctness must survive the ownership fix.
+    assert f_split(many, b",") == 200;
+    assert f_slice(big) == 5000;
+    # Warm up the allocator to steady state before sampling, so arena growth is
+    # not mistaken for a leak.
+    for _w in range(2000) {
+        f_split(many, b",");
+        f_slice(big);
+    }
+    base = _rss_kb();
+    for _i in range(20000) {
+        f_split(many, b",");
+        f_slice(big);
+    }
+    if base >= 0 {
+        growth = _rss_kb() - base;
+        assert growth < 32768 , (
+            f"split/slice leaked: RSS grew {growth} kB over 20k iters "
+            f"(expected ~0; unpatched leaks ~350 MB) -- #6814 regressed"
+        );
+    }
 }
 
 # --- TestNativeRuntime ---

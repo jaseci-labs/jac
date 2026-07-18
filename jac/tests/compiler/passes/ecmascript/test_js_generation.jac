@@ -960,6 +960,19 @@ test "sv import duplicate kwarg is a compile error" {
     assert "name" in str(dup_errs[0]) and "greet" in str(dup_errs[0]);
 }
 
+test "sv import nested in cl block emits no dead import" {
+    # Regression: a cl {} block clobbered a nested sv import's SERVER
+    # context, making it emit a dead client import of the server.
+    js_code = compile_fixture_to_js("sv_import_cl_block_client.jac", FIXTURES);
+    assert "sv_import_cl_block_server" not in js_code , (
+        "nested sv import must not emit a client import of the server "
+        "module; got:\n" + js_code
+    );
+    assert '__jacSpawn("say_hi"' in js_code , (
+        "nested sv import must still lower the call to __jacSpawn; got:\n" + js_code
+    );
+}
+
 test "cl.jac with impl.jac does not duplicate __jacCallFunction import" {
     # When a .cl.jac file has a separate .impl.jac file, both the main pass
     # and the child pass for the impl module may independently inject
@@ -2484,6 +2497,79 @@ test "builtin type used as a value lowers to a callable (#7454)" {
     );
 
     assert_balanced_syntax(js_code, "builtin_type_as_value.cl.jac");
+}
+
+test "builtin functions lower to runtime helpers without type-check (#7480)" {
+    # An imported client module reaches the bundler uninferred (call_kind
+    # unstamped, as when compiled as a dependency). The bundler chokepoint must
+    # run the inference schedule before the backend so builtins lower to their
+    # _jac.builtin.* helpers rather than bare, undefined identifiers.
+    import re;
+    import from jaclang.runtimelib.client_bundle { _ensure_js_generated }
+    fixture_path = _resolve_fixture_path("builtin_func_untyped.cl.jac", FIXTURES);
+    prog = JacProgram();
+    ir = prog.compile(file_path=fixture_path, no_cgen=True, type_check=False);
+    _fatal = _fatal_compile_errors(prog);
+    assert not _fatal , (f"Compilation errors: {[str(e) for e in _fatal]}");
+    _ensure_js_generated(ir, prog);
+    js_code = ir.gen.js;
+
+    fn_starts = [
+        js_code.find("function " + fn) for fn in ["summarize", "numeric", "combined"]
+    ];
+    assert all([idx >= 0 for idx in fn_starts]) , (
+        "compiled user functions must be present"
+    );
+    user_js = js_code[min(fn_starts):];
+    for name in [
+        "sorted",
+        "len",
+        "sum",
+        "min",
+        "max",
+        "abs",
+        "round",
+        "enumerate",
+        "zip",
+        "range"
+    ] {
+        assert re.search(r"(?<![.\w])" + name + r"\s*\(", user_js) is None , (
+            "builtin function `" + name + "` lowered to a bare, undefined "
+            "identifier (ReferenceError at runtime); user code:\n" + user_js
+        );
+    }
+
+    import shutil;
+    if not shutil.which("node") {
+        import pytest;
+        pytest.skip("node not on PATH");
+    }
+    wrapper = (
+        js_code + "\nconsole.log(JSON.stringify({" + "  summarize: summarize([3, 1, 2])," + "  numeric: numeric(5)," + "  zipped: combined([1, 2], [3, 4])[2]" + "}));\n"
+    );
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", wrapper],
+        capture_output=True,
+        text=True,
+        timeout=30
+    );
+    assert result.returncode == 0 , (
+        "builtin-function codegen crashed in Node:\n"
+        f"stderr={result.stderr!r}\njs:\n{js_code}"
+    );
+    got = json.loads(result.stdout.strip());
+    assert got["summarize"]["sorted"] == [1, 2, 3] , got["summarize"];
+    assert got["summarize"]["total"] == 6 , got["summarize"];
+    assert got["summarize"]["count"] == 3 , got["summarize"];
+    assert got["summarize"]["enumerated"] == [[0, 3], [1, 1], [2, 2]] , (
+        got["summarize"]
+    );
+    assert got["summarize"]["ranged"] == [0, 1, 2] , got["summarize"];
+    assert got["numeric"]["abs"] == 5 , got["numeric"];
+    assert got["numeric"]["round"] == 3.14 , got["numeric"];
+    assert got["zipped"] == [[1, 3], [2, 4]] , got["zipped"];
+
+    assert_balanced_syntax(js_code, "builtin_func_untyped.cl.jac");
 }
 
 test "getattr default with or/and emits parenthesized nullish coalescing (#6562)" {

@@ -244,16 +244,14 @@ def get_py_code_gen(
 def get_format_sched(
     auto_lint: bool = False
 ) -> list[type[Transform[uni.Module, uni.Module]]] {
-    import from jaclang.compiler.passes.tool.comment_injection_pass {
-        CommentInjectionPass
-    }
+    import from jaclang.compiler.passes.tool.comment_attach_pass { CommentAttachPass }
     import from jaclang.compiler.passes.tool.doc_ir_gen_pass { DocIRGenPass }
     import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacAutoLintPass }
     import from jaclang.compiler.passes.tool.jac_formatter_pass { JacFormatPass }
     if auto_lint {
-        return [JacAutoLintPass, DocIRGenPass, CommentInjectionPass, JacFormatPass];
+        return [CommentAttachPass, JacAutoLintPass, DocIRGenPass, JacFormatPass];
     } else {
-        return [DocIRGenPass, CommentInjectionPass, JacFormatPass];
+        return [CommentAttachPass, DocIRGenPass, JacFormatPass];
     }
 }
 
@@ -282,7 +280,7 @@ def patch_co_filenames_bytes(raw_bc: bytes, find: str, replace: str) -> bytes {
 obj _SetupProgress {
     has _banner_shown: bool = False,
         _compile_count: int = 0,
-        _seen_files: set[str] by postinit,
+        _seen_files: set[str] postinit,
         _jaclang_root: (str | None) = None;
 
     def postinit -> None;

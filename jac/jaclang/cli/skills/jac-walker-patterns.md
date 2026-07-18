@@ -116,7 +116,7 @@ walker like_tweet(find_tweet) {       # inherits target_id + locate
 
 ## Pitfalls
 
-- `Root` in type annotations, bare `root` as a value (canonical). `root()` still compiles for backward-compat but emits a deprecation warning - always write `root`, `root ++> node`, `[root -->]`.
+- `Root` in type annotations, bare `root` as a value. The call form `root()` was removed - it is a hard error (E0049). Always write `root`, `root ++> node`, `[root -->]`.
 - **`visit` is a statement, not a method.** `visit [-->]` queues the *nodes* reachable over outgoing edges (`[edge -->]` is the form that yields edge objects); `visit (node_expr)` queues one specific node. Variants: `[<--]` incoming, `[->:EdgeType:->]` typed - single arrows; `[-->:EdgeType:]` is a parse error. Do NOT write `self.visit(...)` - a walker has no `visit` attribute (fails E1030).
 - Walkers don't `return` - they `report X;` (appears in `result.reports`) or `disengage;`.
 - Every entry needs a `with ... entry` clause - bare `can foo { ... }` (no `with`) is invalid (E0034).

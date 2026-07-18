@@ -34,6 +34,11 @@ test "reassigning a moved-from own binding revives it (no diagnostics)" {
     expect_ownership_codes(prog, []);
 }
 
+test "self-reassignment through a consuming call in a loop revives (no E1301)" {
+    prog = compile_fixture("reassign_through_call_loop_ok.jac");
+    expect_ownership_codes(prog, []);
+}
+
 test "un-annotated bindings are never move-checked" {
     prog = compile_fixture("unannotated_untouched.jac");
     expect_ownership_codes(prog, []);

@@ -188,7 +188,7 @@ def enter(
             help="Separate API port for HMR mode (0=same as port)"
         ),
         Arg.create(
-            "no_client",
+            "no-client",
             typ=bool,
             default=False,
             help="Skip client bundling/serving (API only)"

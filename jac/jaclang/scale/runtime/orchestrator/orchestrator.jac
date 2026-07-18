@@ -163,6 +163,30 @@ obj MicroserviceOrchestrator {
         return out;
     }
 
+    def _client_sources_newer_than(built_at: float) -> bool {
+        import os;
+        src_suffixes = (".jac", ".css", ".toml", ".ts", ".tsx", ".jsx");
+        for (dirpath, dirnames, filenames) in os.walk(".") {
+            dirnames[:] = [
+                d
+                for d in dirnames
+                if not d.startswith(".") and d != "node_modules" and d != "__pycache__"
+            ];
+            for fname in filenames {
+                if fname.endswith(src_suffixes) {
+                    try {
+                        if os.path.getmtime(os.path.join(dirpath, fname)) > built_at {
+                            return True;
+                        }
+                    } except OSError {
+                        continue;
+                    }
+                }
+            }
+        }
+        return False;
+    }
+
     def _build_client_bundle_if_needed(
         client_config: dict[str, any], client_dist: str
     ) -> None {
@@ -178,14 +202,17 @@ obj MicroserviceOrchestrator {
         index_file = dist_path / "index.html";
 
         if index_file.exists() {
-            logger.info("Client already built, skipping build");
-            return;
+            if not self._client_sources_newer_than(index_file.stat().st_mtime) {
+                logger.info("Client already built and up to date, skipping build");
+                return;
+            }
+            console.print("  Client sources changed - rebuilding bundle...");
         }
 
         console.print(f"  Building client from {client_entry}...");
         try {
             build_result = subprocess.run(
-                ["jac", "build", client_entry, "--client", "web"], timeout=120
+                ["jac", "build", client_entry, "--client", "web"], timeout=600
             );
             if build_result.returncode == 0 {
                 console.print("  Client build complete");
@@ -195,7 +222,10 @@ obj MicroserviceOrchestrator {
                 );
             }
         } except subprocess.TimeoutExpired {
-            logger.warning("Client build timed out");
+            logger.warning(
+                "Client build exceeded 600s and was terminated - "
+                "the gateway will serve the previous bundle if one exists"
+            );
         } except FileNotFoundError {
             logger.warning("jac build command not found");
         }
