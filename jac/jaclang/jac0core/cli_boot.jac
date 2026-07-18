@@ -76,38 +76,48 @@ def _handle_purge {
     sys.exit(0);
 }
 
-"""Run a bundled app if this binary was built with `jac bundle --target binary`.
+"""Run a bundled app if this binary was built with `jac build --as binary`.
 
-The binary packer stages the app's sealed image under `<site>/<app>/` and drops
-a `<site>/jac_app.json` boot marker; here we register that image and hand the
-process to the app entry (runpy as __main__, so `with entry`/`__main__` both
-fire). Returns True when an app ran (caller must not fall through to the CLI).
-"""
-def _run_bundled_app -> bool {
-    import json;
-    import runpy;
+A `jac build --as binary` artifact carries the app's `.jab` appended after the
+runtime payload; the launcher exports its byte range as JAC_APP_OVERLAY_OFF/_LEN.
+Here we slice that `.jab` out of the running binary and mount it through the SAME
+path as `jac run app.jab` (materialize + register + kind-aware run) -- so a
+bundled binary and a loose `.jab` boot identically, entry read from the sealed
+manifest. Returns the app's exit code, or None when this is not an app binary
+(the caller then continues to the normal CLI)."""
+def _run_bundled_app -> (int | None) {
+    off = os.environ.get("JAC_APP_OVERLAY_OFF");
+    length = os.environ.get("JAC_APP_OVERLAY_LEN");
+    if not off or not length {
+        return None;
+    }
+    import from jaclang.runtimelib.jab { materialize_jab_bytes }
+    import from jaclang.cli.commands.execution { run_jab_image }
+    # The launcher sets these only for THIS binary and clears them for a plain
+    # jac, so reaching here means a real app binary; a failed slice/extract is a
+    # genuinely corrupt image -> clean error, never an uncaught traceback.
     try {
-        import _jac_finder;
-        site_dir = Path(_jac_finder.__file__).parent;
-    } except ImportError {
-        return False;
+        with open(sys.executable, "rb") as f {
+            f.seek(int(off));
+            data = f.read(int(length));
+        }
+        img_root = materialize_jab_bytes(data);
+    } except Exception as e {
+        print(
+            f"jac: this binary's embedded app image is unreadable ({e})",
+            file=sys.stderr
+        );
+        return 1;
     }
-    import from jaclang.jac0core.sealed { APP_MARKER, register_image }
-    marker = site_dir / APP_MARKER;
-    if not marker.is_file() {
-        return False;
-    }
-    cfg = json.loads(marker.read_text());
-    register_image(str(site_dir / cfg["package"] / "_precompiled"));
-    runpy.run_module(cfg["entry"], run_name="__main__", alter_sys=True);
-    return True;
+    return run_jab_image(img_root, None, sys.argv[1:], False, "<app binary>");
 }
 
 """Start the Jac CLI."""
 def start_cli -> None {
     # A bundled-app binary runs its app instead of the jac CLI.
-    if _run_bundled_app() {
-        return;
+    app_rc = _run_bundled_app();
+    if app_rc is not None {
+        sys.exit(app_rc);
     }
 
     # Check if first argument is 'purge'

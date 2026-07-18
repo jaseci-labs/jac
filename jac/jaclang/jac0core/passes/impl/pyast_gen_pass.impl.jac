@@ -855,6 +855,22 @@ impl PyastGenPass.exit_test(nd: uni.Test) -> None {
             for stmt in self.resolve_stmt_block(nd.body, doc=nd.doc)
         ];
     }
+    test_directives = self.scope_directive_stmts([nd]);
+    if test_directives {
+        insert_at = 1
+            if (
+                len(body_stmts) > 0
+                and isinstance(body_stmts[0], ast3.Expr)
+                and isinstance(body_stmts[0].value, ast3.Constant)
+                and isinstance(body_stmts[0].value.value, str)
+            )
+            else 0;
+        body_stmts = [
+            *body_stmts[:insert_at],
+            *[cast(ast3.stmt, s) for s in test_directives],
+            *body_stmts[insert_at:]
+        ];
+    }
     func = self.sync(
         ast3.FunctionDef(
             name=test_name,
@@ -968,6 +984,67 @@ impl PyastGenPass.exit_client_block(nd: uni.ClientBlock) -> None {
 
 impl PyastGenPass.exit_server_block(nd: uni.ServerBlock) -> None {
     nd.gen.py_ast = self._flatten_ast_list([item.gen.py_ast for item in nd.body]);
+}
+
+impl PyastGenPass.exit_open_stmt(nd: uni.OpenStmt) -> None {
+    self.builtin_imports.add("_jac_region_open");
+    self.builtin_imports.add("_jac_region_close");
+    _tmp = f"_jac_region_{nd.loc.first_line}_{nd.loc.col_start}";
+    assign_stmt = self.sync(
+        ast3.Assign(
+            targets=[self.sync(ast3.Name(id=_tmp, ctx=ast3.Store()), jac_node=nd)],
+            value=cast(ast3.expr, self.py_ast_val(nd.target))
+        ),
+        jac_node=nd.target
+    );
+    open_stmt = self.sync(
+        ast3.Expr(
+            value=self.sync(
+                ast3.Call(
+                    func=self.sync(
+                        ast3.Name(id="_jac_region_open", ctx=ast3.Load()), jac_node=nd
+                    ),
+                    args=[self.sync(ast3.Name(id=_tmp, ctx=ast3.Load()), jac_node=nd)],
+                    keywords=[]
+                ),
+                jac_node=nd
+            )
+        ),
+        jac_node=nd
+    );
+    close_stmt = self.sync(
+        ast3.Expr(
+            value=self.sync(
+                ast3.Call(
+                    func=self.sync(
+                        ast3.Name(id="_jac_region_close", ctx=ast3.Load()), jac_node=nd
+                    ),
+                    args=[self.sync(ast3.Name(id=_tmp, ctx=ast3.Load()), jac_node=nd)],
+                    keywords=[]
+                ),
+                jac_node=nd
+            )
+        ),
+        jac_node=nd
+    );
+    clear_stmt = self.sync(
+        ast3.Assign(
+            targets=[self.sync(ast3.Name(id=_tmp, ctx=ast3.Store()), jac_node=nd)],
+            value=self.sync(ast3.Constant(value=None), jac_node=nd)
+        ),
+        jac_node=nd
+    );
+    body_stmts = self._flatten_ast_list([item.gen.py_ast for item in nd.body]);
+    if not body_stmts {
+        body_stmts = [self.sync(ast3.Pass(), jac_node=nd)];
+    }
+    try_stmt = self.sync(
+        ast3.Try(
+            body=body_stmts, handlers=[], orelse=[], finalbody=[close_stmt, clear_stmt]
+        ),
+        jac_node=nd
+    );
+    nd.gen.py_ast = [assign_stmt, open_stmt, try_stmt];
 }
 
 impl PyastGenPass.exit_native_block(nd: uni.NativeBlock) -> None {
@@ -1523,6 +1600,20 @@ impl PyastGenPass.exit_ability(nd: uni.Ability) -> None {
         self.emit(E5005, node_override=nd);
         body = [self.sync(ast3.Pass(), nd)];
     }
+    directive_stmts = self.scope_directive_stmts(
+        [nd, nd.body if isinstance(nd.body, uni.ImplDef) else None]
+    );
+    if directive_stmts {
+        insert_at = 1
+            if (
+                len(body) > 0
+                and isinstance(body[0], ast3.Expr)
+                and isinstance(body[0].value, ast3.Constant)
+                and isinstance(body[0].value.value, str)
+            )
+            else 0;
+        body = [*body[:insert_at], *directive_stmts, *body[insert_at:]];
+    }
     ast_returns: ast3.expr = self.sync(ast3.Constant(value=None));
     if (isinstance(nd.signature, uni.FuncSignature) and nd.signature.return_type) {
         if (
@@ -2069,6 +2160,20 @@ impl PyastGenPass.exit_while_stmt(nd: uni.WhileStmt) -> None {
     ];
 }
 
+impl PyastGenPass.exit_forever_stmt(nd: uni.ForeverStmt) -> None {
+    nd.gen.py_ast = [
+        self.sync(
+            ast3.While(
+                `test=self.sync(ast3.Constant(value=True)),
+                body=[
+                    cast(ast3.stmt, stmt) for stmt in self.resolve_stmt_block(nd.body)
+                ],
+                orelse=[]
+            )
+        )
+    ];
+}
+
 impl PyastGenPass.exit_with_stmt(nd: uni.WithStmt) -> None {
     with_node = ast3.AsyncWith if nd.is_async else ast3.With;
     nd.gen.py_ast = [
@@ -2303,20 +2408,35 @@ impl PyastGenPass.exit_cast_expr(nd: uni.CastExpr) -> None {
     nd.gen.py_ast = nd.value.gen.py_ast;
 }
 
-impl PyastGenPass.exit_global_stmt(nd: uni.GlobalStmt) -> None {
-    py_nodes = [];
-    for x in nd.target {
-        py_nodes.append(self.sync(ast3.Global(names=[x.sym_name]), jac_node=x));
+impl PyastGenPass.scope_directive_stmts(scopes: list) -> list[ast3.AST] {
+    global_names: list = [];
+    nonlocal_names: list = [];
+    seen: set = set();
+    for scope in scopes {
+        if scope is None {
+            continue;
+        }
+        for name in scope.implicit_rebinds {
+            if name in seen {
+                continue;
+            }
+            seen.add(name);
+            sym = scope.implicit_rebinds[name];
+            if isinstance(sym.parent_tab, uni.Module) {
+                global_names.append(name);
+            } else {
+                nonlocal_names.append(name);
+            }
+        }
     }
-    nd.gen.py_ast = [*py_nodes];
-}
-
-impl PyastGenPass.exit_non_local_stmt(nd: uni.NonLocalStmt) -> None {
-    py_nodes = [];
-    for x in nd.target {
-        py_nodes.append(self.sync(ast3.Nonlocal(names=[x.sym_name]), jac_node=x));
+    stmts: list = [];
+    if global_names {
+        stmts.append(self.sync(ast3.Global(names=sorted(global_names))));
     }
-    nd.gen.py_ast = [*py_nodes];
+    if nonlocal_names {
+        stmts.append(self.sync(ast3.Nonlocal(names=sorted(nonlocal_names))));
+    }
+    return stmts;
 }
 
 impl PyastGenPass.exit_assignment(nd: uni.Assignment) -> None {
@@ -2429,7 +2549,7 @@ impl PyastGenPass.exit_binary_expr(nd: uni.BinaryExpr) -> None {
             keywords.append(
                 self.sync(
                     ast3.keyword(
-                        arg='EdgeDir',
+                        arg='dir',
                         value=self.sync(
                             ast3.Attribute(
                                 value=self.jaclib_obj('EdgeDir'),
@@ -2445,7 +2565,7 @@ impl PyastGenPass.exit_binary_expr(nd: uni.BinaryExpr) -> None {
             keywords.append(
                 self.sync(
                     ast3.keyword(
-                        arg='filter_on',
+                        arg='filter',
                         value=cast(
                             ast3.expr, self.py_ast_val(nd.op.edge_spec.filter_cond)
                         )
@@ -2590,6 +2710,12 @@ impl PyastGenPass.exit_bool_expr(nd: uni.BoolExpr) -> None {
 
 impl PyastGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
     if isinstance(nd.body, `list) {
+        tail = nd.tail_return_expr();
+
+        if tail is not None {
+            self._emit_lambda_expr_body(nd, tail);
+            return;
+        }
         if (nd.signature and nd.signature.gen.py_ast) {
             arguments = cast(ast3.arguments, self.py_ast_val(nd.signature));
         } else {
@@ -2634,6 +2760,12 @@ impl PyastGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
         ];
         return;
     }
+    self._emit_lambda_expr_body(nd, cast(uni.Expr, nd.body));
+}
+
+impl PyastGenPass._emit_lambda_expr_body(
+    nd: uni.LambdaExpr, body_node: uni.Expr
+) -> None {
     if nd.signature {
         self._remove_lambda_param_annotations(nd.signature);
     }
@@ -2647,7 +2779,6 @@ impl PyastGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
             jac_node=nd
         );
     }
-    body_node = cast(uni.Expr, nd.body);
     body_expr = cast(ast3.expr, self.py_ast_val(body_node));
     nd.gen.py_ast = [
         self.sync(ast3.Lambda(args=arguments, body=body_expr), jac_node=nd)
@@ -2664,7 +2795,45 @@ impl PyastGenPass._remove_lambda_param_annotations(
     }
 }
 
+impl PyastGenPass._emit_jobj_ref(nd: uni.UnaryExpr) -> None {
+    nd.gen.py_ast = [
+        self.sync(
+            ast3.Call(
+                func=self.builtin_name('jobj'),
+                args=[],
+                keywords=[
+                    self.sync(
+                        ast3.keyword(
+                            arg='id', value=cast(ast3.expr, self.py_ast_val(nd.operand))
+                        )
+                    )
+                ]
+            )
+        )
+    ];
+}
+
 impl PyastGenPass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
+    if nd.ownership == OwnershipKind.OWN {
+        nd.gen.py_ast = [self.py_ast_val(nd.operand)];
+        return;
+    }
+    if nd.op.name == Tok.BW_AND {
+        if is_borrow_kind(nd.ownership) {
+            nd.gen.py_ast = [
+                self.sync(
+                    ast3.Call(
+                        func=self.builtin_name('jref'),
+                        args=[cast(ast3.expr, self.py_ast_val(nd.operand))],
+                        keywords=[]
+                    )
+                )
+            ];
+        } else {
+            self._emit_jobj_ref(nd);
+        }
+        return;
+    }
     op_tok = Tok(nd.op.name) if (nd.op.name in Tok.__members__) else None;
     op_cls = UNARY_OP_MAP.get(op_tok) if op_tok else None;
     if op_cls {
@@ -2701,23 +2870,6 @@ impl PyastGenPass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
         ];
     } elif (nd.op.name in [Tok.STAR_POW]) {
         nd.gen.py_ast = nd.operand.gen.py_ast;
-    } elif (nd.op.name in [Tok.BW_AND]) {
-        nd.gen.py_ast = [
-            self.sync(
-                ast3.Call(
-                    func=self.builtin_name('jobj'),
-                    args=[],
-                    keywords=[
-                        self.sync(
-                            ast3.keyword(
-                                arg='id',
-                                value=cast(ast3.expr, self.py_ast_val(nd.operand))
-                            )
-                        )
-                    ]
-                )
-            )
-        ];
     } else {
         self.ice("Unknown Unary operator " + str(nd.op.value));
     }

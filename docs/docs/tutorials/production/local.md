@@ -220,7 +220,7 @@ Response (all walker responses are wrapped in a standard envelope):
 These endpoints are enabled by default. To disable them (e.g. in production), set `docs_enabled = false` in your `jac.toml`:
 
 ```toml
-[plugins.scale.server]
+[scale.server]
 docs_enabled = false
 ```
 

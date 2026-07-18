@@ -24,7 +24,6 @@ obj TemplateRegistry {
     def get_default -> ProjectTemplate;
     def list_templates -> list[tuple[str, str]];
     def list_kinds -> list[tuple[str, str]];
-    def has_template(name: str) -> bool;
     def is_empty -> bool;
     def clear -> None;
 }

@@ -7,14 +7,14 @@ entry-point = "main.jac"
 [serve]
 base_route_app = "app"
 
-[plugins.client]
+[client]
 base_path = "/admin/"
 
-[plugins.client.app_meta_data]
+[client.app_meta_data]
 title = "JAC-Scale Admin"
 author = "Jaseci"
 
-[plugins.client.vite]
+[client.vite]
 plugins = ["tailwindcss()"]
 lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 

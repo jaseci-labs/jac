@@ -42,8 +42,8 @@ cl def:pub app -> JsxElement {
     }
     return <div>
         <input value={text}
-            onChange={lambda e: ChangeEvent { text = e.target.value; }}
-            onKeyPress={lambda e: KeyboardEvent { if e.key == "Enter" { add(); } }}
+            onChange={lambda (e: ChangeEvent) { text = e.target.value; }}
+            onKeyPress={lambda (e: KeyboardEvent) { if e.key == "Enter" { add(); } }}
             placeholder="Add a todo..." />
         <button onClick={add}>Add</button>
         {[<p key={jid(t)}>{t.title} ({t.category})</p> for t in todos]}
@@ -74,11 +74,11 @@ This single file defines a persistent data model, an AI-powered categorizer, a R
     [serve]
     base_route_app = "app"
 
-    [plugins.scale]
+    [scale]
 
-    [plugins.client]
+    [client]
 
-    [plugins.byllm.model]
+    [byllm.model]
     default_model = "anthropic/claude-sonnet-4-6"
     ```
 

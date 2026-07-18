@@ -139,3 +139,26 @@ test "client error endpoint rejects empty payload" {
         client.close();
     }
 }
+
+# =============================================================================
+# Prod page error handler setup
+# =============================================================================
+test "prod render_page injects early error handler before module bundle script" {
+    import types;
+    import from jaclang.runtimelib.client.serving { JacClient }
+    introspector = types.SimpleNamespace(
+        _client_manifest={'exports': ['app'], 'endpoint_effects': {}},
+        _bundle=None,
+        _module=None,
+        module_name='stub',
+        load=lambda { None; },
+        get_client_functions=lambda { {'app': None}; },
+        ensure_bundle=lambda { 'abc123'; }
+    );
+    result = JacClient.render_page(introspector, 'app', {}, 'guest');
+    html = result['html'];
+    assert 'window.__jacErrorHandlersInstalled' in html;
+    assert '/cl/__error__' in html;
+    # Handler script must appear before the bundle so it catches errors during evaluation
+    assert html.index('window.__jacErrorHandlersInstalled') < html.index('client.js');
+}

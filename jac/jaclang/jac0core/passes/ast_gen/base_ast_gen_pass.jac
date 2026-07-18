@@ -1,4 +1,3 @@
-import from collections.abc { Sequence }
 import from typing { TypeVar }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.uni_pass { UniPass }

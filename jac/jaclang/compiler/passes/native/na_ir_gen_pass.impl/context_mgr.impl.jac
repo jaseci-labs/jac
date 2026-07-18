@@ -48,21 +48,8 @@ impl NaIRGenPass._codegen_with_recursive(
         return;
     }
 
-    enter_fn: (ir.Function | None) = None;
-    exit_fn: (ir.Function | None) = None;
-    for check_name in self._mro_of(type_name) {
-        enter_key = f"{check_name}.__enter__";
-        exit_key = f"{check_name}.__exit__";
-        if enter_fn is None and enter_key in self.method_funcs {
-            enter_fn = self.method_funcs[enter_key];
-        }
-        if exit_fn is None and exit_key in self.method_funcs {
-            exit_fn = self.method_funcs[exit_key];
-        }
-        if enter_fn is not None and exit_fn is not None {
-            break;
-        }
-    }
+    enter_fn = self._resolve_method(type_name, "__enter__");
+    exit_fn = self._resolve_method(type_name, "__exit__");
     if enter_fn is None or exit_fn is None {
         self._codegen_with_recursive(exprs, idx + 1, body);
         return;

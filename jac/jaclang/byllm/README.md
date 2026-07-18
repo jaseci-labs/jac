@@ -86,13 +86,13 @@ Docstrings naturally enhance the semantics of their associated code constructs, 
 Configure byLLM behavior globally using `jac.toml`:
 
 ```toml
-[plugins.byllm]
+[byllm]
 system_prompt = "You are a helpful assistant..."
 
-[plugins.byllm.model]
+[byllm.model]
 default_model = "gpt-4o-mini"
 
-[plugins.byllm.call_params]
+[byllm.call_params]
 temperature = 0.7
 ```
 

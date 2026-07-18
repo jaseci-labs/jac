@@ -35,13 +35,16 @@ impl EsastGenPass._literal_value(expr: (uni.UniNode | None)) -> (object | None) 
         return expr.lit_value;
     }
     if isinstance(expr, uni.MultiString) {
-        parts: list[str] = [];
+        parts: list[str | bytes] = [];
         for segment in expr.strings {
             if isinstance(segment, uni.String) {
                 parts.append(segment.lit_value);
             } else {
                 return None;
             }
+        }
+        if parts and isinstance(parts[0], `bytes) {
+            return b''.join(parts);
         }
         return ''.join(parts);
     }
@@ -137,10 +140,6 @@ impl EsastGenPass.exit_module_code(nd: uni.ModuleCode) -> None {
     nd.gen.es_ast = self._collect_body_stmts(nd.body);
 }
 
-impl EsastGenPass.exit_non_local_stmt(nd: uni.NonLocalStmt) -> None {
-    nd.gen.es_ast = [];
-}
-
 impl EsastGenPass.exit_global_vars(nd: uni.GlobalVars) -> None {
     if nd.code_context == CodeContext.CLIENT {
         self.client_manifest.has_client = True;
@@ -196,8 +195,53 @@ impl EsastGenPass.exit_name(nd: uni.Name) -> None {
     nd.gen.es_ast = identifier;
 }
 
+impl EsastGenPass._in_type_slot(nd: uni.UniNode) -> bool {
+    child = nd;
+    parent = nd.parent;
+    while parent is not None {
+        if (
+            isinstance(parent, uni.SubTag)
+            or (isinstance(parent, uni.FuncSignature) and parent.return_type is child)
+            or (isinstance(parent, uni.CastExpr) and parent.cast_type is child)
+            or (isinstance(parent, uni.TypedCtxBlock) and parent.type_ctx is child)
+            or (isinstance(parent, uni.Except) and parent.ex_type is child)
+        ) {
+            return True;
+        }
+        child = parent;
+        parent = parent.parent;
+    }
+    return False;
+}
+
+impl EsastGenPass._is_call_target(nd: uni.UniNode) -> bool {
+    return isinstance(nd.parent, uni.FuncCall) and nd.parent.target is nd;
+}
+
 impl EsastGenPass.exit_builtin_type(nd: uni.BuiltinType) -> None {
     type_name = nd.sym_name;
+    self._ensure_emitters();
+    if (
+        not self._in_type_slot(nd)
+        and getattr(self._builtin_emitter, "emit_" + type_name, None) is not None
+    ) {
+        nd.gen.es_ast = self.sync_loc(
+            es.MemberExpression(
+                object=es.MemberExpression(
+                    object=es.Identifier(name='_jac'),
+                    property=es.Identifier(name='types'),
+                    computed=False
+                ),
+                property=es.Identifier(name=type_name),
+                computed=False
+            ),
+            jac_node=nd
+        );
+        if not self._is_call_target(nd) {
+            self.needs_jac_runtime = True;
+        }
+        return;
+    }
     tag = self.sync_loc(
         es.Literal(value=type_name, raw=json.dumps(type_name)), jac_node=nd
     );
@@ -675,7 +719,7 @@ impl EsastGenPass.exit_dict_val(nd: uni.DictVal) -> None {
     nd.gen.es_ast = obj_expr;
 }
 
-impl EsastGenPass.exit_tuple_val(nd: uni.TupleVal) -> None {
+impl EsastGenPass._gen_seq_array(nd: uni.UniNode) -> None {
     elements: list[es.Expression | es.SpreadElement | None] = [];
     for item in nd.values {
         if (
@@ -697,6 +741,10 @@ impl EsastGenPass.exit_tuple_val(nd: uni.TupleVal) -> None {
     }
     array_expr = self.sync_loc(es.ArrayExpression(elements=elements), jac_node=nd);
     nd.gen.es_ast = array_expr;
+}
+
+impl EsastGenPass.exit_tuple_val(nd: uni.TupleVal) -> None {
+    self._gen_seq_array(nd);
 }
 
 impl EsastGenPass.exit_set_val(nd: uni.SetVal) -> None {
@@ -719,27 +767,7 @@ impl EsastGenPass.exit_set_val(nd: uni.SetVal) -> None {
 }
 
 impl EsastGenPass.exit_list_val(nd: uni.ListVal) -> None {
-    elements: list[es.Expression | es.SpreadElement | None] = [];
-    for item in nd.values {
-        if (
-            isinstance(item, uni.UnaryExpr)
-            and item.op.name == Tok.STAR_MUL.value
-            and item.operand.gen.es_ast
-        ) {
-            elements.append(
-                self.sync_loc(
-                    es.SpreadElement(
-                        argument=cast(es.Expression, item.operand.gen.es_ast)
-                    ),
-                    jac_node=item
-                )
-            );
-        } elif item.gen.es_ast {
-            elements.append(cast(es.Expression, item.gen.es_ast));
-        }
-    }
-    array_expr = self.sync_loc(es.ArrayExpression(elements=elements), jac_node=nd);
-    nd.gen.es_ast = array_expr;
+    self._gen_seq_array(nd);
 }
 
 impl EsastGenPass.exit_atom_unit(nd: uni.AtomUnit) -> None {
@@ -775,7 +803,17 @@ impl EsastGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
             }
         }
     }
-    if isinstance(nd.body, list) {
+    tail = nd.tail_return_expr();
+    if (tail is not None and isinstance(nd.body, list)) {
+        body_expr = cast(
+            es.Expression,
+            tail.gen.es_ast or self.sync_loc(es.Literal(value=None), jac_node=tail)
+        );
+        nd.gen.es_ast = self.sync_loc(
+            es.ArrowFunctionExpression(params=params, body=body_expr, async_=False),
+            jac_node=nd
+        );
+    } elif isinstance(nd.body, list) {
         body_stmts: list[es.Statement] = [];
         for stmt in nd.body {
             if stmt.gen.es_ast {
@@ -988,6 +1026,29 @@ impl EsastGenPass._return_type_includes_jsx_element(rt: uni.Expr) -> bool {
         );
     }
     return isinstance(rt, uni.Name) and rt.value == 'JsxElement';
+}
+
+impl EsastGenPass._component_pascal_name(nd: uni.Ability) -> (str | None) {
+    if nd.code_context != CodeContext.CLIENT or nd.is_method {
+        return None;
+    }
+    if not isinstance(nd.signature, uni.FuncSignature) {
+        return None;
+    }
+    rt = nd.signature.return_type;
+    if rt is None or not self._return_type_includes_jsx_element(rt) {
+        return None;
+    }
+    name = nd.name_ref.sym_name;
+    if not name or not ('a' <= name[0] and name[0] <= 'z') {
+        return None;
+    }
+    pascal = name[0].upper() + name[1:];
+    mod = nd.find_parent_of_type(uni.Module);
+    if mod is not None and mod.lookup(pascal, deep=False) is not None {
+        return None;
+    }
+    return pascal;
 }
 
 impl EsastGenPass._component_call_abi(ability_node: uni.Ability) -> str {
@@ -1630,7 +1691,6 @@ impl EsastGenPass._try_lower_server_rpc_call(
 }
 
 impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
-    import from jaclang.compiler.type_system { types as jtypes }
     args: list[(es.Expression | es.SpreadElement)] = [];
     props: list[(es.Property | es.SpreadElement)] = [];
     for param in nd.params {
@@ -1770,10 +1830,6 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
     self._ensure_emitters();
 
     _call_kind = nd.call_kind;
-    if _call_kind is None {
-        import from jaclang.compiler.symbol_utils { classify_call }
-        _call_kind = classify_call(nd).value;
-    }
     if _call_kind == "builtin" and isinstance(nd.target, uni.Name) {
         import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
         _builtin_name = nd.target.sym_name;
@@ -1811,6 +1867,11 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
                 return;
             }
         }
+    }
+
+    if isinstance(nd.target, uni.BuiltinType)
+    and isinstance(callee, es.MemberExpression) {
+        self.needs_jac_runtime = True;
     }
 
     args_obj = self.sync_loc(es.ObjectExpression(properties=props), jac_node=nd);
@@ -1957,7 +2018,9 @@ impl EsastGenPass.exit_assignment(nd: uni.Assignment) -> None {
                 value_expr
                 or self._get_ast_or_default(
                     nd.value,
-                    default_factory=lambda _src: any : es.Identifier(name='undefined')
+                    default_factory=lambda (_src: any) { es.Identifier(
+                        name='undefined'
+                    ); }
                 )
             )
         );
@@ -2016,7 +2079,7 @@ impl EsastGenPass.exit_assignment(nd: uni.Assignment) -> None {
             value_expr
             or self._get_ast_or_default(
                 nd.value,
-                default_factory=lambda _src: any : es.Identifier(name='undefined')
+                default_factory=lambda (_src: any) { es.Identifier(name='undefined'); }
             )
         )
     );
@@ -2284,7 +2347,7 @@ impl EsastGenPass._is_collection_expr(expr_node: uni.UniNode) -> bool {
 }
 
 impl EsastGenPass._build_jac_ref(
-    path: list[str], jac_node: uni.UniNode
+    path: list[str], jac_node: (uni.UniNode | None)
 ) -> es.Expression {
     ref: es.Expression = self.sync_loc(es.Identifier(name=path[0]), jac_node=jac_node);
     for name in path[1:] {
@@ -2420,7 +2483,7 @@ impl EsastGenPass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
     operand = cast(
         es.Expression,
         self._get_ast_or_default(
-            nd.operand, default_factory=lambda _src: any : es.Literal(value=0)
+            nd.operand, default_factory=lambda (_src: any) { es.Literal(value=0); }
         )
     );
     op_tok = Tok(nd.op.name) if (nd.op.name in Tok.__members__) else None;
@@ -2458,10 +2521,9 @@ impl EsastGenPass.exit_compare_expr(nd: uni.CompareExpr) -> None {
         es.Expression,
         self._get_ast_or_default(
             nd.left,
-            default_factory=lambda src: any :
-                es.Identifier(name=src.sym_name)
-                    if isinstance(src, uni.Name)
-                    else es.Identifier(name='left')
+            default_factory=lambda (src: any) { es.Identifier(name=src.sym_name)
+                if isinstance(src, uni.Name)
+                else es.Identifier(name='left'); }
         )
     );
     for (op_token, right_node) in zip(nd.ops, nd.rights, strict=False) {
@@ -2469,10 +2531,9 @@ impl EsastGenPass.exit_compare_expr(nd: uni.CompareExpr) -> None {
             es.Expression,
             self._get_ast_or_default(
                 right_node,
-                default_factory=lambda src: any :
-                    es.Identifier(name=src.sym_name)
-                        if isinstance(src, uni.Name)
-                        else es.Identifier(name='right')
+                default_factory=lambda (src: any) { es.Identifier(name=src.sym_name)
+                    if isinstance(src, uni.Name)
+                    else es.Identifier(name='right'); }
             )
         );
         op_tok = Tok(op_token.name) if (op_token.name in Tok.__members__) else None;
@@ -2587,7 +2648,7 @@ impl EsastGenPass.exit_bool_expr(nd: uni.BoolExpr) -> None {
     result: es.Expression = cast(
         es.Expression,
         self._get_ast_or_default(
-            nd.values[0], default_factory=lambda _src: any : es.Literal(value=None)
+            nd.values[0], default_factory=lambda (_src: any) { es.Literal(value=None); }
         )
     );
 
@@ -2596,7 +2657,7 @@ impl EsastGenPass.exit_bool_expr(nd: uni.BoolExpr) -> None {
         right = cast(
             es.Expression,
             self._get_ast_or_default(
-                val, default_factory=lambda _src: any : es.Literal(value=None)
+                val, default_factory=lambda (_src: any) { es.Literal(value=None); }
             )
         );
         if left_maybe_collection {
@@ -2625,20 +2686,18 @@ impl EsastGenPass.exit_binary_expr(nd: uni.BinaryExpr) -> None {
         es.Expression,
         self._get_ast_or_default(
             nd.left,
-            default_factory=lambda src: any :
-                es.Identifier(name=src.sym_name)
-                    if isinstance(src, uni.Name)
-                    else es.Literal(value=0)
+            default_factory=lambda (src: any) { es.Identifier(name=src.sym_name)
+                if isinstance(src, uni.Name)
+                else es.Literal(value=0); }
         )
     );
     right = cast(
         es.Expression,
         self._get_ast_or_default(
             nd.right,
-            default_factory=lambda src: any :
-                es.Identifier(name=src.sym_name)
-                    if isinstance(src, uni.Name)
-                    else es.Literal(value=0)
+            default_factory=lambda (src: any) { es.Identifier(name=src.sym_name)
+                if isinstance(src, uni.Name)
+                else es.Literal(value=0); }
         )
     );
 
@@ -2716,7 +2775,8 @@ impl EsastGenPass.exit_switch_case(nd: uni.SwitchCase) -> None {
     case_test: (es.Expression | None) = None;
     if (nd.pattern and isinstance(nd.pattern, uni.MatchValue)) {
         case_test = self._get_ast_or_default(
-            nd.pattern.value, default_factory=lambda _src: any : es.Literal(value=None)
+            nd.pattern.value,
+            default_factory=lambda (_src: any) { es.Literal(value=None); }
         );
     }
     body_stmts = self._collect_stmt_body(nd.body);
@@ -2727,7 +2787,7 @@ impl EsastGenPass.exit_switch_case(nd: uni.SwitchCase) -> None {
 
 impl EsastGenPass.exit_switch_stmt(nd: uni.SwitchStmt) -> None {
     `test = self._get_ast_or_default(
-        nd.target, default_factory=lambda _src: any : es.Literal(value=None)
+        nd.target, default_factory=lambda (_src: any) { es.Literal(value=None); }
     );
     cases: list[es.SwitchCase] = [];
     for stmt in nd.cases {
@@ -2745,7 +2805,7 @@ impl EsastGenPass.exit_expr_stmt(nd: uni.ExprStmt) -> None {
     expr = cast(
         es.Expression,
         self._get_ast_or_default(
-            nd.expr, default_factory=lambda _src: any : es.Literal(value=None)
+            nd.expr, default_factory=lambda (_src: any) { es.Literal(value=None); }
         )
     );
 
@@ -2826,6 +2886,15 @@ impl EsastGenPass.exit_assert_stmt(nd: uni.AssertStmt) -> None {
     nd.gen.es_ast = if_stmt;
 }
 
+impl EsastGenPass._jac_exc_ref(
+    member: str, jac_node: (uni.UniNode | None)
+) -> es.MemberExpression {
+    self.needs_jac_runtime = True;
+    return cast(
+        es.MemberExpression, self._build_jac_ref(['_jac', 'exc', member], jac_node)
+    );
+}
+
 impl EsastGenPass.exit_raise_stmt(nd: uni.RaiseStmt) -> None {
     argument: es.Expression = cast(es.Expression, nd.cause.gen.es_ast)
         if (nd.cause and nd.cause.gen.es_ast)
@@ -2843,28 +2912,11 @@ impl EsastGenPass.exit_raise_stmt(nd: uni.RaiseStmt) -> None {
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     if callee is not None and isinstance(callee, es.Identifier) {
         if JAC_TYPE_REGISTRY.is_exception(callee.name) {
-            self.needs_jac_runtime = True;
-            exc_ref = self.sync_loc(
-                es.MemberExpression(
-                    object=self.sync_loc(
-                        es.MemberExpression(
-                            object=self.sync_loc(
-                                es.Identifier(name='_jac'), jac_node=nd
-                            ),
-                            property=self.sync_loc(
-                                es.Identifier(name='exc'), jac_node=nd
-                            )
-                        ),
-                        jac_node=nd
-                    ),
-                    property=self.sync_loc(es.Identifier(name=callee.name), jac_node=nd)
-                ),
-                jac_node=nd
-            );
+            exc_ref = self._jac_exc_ref(callee.name, nd);
             argument = self.sync_loc(
                 es.NewExpression(callee=exc_ref, arguments=call_args or []), jac_node=nd
             );
-        } elif callee.name in {'Error'} {
+        } elif callee.name == 'Error' {
             argument = self.sync_loc(
                 es.NewExpression(
                     callee=self.sync_loc(es.Identifier(name='Error'), jac_node=nd),
@@ -3031,33 +3083,9 @@ impl EsastGenPass.exit_try_stmt(nd: uni.TryStmt) -> None {
 
             test_expr: (es.Expression | None) = None;
             if exc_type_name and JAC_TYPE_REGISTRY.is_exception(exc_type_name) {
-                self.needs_jac_runtime = True;
-
                 test_expr = self.sync_loc(
                     es.CallExpression(
-                        callee=self.sync_loc(
-                            es.MemberExpression(
-                                object=self.sync_loc(
-                                    es.MemberExpression(
-                                        object=self.sync_loc(
-                                            es.Identifier(name='_jac'),
-                                            jac_node=except_node
-                                        ),
-                                        property=self.sync_loc(
-                                            es.Identifier(name='exc'),
-                                            jac_node=except_node
-                                        ),
-                                        computed=False
-                                    ),
-                                    jac_node=except_node
-                                ),
-                                property=self.sync_loc(
-                                    es.Identifier(name='matches'), jac_node=except_node
-                                ),
-                                computed=False
-                            ),
-                            jac_node=except_node
-                        ),
+                        callee=self._jac_exc_ref('matches', except_node),
                         arguments=[
                             self.sync_loc(
                                 es.Identifier(name=catch_param_name),
@@ -3240,7 +3268,8 @@ impl EsastGenPass.exit_while_stmt(nd: uni.WhileStmt) -> None {
         cast(
             es.Expression,
             self._get_ast_or_default(
-                nd.condition, default_factory=lambda _src: any : es.Literal(value=True)
+                nd.condition,
+                default_factory=lambda (_src: any) { es.Literal(value=True); }
             )
         ),
         nd
@@ -3248,6 +3277,14 @@ impl EsastGenPass.exit_while_stmt(nd: uni.WhileStmt) -> None {
     body = self._build_block_statement(nd, nd.body);
     while_stmt = self.sync_loc(es.WhileStatement(`test=`test, body=body), jac_node=nd);
     nd.gen.es_ast = while_stmt;
+}
+
+impl EsastGenPass.exit_forever_stmt(nd: uni.ForeverStmt) -> None {
+    body = self._build_block_statement(nd, nd.body);
+    forever_stmt = self.sync_loc(
+        es.WhileStatement(`test=es.Literal(value=True), body=body), jac_node=nd
+    );
+    nd.gen.es_ast = forever_stmt;
 }
 
 impl EsastGenPass.exit_else_stmt(nd: uni.ElseStmt) -> None {
@@ -3263,7 +3300,8 @@ impl EsastGenPass.exit_else_if(nd: uni.ElseIf) -> None {
         cast(
             es.Expression,
             self._get_ast_or_default(
-                nd.condition, default_factory=lambda _src: any : es.Literal(value=True)
+                nd.condition,
+                default_factory=lambda (_src: any) { es.Literal(value=True); }
             )
         ),
         nd
@@ -3286,7 +3324,8 @@ impl EsastGenPass.exit_if_stmt(nd: uni.IfStmt) -> None {
         cast(
             es.Expression,
             self._get_ast_or_default(
-                nd.condition, default_factory=lambda _src: any : es.Literal(value=True)
+                nd.condition,
+                default_factory=lambda (_src: any) { es.Literal(value=True); }
             )
         ),
         nd
@@ -3559,10 +3598,8 @@ impl EsastGenPass._transform_to_useeffect(nd: uni.Ability) -> None {
                     deps_elements.append(cast(es.Expression, item.gen.es_ast));
                 }
             }
-        } else {
-            if arch_tag.gen.es_ast {
-                deps_elements.append(cast(es.Expression, arch_tag.gen.es_ast));
-            }
+        } elif arch_tag.gen.es_ast {
+            deps_elements.append(cast(es.Expression, arch_tag.gen.es_ast));
         }
     }
     effect = Effect(
@@ -3709,6 +3746,13 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
         if is_pub {
             name = nd.name_ref.sym_name;
             self.client_manifest.exports.append(name);
+            if (
+                isinstance(nd.signature, uni.FuncSignature)
+                and nd.signature.return_type is not None
+                and self._return_type_includes_jsx_element(nd.signature.return_type)
+            ) {
+                self.component_export_names.add(name);
+            }
 
             self.client_manifest.params[name] = [
                 p.name.sym_name
@@ -3859,25 +3903,54 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
             es.VariableDeclaration(declarations=[declarator], kind='const'), jac_node=nd
         );
     } else {
-        func_decl = self.sync_loc(
-            es.FunctionDeclaration(
-                id=func_id, params=params, body=block, async_=nd.is_async
-            ),
-            jac_node=nd
-        );
-        nd.gen.es_ast = func_decl;
+        pascal = self._component_pascal_name(nd);
+        if pascal is not None {
+            func_decl = self.sync_loc(
+                es.FunctionDeclaration(
+                    id=self.sync_loc(es.Identifier(name=pascal), jac_node=nd.name_ref),
+                    params=params,
+                    body=block,
+                    async_=nd.is_async
+                ),
+                jac_node=nd
+            );
+            alias_decl = self.sync_loc(
+                es.VariableDeclaration(
+                    declarations=[
+                        self.sync_loc(
+                            es.VariableDeclarator(
+                                id=self.sync_loc(
+                                    es.Identifier(name=nd.name_ref.sym_name),
+                                    jac_node=nd.name_ref
+                                ),
+                                `init=self.sync_loc(
+                                    es.Identifier(name=pascal), jac_node=nd.name_ref
+                                ),
+                            ),
+                            jac_node=nd
+                        )
+                    ],
+                    kind='const'
+                ),
+                jac_node=nd
+            );
+            nd.gen.es_ast = [func_decl, alias_decl];
+        } else {
+            func_decl = self.sync_loc(
+                es.FunctionDeclaration(
+                    id=func_id, params=params, body=block, async_=nd.is_async
+                ),
+                jac_node=nd
+            );
+            nd.gen.es_ast = func_decl;
+        }
     }
 }
 
 impl EsastGenPass._osp_model -> OspModel {
+    import from jaclang.jac0core.osp_model { get_osp_model }
     _root = self.ir_in if isinstance(self.ir_in, uni.Module) else self.get_main_mod();
-    _existing = _root.gen.osp_model;
-    if _existing is not None {
-        return _existing;
-    }
-    _model = OspAnalysis.compute(_root, _root.get_all_sub_nodes(uni.Archetype));
-    _root.gen.osp_model = _model;
-    return _model;
+    return get_osp_model(_root);
 }
 
 impl EsastGenPass._osp_ability_info(nd: uni.Ability) -> (dict | None) {
@@ -4150,7 +4223,7 @@ impl EsastGenPass.exit_visit_stmt(nd: uni.VisitStmt) -> None {
         es.Expression,
         self._get_ast_or_default(
             nd.target,
-            default_factory=lambda _src: any : es.ArrayExpression(elements=[])
+            default_factory=lambda (_src: any) { es.ArrayExpression(elements=[]); }
         )
     );
 
@@ -4201,7 +4274,7 @@ impl EsastGenPass.exit_report_stmt(nd: uni.ReportStmt) -> None {
     expr = cast(
         es.Expression,
         self._get_ast_or_default(
-            nd.expr, default_factory=lambda _src: any : es.Literal(value=None)
+            nd.expr, default_factory=lambda (_src: any) { es.Literal(value=None); }
         )
     );
     nd.gen.es_ast = self.sync_loc(
@@ -4535,10 +4608,17 @@ impl EsastGenPass.exit_archetype(nd: uni.Archetype) -> None {
     }
     class_body = self.sync_loc(es.ClassBody(body=body_stmts), jac_node=nd);
     super_class: (es.Expression | None) = None;
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     if nd.base_classes {
         base = nd.base_classes[0];
         if base.gen.es_ast {
             super_class = cast(es.Expression, base.gen.es_ast);
+            if (
+                isinstance(super_class, es.Identifier)
+                and JAC_TYPE_REGISTRY.is_exception(super_class.name)
+            ) {
+                super_class = self._jac_exc_ref(super_class.name, base);
+            }
         }
     }
     class_id = self.sync_loc(es.Identifier(name=nd.name.sym_name), jac_node=nd.name);
@@ -4805,7 +4885,6 @@ impl EsastGenPass.populate_client_manifest(nd: uni.Module) -> None {
 }
 
 impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement] {
-    import from jaclang.jac0core.codeinfo { BoundaryTypeInfo }
     manifest = nd.gen.interop_manifest;
     if not manifest.boundary_types {
         return [];
@@ -5561,6 +5640,20 @@ impl EsastGenPass.exit_module(nd: uni.Module) -> None {
                 )
             );
         }
+
+        if (
+            not self.client_manifest.globals
+            and all(name in self.component_export_names for name in module_export_names)
+        ) {
+            body.append(
+                self.sync_loc(
+                    es.ExpressionStatement(
+                        expression=es.Identifier(name='/*jac:refresh-boundary*/')
+                    ),
+                    jac_node=nd
+                )
+            );
+        }
         comprehensive_export = es.ExportNamedDeclaration(
             declaration=None, specifiers=export_specifiers, source=None
         );
@@ -5580,7 +5673,7 @@ impl EsastGenPass.exit_module(nd: uni.Module) -> None {
             es.ExpressionStatement(expression=es.Identifier(name=register_code))
         );
     }
-    program = self.sync_loc(es.Program(body=body, sourceType='module'), jac_node=nd);
+    program = self.sync_loc(es.Program(body=body), jac_node=nd);
     nd.gen.es_ast = program;
     nd.gen.js = es_to_js(nd.gen.es_ast);
     nd.gen.client_manifest = self.client_manifest;
@@ -5841,7 +5934,7 @@ impl EsastGenPass._expr_from_node(
     nd: (uni.UniNode | None), `default: LiteralValue = None
 ) -> es.Expression {
     generated = self._get_ast_or_default(
-        nd, default_factory=lambda src: any : es.Literal(value=`default)
+        nd, default_factory=lambda (src: any) { es.Literal(value=`default); }
     );
     if isinstance(generated, es.Expression) {
         return generated;
@@ -6066,6 +6159,7 @@ impl EsastGenPass.before_pass -> None {
     import from jaclang.jac0core.codeinfo { ClientManifest }
     self.child_passes = self._init_child_passes(EsastGenPass);
     self.client_manifest = ClientManifest();
+    self.component_export_names = set();
 
     self.client_manifest.endpoint_effects = dict(
         self.ir_in.gen.interop_manifest.endpoint_effects

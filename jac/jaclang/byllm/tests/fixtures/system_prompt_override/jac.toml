@@ -3,11 +3,11 @@
 name = "byllm-test"
 version = "0.1.0"
 
-[plugins.byllm]
+[byllm]
 system_prompt = "You are a friendly assistant. Greet the person warmly and briefly."
 
-[plugins.byllm.model]
+[byllm.model]
 default_model = "gpt-4o-mini"
 
-[plugins.byllm.call_params]
+[byllm.call_params]
 temperature = 0.7

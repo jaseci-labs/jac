@@ -36,9 +36,9 @@ glob JsonValue: TypeAlias = None | str | int | float | bool | list['JsonValue'] 
 
 obj UserManager {
     has base_path: str,
-        _db_path: str by postinit,
-        _conn: (sqlite3.Connection | None) by postinit,
-        _lock: threading.RLock by postinit;
+        _db_path: str postinit,
+        _conn: (sqlite3.Connection | None) postinit,
+        _lock: threading.RLock postinit;
 
     def postinit -> None;
     def _ensure_connection -> None;
@@ -102,7 +102,7 @@ obj ModuleIntrospector {
         _client_manifest: dict[(str, Any)] = {},
         _bundle: any = None,
         _bundle_error: (str | None) = None,
-        _bundle_builder: any by postinit,
+        _bundle_builder: any postinit,
         _function_access: dict[(str, bool)] = {},
         _walker_access: dict[(str, bool)] = {};
 
@@ -111,6 +111,7 @@ obj ModuleIntrospector {
     def _load_manifest -> None;
     def _extract_access_levels -> None;
     def _collect_cross_boundary_endpoints -> None;
+    def _register_sealed_bindings(sm: dict[str, any], img_root: str) -> None;
     def _fill_endpoint_effect_defaults -> None;
     def _collect_functions -> dict[str, Callable[(..., Any)]];
     def _collect_walkers -> dict[str, type[WalkerArchetype]];
@@ -195,14 +196,14 @@ obj JacAPIServer {
         port: int = 8000,
         base_path: str = "",
         is_sv_sibling: bool = False,
-        user_manager: UserManager by postinit,
-        execution_manager: ExecutionManager by postinit,
-        introspector: ModuleIntrospector by postinit,
-        auth_handler: AuthHandler by postinit,
-        introspection_handler: IntrospectionHandler by postinit,
-        execution_handler: ExecutionHandler by postinit,
-        server: (HTTPServer | None) by postinit,
-        scheduler: Scheduler by postinit;
+        user_manager: UserManager postinit,
+        execution_manager: ExecutionManager postinit,
+        introspector: ModuleIntrospector postinit,
+        auth_handler: AuthHandler postinit,
+        introspection_handler: IntrospectionHandler postinit,
+        execution_handler: ExecutionHandler postinit,
+        server: (HTTPServer | None) postinit,
+        scheduler: Scheduler postinit;
 
     obj RestSpecs {
         has method: str = "",

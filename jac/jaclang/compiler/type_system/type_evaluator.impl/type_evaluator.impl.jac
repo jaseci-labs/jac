@@ -166,6 +166,11 @@ impl TypeEvaluator._get_type_of_expression_core(
                     );
                     if expected_elem is not None {
                         list_inst.private.type_args = [expected_elem];
+                    } else {
+                        flow_elem = self._infer_list_elem_from_mutations(expr);
+                        if flow_elem is not None {
+                            list_inst.private.type_args = [flow_elem];
+                        }
                     }
                 }
                 if isinstance(list_inst, types.ClassType) and expr.values {
@@ -546,8 +551,16 @@ impl TypeEvaluator._get_type_of_expression_core(
                     );
                 }
 
-                if seeded_param and isinstance(expr.body, uni.Expr) {
-                    self._invalidate_expr_type_cache(expr.body);
+                if seeded_param {
+                    seed_body_expr: uni.Expr | None = None;
+                    if isinstance(expr.body, uni.Expr) {
+                        seed_body_expr = expr.body;
+                    } else {
+                        seed_body_expr = expr.tail_return_expr();
+                    }
+                    if seed_body_expr is not None {
+                        self._invalidate_expr_type_cache(seed_body_expr);
+                    }
                 }
             }
 
@@ -709,6 +722,13 @@ impl TypeEvaluator._get_type_of_expression_core(
                         sym.add_use(expr.right);
                         expr.right.type = sym_type;
                         return sym_type;
+                    }
+
+                    if submod_type := self._resolve_submodule_attr(
+                        base_type, expr.right.value
+                    ) {
+                        expr.right.type = submod_type;
+                        return submod_type;
                     }
                     return types.UnknownType();
                 } elif base_type.is_instantiable_class() {
@@ -1429,6 +1449,11 @@ impl TypeEvaluator._get_type_of_expression_core(
                         return td_result;
                     }
                 }
+                if tuple_elem := self._tuple_literal_index_type(
+                    base_type, subscript_arg
+                ) {
+                    return tuple_elem;
+                }
                 result = self.get_type_of_magic_method_call(
                     base_type, "__getitem__", [subscript_arg], expr
                 );
@@ -1670,6 +1695,12 @@ impl TypeEvaluator._get_type_of_expression_core(
 
         case uni.UnaryExpr():
             if isinstance(expr.op, uni.Token) {
+                if expr.op.name == Tok.BW_AND {
+                    return self.get_type_of_expression(expr.operand);
+                }
+                if expr.ownership == OwnershipKind.OWN {
+                    return self.get_type_of_expression(expr.operand);
+                }
                 if expr.op.name == Tok.NOT {
                     operand_type = self.get_type_of_expression(expr.operand);
                     if (
@@ -1681,9 +1712,11 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                     return operand_type;
                 }
-                if expr.op.name in (Tok.MINUS, Tok.BW_NOT) {
+                if expr.op.name in (Tok.MINUS, Tok.BW_NOT, Tok.PLUS) {
                     operand_type = self.get_type_of_expression(expr.operand);
-                    op_name = "__neg__" if expr.op.name == Tok.MINUS else "__invert__";
+                    op_name = "__neg__"
+                        if expr.op.name == Tok.MINUS
+                        else ("__pos__" if expr.op.name == Tok.PLUS else "__invert__");
 
                     if isinstance(operand_type, types.TypeVarType) {
                         if operand_type.constraints {
@@ -2067,14 +2100,21 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                     }
                     if idx >= 0 {
                         rhs_type = self.get_type_of_expression(unpack_assignment.value);
-                        if elem := self._extract_tuple_element_type(rhs_type, idx) {
-                            return elem;
+                        extracted = self._extract_tuple_element_type(rhs_type, idx);
+                        if (
+                            extracted is not None
+                            and not isinstance(extracted, types.UnknownType)
+                        ) {
+                            return extracted;
                         }
 
                         if elem := self._get_iterable_element_type(
                             rhs_type, unpack_assignment.value
                         ) {
                             return elem;
+                        }
+                        if extracted is not None {
+                            return extracted;
                         }
                     }
                 } elif isinstance(unpack_assignment, (uni.InForStmt, uni.InnerCompr)) {
@@ -2117,7 +2157,27 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                     ) {
                         return self._resolve_type_alias_rhs(node_.parent.value);
                     }
-                    return self._convert_to_instance(annotation_type);
+                    declared_inst = self._convert_to_instance(annotation_type);
+
+                    if (
+                        isinstance(declared_inst, types.ClassType)
+                        and declared_inst.is_builtin("list")
+                        and not declared_inst.private.type_args
+                        and isinstance(node_.parent.value, uni.ListVal)
+                        and not node_.parent.value.values
+                    ) {
+                        value_type = self.get_type_of_expression(
+                            node_.parent.value, expected_type=declared_inst
+                        );
+                        if (
+                            isinstance(value_type, types.ClassType)
+                            and value_type.is_builtin("list")
+                            and value_type.private.type_args
+                        ) {
+                            return value_type;
+                        }
+                    }
+                    return declared_inst;
                 } else {
                     if node_.parent.value is not None {
                         return self._widen_literal_for_declaration(
@@ -2357,8 +2417,12 @@ impl TypeEvaluator._assign_callable(
     }
 
     if dest_func.return_type and src_func.return_type {
-        src_ret = self._convert_to_instance(src_func.return_type);
         dest_ret = self._convert_to_instance(dest_func.return_type);
+
+        if self.is_none_type(dest_ret) {
+            return True;
+        }
+        src_ret = self._convert_to_instance(src_func.return_type);
         if not self.assign_type(src_ret, dest_ret, strict) {
             return False;
         }
@@ -2780,20 +2844,7 @@ impl TypeEvaluator.assign_type(
     }
 
     if self.is_explicit_any(src_type) {
-        if not strict {
-            return True;
-        }
-        if isinstance(dest_type, types.TypeVarType) {
-            return True;
-        }
-
-        if self._in_native_context() {
-            return True;
-        }
-        if isinstance(src_type, types.AnyType) and src_type.is_foreign {
-            return True;
-        }
-        return False;
+        return True;
     }
 
     if self.prefetch
@@ -3278,9 +3329,7 @@ impl TypeEvaluator._prefetch_types{
     self.prefetch.object_class = get_builtin_class("object");
     self.prefetch.type_class = get_builtin_class("type");
     self.prefetch.classmethod_class = get_builtin_class("classmethod");
-    self.prefetch.union_type_class = get_types_class("UnionType");
 
-    self.prefetch.awaitable_class = get_typing_class("Awaitable");
     self.prefetch.coroutine_class = get_typing_class("Coroutine");
     self.prefetch.function_class = get_types_class("FunctionType");
 
@@ -3325,17 +3374,6 @@ impl TypeEvaluator._prefetch_types{
     self.prefetch.jsx_intrinsic_elements_class = get_jac_builtin_class(
         "_JsxIntrinsicElements"
     );
-
-    self.prefetch.i8_class = get_jac_builtin_class("i8");
-    self.prefetch.u8_class = get_jac_builtin_class("u8");
-    self.prefetch.i16_class = get_jac_builtin_class("i16");
-    self.prefetch.u16_class = get_jac_builtin_class("u16");
-    self.prefetch.i32_class = get_jac_builtin_class("i32");
-    self.prefetch.u32_class = get_jac_builtin_class("u32");
-    self.prefetch.i64_class = get_jac_builtin_class("i64");
-    self.prefetch.u64_class = get_jac_builtin_class("u64");
-    self.prefetch.f32_class = get_jac_builtin_class("f32");
-    self.prefetch.f64_class = get_jac_builtin_class("f64");
 }
 
 impl TypeEvaluator._load_stub_module(path: str) -> uni.Module {
@@ -3617,7 +3655,7 @@ impl TypeEvaluator._get_type_from_flow_node(
     }
 
     is_loop_header: bool = isinstance(
-        flow_node, (uni.InForStmt, uni.IterForStmt, uni.WhileStmt)
+        flow_node, (uni.InForStmt, uni.IterForStmt, uni.WhileStmt, uni.ForeverStmt)
     );
     incoming_types: list[TypeBase] = [];
     has_unnarrowed_pred: bool = False;
@@ -3636,6 +3674,8 @@ impl TypeEvaluator._get_type_from_flow_node(
                 ancestor = pred.find_parent_of_type(uni.InForStmt);
             } elif isinstance(flow_node, uni.IterForStmt) {
                 ancestor = pred.find_parent_of_type(uni.IterForStmt);
+            } elif isinstance(flow_node, uni.ForeverStmt) {
+                ancestor = pred.find_parent_of_type(uni.ForeverStmt);
             } else {
                 ancestor = pred.find_parent_of_type(uni.WhileStmt);
             }
@@ -3785,6 +3825,17 @@ impl TypeEvaluator._get_type_from_flow_node(
                         and not self.assign_type(declared_type, assigned_type)
                     ) {
                         narrowed_from_assignment = assigned_type;
+                    } elif (
+                        flat_target_matched
+                        and self.is_explicit_any(assigned_type)
+                        and self._union_contains_none(declared_type)
+                    ) {
+                        none_cls = self.prefetch.none_type_class;
+                        if none_cls is not None {
+                            narrowed_from_assignment = self.exclude_type_from_union(
+                                declared_type, self._convert_to_instance(none_cls)
+                            );
+                        }
                     }
                 }
                 if narrowed_from_assignment is not None {

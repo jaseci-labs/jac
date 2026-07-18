@@ -1,15 +1,10 @@
 import dis;
-import inspect;
 import marshal;
 import os;
 import pdb;
 import re;
-import from collections.abc { Callable, Sequence }
-import from dataclasses { fields, is_dataclass }
 import from functools { lru_cache }
 import from traceback { TracebackException }
-import from typing { get_args, get_origin }
-import type from jaclang { plugin as pluggy }
 
 @lru_cache(maxsize=256)
 def pascal_to_snake(pascal_string: str) -> str {
@@ -313,87 +308,6 @@ def read_toml_with_encoding(file_path: str) -> dict {
     }
 }
 
-def _short_type_name(t: object) -> str {
-    if (t is inspect._empty) {
-        return 'Any';
-    }
-    origin = get_origin(t);
-    if (origin is not None) {
-        name = getattr(origin, '__name__', str(origin).replace('typing.', ''));
-        args = get_args(t);
-        if not args {
-            return name;
-        }
-        return f"{name}[{','.join(_short_type_name(a) for a in args)}]";
-    }
-    return getattr(t, '__name__', str(t).replace('typing.', ''));
-}
-
-def _signature_summary(func: Callable) -> str {
-    try {
-        sig = inspect.signature(func);
-    } except (TypeError, ValueError) {
-        return '';
-    }
-    params: list = [];
-    for p in sig.parameters.values() {
-        if (p.name == 'self') {
-            continue;
-        }
-        params.append(_short_type_name(p.annotation));
-    }
-    ret = _short_type_name(sig.return_annotation);
-    return f"({','.join(params)})->{ret}";
-}
-
-def _safe_repr(v: object, limit: int = 120) -> str {
-    s = repr(v);
-    return s if (len(s) <= limit) else (s[:(limit - 1)] + '…');
-}
-
-def _describe_node(`obj: object) -> str {
-    cls = `obj.__class__;
-    attrs: list = [];
-    if is_dataclass(`obj) {
-        for f in fields(`obj) {
-            attrs.append(f"{f.name}={_safe_repr(getattr(obj, f.name))}");
-        }
-    } else {
-        for (k, v) in vars(`obj).items() {
-            if k.startswith('_') {
-                continue;
-            }
-            attrs.append(f"{k}={_safe_repr(v)}");
-        }
-    }
-    methods: list = [];
-    for (m_name, func) in inspect.getmembers(cls, predicate=inspect.isfunction) {
-        if m_name.startswith('__') {
-            continue;
-        }
-        sig = _signature_summary(func);
-        methods.append(f"{m_name}{sig}" if sig else m_name);
-    }
-    parts = [cls.__name__];
-    if attrs {
-        parts.append(('attrs:' + ','.join(attrs)));
-    }
-    if methods {
-        parts.append(('methods:' + ','.join(methods)));
-    }
-    return ' — '.join(parts);
-}
-
-def _describe_nodes_list(objects: Sequence) -> str {
-    return '\n'.join(f"{i}) {_describe_node(obj)}" for (i, `obj) in enumerate(objects));
-}
-
-obj DistFacade {
-    has _dist: (object | None);
-    has project_name: str { getter; }
-    has version: str { getter; }
-}
-
 def _warn_malformed_jac_toml(exc: MalformedJacTomlError) {
     import sys;
     sys.stderr.write(
@@ -441,117 +355,6 @@ def path_matches_exclude(
     return False;
 }
 
-
-def get_disabled_plugins -> list {
-    env_disabled = os.environ.get('JAC_DISABLED_PLUGINS', '').strip();
-    if env_disabled {
-        return [
-            d.strip()
-            for d in env_disabled.split(',')
-            if d.strip()
-        ];
-    }
-
-    import from jaclang.jac0core.modresolver { find_project_root }
-    result = find_project_root();
-    if result is None {
-        return [];
-    }
-    (_, toml_path) = result;
-    try {
-        data = read_toml_with_encoding(str(toml_path));
-        return data.get('plugins', {}).get('disabled', []);
-    } except MalformedJacTomlError as exc {
-        _warn_malformed_jac_toml(exc);
-        return [];
-    } except Exception {
-        return [];
-    }
-}
-
-def load_plugins_with_disabling(
-    plugin_manager: 'pluggy.PluginManager', disabled_list: list
-) -> None {
-    import from importlib.metadata { entry_points }
-    disable_all = '*' in disabled_list;
-    disabled_qualified: set = `set();
-    disabled_packages: set = `set();
-    disabled_short: set = `set();
-    for name in disabled_list {
-        if (name == '*') {
-            continue;
-        } elif name.endswith(':*') {
-            disabled_packages.add(name[:-2]);
-        } elif (':' in name) {
-            disabled_qualified.add(name);
-        } else {
-            disabled_short.add(name);
-        }
-    }
-    if disable_all {
-        return;
-    }
-    try {
-        eps = entry_points(group='jac');
-    } except TypeError {
-        all_eps = entry_points();
-        eps = all_eps.get('jac', []);
-    }
-    for ep in eps {
-        try {
-            dist = ep.dist;
-            dist_name = dist.name if dist else 'unknown';
-        } except Exception {
-            dist = None;
-            dist_name = 'unknown';
-        }
-        qualified_name = f"{dist_name}:{ep.name}";
-        should_disable = False;
-        if (dist_name in disabled_packages) {
-            should_disable = True;
-        } elif (qualified_name in disabled_qualified) {
-            should_disable = True;
-        } elif (ep.name in disabled_short) {
-            should_disable = True;
-        }
-        if should_disable {
-            continue;
-        }
-        try {
-            plugin = ep.load();
-            if plugin_manager.is_registered(plugin) {
-                continue;
-            }
-            plugin_manager.register(plugin, name=ep.name);
-            plugin_manager._plugin_distinfo.append((plugin, DistFacade(dist)));
-        } except Exception as exc {
-            import sys;
-            if isinstance(exc, MalformedJacTomlError) {
-                sys.stderr.write(
-                    f"warning: plugin '{qualified_name}' failed to load -- "
-                    "jac.toml parse failure (see warning above).\n"
-                );
-            } elif isinstance(exc, ModuleNotFoundError) and exc?.name {
-                detail = f"missing dependency '{exc.name}'";
-                sys.stderr.write(
-                    f"warning: plugin '{qualified_name}' failed to load -- "
-                    f"{detail}. Install the missing package, or disable this "
-                    "plugin via JAC_DISABLED_PLUGINS / [plugins].disabled in "
-                    "jac.toml.\n"
-                );
-            } else {
-                cause = type(exc).__name__;
-                detail = f"{cause}: {exc}";
-                sys.stderr.write(
-                    f"warning: plugin '{qualified_name}' failed to load -- "
-                    f"{detail}. Install the missing package, or disable this "
-                    "plugin via JAC_DISABLED_PLUGINS / [plugins].disabled in "
-                    "jac.toml.\n"
-                );
-            }
-        }
-    }
-}
 
 def _is_version_info_access(expr: 'uni.Expr') -> bool {
     import jaclang.jac0core.unitree as uni;

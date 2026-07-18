@@ -39,3 +39,8 @@ def get_jir_cache_dir() -> Path:
 def get_bootstrap_cache_dir() -> Path:
     """Global cache dir for marshalled jac0core bootstrap bytecode."""
     return get_jir_cache_dir() / "bootstrap"
+
+
+def get_app_cache_dir() -> Path:
+    """Global cache dir for materialized app bundles (.jab), content-keyed."""
+    return get_jir_cache_dir().parent / "apps"

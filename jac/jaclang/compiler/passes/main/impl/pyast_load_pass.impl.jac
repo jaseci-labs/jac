@@ -340,13 +340,7 @@ impl PyastBuildPass.proc_arguments(nd: py_ast.arguments) -> uni.FuncSignature {
 }
 
 impl PyastBuildPass.proc_arg(nd: py_ast.arg) -> uni.ParamVar {
-    import from jaclang.jac0core.constant { TOKEN_MAP }
-    reserved_keywords = [
-        v
-        for (_, v) in TOKEN_MAP.items()
-        if (v not in ['float', 'int', 'str', 'bool', 'self'])
-    ];
-    name = self.name_node(nd, nd.arg, is_kwesc=(nd.arg in reserved_keywords));
+    name = self.name_node(nd, nd.arg, is_kwesc=(nd.arg in _reserved_keywords));
     self.in_type_annotation = True;
     ann_expr = self.convert(nd.annotation)
         if nd.annotation
@@ -556,7 +550,7 @@ impl PyastBuildPass.proc_slice(nd: py_ast.Slice) -> uni.IndexSlice {
     }
 }
 
-impl PyastBuildPass.proc_set_comp(nd: py_ast.SetComp) -> uni.ListCompr {
+impl PyastBuildPass._proc_compr(nd: py_ast.AST, compr_cls: type) -> uni.UniNode {
     elt = self.convert(nd.elt);
     generators = [self.convert(gen) for gen in nd.generators];
     valid = [
@@ -568,10 +562,14 @@ impl PyastBuildPass.proc_set_comp(nd: py_ast.SetComp) -> uni.ListCompr {
         raise self.ice('Length mismatch in list comp generators');
     }
     if isinstance(elt, uni.Expr) {
-        return uni.SetCompr(out_expr=elt, compr=valid, kid=[elt, *valid]);
+        return compr_cls(out_expr=elt, compr=valid, kid=[elt, *valid]);
     } else {
         raise self.ice();
     }
+}
+
+impl PyastBuildPass.proc_set_comp(nd: py_ast.SetComp) -> uni.ListCompr {
+    return self._proc_compr(nd, uni.SetCompr);
 }
 
 impl PyastBuildPass.proc_set(nd: py_ast.Set) -> uni.SetVal {
@@ -609,12 +607,8 @@ impl PyastBuildPass.proc_pass(nd: py_ast.Pass) -> uni.Semi {
     );
 }
 
-impl PyastBuildPass.proc_nonlocal(nd: py_ast.Nonlocal) -> uni.NonLocalStmt {
-    names: list[uni.NameAtom] = [];
-    for name in nd.names {
-        names.append(self.name_node(nd, name, is_kwesc=(name in _reserved_keywords)));
-    }
-    return uni.NonLocalStmt(target=names, kid=names);
+impl PyastBuildPass.proc_nonlocal(nd: py_ast.Nonlocal) -> uni.Semi {
+    return self.proc_pass(cast(py_ast.Pass, nd));
 }
 
 impl PyastBuildPass.proc_named_expr(nd: py_ast.NamedExpr) -> uni.AtomUnit {
@@ -643,14 +637,8 @@ impl PyastBuildPass.proc_named_expr(nd: py_ast.NamedExpr) -> uni.AtomUnit {
 }
 
 impl PyastBuildPass.proc_name(nd: py_ast.Name) -> uni.Name {
-    import from jaclang.jac0core.constant { TOKEN_MAP }
-    reserved_keywords = [
-        v
-        for (_, v) in TOKEN_MAP.items()
-        if (v not in ['float', 'int', 'str', 'bool', 'self'])
-    ];
     should_escape = (
-        (nd.id in reserved_keywords)
+        (nd.id in _reserved_keywords)
         and not self.in_type_annotation
         and not self.in_match_pattern
         and not self.in_fstring_expr
@@ -869,21 +857,7 @@ impl PyastBuildPass.proc_match(nd: py_ast.Match) -> uni.MatchStmt {
 }
 
 impl PyastBuildPass.proc_list_comp(nd: py_ast.ListComp) -> uni.ListCompr {
-    elt = self.convert(nd.elt);
-    generators = [self.convert(gen) for gen in nd.generators];
-    valid = [
-        gen
-        for gen in generators
-        if isinstance(gen, uni.InnerCompr)
-    ];
-    if (len(generators) != len(valid)) {
-        raise self.ice('Length mismatch in list comp generators');
-    }
-    if isinstance(elt, uni.Expr) {
-        return uni.ListCompr(out_expr=elt, compr=valid, kid=[elt, *valid]);
-    } else {
-        raise self.ice();
-    }
+    return self._proc_compr(nd, uni.ListCompr);
 }
 
 impl PyastBuildPass.proc_list(nd: py_ast.List) -> uni.ListVal {
@@ -907,7 +881,8 @@ impl PyastBuildPass.proc_lambda(nd: py_ast.Lambda) -> uni.LambdaExpr {
     args = self.convert(nd.args);
     body = self.convert(nd.body);
     if (isinstance(args, uni.FuncSignature) and isinstance(body, uni.Expr)) {
-        return uni.LambdaExpr(signature=args, body=body, kid=[args, body]);
+        body_stmt = uni.ExprStmt(expr=body, in_fstring=False, kid=[body]);
+        return uni.LambdaExpr(signature=args, body=[body_stmt], kid=[args, body_stmt]);
     } else {
         raise self.ice();
     }
@@ -1107,30 +1082,12 @@ impl PyastBuildPass.proc_if_exp(nd: py_ast.IfExp) -> uni.IfElseExpr {
     }
 }
 
-impl PyastBuildPass.proc_global(nd: py_ast.Global) -> uni.GlobalStmt {
-    names: list[uni.NameAtom] = [];
-    for id in nd.names {
-        names.append(self.name_node(nd, id));
-    }
-    return uni.GlobalStmt(target=names, kid=names);
+impl PyastBuildPass.proc_global(nd: py_ast.Global) -> uni.Semi {
+    return self.proc_pass(cast(py_ast.Pass, nd));
 }
 
 impl PyastBuildPass.proc_generator_exp(nd: py_ast.GeneratorExp) -> uni.GenCompr {
-    elt = self.convert(nd.elt);
-    generators = [self.convert(gen) for gen in nd.generators];
-    valid = [
-        gen
-        for gen in generators
-        if isinstance(gen, uni.InnerCompr)
-    ];
-    if (len(generators) != len(valid)) {
-        raise self.ice('Length mismatch in list comp generators');
-    }
-    if isinstance(elt, uni.Expr) {
-        return uni.GenCompr(out_expr=elt, compr=valid, kid=[elt, *valid]);
-    } else {
-        raise self.ice();
-    }
+    return self._proc_compr(nd, uni.GenCompr);
 }
 
 impl PyastBuildPass.proc_formatted_value(

@@ -1,4 +1,3 @@
-import from collections.abc { Callable }
 import from pathlib { Path }
 import from fastapi { Request }
 import from fastapi.responses { HTMLResponse, JSONResponse, Response, FileResponse }
@@ -41,10 +40,6 @@ obj JacAPIServerAdmin {
     ) -> TransportResponse;
 
     def admin_delete_user(
-        username: str, Authorization: str | None = None
-    ) -> TransportResponse;
-
-    def admin_force_password_reset(
         username: str, Authorization: str | None = None
     ) -> TransportResponse;
 

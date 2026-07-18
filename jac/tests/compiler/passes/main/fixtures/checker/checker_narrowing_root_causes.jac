@@ -207,7 +207,7 @@ def fail_callable_passed_as_callable(func: Callable) -> None {
 def fail_assign_to_narrowed_none_field(dest: Destination) -> None {
     # dest.nd is Callable|None. After `is None` check, narrowed to NoneType.
     # Assigning a Callable should be valid (updating the field).
-    filter_fn: Callable[[str], bool] = lambda s: str : s.startswith(".");
+    filter_fn: Callable[[str], bool] = lambda (s: str) { s.startswith("."); };
     if dest.nd is None {
         dest.nd = filter_fn;  # E1001: Cannot assign Callable to NoneType
     }
@@ -387,7 +387,7 @@ def fail_object_typed_attr(model: object) -> dict {
 def fail_stdlib_method_on_assigned(svc: ServiceClass) -> Future {
     # ThreadPoolExecutor.submit should be recognized from stdlib
     executor = svc.pool;
-    return executor.submit(lambda : None);  # E1032 if executor type is Unknown
+    return executor.submit(lambda { None; });  # E1032 if executor type is Unknown
 }
 
 # ============================================================================
