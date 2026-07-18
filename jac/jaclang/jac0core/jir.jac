@@ -39,20 +39,19 @@ obj JirHeader {
     def is_compatible -> bool;
 }
 
-glob _jaclang_pkg_version: (str | None) = None;
+glob _jaclang_pkg_version_cache: list[str] = [];
 
 def _get_jaclang_pkg_version -> str {
-    global _jaclang_pkg_version;
-    if _jaclang_pkg_version is not None {
-        return _jaclang_pkg_version;
+    if _jaclang_pkg_version_cache {
+        return _jaclang_pkg_version_cache[0];
     }
     import from importlib.metadata { version as pkg_version }
     try {
-        _jaclang_pkg_version = pkg_version('jaclang');
+        _jaclang_pkg_version_cache.append(pkg_version('jaclang'));
     } except Exception {
-        _jaclang_pkg_version = "0.0.0";
+        _jaclang_pkg_version_cache.append("0.0.0");
     }
-    return _jaclang_pkg_version;
+    return _jaclang_pkg_version_cache[0];
 }
 
 def create_header(
@@ -156,10 +155,19 @@ def _related_files(source_path: str) -> list[tuple[str, str]] {
     return _hash_related_paths(source_path, _gather_related_paths(source_path));
 }
 
-glob _client_kind_probe_active: bool = False,
-     _client_kind_cache: dict[str, tuple[str, str, str]] = {};
+glob _client_kind_probe_depth: list[int] = [0],
+     _client_kind_cache: dict[str, tuple[str, str, float, str]] = {},
+     _NO_TOML_FP: str = "__no_toml__";
 
-def _read_toml_fingerprint(proj_root: str) -> (str | None) {
+def _read_toml_mtime(proj_root: str) -> (float | None) {
+    try {
+        return os.path.getmtime(os.path.join(proj_root, "jac.toml"));
+    } except OSError {
+        return None;
+    }
+}
+
+def _read_toml_content_hash(proj_root: str) -> (str | None) {
     try {
         return compute_content_sha256(os.path.join(proj_root, "jac.toml"));
     } except OSError {
@@ -169,7 +177,7 @@ def _read_toml_fingerprint(proj_root: str) -> (str | None) {
 
 def _evict_project_from_kind_cache(proj_root: str) {
     stale: list[str] = [];
-    for (src_path, (_kind, _root, _fp)) in _client_kind_cache.items() {
+    for (src_path, (_kind, _root, _mt, _fp)) in _client_kind_cache.items() {
         if _root == proj_root {
             stale.append(src_path);
         }
@@ -183,35 +191,65 @@ def clear_module_client_kind_cache {
     _client_kind_cache.clear();
 }
 
+def _store_client_kind_cache(source_path: str, kind: str, proj_root: str) {
+    toml_mtime = _read_toml_mtime(proj_root);
+    if toml_mtime is not None {
+        toml_fp = _read_toml_content_hash(proj_root);
+        if toml_fp is not None {
+            _client_kind_cache[source_path] = (kind, proj_root, toml_mtime, toml_fp);
+        }
+    } else {
+        _client_kind_cache[source_path] = (kind, proj_root, 0.0, _NO_TOML_FP);
+    }
+}
+
 def _module_client_kind(source_path: str) -> str {
-    global _client_kind_probe_active;
     entry = _client_kind_cache.get(source_path);
     if entry is not None {
-        (kind, proj_root, cached_fp) = entry;
-        current_fp = _read_toml_fingerprint(proj_root);
-        if current_fp is not None and current_fp == cached_fp {
+        (kind, proj_root, cached_mtime, cached_fp) = entry;
+        if cached_fp == _NO_TOML_FP {
+            if _read_toml_mtime(proj_root) is None {
+                return kind;
+            }
+        } elif _read_toml_mtime(proj_root) == cached_mtime {
             return kind;
+        } else {
+            current_fp = _read_toml_content_hash(proj_root);
+            if current_fp is not None and current_fp == cached_fp {
+                current_mtime = _read_toml_mtime(proj_root);
+                if current_mtime is not None {
+                    _client_kind_cache[source_path] = (
+                        kind,
+                        proj_root,
+                        current_mtime,
+                        cached_fp
+                    );
+                }
+                return kind;
+            }
         }
         import from jaclang.project.config { invalidate_config_for_root }
         invalidate_config_for_root(proj_root);
         _evict_project_from_kind_cache(proj_root);
     }
-    if _client_kind_probe_active {
+    if _client_kind_probe_depth[0] > 0 {
         return "web";
     }
-    _client_kind_probe_active = True;
+    _client_kind_probe_depth[0] = 1;
     try {
         import from jaclang.project.client_kind { resolve_client_kind_context }
         (kind, proj_root) = resolve_client_kind_context(source_path);
-        toml_fp = _read_toml_fingerprint(proj_root) if proj_root is not None else None;
-        if toml_fp is not None {
-            _client_kind_cache[source_path] = (kind, proj_root, toml_fp);
-        }
+        cache_root = (
+            proj_root
+                if proj_root is not None
+                else str(Path(source_path).resolve().parent)
+        );
+        _store_client_kind_cache(source_path, kind, cache_root);
         return kind;
     } except Exception {
         return "web";
     } finally {
-        _client_kind_probe_active = False;
+        _client_kind_probe_depth[0] = 0;
     }
 }
 
@@ -459,19 +497,16 @@ def read_debug_source(data: bytes) -> (str | None) {
 }
 
 def is_module_cache_valid(
-    source_path: str,
-    cache_path: Path,
-    module_key: (str | None) = None,
-    key_out: (list[str] | None) = None
-) -> bool {
+    source_path: str, cache_path: Path
+) -> tuple[bool, (str | None)] {
     if not cache_path.exists() {
-        return False;
+        return (False, None);
     }
     try {
         data: bytes = cache_path.read_bytes();
         header = parse_header(data[:HEADER_SIZE]);
         if header is None or not header.is_compatible() {
-            return False;
+            return (False, None);
         }
         cache_mtime = os.path.getmtime(cache_path);
         related = _gather_related_paths(source_path);
@@ -489,21 +524,18 @@ def is_module_cache_valid(
                 }
             }
         }
+        key = compute_module_key(
+            source_path, related=_hash_related_paths(source_path, related)
+        );
         if fresh {
-            return True;
-        }
-
-        key = module_key;
-        if key is None {
-            key = compute_module_key(
-                source_path, related=_hash_related_paths(source_path, related)
-            );
-            if key_out is not None {
-                key_out.append(key);
+            stored = read_modkey(data);
+            if stored is not None and stored != key {
+                return (False, key);
             }
+            return (True, key);
         }
-        return jir_matches_source(data, source_path, key);
+        return (jir_matches_source(data, source_path, key), key);
     } except OSError {
-        return False;
+        return (False, None);
     }
 }

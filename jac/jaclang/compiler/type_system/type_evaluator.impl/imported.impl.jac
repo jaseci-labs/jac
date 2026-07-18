@@ -410,7 +410,7 @@ impl TypeEvaluator._import_module_from_path(
                     }
                     import from jaclang.jac0core.jir_passes { JirWriter }
                     cache_path = get_module_cache_path(resolved_path);
-                    if not is_module_cache_valid(resolved_path, cache_path) {
+                    if not is_module_cache_valid(resolved_path, cache_path)[0] {
                         cache_path.parent.mkdir(parents=True, exist_ok=True);
                         writer = JirWriter();
 
@@ -476,7 +476,7 @@ impl TypeEvaluator._try_read_jir_cache(resolved_path: str) -> (uni.Module | None
     import traceback;
     try {
         cache_path = get_module_cache_path(resolved_path);
-        if not is_module_cache_valid(resolved_path, cache_path) {
+        if not is_module_cache_valid(resolved_path, cache_path)[0] {
             return None;
         }
         data = cache_path.read_bytes();

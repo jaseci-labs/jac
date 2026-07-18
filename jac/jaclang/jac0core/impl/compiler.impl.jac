@@ -129,7 +129,6 @@ impl JacCompiler.get_bytecode(
     actual_program = self._resolve_program(full_target, target_program);
     (rebuild, no_precompile) = cache_mode();
     modkey: (str | None) = None;
-    key_out: list[str] = [];
 
     if (
         (not rebuild)
@@ -171,8 +170,11 @@ impl JacCompiler.get_bytecode(
     }
 
     cache_path = get_module_cache_path(full_target);
-    if (not rebuild)
-    and is_module_cache_valid(full_target, cache_path, modkey, key_out) {
+    (cache_valid, computed_key) = is_module_cache_valid(full_target, cache_path);
+    if computed_key is not None {
+        modkey = computed_key;
+    }
+    if (not rebuild) and cache_valid {
         try {
             jir_data = cache_path.read_bytes();
             bc = read_bytecode_only(jir_data);
@@ -209,10 +211,6 @@ impl JacCompiler.get_bytecode(
             ;
         }
     }
-    if key_out {
-        modkey = key_out[0];
-    }
-
     allow_unsealed = (not rebuild) and (not no_precompile);
     if modkey is None {
         modkey = compute_module_key(full_target);

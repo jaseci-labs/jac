@@ -24,7 +24,12 @@ import from jaclang.jac0core.jir {
     SEC_LLVM_IR,
     SECTIONS_MAGIC,
     HEADER_SIZE,
-    read_sections
+    read_sections,
+    is_module_cache_valid,
+    clear_module_client_kind_cache,
+    compute_module_key,
+    write_precompiled_jir,
+    FLAG_PRECOMPILED
 }
 
 glob TEST_DIR = os.path.join(JAC_ROOT, "tests", "compiler"),
@@ -454,6 +459,81 @@ test "internal get_bytecode evicts unit AST after compile" {
             os.environ.pop("JAC_REBUILD", None);
         } else {
             os.environ["JAC_REBUILD"] = old_rebuild;
+        }
+    }
+}
+
+test "client_kind cache memoizes projects without jac.toml" {
+    import importlib;
+    clear_module_client_kind_cache();
+    with tempfile.TemporaryDirectory(dir=_test_tmp_dir) as d {
+        src = os.path.join(d, "solo.jac");
+        with open(src, "w") as f {
+            f.write("glob x = 1;\n");
+        }
+        compute_module_key(src);
+        py_jir = importlib.import_module("jaclang.jac0core.jir");
+        assert len(py_jir._client_kind_cache) == 1;
+        compute_module_key(src);
+        assert len(py_jir._client_kind_cache) == 1;
+    }
+}
+
+test "is_module_cache_valid rejects mtime-fresh cache after jac.toml client_kind change" {
+    clear_module_client_kind_cache();
+    with tempfile.TemporaryDirectory(dir=_test_tmp_dir) as d {
+        src = os.path.join(d, "mod.jac");
+        toml = os.path.join(d, "jac.toml");
+        with open(src, "w") as f {
+            f.write("glob x = 1;\n");
+        }
+        with open(toml, "w") as f {
+            f.write('[project]\nname = "t"\nversion = "0.0.1"\n');
+        }
+        past = time.time() - 5;
+        os.utime(src, (past, past));
+        os.utime(toml, (past, past));
+        compiler = JacCompiler();
+        code = compiler.get_bytecode(src, JacProgram());
+        assert code is not None;
+        cache_path = get_module_cache_path(src);
+        assert cache_path.exists();
+        (valid_before, _) = is_module_cache_valid(src, cache_path);
+        assert valid_before;
+        with open(toml, "w") as f {
+            f.write(
+                '[project]\nname = "t"\nversion = "0.0.1"\n' 'client_kind = "mobui"\n'
+            );
+        }
+        os.utime(src, (past, past));
+        (valid_after, _) = is_module_cache_valid(src, cache_path);
+        assert not valid_after , (
+            "mtime-fresh cache must be rejected when jac.toml client_kind changes"
+        );
+    }
+}
+
+test "is_module_cache_valid returns computed module key" {
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".jac", delete=False, dir=_test_tmp_dir
+    ) as tmp {
+        tmp.write("glob y = 2;\n");
+        tmp.flush();
+        jac_file = tmp.name;
+    }
+    try {
+        compiler = JacCompiler();
+        compiler.get_bytecode(jac_file, JacProgram());
+        cache_path = get_module_cache_path(jac_file);
+        (valid, key) = is_module_cache_valid(jac_file, cache_path);
+        assert valid;
+        assert key is not None;
+        assert key == compute_module_key(jac_file);
+    } finally {
+        os.unlink(jac_file);
+        cp = get_module_cache_path(jac_file);
+        if cp.exists() {
+            cp.unlink();
         }
     }
 }

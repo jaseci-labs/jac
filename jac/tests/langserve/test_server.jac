@@ -1216,7 +1216,7 @@ test "test_jir_cache_invalidated_on_version_mismatch" {
 
         # Sanity: cache should exist and be valid right now.
         assert cache_path.exists() , "JIR cache was not written";
-        assert is_module_cache_valid(dep_src, cache_path) , "Fresh cache should be valid";
+        assert is_module_cache_valid(dep_src, cache_path)[0] , "Fresh cache should be valid";
 
         # Tamper: overwrite jaclang_version_hash with a fake value.
         data = bytearray(cache_path.read_bytes());
@@ -1225,7 +1225,7 @@ test "test_jir_cache_invalidated_on_version_mismatch" {
         cache_path.write_bytes(bytes(data));
 
         # The cache should now be rejected.
-        assert not is_module_cache_valid(dep_src, cache_path) , (
+        assert not is_module_cache_valid(dep_src, cache_path)[0] , (
             "Cache with mismatched jaclang_version_hash should be invalid"
         );
     } finally {
