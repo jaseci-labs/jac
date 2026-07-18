@@ -257,23 +257,34 @@ class _Synth {
             and tag_is_ref(fd.ret)
             and tag_ref_index(fd.ret) in self.opaque
         };
-        self.adoptable = {
-            tag_ref_index(fd.ret)
-            for fd in meta.fns
-            if fd.kind == FN_METHOD
-            and tag_is_ref(fd.ret)
-            and tag_ref_index(fd.ret) in self.opaque
-            and tag_ref_index(fd.ret) not in ctor_targets
-        };
-
-        self.adopt_via_static = {
-            tag_ref_index(fd.ret)
-            for fd in meta.fns
-            if fd.kind == FN_METHOD
-            and tag_is_ref(fd.ret)
-            and tag_ref_index(fd.ret) in self.opaque
-            and tag_ref_index(fd.ret) in ctor_targets
-        };
+        # A type is ADOPTED when a method hands the loader a raw owned handle to
+        # wrap: a plain Ref return, or each element of a Vec-of-handle return
+        # (TAG_LIST_BIT | TAG_REF - the element boxes are fresh owned handles
+        # adopted one by one). Types WITH a real ctor adopt via a `_adopt`
+        # static; ctor-less ones take `init(raw)` directly.
+        self.adoptable = set();
+        self.adopt_via_static = set();
+        for fd in meta.fns {
+            if fd.kind != FN_METHOD {
+                continue;
+            }
+            if tag_is_list(fd.ret) and tag_is_ref(tag_list_value(fd.ret)) {
+                rtag = tag_list_value(fd.ret);
+            } elif tag_is_ref(fd.ret) and not tag_is_list(fd.ret) {
+                rtag = fd.ret;
+            } else {
+                continue;
+            }
+            ti = tag_ref_index(rtag);
+            if ti not in self.opaque {
+                continue;
+            }
+            if ti in ctor_targets {
+                self.adopt_via_static.add(ti);
+            } else {
+                self.adoptable.add(ti);
+            }
+        }
 
         self.borrowed_owner = {};
         _borrowed_multi = set();
@@ -608,6 +619,14 @@ class _Synth {
         self._bridged_str_method = True;
         is_map = tag_is_map(fd.ret);
         vtag = tag_map_value(fd.ret) if is_map else tag_list_value(fd.ret);
+        # Vec-of-handle element: each entry is a u64 boxed OWNED handle, adopted
+        # into the element wrapper exactly like a single Ref return (`_adopt` for
+        # a type with a real ctor, `init(raw)` otherwise). _method_body gates on
+        # the element being emitted, so the lookup below always hits.
+        ref_target = None;
+        if tag_is_ref(vtag) {
+            ref_target = self.opaque[tag_ref_index(vtag)];
+        }
         vt = self._na_val_type(vtag);
         lines = [];
         lines.append('        rb = struct.unpack("<QII", out_buf);');
@@ -632,7 +651,19 @@ class _Synth {
             lines.append("                key = __jac_str_from_raw(base + off, klen);");
             lines.append("                off += klen;");
         }
-        lines.extend(self._na_read_value(vtag, "                "));
+        if ref_target is not None {
+            lines.append(
+                '                _eh = struct.unpack("<Q", __jac_bytes_from_raw(base + off, 8))[0];'
+            );
+            lines.append("                off += 8;");
+            if tag_ref_index(vtag) in self.adopt_via_static {
+                lines.append(f"                val = {ref_target}._adopt(_eh);");
+            } else {
+                lines.append(f"                val = {ref_target}(_eh);");
+            }
+        } else {
+            lines.extend(self._na_read_value(vtag, "                "));
+        }
         if is_map {
             lines.append("                result[key] = val;");
         } else {
@@ -660,6 +691,17 @@ class _Synth {
         body_lines.extend(self._wide_prelude(fd));
         rs = classify(fd.ret);
         if rs.kind == SlotKind.Map or rs.kind == SlotKind.List {
+            # A Vec-of-handle return needs its element type emitted here so each
+            # adopted element can be constructed; otherwise the method is na-gated.
+            vtag_g = tag_map_value(fd.ret)
+                if rs.kind == SlotKind.Map
+                else tag_list_value(fd.ret);
+            if tag_is_ref(vtag_g) {
+                if rs.kind == SlotKind.Map
+                or tag_ref_index(vtag_g) not in self.opaque {
+                    return None;
+                }
+            }
             body_lines.append('        out_buf = struct.pack("<QII", 0, 0, 0);');
             call.append("out_buf");
         } elif rs.kind == SlotKind.Wide {
@@ -1238,7 +1280,14 @@ class _Synth {
         produces = {ti: set() for ti in self.opaque};
         for ti in self.opaque {
             for fd in methods_of.get(ti, []) {
-                if tag_is_ref(fd.ret) {
+                # A Vec-of-handle return produces its ELEMENT type, so the
+                # element class is emitted before the producing class.
+                if tag_is_list(fd.ret) and tag_is_ref(tag_list_value(fd.ret)) {
+                    p = tag_ref_index(tag_list_value(fd.ret));
+                    if p in self.opaque and p != ti {
+                        produces[ti].add(p);
+                    }
+                } elif tag_is_ref(fd.ret) {
                     p = tag_ref_index(fd.ret);
                     if p in self.opaque and p != ti {
                         produces[ti].add(p);
@@ -1402,6 +1451,9 @@ class _Synth {
     }
 
     def _na_val_type(self: _Synth, vtag: int) -> str {
+        if tag_is_ref(vtag) {
+            return self.opaque.get(tag_ref_index(vtag), "object");
+        }
         vk = classify_scalar(vtag).kind;
         if vk == SlotKind.Str {
             return "str";

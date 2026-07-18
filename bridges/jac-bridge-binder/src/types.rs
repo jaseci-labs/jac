@@ -530,6 +530,16 @@ pub enum BridgeReturn {
     /// `-> Vec<usize>` with `.collect()` appended, riding the existing
     /// `TAG_LIST_BIT` list-return lane. The string is the full Vec type spelling.
     CollectList(String),
+    /// A VEC-OF-HANDLE return: `Vec<Comparator>` where the element is another
+    /// bridged opaque type in the same module (`VersionReq.comparators`). The
+    /// string is the element wrapper name. Codegen emits `-> Vec<{Name}>`; a
+    /// FIELD reader clones each element out of the borrowed Vec
+    /// (`.iter().map(|x| {Name}(x.clone())).collect()`, elements verified
+    /// `Clone`), an owned method return moves them (`.into_iter().map({Name})
+    /// .collect()`). The macro carries `TAG_LIST_BIT | (TAG_REF|idx)`: one
+    /// owned JacBuf of per-element boxed u64 handles, each adopted by the
+    /// loader as an independent OWNED handle (no shared/borrow bits).
+    HandleList(String),
     /// An INLINE owning-wrapper producer (multi-param variant of `OptWrapper`):
     /// `fn(&self, haystack: &str, start: usize) -> Option<Borrowed<'_>>`
     /// (`Regex::find_at`, `captures_at`). The shared `wrap` ctor is keyed to ONE

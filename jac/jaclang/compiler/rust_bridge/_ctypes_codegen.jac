@@ -283,6 +283,11 @@ def _wire(lib: CDLL, fd: FnDesc) -> object {
     or ret.kind == SlotKind.Bytes
     or ret.kind == SlotKind.Wide {
         args.append(POINTER(_JacBuf));
+    } elif (ret.kind == SlotKind.Int or ret.kind == SlotKind.Uint) and ret.is_opt {
+        # Option<int>: the value crosses as an 8-byte JacBuf (null ptr = None),
+        # so the out-slot is a JacBuf pointer, not the scalar u64 slot. Must
+        # mirror the _call_shim out-param selection exactly.
+        args.append(POINTER(_JacBuf));
     } elif ret.kind != SlotKind.Void {
         args.append(POINTER(c_uint64));
     }
@@ -365,6 +370,35 @@ def _decode_list(raw: bytes, vtag: int) -> list {
     for _ in range(count) {
         (val, off) = _read_value(raw, off, vtag);
         out.append(val);
+    }
+    return out;
+}
+
+
+def _decode_handle_list(
+    raw: bytes, vtag: int, rt: object, classes: dict[int, type]
+) -> list {
+    # Vec-of-handle decode: [u32 count] then per element a u64 boxed handle.
+    # Each handle is an independent fresh OWNED box (see the macro's List(Ref)
+    # arm), adopted exactly like a single Ref return: the element wrapper owns
+    # its box and close() drops it once. No shared/borrow bits ever apply.
+    out = [];
+    (count, ) = struct.unpack_from("<I", raw, 0);
+    off = 4;
+    cls = classes.get(tag_ref_index(vtag));
+    for _ in range(count) {
+        (h, ) = struct.unpack_from("<Q", raw, off);
+        off += 8;
+        if cls is None {
+            out.append(h);
+            continue;
+        }
+        stub = object.__new__(cls);
+        stub._handle = h;
+        stub._closed = False;
+        stub._rt = rt;
+        stub._finalizer = None;
+        out.append(stub);
     }
     return out;
 }
@@ -680,7 +714,11 @@ def _call(
         }
         raw = string_at(out_buf.ptr, out_buf.len) if out_buf.ptr != 0 else b"";
         rt.free_buf(out_buf);
-        return _decode_list(raw, tag_list_value(fd.ret));
+        vtag = tag_list_value(fd.ret);
+        if tag_is_ref(vtag) {
+            return _decode_handle_list(raw, vtag, rt, classes);
+        }
+        return _decode_list(raw, vtag);
     }
     if ret.kind == SlotKind.Void {
         return None;

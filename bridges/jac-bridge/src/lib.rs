@@ -931,9 +931,19 @@ fn ret_tag(ty: &Type, types: &[TypeDef], records: &[RecordDef], self_i: usize) -
         match elem_tag {
             Tag::Bool | Tag::Int | Tag::Uint | Tag::Str =>
                 return Ok(Tag::List(Box::new(elem_tag))),
+            // Vec-of-handle: `Vec<Comparator>` where the element is a bridged
+            // opaque type. Wire shape TAG_LIST_BIT | (TAG_REF|idx): the shim
+            // boxes every element into its own fresh JacHandle and serializes
+            // the u64 pointers into the one owned JacBuf; the loader adopts
+            // each into the element type's wrapper, exactly like a single Ref
+            // return, then frees the buffer. Elements are always fresh OWNED
+            // boxes (no shared/borrow bits), so each wrapper's close() drops
+            // exactly its own box.
+            Tag::Ref(_) =>
+                return Ok(Tag::List(Box::new(elem_tag))),
             _ => return Err(Error::new(elem_ty.span(),
-                "unsupported Vec element type: only bool, integer, and String \
-                 elements are bridgeable")),
+                "unsupported Vec element type: only bool, integer, String, and \
+                 bridged opaque elements are bridgeable")),
         }
     }
     match ty {
@@ -2067,6 +2077,28 @@ fn out_param_tokens(ret: &Tag, rt: &Ident) -> (TS2, TS2, TS2) {
                 quote! { *out_buf = #rt::JacBuf { ptr: ::std::ptr::null_mut(), len: 0, cap: 0 }; },
             )
         }
+        // Vec-of-handle (List(Ref)): CONSUME the owned Vec, box every element into
+        // its own fresh JacHandle, and serialize the u64 box pointers into the one
+        // owned JacBuf ([u32 count] then per element [u64 handle], little-endian).
+        // Ownership: each box is an independent OWNED handle exactly like a single
+        // Ref return — the loader adopts each into the element type's wrapper and
+        // that wrapper's close()/drop frees exactly its own box, so no element is
+        // ever double-freed and none is shared. The loader frees only the JacBuf.
+        Tag::List(elem) if matches!(elem.as_ref(), Tag::Ref(_)) => (
+            quote! { out_buf: *mut #rt::JacBuf, },
+            quote! {
+                let mut __out: ::std::vec::Vec<u8> = ::std::vec::Vec::new();
+                __out.extend_from_slice(&(val.len() as u32).to_le_bytes());
+                for __v in val.into_iter() {
+                    let __h = ::std::boxed::Box::into_raw(
+                        ::std::boxed::Box::new(#rt::JacHandle::new(__v))
+                    ) as u64;
+                    __out.extend_from_slice(&__h.to_le_bytes());
+                }
+                *out_buf = #rt::vec_to_jacbuf(__out);
+            },
+            quote! { *out_buf = #rt::JacBuf { ptr: ::std::ptr::null_mut(), len: 0, cap: 0 }; },
+        ),
         // Vec<V> → one owned JacBuf holding the whole vector serialized
         // little-endian: [u32 count] then per element [value]. Same value encoding
         // as a map value (see above), just without the per-entry key. The loader

@@ -333,9 +333,10 @@ fn collect_root_glob_modules(doc: &Crate, module_name: &str) -> HashSet<String> 
 /// never dangle, so they are `None` here.
 fn ref_return_target(ret: &BridgeReturn) -> Option<&str> {
     match ret {
-        BridgeReturn::Ref(n) | BridgeReturn::OptRef(n) | BridgeReturn::RefResult(n) => {
-            Some(n.as_str())
-        }
+        BridgeReturn::Ref(n)
+        | BridgeReturn::OptRef(n)
+        | BridgeReturn::RefResult(n)
+        | BridgeReturn::HandleList(n) => Some(n.as_str()),
         _ => None,
     }
 }
@@ -2077,12 +2078,27 @@ impl<'a> Ctx<'a> {
                         }
                     }
                 }
+                // A `Vec<Handle>` field (`VersionReq.comparators: Vec<Comparator>`)
+                // rides the Vec-of-handle lane when the element is a live bridged
+                // opaque type AND the element is `Clone` (the reader clones each
+                // element out of the borrowed Vec into its own owned handle box).
+                if rp_name(&rp.path) == "Vec" {
+                    if let Some(Type::ResolvedPath(elem)) = vec_first_type_arg(rp) {
+                        if self.ref_type_names.contains(&elem.path)
+                            && !has_lifetime_args(elem)
+                            && !inner_has_lifetime(elem, self.doc)
+                            && self.type_impls_trait(elem.id.0, "Clone")
+                        {
+                            return Ok(BridgeReturn::HandleList(elem.path.clone()));
+                        }
+                    }
+                }
                 match rp_name(&rp.path) {
                     "Option" => Err(SkipReason::UnsupportedType(
                         "Option<non-integer> field: no in-band None channel in the v1 ABI".into(),
                     )),
                     "Vec" => Err(SkipReason::UnsupportedType(
-                        "Vec<handle> field: no list-of-handle lane".into(),
+                        "Vec<non-handle or non-Clone> field: no lane".into(),
                     )),
                     other => Err(SkipReason::UnsupportedType(format!(
                         "field of type {other}"
@@ -2590,6 +2606,20 @@ impl<'a> Ctx<'a> {
                     // arm, mirroring the macro's own `Vec<u8>`-before-`Vec<V>` order.
                     if first_type_arg_is_u8(rp) {
                         return Ok(BridgeReturn::Bytes);
+                    }
+                    // Vec-of-handle: `Vec<Other>` where the element names another
+                    // live bridged opaque type (no lifetime). The owned Vec's
+                    // elements move into per-element boxed handles on the
+                    // `TAG_LIST_BIT | TAG_REF` wire (see `HandleList`). Checked
+                    // before the scalar list arm so the element ident is not
+                    // rejected as an unsupported scalar.
+                    if let Some(Type::ResolvedPath(elem)) = vec_first_type_arg(rp) {
+                        if self.ref_type_names.contains(&elem.path)
+                            && !has_lifetime_args(elem)
+                            && !inner_has_lifetime(elem, self.doc)
+                        {
+                            return Ok(BridgeReturn::HandleList(elem.path.clone()));
+                        }
                     }
                     return classify_vec_return(rp);
                 }
