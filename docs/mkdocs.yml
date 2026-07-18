@@ -19,6 +19,7 @@ nav:
           - What is Jac: "quick-guide/index.md"
           - Why Jac vs a Traditional Stack: "quick-guide/jac-vs-traditional-stack.md"
           - Core Concepts: "quick-guide/what-makes-jac-different.md"
+          - The Ideas Behind Jac: "quick-guide/ideas-behind-jac.md"
           - Install: "quick-guide/install.md"
           - One Binary, Build Anything: "quick-guide/one-binary.md"
       - Build Anything: "quick-guide/project-kinds.md"
@@ -110,6 +111,7 @@ nav:
   - Community:
       - Contributing: "community/contributing.md"
       - Codebase Guide: "community/codebase-guide.md"
+      - Research & Papers: "community/research.md"
       - FAQ: "quick-guide/faq.md"
       - Breaking Changes: "community/breaking-changes.md"
       - Jac Playground: https://playground.jaseci.org/cl/app
