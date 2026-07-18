@@ -507,8 +507,13 @@ fn extractPayload(
         defer gpa.free(buf);
 
         var dec = PayloadDecoder.init(dctx, zbuf, buf);
+        // executable_bit_only (not .ignore!) so bundled executable scripts
+        // such as build_libwebview.sh keep their exec bit. payload.zig
+        // tarZstDir now writes the real on-disk mode into the tar; with
+        // .ignore every regular file flattens to 0o644 and the runtime spawn
+        // fails EACCES (the same lesson fetch-pbs learned; see payload.zig).
         try std.tar.extract(io, dest, &dec.reader, .{
-            .mode_mode = .ignore,
+            .mode_mode = .executable_bit_only,
             .strip_components = 0,
         });
 

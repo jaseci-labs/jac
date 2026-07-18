@@ -1788,6 +1788,19 @@ fn zstdCompressAlloc(gpa: Allocator, bytes: []const u8) ![]u8 {
     return gpa.realloc(dst, n) catch dst[0..n];
 }
 
+/// On-disk mode of `sub_path` (within `dir`), or 0 when unreadable / on a
+/// platform whose Permissions carry no real mode (Windows/WASI). `tarZstDir`
+/// feeds this to `writeFileBytes` so executable files survive pack/extract;
+/// returning 0 falls through to the tar Writer's 0o664 default.
+fn sourceFileMode(io: Io, dir: Dir, sub_path: []const u8) u32 {
+    const Perm = Io.File.Permissions;
+    if (@hasDecl(Perm, "toMode")) {
+        const st = dir.statFile(io, sub_path, .{}) catch return 0;
+        return @intCast(st.permissions.toMode());
+    }
+    return 0;
+}
+
 /// tar `stage` (its top-level `python` + `site`) and zstd it to `out`. The
 /// runtime side (runtime.zig extractPayload) decompresses this exact format
 /// with pure std. The full tar is built in memory (~430 MB plus the compress
@@ -1808,7 +1821,13 @@ fn tarZstDir(io: Io, gpa: Allocator, a: Allocator, stage: []const u8, out: []con
             else => {
                 const bytes = try stage_dir.readFileAlloc(io, entry.path, a, .unlimited);
                 defer a.free(bytes);
-                try tw.writeFileBytes(entry.path, bytes, .{});
+                // Preserve the on-disk mode so executable scripts
+                // (build_libwebview.sh et al.) keep their exec bit across the
+                // pack -> extract pipeline. writeFileBytes treats `mode = 0`
+                // as "use the header default 0o664", stripping IXUSR so the
+                // runtime spawn fails EACCES. The matching extract-side fix is
+                // runtime.zig extractPayload's .executable_bit_only.
+                try tw.writeFileBytes(entry.path, bytes, .{ .mode = sourceFileMode(io, stage_dir, entry.path) });
             },
         }
     }
@@ -1893,6 +1912,18 @@ test "tarZstDir round-trips through the launcher's payload decoder" {
         .sub_path = try std.fmt.allocPrint(a, "{s}/python/bin/python", .{stage}),
         .data = text,
     });
+    // An executable script committed 0o755: it must survive pack/extract with
+    // its exec bit intact (the regression this test guards). Guarded so the
+    // test still compiles on platforms whose Permissions carry no real mode.
+    const exec_script = "#!/bin/sh\necho hi\n";
+    const has_mode = @hasDecl(Io.File.Permissions, "toMode");
+    if (has_mode) {
+        try Dir.cwd().writeFile(io, .{
+            .sub_path = try std.fmt.allocPrint(a, "{s}/python/bin/build_x.sh", .{stage}),
+            .data = exec_script,
+            .flags = .{ .permissions = .fromMode(0o755) },
+        });
+    }
     const big = try a.alloc(u8, 3 * zstd.block_size_max + 12345);
     var prng = std.Random.DefaultPrng.init(42);
     prng.random().bytes(big);
@@ -1916,8 +1947,18 @@ test "tarZstDir round-trips through the launcher's payload decoder" {
     try Dir.cwd().createDirPath(io, dest);
     var dest_dir = try Dir.cwd().openDir(io, dest, .{});
     defer dest_dir.close(io);
-    try std.tar.extract(io, dest_dir, &dec.reader, .{ .mode_mode = .ignore, .strip_components = 0 });
+    // Mirrors runtime.zig extractPayload: .executable_bit_only, not .ignore.
+    try std.tar.extract(io, dest_dir, &dec.reader, .{ .mode_mode = .executable_bit_only, .strip_components = 0 });
 
     try testing.expectEqualStrings(text, try dest_dir.readFileAlloc(io, "python/bin/python", a, .unlimited));
     try testing.expectEqualSlices(u8, big, try dest_dir.readFileAlloc(io, "python/big.bin", a, .unlimited));
+
+    // Regression: an executable source file must keep IXUSR through pack/extract.
+    if (has_mode) {
+        try testing.expectEqualStrings(exec_script, try dest_dir.readFileAlloc(io, "python/bin/build_x.sh", a, .unlimited));
+        const sf = try dest_dir.openFile(io, "python/bin/build_x.sh", .{});
+        defer sf.close(io);
+        const sst = try sf.stat(io);
+        try testing.expect(sst.permissions.toMode() & 0o100 != 0); // IXUSR preserved
+    }
 }
