@@ -334,7 +334,9 @@ test "string literal import infers cl but rejects sv pin" {
     prog = JacProgram();
     prog.compile(file_path="test.jac", use_str=code);
     assert not prog.errors_had , (
-        f"Unmarked string import should infer client placement, got: {[str(e) for e in prog.errors_had]}"
+        f"Unmarked string import should infer client placement, got: {[
+            str(e) for e in prog.errors_had
+        ]}"
     );
 
     pinned = """sv { import from "react-dom" { render } }""";
@@ -345,9 +347,7 @@ test "string literal import infers cl but rejects sv pin" {
     assert any(
         "String literal imports" in msg and "client (cl) imports" in msg
         for msg in error_messages
-    ) , (
-        f"Expected error for server-pinned string import, got: {error_messages}"
-    );
+    ) , (f"Expected error for server-pinned string import, got: {error_messages}");
 }
 
 test "string literal import works with cl" {
