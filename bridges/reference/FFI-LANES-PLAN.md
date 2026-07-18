@@ -1228,7 +1228,7 @@ these first; the adversarial suite already contains skip-gated tests waiting on 
       new-ref handle (the general path -- objects/DataFrames). Codec = a pure-Python
       MessagePack subset (None/bool/int/float/str/bytes + list/dict) injected LAZILY
       on first call as an isolated `_jacpyi` module (throwaway installer w/ nested
-      closures, no **main** pollution); standard-msgpack wire, byte-identical to the
+      closures, no main-namespace pollution); standard-msgpack wire, identical to the
       wide lane. Differential-tested against the `msgpack` package on CPython 3.14
       (the bundled pbs version): 43 value shapes both directions + crafted
       int8/16/32/float32/str8 decode paths + non-encodable-raises; the embedded Zig
