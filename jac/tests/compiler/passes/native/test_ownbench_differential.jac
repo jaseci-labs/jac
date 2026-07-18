@@ -27,12 +27,12 @@ import from pathlib { Path }
 glob OWNBENCH = str(Path(__file__).resolve().parents[4] / "examples" / "ownbench"),
      MODES = ["none", "rc", "cycles"],
      SMALL_ARGS: dict[str, list[str]] = {
-         "binarytrees": ["8"],
-         "vecdot": ["500", "5"],
-         "histogram": ["5000", "3"],
-         "vm": ["200", "50"],
-         "rbtree": ["1000", "2"],
-         "deriv": ["20", "3"],
+         "own_binarytrees": ["8"],
+         "own_vecdot": ["500", "5"],
+         "own_histogram": ["5000", "3"],
+         "own_vm": ["200", "50"],
+         "own_rbtree": ["1000", "2"],
+         "own_deriv": ["20", "3"],
 
      };
 
@@ -106,33 +106,33 @@ def _assert_differential_identity(kernel: str) {
 }
 
 test "ownbench differential identity: binarytrees (drop-order witness)" {
-    _assert_differential_identity("binarytrees");
+    _assert_differential_identity("own_binarytrees");
 }
 
 test "ownbench differential identity: vecdot" {
-    _assert_differential_identity("vecdot");
+    _assert_differential_identity("own_vecdot");
 }
 
 test "ownbench differential identity: histogram" {
-    _assert_differential_identity("histogram");
+    _assert_differential_identity("own_histogram");
 }
 
 test "ownbench differential identity: vm" {
-    _assert_differential_identity("vm");
+    _assert_differential_identity("own_vm");
 }
 
 test "ownbench differential identity: rbtree" {
-    _assert_differential_identity("rbtree");
+    _assert_differential_identity("own_rbtree");
 }
 
 test "ownbench differential identity: deriv (own-param transfer stress)" {
-    _assert_differential_identity("deriv");
+    _assert_differential_identity("own_deriv");
 }
 
 test "ownbench erasure round-trip: deriv reproduces annotated digest" {
-    src = os.path.join(OWNBENCH, "kernels", "deriv.na.jac");
+    src = os.path.join(OWNBENCH, "kernels", "own_deriv.na.jac");
     eraser = os.path.join(OWNBENCH, "harness", "erase.jac");
-    args = SMALL_ARGS["deriv"];
+    args = SMALL_ARGS["own_deriv"];
     with tempfile.TemporaryDirectory() as tmp {
         erased = subprocess.run(
             [sys.executable, "-m", "jaclang", "run", eraser, src],
@@ -146,12 +146,12 @@ test "ownbench erasure round-trip: deriv reproduces annotated digest" {
                 f"erase.jac left annotation pattern '{leftover}' behind"
             );
         }
-        bare_src = os.path.join(tmp, "deriv_bare.na.jac");
+        bare_src = os.path.join(tmp, "own_deriv_bare.na.jac");
         with open(bare_src, "w") as f {
             f.write(erased.stdout);
         }
-        annotated_bin = os.path.join(tmp, "deriv_rc");
-        bare_bin = os.path.join(tmp, "deriv_bare_rc");
+        annotated_bin = os.path.join(tmp, "own_deriv_rc");
+        bare_bin = os.path.join(tmp, "own_deriv_bare_rc");
         _nacompile(src, "rc", annotated_bin);
         _nacompile(bare_src, "rc", bare_bin);
         annotated = _digest(annotated_bin, args);

@@ -16,7 +16,14 @@ import sys;
 import from pathlib { Path }
 
 glob BENCH = Path(str(__file__)).resolve().parent.parent,
-     KERNELS = ["binarytrees", "vecdot", "histogram", "vm", "rbtree", "deriv"],
+     KERNELS = [
+         "own_binarytrees",
+         "own_vecdot",
+         "own_histogram",
+         "own_vm",
+         "own_rbtree",
+         "own_deriv"
+     ],
      MODES = ["none", "rc", "cycles"];
 
 """nacompile flags for a memory mode."""
