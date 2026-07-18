@@ -229,12 +229,12 @@ def generate -> str {
             }
         }
 
-        for (fname, fkind) in POSTINIT_FIELDS.get(name, []) {
-            field_parts.append(f'FieldDesc(name="{fname}", kind={fkind})');
-        }
-
         if name in MANUAL_FIELDS {
             field_parts = MANUAL_FIELDS[name];
+        }
+
+        for (fname, fkind) in POSTINIT_FIELDS.get(name, []) {
+            field_parts.append(f'FieldDesc(name="{fname}", kind={fkind})');
         }
 
         is_scope = name in scope_set;

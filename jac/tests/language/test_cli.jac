@@ -2516,8 +2516,13 @@ test "jir reload preserves FuncCall callee_decl and call_kind" {
             assert hasattr(fc, "call_kind") , (
                 "JIR-reloaded FuncCall lost `call_kind` (#6656 Ask #2)"
             );
+            # None here because this compile ran without type_check=True, so
+            # inference never stamped callee_decl in the first place -- not
+            # because JIR drops the field (stamped intra-module callee_decl now
+            # round-trips as a serialized OPT_NODE_REF; see #7172).
             assert fc.callee_decl is None , (
-                "callee_decl is inference-only and must default to None on JIR load"
+                "callee_decl is None because inference did not run on this "
+                "compile, so there was nothing to serialize"
             );
         }
     }
