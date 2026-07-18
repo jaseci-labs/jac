@@ -233,11 +233,8 @@ def _precompile_app(base: Path, pod_binary: bytes) -> Path {
 
 
 def fat_bundle_setting(project_dir: str) -> tuple[bool, bool] {
-    # (enabled, explicit): fat is the default; an explicit `fat_bundle = true`
-    # additionally makes vendoring failures fatal instead of degrading to thin.
     import from jaclang.project.config { get_config_for_path }
-    # pack_jab tolerates malformed jac.tomls (the sanitizer is line-based), so
-    # an unparseable config means thin bundle, not a failed deploy.
+
     try {
         config = get_config_for_path(Path(project_dir));
     } except Exception as exc {
@@ -262,9 +259,6 @@ def fat_bundle_enabled(project_dir: str) -> bool {
 
 
 def _vendor_stage(stage: Path, sanitized_toml: (str | None), pod_binary: bytes) {
-    # Vendor with the same binary that sealed the app and that pods run,
-    # against the same sanitized jac.toml the pod's `jac install` will see
-    # (sanitizing can bake a database intent that widens the closure).
     if sanitized_toml is not None {
         (stage / "jac.toml").write_text(sanitized_toml, encoding="utf-8");
     }
@@ -288,8 +282,7 @@ def _vendor_stage(stage: Path, sanitized_toml: (str | None), pod_binary: bytes) 
             f"deps: {(result.stderr or result.stdout).strip()[-300:]}"
         );
     }
-    # The vendor script reports skips (e.g. non-pypi deps left to pod boot);
-    # keep that visible in the deploy log.
+
     for line in f"{result.stdout}\n{result.stderr}".splitlines() {
         if line.strip() {
             logger.info(f"vendor: {line.strip()}");
@@ -317,8 +310,7 @@ def pack_jab(project_dir: str, provisioned_database: str, pod_binary: bytes) -> 
                 if fat_explicit {
                     raise;
                 }
-                # Default-on mode degrades to the pre-fat behavior (pods
-                # install from PyPI at boot) instead of blocking the deploy.
+
                 shutil.rmtree(str(staged / "_vendor"), ignore_errors=True);
                 logger.warning(
                     f"Fat bundle vendoring failed; shipping a thin bundle "

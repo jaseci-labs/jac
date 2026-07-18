@@ -1,10 +1,3 @@
-"""Vendor an app's python dep closure into <app_dir>/_vendor for a fat .jab.
-
-pack_jab runs this under the pod binary so wheels are resolved by the same
-interpreter, and against the same sanitized jac.toml, that the pod's
-`jac install` will use.
-"""
-
 import sys;
 
 import from pathlib { Path }
@@ -24,7 +17,6 @@ obj WheelVendor {
         app_dir: Path;
 
     def resolve_specs -> list[str] {
-        # Mirror the pod's plain `jac install` resolution.
         plan = resolve_plan(self.config, include_dev=False);
         py_deps = [
             d

@@ -160,10 +160,7 @@ def build_bootstrap_init_container(
             'prebuilt client dist; full install"; fi'
         );
     }
-    # Fat bundles unpack their wheel closure to _vendor/wheels; forcing pip
-    # offline keeps the identical `jac install` path but resolves every spec
-    # locally, and an incomplete closure fails the boot loudly instead of
-    # silently reaching for PyPI. Thin bundles take the unchanged PyPI path.
+
     vendor_wheels = f"{APP_MOUNT_PATH}/_vendor/wheels";
     commands.append(
         f'if ls {vendor_wheels}/*.whl >/dev/null 2>&1; then '
