@@ -1222,8 +1222,8 @@ test "plugin configs from toml control registration" {
         toml_path = Path(d) / "jac.toml";
         toml_path.write_text(
             '[project]\nname = "test"\nversion = "1.0.0"\nentry-point = "main.jac"\n'
-            '[plugins.desktop]\nname = "Test"\n'
-            '[plugins.desktop.plugins]\n'
+            '[desktop]\nname = "Test"\n'
+            '[desktop.plugins]\n'
             'path = true\n'
             'notification = true\n'
             'fs = { allow_read = ["$HOME"], allow_write = ["$APP_DATA"] }\n'
@@ -1258,7 +1258,7 @@ test "plugin configs empty when no plugins section" {
         toml_path = Path(d) / "jac.toml";
         toml_path.write_text(
             '[project]\nname = "test"\nversion = "1.0.0"\nentry-point = "main.jac"\n'
-            '[plugins.desktop]\nname = "Test"\n'
+            '[desktop]\nname = "Test"\n'
         );
         cfg = get_desktop_config(project_dir=Path(d));
         plugins = cfg.get_plugin_configs();

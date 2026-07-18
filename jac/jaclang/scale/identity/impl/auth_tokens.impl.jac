@@ -27,13 +27,12 @@ impl AuthTokenStore.postinit -> None {
             "MongoDB URI is configured. This will cause intermittent "
             "INVALID_TOKEN failures under multiple workers because tokens "
             "issued by one worker are not visible to the others. Set "
-            "[plugins.scale.database] mongodb_uri in jac.toml to fix."
+            "[scale.database] mongodb_uri in jac.toml to fix."
         );
     }
 }
 
 impl AuthTokenStore.instance -> AuthTokenStore {
-    global _auth_token_store;
     if _auth_token_store is not None {
         return _auth_token_store;
     }
@@ -42,7 +41,6 @@ impl AuthTokenStore.instance -> AuthTokenStore {
 }
 
 impl reset_auth_token_store -> None {
-    global _auth_token_store;
     _auth_token_store = None;
 }
 

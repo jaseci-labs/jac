@@ -4,7 +4,7 @@ import from datetime { date, datetime, time }
 import from enum { Enum }
 import from hashlib { sha256 }
 import from json { dumps as _json_dumps }
-import from typing { cast, get_args, get_origin, get_type_hints }
+import from typing { cast, get_args, get_origin }
 import from types { NoneType, UnionType }
 import from typing { Union }
 import from uuid { UUID }
@@ -83,13 +83,12 @@ obj Serializer {
 }
 
 glob _register_hook: object = Archetype._subclass_hooks.append(
-         lambda cls: type :
-             Serializer.register(cls)
-                 if (
-                     not cls.__module__.startswith('jaclang.')
-                     or cls.__module__.startswith('jaclang.scale.')
-                 )
-                 else None
+         lambda (cls: type) { Serializer.register(cls)
+             if (
+                 not cls.__module__.startswith('jaclang.')
+                 or cls.__module__.startswith('jaclang.scale.')
+             )
+             else None; }
      ),
      _register_root: object = Serializer.register(cast(type, Root)),
      _register_generic_edge: object = Serializer.register(cast(type, GenericEdge));

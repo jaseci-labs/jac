@@ -165,53 +165,16 @@ impl MicroserviceGateway.serve_spa_fallback -> Response | None {
 }
 
 impl MicroserviceGateway.bootstrap_admin_ui -> None {
-    admin_dist = Path(self.admin_dist_dir);
-    dest_index = admin_dist / "index.html";
-
+    if (Path(self.admin_dist_dir) / "index.html").is_file() {
+        return;
+    }
+    logger.info("No staged admin console - building it from source.");
     try {
-        import from jaclang.scale.admin { admin_portal }
-        admin_pkg_dir = Path(admin_portal.__file__).parent;
-        bundled_dist = admin_pkg_dir / "_dist";
-        src_index = bundled_dist / "index.html";
-
-        if not (bundled_dist.exists() and src_index.exists()) {
-            if dest_index.exists() {
-                return;
-            }
-            logger.info(
-                "No pre-built admin _dist - building from source via "
-                "JacAPIServerAdmin.build_admin_client"
-            );
-            if not self.build_admin_client() {
-                logger.warning(
-                    "Admin UI build failed - the static UI will be "
-                    "unavailable. Install bun + jac-client, or use a "
-                    "wheel install of jac-scale."
-                );
-            }
-            return;
-        }
-
-        if dest_index.exists()
-        and dest_index.stat().st_mtime >= src_index.stat().st_mtime {
-            return;
-        }
-
-        logger.info("Deploying pre-built admin UI to gateway");
-        admin_dist.mkdir(parents=True, exist_ok=True);
-        for item in bundled_dist.iterdir() {
-            dest = admin_dist / item.name;
-            if item.is_dir() {
-                if dest.exists() {
-                    shutil.rmtree(dest);
-                }
-                shutil.copytree(item, dest);
-            } else {
-                shutil.copy2(item, dest);
-            }
-        }
+        self.build_admin_client();
     } except (ImportError, ModuleNotFoundError) {
         logger.debug("Admin module not available, skipping admin UI bootstrap");
+    } except Exception as e {
+        logger.warning(f"Admin UI build failed: {e}");
     }
 }
 
@@ -397,9 +360,6 @@ impl MicroserviceGateway.handle_builtin_passthrough(
         return None;
     }
 
-    # Each service can only deserialize its own module's archetypes out of the
-    # shared store, so no single service can render the whole graph -- merge
-    # every healthy service's fragment instead of forwarding to one of them.
     if request.method == "GET" and path == "/graph/data" {
         agg = await self.aggregate_graph_data(request);
         if agg is not None {
@@ -643,6 +603,7 @@ impl MicroserviceGateway.setup -> FastAPI {
                 classify_route,
                 ROUTE_BUILTIN,
                 ROUTE_ADMIN,
+                ROUTE_IDENTITY,
                 ROUTE_PROXY
             }
             service_prefixes: list = [e.prefix for e in gw.registry.entries.values()];
@@ -681,6 +642,14 @@ impl MicroserviceGateway.setup -> FastAPI {
                     admin_resp = not_found(path);
                 }
                 resp = admin_resp;
+            } elif decision.kind == ROUTE_IDENTITY {
+                if gw.server is not None {
+                    ident_resp = await call_next(request);
+                    if ident_resp.status_code not in (404, 405) {
+                        svc_label = "__identity__";
+                        resp = ident_resp;
+                    }
+                }
             } elif decision.kind == ROUTE_PROXY {
                 matched = gw.registry.match_route(path);
                 if matched {
@@ -824,10 +793,21 @@ impl MicroserviceGateway._install_admin_api -> None {
     self.register_network_endpoints();
     self.register_podenv_endpoints();
 
+    self.register_register_endpoint();
+    self.register_login_endpoint();
+    self.register_refresh_token_endpoint();
+    self.register_update_password_endpoint();
+    self.register_me_endpoint();
+    self.register_update_me_endpoint();
+
     self.server.create_server();
 
     logger.info(
         "Admin JSON API installed on gateway "
         "(/admin/login, /admin/me, /admin/users, /admin/logs/*, ...)"
+    );
+    logger.info(
+        "Gateway-owned identity installed "
+        "(/user/register, /user/login, /user/me served by the gateway)"
     );
 }

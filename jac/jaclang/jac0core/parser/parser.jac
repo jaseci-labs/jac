@@ -15,37 +15,23 @@ import from jaclang.jac0core.diagnostics {
     E0004,
     E0005,
     E0006,
-    E0010,
-    E0011,
     E0012,
     E0013,
-    E0020,
-    E0021,
     E0022,
-    E0023,
     E0025,
     E0026,
     E0027,
     E0028,
     E0030,
-    E0031,
     E0032,
-    E0033,
     E0034,
-    E0040,
-    E0041,
-    E0042,
-    E0043,
-    E0044,
     E0045,
     E0046,
     E0047,
-    E0050,
-    E0051,
     E2023,
     E2028,
     W0060,
-    W0061,
+    E0048,
     W0063,
     DIAGNOSTICS
 }
@@ -91,6 +77,7 @@ import from jaclang.jac0core.unitree {
     ElseIf,
     ElseStmt,
     WhileStmt,
+    ForeverStmt,
     InForStmt,
     IterForStmt
 }
@@ -118,7 +105,7 @@ import from jaclang.jac0core.unitree {
     DisengageStmt,
     ExprStmt
 }
-import from jaclang.jac0core.unitree { TypedCtxBlock, GlobalStmt, NonLocalStmt }
+import from jaclang.jac0core.unitree { TypedCtxBlock, OpenStmt }
 import from jaclang.jac0core.unitree {
     BinaryExpr,
     UnaryExpr,
@@ -183,10 +170,9 @@ import from jaclang.jac0core.unitree { JsxText, JsxExpression, JsxSlot, JsxComme
 
 import from jaclang.jac0core.constant {
     Tokens as Tok,
-    SymbolAccess,
-    SymbolType,
     EdgeDir,
-    CodeContext
+    CodeContext,
+    OwnershipKind
 }
 
 glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
@@ -239,8 +225,6 @@ glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.KW_SEM: Tok.KW_SEM.value,
          TokenKind.KW_TEST: Tok.KW_TEST.value,
          TokenKind.KW_GLOBAL: Tok.KW_GLOBAL.value,
-         TokenKind.KW_GLOBAL_REF: Tok.GLOBAL_OP.value,
-         TokenKind.KW_NONLOCAL: Tok.NONLOCAL_OP.value,
          TokenKind.KW_IMPORT: Tok.KW_IMPORT.value,
          TokenKind.KW_INCLUDE: Tok.KW_INCLUDE.value,
          TokenKind.KW_FROM: Tok.KW_FROM.value,
@@ -249,9 +233,9 @@ glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.KW_ELIF: Tok.KW_ELIF.value,
          TokenKind.KW_ELSE: Tok.KW_ELSE.value,
          TokenKind.KW_FOR: Tok.KW_FOR.value,
-         TokenKind.KW_TO: Tok.KW_TO.value,
          TokenKind.KW_BY: Tok.KW_BY.value,
          TokenKind.KW_WHILE: Tok.KW_WHILE.value,
+         TokenKind.KW_FOREVER: Tok.KW_FOREVER.value,
          TokenKind.KW_MATCH: Tok.KW_MATCH.value,
          TokenKind.KW_SWITCH: Tok.KW_SWITCH.value,
          TokenKind.KW_CASE: Tok.KW_CASE.value,
@@ -406,11 +390,16 @@ obj Parser {
     def is_builtin_type_token -> bool;
     def get_source -> Source;
     def match_tok(kind: TokenKind) -> Token | None;
+    def match_any(*kinds: TokenKind) -> Token | None;
     def expect(kind: TokenKind) -> Token;
+    def expect_any(*kinds: TokenKind) -> Token;
     def consume_uni(kind: TokenKind) -> UniToken;
     def expect_name -> Token;
     def _make_alert(
-        message: str, sloc: SourceLoc, code: DiagnosticInfo | None = None
+        message: str,
+        sloc: SourceLoc,
+        code: DiagnosticInfo | None = None,
+        help_text: str | None = None
     ) -> Alert;
 
     def error(message: str);
@@ -427,6 +416,7 @@ obj Parser {
     def make_special_name(tok: Token) -> Name;
     def make_name_or_special(tok: Token) -> Name;
     def parse_access_tag -> SubTag | None;
+    def _make_literal(node_cls: type, name: str, tok: Token) -> object;
     def make_string(tok: Token) -> String;
     def make_string_from_value(value: str) -> String;
     def make_int(tok: Token) -> Int;
@@ -479,10 +469,10 @@ obj Parser {
     def parse_filter_compr_inner -> FilterCompr;
     def parse_filter_compr_bracket -> FilterCompr;
     def parse_assign_compr_inner -> AssignCompr;
-    def parse_atom_literal -> Expr;
-    def parse_multistring -> Expr;
-    def parse_builtin_type -> Expr;
-    def parse_special_ref -> Expr;
+    def parse_atom_literal -> Expr | None;
+    def parse_multistring -> Expr | None;
+    def parse_builtin_type -> Expr | None;
+    def parse_special_ref -> Expr | None;
     def parse_atom -> Expr;
     def parse_paren_expr -> Expr;
     def parse_bracket_expr -> Expr;
@@ -495,18 +485,16 @@ obj Parser {
     def parse_dict_spread_entry -> KVPair;
     def parse_edge_ref_chain -> Expr;
     def parse_edge_op_ref -> EdgeOpRef | None;
-    def continue_edge_ref_chain(start_expr: Expr, lsquare_uni: UniToken) -> Expr;
+    def _continue_edge_ref_chain(start_expr: Expr, lsquare_uni: UniToken) -> Expr;
     def parse_comprehension_clauses -> list;
     def parse_compr_clause -> InnerCompr;
     def parse_lambda_expr -> Expr;
-    def parse_lambda_params(sig_kid: list) -> list;
-    def parse_lambda_param -> ParamVar;
     def parse_jsx_element -> Expr;
     def _parse_jsx_dynamic_tag(open_kid: list) -> Expr;
     def _consume_jsx_dynamic_close(close_kid: list);
     def parse_jsx_attributes -> list;
     def parse_jsx_children -> list;
-    def parse_jsx_child -> Expr;
+    def parse_jsx_child -> Expr | None;
     def parse_element_stmt;
     def _dispatch_decorated;
     def _dispatch_async;
@@ -516,12 +504,14 @@ obj Parser {
     def parse_native_block -> NativeBlock;
     def parse_module_code -> ModuleCode;
     def parse_code_block_stmts -> list;
-    def parse_ctrl_stmt;
+    def parse_ctrl_stmt -> CtrlStmt | DisengageStmt | None;
     def parse_statement;
     def parse_if_stmt -> IfStmt;
     def parse_elif_stmt -> ElseIf;
     def parse_else_stmt -> ElseStmt;
     def parse_while_stmt -> WhileStmt;
+    def parse_open_stmt -> OpenStmt;
+    def parse_forever_stmt -> ForeverStmt;
     def parse_for_stmt;
     def parse_try_stmt -> TryStmt;
     def parse_except_handler -> Except;
@@ -532,7 +522,7 @@ obj Parser {
     def parse_or_pattern;
     def parse_single_pattern;
     def parse_literal_pattern -> MatchValue;
-    def _literal_pattern_fallback -> MatchValue;
+    def parse_expression_pattern -> MatchValue;
     def parse_name_pattern;
     def parse_sequence_pattern;
     def parse_tuple_sequence_pattern;
@@ -546,14 +536,13 @@ obj Parser {
     def parse_raise_stmt -> RaiseStmt;
     def parse_assert_stmt -> AssertStmt;
     def parse_delete_stmt -> DeleteStmt;
-    def parse_global_stmt -> GlobalStmt;
-    def parse_nonlocal_stmt -> NonLocalStmt;
     def parse_visit_stmt -> VisitStmt;
     def parse_report_stmt -> ReportStmt;
     def parse_assignment_with_target(
         target: Expr, require_semi: bool = True
     ) -> Assignment;
 
+    def parse_ownership_prefix(kids: list) -> OwnershipKind;
     def parse_import_stmt -> Import;
     def parse_from_path -> tuple;
     def parse_import_items(kid: list, is_clib_import: bool) -> tuple;
@@ -642,8 +631,7 @@ def parse(
                 col_end=cdata.col_end,
                 pos_start=cdata.pos_start,
                 pos_end=cdata.pos_end,
-                kid=[],
-                is_inline=False
+                kid=[]
             );
             module.source.comments.append(ct);
         }

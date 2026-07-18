@@ -29,7 +29,7 @@ cl def:pub app -> JsxElement {
     }
     return <div>
         <input value={text}
-            onChange={lambda e: ChangeEvent { text = e.target.value; }}
+            onChange={lambda (e: ChangeEvent) { text = e.target.value; }}
             placeholder="Add a todo..." />
         <button onClick={add}>Add</button>
         {[<p key={jid(t)}>{t.title}</p> for t in todos]}
@@ -37,7 +37,7 @@ cl def:pub app -> JsxElement {
 }
 ```
 
-With a `jac.toml` declaring your npm deps and `[plugins.client]`:
+With a `jac.toml` declaring your npm deps and `[client]`:
 
 ```bash
 jac start          # production server

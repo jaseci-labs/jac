@@ -440,7 +440,7 @@ Jac imports Python modules using standard import mechanisms without requiring co
     Untyped Python return values arrive in Jac as `any`. Jac's gradual-typing rules apply strictly inside `.jac` source: an `any` value cannot be silently assigned into a declared non-`any` destination. Two ways to handle this at a boundary -- ship a `.pyi` stub alongside the Python utility (the import stays strongly typed and downstream Jac code is unchanged), or annotate the receiving local as `any` and either narrow with `isinstance` or re-type with the [`as` cast operator](foundation.md#10-the-as-cast-operator) (`value as Type`) before use. See [The `any` Type and Gradual Typing](foundation.md#the-any-type-and-gradual-typing) for the full rule and migration patterns.
 
 !!! note "Third-party type stubs"
-    The `jac` binary bundles only the typeshed **standard-library** stubs. For a third-party PyPI package that ships no inline types, install its stub package into the project (`jac add types-requests`); the checker resolves it via PEP 561 (`<pkg>-stubs`) from the project's `.jac/venv`, so stub versions track the installed package instead of a vendored snapshot.
+    The `jac` binary bundles only the typeshed **standard-library** stubs. For a third-party PyPI package that ships no inline types, install its stub package into the project (`jac install types-requests`); the checker resolves it via PEP 561 (`<pkg>-stubs`) from the project's `.jac/venv`, so stub versions track the installed package instead of a vendored snapshot.
 
 ---
 

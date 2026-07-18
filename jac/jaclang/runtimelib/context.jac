@@ -5,7 +5,7 @@ import from queue { Queue }
 import from typing { Callable, cast }
 import from uuid { UUID }
 
-import from jaclang.jac0core.archetype { Anchor, NodeAnchor, PermissionDenied, Root }
+import from jaclang.jac0core.archetype { NodeAnchor, PermissionDenied, Root }
 import from jaclang.jac0core.constant { Constants as Con }
 import from jaclang.runtimelib.memory { Memory, TieredMemory }
 
@@ -18,15 +18,15 @@ obj CallState {
 }
 
 obj ExecutionContext {
-    has mem: Memory by postinit,
+    has mem: Memory postinit,
         reports: list[any] = [],
         diagnostics: list[PermissionDenied] = [],
         pending_effects: list[Callable] = [],
         read_versions: dict[UUID, int] = {},
         custom: any = MISSING,
-        system_root: NodeAnchor by postinit,
-        user_root: NodeAnchor by postinit,
-        entry_node: NodeAnchor by postinit,
+        system_root: NodeAnchor postinit,
+        user_root: NodeAnchor postinit,
+        entry_node: NodeAnchor postinit,
         call_state: ContextVar[CallState] = ContextVar('call_state'),
         base_path_dir: (str | None) = None,
         full_target_path: (str | None) = None,

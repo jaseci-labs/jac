@@ -23,7 +23,6 @@ def k8s_available -> bool {
 
 
 def _ensure_config -> bool {
-    global _config_loaded,_config_ok;
     if _config_loaded {
         return _config_ok;
     }
@@ -94,7 +93,7 @@ def api_error_detail(e: any) -> str {
     reason = str(getattr(e, "reason", "") or "");
     if status == 403 {
         return (
-            "RBAC denied (403). Set [plugins.scale.kubernetes].ops_console = true "
+            "RBAC denied (403). Set [scale.kubernetes].ops_console = true "
             "and redeploy so the read-only Role binds to the gateway ServiceAccount."
         );
     }

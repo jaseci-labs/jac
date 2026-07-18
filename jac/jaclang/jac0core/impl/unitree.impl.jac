@@ -177,46 +177,77 @@ impl UniNode.parent_of_type(typ: type[T]) -> T {
     }
 }
 
-impl UniNode.in_client_context -> bool {
-    import from jaclang.jac0core.ext_registry { is_client_module }
+impl UniNode.codespace -> CodeContext {
+    import from jaclang.jac0core.ext_registry { is_client_module, is_native_module }
     nd: (UniNode | None) = self.parent;
     while (nd is not None) {
         if isinstance(nd, ServerBlock) {
-            return False;
+            return CodeContext.SERVER;
         }
         if isinstance(nd, ClientBlock) {
-            return True;
+            return CodeContext.CLIENT;
+        }
+        if isinstance(nd, NativeBlock) {
+            return CodeContext.NATIVE;
         }
         if isinstance(nd, Ability) {
             context = nd.code_context;
             if (context == CodeContext.CLIENT) {
-                return True;
+                return CodeContext.CLIENT;
+            }
+            if (context == CodeContext.NATIVE) {
+                return CodeContext.NATIVE;
             }
         }
         if isinstance(nd, Module) {
-            return (nd.loc is not None and is_client_module(nd.loc.mod_path));
+            mp = nd.loc.mod_path if nd.loc is not None else '';
+            if mp and is_native_module(mp) {
+                return CodeContext.NATIVE;
+            }
+            if mp and is_client_module(mp) {
+                return CodeContext.CLIENT;
+            }
+            return CodeContext.SERVER;
         }
         nd = nd.parent;
     }
-    return False;
+    return CodeContext.SERVER;
+}
+
+impl UniNode.in_client_context -> bool {
+    return self.codespace() == CodeContext.CLIENT;
 }
 
 impl UniNode.in_native_context -> bool {
-    nd: (UniNode | None) = self.parent;
-    while (nd is not None) {
-        if isinstance(nd, (ServerBlock, ClientBlock)) {
-            return False;
-        }
-        if isinstance(nd, NativeBlock) {
-            return True;
-        }
-        if isinstance(nd, Ability) {
-            context = nd.code_context;
-            if (context == CodeContext.NATIVE) {
+    return self.codespace() == CodeContext.NATIVE;
+}
+
+impl Module.declares_codespace(ctx: CodeContext, path_hint: str = '') -> bool {
+    import from jaclang.jac0core.ext_registry { is_client_module, is_native_module }
+    mp = self.loc.mod_path
+        if (self.loc is not None and self.loc.mod_path)
+        else path_hint;
+    if ctx == CodeContext.NATIVE and bool(mp) and is_native_module(mp) {
+        return True;
+    }
+    if ctx == CodeContext.CLIENT and bool(mp) and is_client_module(mp) {
+        return True;
+    }
+    if self.body {
+        for _stmt in self.body {
+            if ctx == CodeContext.NATIVE and isinstance(_stmt, NativeBlock) {
+                return True;
+            }
+            if ctx == CodeContext.CLIENT and isinstance(_stmt, ClientBlock) {
+                return True;
+            }
+
+            if ctx != CodeContext.SERVER
+            and isinstance(_stmt, ContextAwareNode)
+            and _stmt.code_context == ctx {
                 return True;
             }
         }
-        nd = nd.parent;
     }
     return False;
 }
@@ -384,6 +415,7 @@ impl UniScopeNode._init_scope(
     self.kid_scope: list[UniScopeNode] = [];
     self.names_in_scope: dict[(str, Symbol)] = {};
     self.names_in_scope_overload: dict[(str, list[Symbol])] = {};
+    self.implicit_rebinds: dict[(str, Symbol)] = {};
 }
 
 impl UniScopeNode.lookup(
@@ -723,11 +755,26 @@ impl UniCFGNode.get_head -> UniCFGNode {
         nd.bb_in
         and (len(nd.bb_in) == 1)
         and not isinstance(
-            nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode, InnerCompr)
+            nd,
+            (
+                InForStmt,
+                IterForStmt,
+                WhileStmt,
+                ForeverStmt,
+                ConditionalNode,
+                InnerCompr
+            )
         )
         and not isinstance(
             nd.bb_in[0],
-            (InForStmt, IterForStmt, WhileStmt, ConditionalNode, InnerCompr)
+            (
+                InForStmt,
+                IterForStmt,
+                WhileStmt,
+                ForeverStmt,
+                ConditionalNode,
+                InnerCompr
+            )
         )
         and nd.bb_in[0].bb_out
         and (len(nd.bb_in[0].bb_out) == 1)
@@ -743,11 +790,26 @@ impl UniCFGNode.get_tail -> UniCFGNode {
         nd.bb_out
         and (len(nd.bb_out) == 1)
         and not isinstance(
-            nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode, InnerCompr)
+            nd,
+            (
+                InForStmt,
+                IterForStmt,
+                WhileStmt,
+                ForeverStmt,
+                ConditionalNode,
+                InnerCompr
+            )
         )
         and not isinstance(
             nd.bb_out[0],
-            (InForStmt, IterForStmt, WhileStmt, ConditionalNode, InnerCompr)
+            (
+                InForStmt,
+                IterForStmt,
+                WhileStmt,
+                ForeverStmt,
+                ConditionalNode,
+                InnerCompr
+            )
         )
         and nd.bb_out[0].bb_in
         and (len(nd.bb_out[0].bb_in) == 1)
@@ -894,20 +956,20 @@ impl Module.unparse(requires_format: bool = True) -> str {
     import from jaclang.compiler.passes.tool.normalize_pass { NormalizePass }
     import from jaclang.jac0core.program { JacProgram }
 
-    own = self.loc.mod_path;
+    own_path = self.loc.mod_path;
     saved_body = self.body;
     saved_kid = self.kid;
     head_kid = [
         k
         for k in saved_kid
-        if (not k.loc.mod_path) or (k.loc.mod_path == own)
+        if (not k.loc.mod_path) or (k.loc.mod_path == own_path)
     ];
     filtered = len(head_kid) != len(saved_kid);
     if filtered {
         self.body = [
             st
             for st in saved_body
-            if (not st.loc.mod_path) or (st.loc.mod_path == own)
+            if (not st.loc.mod_path) or (st.loc.mod_path == own_path)
         ];
         self.set_kids(nodes=head_kid or [EmptyToken()]);
     }
@@ -1583,6 +1645,14 @@ impl TypedCtxBlock.postinit -> None {
 }
 
 
+impl OpenStmt.postinit -> None {
+    self.body = `list(self.body);
+    UniNode.postinit(self);
+    UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
+    CodeBlockStmt.postinit(self);
+}
+
+
 impl IfStmt.postinit -> None {
     self.body = `list(self.body);
     UniNode.postinit(self);
@@ -1654,6 +1724,14 @@ impl InForStmt.postinit -> None {
 
 
 impl WhileStmt.postinit -> None {
+    self.body = `list(self.body);
+    UniNode.postinit(self);
+    UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
+    CodeBlockStmt.postinit(self);
+}
+
+
+impl ForeverStmt.postinit -> None {
     self.body = `list(self.body);
     UniNode.postinit(self);
     UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
@@ -1741,13 +1819,6 @@ impl CastExpr.postinit -> None {
 }
 
 
-impl GlobalStmt.postinit -> None {
-    self.target = `list(self.target);
-    UniNode.postinit(self);
-    CodeBlockStmt.postinit(self);
-}
-
-
 impl Assignment.postinit -> None {
     self.target = `list(self.target);
     UniNode.postinit(self);
@@ -1794,6 +1865,24 @@ impl LambdaExpr.captures.getter -> list[Symbol] {
     return self.get_enclosing_captures();
 }
 
+impl LambdaExpr.tail_return_expr -> Expr | None {
+    """Implicit return: a braced body consisting of a single expression
+    statement returns that expression's value. Any other body (multiple
+    statements, or a non-expression statement) uses an explicit `return`.""";
+    if not (isinstance(self.body, Sequence) and not isinstance(self.body, Expr)) {
+        return None;
+    }
+    stmts = [
+        s
+        for s in self.body
+        if not isinstance(s, Semi)
+    ];
+    if (len(stmts) == 1 and isinstance(stmts[0], ExprStmt)) {
+        return stmts[0].expr;
+    }
+    return None;
+}
+
 
 impl UnaryExpr.postinit -> None {
     UniNode.postinit(self);
@@ -1813,12 +1902,16 @@ impl MultiString.postinit -> None {
     AstSymbolStubNode._init_stub(self, sym_type=SymbolType.STRING);
 }
 
-impl MultiString.lit_value.getter -> str {
-    parts: list[str] = [];
+impl MultiString.lit_value.getter -> str | bytes {
+    parts: list[str | bytes] = [];
     for s in self.strings {
         if isinstance(s, String) {
             parts.append(s.lit_value);
         }
+    }
+
+    if parts and isinstance(parts[0], `bytes) {
+        return b"".join(parts);
     }
     return "".join(parts);
 }
@@ -2508,10 +2601,8 @@ impl CommentToken.init(
     col_end: int,
     pos_start: int,
     pos_end: int,
-    kid: Sequence[UniNode],
-    is_inline: bool = False
+    kid: Sequence[UniNode]
 ) -> None {
-    self.is_inline = is_inline;
     Token.init(
         self,
         orig_src=orig_src,

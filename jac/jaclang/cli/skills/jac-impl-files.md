@@ -57,7 +57,7 @@ Same code split: `shapes.jac` holds everything EXCEPT the two `impl` blocks; `sh
 | `enum Color: int;` (typed-base) | `impl Color { RED = 1, GREEN = 2 }` |
 | `override def method;` (subclass) | `impl Subclass.method { body }` |
 | property accessor decls `getter -> T; setter(v: T);` | `impl Obj.prop.getter -> T { body }` / `impl Obj.prop.setter(v: T) { body }` |
-| `def method -> T abs;` (abstract) | (none on base - every subclass *should* `impl`; not compiler-enforced - see Rules) |
+| `def method -> T abst;` (abstract) | (none on base - every subclass *should* `impl`; not compiler-enforced - see Rules) |
 
 ## Client components: the handler annex
 
@@ -76,7 +76,7 @@ def:pub app -> JsxElement {
     async def addItem -> None;
 
     return <div>
-        <input value={draft} onChange={lambda e: ChangeEvent { draft = e.target.value; }}/>
+        <input value={draft} onChange={lambda (e: ChangeEvent) { draft = e.target.value; }}/>
         <button onClick={addItem}>Add</button>
         {if loading { <p>Loading...</p> }}
         {for it in items { <li key={it}>{it}</li> }}
@@ -105,7 +105,7 @@ impl app.addItem -> None {
 - **No `import` between the pair.** Compiler auto-pairs. `import from foo.impl { ... }` is wrong.
 - **Signature must match exactly.** `impl fn(x: int) -> str` paired with `def fn(y: str);` fails. Bare `impl fn { ... }` only matches bare `def fn;`.
 - **Decl+impl, not decl+decl.** A second `obj X { ... }` block with the same name is E0077 (duplicate declaration). And **no forward declarations are needed** - Jac resolves all module symbols before checking bodies, so types can reference each other in any order.
-- **`abs` = abstract, but not enforced** - a subclass missing its `impl` still passes `jac check`, still instantiates, and the un-implemented method silently returns `None`. Treat `abs` as intent-signalling.
+- **`abst` = abstract, but not enforced** - a subclass missing its `impl` still passes `jac check`, still instantiates, and the un-implemented method silently returns `None`. Treat `abst` as intent-signalling. (The keyword is `abst`; `abs` is only the builtin function.)
 - **`override def` is required on subclass overrides.** Without it, `def play;` in a subclass is a NEW method that shadows - doesn't override.
 - **Bodies in `.impl.jac` see the `.jac` file's imports.** Don't re-import inside the impl file. Private `_helpers` used only by impls belong in the impl file.
 

@@ -22,7 +22,7 @@ walker create {
 }
 ```
 
-After `jac enter app.jac create`, alice and bob live in `.jac/data/<app>.db`. A subsequent `jac enter app.jac dump` (with a walker that traverses `[-->]`) sees them.
+After `jac run --entry create app.jac`, alice and bob live in `.jac/data/<app>.db`. A subsequent `jac run --entry dump app.jac` (with a walker that traverses `[-->]`) sees them.
 
 **Backends.** Out of the box, `SqliteMemory` writes to `.jac/data/<app>.db`. Configure a Mongo database under `[scale.*]` and set `MONGODB_URI`, then `jac install` pulls in `pymongo` and persistence flips to the [scale](plugins/jac-scale.md) `MongoBackend`. The storage swaps; the developer-facing model (this page) doesn't change.
 
@@ -35,7 +35,7 @@ A common walker pattern is *find-or-create*: look something up, create it only i
 ```jac
 walker ensure_profile {
     can go with Root entry {
-        profiles = [-->(?:UserProfile)];
+        profiles = [-->[?:UserProfile]];
         if profiles {
             report profiles[0];
         } else {
@@ -45,9 +45,9 @@ walker ensure_profile {
 }
 ```
 
-Under concurrency this is a race: two requests against the same `root` can both read an empty `[-->(?:UserProfile)]`, both take the create branch, and both attach a profile -- a duplicate that was meant to be unique. The runtime closes this race with **optimistic concurrency at the node level**, so the pattern above is safe without app-level locks.
+Under concurrency this is a race: two requests against the same `root` can both read an empty `[-->[?:UserProfile]]`, both take the create branch, and both attach a profile -- a duplicate that was meant to be unique. The runtime closes this race with **optimistic concurrency at the node level**, so the pattern above is safe without app-level locks.
 
-**How it works.** Every node carries a version. When a request reads an out-traversal from a node (the `[-->(?:UserProfile)]` above), it snapshots that node's version. At commit, an edge-list change to a node the request *read* is applied with a compare-and-swap on that version: if a concurrent request already changed the node, the swap misses and the commit raises a conflict. The first committer wins; the second is rejected before it can write a duplicate.
+**How it works.** Every node carries a version. When a request reads an out-traversal from a node (the `[-->[?:UserProfile]]` above), it snapshots that node's version. At commit, an edge-list change to a node the request *read* is applied with a compare-and-swap on that version: if a concurrent request already changed the node, the swap misses and the commit raises a conflict. The first committer wins; the second is rejected before it can write a duplicate.
 
 **Convergence (default).** A rejected request does not error. The server aborts its uncommitted work, reloads the node, and **replays the walker (or function) from the start**. The replay re-reads the graph -- now containing the winner's node -- takes the *find* branch, and returns normally. Two racing find-or-creates converge on one node; the client sees a normal `200`, not a duplicate and not an error.
 
@@ -63,9 +63,9 @@ Under concurrency this is a race: two requests against the same `root` can both 
 ```jac
 walker me {
     can go with Root entry {
-        if not [-->(?:UserProfile)] {
+        if not [-->[?:UserProfile]] {
             new = here ++> UserProfile(tier="free");
-            on_commit(lambda () { grant_signup_bonus(new); });   # once, post-commit
+            on_commit(lambda { grant_signup_bonus(new); });   # once, post-commit
         }
     }
 }
@@ -237,7 +237,7 @@ node User {
 }
 ```
 
-**The argument is the fully-qualified old name as it appeared in stored data** -- i.e. `__module__ + "." + __name__` of the class at the time it was persisted. For files imported via `jac enter app.jac`, the module is `__main__`.
+**The argument is the fully-qualified old name as it appeared in stored data** -- i.e. `__module__ + "." + __name__` of the class at the time it was persisted. For files run via `jac run --entry ... app.jac`, the module is `__main__`.
 
 ### Code-resident vs. DB-resident aliases
 
@@ -282,7 +282,7 @@ impl User.__jac_schema__ -> None {
     schema_drop("legacy_bio");                # removed field: preserve its remains
     schema_upgrade(
         split_tags,
-        when=(lambda doc: dict : isinstance(doc.get("tags"), str))
+        when=(lambda (doc: dict) { isinstance(doc.get("tags"), str); })
     );
 }
 ```
@@ -417,7 +417,7 @@ That means the same set of guarantees holds regardless of where your data lives:
 
 (Backend-specific extras layer on top: the Mongo backend adds read-repair write-back, quarantine reason codes, and startup auto-retry.)
 
-For plugin authors implementing a custom backend, see [Plugin Authoring → Recipe 7: Custom persistence backends](plugin-authoring.md#recipe-7-custom-persistence-backends) for the eight methods you need to implement.
+To supply a custom backend, see [Plugins → Custom persistence backends](plugin-authoring.md#custom-persistence-backends), which uses `JacRuntime.set_persistent_memory_provider`.
 
 ---
 
@@ -446,7 +446,7 @@ walker dump {
 ```
 
 ```bash
-jac enter app.jac create
+jac run --entry create app.jac
 # (alice and bob persist)
 ```
 
@@ -471,7 +471,7 @@ walker dump {
 ```
 
 ```bash
-jac enter app.jac dump
+jac run --entry dump app.jac
 # alice:30:x@y   ← age coerced int→str, email defaulted, class resolved via alias
 # bob:25:x@y
 ```

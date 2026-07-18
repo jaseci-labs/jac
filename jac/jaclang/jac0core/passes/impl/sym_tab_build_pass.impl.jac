@@ -76,43 +76,64 @@ impl SymTabBuildPass.exit_global_vars(
     }
 }
 
-impl SymTabBuildPass.enter_global_stmt(
-    self: SymTabBuildPass, nd: uni.GlobalStmt
-) -> None {
-    bind_global_stmt(nd);
+impl lookup_enclosing_binding(from_scope: UniScopeNode, name: str) -> (Symbol | None) {
+    import from jaclang.jac0core.constant { SymbolType }
+    scope = find_python_scope_node_of(from_scope);
+    while scope is not None {
+        if isinstance(scope, uni.Module) {
+            sym = scope.names_in_scope.get(name);
+            if sym is not None and sym.sym_type == SymbolType.MOD_VAR {
+                return sym;
+            }
+            return None;
+        }
+        if isinstance(scope, (uni.Ability, uni.ImplDef, uni.Test)) {
+            sym = scope.names_in_scope.get(name);
+            if sym is not None {
+                return sym;
+            }
+        }
+        scope = find_python_scope_node_of(scope);
+    }
+    return None;
 }
 
-impl bind_global_stmt(nd: uni.GlobalStmt) -> None {
-    py_scope = find_python_scope_node_of(nd);
-    if py_scope is None or isinstance(py_scope, uni.Module) {
+impl record_cross_scope_rebind(py_scope: UniScopeNode, name: str, sym: Symbol) -> None {
+    import from jaclang.jac0core.constant { SymbolType }
+    outer_tab = sym.parent_tab;
+    if outer_tab is None or outer_tab is py_scope {
         return;
     }
+    if not isinstance(py_scope, (uni.Ability, uni.ImplDef, uni.Test)) {
+        return;
+    }
+    if py_scope.names_in_scope is outer_tab.names_in_scope {
+        return;
+    }
+    if isinstance(outer_tab, uni.Module) {
+        if sym.sym_type == SymbolType.MOD_VAR {
+            py_scope.implicit_rebinds[name] = sym;
+        }
+        return;
+    }
+    if isinstance(outer_tab, (uni.Ability, uni.ImplDef, uni.Test)) {
+        py_scope.implicit_rebinds[name] = sym;
+    }
+}
 
-    impl_def = nd.find_parent_of_type(uni.ImplDef);
-    module: (uni.Module | None) = None;
-    if impl_def is not None and impl_def.decl_link is not None {
-        module = impl_def.decl_link.find_parent_of_type(uni.Module);
-    } else {
-        module = py_scope.find_parent_of_type(uni.Module);
-    }
-    if module is None {
-        return;
-    }
-    for name_atom in nd.target {
-        sym_name = name_atom.sym_name if name_atom?.sym_name else None;
-        if not sym_name {
-            continue;
+impl rebind_or_def_insert(
+    target: uni.AstSymbolNode, py_scope: UniScopeNode, single_decl: str
+) -> None {
+    if isinstance(py_scope, (uni.Ability, uni.ImplDef, uni.Test)) {
+        outer_sym = lookup_enclosing_binding(py_scope, target.sym_name);
+        if outer_sym is not None {
+            outer_sym.add_use(target.name_spec);
+            py_scope.names_in_scope[target.sym_name] = outer_sym;
+            py_scope.implicit_rebinds[target.sym_name] = outer_sym;
+            return;
         }
-        if sym_name in py_scope.names_in_scope {
-            continue;
-        }
-        global_sym = module.names_in_scope.get(sym_name);
-        if global_sym is None {
-            continue;
-        }
-        py_scope.names_in_scope[sym_name] = global_sym;
-        global_sym.add_use(name_atom.name_spec);
     }
+    py_scope.def_insert(target, single_decl=single_decl);
 }
 
 impl SymTabBuildPass.exit_assignment(
@@ -124,6 +145,16 @@ impl SymTabBuildPass.exit_assignment(
 
     if isinstance(nd.parent, uni.GlobalVars) {
         return;
+    }
+    if nd.type_tag is not None {
+        for i in nd.target {
+            if isinstance(i, uni.Name) {
+                scope = find_python_scope_node_of(i);
+                if scope is not None and i.sym_name in scope.implicit_rebinds {
+                    self.emit(E0064, node_override=i, name=i.sym_name);
+                }
+            }
+        }
     }
     bind_assignment_targets(nd);
 }
@@ -141,9 +172,10 @@ impl SymTabBuildPass.exit_binary_expr(
             target_scope = func.sym_tab;
         }
         if ((sym := target_scope.lookup(nd.left.sym_name, deep=False)) is None) {
-            target_scope.def_insert(nd.left, single_decl='walrus var');
+            rebind_or_def_insert(nd.left, target_scope, single_decl='walrus var');
         } else {
             sym.add_use(nd.left.name_spec);
+            record_cross_scope_rebind(target_scope, nd.left.sym_name, sym);
         }
     }
 }
@@ -428,6 +460,14 @@ impl SymTabBuildPass.exit_typed_ctx_block(
     self.pop_scope();
 }
 
+impl SymTabBuildPass.enter_open_stmt(self: SymTabBuildPass, nd: uni.OpenStmt) -> None {
+    self.push_scope_and_link(nd);
+}
+
+impl SymTabBuildPass.exit_open_stmt(self: SymTabBuildPass, nd: uni.OpenStmt) -> None {
+    self.pop_scope();
+}
+
 impl SymTabBuildPass.enter_if_stmt(self: SymTabBuildPass, nd: uni.IfStmt) -> None {
     self.push_scope_and_link(nd);
 }
@@ -515,6 +555,18 @@ impl SymTabBuildPass.enter_while_stmt(
 }
 
 impl SymTabBuildPass.exit_while_stmt(self: SymTabBuildPass, nd: uni.WhileStmt) -> None {
+    self.pop_scope();
+}
+
+impl SymTabBuildPass.enter_forever_stmt(
+    self: SymTabBuildPass, nd: uni.ForeverStmt
+) -> None {
+    self.push_scope_and_link(nd);
+}
+
+impl SymTabBuildPass.exit_forever_stmt(
+    self: SymTabBuildPass, nd: uni.ForeverStmt
+) -> None {
     self.pop_scope();
 }
 
@@ -652,8 +704,9 @@ impl def_insert_unpacking(
             if py_scope is not None {
                 if ((outer := py_scope.lookup(nd.sym_name, deep=False)) is not None) {
                     outer.add_use(nd.name_spec);
+                    record_cross_scope_rebind(py_scope, nd.sym_name, outer);
                 } else {
-                    py_scope.def_insert(nd, single_decl='local var');
+                    rebind_or_def_insert(nd, py_scope, single_decl='local var');
                 }
                 return;
             }
@@ -681,6 +734,7 @@ impl bind_assignment_targets(nd: uni.Assignment) -> None {
                 and ((sym := i.sym_tab.names_in_scope[i.sym_name]) is not None)
             ) {
                 sym.add_use(i.name_spec);
+                record_cross_scope_rebind(i.sym_tab, i.sym_name, sym);
             } elif (
                 (nd.type_tag is None)
                 and ((outer_has := i.sym_tab.lookup(i.sym_name, deep=True)) is not None)
@@ -700,12 +754,18 @@ impl bind_assignment_targets(nd: uni.Assignment) -> None {
                         (outer := py_scope.lookup(i.sym_name, deep=False)) is not None
                     ) {
                         outer.add_use(i.name_spec);
+                        record_cross_scope_rebind(py_scope, i.sym_name, outer);
                     } else {
-                        py_scope.def_insert(i, single_decl='local var');
+                        rebind_or_def_insert(i, py_scope, single_decl='local var');
                     }
                 } else {
                     i.sym_tab.def_insert(i, single_decl='local var');
                 }
+            } elif (
+                (nd.type_tag is None)
+                and isinstance(i.sym_tab, (uni.Ability, uni.ImplDef, uni.Test))
+            ) {
+                rebind_or_def_insert(i, i.sym_tab, single_decl='local var');
             } else {
                 if isinstance(i.sym_tab, uni.Enum) {
                     i.name_spec._sym_category = SymbolType.ENUM_MEMBER;

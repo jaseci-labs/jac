@@ -18,7 +18,7 @@ Webhook configuration is managed via the `jac.toml` file in your project root.
 ### Basic Configuration
 
 ```toml
-[plugins.scale.webhook]
+[scale.webhook]
 signature_header = "X-Webhook-Signature"
 timestamp_header = "X-Webhook-Timestamp"
 verify_signature = true

@@ -35,5 +35,5 @@ cl import from .components.Button { Button }
 Add npm packages with the --cl flag:
 
 ```bash
-jac add --cl react-router-dom
+jac install --npm react-router-dom
 ```

@@ -106,7 +106,8 @@ impl JacClient.render_page(
     };
     init_json = json.dumps(init_data).replace('</', '<\\/');
     init_script = f'<script id="__jac_init__" type="application/json">{init_json}</script>';
-    page = f'<!DOCTYPE html><html lang="en"><head>{head_content}{pwa_head}</head><body><div id="root"></div>{init_script}{pwa_body}<script type="module" src="/static/client.js?hash={bundle_hash}"></script></body></html>';
+    prod_error_handler = '<script>(function(){function send(m,s){try{fetch("/cl/__error__",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:m,stack:s||"",url:window.location.href,source:"window.onerror",componentStack:"",timestamp:new Date().toISOString()})}).catch(function(){});}catch(e){}}window.addEventListener("error",function(e){if(window.__jacErrorHandlersInstalled)return;send(e.message||"",e.error?e.error.stack:"");});window.addEventListener("unhandledrejection",function(e){if(window.__jacErrorHandlersInstalled)return;var r=e.reason;send(r instanceof Error?r.message:String(r||""),r instanceof Error?r.stack:"");});}());</script>';
+    page = f'<!DOCTYPE html><html lang="en"><head>{head_content}{pwa_head}</head><body><div id="root"></div>{init_script}{pwa_body}{prod_error_handler}<script type="module" src="/static/client.js?hash={bundle_hash}"></script></body></html>';
     return {
         'html': page,
         'bundle_hash': bundle_hash,

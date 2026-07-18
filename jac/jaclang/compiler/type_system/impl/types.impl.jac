@@ -17,10 +17,6 @@ impl UnionType.__str__ -> str {
     return " | ".join(str(ty) for ty in self.types);
 }
 
-impl UnboundType.__str__ -> str {
-    return "<Unbound>";
-}
-
 impl UnknownType.__str__ -> str {
     return "<Unknown>";
 }

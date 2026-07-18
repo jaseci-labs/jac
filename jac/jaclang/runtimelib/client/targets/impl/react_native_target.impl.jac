@@ -146,7 +146,7 @@ impl ReactNativeTarget.build(
                 "  1) Run `jac build --client react-native --platform ios` on macOS\n"
                 "  2) Use EAS Build cloud from any OS:\n"
                 "     npx eas build --platform ios --profile production --non-interactive\n"
-                "  3) Set [plugins.client.react_native].ios_builder = \"eas\" and run "
+                "  3) Set [client.react_native].ios_builder = \"eas\" and run "
                 f"the same EAS command from {rn_dir}"
             );
         }

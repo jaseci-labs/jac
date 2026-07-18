@@ -350,6 +350,38 @@ async walker PrivateBroadcastChat {
 }
 
 # ============================================================================
+# WebSocket Functions
+# ============================================================================
+"""Public WebSocket function using @restspec(protocol=APIProtocol.WEBSOCKET).
+Accessible ONLY via ws://host/ws/function/ws_echo."""
+@restspec(protocol=APIProtocol.WEBSOCKET)
+def:pub ws_echo(message: str, client_id: str = "anonymous") -> dict {
+    return {
+        "status": "success",
+        "echo": message,
+        "client_id": client_id,
+        "protocol": "websocket"
+    };
+}
+
+"""Public streaming WebSocket function; yields chunk frames over the socket."""
+@restspec(protocol=APIProtocol.WEBSOCKET)
+def:pub ws_stream(count: int = 3) -> Generator {
+    def stream -> Generator {
+        for i in range(count) {
+            yield {"index": i, "label": f"chunk-{i}"};
+        }
+    }
+    report stream();
+}
+
+"""Private WebSocket function (requires JWT auth); no `: pub` modifier."""
+@restspec(protocol=APIProtocol.WEBSOCKET)
+def ws_private_echo(message: str = "") -> dict {
+    return {"status": "success", "message": message, "authenticated": True};
+}
+
+# ============================================================================
 # Scheduling Walkers and Functions
 # ============================================================================
 import datetime;
