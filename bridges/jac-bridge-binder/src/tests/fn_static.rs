@@ -125,28 +125,37 @@ fn self_factory_static_wraps_newtype() {
     );
 }
 
-/// A static flattened off a std/core trait (`Regex::from_str` via `FromStr`) is
-/// NOT admitted: `trait_use_path` can't form a compiling `use` for a std trait,
-/// so it stays a skip-with-reason rather than an unresolved-import in the crate.
+/// The FromStr lane admits a std-`FromStr` factory (`Regex::from_str`) as a proper
+/// `#[jac(assoc)]` static, calling the trait's associated fn FULLY-QUALIFIED
+/// (`<regex::Regex as ::std::str::FromStr>::from_str(text)`) so no unresolvable
+/// std-trait `use` is emitted — the very hazard that used to force it to a skip.
 #[test]
-fn std_trait_static_is_skipped_not_emitted() {
+fn std_from_str_admitted_as_fully_qualified_static() {
     let spec = classify(&load("regex-1.12.4"));
     let regex = ty(&spec, "Regex");
+    let from_str = regex
+        .methods
+        .iter()
+        .find(|m| m.name == "from_str")
+        .expect("from_str is admitted as a FromStr static");
     assert!(
-        !regex.methods.iter().any(|m| m.name == "from_str"),
-        "from_str (via std FromStr) must not be emitted as a static"
+        from_str.is_static && from_str.std_from_str && from_str.via_trait.is_none(),
+        "from_str is a std-FromStr static with no trait provenance"
     );
+    // It is no longer a skip.
     assert!(
-        spec.skips.iter().any(|s| {
-            s.item == "Regex::from_str"
-                && format!("{:?}", s.reason).contains("std/core trait")
-        }),
-        "Regex::from_str must be a skip-with-reason naming the std-trait hazard"
+        !spec.skips.iter().any(|s| s.item == "Regex::from_str"),
+        "Regex::from_str must no longer be a skip"
     );
-    // And the generated source never references a bogus std-trait `use`.
+    // The generated source emits the fully-qualified associated call and no bogus
+    // std-trait `use`.
     let src = emit(&spec);
     assert!(
-        !src.contains("use regex::core::"),
+        src.contains("<regex::Regex as ::std::str::FromStr>::from_str(text)"),
+        "from_str body must be the fully-qualified associated call\n{src}"
+    );
+    assert!(
+        !src.contains("use regex::core::") && !src.contains("use regex::std::"),
         "no unresolved std-trait use must be emitted\n{src}"
     );
 }

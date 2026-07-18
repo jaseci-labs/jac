@@ -373,6 +373,24 @@ pub struct BridgeFn {
     /// exposed as a static method on the owning type). `false` for an ordinary
     /// method, ctor, or synthesized wrapper reader.
     pub is_static: bool,
+    /// Set (opaque field-reader lane) when this fn READS a public field of the
+    /// opaque type rather than calling a method: the string is the field name, and
+    /// the emitted body is `self.0.<field>` (a `.clone()` is appended for a
+    /// handle-typed field, whose return is [`BridgeReturn::Ref`], because the field
+    /// is read through `&self`). `None` for an ordinary method/ctor. A scalar field
+    /// reader carries a scalar `ret` (`Uint`/`Int`/`Bool`); a handle field a `Ref`;
+    /// a fieldless-enum field an [`BridgeReturn::EnumName`]. The reader is always a
+    /// `&self` method (never static).
+    pub field_read: Option<String>,
+    /// Set (FromStr admission lane) when this static was synthesized from an
+    /// `impl std::str::FromStr for T`. The call is emitted fully-qualified as
+    /// `<Inner as ::std::str::FromStr>::from_str(text)` (rather than `Inner::from_str`
+    /// or a UFCS through `via_trait`) because `FromStr`'s public path cannot be
+    /// re-exported under the bridged crate and its rustdoc-canonical path traverses
+    /// a private module — the fully-qualified associated form needs no `use`. Always
+    /// coexists with `is_static` and a `Result<Self, String>` (`OwnSelfResult`)
+    /// return; `via_trait` is `None` so no (unresolvable) trait `use` is emitted.
+    pub std_from_str: bool,
 }
 
 /// The receiver expression a method body delegates through.
@@ -460,6 +478,25 @@ pub enum BridgeReturn {
     /// An unsigned-integer return. The string is the concrete Rust type (`u32`,
     /// `u64`, `usize`, …); carried in a u64 slot tagged `TAG_UINT`.
     Uint(String),
+    /// A `Display` reader synthesized for an opaque type that implements
+    /// `std::fmt::Display` (semver's `Version`/`Comparator`/…). Emitted as a
+    /// `to_string(&self) -> String` method whose body is `self.0.to_string()`.
+    /// Crosses the SAME JacBuf lane as [`Str`] (the macro sees a `-> String`
+    /// return), so no ABI change is needed; it is distinct only so codegen forwards
+    /// the single `.to_string()` call verbatim instead of the `Str` lane's extra
+    /// `.to_string()` on top of a base call.
+    ///
+    /// [`Str`]: BridgeReturn::Str
+    DisplayString,
+    /// A variant-name string reader synthesized for a public FIELDLESS enum field
+    /// of an opaque type (`Comparator.op: semver::Op`). The enum is not itself a
+    /// bridged handle (it has no methods and no scalar spelling), so its value
+    /// crosses as its variant NAME: codegen emits `-> String` and a `match` mapping
+    /// each variant to its `&str` name, with a `_ => "unknown"` arm (the source enum
+    /// is `#[non_exhaustive]`, so a wildcard is mandatory). The first string is the
+    /// enum's inner path (`semver::Op`), the vec its variant names in declaration
+    /// order. Rides the `Str`/`-> String` lane like [`DisplayString`].
+    EnumName(String, Vec<String>),
     /// A `std::cmp::Ordering` return (`Version::cmp_precedence`). Ordering has no
     /// primitive spelling, but its three variants map cleanly onto an `i8`
     /// (`Less`/`Equal`/`Greater` → `-1`/`0`/`1`). Codegen emits a `-> i8` signature

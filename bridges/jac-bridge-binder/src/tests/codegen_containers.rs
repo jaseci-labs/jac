@@ -24,6 +24,8 @@ fn method(name: &str, params: Vec<BridgeParam>, ret: BridgeReturn) -> BridgeFn {
         self_mut: false,
         consumes_self: false,
         is_static: false,
+        field_read: None,
+        std_from_str: false,
     }
 }
 

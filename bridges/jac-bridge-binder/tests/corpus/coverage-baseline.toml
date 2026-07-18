@@ -267,12 +267,24 @@ dropped = 0
 #    impl, so the wide lane can't rescue them — as DROPPED (needs `treat_as =
 #    "opaque"`) instead of vanishing silently. (dropped 0 -> 3.)
 # With the sibling `semver.overlay.toml` (`treat_as = "opaque"` on Version/
-# VersionReq), those two bridge as handles exposing `parse`/`new`, and the whole
-# generated crate compiles under `-D warnings`. `matches(&Version)` /
-# `cmp_precedence(&Self)` remain skips pending the inbound-handle-param lane.
+# VersionReq/Comparator), those bridge as handles exposing `parse`/`new`/`matches`,
+# and the whole generated crate compiles under `-D warnings`.
+#
+# The full-parity synth lanes then lift the NO-OVERLAY count 6 -> 12 (total 11 -> 15,
+# dropped unchanged at 3 -- Version/VersionReq/Comparator still need the overlay to
+# stop being transparent-data drops). The new bridged surface on the two naturally
+# opaque types (BuildMetadata, Prerelease) is: `to_string` (Display lane), `cmp`
+# (Ord lane -> i8), and `from_str` (FromStr lane -> a `<T as ::std::str::FromStr>`
+# static). WITH the overlay the same lanes plus the opaque field-reader lane take
+# the crate to 34/39 (87%): Version/VersionReq/Comparator add their field readers
+# (`major`/`minor`/`patch` scalars, `pre`/`build` handles, `op` enum-name string)
+# and their own Display/Ord/FromStr/`matches` surface. The remaining honest skips
+# are `Comparator.minor`/`.patch` (`Option<u64>` -- no in-band None channel for an
+# int in the v1 ABI), `VersionReq.comparators` (`Vec<Comparator>` -- no
+# list-of-handle lane), and `*::from_iter` (`FromIterator` is generic).
 [semver]
-bridged = 6
-total = 11
+bridged = 12
+total = 15
 dropped = 3
 
 # geo_demo (Phase 2.10 part 2 / 2.9-followup) is a PURPOSE-BUILT serde-DTO crate

@@ -1,8 +1,8 @@
 use std::fmt::Write;
 
 use crate::types::{
-    BridgeFn, BridgeReturn, BridgeSpec, BridgeType, DrainCollect, Ownership, OwningWrapper, Recv,
-    RecordKind, RootProducer, ScalarType, TypeKind, WrapperKind,
+    BridgeFn, BridgeReturn, BridgeSpec, BridgeType, DrainCollect, Ownership, OwningWrapper,
+    RecordKind, Recv, RootProducer, ScalarType, TypeKind, WrapperKind,
 };
 
 /// Emit a `Cargo.toml` for the generated bridge crate.
@@ -73,12 +73,9 @@ jac-bridge = {{ path = "{jac_bridge_path}" }}
 }
 
 fn spec_has_async(spec: &BridgeSpec) -> bool {
-    spec.types.iter().any(|bt| {
-        bt.ctor
-            .iter()
-            .chain(bt.methods.iter())
-            .any(|f| f.is_async)
-    })
+    spec.types
+        .iter()
+        .any(|bt| bt.ctor.iter().chain(bt.methods.iter()).any(|f| f.is_async))
 }
 
 /// Distinct fully-qualified trait paths flattened onto any emitted fn (Track A,
@@ -199,9 +196,7 @@ pub fn emit(spec: &BridgeSpec) -> String {
                 for v in &rec.fields {
                     match &v.rust_ty {
                         // A newtype variant carries a single payload type.
-                        Some(payload) => {
-                            writeln!(out, "        {}({}),", v.name, payload).unwrap()
-                        }
+                        Some(payload) => writeln!(out, "        {}({}),", v.name, payload).unwrap(),
                         // A unit variant has no payload.
                         None => writeln!(out, "        {},", v.name).unwrap(),
                     }
@@ -563,7 +558,10 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
     // (E0034); naming the trait disambiguates. The receiver is borrowed to match
     // the source receiver: `&mut self.0` for a `&mut self` method, `self.0.clone()`
     // (by value) for a consuming method, `&self.0` otherwise.
-    let via_trait_short = f.via_trait.as_deref().map(|p| p.rsplit("::").next().unwrap_or(p));
+    let via_trait_short = f
+        .via_trait
+        .as_deref()
+        .map(|p| p.rsplit("::").next().unwrap_or(p));
     let ufcs_recv = if f.consumes_self {
         format!("{recv}.clone()")
     } else if f.self_mut {
@@ -574,6 +572,20 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
     // Build the base call expression (before any post-call transforms). Uses
     // `call_args` (wide params unwrapped to `.0`) as the inner argument list.
     let base_call = |r: &str| -> String {
+        // A field reader accesses the public field directly (`self.0.major`); a
+        // handle-typed field (a `Ref`/`OptRef` return) is `.clone()`d because it is
+        // read through `&self` and the newtype must own the produced handle.
+        if let Some(field) = &f.field_read {
+            return match &f.ret {
+                BridgeReturn::Ref(_) | BridgeReturn::OptRef(_) => format!("{r}.{field}.clone()"),
+                _ => format!("{r}.{field}"),
+            };
+        }
+        // A FromStr static calls the trait's associated fn fully-qualified — its
+        // public path can't be `use`d under the bridged crate (see `std_from_str`).
+        if f.std_from_str {
+            return format!("<{inner} as ::std::str::FromStr>::{fname}({call_args})");
+        }
         if is_ctor {
             format!("{inner}::{fname}({call_args}){aw}")
         } else if f.is_static {
@@ -628,6 +640,26 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
                 base_call(&recv_expr)
             ),
         ),
+        // Display reader: forward the single `self.0.to_string()` (base_call spells
+        // it, `fname == "to_string"`) as a `-> String` return on the `Str` lane. A
+        // dedicated arm so the `Str` lane's extra `.to_string()` isn't stacked on top.
+        BridgeReturn::DisplayString => (" -> String".into(), base_call(&recv_expr)),
+        // Fieldless-enum reader: map the field's variant to its NAME as a `String`.
+        // The source enum is `#[non_exhaustive]`, so the `_ => "unknown"` arm is
+        // mandatory. `base_call` spells the field access (`self.0.op`).
+        BridgeReturn::EnumName(enum_path, variants) => {
+            let arms: String = variants
+                .iter()
+                .map(|v| format!("{enum_path}::{v} => \"{v}\", "))
+                .collect();
+            (
+                " -> String".into(),
+                format!(
+                    "match {} {{ {arms}_ => \"unknown\", }}.to_string()",
+                    base_call(&recv_expr)
+                ),
+            )
+        }
         // 1.2.2: a byte-string return crosses as an owned `Vec<u8>` (TAG_BYTES).
         // `.to_vec()` turns a digest's `GenericArray`/`[u8]` into an owned Vec and
         // is a shape-preserving clone on a `Vec<u8>` source.

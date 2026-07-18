@@ -27,6 +27,8 @@ fn async_method(name: &str, params: Vec<BridgeParam>, ret: BridgeReturn) -> Brid
         self_mut: false,
         consumes_self: false,
         is_static: false,
+        field_read: None,
+        std_from_str: false,
     }
 }
 
@@ -44,6 +46,8 @@ fn sync_method(name: &str, params: Vec<BridgeParam>, ret: BridgeReturn) -> Bridg
         self_mut: false,
         consumes_self: false,
         is_static: false,
+        field_read: None,
+        std_from_str: false,
     }
 }
 

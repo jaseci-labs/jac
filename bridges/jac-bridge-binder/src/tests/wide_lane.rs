@@ -6,7 +6,7 @@
 
 use crate::codegen::{emit, emit_cargo_toml};
 use crate::types::{
-    BridgeFn, BridgeParam, BridgeReturn, BridgeSpec, BridgeType, Ownership, Recv, RecordKind,
+    BridgeFn, BridgeParam, BridgeReturn, BridgeSpec, BridgeType, Ownership, RecordKind, Recv,
     ScalarType, SerdeInfo, TypeKind, WideField, WideRecord,
 };
 
@@ -24,6 +24,8 @@ fn method(name: &str, params: Vec<BridgeParam>, ret: BridgeReturn) -> BridgeFn {
         self_mut: false,
         consumes_self: false,
         is_static: false,
+        field_read: None,
+        std_from_str: false,
     }
 }
 
@@ -96,18 +98,36 @@ fn typed_record_emits_jac_record_struct() {
         name: "Point".into(),
         kind: RecordKind::Struct,
         fields: vec![
-            WideField { name: "x".into(), rust_ty: Some("i64".into()) },
-            WideField { name: "y".into(), rust_ty: Some("i64".into()) },
-            WideField { name: "label".into(), rust_ty: Some("String".into()) },
+            WideField {
+                name: "x".into(),
+                rust_ty: Some("i64".into()),
+            },
+            WideField {
+                name: "y".into(),
+                rust_ty: Some("i64".into()),
+            },
+            WideField {
+                name: "label".into(),
+                rust_ty: Some("String".into()),
+            },
         ],
     }];
     let src = emit(&s);
     assert!(src.contains("#[jac_record]"), "missing marker\n{src}");
-    assert!(src.contains("pub struct Point {"), "missing record struct\n{src}");
+    assert!(
+        src.contains("pub struct Point {"),
+        "missing record struct\n{src}"
+    );
     assert!(src.contains("pub x: i64,"), "missing field x\n{src}");
-    assert!(src.contains("pub label: String,"), "missing field label\n{src}");
+    assert!(
+        src.contains("pub label: String,"),
+        "missing field label\n{src}"
+    );
     // The wide signature still marshals the foreign type, not the local record.
-    assert!(src.contains("p: Wide<demo::Point>"), "wide sig changed\n{src}");
+    assert!(
+        src.contains("p: Wide<demo::Point>"),
+        "wide sig changed\n{src}"
+    );
 }
 
 #[test]
@@ -118,7 +138,10 @@ fn wide_bridge_cargo_toml_declares_serde_and_rmp() {
     // compile with "could not find `rmp_serde`".
     let toml = emit_cargo_toml(&spec(), "/path/to/jac-bridge");
     assert!(toml.contains("serde = \"1\""), "missing serde\n{toml}");
-    assert!(toml.contains("rmp-serde = \"1\""), "missing rmp-serde\n{toml}");
+    assert!(
+        toml.contains("rmp-serde = \"1\""),
+        "missing rmp-serde\n{toml}"
+    );
 }
 
 #[test]
@@ -155,11 +178,26 @@ fn scalar_signatures_never_emit_wide_lane_calls() {
         method(
             "scale",
             vec![
-                BridgeParam { name: "n".into(), ty: ScalarType::Int("i64".into()) },
-                BridgeParam { name: "u".into(), ty: ScalarType::Uint("u64".into()) },
-                BridgeParam { name: "b".into(), ty: ScalarType::Bool },
-                BridgeParam { name: "s".into(), ty: ScalarType::Str },
-                BridgeParam { name: "raw".into(), ty: ScalarType::Bytes },
+                BridgeParam {
+                    name: "n".into(),
+                    ty: ScalarType::Int("i64".into()),
+                },
+                BridgeParam {
+                    name: "u".into(),
+                    ty: ScalarType::Uint("u64".into()),
+                },
+                BridgeParam {
+                    name: "b".into(),
+                    ty: ScalarType::Bool,
+                },
+                BridgeParam {
+                    name: "s".into(),
+                    ty: ScalarType::Str,
+                },
+                BridgeParam {
+                    name: "raw".into(),
+                    ty: ScalarType::Bytes,
+                },
             ],
             BridgeReturn::Uint("u64".into()),
         ),

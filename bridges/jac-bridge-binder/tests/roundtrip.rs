@@ -355,6 +355,39 @@ fn semver_bridge_compiles_clean() {
         "cmp_precedence body must map Ordering variants to -1/0/1\n{lib_src}"
     );
 
+    // Full-parity synth lanes (no overlay inject): Display -> to_string, Ord -> cmp,
+    // FromStr -> a fully-qualified static, and the opaque field-reader lane
+    // (scalar / handle / fieldless-enum readers). All must compile against real
+    // semver under -D warnings, which is the airtight proof.
+    assert!(
+        lib_src.contains("pub fn to_string(&self) -> String {\n            self.0.to_string()"),
+        "Display lane must synthesize to_string\n{lib_src}"
+    );
+    assert!(
+        lib_src.contains("pub fn cmp(&self, other: &Version) -> i8"),
+        "Ord lane must synthesize cmp with a &Version handle param\n{lib_src}"
+    );
+    assert!(
+        lib_src.contains("<semver::Version as ::std::str::FromStr>::from_str(text)"),
+        "FromStr lane must emit a fully-qualified associated call\n{lib_src}"
+    );
+    assert!(
+        lib_src.contains(
+            "pub fn pre(&self) -> Prerelease {\n            Prerelease(self.0.pre.clone())"
+        ),
+        "handle field reader must clone + wrap the inner field\n{lib_src}"
+    );
+    assert!(
+        lib_src.contains("semver::Op::Exact => \"Exact\",")
+            && lib_src.contains("_ => \"unknown\","),
+        "Comparator.op fieldless-enum reader must map variants to names\n{lib_src}"
+    );
+    // No unresolvable std-trait `use` leaked (the FromStr call is fully-qualified).
+    assert!(
+        !lib_src.contains("use semver::core::") && !lib_src.contains("use semver::std::"),
+        "no std-trait use may be emitted\n{lib_src}"
+    );
+
     let jac_bridge = manifest_dir().join("../jac-bridge");
     let cargo_src = jac_bridge_binder::emit_cargo_toml(&spec, &jac_bridge.to_string_lossy());
 
@@ -386,12 +419,18 @@ fn semver_bridge_compiles_clean() {
         .expect("nm");
     let syms = String::from_utf8_lossy(&nm.stdout);
     for want in [
-        "jac_semver_Version_parse",       // Result<Self, Error> ctor (literal-Self fix)
-        "jac_semver_VersionReq_matches",  // inbound handle param (&Version)
-        "jac_semver_Version_cmp",         // handle param inside an injected method
+        "jac_semver_Version_parse", // Result<Self, Error> ctor (literal-Self fix)
+        "jac_semver_VersionReq_matches", // inbound handle param (&Version)
+        "jac_semver_Version_cmp",   // Ord lane: synthesized handle-param cmp
         "jac_semver_Version_cmp_precedence", // Ordering return lane (auto -1/0/1 i8)
-        "jac_semver_Version_major",       // public-field accessor (overlay inject)
-        "jac_semver_Version_drop",        // Version is now an opaque handle
+        "jac_semver_Version_to_string", // Display lane
+        "jac_semver_Version_from_str", // FromStr lane (fully-qualified static)
+        "jac_semver_Version_major", // scalar field-reader lane
+        "jac_semver_Version_pre",   // handle field-reader lane (-> Prerelease)
+        "jac_semver_Version_drop",  // Version is now an opaque handle
+        "jac_semver_Comparator_matches", // Comparator forced opaque: its methods bridge
+        "jac_semver_Comparator_op", // fieldless-enum field reader (-> String)
+        "jac_semver_BuildMetadata_cmp", // Ord lane on a naturally-opaque type
         "jac_bridge_init_semver",
     ] {
         assert!(syms.contains(want), "missing exported symbol {want}");

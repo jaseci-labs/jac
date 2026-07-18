@@ -367,7 +367,9 @@ fn type_treat_as_with_skip_is_rejected() {
 /// and not on a neighbour. Returns the slice `[attr_start .. header_end)`.
 fn method_prelude<'a>(src: &'a str, exposed: &str) -> &'a str {
     let header = format!("pub fn {exposed}(");
-    let hdr_pos = src.find(&header).unwrap_or_else(|| panic!("no `{header}`\n{src}"));
+    let hdr_pos = src
+        .find(&header)
+        .unwrap_or_else(|| panic!("no `{header}`\n{src}"));
     // Walk back to the start of the line before the header.
     let line_start = src[..hdr_pos].rfind('\n').map(|i| i + 1).unwrap_or(0);
     // Include the immediately-preceding line (the attribute, when present).
@@ -417,11 +419,13 @@ fn ownership_shared_is_rejected() {
 
 #[test]
 fn ownership_default_and_explicit_owned_emit_no_jac_attribute() {
-    // No ownership key: byte-for-byte the pre-Phase-S output — no `#[jac(` anywhere.
+    // No ownership key: no ownership attribute is stamped. (A `#[jac(assoc)]` on a
+    // static — e.g. the FromStr `from_str` lane — is NOT an ownership attribute, so
+    // the check is scoped to the ownership classes, not any `#[jac(`.)
     let spec_default = classify(&load_regex_doc());
     let src_default = emit(&spec_default);
     assert!(
-        !src_default.contains("#[jac("),
+        !src_default.contains("#[jac(borrowed)]") && !src_default.contains("#[jac(shared)]"),
         "default codegen must not stamp any ownership attribute\n{src_default}"
     );
 
@@ -441,8 +445,14 @@ fn ownership_unknown_class_is_rejected() {
     let mut spec = classify(&load_regex_doc());
     let overlay = parse_overlay("[fn.\"Regex::find\"]\nownership = \"leased\"\n").unwrap();
     let err = apply_overlay(&mut spec, &overlay).unwrap_err();
-    assert!(err.contains("ownership"), "err should name the directive: {err}");
-    assert!(err.contains("leased"), "err should quote the bad value: {err}");
+    assert!(
+        err.contains("ownership"),
+        "err should name the directive: {err}"
+    );
+    assert!(
+        err.contains("leased"),
+        "err should quote the bad value: {err}"
+    );
 }
 
 #[test]
@@ -451,7 +461,10 @@ fn ownership_with_skip_is_rejected() {
     let overlay =
         parse_overlay("[fn.\"Regex::find\"]\nownership = \"borrowed\"\nskip = true\n").unwrap();
     let err = apply_overlay(&mut spec, &overlay).unwrap_err();
-    assert!(err.contains("exclusive"), "err should explain exclusivity: {err}");
+    assert!(
+        err.contains("exclusive"),
+        "err should explain exclusivity: {err}"
+    );
 }
 
 #[test]
@@ -461,13 +474,17 @@ fn ownership_with_treat_as_is_rejected() {
         parse_overlay("[fn.\"Regex::find\"]\ntreat_as = \"owning\"\nownership = \"shared\"\n")
             .unwrap();
     let err = apply_overlay(&mut spec, &overlay).unwrap_err();
-    assert!(err.contains("exclusive"), "err should explain exclusivity: {err}");
+    assert!(
+        err.contains("exclusive"),
+        "err should explain exclusivity: {err}"
+    );
 }
 
 #[test]
 fn ownership_on_absent_method_is_rejected() {
     let mut spec = classify(&load_regex_doc());
-    let overlay = parse_overlay("[fn.\"Regex::no_such_method\"]\nownership = \"shared\"\n").unwrap();
+    let overlay =
+        parse_overlay("[fn.\"Regex::no_such_method\"]\nownership = \"shared\"\n").unwrap();
     let err = apply_overlay(&mut spec, &overlay).unwrap_err();
     assert!(
         err.contains("no_such_method") || err.contains("no bridged method"),
@@ -539,8 +556,7 @@ fn skip_without_reason_still_records_a_visible_skip() {
 #[test]
 fn reason_without_skip_is_rejected() {
     let mut spec = classify(&load_regex_doc());
-    let overlay =
-        parse_overlay("[fn.\"Regex::is_match\"]\nreason = \"stray reason\"\n").unwrap();
+    let overlay = parse_overlay("[fn.\"Regex::is_match\"]\nreason = \"stray reason\"\n").unwrap();
     let err = apply_overlay(&mut spec, &overlay).unwrap_err();
     assert!(
         err.contains("reason requires skip"),
@@ -554,7 +570,10 @@ fn reason_with_treat_as_is_rejected() {
     let overlay =
         parse_overlay("[fn.\"Regex::is_match\"]\ntreat_as = \"skip\"\nreason = \"x\"\n").unwrap();
     let err = apply_overlay(&mut spec, &overlay).unwrap_err();
-    assert!(err.contains("exclusive"), "err should explain exclusivity: {err}");
+    assert!(
+        err.contains("exclusive"),
+        "err should explain exclusivity: {err}"
+    );
 }
 
 // ── [type."T"] wide (2.3) ───────────────────────────────────────────────────────
@@ -604,7 +623,10 @@ fn type_wide_with_monomorphize_is_rejected() {
         parse_overlay("[type.\"Regex\"]\nwide = true\nmonomorphize = [\"u8\"]\n").unwrap();
     let mut spec = classify(&doc);
     let err = apply_overlay(&mut spec, &overlay).unwrap_err();
-    assert!(err.contains("wide is not supported alongside monomorphize"), "{err}");
+    assert!(
+        err.contains("wide is not supported alongside monomorphize"),
+        "{err}"
+    );
 }
 
 // ── [crate] features (2.4) ──────────────────────────────────────────────────────

@@ -1,30 +1,19 @@
 # Overlay for the semver bridge — the seed-crate case that motivated the
 # `treat_as = "opaque"` escape hatch.
 #
-# `semver::Version` and `VersionReq` are all-public-field structs, so the binder
-# treats them as transparent (wide-lane) data and drops them — yet their real API
-# lives entirely in methods (`Version::parse`, `VersionReq::matches`). Forcing them
-# opaque bridges them as boxed handles and exposes those methods.
-
+# `semver::Version`, `VersionReq`, and `Comparator` are all-public-field structs,
+# so the binder treats them as transparent (wide-lane) data and drops them — yet
+# their real API lives entirely in methods (`Version::parse`, `VersionReq::matches`,
+# `Comparator::matches`). Forcing them opaque bridges them as boxed handles and
+# exposes those methods; their public fields are then recovered automatically by
+# the opaque field-reader lane (`major`/`minor`/`patch` scalars, `pre`/`build`
+# handles), so NO hand-written `inject` is needed. Display (`to_string`), Ord
+# (`cmp`), and FromStr (`from_str`) likewise bridge automatically off their impls.
 [type."Version"]
 treat_as = "opaque"
-# `major`/`minor`/`patch` are PUBLIC FIELDS (not methods), so the binder can't reach
-# them; expose them as reader methods. `cmp` bridges Version's `Ord` as a -1/0/1
-# int and doubles as a live test of the inbound HANDLE PARAM (`other: &Version`)
-# inside an injected method. (A bare `-> Ordering` now rides the automatic Ordering
-# return lane; this inject predates it and is kept as a handle-param test.)
-inject = """
-        pub fn major(&self) -> u64 { self.0.major }
-        pub fn minor(&self) -> u64 { self.0.minor }
-        pub fn patch(&self) -> u64 { self.0.patch }
-        pub fn cmp(&self, other: &Version) -> i8 {
-            match self.0.cmp(&other.0) {
-                ::std::cmp::Ordering::Less => -1,
-                ::std::cmp::Ordering::Equal => 0,
-                ::std::cmp::Ordering::Greater => 1,
-            }
-        }
-"""
 
 [type."VersionReq"]
+treat_as = "opaque"
+
+[type."Comparator"]
 treat_as = "opaque"

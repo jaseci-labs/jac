@@ -11,7 +11,7 @@ use rustdoc_types::{Attribute, Crate, Id, Item, ItemEnum, StructKind, Type};
 use crate::overlay::Overlay;
 use crate::types::{
     BridgeFn, BridgeParam, BridgeReturn, BridgeSpec, BridgeType, DrainCollect, DropReason,
-    DroppedType, MonoType, Ownership, OwningWrapper, Recv, RecordKind, RootProducer, ScalarType,
+    DroppedType, MonoType, Ownership, OwningWrapper, RecordKind, Recv, RootProducer, ScalarType,
     SerdeInfo, Skip, SkipReason, TypeKind, WideField, WideRecord, WrapperKind,
 };
 
@@ -87,6 +87,10 @@ const NOISE_TRAITS: &[&str] = &[
     "PartialOrd",
     "Ord",
     "Hash",
+    // parsing — `FromStr::from_str` is re-admitted by the dedicated FromStr lane
+    // (a fully-qualified `<T as ::std::str::FromStr>::from_str` static), so the
+    // generic trait-flatten must NOT also emit an (unusable, private-path) `use`.
+    "FromStr",
     // auto / marker traits
     "Send",
     "Sync",
@@ -419,9 +423,7 @@ fn reconcile_fallible_returns(types: &mut [BridgeType], skips: &mut Vec<Skip>) {
         return;
     }
     let reason = || {
-        SkipReason::UnsupportedType(
-            "fallible return but crate has no bridged error type".into(),
-        )
+        SkipReason::UnsupportedType("fallible return but crate has no bridged error type".into())
     };
     for bt in types.iter_mut() {
         if let Some(c) = &bt.ctor {
@@ -1016,7 +1018,10 @@ impl<'a> Ctx<'a> {
             };
             impl_block.trait_.is_none()
                 && impl_block.items.iter().any(|iid| {
-                    matches!(self.item(iid).map(|i| &i.inner), Some(ItemEnum::Function(_)))
+                    matches!(
+                        self.item(iid).map(|i| &i.inner),
+                        Some(ItemEnum::Function(_))
+                    )
                 })
         })
     }
@@ -1156,7 +1161,10 @@ impl<'a> Ctx<'a> {
             Type::BorrowedRef { type_, .. } => return self.wide_override_for(type_),
             _ => return None,
         };
-        self.overlay?.types.get(rp_name(&rp.path)).and_then(|t| t.wide)
+        self.overlay?
+            .types
+            .get(rp_name(&rp.path))
+            .and_then(|t| t.wide)
     }
 
     /// Lane resolution for a value of type `ty` crossing in direction `dir`,
@@ -1205,8 +1213,8 @@ impl<'a> Ctx<'a> {
         match ty {
             Type::BorrowedRef { type_, .. } => self.render_field_ty(type_),
             Type::Primitive(p) => match p.as_str() {
-                "bool" | "i8" | "i16" | "i32" | "i64" | "isize" | "u8" | "u16" | "u32"
-                | "u64" | "usize" | "f32" | "f64" => Some(p.clone()),
+                "bool" | "i8" | "i16" | "i32" | "i64" | "isize" | "u8" | "u16" | "u32" | "u64"
+                | "usize" | "f32" | "f64" => Some(p.clone()),
                 _ => None,
             },
             Type::ResolvedPath(rp) => match rp_name(&rp.path) {
@@ -1260,7 +1268,9 @@ impl<'a> Ctx<'a> {
             Type::BorrowedRef { type_, .. } => &**type_,
             t => t,
         };
-        let Type::ResolvedPath(rp) = ty else { return None };
+        let Type::ResolvedPath(rp) = ty else {
+            return None;
+        };
         let id = rp.id.0;
         let item = self.doc.index.get(&Id(id))?;
         if !self.serde_disposition(id).automatically_derived {
@@ -1268,9 +1278,10 @@ impl<'a> Ctx<'a> {
         }
         match &item.inner {
             ItemEnum::Struct(s) => match &s.kind {
-                StructKind::Plain { has_stripped_fields: false, .. } => {
-                    Some((id, RecordKind::Struct))
-                }
+                StructKind::Plain {
+                    has_stripped_fields: false,
+                    ..
+                } => Some((id, RecordKind::Struct)),
                 _ => None,
             },
             ItemEnum::Enum(e) if !e.has_stripped_variants => Some((id, RecordKind::Enum)),
@@ -1302,11 +1313,17 @@ impl<'a> Ctx<'a> {
     /// True when every field (struct) / variant payload (enum) of record `id` is
     /// admissible. Assumes `id` is a valid record shell of `kind`.
     fn record_members_admissible(&self, id: u32, kind: RecordKind) -> bool {
-        let Some(item) = self.doc.index.get(&Id(id)) else { return false };
+        let Some(item) = self.doc.index.get(&Id(id)) else {
+            return false;
+        };
         match kind {
             RecordKind::Struct => {
-                let ItemEnum::Struct(s) = &item.inner else { return false };
-                let StructKind::Plain { fields, .. } = &s.kind else { return false };
+                let ItemEnum::Struct(s) = &item.inner else {
+                    return false;
+                };
+                let StructKind::Plain { fields, .. } = &s.kind else {
+                    return false;
+                };
                 fields.iter().all(|fid| {
                     self.item(fid)
                         .and_then(|f| match &f.inner {
@@ -1317,8 +1334,12 @@ impl<'a> Ctx<'a> {
                 })
             }
             RecordKind::Enum => {
-                let ItemEnum::Enum(e) = &item.inner else { return false };
-                e.variants.iter().all(|vid| self.variant_payload_ty(vid).is_some())
+                let ItemEnum::Enum(e) = &item.inner else {
+                    return false;
+                };
+                e.variants
+                    .iter()
+                    .all(|vid| self.variant_payload_ty(vid).is_some())
             }
         }
     }
@@ -1329,13 +1350,17 @@ impl<'a> Ctx<'a> {
     /// inadmissible payload) — which disqualifies the whole enum.
     fn variant_payload_ty(&self, vid: &Id) -> Option<Option<String>> {
         let v = self.item(vid)?;
-        let ItemEnum::Variant(var) = &v.inner else { return None };
+        let ItemEnum::Variant(var) = &v.inner else {
+            return None;
+        };
         match &var.kind {
             rustdoc_types::VariantKind::Plain => Some(None),
             rustdoc_types::VariantKind::Tuple(fields) if fields.len() == 1 => {
                 let fid = fields[0].as_ref()?;
                 let f = self.item(fid)?;
-                let ItemEnum::StructField(fty) = &f.inner else { return None };
+                let ItemEnum::StructField(fty) = &f.inner else {
+                    return None;
+                };
                 Some(Some(self.render_field_ty(fty)?))
             }
             _ => None,
@@ -1364,7 +1389,9 @@ impl<'a> Ctx<'a> {
             ids.push(id);
         }
         // Walk the record's member types and register any nested records.
-        let Some(item) = self.doc.index.get(&Id(id)) else { return };
+        let Some(item) = self.doc.index.get(&Id(id)) else {
+            return;
+        };
         let member_tys: Vec<Type> = match &item.inner {
             ItemEnum::Struct(s) => match &s.kind {
                 StructKind::Plain { fields, .. } => fields
@@ -1444,25 +1471,43 @@ impl<'a> Ctx<'a> {
                 let name = item.name.clone()?;
                 match &item.inner {
                     ItemEnum::Struct(s) => {
-                        let StructKind::Plain { fields, .. } = &s.kind else { return None };
+                        let StructKind::Plain { fields, .. } = &s.kind else {
+                            return None;
+                        };
                         let mut wf = Vec::new();
                         for fid in fields {
                             let f = self.item(fid)?;
                             let fname = f.name.clone()?;
-                            let ItemEnum::StructField(fty) = &f.inner else { return None };
+                            let ItemEnum::StructField(fty) = &f.inner else {
+                                return None;
+                            };
                             let rust_ty = self.render_field_ty(fty)?;
-                            wf.push(WideField { name: fname, rust_ty: Some(rust_ty) });
+                            wf.push(WideField {
+                                name: fname,
+                                rust_ty: Some(rust_ty),
+                            });
                         }
-                        Some(WideRecord { name, kind: RecordKind::Struct, fields: wf })
+                        Some(WideRecord {
+                            name,
+                            kind: RecordKind::Struct,
+                            fields: wf,
+                        })
                     }
                     ItemEnum::Enum(e) => {
                         let mut wf = Vec::new();
                         for vid in &e.variants {
                             let vname = self.item(vid)?.name.clone()?;
                             let payload = self.variant_payload_ty(vid)?;
-                            wf.push(WideField { name: vname, rust_ty: payload });
+                            wf.push(WideField {
+                                name: vname,
+                                rust_ty: payload,
+                            });
                         }
-                        Some(WideRecord { name, kind: RecordKind::Enum, fields: wf })
+                        Some(WideRecord {
+                            name,
+                            kind: RecordKind::Enum,
+                            fields: wf,
+                        })
                     }
                     _ => None,
                 }
@@ -1540,7 +1585,10 @@ impl<'a> Ctx<'a> {
             "Range" => Some(format!("std::ops::Range<{}>", render_args(", ")?)),
             "RangeInclusive" => Some(format!("std::ops::RangeInclusive<{}>", render_args(", ")?)),
             "HashMap" => Some(format!("std::collections::HashMap<{}>", render_args(", ")?)),
-            "BTreeMap" => Some(format!("std::collections::BTreeMap<{}>", render_args(", ")?)),
+            "BTreeMap" => Some(format!(
+                "std::collections::BTreeMap<{}>",
+                render_args(", ")?
+            )),
             "Duration" => Some("std::time::Duration".into()),
             // A local leaf naming a crate type: spell it through the accessible
             // crate path (`crate::Point`), the same path the newtype would wrap.
@@ -1784,6 +1832,267 @@ impl<'a> Ctx<'a> {
                 }
             }
         }
+
+        // Synthesize the trait-driven and field-driven surface the noise-trait
+        // policy and the public-field model don't reach through method flattening:
+        //   * `impl Display`  -> `to_string(&self) -> String`
+        //   * `impl Ord`      -> `cmp(&self, &Self) -> i8` (rides the Ordering lane)
+        //   * `impl FromStr`  -> `from_str(text) -> Result<Self, String>` static
+        //   * public fields   -> per-field reader methods (scalar / handle / enum)
+        // Each is deduped against `seen_names`, so a synthesized name never shadows
+        // a real inherent/flattened method (first-wins, 1.1.3).
+        self.synth_display(bt, &mut seen_names);
+        self.synth_ord(bt, &mut seen_names);
+        self.synth_from_str(bt, &mut seen_names);
+        self.synth_field_readers(bt, &mut seen_names);
+    }
+
+    /// A `BridgeFn` skeleton for a `&self` reader/method synthesized by the lanes
+    /// below — no receiver-mutation, no async, owned return, no trait provenance.
+    /// Callers set `name`, `params`, `ret`, and any of `is_static`/`field_read`/
+    /// `std_from_str` that apply.
+    fn synth_fn(name: &str, params: Vec<BridgeParam>, ret: BridgeReturn) -> BridgeFn {
+        BridgeFn {
+            name: name.to_string(),
+            export_name: None,
+            params,
+            ret,
+            throws: None,
+            recv: Recv::Field0,
+            is_async: false,
+            ret_ownership: Ownership::Owned,
+            via_trait: None,
+            self_mut: false,
+            consumes_self: false,
+            is_static: false,
+            field_read: None,
+            std_from_str: false,
+        }
+    }
+
+    /// True iff the struct/enum with `item_id` carries a trait impl whose simple
+    /// (final-segment) name is `simple`. Mirrors [`Self::implements_error_trait`]
+    /// but matched on the trait's simple name (the same key the noise policy uses),
+    /// which is enough to detect the std leaf traits the synth lanes key on
+    /// (`Display`/`Ord`/`FromStr`) on a bridged crate's own type.
+    fn type_impls_trait(&self, item_id: u32, simple: &str) -> bool {
+        let Some(item) = self.doc.index.get(&Id(item_id)) else {
+            return false;
+        };
+        let impls = match &item.inner {
+            ItemEnum::Struct(s) => &s.impls,
+            ItemEnum::Enum(e) => &e.impls,
+            _ => return false,
+        };
+        impls.iter().any(|impl_id| {
+            self.item(impl_id)
+                .and_then(|ii| match &ii.inner {
+                    ItemEnum::Impl(ib) => ib.trait_.as_ref(),
+                    _ => None,
+                })
+                .map(|tr| self.trait_simple_name(tr) == simple)
+                .unwrap_or(false)
+        })
+    }
+
+    /// Display lane: `impl std::fmt::Display for T` -> a `to_string(&self) -> String`
+    /// reader (`self.0.to_string()`). Every semver opaque type (`Version`,
+    /// `Comparator`, `Prerelease`, …) is `Display`, so this recovers the string form
+    /// the crate's own users rely on.
+    fn synth_display(&mut self, bt: &mut BridgeType, seen: &mut HashSet<String>) {
+        if bt.kind != TypeKind::Opaque || !self.type_impls_trait(bt.item_id, "Display") {
+            return;
+        }
+        if seen.insert("to_string".to_string()) {
+            bt.methods.push(Self::synth_fn(
+                "to_string",
+                vec![],
+                BridgeReturn::DisplayString,
+            ));
+        }
+    }
+
+    /// Ord lane: `impl std::cmp::Ord for T` -> a `cmp(&self, other: &Self) -> i8`
+    /// method riding the Ordering return lane and the inbound-handle-param lane.
+    /// `self.0.cmp(&other.0)` is unambiguous (only `Ord` provides `cmp`; `Ord` is in
+    /// the prelude, so no `use` is needed) and lowers to `-1/0/1` like
+    /// `cmp_precedence`. The `&Self` param crosses as the caller's handle.
+    fn synth_ord(&mut self, bt: &mut BridgeType, seen: &mut HashSet<String>) {
+        if bt.kind != TypeKind::Opaque || !self.type_impls_trait(bt.item_id, "Ord") {
+            return;
+        }
+        // The `&Self` handle param requires this type to be a live opaque handle
+        // (in `ref_type_names`); a mono type carries a turbofish inner path a `&Self`
+        // handle can't spell, so skip it there.
+        if bt.mono.is_some() || !self.ref_type_names.contains(&bt.name) {
+            return;
+        }
+        if seen.insert("cmp".to_string()) {
+            let params = vec![BridgeParam {
+                name: "other".into(),
+                ty: ScalarType::Handle(bt.name.clone()),
+            }];
+            bt.methods
+                .push(Self::synth_fn("cmp", params, BridgeReturn::Ordering));
+        }
+    }
+
+    /// FromStr lane: `impl std::str::FromStr for T` -> a `from_str(text: &str) ->
+    /// Result<Self, String>` static, emitted fully-qualified as `<Inner as
+    /// ::std::str::FromStr>::from_str(text)` (see [`BridgeFn::std_from_str`]). This
+    /// admits the additional string constructor the generic trait-flatten had to
+    /// skip (FromStr's public path is unrecoverable), killing the "additional
+    /// constructor via a std/core trait" skips. Demoted to a skip later by
+    /// `reconcile_fallible_returns` iff the crate has no bridged error type.
+    fn synth_from_str(&mut self, bt: &mut BridgeType, seen: &mut HashSet<String>) {
+        if bt.kind != TypeKind::Opaque || bt.mono.is_some() {
+            return;
+        }
+        if !self.type_impls_trait(bt.item_id, "FromStr") {
+            return;
+        }
+        if seen.insert("from_str".to_string()) {
+            let params = vec![BridgeParam {
+                name: "text".into(),
+                ty: ScalarType::Str,
+            }];
+            let mut f = Self::synth_fn("from_str", params, BridgeReturn::OwnSelfResult);
+            f.is_static = true;
+            f.std_from_str = true;
+            bt.methods.push(f);
+        }
+    }
+
+    /// Opaque field-reader lane: for an opaque type with PUBLIC named fields (only a
+    /// `treat_as = "opaque"`-forced transparent struct has these — a naturally
+    /// opaque struct has private/stripped state), synthesize a reader per field:
+    ///   * a scalar field (`u64`/`i64`/`bool`) -> a scalar reader (`self.0.major`);
+    ///   * a handle field naming another LIVE bridged opaque type -> an owned-handle
+    ///     producer (`Prerelease(self.0.pre.clone())`, semver types are all `Clone`);
+    ///   * a public FIELDLESS enum field -> a variant-name string reader.
+    /// A field the ABI can't carry (`Option<int>` has no in-band None channel;
+    /// `Vec<Handle>` has no list-of-handle lane) is recorded as an honest skip.
+    fn synth_field_readers(&mut self, bt: &mut BridgeType, seen: &mut HashSet<String>) {
+        if bt.kind != TypeKind::Opaque || bt.mono.is_some() {
+            return;
+        }
+        for (fname, fty) in self.public_named_fields(bt.item_id) {
+            if seen.contains(&fname) {
+                continue;
+            }
+            match self.classify_field_reader(&fty) {
+                Ok(ret) => {
+                    seen.insert(fname.clone());
+                    let mut f = Self::synth_fn(&fname, vec![], ret);
+                    f.field_read = Some(fname);
+                    bt.methods.push(f);
+                }
+                Err(reason) => self.skips.push(Skip {
+                    item: format!("{}::{}", bt.name, fname),
+                    reason,
+                }),
+            }
+        }
+    }
+
+    /// The public NAMED fields (name, type) of a plain struct, in declaration order.
+    /// Empty for a tuple/unit struct, a non-struct, or a struct whose fields are all
+    /// private (rustdoc omits non-public fields from `fields`). Only public fields
+    /// are returned, so a reader never names inaccessible state.
+    fn public_named_fields(&self, item_id: u32) -> Vec<(String, Type)> {
+        let Some(item) = self.doc.index.get(&Id(item_id)) else {
+            return vec![];
+        };
+        let ItemEnum::Struct(s) = &item.inner else {
+            return vec![];
+        };
+        let StructKind::Plain { fields, .. } = &s.kind else {
+            return vec![];
+        };
+        let mut out = vec![];
+        for fid in fields {
+            let Some(fitem) = self.item(fid) else {
+                continue;
+            };
+            if matches!(
+                fitem.visibility,
+                rustdoc_types::Visibility::Crate | rustdoc_types::Visibility::Restricted { .. }
+            ) {
+                continue;
+            }
+            let (Some(name), ItemEnum::StructField(fty)) = (&fitem.name, &fitem.inner) else {
+                continue;
+            };
+            out.push((name.clone(), fty.clone()));
+        }
+        out
+    }
+
+    /// The return lane for a public field of an opaque type, or a skip reason the
+    /// v1 ABI can't carry. Scalars ride the int/bool lanes, a handle field the Ref
+    /// lane, a fieldless enum the variant-name string lane.
+    fn classify_field_reader(&self, fty: &Type) -> Result<BridgeReturn, SkipReason> {
+        match fty {
+            Type::Primitive(p) => match p.as_str() {
+                "bool" => Ok(BridgeReturn::Bool),
+                p @ ("u8" | "u16" | "u32" | "u64" | "usize") => Ok(BridgeReturn::Uint(p.into())),
+                p @ ("i8" | "i16" | "i32" | "i64" | "isize") => Ok(BridgeReturn::Int(p.into())),
+                other => Err(SkipReason::UnsupportedType(format!(
+                    "field of type {other}"
+                ))),
+            },
+            Type::ResolvedPath(rp) => {
+                // A field naming another LIVE bridged opaque handle -> owned clone.
+                if self.ref_type_names.contains(&rp.path)
+                    && !has_lifetime_args(rp)
+                    && !inner_has_lifetime(rp, self.doc)
+                {
+                    return Ok(BridgeReturn::Ref(rp.path.clone()));
+                }
+                // A public FIELDLESS enum (all-unit variants) -> variant-name string.
+                if let Some(variants) = self.fieldless_enum_variants(rp.id.0) {
+                    let enum_path = self.accessible_type_path(rp.id.0, &[], rp_name(&rp.path));
+                    return Ok(BridgeReturn::EnumName(enum_path, variants));
+                }
+                // `Option<int>` has no in-band None channel in the v1 ABI, and a
+                // `Vec<Handle>` has no list-of-handle lane; both are honest skips.
+                match rp_name(&rp.path) {
+                    "Option" => Err(SkipReason::UnsupportedType(
+                        "Option<scalar> field: no in-band None channel in the v1 ABI".into(),
+                    )),
+                    "Vec" => Err(SkipReason::UnsupportedType(
+                        "Vec<handle> field: no list-of-handle lane".into(),
+                    )),
+                    other => Err(SkipReason::UnsupportedType(format!(
+                        "field of type {other}"
+                    ))),
+                }
+            }
+            _ => Err(SkipReason::UnsupportedType(format!("field {fty:?}"))),
+        }
+    }
+
+    /// The variant names of the enum with `id` IF it is a public FIELDLESS enum
+    /// (every variant a unit variant), else `None`. A fieldless enum has no bridged
+    /// handle and no scalar spelling, so its value crosses as its variant name.
+    fn fieldless_enum_variants(&self, id: u32) -> Option<Vec<String>> {
+        let item = self.doc.index.get(&Id(id))?;
+        let ItemEnum::Enum(e) = &item.inner else {
+            return None;
+        };
+        let mut names = vec![];
+        for vid in &e.variants {
+            let vitem = self.item(vid)?;
+            let ItemEnum::Variant(v) = &vitem.inner else {
+                return None;
+            };
+            // Only plain unit variants map cleanly onto a name string.
+            if !matches!(v.kind, rustdoc_types::VariantKind::Plain) {
+                return None;
+            }
+            names.push(vitem.name.clone()?);
+        }
+        (!names.is_empty()).then_some(names)
     }
 
     /// Classify one impl method (inherent or trait-flattened) onto `bt`.
@@ -2081,6 +2390,8 @@ impl<'a> Ctx<'a> {
             self_mut,
             consumes_self,
             is_static: false,
+            field_read: None,
+            std_from_str: false,
         })
     }
 
@@ -2450,6 +2761,8 @@ impl<'a> Ctx<'a> {
             self_mut: false,
             consumes_self: false,
             is_static: false,
+            field_read: None,
+            std_from_str: false,
         };
         let pending = PendingWrapper {
             wrapper_name,
@@ -2505,6 +2818,8 @@ impl<'a> Ctx<'a> {
             self_mut: false,
             consumes_self: false,
             is_static: false,
+            field_read: None,
+            std_from_str: false,
         };
         let pending = PendingWrapper {
             wrapper_name,
@@ -2602,6 +2917,8 @@ impl<'a> Ctx<'a> {
                     self_mut: false,
                     consumes_self: false,
                     is_static: false,
+                    field_read: None,
+                    std_from_str: false,
                 };
                 let kind = WrapperKind::Drain {
                     params: params.clone(),
@@ -2635,6 +2952,8 @@ impl<'a> Ctx<'a> {
                     self_mut: false,
                     consumes_self: false,
                     is_static: false,
+                    field_read: None,
+                    std_from_str: false,
                 };
                 // Pend the item wrapper (an owning wrapper, built inline by `next`;
                 // root None so it merges with any root producer like `find`).
@@ -2669,6 +2988,8 @@ impl<'a> Ctx<'a> {
             self_mut: false,
             consumes_self: false,
             is_static: false,
+            field_read: None,
+            std_from_str: false,
         };
         // The cursor/drain wrapper itself: its only reader is the synthesized `next`.
         let mut pendings = vec![PendingWrapper {
@@ -2749,6 +3070,8 @@ impl<'a> Ctx<'a> {
             self_mut: false,
             consumes_self: false,
             is_static: false,
+            field_read: None,
+            std_from_str: false,
         };
         let producer = BridgeFn {
             name: method_name.to_string(),
@@ -2763,6 +3086,8 @@ impl<'a> Ctx<'a> {
             self_mut: false,
             consumes_self: false,
             is_static: false,
+            field_read: None,
+            std_from_str: false,
         };
         let pending = PendingWrapper {
             wrapper_name: wrapper_name.clone(),
@@ -2868,6 +3193,8 @@ impl<'a> Ctx<'a> {
             self_mut: false,
             consumes_self: false,
             is_static: false,
+            field_read: None,
+            std_from_str: false,
         };
         Some((producer, vec![]))
     }
@@ -3104,6 +3431,8 @@ impl<'a> Ctx<'a> {
                         self_mut: false,
                         consumes_self: false,
                         is_static: false,
+                        field_read: None,
+                        std_from_str: false,
                     }),
                     // A reader whose return is `Option<Borrowed<'h>>` isn't a dead
                     // skip — it's a NESTED producer of another owning wrapper, so
@@ -3464,7 +3793,10 @@ mod serde_lane_tests {
             None
         } else {
             Some(Box::new(rustdoc_types::GenericArgs::AngleBracketed {
-                args: args.into_iter().map(rustdoc_types::GenericArg::Type).collect(),
+                args: args
+                    .into_iter()
+                    .map(rustdoc_types::GenericArg::Type)
+                    .collect(),
                 constraints: vec![],
             }))
         };
@@ -3519,24 +3851,12 @@ mod serde_lane_tests {
 
         // A map is wide only with a String key; the value must be wide too.
         let string_key = || path("String", vec![]);
-        assert!(cx.is_wide_serializable(
-            &path("HashMap", vec![string_key(), prim("u64")]),
-            ser
-        ));
-        assert!(!cx.is_wide_serializable(
-            &path("HashMap", vec![prim("u64"), prim("u64")]),
-            ser
-        ));
+        assert!(cx.is_wide_serializable(&path("HashMap", vec![string_key(), prim("u64")]), ser));
+        assert!(!cx.is_wide_serializable(&path("HashMap", vec![prim("u64"), prim("u64")]), ser));
 
         // Tuples: wide iff every element is.
-        assert!(cx.is_wide_serializable(
-            &Type::Tuple(vec![prim("u64"), prim("bool")]),
-            ser
-        ));
-        assert!(!cx.is_wide_serializable(
-            &Type::Tuple(vec![prim("u64"), prim("u128")]),
-            ser
-        ));
+        assert!(cx.is_wide_serializable(&Type::Tuple(vec![prim("u64"), prim("bool")]), ser));
+        assert!(!cx.is_wide_serializable(&Type::Tuple(vec![prim("u64"), prim("u128")]), ser));
 
         // A bare container with no args is not admitted (an alias, not a payload).
         assert!(!cx.is_wide_serializable(&path("Vec", vec![]), ser));
@@ -3606,10 +3926,9 @@ mod serde_lane_tests {
         let cx = ctx(&doc);
         // A local serde struct by value fits no scalar lane → the wide lane.
         match cx.classify_param_type(&leaf(&doc, "NaiveDate"), &[]) {
-            Ok(ScalarType::Wide(inner)) => assert!(
-                inner.ends_with("NaiveDate"),
-                "wide inner path = {inner}"
-            ),
+            Ok(ScalarType::Wide(inner)) => {
+                assert!(inner.ends_with("NaiveDate"), "wide inner path = {inner}")
+            }
             other => panic!("expected Wide, got {other:?}"),
         }
         // The scalar wedged beside it is untouched — still a plain int tag.
@@ -3620,7 +3939,10 @@ mod serde_lane_tests {
         // A container carrying a serde leaf is wide, spelled with a fully-qualified
         // std path (no extra `use` needed) around the leaf's crate path.
         match cx.classify_param_type(
-            &path("HashMap", vec![path("String", vec![]), leaf(&doc, "NaiveDate")]),
+            &path(
+                "HashMap",
+                vec![path("String", vec![]), leaf(&doc, "NaiveDate")],
+            ),
             &[],
         ) {
             Ok(ScalarType::Wide(inner)) => {
@@ -3638,15 +3960,18 @@ mod serde_lane_tests {
         let bt = owner_bt();
         // A local serde struct returned by value → wide, inner = its crate path.
         match cx.classify_return(&Some(leaf(&doc, "NaiveDate")), &bt, &[]) {
-            Ok(BridgeReturn::Wide(inner)) => assert!(
-                inner.ends_with("NaiveDate"),
-                "wide inner path = {inner}"
-            ),
+            Ok(BridgeReturn::Wide(inner)) => {
+                assert!(inner.ends_with("NaiveDate"), "wide inner path = {inner}")
+            }
             other => panic!("expected Wide, got {other:?}"),
         }
         // `Option<serde-leaf>` recurses and crosses wide (the handle-return arms
         // rule it out first — Option<NaiveDate> is neither Self nor a ref type).
-        match cx.classify_return(&Some(path("Option", vec![leaf(&doc, "NaiveDate")])), &bt, &[]) {
+        match cx.classify_return(
+            &Some(path("Option", vec![leaf(&doc, "NaiveDate")])),
+            &bt,
+            &[],
+        ) {
             Ok(BridgeReturn::Wide(inner)) => {
                 assert!(inner.starts_with("Option<") && inner.contains("NaiveDate"));
             }
@@ -3682,7 +4007,10 @@ mod serde_lane_tests {
         // classification records NO typed record for it.
         let doc = load_doc();
         let cx = ctx(&doc);
-        assert!(!cx.serde_disposition(find_id(&doc, "NaiveDate")).automatically_derived);
+        assert!(
+            !cx.serde_disposition(find_id(&doc, "NaiveDate"))
+                .automatically_derived
+        );
         match cx.classify_param_type(&leaf(&doc, "NaiveDate"), &[]) {
             Ok(ScalarType::Wide(_)) => {}
             other => panic!("expected Wide, got {other:?}"),
@@ -3807,6 +4135,8 @@ mod reconcile_tests {
             self_mut: false,
             consumes_self: false,
             is_static: false,
+            field_read: None,
+            std_from_str: false,
         }
     }
 
@@ -3839,8 +4169,7 @@ mod reconcile_tests {
         assert!(
             skips
                 .iter()
-                .any(|s| s.item == "Live::get_dead"
-                    && format!("{:?}", s.reason).contains("Dead")),
+                .any(|s| s.item == "Live::get_dead" && format!("{:?}", s.reason).contains("Dead")),
             "the demotion must be recorded as an honest skip"
         );
     }

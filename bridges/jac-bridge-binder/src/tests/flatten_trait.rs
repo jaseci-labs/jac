@@ -51,14 +51,17 @@ fn datelike_methods_are_flattened_onto_naivedate_with_via_trait() {
 #[test]
 fn noise_trait_methods_are_not_flattened() {
     let spec = classify(&load("chrono-0.4.45"));
-    // `Clone`/`PartialEq`/`Hash` etc. are NOISE — their methods (`clone`, `eq`,
-    // `cmp`, `hash`) must never appear as bridged surface.
+    // `Clone`/`PartialEq`/`Hash`/`Debug`/`PartialOrd` are NOISE — their methods
+    // (`clone`, `eq`, `ne`, `hash`, `fmt`, `partial_cmp`) must never appear as
+    // bridged surface. (`cmp` is NOT here: it is not a *flattened* Ord method but a
+    // deliberately SYNTHESIZED reader from the Ord lane — `impl Ord -> cmp -> i8` —
+    // so it is legitimate bridged surface, distinct from noise flattening.)
     for bt in &spec.types {
         for m in &bt.methods {
             assert!(
                 !matches!(
                     m.name.as_str(),
-                    "clone" | "eq" | "ne" | "cmp" | "hash" | "fmt"
+                    "clone" | "eq" | "ne" | "hash" | "fmt" | "partial_cmp"
                 ),
                 "{}::{} is a NOISE-trait method and must not be flattened",
                 bt.name,
@@ -72,8 +75,9 @@ fn noise_trait_methods_are_not_flattened() {
 fn inherent_ctor_beats_a_flattened_trait_ctor() {
     // regex's `Regex` has an inherent `new(&str) -> Result<Self>` AND implements
     // `FromStr` (`from_str(&str) -> Result<Self>`). The inherent `new` must win THE
-    // constructor slot; `from_str` is demoted to a visible "additional constructor"
-    // skip — never a second emitted ctor, and never a method needing `use FromStr`.
+    // constructor slot; `from_str` is admitted by the dedicated FromStr lane as a
+    // separate `#[jac(assoc)]` static (NOT the ctor), calling the trait's associated
+    // fn fully-qualified so no (unresolvable) std-trait `use` is emitted.
     let spec = classify(&load("regex-1.12.4"));
     let re = spec
         .types
@@ -83,38 +87,39 @@ fn inherent_ctor_beats_a_flattened_trait_ctor() {
     let ctor = re.ctor.as_ref().expect("Regex has a constructor");
     assert_eq!(
         ctor.name, "new",
-        "inherent `new` wins over flattened `from_str`"
+        "inherent `new` wins over the FromStr static"
     );
     assert!(
         ctor.via_trait.is_none(),
         "the winning ctor is the inherent one"
     );
-    // `from_str` neither bridges as a method nor as the ctor.
+    // `from_str` bridges as a std-FromStr static, never as the ctor.
+    let from_str = re
+        .methods
+        .iter()
+        .find(|m| m.name == "from_str")
+        .expect("from_str is a bridged FromStr static");
     assert!(
-        !re.methods.iter().any(|m| m.name == "from_str"),
-        "from_str must not be a bridged method"
+        from_str.is_static && from_str.std_from_str && from_str.via_trait.is_none(),
+        "from_str is a std-FromStr static with no trait `use`"
     );
+    // No bogus std-trait `use` leaked (the call is fully-qualified instead).
+    let src = emit(&spec);
     assert!(
-        spec.skips.iter().any(|s| s.item == "Regex::from_str"),
-        "from_str is a visible skip"
-    );
-    // No `use` for a std trait leaked (from_str never emits).
-    assert!(
-        !emit(&spec).contains("FromStr"),
-        "no FromStr use should be emitted"
+        !src.contains("use regex::core::") && !src.contains("use regex::std::"),
+        "no unresolved std-trait use should be emitted\n{src}"
     );
 }
 
 #[test]
 fn flattening_lifts_chrono_coverage_without_regressing_regex() {
-    // regex is inherent-heavy: flattening leaves its bridged count byte-identical
-    // (the sole semantic trait on a bridged type, FromStr, demotes to a skip).
-    // 1.2.5 (tuple-struct admission) lifted the count 31 -> 39: `SetMatches` and
-    // `CaptureLocations` are single-field private tuple structs now bridged as
-    // opaque handles, and `RegexSet::matches -> SetMatches` crosses as a ref-lane
-    // handle rather than a skip.
+    // regex is inherent-heavy. 1.2.5 (tuple-struct admission) put its bridged count
+    // at 39 (`SetMatches`/`CaptureLocations` opaque handles + the `RegexSet::matches
+    // -> SetMatches` ref-lane handle). The Display/Ord/FromStr synth lanes then add
+    // the two `from_str` statics (`Regex`/`RegexSet` both impl FromStr), lifting it
+    // to 41. (regex's opaque types carry no Display/Ord, so only FromStr fires.)
     let regex = coverage(&classify(&load("regex-1.12.4")));
-    assert_eq!(regex.bridged, 39, "regex bridged unchanged by flattening");
+    assert_eq!(regex.bridged, 41, "regex bridged: 39 + 2 FromStr statics");
 
     // chrono is trait-heavy (Datelike/Timelike): flattening lifts it well past the
     // pre-Track-A floor of 33.
