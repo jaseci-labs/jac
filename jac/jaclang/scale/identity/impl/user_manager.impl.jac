@@ -140,9 +140,15 @@ impl JacScaleUserManager.resolve_shared_root_id -> str {
     }
     deterministic = compute_guest_root_id();
     if guest and stored != deterministic {
-        self._identity_storage.update_user_fields(
+        updated = self._identity_storage.update_user_fields(
             guest['user_id'], {'root_id': deterministic}
         );
+        if not updated {
+            logger.warning(
+                f"resolve_shared_root_id: failed to persist deterministic "
+                f"root_id for guest {guest['user_id']}; will retry next restart"
+            );
+        }
     }
     return deterministic;
 }
