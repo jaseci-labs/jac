@@ -313,6 +313,29 @@ Emitted by `OwnershipCheckPass` only in **nogc-enforced** native modules (`jac n
 | `W1052` | JSX component '{component}' uses an untyped props bag (`props: any`); its JSX props cannot be type-checked |
 | `W1310` | Region open on '{name}' has an empty body |
 
+### Common type warnings in practice
+
+**`W1051` (Expression type could not be resolved).** The checker lost the
+static type of an expression; the code usually still runs correctly. Frequent
+benign causes:
+
+- A graph filter whose field predicate compares against a **variable** or
+  `self.` attribute -- `[?:Tag, name == some_var]` warns while the literal
+  form (`age > 30`) does not. This is a static-inference gap, not a runtime
+  bug.
+- Traversal over an **untyped edge** (`edge E {}` with undeclared endpoints):
+  `[src ->:E:->]` yields Unknown-typed nodes. Declare the edge's endpoints or
+  add a `[?:NodeType]` filter to recover the type.
+- In client files right after a server-contract change, W1051 at the call
+  site usually means the caller still uses the old contract -- that one is a
+  real bug signal.
+
+**`W1036` vs `W1037` (bare generic vs explicit any).** A bare `dict`/`list`
+return draws W1036; annotating `dict[str, any]` swaps it for the noisier
+W1037. For domain data prefer typed nodes/objs (clients get dot access); when
+a heterogeneous JSON-shaped dict genuinely is the contract, keep the bare
+generic -- W1036 is informational.
+
 ---
 
 ## Import Warnings (W1xxx)

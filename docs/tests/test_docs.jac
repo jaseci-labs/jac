@@ -6,10 +6,19 @@ import from pathlib { Path }
 import from jaclang.cli.registry { get_registry }
 import jaclang.cli.commands.execution;
 
-"""Retrieve all Markdown files in the docs directory."""
+"""Retrieve all Markdown files that build the docs site.
+
+The reference/quick-guide/tutorials/internals sections live in the jaclang
+package (served by `jac guide`, mounted into the site by
+scripts/bundled_docs.py), so the site's sources span both roots.
+"""
 def get_md_files -> list[str] {
-    docs_dir = Path(os.path.dirname(__file__)).parent / "docs";
-    return [str(f) for f in sorted(docs_dir.rglob("*.md"))];
+    docs_root = Path(os.path.dirname(__file__)).parent;
+    bundled_dir = docs_root.parent / "jac" / "jaclang" / "cli" / "docs";
+    return [
+        str(f) for md_root in [docs_root / "docs", bundled_dir]
+        for f in sorted(md_root.rglob("*.md"))
+    ];
 }
 
 """The docs that describe how jac behaves *today*.

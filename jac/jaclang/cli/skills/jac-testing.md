@@ -36,16 +36,17 @@ A `test "some name"` block becomes unittest case `test_some_name` (spaces -> und
 ## File naming - two traps
 
 - **Never name files `test_*.jac`** (e.g. `test_utils.jac`) - the `test_` prefix collides with Python's test-module import machinery. Use `utils_tests.jac`, or the annex form below.
+- **Calling a `def:priv` endpoint from a `.test.jac` annex draws `W2037`** ("private to module") - the annex counts as a separate module for access modifiers even though it sees the declarations. Warning-only; tests still run. For a clean `jac check`, put those tests in the main file or use in-file `test` blocks.
 - **`<mod>.test.jac` is an ANNEX, not a standalone file.** Like `.impl.jac`, it attaches to a same-basename module: `people.test.jac` pairs with `people.jac`, and you run `jac test people.jac`. A `.test.jac` with no base module fails with `No module named '<mod>'`. The annex sees the module's declarations without imports - ideal for keeping tests out of the main file.
 
-## Graph state: tests share a persisted root
+## Graph state: parallel workers + a persisted root
 
-Verified behavior: tests in a file run **in declaration order against one shared `root`**, and anything hung off `root` also **persists to `.jac/data` between runs**. Two consequences:
+Verified behavior: `jac test` runs test blocks **in parallel across isolated workers**, so tests in one file do NOT share in-memory graph state and do NOT run in declaration order (there is no serial/worker-count flag to force it). Anything hung off `root` still **persists to `.jac/data` between runs**. Two consequences:
 
-- A later test sees nodes created by an earlier test in the same run.
-- A green suite can go red on re-run because last run's nodes are still there - or crash with `NodeAnchor <id> is not a valid reference` when stale persisted anchors meet recompiled code.
+- Never rely on one test seeing nodes another test created in the same run - each test builds and asserts on its own data.
+- A green suite can go red on re-run because last run's persisted nodes are still there - or crash with `NodeAnchor <id> is not a valid reference` when stale persisted anchors meet recompiled code.
 
-Fix both the same way: `jac clean --all --force` (or `jac clean --data`) before the run. Write graph assertions defensively - count nodes you just created (or filter by a unique field) rather than asserting totals on `root`.
+Fix the persistence half with `jac clean --all --force` (or `jac clean --data`) before the run. Write graph assertions defensively - count nodes you just created (or filter by a unique field) rather than asserting totals on `root`.
 
 ## Testing walkers: spawn + `.reports`
 
@@ -132,3 +133,5 @@ def test_task_crud(tmp_path):
 - `jac-debugging` - the check/fix loop, stale-cache triage (`jac clean` vs `jac purge`)
 - `jac-config` - `[test]` defaults, `[scripts]` (`test = "jac test -v"`)
 - `jac-walker-patterns` - report/reports semantics being asserted here
+
+Deep dive bundled with the CLI: `jac guide reference/testing` (full test-runner reference).

@@ -1827,7 +1827,9 @@ Generating JavaScript from Jac has moved under [`jac tool`](#jac-tool). Use **`j
 
 ### jac guide
 
-Show the curated Jac reference guides bundled with the compiler -- the authoritative spec for writing correct, idiomatic Jac. AI coding agents and humans can read them straight from the CLI; nothing to install.
+Show the curated Jac reference guides and the bundled documentation corpus -- the authoritative spec for writing correct, idiomatic Jac. AI coding agents and humans can read everything straight from the CLI; nothing to install.
+
+Besides the curated guides, the agent-relevant sections of this documentation site ship inside the CLI as doc sets: `reference/` (language, CLI, config, diagnostics, and plugin reference), `quick-guide/` (install, syntax cheatsheet, project kinds, FAQ), `tutorials/` (end-to-end worked tutorials), `internals/` (compiler architecture and contributor orientation), and `community/` (the breaking-changes log and codebase guide). The CLI serves the same files this site is built from. A bare doc name resolves when unambiguous (`jac guide breaking-changes`); use the full `set/name` otherwise.
 
 ```bash
 jac guide [-h] [-s SEARCH] [-e EXPORT] [-j] [topic]
@@ -1835,24 +1837,30 @@ jac guide [-h] [-s SEARCH] [-e EXPORT] [-j] [topic]
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `topic` | Guide name to display (omit to list every guide) | None |
-| `-s, --search` | List only guides matching a keyword | None |
+| `topic` | Guide or doc to print, or a doc set (`reference`, `quick-guide`, `tutorials`, `internals`, `community`) to list; omit for the full index | None |
+| `-s, --search` | Grep every bundled guide and doc (`name:line:` hits) | None |
 | `-e, --export` | Export all guides as a Claude Code skills directory at this path | None |
 | `-j, --json` | Emit machine-readable JSON (for tools and agents) | `False` |
 
 **Examples:**
 
 ```bash
-# List every available guide
+# List every guide and doc set
 jac guide
 
 # Print a specific guide
 jac guide jac-types
 
-# Find guides by keyword
-jac guide --search walker
+# Print a bundled reference doc
+jac guide reference/diagnostics
 
-# Machine-readable list for tooling and agents
+# List every doc in a set
+jac guide reference
+
+# Grep all bundled content (guides + docs), grep-style output
+jac guide --search "breaking changes"
+
+# Machine-readable index for tooling and agents
 jac guide --json
 
 # Export the guides as auto-loading Agent Skills

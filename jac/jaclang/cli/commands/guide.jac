@@ -5,17 +5,24 @@ glob registry = get_registry();
 
 @registry.command(
     name="guide",
-    help="Show curated Jac reference guides",
+    help="Show bundled Jac guides and documentation",
     tier="learn",
     args=[
         Arg.create(
             "topic",
             kind=ArgKind.POSITIONAL,
             default="",
-            help="Guide name to display (omit to list every guide)"
+            help=(
+                "Guide or doc to print, or a doc set (reference, quick-guide, "
+                "tutorials, internals, community) to list; omit to show the "
+                "full index"
+            )
         ),
         Arg.create(
-            "search", default="", help="List only guides matching a keyword", short="s"
+            "search",
+            default="",
+            help="Grep every bundled guide and doc (name:line: hits)",
+            short="s"
         ),
         Arg.create(
             "export",
@@ -35,10 +42,12 @@ glob registry = get_registry();
 
     ],
     examples=[
-        ("jac guide", "List every available guide"),
+        ("jac guide", "List every bundled guide and doc set"),
         ("jac guide jac-types", "Print the jac-types guide"),
-        ("jac guide --search walker", "List guides mentioning 'walker'"),
-        ("jac guide --json", "List guides as JSON for tooling"),
+        ("jac guide reference/diagnostics", "Print the bundled diagnostics reference"),
+        ("jac guide reference", "List every doc in the reference set"),
+        ("jac guide --search 'breaking changes'", "Grep all bundled content"),
+        ("jac guide --json", "Full guide/doc index as JSON for tooling"),
         ("jac guide --export ~/.claude/skills", "Export guides as Agent Skills"),
 
     ],

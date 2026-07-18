@@ -127,12 +127,22 @@ impl ResourceProvider._index_bundled -> None {
 
 impl ResourceProvider._index_shared_guides -> None {
     try {
-        import from jaclang.cli.guide_store { list_guides }
+        import from jaclang.cli.guide_store { list_docs, list_guides }
     } except ImportError {
         return;
     }
     for g in list_guides() {
         uri = f"jac://guide/{g.name}";
+        self._resources[uri] = {
+            "uri": uri,
+            "name": g.name,
+            "description": g.description,
+            "mimeType": "text/markdown",
+            "path": g.path
+        };
+    }
+    for g in list_docs() {
+        uri = f"jac://docs/{g.name}";
         self._resources[uri] = {
             "uri": uri,
             "name": g.name,

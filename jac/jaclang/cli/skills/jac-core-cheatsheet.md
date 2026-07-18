@@ -134,6 +134,7 @@ Generators (`yield` / `yield from`), decorators (`@deco` above `def`), walrus `(
 - **`` `any `` vs `any`:** bare `any` is the gradual *type*; backticked `` `any(...) `` calls the builtin truthiness *function*.
 - `import from X { Y };` fails with E0030. **Brace imports take NO trailing semicolon.** Plain module form `import X;` does.
 - **There is no `pass` statement** (`E0010`). For an intentionally empty block write empty braces: `{}`.
+- **Tuple unpacking in `for` needs parens.** `for (k, v) in d.items() { ... }` works; the Python spelling `for k, v in d.items()` is a parse error. Same in comprehensions.
 - **Unused names warn (`W2003`).** Prefix intentionally-unused names with `_`, or for unread exception bindings drop the clause: `except ValueError { ... }`, not `except ValueError as e`. A value bound only to *validate* still counts as unused - discard with `_ = int(s);`. This is the #1 reason otherwise-correct parsing/validation code fails `jac check`.
 - **Booleans are `True`/`False`, null is `None` - capitalized.** Lowercase `false` parses as an undefined name, so `return false;` fails with the *misleading* `E1002: Cannot return <Unknown>, expected bool`.
 - **Docstrings go immediately before a declaration, never inside its body** (`W0060`, often + `E0002`).
@@ -149,3 +150,5 @@ Generators (`yield` / `yield from`), decorators (`@deco` above `def`), walrus `(
 ## See also
 
 `jac-types` (type system, `as` casts, `any` boundaries) · `jac-has-fields` (fields) · `jac-impl-files` (file layout) · `jac-python-interop` (PyPI, `::py::`, calling Jac from Python) · `jac-concurrency` (`flow`/`wait`, async)
+
+Deep dives bundled with the CLI: `jac guide quick-guide/syntax-cheatsheet` (complete syntax reference), `jac guide reference` (lists the full language/CLI/config reference set).

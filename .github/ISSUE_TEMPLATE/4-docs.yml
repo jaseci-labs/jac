@@ -43,7 +43,7 @@ body:
     id: location
     attributes:
       label: "Link to Page / File"
-      placeholder: "e.g. https://www.jac-lang.org/docs/... or docs/docs/reference/language/foundation.md"
+      placeholder: "e.g. https://www.jac-lang.org/docs/... or jac/jaclang/cli/docs/reference/language/foundation.md"
 
   - type: textarea
     id: description

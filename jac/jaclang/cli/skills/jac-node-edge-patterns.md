@@ -71,6 +71,7 @@ for conn in [p ->:Connected:->] { print(conn.username); }
 for conn in [p ->:Connected:->[?:UserProfile]] { print(conn.username); }
 ```
 
+- **A field filter comparing against a *variable* draws `W1051` even when correct.** `[?:Tag, name == some_var]` (or a `self.` attribute) infers as Unknown and warns; literal comparisons (`age > 30`) don't. The code runs correctly - it is a static-inference gap, not a bug (`jac guide reference/diagnostics` covers the common warning codes).
 - **Deleting edges:** the `del -->` disconnect operator is **untyped-only**. To delete a specific typed edge, query it with `[edge ...]` (single arrows) and iterate-del. `a del-->:E: b;` is a parse error; `del [a ->:E:-> b];` passes `jac check` but fails at run time (E5043) - neither deletes a typed edge.
 
 ```

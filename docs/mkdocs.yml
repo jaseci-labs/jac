@@ -125,7 +125,6 @@ nav:
   - Internals:
       - Abstractions Inventory: "internals/abstractions.md"
       - Import Patterns: "internals/jac_import_patterns.md"
-      - UniIR Nodes: "internals/uniir_node.md"
       - Compiler Architecture: "internals/compiler_architecture.md"
       - Cross-Codespace Interop: "internals/interop.md"
 
@@ -328,9 +327,17 @@ plugins:
 
         # Internals promoted to top-level tab
         community/internals/jac_import_patterns.md: internals/jac_import_patterns.md
-        community/internals/uniir_node.md: internals/uniir_node.md
+        community/internals/uniir_node.md: internals/compiler_architecture.md
+        internals/uniir_node.md: internals/compiler_architecture.md
         community/internals/jsx_client_serv_design.md: internals/compiler_architecture.md
         internals/jsx_client_serv_design.md: internals/compiler_architecture.md
 
 hooks:
   - scripts/handle_jac_compile_data.py
+  # Mounts the canonical reference/quick-guide/tutorials/internals markdown
+  # (which lives in the jaclang package so `jac guide` can serve it offline)
+  # into the site at its usual paths.
+  - scripts/bundled_docs.py
+
+watch:
+  - ../jac/jaclang/cli/docs

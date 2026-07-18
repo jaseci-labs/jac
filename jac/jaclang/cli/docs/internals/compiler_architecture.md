@@ -137,7 +137,7 @@ Every codespace shares the **same front end**.
   has a separate grammar.
 - The grammar is in [`jac0core/parser/impl/parser.impl.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/parser/impl/parser.impl.jac).
 - AST nodes are defined in [`jac0core/unitree.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/unitree.jac)
-  (catalogued in [UniIR Nodes](uniir_node.md)).
+  (generate a node-by-node catalogue with `jac tool autodoc_uninode`).
 
 Codespace-tagged regions surface as three sibling AST nodes:
 
@@ -550,7 +550,7 @@ A short index, organised by the role each file plays in the pipeline.
 - [`jac0core/parser/`](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/jac0core/parser)
   -- tokens and grammar
 - [`jac0core/unitree.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/unitree.jac)
-  -- UniTree AST nodes ([reference](uniir_node.md))
+  -- UniTree AST nodes (`jac tool autodoc_uninode` prints the full catalogue)
 - [`jac0core/constant.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/constant.jac)
   -- `CodeContext`, `Tokens`, shared enums
 - [`jac0core/codeinfo.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/codeinfo.jac)
@@ -603,7 +603,6 @@ A short index, organised by the role each file plays in the pipeline.
 - [Abstractions Inventory](abstractions.md) -- every user-visible keyword,
   builtin, and standard-library entry, mapped to its parser, AST node, and
   runtime.
-- [UniIR Nodes](uniir_node.md) -- full AST node reference.
 - [Import Patterns](jac_import_patterns.md) -- how variant modules
   (`.sv.jac`, `.cl.jac`, `.na.jac`) merge into one logical module.
 - [Primitives & Codespace Semantics](../reference/language/primitives.md)

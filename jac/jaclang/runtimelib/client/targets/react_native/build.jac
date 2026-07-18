@@ -285,7 +285,7 @@ def lint_unmapped_tags(
             "Replace with a React Native primitive (View/Text/Pressable/"
             "TextInput/Image/ScrollView) or a .native.cl.jac override. See the "
             "React Native target section of the jac-client reference "
-            "(docs/docs/reference/plugins/jac-client.md).",
+            "(jac/jaclang/cli/docs/reference/plugins/jac-client.md).",
             style="muted"
         );
     }

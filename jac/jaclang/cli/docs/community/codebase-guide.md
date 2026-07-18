@@ -41,7 +41,7 @@ Here's a quick map from contribution type to the right part of the codebase:
 | Improve IDE support | `jac/jaclang/lsp/` + `langserve/` |
 | Work on the scale subsystem | `jac/jaclang/scale/` (built-in deployment provider) |
 | Work on a built-in subsystem | `jac/jaclang/byllm/`, `jac/jaclang/cli/mcp/`, `jac/jaclang/scale/`, etc. |
-| Write or fix docs | `docs/docs/reference/` (most features go here) |
+| Write or fix docs | `jac/jaclang/cli/docs/reference/` (most features go here; served by `jac guide` and mounted into the docs site) |
 | Add a test | `jac/tests/` (mirror the directory of the code you're testing) |
 
 ---

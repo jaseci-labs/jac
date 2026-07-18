@@ -127,3 +127,5 @@ walker like_tweet(find_tweet) {       # inherits target_id + locate
 - **The node you spawn on - and every node you then visit - runs its matching entry, *including the origin*.** `some_node spawn W()` fires `W`'s `with <Type> entry` on `some_node` itself before any `visit`. This causes a classic **off-by-one** when counting or collecting. Fix: spawn on `root` and `visit [-->]` to reach the children you actually mean, or guard the origin inside the entry.
 
 Related guides: `jac-node-edge-patterns` (graph shape, filtering, deletion), `jac-testing` (per-test root isolation), `jac-debugging` (stale-cache and NodeAnchor triage), `jac-concurrency` (async walkers), `jac-sv-endpoints` (walkers as API endpoints).
+
+Deep dive bundled with the CLI: `jac guide reference/language/osp` (full Object-Spatial semantics).

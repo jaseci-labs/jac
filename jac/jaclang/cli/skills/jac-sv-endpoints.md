@@ -60,7 +60,7 @@ walker:pub add_task {
 ```
 
 ```bash
-jac start api.jac --no_client       # API only, no frontend bundling (NOT --no-client)
+jac start api.jac --no-client       # API only, no frontend bundling
 curl -X POST http://localhost:8000/walker/add_task \
   -H "Content-Type: application/json" -d '{"title": "Write docs"}'
 ```
@@ -125,9 +125,12 @@ S3 backends and `get_url` presigning: `jac-sv-deploy`.
 
 - Mark an endpoint `async def:pub` when its body uses `await` (external API calls, LLM endpoints), so the result is awaited rather than handed back as an unresolved coroutine.
 - Give every endpoint an explicit return type - **the return type IS the wire format**. Use typed objs/nodes for domain data (the client gets dot access: `items[0].title`); an ad-hoc `dict` is fine for a one-off payload (`{"liked": True, "likes": ...}`).
+- **JSON-shaped `dict` returns: don't chase the warning pair.** A bare `-> dict` draws W1036 (add type args); `-> dict[str, any]` swaps it for the noisier W1037 (explicit any disables checking). Where a heterogeneous dict is genuinely the contract, keep bare `dict` - W1036 is informational.
 - **`_jac_id` is volatile** - the runtime assigns a fresh one to the walker instance and to every freshly-constructed report obj on every response (persistent node jids are stable). Strip it before hashing, caching, or diffing responses.
 - Mixed visibility in one module is normal design: an anonymous `walker:pub` (public directory, trending) sits next to authenticated plain walkers.
 - Walker spawns take **keyword** arguments mapped to `has` fields (`{"title": ...}` in the body); function calls take the declared parameters. Don't pass nodes by reference across the wire - pass `jid(node)` strings.
 - **404/405 on a new endpoint = nothing references it.** An endpoint a client module reaches via `sv import` self-registers at startup; a top-level entry-module import is needed only when NO client stub references it (raw-fetch streams, REST-only walkers). Full rule: `jac-fullstack-patterns`.
-- `jac start` needs a `jac.toml` in the cwd (`Error: No jac.toml found`); flags use underscores: `--no_client`, not `--no-client`.
+- `jac start` needs a `jac.toml` in the cwd (`Error: No jac.toml found`); multi-word flags are hyphenated: `--no-client`, `--dry-run` (one legacy exception: `--api_port`).
 - A `{"detail": "Invalid anchor id ..."}` 500 after editing node schemas = stale persisted anchors. Fix: stop the server, `rm -rf .jac/data/`, restart. Full schema-evolution story: `jac-sv-persistence`.
+
+Deep dives bundled with the CLI: `jac guide reference/persistence` (full persistence + HTTP surface), `jac guide reference/diagnostics` (every E/W code).

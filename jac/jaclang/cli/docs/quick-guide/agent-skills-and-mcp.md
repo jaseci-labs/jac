@@ -12,11 +12,15 @@ These are complementary: the guides tell a model *how* Jac works; MCP lets it *v
 
 The guides ship inside the `jac` CLI -- one per topic (`jac-core-cheatsheet`, `jac-types`, `jac-walker-patterns`, `jac-by-llm`, the `jac-sv-*` server guides, the `jac-cl-*` client guides, and more). They are always version-matched to the compiler you have installed.
 
+Alongside the curated guides, the CLI bundles this documentation site's agent-relevant sections as searchable doc sets: `reference/` (the full language, CLI, config, diagnostics, and plugin reference), `quick-guide/` (install, syntax cheatsheet, project kinds, FAQ), `tutorials/` (end-to-end worked tutorials), `internals/` (compiler architecture and contributor orientation), and `community/` (the breaking-changes log and codebase guide). These are not copies: the site pages in those sections are built from the same files the CLI serves, so the two can never drift.
+
 ```bash
-jac guide                      # list every available guide
-jac guide jac-types            # print a specific guide
-jac guide --search walker      # find guides by keyword
-jac guide --json               # machine-readable list (for tools and agents)
+jac guide                          # list every guide and doc set
+jac guide jac-types                # print a specific guide
+jac guide reference/diagnostics    # print a bundled reference doc
+jac guide reference                # list a doc set
+jac guide --search "walker"        # grep everything: name:line: hits
+jac guide --json                   # machine-readable index (for tools and agents)
 ```
 
 Because the guides are part of the CLI, an AI agent working in your project can self-serve them with no setup -- it just runs `jac guide`. Two things reinforce this:

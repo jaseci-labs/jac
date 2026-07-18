@@ -1,6 +1,6 @@
 # AI Day Planner -- three variants
 
-A small full-stack day planner with AI-powered task categorization and a meal-to-shopping-list generator. The same UI is implemented three ways so you can compare the architectural styles side by side. All three variants are built end-to-end in the [Build an AI Day Planner](../../../docs/docs/tutorials/first-app/build-ai-day-planner.md) tutorial.
+A small full-stack day planner with AI-powered task categorization and a meal-to-shopping-list generator. The same UI is implemented three ways so you can compare the architectural styles side by side. All three variants are built end-to-end in the [Build an AI Day Planner](../../jaclang/cli/docs/tutorials/first-app/build-ai-day-planner.md) tutorial.
 
 | Variant | Backend style | Auth | Layout |
 |---------|---------------|------|--------|

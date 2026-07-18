@@ -156,8 +156,11 @@ with entry {
     parser.add_argument(
         "--docs-dir",
         type=Path,
-        default=Path(__file__).parent.parent / "docs",
-        help="Path to the docs directory (default: docs/docs)",
+        default=None,
+        help=(
+            "Path to a docs directory (default: docs/docs plus the "
+            "jaclang-bundled corpus at jac/jaclang/cli/docs)"
+        ),
     );
     parser.add_argument(
         "--verbose", "-v", action="store_true", help="Show verbose output"
@@ -177,11 +180,25 @@ with entry {
         }
         markdown_files = [args.file];
     } else {
-        if not args.docs_dir.exists() {
-            print(f"Error: Docs directory not found: {args.docs_dir}", file=sys.stderr);
-            sys.exit(2);
+        if args.docs_dir is not None {
+            doc_roots = [args.docs_dir];
+        } else {
+            script_dir = Path(__file__).parent;
+            doc_roots = [
+                script_dir.parent / "docs",
+                script_dir.parent.parent / "jac" / "jaclang" / "cli" / "docs",
+
+            ];
         }
-        all_files = sorted(args.docs_dir.rglob("*.md"));
+        for doc_root in doc_roots {
+            if not doc_root.exists() {
+                print(f"Error: Docs directory not found: {doc_root}", file=sys.stderr);
+                sys.exit(2);
+            }
+        }
+        all_files = sorted(
+            [f for doc_root in doc_roots for f in doc_root.rglob("*.md")]
+        );
         markdown_files = [
             f
             for f in all_files
