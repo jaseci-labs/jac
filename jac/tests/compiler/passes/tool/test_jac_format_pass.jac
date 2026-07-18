@@ -305,6 +305,22 @@ test "native block comments stay in place" {
     assert formatted == formatted2 , "Formatting of na {} block is not idempotent";
 }
 
+"""Regression (#7495): comment-dense adjacent JSX blocks exercise shared IfBreak
+DocIR children; comment placement must stay byte-idempotent across a re-format
+with no duplicated or misattributed comments. Loads the fixture via its real
+fixtures/ path so the deslop lint rule is excluded and the comments are kept."""
+test "comment placement idempotent on comment-dense blocks" {
+    path = os.path.join(FIXTURES, "comment_dedup_regression.jac");
+    out1 = JacProgram.jac_file_formatter(path, auto_lint=True).mod.main.gen.jac;
+    out2 = JacProgram.jac_str_formatter(
+        source_str=out1, file_path=path, auto_lint=True
+    ).mod.main.gen.jac;
+    assert out1 == out2 , (
+        "comment placement is not idempotent -- comments duplicated or "
+        "misplaced across a re-format:\n" + out1
+    );
+}
+
 """Regression: inline comment after a func-call argument swallowed the next
 argument because the soft line break after the comma collapsed to a space."""
 test "inline comment in func call args" {

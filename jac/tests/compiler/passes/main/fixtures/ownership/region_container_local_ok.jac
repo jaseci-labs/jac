@@ -1,7 +1,9 @@
-obj Buffer { has n: int = 0; }
+obj Buffer {
+    has n: int = 0;
+}
 
-def run() -> None {
-    region {
+def run {
+    in Region() {
         x = Buffer();
         items = [x];
         print(len(items));

@@ -117,7 +117,9 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          help="Lambda bodies are braced; a single expression statement is the implicit return, e.g. 'lambda (x: int) { x + 1; }'."
      ),
      E0023 = _err(
-         "E0023", Category.SYNTAX, "Expected augmented assignment in for...to...by step"
+         "E0023",
+         Category.SYNTAX,
+         "Expected augmented assignment in for-loop step (for init while cond with step)"
      ),
      E0024 = _err(
          "E0024",
@@ -187,6 +189,18 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      ),
      E0046 = _err("E0046", Category.SYNTAX, "Unexpected token in archetype body"),
      E0047 = _err("E0047", Category.SYNTAX, "Expected '{{' or 'by' for impl body"),
+     E0048 = _err(
+         "E0048",
+         Category.SYNTAX,
+         "Parenthesized filter syntax '(?:...)' was removed. Use bracket syntax '[?:...]' instead.",
+         "Replace (?:Type, cond) with [?:Type, cond]"
+     ),
+     E0049 = _err(
+         "E0049",
+         Category.SYNTAX,
+         "'root()' was removed. Use bare 'root' instead.",
+         "'root' is a reserved keyword that resolves to the graph anchor — drop the parentheses."
+     ),
      E0050 = _err("E0050", Category.SYNTAX, "Duplicate '{param}' in parameter list"),
      E0051 = _err(
          "E0051",
@@ -203,7 +217,6 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E0055", Category.SYNTAX, "'yield' is only valid inside a function body"
      ),
      E0058 = _err("E0058", Category.SYNTAX, "'{keyword}' is only valid inside a loop"),
-     E0062 = _err("E0062", Category.SYNTAX, "'nonlocal' is not valid at module level"),
      E0063 = _err(
          "E0063",
          Category.SYNTAX,
@@ -211,9 +224,21 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          help="Move the glob declaration to the top of the file, outside any function or code block.",
          blocks_codegen=True
      ),
+     E0064 = _err(
+         "E0064",
+         Category.SEMANTIC,
+         "Typed declaration of '{name}' shadows an outer binding that was already rebound in this scope",
+         "Assignments bind to the nearest enclosing declaration; to introduce a shadowing local, place the typed declaration before the first assignment or use of '{name}', or rename the local."
+     ),
      E0065 = _err("E0065", Category.SYNTAX, "Duplicate keyword argument '{name}'"),
      E0066 = _err(
          "E0066", Category.SYNTAX, "Positional argument follows keyword argument"
+     ),
+     E0067 = _err(
+         "E0067",
+         Category.SEMANTIC,
+         "'{name}' is a Python reserved word and cannot be used as a {context} name",
+         "Backtick escaping cannot help here — the generated Python for fields and parameters uses the name as a real identifier, which would be invalid. Rename the {context}."
      ),
      E0071 = _err("E0071", Category.SYNTAX, "Default 'except' clause must be last"),
      E0075 = _err("E0075", Category.SYNTAX, "Duplicate base class '{name}'"),
@@ -239,18 +264,6 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "W0060",
          Category.SYNTAX,
          "Docstrings in Jac go before the declaration, not inside the body. Move this string before the enclosing test/can/obj/etc."
-     ),
-     W0061 = _warn(
-         "W0061",
-         Category.SYNTAX,
-         "Parenthesized filter syntax '(?:...)' is deprecated. Use bracket syntax '[?:...]' instead.",
-         "Replace (?:Type, cond) with [?:Type, cond]"
-     ),
-     W0062 = _warn(
-         "W0062",
-         Category.SYNTAX,
-         "'root()' is deprecated. Use bare 'root' instead.",
-         "'root' is a reserved keyword that resolves to the graph anchor — drop the parentheses."
      ),
      W0063 = _warn(
          "W0063",
@@ -466,7 +479,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E1095 = _err(
          "E1095",
          Category.TYPE,
-         "Field '{field}' declared 'by postinit' is never assigned in {arch}.postinit"
+         "Field '{field}' declared 'postinit' is never assigned in {arch}.postinit"
      ),
      E1096 = _err(
          "E1096", Category.TYPE, "Connection left operand must be a node instance"
@@ -622,29 +635,94 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E1307 = _err(
          "E1307",
          Category.SEMANTIC,
-         "Reference to '{name}' escapes its `region` block",
-         help="A `region {}` arena owns everything allocated inside it and frees the"
-         " whole arena at the closing brace. A reference rooted in the region may not"
-         " be returned, stored outside, or handed to a `flow`/`wait` boundary — it"
-         " would dangle once the arena is reclaimed. Keep the reference inside the"
-         " region, or move the value out with `own` before the block ends."
+         "Reference to '{name}' escapes its region",
+         help="A region owns everything allocated under an `in <handle> {}` open"
+         " and frees it wholesale when the region is reclaimed. A reference rooted"
+         " in the region may not be returned, stored outside, or handed to a"
+         " `flow`/`wait` boundary; it would dangle once the region is freed. Keep"
+         " the reference inside the region, or move the value out with `own`"
+         " before the open ends."
      ),
      E1308 = _err(
          "E1308",
          Category.SEMANTIC,
          "'{name}' is not sendable across a concurrency boundary",
-         help="Only a deep-immutable `val` value or a moved `own` value may cross a"
+         help="Only a deep-immutable `imm` value or a moved `own` value may cross a"
          " `flow`/`wait`/`thread_run` boundary — those are the only payloads that are"
          " statically race-free. A live `&`/`&mut` borrow or a shared managed value may"
-         " not be sent; move it with `own`, or send a `val` snapshot instead."
+         " not be sent; move it with `own`, or send an `imm` snapshot instead."
      ),
      E1309 = _err(
          "E1309",
          Category.SEMANTIC,
-         "Cannot mutate '{name}' through a deep-immutable `val` binding",
-         help="'{name}' is a `val` value: it is transitively immutable, so it may never"
-         " be reassigned, have a field written, or be borrowed `&mut`. Take a `val` as"
+         "Cannot mutate '{name}' through a deep-immutable `imm` binding",
+         help="'{name}' is an `imm` value: it is transitively immutable, so it may never"
+         " be reassigned, have a field written, or be borrowed `&mut`. Take an `imm` as"
          " read-only, or use an `own`/managed binding if you need to mutate."
+     ),
+     W1310 = _warn(
+         "W1310",
+         Category.LINT,
+         "Region open on '{name}' has an empty body",
+         help="Opening a region that allocates nothing pays for an arena and its"
+         " teardown with no benefit. Allocate inside the open, or drop the open."
+     ),
+     E1401 = _err(
+         "E1401",
+         Category.SEMANTIC,
+         "Heap-typed {position} '{name}' has no ownership state in a nogc-enforced module ({provenance})",
+         help="Inside a nogc-enforced module every heap-typed contract position"
+         " (parameter, return, or `has` field) must be in the owned world: annotate"
+         " it `own`, `&`, `&mut`, or `imm`. Locals still infer ownership from a fresh"
+         " right-hand side; only contracts must be explicit.",
+         blocks_codegen=True
+     ),
+     E1402 = _err(
+         "E1402",
+         Category.SEMANTIC,
+         "Owned value '{name}' is sealed into managed storage inside a nogc-enforced module ({provenance})",
+         help="Storing an owned value into a managed or graph location re-enters the"
+         " reference-counted world, which a nogc-enforced module promises not to do."
+         " Keep the value owned, or copy it across the membrane explicitly with"
+         " `managed(...)` at the module boundary.",
+         blocks_codegen=True
+     ),
+     E1403 = _err(
+         "E1403",
+         Category.SEMANTIC,
+         "Heap value '{name}' crosses implicitly out of a nogc-enforced module ({provenance})",
+         help="Heap values may leave a nogc-enforced module only by an explicit copy:"
+         " wrap the argument in `managed(...)`, which reboxes it into a"
+         " reference-counted allocation on the managed side. Scalars and `imm` values"
+         " cross freely.",
+         blocks_codegen=True
+     ),
+     E1404 = _err(
+         "E1404",
+         Category.SEMANTIC,
+         "'{name}' is `any`-typed and could be heap-allocated in a nogc-enforced module ({provenance})",
+         help="If the static type cannot say heap-or-not, zero-RC coverage cannot be"
+         " enforced. Give '{name}' a concrete type, or confine `any` to scalar values"
+         " in enforced modules.",
+         blocks_codegen=True
+     ),
+     E1405 = _err(
+         "E1405",
+         Category.SEMANTIC,
+         "Closure capture of '{name}' escapes its scope in a nogc-enforced module ({provenance})",
+         help="An escaping closure keeps its captures alive past the enclosing scope,"
+         " which needs reference counting. Pass '{name}' as an explicit parameter, or"
+         " restructure so the closure does not outlive the scope.",
+         blocks_codegen=True
+     ),
+     E1406 = _err(
+         "E1406",
+         Category.SEMANTIC,
+         "'{name}' has retaining or aliasing semantics not supported in a nogc-enforced module ({provenance})",
+         help="This builtin or construct retains or aliases its heap arguments, which"
+         " the zero-RC contract cannot express yet. Use an owned-compatible"
+         " alternative, or move this code outside the enforced module.",
+         blocks_codegen=True
      ),
      W1050 = _warn("W1050", Category.TYPE, "Unknown intrinsic JSX element '<{tag}>'"),
      W1051 = _warn(
@@ -701,6 +779,16 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "W2007",
          Category.SEMANTIC,
          "'@staticmethod' is not supported in '{kind}' definitions. Use the 'static' keyword instead (e.g., 'static def method_name')."
+     ),
+     W2029 = _warn(
+         "W2029",
+         Category.SEMANTIC,
+         "'@{decorator}' is not recommended in '{kind}' definitions. Use native property syntax 'has {name}: {type_name} {{ getter; ... }}' instead.",
+         help="Declare the property with an accessor block: 'has {name}: {type_name} "
+         "{{ getter {{ ... }} setter(value: {type_name}) {{ ... }} }}'. Backing storage "
+         "is a separate 'has _{name}: {type_name} = ...;' field. Run "
+         "'jac check --lint --fix' to rewrite it automatically. A Python-compat "
+         "'class' is exempt from this rule."
      ),
      E2008 = _err(
          "E2008", Category.SEMANTIC, "Invalid target for context update: {target}"
@@ -1261,6 +1349,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.CODEGEN,
          "Native union trigger members {members} disagree on the layout of field '{field}'",
          help="A tuple/union trigger like `with (A, B) entry` lowers field access on `here`/`visitor` through a single shared layout, so every member must place the common field at the same offset and type. Reorder the `has` declarations so the shared fields line up, or split the trigger into separate abilities per archetype."
+     ),
+     E5092 = _err(
+         "E5092",
+         Category.CODEGEN,
+         "Native lowering failed for {kind} '{name}'",
+         help="The construct is within the native capability set, but this specific shape (its types, values, or runtime bindings) could not be lowered by NaIRGenPass. Adjust the shape, add type annotations, or move the code to a non-native context. Statically-known unsupported constructs are reported as E5090 by the capability check instead."
      ),
      E5080 = _err(
          "E5080",

@@ -94,6 +94,24 @@ impl __getattr__(name: str) -> object {
         return _get_archetype_alias();
     } elif (name in ('schema_was', 'schema_alias', 'schema_drop', 'schema_upgrade')) {
         return _get_schema_builder(name);
+    } elif (
+        name in (
+            'Region',
+            '_jac_region_open',
+            '_jac_region_close',
+            '_jac_region_register',
+            '_jac_region_instrument'
+        )
+    ) {
+        import jaclang.runtimelib.region as _region_mod;
+        _region_map = {
+            'Region': 'JacRegion',
+            '_jac_region_open': 'open_region',
+            '_jac_region_close': 'close_region',
+            '_jac_region_register': 'register_drop',
+            '_jac_region_instrument': 'instrument_drops'
+        };
+        return getattr(_region_mod, _region_map[name]);
     }
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}");
 }
@@ -185,6 +203,10 @@ impl new(cls: any, *args: any) -> any {
 
 impl unsafe_html(html: any) -> dict {
     return {"__jacUnsafeHtml": str(html) if (html is not None) else ""};
+}
+
+impl managed(x: any) -> any {
+    return x;
 }
 
 impl restspec(**specs: any) -> Callable {

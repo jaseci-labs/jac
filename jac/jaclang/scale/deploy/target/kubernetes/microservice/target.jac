@@ -34,7 +34,8 @@ import from jaclang.scale.deploy.autoscale.autoscaler {
     AutoscalerSpec,
     Trigger,
     TriggerAuth,
-    DEFAULT_CPU_UTILIZATION_TARGET
+    DEFAULT_CPU_UTILIZATION_TARGET,
+    DEFAULT_MEMORY_UTILIZATION_TARGET
 }
 import from jaclang.scale.deploy.target.kubernetes.monitoring { MonitoringDeployer }
 import from jaclang.scale.config.config_loader { get_scale_config }
@@ -141,14 +142,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     def _scan_for_crash_loop(
         core_v1: any, ns: str, current_hashes: set, fleet_app_names: set
     ) -> dict[str, any] {
-        # current_hashes only covers the fleet's own microservice Deployments
-        # (resolved from `names`); companions (Redis, Prometheus, Grafana, ...)
-        # and observability pods share this namespace but were never part of
-        # that resolution, so the hash filter must not apply to them - doing
-        # so would silently exempt a crash-looping companion from detection.
-        # Image-pull failures are the opposite: only the fleet's own pods may
-        # fast-fail the rollout, so a broken companion image just lets the
-        # wait time out instead of aborting a fleet that is coming up fine.
         imagepull_reasons: set = {
             "ImagePullBackOff",
             "ErrImagePull",
@@ -189,8 +182,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     if reason and reason not in transient_reasons {
                         pod_reason = reason;
                     }
-                    # A container blocked on the registry never ran, so its
-                    # restart count says nothing about crash-looping.
+
                     crashing = restarts >= 3 and reason not in imagepull_reasons;
                     if crashing and not pod_crash {
                         pod_crash = str(cs.name);
@@ -314,10 +306,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 crash_pod = scan["crash_pod"];
 
                 if crash_failure and pod_selector {
-                    # A hash set captured before the new RS's revision annotation
-                    # was stamped can still point at the old RS; re-verify against
-                    # a freshly resolved set before actually failing the rollout,
-                    # mirroring check_deployment_status's crash re-verification.
                     refreshed = _refresh_rs_hashes(ns, pod_selector, current_hashes);
                     current_hashes = refreshed or set();
                     recheck = self._scan_for_crash_loop(
@@ -554,12 +542,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     }
 
     def generate_manifests(app_config: AppConfig) -> dict[str, any] {
-        # Resolve here, not in deploy(): `jac scale plan` calls this directly,
-        # and an unresolved '' python_image would render image-less manifests.
-        # Idempotent - a no-op once python_image is non-empty.
         import from jaclang.scale.injector.binary { resolve_pod_base_image }
         self.k8s_config.python_image = resolve_pod_base_image(
-            app_config.code_folder, self.k8s_config.python_image
+            app_config.code_folder, self.k8s_config.python_image, probe=not self.dry_run
         );
         builder = MicroserviceManifestBuilder(
             k8s_config=self.k8s_config,
@@ -568,7 +553,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             logger=self.logger,
             no_image=True,
             project_dir=app_config.code_folder,
-            microservices_config=self.microservices_config
+            microservices_config=self.microservices_config,
+            dry_run=self.dry_run
         );
         return builder.generate_manifests(app_config, self.k8s_config.python_image);
     }
@@ -723,6 +709,16 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                                 cfg.get("cpu_target", DEFAULT_CPU_UTILIZATION_TARGET)
                             )
                         }
+                    ),
+                    Trigger(
+                        type="memory",
+                        metadata={
+                            "averageUtilization": str(
+                                cfg.get(
+                                    "memory_target", DEFAULT_MEMORY_UTILIZATION_TARGET
+                                )
+                            )
+                        }
                     )
                 ];
             }
@@ -767,6 +763,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     polling_interval=self.k8s_config.autoscaler_polling_interval,
                     cooldown_period=self.k8s_config.autoscaler_cooldown,
                     initial_cooldown_period=self.k8s_config.autoscaler_initial_cooldown,
+                    scale_up_stabilization=self.k8s_config.autoscaler_scale_up_stabilization,
+                    scale_up_max_pods=self.k8s_config.autoscaler_scale_up_max_pods,
                     triggers=triggers
                 )
             );

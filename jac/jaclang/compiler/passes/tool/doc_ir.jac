@@ -2,7 +2,18 @@ import from typing { Union }
 import type jaclang.jac0core.unitree as uni;
 
 glob DocType = Union[
-         ('Doc', 'Text', 'Line', 'Group', 'Indent', 'Concat', 'IfBreak', 'Align')
+         (
+             'Doc',
+             'Text',
+             'Line',
+             'Group',
+             'Indent',
+             'Concat',
+             'IfBreak',
+             'Align',
+             'LineSuffix',
+             'BreakParent'
+         )
      ];
 
 obj Doc {
@@ -22,7 +33,8 @@ obj Text(Doc) {
 obj Line(Doc) {
     has hard: bool = False,
         literal: bool = False,
-        tight: bool = False;
+        tight: bool = False,
+        fresh: bool = False;
 
     def __str__ -> str;
     def treeprint(level: int = 0) -> str;
@@ -66,6 +78,18 @@ obj Align(Doc) {
     has contents: DocType,
         n: (int | None) = None;
 
+    def __str__ -> str;
+    def treeprint(level: int = 0) -> str;
+}
+
+obj LineSuffix(Doc) {
+    has contents: DocType;
+
+    def __str__ -> str;
+    def treeprint(level: int = 0) -> str;
+}
+
+obj BreakParent(Doc) {
     def __str__ -> str;
     def treeprint(level: int = 0) -> str;
 }

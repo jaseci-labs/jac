@@ -18,7 +18,7 @@ impl __createJacSchema(zodLib: any) -> any {
 }
 
 impl __getApiBaseUrl -> str {
-    return globalThis.__JAC_API_BASE_URL__ || "";
+    return globalThis.__JAC_API_BASE_URL__ or "";
 }
 
 impl __getEndpointEffects -> dict {
@@ -603,7 +603,7 @@ impl __jacInstallErrorHandlers -> None {
     );
 }
 
-impl ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement {
+impl ErrorFallback(error: any, resetErrorBoundary: any) -> JsxElement {
     return
         <div
             role="alert"
@@ -648,10 +648,10 @@ impl ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement {
 
                     }}
                 >
-                    {error.error.message}
+                    {error.message}
                 </pre>
                 <button
-                    onClick={lambda { error.resetErrorBoundary(); }}
+                    onClick={lambda { resetErrorBoundary(); }}
                     style={{
                         backgroundColor: "#2563eb",
                         color: "#fff",

@@ -46,8 +46,20 @@ glob registry = get_registry();
             "gc",
             kind=ArgKind.OPTION,
             short="",
-            default="cycles",
-            help="Memory-management runtime to emit: 'cycles' (refcounting + cycle collector, default), 'rc' (refcounting only, no collector code), or 'none' (no refcounting call sites; memory is never reclaimed)"
+            default="",
+            help="Memory-management runtime to emit: 'cycles' (refcounting + cycle collector), 'rc' (refcounting only, no collector code), or 'none' (no refcounting call sites; memory is never reclaimed). Defaults to jac.toml [gc] default, else 'cycles'"
+        ),
+        Arg.create(
+            "assert-no-rc",
+            kind=ArgKind.FLAG,
+            short="",
+            help="Fail the build if the emitted IR contains any RC/collector machinery: __rc_* helpers, trace functions, roots-buffer globals, or entry-point GC env probes"
+        ),
+        Arg.create(
+            "enforce-nogc",
+            kind=ArgKind.FLAG,
+            short="",
+            help="Enforce zero-RC ownership coverage (E140x hard errors) on the compiled module, regardless of jac.toml [gc.enforce] patterns"
         ),
 
     ],
@@ -68,6 +80,10 @@ glob registry = get_registry();
             "jac nacompile mathlib.na.jac --shared",
             "Build ./libmathlib.so exporting its `:pub` functions over the C ABI"
         ),
+        (
+            "jac nacompile service.na.jac --gc none --assert-no-rc",
+            "Compile and prove the artifact contains no RC/collector machinery"
+        ),
 
     ],
     group="transform"
@@ -79,5 +95,7 @@ def nacompile(
     target: str = "",
     shared: bool = False,
     debug: bool = False,
-    gc: str = "cycles"
+    gc: str = "",
+    assert_no_rc: bool = False,
+    enforce_nogc: bool = False
 ) -> int;

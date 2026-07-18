@@ -378,7 +378,7 @@ Output (default, card view):
 
 ```text
 === jac scale plan: dry-run ===
-Cluster:    minikube    Namespace: my-app
+Cluster:    <active-kube-context>    Namespace: my-app
 check: no errors or warnings
 
 Microservices (3)

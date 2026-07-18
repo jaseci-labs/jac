@@ -49,20 +49,21 @@ test "two users: signup, post, follow, and feed propagation" {
     assert bob.token;
     assert alice.token != bob.token;
 
-    # Each sets up a profile; users only ever see their own.
+    # Each sets up a profile; users only ever see their own. A reported
+    # node keeps its identity: `jid()` works on it straight off the wire.
     alice.activate();
     alice_profile = (root spawn setup_profile(username="alice")).reports[0];
     bob.activate();
     bob_profile = (root spawn setup_profile(username="bob")).reports[0];
-    assert alice_profile["username"] == "alice";
-    assert bob_profile["username"] == "bob";
-    assert alice_profile["id"] != bob_profile["id"];
+    assert alice_profile["profile"]["username"] == "alice";
+    assert bob_profile["profile"]["username"] == "bob";
+    assert jid(alice_profile["profile"]) != jid(bob_profile["profile"]);
 
     # Alice posts a tweet.
     alice.activate();
     tweet = (root spawn create_tweet(content="hello world")).reports[0];
     assert tweet["content"] == "hello world";
-    assert tweet["is_mine"] == True;
+    assert tweet["author_username"] == "alice";
 
     # Before following, Alice's tweet is NOT in Bob's feed.
     bob.activate();
@@ -71,7 +72,9 @@ test "two users: signup, post, follow, and feed propagation" {
 
     # Bob follows Alice.
     bob.activate();
-    follow = (root spawn follow_user(target_id=alice_profile["id"])).reports[0];
+    follow = (root spawn follow_user(target_id=jid(alice_profile["profile"]))).reports[
+        0
+    ];
     assert follow["success"] == True;
 
     # Bob now sees Alice's tweet in his feed.

@@ -9,53 +9,43 @@ import from .config.config_loader { get_scale_config }
 import from jaclang.runtimelib.server { UserManager }
 import from jaclang.runtimelib.storage { Storage }
 
-# Heavy server/identity modules (fastapi, uvicorn, pyjwt, python-dotenv) are
-# imported lazily inside the hook bodies below so that `import jaclang` -- which
-# now always loads this built-in plugin -- never pulls the serve runtime closure.
-# The deps arrive in the project .jac/venv via the capability registry.
 obj DeployFactories {
     has utility: type,
         target: type;
 }
 
 def _load_deploy_factories -> DeployFactories {
-    # Lazy import: DeploymentTargetFactory (deploy/target/*, kubernetes) and
-    # UtilityFactory (observability/*) pull in large subtrees that a local
-    # `jac start`/`jac serve` dev server never touches. Importing them at module
-    # scope forced those modules to compile on every server start.
     import from .observability.factory { UtilityFactory }
     import from .deploy.target.factory { DeploymentTargetFactory }
     return DeployFactories(utility=UtilityFactory, target=DeploymentTargetFactory);
 }
 
-def _print_autodetect_banner(routes: dict[str, str]) {
+def _print_local_ms_banner(
+    routes: dict[str, str], explicit_routes: dict[str, str], ms_configured: bool
+) {
+    import from .runtime.discovery.route_policy { format_route_origin_lines }
     names = sorted(routes.keys());
     plural = "s" if len(names) != 1 else "";
+    label = "" if ms_configured else " (auto-detected)";
     console.print(
-        f"Microservice mode (auto-detected): {len(names)} service{plural} "
+        f"Microservice mode{label}: {len(names)} service{plural} "
         f"[{', '.join(names)}], running locally as subprocesses with no "
         f"Docker images.",
         style="cyan"
     );
-    pairs = ", ".join([f"{n} -> {routes[n]}" for n in names]);
-    console.print(f"  Default routes: {pairs}", style="muted");
-    console.print(
-        "  Routes are auto-derived; set [scale.microservices] in jac.toml to customize.",
-        style="muted"
-    );
+    for line in format_route_origin_lines(routes, explicit_routes) {
+        console.print(f"  {line}", style="muted");
+    }
+
+    if not ms_configured {
+        console.print(
+            "  Routes are auto-derived; set [scale.microservices] in jac.toml to customize.",
+            style="muted"
+        );
+    }
 }
 
 def _scale_runtime_active -> bool {
-    # True when this process is a scale runtime, in which case graph state lives
-    # in the scale tiered-memory context rather than core's local SQLite store.
-    # That is the case when:
-    #   - it is the `jac start` server (JAC_SCALE_RUNTIME set by scale_start)
-    #     or a spawned sv sibling (JAC_SV_SIBLING), or
-    #   - a scale (mongo / redis) persistence backend is configured, so even a
-    #     plain `jac run` / `jac test` pointed at that backend gets the scale
-    #     context.
-    # Otherwise (plain `jac run` / `jac test` / `jac db` with no scale backend)
-    # this declines so core's per-file `.jac/data/<name>.db` store is used.
     if (
         os.environ.get("JAC_SCALE_RUNTIME") == "1"
         or os.environ.get("JAC_SV_SIBLING") == "1"
@@ -74,17 +64,13 @@ def scale_start(
     dry_run: bool,
     show_yaml: bool
 ) -> int | None {
-    # `jac start` dispatches here before serving. Mark the process so the
-    # server-boot and per-request contexts resolve to the scale tiered-memory
-    # context, auto-detect microservices for a plain start, or deploy to a
-    # platform target with --scale. Returns None to fall through to the core
-    # single-process server; an int when scale served or deployed.
     os.environ["JAC_SCALE_RUNTIME"] = "1";
     scale_config = get_scale_config();
     ms_config = scale_config.get_microservices_config();
     is_sv_sibling = os.environ.get("JAC_SV_SIBLING") == "1";
 
     enabled = ms_config.get("enabled", None);
+    explicit_routes = dict(ms_config.get("routes", {}));
     if (not is_sv_sibling) and (not scale) and (enabled is not False) {
         realizer = None;
         should_serve_ms = False;
@@ -94,9 +80,7 @@ def scale_start(
                     resolve_routes,
                     resolve_service_files
                 }
-                ms_config["routes"] = resolve_routes(
-                    filename, dict(ms_config.get("routes", {}))
-                );
+                ms_config["routes"] = resolve_routes(filename, explicit_routes);
                 ms_config["service_files"] = resolve_service_files(
                     filename, ms_config["routes"]
                 );
@@ -106,15 +90,16 @@ def scale_start(
             realizer = LocalRealizer(ms_config=ms_config);
             should_serve_ms = realizer.should_serve(enabled);
         } except Exception {
-            # Microservice serving stack unavailable (e.g. fastapi/uvicorn not
-            # installed) or discovery failed: decline and let the core
-            # single-process server handle this start.
             realizer = None;
             should_serve_ms = False;
         }
         if should_serve_ms and realizer is not None {
             if enabled is None {
-                _print_autodetect_banner(ms_config.get("routes", {}));
+                _print_local_ms_banner(
+                    ms_config.get("routes", {}),
+                    explicit_routes,
+                    scale_config.microservices_declared()
+                );
             }
             realizer.serve();
             return 0;
@@ -383,7 +368,10 @@ def scale_cmd(
         }
         return deploy_destroy(service_name, target, component);
     }
-    import from jaclang.scale.runtime.orchestrator.orchestrator { build_registry }
+    import from jaclang.scale.runtime.orchestrator.orchestrator {
+        ServiceRegistry,
+        build_registry
+    }
     import from jaclang.scale.runtime.orchestrator.local_deployer { LocalDeployer }
 
     scale_config = get_scale_config();
@@ -416,7 +404,7 @@ def scale_cmd(
         return 1;
     }
 
-    registry = build_registry(ms_config);
+    registry: ServiceRegistry = build_registry(ms_config);
     deployer = LocalDeployer(registry=registry, target="local");
 
     if action == "status" {
@@ -496,10 +484,6 @@ def scale_cmd(
 }
 
 class JacScalePlugin {
-    # Scale is a built-in that is always registered, so this declines (returns
-    # None -> core default) unless the process is actually a scale runtime. Only
-    # then does graph state live in the scale tiered-memory context; otherwise a
-    # plain `jac run` / `jac test` keeps core's local SQLite store.
     static def create_j_context(
         user_root: (str | None),
         base_path_dir: (str | None) = None,
@@ -516,11 +500,6 @@ class JacScalePlugin {
         return ctx;
     }
 
-    # The three server hooks below decline (return None) when the serve runtime
-    # closure (fastapi / uvicorn / pyjwt / ...) is not installed, so pluggy falls
-    # back to core's zero-dependency stdlib server. This keeps non-scale serving
-    # (e.g. a client app, or `jac start` in an env without the scale deps) working
-    # now that scale is a built-in that is always registered.
     static def create_server(jac_server: JacServer, host: str, port: int) {
         try {
             import from .jserver.jfast_api { JFastApiServer }
@@ -624,8 +603,6 @@ class JacScalePlugin {
             "--no_client"
         ];
 
-        # The sibling's output is the only way to diagnose a service that
-        # dies or never becomes healthy - never discard it.
         log_dir = base_dir / '.jac' / 'logs';
         log_dir.mkdir(parents=True, exist_ok=True);
         log_path = log_dir / f"{module_name}.log";
@@ -686,10 +663,6 @@ class JacScalePlugin {
         }
     }
 
-    # Like the server methods above, the RPC methods decline (return None) when
-    # scale's transport closure (httpx) is not installed, so core falls back to
-    # its stdlib http.client RPC and sv-to-sv keeps working with zero
-    # third-party deps.
     static def sv_service_call(module_name: str, func_name: str, args: dict) -> any {
         try {
             import httpx;

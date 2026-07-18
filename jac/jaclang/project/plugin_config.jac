@@ -5,13 +5,13 @@ import from jaclang.project.merge { deep_merge }
 
 obj PluginConfigBase {
     has project_dir: Path | None = None,
-        config_file: Path by postinit,
-        _config: dict[str, any] | None by postinit,
-        _jac_config: JacConfig | None by postinit;
+        config_file: Path postinit,
+        _config: dict[str, any] | None postinit,
+        _jac_config: JacConfig | None postinit;
 
     def postinit -> None;
-    def get_plugin_name -> str abs;
-    def get_default_config -> dict[str, any] abs;
+    def get_plugin_name -> str abst;
+    def get_default_config -> dict[str, any] abst;
     def load -> dict[str, any];
     def get_jac_config -> JacConfig;
     def get_section(

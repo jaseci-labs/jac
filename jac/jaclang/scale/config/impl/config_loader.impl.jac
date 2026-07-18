@@ -47,7 +47,6 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'messages_per_second': 20
         },
         'kubernetes': {
-            'app_name': 'jaseci',
             'namespace': 'default',
             'container_port': 8000,
             'mongodb_enabled': True,
@@ -71,11 +70,11 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'cpu_limit': None,
             'memory_request': None,
             'memory_limit': None,
-            'readiness_initial_delay': 5,
-            'readiness_period': 5,
-            'liveness_initial_delay': 15,
-            'liveness_period': 10,
-            'liveness_failure_threshold': 3
+            'readiness_initial_delay': 10,
+            'readiness_period': 20,
+            'liveness_initial_delay': 10,
+            'liveness_period': 20,
+            'liveness_failure_threshold': 80
         },
         'secrets': {},
         'server': {
@@ -257,7 +256,12 @@ impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, any
     ];
 
     import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-        KubernetesConfig
+        KubernetesConfig,
+        k8s_safe_slug
+    }
+    derived = k8s_safe_slug(self.get_jac_config().project.name, fallback='');
+    if derived {
+        k8s_config.setdefault('app_name', derived);
     }
     k8s_config_obj = KubernetesConfig.from_dict(KubernetesConfig, k8s_config);
     return k8s_config_obj.to_dict();
@@ -381,15 +385,6 @@ impl JacScaleConfig.get_events_config(self: JacScaleConfig) -> dict[str, any] {
     };
 }
 
-"""Read a positive WebSocket limit, rejecting values that would wedge a socket.
-
-Every limit here is a divisor or a budget, and each has a value that silently
-breaks the connection rather than loosening it: `messages_per_second = 0` leaves
-the token bucket with nothing to refill it, so a socket is rate-limited forever
-after its first message; `max_message_bytes = 0` rejects every frame; a zero
-connection cap refuses every client. None of them mean "unlimited", so they are
-refused at load rather than at 3am. To effectively disable a limit, set it high.
-"""
 impl _ws_positive(ws_config: dict, key: str, fallback: (int | float)) -> float {
     raw = ws_config.get(key, fallback);
     if isinstance(raw, bool) or not isinstance(raw, (int, float, str)) {
@@ -437,7 +432,6 @@ impl JacScaleConfig.get_websocket_config(self: JacScaleConfig) -> dict[str, any]
 }
 
 impl get_scale_config(project_dir: Path | None = None) -> JacScaleConfig {
-    global _scale_config_instance;
     if _scale_config_instance is not None {
         return _scale_config_instance;
     }
@@ -447,7 +441,6 @@ impl get_scale_config(project_dir: Path | None = None) -> JacScaleConfig {
 }
 
 impl reset_scale_config -> None {
-    global _scale_config_instance;
     _scale_config_instance = None;
 }
 
@@ -611,6 +604,13 @@ impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, 
         'logs': dict(ms_config.get('logs', {})),
         'tracing': dict(ms_config.get('tracing', {}))
     };
+}
+
+impl JacScaleConfig.microservices_declared(self: JacScaleConfig) -> bool {
+    declared = self.get_jac_config().get_plugin_config(self.get_plugin_name()).get(
+        'microservices'
+    );
+    return isinstance(declared, dict) and bool(declared);
 }
 
 impl JacScaleConfig.get_admin_config(self: JacScaleConfig) -> dict[str, any] {
