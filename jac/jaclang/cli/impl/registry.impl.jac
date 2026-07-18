@@ -243,13 +243,6 @@ impl get_registry -> CommandRegistry {
     return _registry;
 }
 
-impl _load_feature_modules(module_names: list[str]) -> None {
-    import importlib;
-    for module_name in module_names {
-        importlib.import_module(module_name);
-    }
-}
-
 impl register_core_commands -> None {
     import importlib;
     for module_name in _CORE_REGISTRATION_MODULES {
@@ -270,23 +263,9 @@ impl feature_command_modules -> dict[str, str] {
     return modules;
 }
 
-impl register_feature_commands(raw_argv: list[str] | None = None) -> None {
-    feature_modules = feature_command_modules();
-    if raw_argv is None or not raw_argv or "-h" in raw_argv or "--help" in raw_argv {
-        _load_feature_modules(list(feature_modules.values()));
-        return;
-    }
-
-    command: str | None = None;
-    for token in raw_argv {
-        if not token.startswith("-") {
-            command = token;
-            break;
-        }
-    }
-
-    module_name: str | None = feature_modules.get(command or "");
-    if module_name {
-        _load_feature_modules([module_name]);
+impl register_feature_commands -> None {
+    import importlib;
+    for module_name in feature_command_modules().values() {
+        importlib.import_module(module_name);
     }
 }
