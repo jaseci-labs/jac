@@ -20,6 +20,6 @@ def:pub app() -> JsxElement {
     has count: int = 0;
     return <div>
         <Display value={count} />
-        <button data-testid="inc" onClick={lambda e: any { count = count + 1; }}>+</button>
+        <button data-testid="inc" onClick={lambda (e: any) { count = count + 1; }}>+</button>
     </div>;
 }

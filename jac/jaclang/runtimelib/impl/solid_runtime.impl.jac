@@ -87,7 +87,7 @@ impl Outlet(props: dict = {}) -> JsxElement {
 }
 
 impl __jacMakeLayoutRoot(layout_component: any) -> any {
-    return lambda props: any -> JsxElement {
+    return lambda (props: any) -> JsxElement {
         LayoutComponent = layout_component;
         return (
             <__JacOutletContext.Provider value={props}>
@@ -137,7 +137,7 @@ impl JacAwaiting(props: dict) -> JsxElement {
 
 impl useJacForm(form_mode: str, schema: any, onSubmit: any = None) -> any {
     actualSchema = __unwrapFormSchema(schema);
-    schemaShape = actualSchema.shape || {};
+    schemaShape = actualSchema.shape or {};
     defaults = {};
     for key in Object.keys(schemaShape) {
         defaults[key] = "";
@@ -157,7 +157,7 @@ impl useJacForm(form_mode: str, schema: any, onSubmit: any = None) -> any {
     }
     opts = {"defaultValues": defaults, "validators": validators};
     if onSubmit {
-        opts["onSubmit"] = lambda args: any { return onSubmit(args.value); };
+        opts["onSubmit"] = lambda (args: any) { return onSubmit(args.value); };
     }
     f = createForm(lambda -> any { return opts; });
     return f;
@@ -166,15 +166,15 @@ impl useJacForm(form_mode: str, schema: any, onSubmit: any = None) -> any {
 impl JacForm(props: dict) -> JsxElement {
     schema = props.schema;
     onSubmit = props.onSubmit;
-    layout = props.layout || "vertical";
-    field_config = props.field_config || {};
-    submitLabel = props.submitLabel || "Submit";
-    submitClassName = props.submitClassName || "";
-    gridColumns = props.gridColumns || 2;
-    validateMode = props.validateMode || "onTouched";
-    className = props.className || "";
+    layout = props.layout or "vertical";
+    field_config = props.field_config or {};
+    submitLabel = props.submitLabel or "Submit";
+    submitClassName = props.submitClassName or "";
+    gridColumns = props.gridColumns or 2;
+    validateMode = props.validateMode or "onTouched";
+    className = props.className or "";
     actualSchema = __unwrapFormSchema(schema);
-    schemaShape = actualSchema.shape || {};
+    schemaShape = actualSchema.shape or {};
     fieldNames = Object.keys(schemaShape);
     form = useJacForm(validateMode, schema, onSubmit);
     [passwordVisible, setPasswordVisible] = solidCreateSignal({});
@@ -256,11 +256,11 @@ impl JacForm(props: dict) -> JsxElement {
                 >
                     <input
                         type="checkbox"
-                        checked={fieldApi().state.value || False}
-                        onInput={lambda e: any { fieldApi().handleChange(
+                        checked={fieldApi().state.value or False}
+                        onInput={lambda (e: any) { fieldApi().handleChange(
                             e.target.checked
                         ); }}
-                        onChange={lambda e: any { fieldApi().handleChange(
+                        onChange={lambda (e: any) { fieldApi().handleChange(
                             e.target.checked
                         ); }}
                         onBlur={fieldApi().handleBlur}
@@ -276,9 +276,11 @@ impl JacForm(props: dict) -> JsxElement {
             options = getEnumOptions(fieldSchema);
             return (
                 <select
-                    value={fieldApi().state.value || ""}
-                    onInput={lambda e: any { fieldApi().handleChange(e.target.value); }}
-                    onChange={lambda e: any { fieldApi().handleChange(
+                    value={fieldApi().state.value or ""}
+                    onInput={lambda (e: any) { fieldApi().handleChange(
+                        e.target.value
+                    ); }}
+                    onChange={lambda (e: any) { fieldApi().handleChange(
                         e.target.value
                     ); }}
                     onBlur={fieldApi().handleBlur}
@@ -309,10 +311,10 @@ impl JacForm(props: dict) -> JsxElement {
                                 type="radio"
                                 value={opt}
                                 checked={fieldApi().state.value == opt}
-                                onInput={lambda e: any { fieldApi().handleChange(
+                                onInput={lambda (e: any) { fieldApi().handleChange(
                                     e.target.value
                                 ); }}
-                                onChange={lambda e: any { fieldApi().handleChange(
+                                onChange={lambda (e: any) { fieldApi().handleChange(
                                     e.target.value
                                 ); }}
                                 onBlur={fieldApi().handleBlur}
@@ -333,7 +335,7 @@ impl JacForm(props: dict) -> JsxElement {
                     placeholder={placeholder}
                     rows={rows}
                     value={fieldApi().state.value}
-                    onChange={lambda e: any { fieldApi().handleChange(
+                    onChange={lambda (e: any) { fieldApi().handleChange(
                         e.target.value
                     ); }}
                     onBlur={fieldApi().handleBlur}
@@ -363,7 +365,7 @@ impl JacForm(props: dict) -> JsxElement {
         }
 
         if fieldType == "password" and config.showPasswordToggle {
-            isVisible = passwordVisible()[fieldName] || False;
+            isVisible = passwordVisible()[fieldName] or False;
             return (
                 <div>
                     <div style={{position: "relative"}}>
@@ -371,7 +373,7 @@ impl JacForm(props: dict) -> JsxElement {
                             type={"text" if isVisible else "password"}
                             placeholder={placeholder}
                             value={fieldApi().state.value}
-                            onChange={lambda e: any { fieldApi().handleChange(
+                            onChange={lambda (e: any) { fieldApi().handleChange(
                                 e.target.value
                             ); }}
                             onBlur={fieldApi().handleBlur}
@@ -409,8 +411,8 @@ impl JacForm(props: dict) -> JsxElement {
                         <input
                             type="checkbox"
                             checked={isVisible}
-                            onChange={lambda e: any { setPasswordVisible(
-                                lambda prev: any -> dict {
+                            onChange={lambda (e: any) { setPasswordVisible(
+                                lambda (prev: any) -> dict {
                                     newState = Object.assign({}, prev);
                                     newState[fieldName] = not isVisible;
                                     return newState;
@@ -429,12 +431,12 @@ impl JacForm(props: dict) -> JsxElement {
                 type={fieldType}
                 placeholder={placeholder}
                 value={fieldApi().state.value}
-                onInput={lambda e: any { fieldApi().handleChange(
+                onInput={lambda (e: any) { fieldApi().handleChange(
                     parseFloat(e.target.value)
                         if fieldType == "number"
                         else e.target.value
                 ); }}
-                onChange={lambda e: any { fieldApi().handleChange(
+                onChange={lambda (e: any) { fieldApi().handleChange(
                     parseFloat(e.target.value)
                         if fieldType == "number"
                         else e.target.value
@@ -470,7 +472,7 @@ impl JacForm(props: dict) -> JsxElement {
 
         return (
             <form.Field name={fieldName} key={fieldName}>
-                {lambda field: JsxElement { return (
+                {lambda (field: JsxElement) { return (
                     <div className={fieldClassName} style={{marginBottom: "1rem"}}>
                         <label
                             className={labelClassName}
@@ -533,7 +535,7 @@ impl JacForm(props: dict) -> JsxElement {
     buttonClassName = submitClassName or "";
     return (
         <form
-            onSubmit={lambda e: any {
+            onSubmit={lambda (e: any) {
                 e.preventDefault();
                 e.stopPropagation();
                 form.handleSubmit();
@@ -542,14 +544,14 @@ impl JacForm(props: dict) -> JsxElement {
         >
             <div style={layoutStyle}>{fields}</div>
             <form.Subscribe
-                selector={lambda state: any { return [
+                selector={lambda (state: any) { return [
                     state.isSubmitting,
                     state.isDirty,
                     state.isValid,
                     state.isTouched
                 ]; }}
             >
-                {lambda snap: any {
+                {lambda (snap: any) {
                     isDisabled = createMemo(
                         lambda -> any {
                             _s = snap();

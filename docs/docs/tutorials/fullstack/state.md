@@ -62,12 +62,12 @@ cl {
         return <form>
             <input
                 value={name}
-                onChange={lambda e: ChangeEvent { name = e.target.value; }}
+                onChange={lambda (e: ChangeEvent) { name = e.target.value; }}
                 placeholder="Name"
             />
             <input
                 value={email}
-                onChange={lambda e: ChangeEvent { email = e.target.value; }}
+                onChange={lambda (e: ChangeEvent) { email = e.target.value; }}
                 placeholder="Email"
             />
             <button
@@ -105,7 +105,7 @@ cl {
         return <div>
             <input
                 value={input_text}
-                onChange={lambda e: ChangeEvent { input_text = e.target.value; }}
+                onChange={lambda (e: ChangeEvent) { input_text = e.target.value; }}
             />
             <button onClick={lambda -> None { add_todo(); }}>Add</button>
 
@@ -182,7 +182,7 @@ cl {
         return <div>
             <input
                 value={query}
-                onChange={lambda e: ChangeEvent { query = e.target.value; }}
+                onChange={lambda (e: ChangeEvent) { query = e.target.value; }}
             />
             <ul>
                 {[<li>{r}</li> for r in results]}
@@ -335,8 +335,8 @@ cl {
         value = {
             "user": user,
             "theme": theme,
-            "setUser": lambda u: any -> None { user = u; },
-            "setTheme": lambda t: str -> None { theme = t; }
+            "setUser": lambda (u: any) -> None { user = u; },
+            "setTheme": lambda (t: str) -> None { theme = t; }
         };
 
         return <AppContext.Provider value={value}>
@@ -400,7 +400,7 @@ cl {
             localStorage.setItem(key, JSON.stringify(value));
         }, [value]);
 
-        return (value, lambda v: any -> None { value = v; });
+        return (value, lambda (v: any) -> None { value = v; });
     }
 
     def:pub Settings() -> JsxElement {
@@ -486,7 +486,7 @@ cl {
         return <form>
             <input
                 value={form_data["name"]}
-                onChange={lambda e: ChangeEvent { update_field("name", e.target.value); }}
+                onChange={lambda (e: ChangeEvent) { update_field("name", e.target.value); }}
             />
             {errors.get("name") and <span className="error">{errors["name"]}</span>}
         </form>;

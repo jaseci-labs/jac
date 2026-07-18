@@ -38,7 +38,7 @@ class JacLoadSymbols(gdb.Command) {
         # Legacy location from before native artifacts moved into .jac/cache.
         candidates += glob.glob("**/.jac_ir/*.symmap", recursive=True);
         if candidates {
-            candidates.sort(key=lambda p: os.path.getmtime(p), reverse=True);
+            candidates.sort(key=lambda (p) { os.path.getmtime(p); }, reverse=True);
             return candidates[0];
         }
         return "";

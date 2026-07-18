@@ -43,20 +43,20 @@ def:pub CreateUserModal(isOpen: bool, onClose: any, onCreate: any) -> JsxElement
                     label="Username"
                     type="text"
                     value={newUsername}
-                    onChange={lambda e: any { newUsername = e.target.value; }}
+                    onChange={lambda (e: any) { newUsername = e.target.value; }}
                     className="mb-3"
                 />
                 <Input
                     label="Password"
                     type="password"
                     value={newPassword}
-                    onChange={lambda e: any { newPassword = e.target.value; }}
+                    onChange={lambda (e: any) { newPassword = e.target.value; }}
                     className="mb-3"
                 />
                 <Select
                     label="Role"
                     value={newRole}
-                    onChange={lambda e: any { newRole = e.target.value; }}
+                    onChange={lambda (e: any) { newRole = e.target.value; }}
                     options={ROLE_OPTIONS}
                     className="mb-4"
                 />

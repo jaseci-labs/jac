@@ -57,7 +57,7 @@
       ]
     },
     "input-group": {
-      "file": "input-group.cl.jac",
+      "file": "input_group.cl.jac",
       "npmDeps": [
         "class-variance-authority"
       ],
@@ -84,11 +84,12 @@
         "@hugeicons/react"
       ],
       "peerComponents": [
-        "button"
+        "button",
+        "input-group"
       ]
     },
     "dropdown-menu": {
-      "file": "dropdown-menu.cl.jac",
+      "file": "dropdown_menu.cl.jac",
       "npmDeps": [
         "@hugeicons/core-free-icons",
         "@hugeicons/react",
@@ -108,7 +109,7 @@
       ]
     },
     "alert-dialog": {
-      "file": "alert-dialog.cl.jac",
+      "file": "alert_dialog.cl.jac",
       "npmDeps": [
         "radix-ui"
       ],
@@ -148,7 +149,7 @@
       "peerComponents": []
     },
     "radio-group": {
-      "file": "radio-group.cl.jac",
+      "file": "radio_group.cl.jac",
       "npmDeps": [
         "radix-ui"
       ],
@@ -214,7 +215,7 @@
       "peerComponents": []
     },
     "hover-card": {
-      "file": "hover-card.cl.jac",
+      "file": "hover_card.cl.jac",
       "npmDeps": [
         "radix-ui"
       ],
@@ -228,7 +229,7 @@
       "peerComponents": []
     },
     "scroll-area": {
-      "file": "scroll-area.cl.jac",
+      "file": "scroll_area.cl.jac",
       "npmDeps": [
         "radix-ui"
       ],
@@ -248,7 +249,7 @@
       "peerComponents": []
     },
     "toggle-group": {
-      "file": "toggle-group.cl.jac",
+      "file": "toggle_group.cl.jac",
       "npmDeps": [
         "class-variance-authority",
         "radix-ui"
@@ -293,7 +294,7 @@
       ]
     },
     "navigation-menu": {
-      "file": "navigation-menu.cl.jac",
+      "file": "navigation_menu.cl.jac",
       "npmDeps": [
         "class-variance-authority",
         "radix-ui",
@@ -312,7 +313,7 @@
       "peerComponents": []
     },
     "context-menu": {
-      "file": "context-menu.cl.jac",
+      "file": "context_menu.cl.jac",
       "npmDeps": [
         "radix-ui",
         "@hugeicons/react",
@@ -328,14 +329,14 @@
       "peerComponents": []
     },
     "aspect-ratio": {
-      "file": "aspect-ratio.cl.jac",
+      "file": "aspect_ratio.cl.jac",
       "npmDeps": [
         "radix-ui"
       ],
       "peerComponents": []
     },
     "button-group": {
-      "file": "button-group.cl.jac",
+      "file": "button_group.cl.jac",
       "npmDeps": [
         "class-variance-authority",
         "radix-ui"
@@ -355,7 +356,7 @@
       "peerComponents": []
     },
     "native-select": {
-      "file": "native-select.cl.jac",
+      "file": "native_select.cl.jac",
       "npmDeps": [
         "@hugeicons/react",
         "@hugeicons/core-free-icons"
@@ -402,10 +403,10 @@
         "@hugeicons/react",
         "@hugeicons/core-free-icons"
       ],
-      "peerComponents": ["dialog"]
+      "peerComponents": ["dialog", "input-group"]
     },
     "input-otp": {
-      "file": "otp-input.cl.jac",
+      "file": "otp_input.cl.jac",
       "npmDeps": [
         "input-otp"
       ],

@@ -13,7 +13,7 @@ glob logger = logging.getLogger(__name__),
 obj KubernetesRedisProvider(DatabaseProvider) {
     has target: (DeploymentTarget | None) = None,
         config: dict[str, any] = {},
-        app_name: str by postinit,
+        app_name: str postinit,
         connection_string: str = '';
 
     def postinit {
@@ -201,7 +201,7 @@ obj KubernetesRedisProvider(DatabaseProvider) {
             't': 1000 ** 4
         };
         for (suffix, mult) in sorted(
-            multipliers.items(), key=lambda kv : -len(kv[0])
+            multipliers.items(), key=lambda (kv) { -len(kv[0]); }
         ) {
             if text.endswith(suffix) {
                 try {

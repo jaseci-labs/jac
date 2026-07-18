@@ -144,7 +144,7 @@ def:pub MetricsPage -> JsxElement {
                 }
             );
         }
-        return sorted(result, key=lambda x: any { return -x["count"]; });
+        return sorted(result, key=lambda (x: any) { return -x["count"]; });
     }
 
     def getLatencyForPath(path: str) -> float {
@@ -296,7 +296,7 @@ def:pub MetricsPage -> JsxElement {
             <input
                 type="checkbox"
                 checked={autoRefresh}
-                onChange={lambda e: any { autoRefresh = e.target.checked; }}
+                onChange={lambda (e: any) { autoRefresh = e.target.checked; }}
                 className="rounded border-line bg-surface-2 text-accent focus:ring-accent"
             />
             Auto-refresh

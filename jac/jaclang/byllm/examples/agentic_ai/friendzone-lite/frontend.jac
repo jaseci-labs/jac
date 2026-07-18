@@ -66,7 +66,7 @@ def bootstrap_frontend(token: str) {
         if st.session_state.loading and not st.session_state.memory_results {
             with st.spinner("🧠 AI is analyzing your image...") {
                 try {
-                    response = requests.post(
+                    response: requests.Response = requests.post(
                         "http://localhost:8000/walker/update_session",
                         json={"image_url": st.session_state.image_url, "utterance": ""},
                         headers={"Authorization": f"Bearer {token}"}

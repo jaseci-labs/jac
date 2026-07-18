@@ -29,7 +29,7 @@ walker:pub AddItem {
 
 walker:pub Touch {
     can touch with Root entry {
-        counters = [-->(?:Counter)];
+        counters = [-->[?:Counter]];
         if not counters {
             here ++> Counter(value=1);
         } else {
@@ -41,7 +41,7 @@ walker:pub Touch {
 
 walker:pub ListItems {
     can read with Root entry {
-        items = [-->(?:Item)];
+        items = [-->[?:Item]];
         report {"count": len(items), "names": [i.name for i in items]};
     }
 }
@@ -68,6 +68,6 @@ walker:pub BulkCreate {
 
 walker:pub CountItems {
     can read with Root entry {
-        report {"count": len([-->(?:Item)])};
+        report {"count": len([-->[?:Item]])};
     }
 }

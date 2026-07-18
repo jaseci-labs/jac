@@ -1,13 +1,13 @@
-"""Fixture: one method crashes the native emitter, a sibling is clean.
+"""Fixture: one method fails the native emitter, a sibling is clean.
 
-`C.bad` feeds a void-typed call result into a binary op, which raises a hard
-TypeError deep in IR building (i64 vs void) -- a path that bypasses the
-value-binding guard. The native backend must isolate that failure: demote
-`C.bad` to Python-only and still natively compile the clean sibling `C.good`
-rather than aborting the whole module's native compile.
+`C.bad` calls `eval`, which type-checks (a Python builtin) but has no native
+lowering -- the analysis passes are clean, so the failure surfaces only inside
+the emitter. The native backend must isolate that failure: demote `C.bad` to
+Python-only and still natively compile the clean sibling `C.good` rather than
+aborting the whole module's native compile. (The original fixture fed a void
+call result into `+`, but the required analyses now reject that at check time
+before codegen ever runs, so it no longer exercises the emit-time seam.)
 """
-
-def sink(x: int) -> None { }
 
 obj C {
     def good(x: int) -> int {
@@ -15,7 +15,7 @@ obj C {
     }
 
     def bad(x: int) -> int {
-        z = sink(x) + 1;
-        return z;
+        z = eval("x + 1");
+        return x;
     }
 }

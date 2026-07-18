@@ -573,10 +573,18 @@ impl SqliteMemory._ensure_connection -> None {
         os.makedirs(parent_dir, exist_ok=True);
     }
 
-    self.__conn__ = sqlite3.connect(self.path, check_same_thread=False);
-    self.__conn__.execute("PRAGMA journal_mode=WAL");
-    self.__conn__.execute("PRAGMA synchronous=NORMAL");
+    self.__conn__ = sqlite3.connect(self.path, check_same_thread=False, timeout=5.0);
+
     self.__conn__.execute("PRAGMA busy_timeout=5000");
+    try {
+        self.__conn__.execute("PRAGMA journal_mode=WAL");
+    } except sqlite3.OperationalError as e {
+        logger.warning(
+            f"could not switch {self.path} to WAL journal mode ({e}); "
+            "continuing with the current journal mode"
+        );
+    }
+    self.__conn__.execute("PRAGMA synchronous=NORMAL");
 
     if _is_new_schema(self.__conn__) {
         _create_new_schema(self.__conn__);
@@ -820,7 +828,7 @@ def _canonical_json(val: object) -> str {
     return json.dumps(
         Serializer.serialize(val, include_type=True),
         sort_keys=True,
-        default=lambda v: str : str(v)
+        default=lambda (v: str) { str(v); }
     );
 }
 
@@ -1336,7 +1344,7 @@ impl SqliteMemory.recover_all -> tuple {
         )
     );
 
-    rows.sort(key=lambda r : 0 if r[1] == 'NodeAnchor' else 1);
+    rows.sort(key=lambda (r) { 0 if r[1] == 'NodeAnchor' else 1; });
     recovered = 0;
     still_stuck: list = [];
     for r in rows {

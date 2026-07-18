@@ -23,11 +23,11 @@ test "double unparse" {
 
 test "filter compr unparses to bracket syntax" {
     code_gen = JacProgram().compile(
-        use_str='with entry { x(?:Foo, a==5); }', file_path="t.jac"
+        use_str='with entry { x[?:Foo, a==5]; }', file_path="t.jac"
     );
     unparsed = code_gen.unparse();
-    assert "[?" in unparsed , "Old (?:...) should unparse as [?:...] but got: " + unparsed;
-    assert "(?" not in unparsed , "Old (?:...) syntax should not appear in unparsed output: " + unparsed;
+    assert "[?" in unparsed , "Filter compr should unparse as [?:...] but got: " + unparsed;
+    assert "(?" not in unparsed , "Removed (?:...) syntax should not appear in unparsed output: " + unparsed;
 }
 
 test "bracket filter unparse roundtrip" {
