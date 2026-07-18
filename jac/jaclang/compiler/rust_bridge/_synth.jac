@@ -520,6 +520,8 @@ class _Synth {
             params.append("out_handle: bytes");
         } elif rs.kind == SlotKind.Str or rs.kind == SlotKind.Bytes {
             params.append("out_buf: bytes");
+        } elif (rs.kind == SlotKind.Int or rs.kind == SlotKind.Uint) and rs.is_opt {
+            params.append("out_buf: bytes");
         } elif rs.kind == SlotKind.Int or rs.kind == SlotKind.Uint {
             params.append("out_int: bytes");
         } elif rs.kind == SlotKind.F64 {
@@ -678,6 +680,10 @@ class _Synth {
             body_lines.append('        out_buf = struct.pack("<QII", 0, 0, 0);');
             call.append("out_buf");
             self._bridged_str_method = True;
+        } elif (rs.kind == SlotKind.Int or rs.kind == SlotKind.Uint) and rs.is_opt {
+            body_lines.append('        out_buf = struct.pack("<QII", 0, 0, 0);');
+            call.append("out_buf");
+            self._bridged_str_method = True;
         } elif (rs.kind == SlotKind.Int or rs.kind == SlotKind.Uint)
         and not rs.is_opt {
             body_lines.append('        out_int = struct.pack("<Q", 0);');
@@ -781,6 +787,22 @@ class _Synth {
                 f"        {self.free_buf}(rb[0], rb[1] | (rb[2] << 32));"
             );
             body_lines.append("        return rby;");
+        } elif (rs.kind == SlotKind.Int or rs.kind == SlotKind.Uint) and rs.is_opt {
+            body_lines.append('        rb = struct.unpack("<QII", out_buf);');
+            body_lines.append("        if rb[0] == 0 {");
+            body_lines.append("            return None;");
+            body_lines.append("        }");
+            body_lines.append('        ib = __jac_bytes_from_raw(rb[0], 8);');
+            body_lines.append(
+                f"        {self.free_buf}(rb[0], rb[1] | (rb[2] << 32));"
+            );
+            body_lines.append('        iv = struct.unpack("<Q", ib)[0];');
+            if rs.kind == SlotKind.Int {
+                body_lines.append("        if iv >= 0x8000000000000000 {");
+                body_lines.append("            return iv - 0x10000000000000000;");
+                body_lines.append("        }");
+            }
+            body_lines.append("        return iv;");
         } elif rs.kind == SlotKind.Int {
             body_lines.append('        iv = struct.unpack("<Q", out_int)[0];');
             body_lines.append("        if iv >= 0x8000000000000000 {");
@@ -1403,8 +1425,8 @@ class _Synth {
         if tag_base(fd.ret) == TAG_BOOL {
             return " -> bool";
         }
-        if fd.ret == TAG_INT or fd.ret == TAG_UINT {
-            return " -> int";
+        if tag_base(fd.ret) == TAG_INT or tag_base(fd.ret) == TAG_UINT {
+            return " -> int | None" if tag_is_opt(fd.ret) else " -> int";
         }
         if fd.ret == TAG_F64 {
             return " -> float";
