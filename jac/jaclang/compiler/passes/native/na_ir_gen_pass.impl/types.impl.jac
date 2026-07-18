@@ -397,7 +397,7 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
         }
         return self._emit_unlowerable_type(type_expr, type_expr.type);
     }
-    return ir.IntType(64);
+    return self._emit_unlowerable_type(type_expr, _ptb);
 }
 
 impl NaIRGenPass._try_resolve_field_type(var: uni.UniNode) -> tuple {
