@@ -483,6 +483,17 @@ pub fn materialize(
 /// zstd-decompress + untar `zbuf` into `<rt>` via a per-pid temp dir and an
 /// atomic rename. Streams decompression straight into the tar reader -- the
 /// full uncompressed tar is never held in memory.
+/// mode_mode for payload extraction: `.executable_bit_only` (not `.ignore`!)
+/// so bundled executable scripts such as build_libwebview.sh keep their exec
+/// bit. payload.zig tarZstDir writes the real on-disk mode into the tar; with
+/// `.ignore` every regular file flattens to 0o644 and the runtime spawn fails
+/// EACCES (the same lesson fetch-pbs learned; see payload.zig).
+///
+/// Exposed as a `pub const` so the payload.zig round-trip test extracts through
+/// the exact value production uses -- reverting this to `.ignore` fails that
+/// test instead of silently stripping the bit again.
+pub const payload_extract_mode_mode: std.tar.ExtractOptions.ModeMode = .executable_bit_only;
+
 fn extractPayload(
     io: Io,
     gpa: Allocator,
@@ -507,13 +518,8 @@ fn extractPayload(
         defer gpa.free(buf);
 
         var dec = PayloadDecoder.init(dctx, zbuf, buf);
-        // executable_bit_only (not .ignore!) so bundled executable scripts
-        // such as build_libwebview.sh keep their exec bit. payload.zig
-        // tarZstDir now writes the real on-disk mode into the tar; with
-        // .ignore every regular file flattens to 0o644 and the runtime spawn
-        // fails EACCES (the same lesson fetch-pbs learned; see payload.zig).
         try std.tar.extract(io, dest, &dec.reader, .{
-            .mode_mode = .executable_bit_only,
+            .mode_mode = payload_extract_mode_mode,
             .strip_components = 0,
         });
 

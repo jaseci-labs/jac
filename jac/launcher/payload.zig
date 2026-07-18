@@ -1789,12 +1789,19 @@ fn zstdCompressAlloc(gpa: Allocator, bytes: []const u8) ![]u8 {
 }
 
 /// On-disk mode of `sub_path` (within `dir`), or 0 when unreadable / on a
-/// platform whose Permissions carry no real mode (Windows/WASI). `tarZstDir`
-/// feeds this to `writeFileBytes` so executable files survive pack/extract;
+/// platform without real executable bits (Windows/WASI). `tarZstDir` feeds
+/// this to `writeFileBytes` so executable files survive pack/extract;
 /// returning 0 falls through to the tar Writer's 0o664 default.
+///
+/// Guarded on `has_executable_bit`, not `@hasDecl(Permissions, "toMode")`:
+/// WASI selects the POSIX Permissions variant (so `toMode` exists) yet sets
+/// `has_executable_bit = false`, so a `toMode` guard would archive a
+/// meaningless mode there. `has_executable_bit` is a comptime `pub const` on
+/// every variant, and the untaken branch is elided before `toMode()` is
+/// analyzed.
 fn sourceFileMode(io: Io, dir: Dir, sub_path: []const u8) u32 {
     const Perm = Io.File.Permissions;
-    if (@hasDecl(Perm, "toMode")) {
+    if (Perm.has_executable_bit) {
         const st = dir.statFile(io, sub_path, .{}) catch return 0;
         return @intCast(st.permissions.toMode());
     }
@@ -1913,10 +1920,11 @@ test "tarZstDir round-trips through the launcher's payload decoder" {
         .data = text,
     });
     // An executable script committed 0o755: it must survive pack/extract with
-    // its exec bit intact (the regression this test guards). Guarded so the
-    // test still compiles on platforms whose Permissions carry no real mode.
+    // its exec bit intact (the regression this test guards). Guarded on
+    // `has_executable_bit` so the test compiles on Windows/WASI (WASI exposes
+    // `toMode` but lacks executable-bit semantics).
     const exec_script = "#!/bin/sh\necho hi\n";
-    const has_mode = @hasDecl(Io.File.Permissions, "toMode");
+    const has_mode = Io.File.Permissions.has_executable_bit;
     if (has_mode) {
         try Dir.cwd().writeFile(io, .{
             .sub_path = try std.fmt.allocPrint(a, "{s}/python/bin/build_x.sh", .{stage}),
@@ -1947,8 +1955,11 @@ test "tarZstDir round-trips through the launcher's payload decoder" {
     try Dir.cwd().createDirPath(io, dest);
     var dest_dir = try Dir.cwd().openDir(io, dest, .{});
     defer dest_dir.close(io);
-    // Mirrors runtime.zig extractPayload: .executable_bit_only, not .ignore.
-    try std.tar.extract(io, dest_dir, &dec.reader, .{ .mode_mode = .executable_bit_only, .strip_components = 0 });
+    // Extract through the SAME mode_mode constant production uses, so this
+    // test also covers the extract side: reverting runtime.zig's
+    // `payload_extract_mode_mode` to `.ignore` flattens the exec bit here and
+    // fails the IXUSR assertion below.
+    try std.tar.extract(io, dest_dir, &dec.reader, .{ .mode_mode = runtime.payload_extract_mode_mode, .strip_components = 0 });
 
     try testing.expectEqualStrings(text, try dest_dir.readFileAlloc(io, "python/bin/python", a, .unlimited));
     try testing.expectEqualSlices(u8, big, try dest_dir.readFileAlloc(io, "python/big.bin", a, .unlimited));
@@ -1960,5 +1971,14 @@ test "tarZstDir round-trips through the launcher's payload decoder" {
         defer sf.close(io);
         const sst = try sf.stat(io);
         try testing.expect(sst.permissions.toMode() & 0o100 != 0); // IXUSR preserved
+    }
+
+    // Symmetric guard: a plain non-executable source file must STAY non-exec,
+    // so the mode fix can't be over-broad (e.g. unconditionally 0o777).
+    if (has_mode) {
+        const pf = try dest_dir.openFile(io, "python/bin/python", .{});
+        defer pf.close(io);
+        const pst = try pf.stat(io);
+        try testing.expect(pst.permissions.toMode() & 0o100 == 0);
     }
 }
