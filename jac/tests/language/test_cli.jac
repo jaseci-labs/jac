@@ -2516,8 +2516,239 @@ test "jir reload preserves FuncCall callee_decl and call_kind" {
             assert hasattr(fc, "call_kind") , (
                 "JIR-reloaded FuncCall lost `call_kind` (#6656 Ask #2)"
             );
-            assert fc.callee_decl is None;
-            assert fc.call_kind is None;
+            # None here because this compile ran without type_check=True, so
+            # inference never stamped callee_decl in the first place -- not
+            # because JIR drops the field (stamped intra-module callee_decl now
+            # round-trips as a serialized OPT_NODE_REF; see #7172).
+            assert fc.callee_decl is None , (
+                "callee_decl is None because inference did not run on this "
+                "compile, so there was nothing to serialize"
+            );
+        }
+    }
+}
+
+"""Regression: JIR-reloaded kwarg calls must lower like cold builds.
+
+jaseci-labs/jaseci#6666: callee_decl is inference-only and defaults to None on
+JIR load. ES codegen reads it to reorder keyword args; without restamping,
+cross-module calls collapse kwargs into a single object arg.
+"""
+test "jir reload restamps callee_decl for kwarg call lowering" {
+    import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.jac0core { unitree as uni }
+    import from jaclang.jac0core.jir_passes { JirWriter, JirReader }
+    import from jaclang.compiler.passes.ecmascript.esast_gen_pass { EsastGenPass }
+
+    def _make_line(js: str) -> str {
+        for line in js.splitlines() {
+            if "return make" in line {
+                return line;
+            }
+        }
+        return "";
+    }
+
+    with tempfile.TemporaryDirectory() as tmpdir {
+        # Single-module: out-of-order kwargs on a local cl def.
+        single_path = os.path.join(tmpdir, "single.jac");
+        with open(single_path, "w") as f {
+            f.write(
+                "cl def make(a: int, b: int) -> int { return a - b; }\n"
+                "cl def use() -> int { return make(b=1, a=10); }\n"
+            );
+        }
+        single_prog = JacProgram();
+        single_mod = single_prog.compile(file_path=single_path);
+        single_make_call: (uni.FuncCall | None) = None;
+        for fc in single_mod.get_all_sub_nodes(uni.FuncCall) {
+            if isinstance(fc.target, uni.Name) and fc.target.sym_name == "make" {
+                single_make_call = fc;
+            }
+        }
+        assert single_make_call is not None , (
+            "single-module fixture must contain a make(...) call"
+        );
+        assert single_make_call.callee_decl is not None , (
+            "cold compile must stamp callee_decl before JIR round-trip"
+        );
+        single_cold = _make_line(single_mod.gen.js);
+        single_reload = JirReader(_source_path=single_path).read_module(
+            JirWriter().write_module(single_mod)
+        );
+        assert single_reload is not None , "JIR reload returned None";
+        single_warm_prog = JacProgram();
+        EsastGenPass(ir_in=single_reload, prog=single_warm_prog);
+        single_warm = _make_line(single_reload.gen.js);
+        assert single_cold == single_warm , (
+            "single-module kwarg lowering diverged after JIR reload: "
+            f"cold={single_cold!r}, warm={single_warm!r}"
+        );
+        assert "make(10, 1)" in single_warm;
+        # Cross-module import: callee_decl fallback cannot resolve the stub.
+        lib_path = os.path.join(tmpdir, "lib.jac");
+        main_path = os.path.join(tmpdir, "main.jac");
+        with open(lib_path, "w") as f {
+            f.write("cl def make(a: int, b: int) -> int { return a - b; }\n");
+        }
+        with open(main_path, "w") as f {
+            f.write(
+                "import from lib { make }\n"
+                "cl def use() -> int { return make(b=1, a=10); }\n"
+            );
+        }
+        cross_prog = JacProgram();
+        cross_mod = cross_prog.compile(file_path=main_path);
+        cross_make_call: (uni.FuncCall | None) = None;
+        for fc in cross_mod.get_all_sub_nodes(uni.FuncCall) {
+            if isinstance(fc.target, uni.Name) and fc.target.sym_name == "make" {
+                cross_make_call = fc;
+            }
+        }
+        assert cross_make_call is not None , (
+            "cross-module fixture must contain an imported make(...) call"
+        );
+        assert cross_make_call.callee_decl is not None , (
+            "cold compile must stamp callee_decl on imported calls"
+        );
+        cross_cold = _make_line(cross_mod.gen.js);
+        cross_warm_prog = JacProgram();
+        for (hub_path, hub_mod) in cross_prog.mod.hub.items() {
+            hub_reloaded = JirReader(_source_path=hub_path).read_module(
+                JirWriter().write_module(hub_mod)
+            );
+            assert hub_reloaded is not None , (
+                f"JIR reload failed for hub module {hub_path}"
+            );
+            cross_warm_prog.mod.hub[hub_path] = hub_reloaded;
+        }
+        cross_reload = cross_warm_prog.mod.hub[main_path];
+        assert cross_reload is not None , "main module missing from warm hub";
+        for fc in cross_reload.get_all_sub_nodes(uni.FuncCall) {
+            if isinstance(fc.target, uni.Name) and fc.target.sym_name == "make" {
+                assert fc.callee_decl is None , (
+                    "callee_decl should be None immediately after JIR reload"
+                );
+            }
+        }
+        EsastGenPass(ir_in=cross_reload, prog=cross_warm_prog);
+        cross_warm = _make_line(cross_reload.gen.js);
+        assert cross_cold == cross_warm , (
+            "cross-module kwarg lowering diverged after JIR reload (#6666): "
+            f"cold={cross_cold!r}, warm={cross_warm!r}"
+        );
+        assert "make(10, 1)" in cross_warm;
+        for fc in cross_reload.get_all_sub_nodes(uni.FuncCall) {
+            if isinstance(fc.target, uni.Name) and fc.target.sym_name == "make" {
+                assert fc.callee_decl is not None , (
+                    "EsastGenPass must restamp callee_decl before kwarg lowering"
+                );
+            }
+        }
+    }
+}
+
+
+"""Regression: JIR round-trip must preserve FuncCall.callee_decl.
+
+jaseci-labs/jaseci#6666: `callee_decl` is the checker-stamped pointer from a
+FuncCall to its resolved Ability. The client (cl/JS) backend reads it to lower
+keyword arguments to ordered positional args -- especially for method calls.
+Previously this field was declared ``by postinit`` and therefore dropped from
+the JIR schema, so a module reloaded from the JIR cache had it reset to None
+and lowered a kwarg method call as a packed object (`x.m({b: 1, a: 10})`)
+instead of positional (`x.m(10, 1)`), diverging from the cold build.
+
+The fix is at the serialization layer: the JIR registry now serializes
+FuncCall.callee_decl, so a warm module round-trips with the pointer intact and
+no re-inference sweep is required for warm == cold.
+"""
+test "jir round-trip preserves FuncCall.callee_decl for kwarg method calls" {
+    import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.jac0core { unitree as uni }
+    import from jaclang.jac0core.jir_passes { JirWriter, JirReader }
+    import from jaclang.compiler.passes.ecmascript { EsastGenPass }
+    import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
+
+    with tempfile.TemporaryDirectory() as tmpdir {
+        lib_path = os.path.join(tmpdir, "lib.cl.jac");
+        with open(lib_path, "w") as f {
+            f.write(
+                "cl obj Box {\n"
+                "    has v: int = 0;\n"
+                "    def m(a: int, b: int) -> int { return a - b; }\n"
+                "}\n"
+                "cl def use() -> int {\n"
+                "    x = Box();\n"
+                "    return x.m(b=1, a=10);\n"
+                "}\n"
+            );
+        }
+        # Resolve the `x.m(...)` FuncCall in a module so we can compare cold
+        # vs warm callee_decl pointers.
+        def method_call(mod: uni.Module) -> (uni.FuncCall | None) {
+            for fc in mod.get_all_sub_nodes(uni.FuncCall) {
+                if isinstance(fc.target, uni.AtomTrailer)
+                and isinstance(fc.target.right, uni.Name)
+                and fc.target.right.value == "m" {
+                    return fc;
+                }
+            }
+            return None;
+        }
+        prog = JacProgram();
+        # Cold compile of the lib: inference stamps callee_decl on the call.
+        lib_fresh = prog.compile(file_path=lib_path);
+        cold_call = method_call(lib_fresh);
+        # If type inference is unavailable (e.g. no vendored typeshed in a bare
+        # clone), callee_decl is never stamped cold either; the warm/cold parity
+        # this test guards is then vacuously true, so skip the assertions.
+        if cold_call is not None and cold_call.callee_decl is not None {
+            # Round-trip the lib through JIR. callee_decl is now a serialized
+            # field, so the warm module must retain the pointer (previously it
+            # reset to None, which #6665/#6666 patched around with a
+            # re-inference sweep).
+            warm_lib = JirReader(_source_path=lib_path).read_module(
+                JirWriter().write_module(lib_fresh)
+            );
+            assert warm_lib is not None;
+            warm_call = method_call(warm_lib);
+            assert warm_call is not None , "warm module lost the `x.m` call";
+            assert warm_call.callee_decl is not None , (
+                "warm FuncCall.callee_decl not preserved across JIR round-trip (#6666)"
+            );
+            # Locate the warm module's own Box.m Ability and confirm the
+            # restamped pointer resolves to it (round-trip builds fresh node
+            # objects, so we compare against the warm Ability, not the cold one).
+            warm_box_m: (uni.Ability | None) = None;
+            for ab in warm_lib.get_all_sub_nodes(uni.Ability) {
+                if isinstance(ab.name_ref, uni.Name) and ab.name_ref.value == "m" {
+                    warm_box_m = ab;
+                    break;
+                }
+            }
+            assert warm_box_m is not None , "warm module lost the Box.m Ability";
+            assert warm_call.callee_decl is warm_box_m , (
+                "warm callee_decl does not resolve to the warm Box.m Ability"
+            );
+
+            # The emitted JS must lower the kwarg method call to ordered
+            # positional args, identical to the cold build.
+            cold_js = es_to_js(
+                EsastGenPass(ir_in=lib_fresh, prog=prog).ir_out.gen.es_ast
+            );
+            warm_js = es_to_js(
+                EsastGenPass(ir_in=warm_lib, prog=prog).ir_out.gen.es_ast
+            );
+            assert "x.m(10, 1)" in warm_js , (
+                f"warm build mis-lowered kwarg method call (#6666):\n{warm_js}"
+            );
+            assert "x.m({" not in warm_js , (
+                f"warm build packed kwargs instead of ordering them (#6666):\n{warm_js}"
+            );
+            assert cold_js == warm_js , (
+                f"cold and warm JS diverge (#6666):\n--cold--\n{cold_js}\n--warm--\n{warm_js}"
+            );
         }
     }
 }

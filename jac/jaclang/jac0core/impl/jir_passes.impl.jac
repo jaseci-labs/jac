@@ -448,6 +448,7 @@ impl JirReader.read_module(data: bytes) -> (Module | None) {
             if self._source_path {
                 self._wire_source(last_node);
             }
+            self._repair_module_loc(last_node);
             self._fix_param_kinds();
             return last_node;
         }
@@ -484,6 +485,36 @@ impl JirReader._wire_source(module: Module) -> None {
         }
         stack.extend(cur.kid);
     }
+}
+
+impl JirReader._repair_module_loc(module: Module) -> None {
+    import from jaclang.jac0core.codeinfo { CodeLocInfo }
+    import from jaclang.jac0core.unitree { EmptyToken, Source, Token }
+
+    if module.loc is not None {
+        try {
+            _ = module.loc.mod_path;
+            return;
+        } except Exception {
+            ;
+        }
+    }
+
+    src = module.source;
+    if src is None or not src.file_path {
+        for nd in module.get_all_sub_nodes(Token) {
+            if nd.orig_src and nd.orig_src.file_path {
+                src = nd.orig_src;
+                break;
+            }
+        }
+    }
+    if src is None {
+        src = Source('', self._source_path or '');
+    }
+    module.source = src;
+    anchor = EmptyToken(orig_src=src);
+    module.loc = CodeLocInfo(anchor, anchor);
 }
 
 impl JirReader._fix_param_kinds -> None {

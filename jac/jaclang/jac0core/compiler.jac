@@ -177,6 +177,19 @@ def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     }
 }
 
+def ensure_callee_decl_restamped(mod: uni.Module, program: JacProgram) -> None {
+    analyses = program._analyses_run.get(id(mod), set());
+    if 'inference' in analyses {
+        return;
+    }
+    sched = get_inference_sched();
+    if not sched {
+        return;
+    }
+    program.run_schedule(mod, sched);
+    program._inferred_mods.add(id(mod));
+}
+
 def get_inference_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     if _typecheck_sched_loading.get() {
         return [];
