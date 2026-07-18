@@ -292,6 +292,8 @@ jac/examples/todo_app/test_todo.jac
 jac/jaclang/byllm/cli.jac
 jac/jaclang/byllm/config_loader.jac
 jac/jaclang/byllm/examples/agentic_ai/friendzone-lite/friendzone_lite.jac
+jac/jaclang/byllm/examples/agentic_ai/subagents/async_subagents.jac
+jac/jaclang/byllm/examples/agentic_ai/subagents/flow_wait_subagents.jac
 jac/jaclang/byllm/examples/agentic_ai/task-manager-lite/task_manager.jac
 jac/jaclang/byllm/impl/config_loader.impl.jac
 jac/jaclang/byllm/impl/mcp.impl.jac
