@@ -338,7 +338,8 @@ obj Module(AstDocNode, UniScopeNode) {
         terminals: list[Token],
         stub_only: bool = False,
         src_terminals: list[Token] = [],
-        is_raised_from_py: bool = False;
+        is_raised_from_py: bool = False,
+        has_synthesized_tokens: bool = False;
 
     def postinit -> None;
 
@@ -1735,4 +1736,11 @@ obj PythonModuleAst(EmptyToken) {
         file_path: str postinit;
 
     def init(ast: ast3.Module, orig_src: Source) -> None;
+}
+
+obj CModuleAst(EmptyToken) {
+    has orig_src: Source postinit,
+        file_path: str postinit;
+
+    def init(ast: object, orig_src: Source) -> None;
 }

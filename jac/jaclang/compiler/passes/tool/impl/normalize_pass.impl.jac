@@ -1729,3 +1729,97 @@ impl NormalizePass.enter_token(nd: uni.Token) -> None { }
 impl NormalizePass.enter_string(nd: uni.String) -> None {
     nd.value = f"{nd.value}";
 }
+
+impl NormalizePass.after_pass -> None {
+    if isinstance(self.ir_in, uni.Module) and not self.ir_in.has_synthesized_tokens {
+        return;
+    }
+    NormalizePass._fix_zero_toks_in_subtree(self.ir_in);
+}
+
+impl NormalizePass._collect_non_zero_lines(nd: uni.UniNode, result: list[int]) -> None {
+    if isinstance(nd, uni.Token) {
+        if nd.line_no > 0 {
+            result.append(nd.line_no);
+        }
+        return;
+    }
+    for kid in nd.kid {
+        NormalizePass._collect_non_zero_lines(kid, result);
+    }
+}
+
+impl NormalizePass._fix_zero_toks_in_subtree(nd: uni.UniNode) -> None {
+    if isinstance(nd, uni.Token) {
+        return;
+    }
+    kids = nd.kid;
+    if not kids {
+        return;
+    }
+
+    for kid in kids {
+        NormalizePass._fix_zero_toks_in_subtree(kid);
+    }
+
+    has_zero = any(
+        isinstance(k, uni.Token) and (k.line_no == 0 or k.end_line == 0) for k in kids
+    );
+    if not has_zero {
+        return;
+    }
+
+    kid_first: list[int | None] = [];
+    kid_last: list[int | None] = [];
+    for kid in kids {
+        sub: list[int] = [];
+        NormalizePass._collect_non_zero_lines(kid, sub);
+        kid_first.append(min(sub) if sub else None);
+        kid_last.append(max(sub) if sub else None);
+    }
+    n = len(kids);
+    for i in range(n) {
+        k = kids[i];
+        if not (isinstance(k, uni.Token) and (k.line_no == 0 or k.end_line == 0)) {
+            continue;
+        }
+
+        chosen: int | None = None;
+        for j in range(i + 1, n) {
+            if kid_first[j] is not None {
+                chosen = kid_first[j];
+                break;
+            }
+        }
+        if chosen is None {
+            for j in range(i - 1, -1, -1) {
+                if kid_last[j] is not None {
+                    chosen = kid_last[j];
+                    break;
+                }
+            }
+        }
+
+        if k.name == Tok.RBRACE {
+            body_max: int | None = None;
+            for j in range(i) {
+                if kid_last[j] is not None
+                and (body_max is None or kid_last[j] > body_max) {
+                    body_max = kid_last[j];
+                }
+            }
+            if body_max is not None and (body_max + 1) > k.line_no {
+                k.line_no = body_max + 1;
+                k.end_line = body_max + 1;
+                continue;
+            }
+        }
+        if k.line_no == 0 and chosen is not None {
+            k.line_no = chosen;
+        }
+
+        if k.end_line == 0 {
+            k.end_line = k.line_no if k.line_no > 0 else (chosen or 0);
+        }
+    }
+}
