@@ -156,9 +156,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         states: list[str] = [];
         try {
             for p in core_v1.list_namespaced_pod(namespace=ns).items {
-                # A pod already being deleted (e.g. just healed) lingers here
-                # until its grace period ends; counting it would rebuild the
-                # wedge streak and falsely abort while its replacement boots.
                 if p.metadata?.deletion_timestamp is not None {
                     continue;
                 }
@@ -202,9 +199,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 if pod_pull {
                     pulls[pod_name] = (pod_pull, pod_pull_reason, p);
                 }
-                # Mount wedges hold containers in ContainerCreating; a pod
-                # showing PodInitializing has mounted its volumes and is just
-                # running init containers, so it never counts.
+
                 reasons = [
                     str(
                         (
@@ -267,9 +262,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             if str(e.reason or "") not in {"FailedMount", "FailedAttachVolume"} {
                 continue;
             }
-            # Events linger for ~an hour; a mount hiccup the pod already
-            # recovered from must not count as wedged. Only failures
-            # contemporaneous with the stuck observation qualify.
+
             ts = e.last_timestamp or e.event_time or e.first_timestamp;
             if ts is None {
                 continue;
@@ -289,9 +282,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     def _try_self_heal(
         core_v1: any, ns: str, pod: any, why: str, healed_apps: dict[str, int]
     ) -> bool {
-        # One reschedule per service and three per rollout: enough to route
-        # around a bad node, small enough that a genuinely broken deploy still
-        # fails through the normal path when the replacement wedges again.
         app = str((pod.metadata.labels or {}).get("app", "")) or str(pod.metadata.name);
         if healed_apps.get(app, 0) >= 1 or sum(healed_apps.values()) >= 3 {
             return False;
@@ -415,11 +405,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 pull_pod = None;
                 for (pod_name, info) in pulls.items() {
                     if imagepull_streak.get(pod_name, 0) >= 2 {
-                        # A pull that keeps failing is usually one bad node
-                        # (broken egress, stale CSI), not a bad image: five
-                        # sibling services pull the same image fine. One
-                        # reschedule is cheap; only fail when the replacement
-                        # fails too.
                         if self._try_self_heal(
                             core_v1,
                             ns,
@@ -443,8 +428,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     k: creating_streak.get(k, 0) + 1 for k in creating_now
                 };
                 for (pod_name, pod) in creating_now.items() {
-                    # ~5 min stuck before the event check: big first-time image
-                    # pulls legitimately hold ContainerCreating for a while.
                     if creating_streak.get(pod_name, 0) >= 30
                     and self._pod_mount_wedged(core_v1, ns, pod_name) {
                         if self._try_self_heal(
