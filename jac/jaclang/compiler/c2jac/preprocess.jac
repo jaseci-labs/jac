@@ -123,8 +123,8 @@ def preprocess_c(
         pp.parse(prefix + c_src, filename);
         pp.write(out);
     } except OutputDirective {
-    # Suppress the exception — the directive handler already removed
-    # the directive from the output stream.
+        # Suppress the exception — the directive handler already removed
+        # the directive from the output stream.
     }
     if pp.c2jac_errors {
         joined = "\n  ".join(pp.c2jac_errors);

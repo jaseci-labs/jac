@@ -192,7 +192,7 @@ def _get_slot_id(sentinel: uni.ExprStmt) -> int | None {
         try {
             return int(params[0].value);
         } except ValueError {
-        # skip — ignore unparseable slot id
+            # skip — ignore unparseable slot id
         }
     }
     return None;
@@ -236,7 +236,7 @@ def _do_splice(sentinel: uni.ExprStmt, replacements: list[uni.UniNode]) -> None 
         parent.kid = new_kid;
         parent._invalidate_sub_node_tab();
     } except ValueError {
-    # skip
+        # skip
     }
     # Also replace in parent's semantic 'body' attribute if it exists.
     body = parent?.body;
@@ -245,7 +245,7 @@ def _do_splice(sentinel: uni.ExprStmt, replacements: list[uni.UniNode]) -> None 
             body_idx = body.index(sentinel);
             body[body_idx:body_idx + 1] = replacements;
         } except ValueError {
-        # skip
+            # skip
         }
     }
     # For GlobalVars replacements (from ENUM_AS_CONSTS), they need to go
@@ -417,6 +417,6 @@ def _hoist_to_module_body(
         mod.set_kids(kid_list);
         mod._invalidate_sub_node_tab();
     } except ValueError {
-    # skip
+        # skip
     }
 }
