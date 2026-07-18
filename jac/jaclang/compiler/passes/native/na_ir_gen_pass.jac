@@ -564,6 +564,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> (ir.Value | None);
 
     def _codegen_any_len(jacval: ir.Value) -> ir.Value;
+    def _emit_any_str(jacval: ir.Value) -> ir.Value;
     def _codegen_index_set(
         target_val: ir.Value, index_val: ir.Value, value: ir.Value, elem_type_name: str
     ) -> None;

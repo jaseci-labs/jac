@@ -340,6 +340,87 @@ impl NaIRGenPass._codegen_any_len(jacval: ir.Value) -> ir.Value {
     return phi;
 }
 
+impl NaIRGenPass._emit_any_str(jacval: ir.Value) -> ir.Value {
+    b = self.builder;
+    i8 = ir.IntType(8);
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    i8p = i8.as_pointer();
+    tag = b.extract_value(jacval, 0, name="anystr.tag");
+    payload = b.extract_value(jacval, 1, name="anystr.payload");
+    func = b.function;
+
+    str_bb = func.append_basic_block(name="anystr.str");
+    chk_bool_bb = func.append_basic_block(name="anystr.chk.bool");
+    bool_bb = func.append_basic_block(name="anystr.bool");
+    chk_float_bb = func.append_basic_block(name="anystr.chk.float");
+    float_bb = func.append_basic_block(name="anystr.float");
+    chk_none_bb = func.append_basic_block(name="anystr.chk.none");
+    none_bb = func.append_basic_block(name="anystr.none");
+    int_bb = func.append_basic_block(name="anystr.int");
+    merge_bb = func.append_basic_block(name="anystr.end");
+
+    is_str = b.icmp_unsigned("==", tag, ir.Constant(i8, 2), name="anystr.isstr");
+    b.cbranch(is_str, str_bb, chk_bool_bb);
+    b.position_at_end(chk_bool_bb);
+    is_bool = b.icmp_unsigned("==", tag, ir.Constant(i8, 7), name="anystr.isbool");
+    b.cbranch(is_bool, bool_bb, chk_float_bb);
+    b.position_at_end(chk_float_bb);
+    is_float = b.icmp_unsigned("==", tag, ir.Constant(i8, 1), name="anystr.isfloat");
+    b.cbranch(is_float, float_bb, chk_none_bb);
+    b.position_at_end(chk_none_bb);
+    is_none = b.icmp_unsigned("==", tag, ir.Constant(i8, 8), name="anystr.isnone");
+    b.cbranch(is_none, none_bb, int_bb);
+
+    b.position_at_end(str_bb);
+    str_res = b.inttoptr(payload, i8p, name="anystr.sp");
+    str_end = b.basic_block;
+    b.branch(merge_bb);
+
+    b.position_at_end(bool_bb);
+    true_s = self._make_global_string("True", name_prefix=".anystr.true");
+    false_s = self._make_global_string("False", name_prefix=".anystr.false");
+    is_true = b.icmp_unsigned("!=", payload, ir.Constant(i64, 0), name="anystr.bnz");
+    bool_res = b.select(is_true, true_s, false_s, name="anystr.bool.res");
+    bool_end = b.basic_block;
+    b.branch(merge_bb);
+
+    b.position_at_end(float_bb);
+    float_val = b.bitcast(payload, ir.DoubleType(), name="anystr.f");
+    float_res = self._emit_float_repr(float_val);
+    float_end = b.basic_block;
+    b.branch(merge_bb);
+
+    b.position_at_end(none_bb);
+    none_res = self._make_global_string("None", name_prefix=".anystr.none");
+    none_end = b.basic_block;
+    b.branch(merge_bb);
+
+    b.position_at_end(int_bb);
+    int_buf = b.call(self.rc_alloc_fn, [ir.Constant(i64, 32)], name="anystr.ibuf");
+    snprintf = self._get_or_declare_extern(
+        "snprintf", i32, [i8p, i64, i8p], var_arg=True
+    );
+    int_fmt = self._get_snprintf_fmt("%ld");
+    int_fmt_ptr = b.bitcast(int_fmt, i8p, name="anystr.fmt");
+    b.call(
+        snprintf,
+        [int_buf, ir.Constant(i64, 32), int_fmt_ptr, payload],
+        name="anystr.snprintf"
+    );
+    int_end = b.basic_block;
+    b.branch(merge_bb);
+
+    b.position_at_end(merge_bb);
+    phi = b.phi(i8p, name="anystr.res");
+    phi.add_incoming(str_res, str_end);
+    phi.add_incoming(bool_res, bool_end);
+    phi.add_incoming(float_res, float_end);
+    phi.add_incoming(none_res, none_end);
+    phi.add_incoming(int_buf, int_end);
+    return phi;
+}
+
 impl NaIRGenPass._codegen_index_set(
     target_val: ir.Value, index_val: ir.Value, value: ir.Value, elem_type_name: str
 ) -> None {
