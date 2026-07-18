@@ -208,9 +208,18 @@ Plain `.jac` files with no explicit markers get their client placement
    native color has no such bridges, so it pulls archetypes and tagged
    declarations too.
 
+On the Python backend, inferred-native declarations in mixed/markerless
+modules are pruned from the server projection (mirroring the client
+pruning), with the module's native interop stubs attached to the first
+such element for `na {}`-block parity. Two carve-outs: extension-coerced
+`.na.jac` files keep their full legacy Python projection (so their `test`
+blocks still collect and run under `jac test`), and `test` elements are
+never pruned even in markerless modules -- tests always execute
+server-side, reaching native code through the interop stubs.
+
 Import classification has a single source of truth as computed getters on
-`uni.Import` (`has_string_path`, `is_sv_marked`, `is_virtual_jac`,
-`ecosystem`) plus `ModulePath.string_path_value`. On imports,
+`uni.Import` (`has_string_path`, `has_clib_decls`, `is_sv_marked`,
+`is_virtual_jac`, `ecosystem`) plus `ModulePath.string_path_value`. On imports,
 `code_context` means **placement** (which side consumes the import) while
 the `sv` marker is a **boundary fact** (the target stays server-side):
 client-consumed `sv import`s become RPC stubs, server-consumed ones become

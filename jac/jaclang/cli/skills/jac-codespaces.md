@@ -104,6 +104,7 @@ def open_window() -> None {        # uses InitWindow -> native
 ```
 
 - **Consuming a native module is NOT a signal.** `import from mymod { fast_fn }` where `mymod` is native code stays a server-side import - that is the server-to-native ctypes interop crossing, not a reason to relocate the importer.
+- **`test` blocks are never pulled native.** `jac test` runs them on the server, where they reach the native code through the generated interop stubs - same as tests inside `na {}` blocks and `.na.jac` files.
 - **Referenced by both sides -> stays server.** Client and native inference run independently in one markerless file; a declaration referenced by BOTH sides is placed server, where each side can bridge to it (auto-RPC for the client, py-interop for native).
 - **Native-compatible pure code still defaults to server.** Compatibility is not intent: with no FFI seed, going native remains an explicit build choice - an `na { ... }` block, a `.na.jac` file, or `jac nacompile` / `jac run --autonative` auto-promotion. See `jac-native`.
 - **Explicit markers never act as propagation sources.** An `na { }` block or `.na.jac` file pins its own contents; it does not pull referenced code native the way an extern seed does.
