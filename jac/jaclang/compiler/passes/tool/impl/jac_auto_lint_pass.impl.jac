@@ -1853,6 +1853,14 @@ impl JacAutoLintPass._check_stale_has_read(ability_node: uni.Ability) -> None {
     if not writes or not reads {
         return;
     }
+    earliest_write: dict[str, tuple[int, int]] = {};
+    for write_entry in writes {
+        wname = write_entry[2];
+        wpos = (write_entry[0], write_entry[1]);
+        if wname not in earliest_write or wpos < earliest_write[wname] {
+            earliest_write[wname] = wpos;
+        }
+    }
     flagged: set[tuple[int, int, str]] = set();
     for read_entry in reads {
         rline = read_entry[0];
@@ -1863,15 +1871,10 @@ impl JacAutoLintPass._check_stale_has_read(ability_node: uni.Ability) -> None {
         if key in flagged {
             continue;
         }
-        for write_entry in writes {
-            wline = write_entry[0];
-            wcol = write_entry[1];
-            wname = write_entry[2];
-            if wname == rname and ((wline, wcol) < (rline, rcol)) {
-                self.emit(W3041, node_override=rnode, name=rname);
-                flagged.add(key);
-                break;
-            }
+        first_write = earliest_write.get(rname);
+        if first_write is not None and first_write < (rline, rcol) {
+            self.emit(W3041, node_override=rnode, name=rname);
+            flagged.add(key);
         }
     }
 }
