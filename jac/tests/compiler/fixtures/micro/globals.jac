@@ -7,7 +7,6 @@ glob age = 25,
      person = {"name": "Alice", "age": 30, "city": "New York"};
 
 def print_globs {
-    global fruits,age;
     age = 30;
     fruits = ["pear", "grape", "kiwi"];
     print(age, temperature, name);  # global <name> references global vs local

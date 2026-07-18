@@ -74,6 +74,9 @@ impl NaIRGenPass._emit_last_use_releases(stmt: uni.UniNode) -> None {
         if not (isinstance(slot_ty, ir.PointerType) and slot_ty?.pointee) {
             continue;
         }
+        if name in self.region_handle_vars {
+            continue;
+        }
         val = self.builder.load(alloca, name=f"lu.{name}");
         self._emit_rc_release_typed(val, op="last_use", loc="");
         self.builder.store(ir.Constant(slot_ty, None), alloca);
@@ -96,8 +99,8 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
         self._codegen_for(nd);
     } elif isinstance(nd, uni.IterForStmt) {
         self._codegen_iter_for(nd);
-    } elif isinstance(nd, uni.RegionStmt) {
-        self._codegen_region(nd);
+    } elif isinstance(nd, uni.OpenStmt) {
+        self._codegen_open_stmt(nd);
     } elif isinstance(nd, uni.MatchStmt) {
         self._codegen_match(nd);
     } elif isinstance(nd, uni.Ability) {
@@ -211,9 +214,9 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
                 }
             }
         }
-    } elif isinstance(nd, uni.Semi) { } elif isinstance(nd, uni.GlobalStmt) { } elif isinstance(
-        nd, uni.PyInlineCode
-    ) { } elif isinstance(nd, uni.VisitStmt) {
+    } elif isinstance(nd, uni.Semi) { } elif isinstance(nd, uni.PyInlineCode) { } elif isinstance(
+        nd, uni.VisitStmt
+    ) {
         self._codegen_visit(nd);
     } elif isinstance(nd, uni.DisengageStmt) {
         self._codegen_disengage(nd);
@@ -456,15 +459,44 @@ impl NaIRGenPass._codegen_while(nd: uni.WhileStmt) -> None {
     self.builder.position_at_end(end_bb);
 }
 
-impl NaIRGenPass._codegen_region(nd: uni.RegionStmt) -> None {
+impl NaIRGenPass._codegen_open_stmt(nd: uni.OpenStmt) -> None {
     import from jaclang.compiler.passes.main.rc_facts_pass { loop_body_locals }
     _region_body_locals = loop_body_locals(
         nd.body if isinstance(nd.body, (list, tuple)) else None
     );
 
+    self._emit_arena_helpers();
+    _i8p = ir.IntType(8).as_pointer();
+    import from jaclang.compiler.symbol_utils { is_builtin_region_name }
+    _anon_region = (
+        isinstance(nd.target, uni.FuncCall) and is_builtin_region_name(nd.target.target)
+    );
+    _synth: (str | None) = None;
+    if _anon_region {
+        _arena = self.builder.call(self.region_new_fn, [], name="region.anon");
+        _synth = f".region.{self.region_anon_count}";
+        self.region_anon_count += 1;
+        _slot = self._entry_alloca(_i8p, _synth);
+        self.builder.store(_arena, _slot);
+        self.local_vars[_synth] = _slot;
+        self.region_handle_vars.add(_synth);
+    } else {
+        _arena = self._codegen_expr(nd.target);
+        if _arena is not None and _arena.type != _i8p {
+            _arena = self.builder.bitcast(_arena, _i8p, name="region.hdl");
+        }
+    }
+    _pushed = _arena is not None;
+    if _pushed {
+        self.region_stack.append(_arena);
+    }
+
     _region_prebody = set(self.local_vars.keys());
     if isinstance(nd.body, (list, tuple)) {
         self._codegen_body(nd.body);
+    }
+    if _pushed {
+        self.region_stack.pop();
     }
     if not self.builder.block.is_terminated {
         _region_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.last_line
@@ -478,6 +510,9 @@ impl NaIRGenPass._codegen_region(nd: uni.RegionStmt) -> None {
             ],
             loc=_region_loc
         );
+        if _synth is not None {
+            self._emit_region_handle_drop(self.local_vars[_synth], _synth);
+        }
     }
 }
 
@@ -1201,10 +1236,18 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             coerced = self._coerce_type(value, alloca.type.pointee);
 
             _is_raw_int_ptr = getattr(coerced, 'opname', '') == 'inttoptr';
+            self._register_region_handle_var(nd, var_name);
             if isinstance(alloca.type.pointee, ir.PointerType)
             and not is_inplace_set_op {
                 if _is_raw_int_ptr {
                     self.param_vars.add(var_name);
+                } elif var_name in self.region_handle_vars {
+                    self._emit_arena_helpers();
+                    _old_hdl = self.builder.load(alloca, name=f"{var_name}.old");
+                    _old_i8 = self.builder.bitcast(
+                        _old_hdl, ir.IntType(8).as_pointer(), name=f"{var_name}.old.i8"
+                    );
+                    self.builder.call(self.region_drop_fn, [_old_i8]);
                 } else {
                     if not self._is_owned(value)
                     and not self._can_native_move_lower(nd) {
@@ -1218,14 +1261,19 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     } elif self._is_owned(value) {
                         self.rc_ops_elided += 1;
                     }
-                    old_val = self.builder.load(alloca, name=f"{var_name}.old");
-                    self._emit_rc_release_typed(
-                        old_val,
-                        op="overwrite",
-                        loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
-                            if nd.loc
-                            else 0}"
-                    );
+                    if not (
+                        self._nogc_headerless()
+                        and getattr(nd, 'na_overwrite_consumed', False)
+                    ) {
+                        old_val = self.builder.load(alloca, name=f"{var_name}.old");
+                        self._emit_rc_release_typed(
+                            old_val,
+                            op="overwrite",
+                            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                                if nd.loc
+                                else 0}"
+                        );
+                    }
                 }
             } elif (
                 self?.jacval_type
@@ -1494,7 +1542,11 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 self.builder.store(ir.Constant(var_type, None), alloca);
                 self.builder.position_at_end(_cur_bb);
             }
-            if isinstance(var_type, ir.PointerType) {
+            self._register_region_handle_var(nd, var_name);
+            if isinstance(var_type, ir.PointerType)
+            and var_name in self.region_handle_vars {
+                ;
+            } elif isinstance(var_type, ir.PointerType) {
                 if getattr(value, 'opname', '') == 'inttoptr' {
                     self.param_vars.add(var_name);
                 } else {
@@ -1510,14 +1562,19 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     } elif self._is_owned(value) {
                         self.rc_ops_elided += 1;
                     }
-                    old_val = self.builder.load(alloca, name=f"{var_name}.old");
-                    self._emit_rc_release_typed(
-                        old_val,
-                        op="overwrite",
-                        loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
-                            if nd.loc
-                            else 0}"
-                    );
+                    if not (
+                        self._nogc_headerless()
+                        and getattr(nd, 'na_overwrite_consumed', False)
+                    ) {
+                        old_val = self.builder.load(alloca, name=f"{var_name}.old");
+                        self._emit_rc_release_typed(
+                            old_val,
+                            op="overwrite",
+                            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                                if nd.loc
+                                else 0}"
+                        );
+                    }
                 }
             } elif (
                 self?.jacval_type

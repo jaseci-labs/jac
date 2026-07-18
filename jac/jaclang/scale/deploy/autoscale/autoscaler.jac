@@ -35,8 +35,6 @@ class Autoscaler {
         return {"managed": "jac-scale"};
     }
 
-    # Values are clamped to what the autoscaling/v2 API accepts: policy
-    # values must be > 0 and stabilization windows 0..3600.
     static def _build_behavior(spec: AutoscalerSpec) -> dict[str, any] {
         return {
             "scaleUp": {

@@ -152,7 +152,7 @@ impl UnparsePass.exit_global_vars(nd: uni.GlobalVars) -> None {
     if nd.doc {
         parts.append(nd.doc.gen.jac);
     }
-    parts.append("global");
+    parts.append("glob");
     if nd.access {
         parts.append(nd.access.gen.jac);
     }
@@ -510,9 +510,9 @@ impl UnparsePass.exit_typed_ctx_block(nd: uni.TypedCtxBlock) -> None {
     nd.gen.jac = " ".join(parts);
 }
 
-impl UnparsePass.exit_region_stmt(nd: uni.RegionStmt) -> None {
+impl UnparsePass.exit_open_stmt(nd: uni.OpenStmt) -> None {
     body = " ".join([s.gen.jac for s in nd.body]);
-    nd.gen.jac = "region { " + body + " }";
+    nd.gen.jac = "in " + nd.target.gen.jac + " { " + body + " }";
 }
 
 impl UnparsePass.exit_if_stmt(nd: uni.IfStmt) -> None {
@@ -581,15 +581,14 @@ impl UnparsePass.exit_finally_stmt(nd: uni.FinallyStmt) -> None {
 }
 
 impl UnparsePass.exit_iter_for_stmt(nd: uni.IterForStmt) -> None {
-    parts: list = ["for"];
-    if nd.is_async {
-        parts.append("async");
-    }
+    parts: list = ["async for" if nd.is_async else "for"];
     parts.append(nd.iter.gen.jac);
     if nd.condition {
+        parts.append("while");
         parts.append(nd.condition.gen.jac);
     }
     if nd.count_by {
+        parts.append("with");
         parts.append(nd.count_by.gen.jac);
     }
     body = " ".join([s.gen.jac for s in nd.body]);
@@ -717,14 +716,6 @@ impl UnparsePass.exit_await_expr(nd: uni.AwaitExpr) -> None {
 
 impl UnparsePass.exit_cast_expr(nd: uni.CastExpr) -> None {
     nd.gen.jac = nd.value.gen.jac + " as " + nd.cast_type.gen.jac;
-}
-
-impl UnparsePass.exit_global_stmt(nd: uni.GlobalStmt) -> None {
-    nd.gen.jac = "global " + self._comma_sep(nd.target) + ";";
-}
-
-impl UnparsePass.exit_non_local_stmt(nd: uni.NonLocalStmt) -> None {
-    nd.gen.jac = "nonlocal " + self._comma_sep(nd.target) + ";";
 }
 
 impl UnparsePass.exit_assignment(nd: uni.Assignment) -> None {

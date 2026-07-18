@@ -264,6 +264,8 @@ jobs:
   # satisfy branch protection); it restores the same binary cache itself.
   jac-check:
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v5
         with:
@@ -323,6 +325,8 @@ jobs:
         run: jac --version
 
       - name: Run jac fmt (check formatting)
+        id: fmt
+        continue-on-error: true
         run: |
           set -euo pipefail
           if [ "${{ steps.changes.outputs.mode }}" = "scoped" ]; then
@@ -343,6 +347,61 @@ jobs:
             # own sample .jac files), and a bare `find .` walks those too.
             git ls-files -z '*.jac' | grep -zv -E '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$|_syntax_err\.jac$)' | xargs -0 --no-run-if-empty jac fmt --check --lintfix
           fi
+
+      # When the format check fails on a same-repo PR, run the fixer on the PR
+      # head branch and push the result, mirroring what pre-commit.ci does for
+      # the hooks it can run (it cannot run jac, so jac fmt is autofixed here).
+      # NOTE: pushes made with the default GITHUB_TOKEN deliberately do NOT
+      # trigger new workflow runs (GitHub's loop protection), so the pushed fix
+      # only re-runs CI automatically when a JAC_AUTOFIX_TOKEN repo secret (a
+      # fine-grained PAT or GitHub App token with contents: write) is
+      # configured. Without it the fix still lands on the branch, but the
+      # checks on the new commit must be started manually (or by the next
+      # push). Fork PRs are skipped: no writable token exists for them.
+      - name: Push jac fmt autofix to the PR branch
+        if: |
+          steps.fmt.outcome == 'failure' &&
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          AUTOFIX_TOKEN: ${{ secrets.JAC_AUTOFIX_TOKEN }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --quiet origin "$HEAD_REF"
+          # Loop breaker: if the head commit is already an autofix and the
+          # check still failed, the formatter is unstable -- do not ping-pong.
+          if git log -1 --format=%s FETCH_HEAD | grep -q '^style: jac fmt autofix'; then
+            echo "::warning::Head commit is already an autofix commit but the check still failed; not pushing again."
+            exit 0
+          fi
+          git checkout -B "$HEAD_REF" FETCH_HEAD
+          FILES="$(grep -vE '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
+          if [ -z "$FILES" ]; then
+            echo "No formattable .jac files to fix."
+            exit 0
+          fi
+          printf '%s\n' "$FILES" | tr '\n' '\0' \
+            | xargs -0 --no-run-if-empty jac fmt --lintfix || true
+          if git diff --quiet; then
+            echo "Fixer produced no changes on the head branch; nothing to push."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "style: jac fmt autofix"
+          if [ -n "$AUTOFIX_TOKEN" ]; then
+            git remote set-url origin \
+              "https://x-access-token:${AUTOFIX_TOKEN}@github.com/${{ github.repository }}.git"
+          fi
+          git push origin "HEAD:$HEAD_REF"
+          echo "::notice::Pushed jac fmt autofix to $HEAD_REF; the new commit's CI run supersedes this one."
+
+      - name: Fail if formatting was not clean
+        if: steps.fmt.outcome == 'failure'
+        run: |
+          echo "::error::jac fmt --check --lintfix failed for this commit (an autofix was pushed to the branch if this is a same-repo PR)."
+          exit 1
 
       - name: Verify jir_registry.jac is up to date
         run: |

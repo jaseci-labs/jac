@@ -1,3 +1,5 @@
+import from jaclang.jac0core.constant { OwnershipKind }
+
 glob RC_INTRINSIC_NAMES: frozenset[str] = frozenset(
          {
              "__rc_debug_enable",
@@ -211,6 +213,17 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 return self._codegen_expr(params_l[0]);
             }
             return None;
+        }
+
+        if func_name == "Region" {
+            import from jaclang.compiler.symbol_utils { is_builtin_region_name }
+            if is_builtin_region_name(nd.target) {
+                self._emit_arena_helpers();
+                return self.builder.call(self.region_new_fn, [], name="region.new");
+            }
+            if "Region" in self.struct_types {
+                return self._codegen_instantiation(nd);
+            }
         }
 
         if func_name == "__float_bits" {
@@ -826,9 +839,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             _is_foreign
             and self._is_bytes_value(arg)
             and i < len(func.args)
-            and func.args[i].type == _i8ptr
+            and (func.args[i].type == _i8ptr or self._is_bytes_type(func.args[i].type))
         ) {
-            coerced.append(self._bytes_data_ptr(arg));
+            coerced.append(
+                self._bytes_data_ptr(arg) if func.args[i].type == _i8ptr else arg
+            );
             release_args.append(arg);
         } elif i < len(func.args) {
             _c = self._coerce_type(arg, func.args[i].type);
@@ -837,6 +852,68 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         } else {
             coerced.append(arg);
             release_args.append(arg);
+        }
+    }
+    if self._nogc_headerless() {
+        _skip_own: set = set();
+        _is_ctor = isinstance(nd.target, uni.Name)
+        and nd.target.sym_name in self.arch_ast_map;
+        _sig = None if _is_ctor else self._callee_sig_of(nd);
+        _sig_params = _sig.get_parameters() if _sig is not None else [];
+        if _is_ctor {
+            for _oi in range(len(release_args)) {
+                _skip_own.add(_oi);
+            }
+        } elif _sig is not None and len(_sig_params) == len(release_args) {
+            for (_oi, _op) in enumerate(_sig_params) {
+                if _op.type_tag is not None
+                and _op.type_tag.ownership == OwnershipKind.OWN {
+                    _skip_own.add(_oi);
+                }
+            }
+        }
+        if _skip_own {
+            _kept: list = [];
+            for (_ri, _rv) in enumerate(release_args) {
+                if _ri not in _skip_own {
+                    _kept.append(_rv);
+                }
+            }
+            release_args = _kept;
+            _param_idx: dict = {};
+            for (_pi2, _p2) in enumerate(_sig_params) {
+                _param_idx[_p2.name.sym_name] = _pi2;
+            }
+            _pos = 0;
+            for _pa in (nd.params or []) {
+                _aidx = -1;
+                _anode: (uni.Expr | None) = None;
+                if isinstance(_pa, uni.KWPair) {
+                    _anode = _pa.value;
+                    _k = _pa.key.sym_name if _pa.key is not None else None;
+                    if _k is not None and _k in _param_idx {
+                        _aidx = _param_idx[_k];
+                    }
+                } else {
+                    _anode = _pa;
+                    _aidx = _pos;
+                    _pos += 1;
+                }
+                if not (_is_ctor or _aidx in _skip_own) {
+                    continue;
+                }
+                if not isinstance(_anode, uni.Name) {
+                    continue;
+                }
+                _salloca = self.local_vars.get(_anode.sym_name);
+                if _salloca is not None
+                and isinstance(_salloca.type, ir.PointerType)
+                and isinstance(_salloca.type.pointee, ir.PointerType) {
+                    self.builder.store(
+                        ir.Constant(_salloca.type.pointee, None), _salloca
+                    );
+                }
+            }
         }
     }
     result = self.builder.call(func, coerced, name=f"call.{func_name}");

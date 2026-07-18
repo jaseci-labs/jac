@@ -2,6 +2,26 @@ import from collections.abc { Sequence }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.diagnostics { E1301, E1302, E1303, E1304, E1306 }
 
+glob _MOVE_EXEMPT_CALLS: tuple = (
+         "len",
+         "print",
+         "range",
+         "isinstance",
+         "next",
+         "abs",
+         "min",
+         "max",
+         "sum",
+         "sorted",
+         "repr",
+         "format",
+         "chr",
+         "ord",
+         "hex",
+         "oct",
+         "bin"
+     );
+
 impl OwnershipCheckPass.postinit -> None {
     super.postinit();
 }
@@ -27,6 +47,7 @@ impl OwnershipCheckPass.transform(ir_in: uni.Module) -> uni.Module {
 
     self._build_index(ir_in);
     self._stamp_ownership();
+    self._stamp_region_borrows();
     self._nogc_setup();
     if not self.owned_decl
     and not self.borrow_meta
@@ -43,6 +64,7 @@ impl OwnershipCheckPass.transform(ir_in: uni.Module) -> uni.Module {
         if isinstance(n, uni.UniCFGNode)
     ];
     self._run_dataflow(cfg_nodes);
+    self._stamp_overwrite_consumed();
     self._run_borrow_liveness(cfg_nodes);
     self._run_reaching_borrows(cfg_nodes);
     self._emit_loop_move_diagnostics();
@@ -294,7 +316,8 @@ impl OwnershipCheckPass._assign_kill_gen(
         }
     }
     val_owned = self._owned_sym_of_expr(nd.value);
-    if val_owned is not None {
+    if val_owned is not None
+    and (isinstance(nd.value, uni.Name) or not self._expr_scalar_typed(nd.value)) {
         gen.add(val_owned);
     }
     return (kill, gen);
@@ -320,25 +343,7 @@ impl OwnershipCheckPass._call_move_gen(nd: uni.UniCFGNode) -> set[SymId] {
             continue;
         }
         if isinstance(call.target, uni.Name)
-        and call.target.sym_name in (
-            "len",
-            "print",
-            "range",
-            "isinstance",
-            "next",
-            "abs",
-            "min",
-            "max",
-            "sum",
-            "sorted",
-            "repr",
-            "format",
-            "chr",
-            "ord",
-            "hex",
-            "oct",
-            "bin"
-        ) {
+        and call.target.sym_name in _MOVE_EXEMPT_CALLS {
             continue;
         }
         for param in self._call_params(call) {
@@ -382,11 +387,10 @@ impl OwnershipCheckPass._transfer(
     nd: uni.UniCFGNode, in_set: set[SymId]
 ) -> set[SymId] {
     out = set(in_set);
+    assign_kill: set[SymId] = set();
     if isinstance(nd, uni.Assignment) {
         (kill, gen) = self._assign_kill_gen(nd);
-        for k in kill {
-            out.discard(k);
-        }
+        assign_kill = kill;
         for g in gen {
             out.add(g);
             if g not in self.consumed_at {
@@ -405,6 +409,10 @@ impl OwnershipCheckPass._transfer(
         if g not in self.consumed_at {
             self.consumed_at[g] = nd;
         }
+    }
+
+    for k in assign_kill {
+        out.discard(k);
     }
     return out;
 }
@@ -558,9 +566,39 @@ impl OwnershipCheckPass._is_read_name(nd: uni.Name) -> bool {
     return not self._is_write_target(nd);
 }
 
+impl OwnershipCheckPass._stamp_overwrite_consumed -> None {
+    for nd in self.idx_assignments {
+        nd.na_overwrite_consumed = False;
+        if nd.aug_op is not None or len(nd.target) != 1 {
+            continue;
+        }
+        _tgt = nd.target[0];
+        owned = self._owned_sym_of(_tgt);
+        if owned is None {
+            continue;
+        }
+        _cfg = self._cfg_owner(nd);
+        if _cfg is None {
+            continue;
+        }
+        if owned in self._call_move_gen(_cfg) {
+            nd.na_overwrite_consumed = True;
+        }
+    }
+}
+
 impl OwnershipCheckPass._is_move_producing_use(nd: uni.Name) -> bool {
     kind = self._classify_access(nd);
-    if kind == AccessKind.CALL_ARG or kind == AccessKind.RETURN_VALUE {
+    if kind == AccessKind.CALL_ARG {
+        _call = nd.find_parent_of_type(uni.FuncCall);
+        if _call is not None
+        and isinstance(_call.target, uni.Name)
+        and _call.target.sym_name in _MOVE_EXEMPT_CALLS {
+            return False;
+        }
+        return True;
+    }
+    if kind == AccessKind.RETURN_VALUE {
         return True;
     }
     parent = nd.parent;
@@ -682,6 +720,14 @@ impl OwnershipCheckPass._emit_loop_move_diagnostics -> None {
         cfg_nd = nd.find_parent_of_type(uni.UniCFGNode);
         if cfg_nd is not None and owned in self.in_consumed.get(id(cfg_nd), set()) {
             continue;
+        }
+
+        _assign = nd.find_parent_of_type(uni.Assignment);
+        if _assign is not None and _assign.aug_op is None {
+            (_ra_kill, _ra_gen) = self._assign_kill_gen(_assign);
+            if owned in _ra_kill {
+                continue;
+            }
         }
         if self._loop_depth(nd) > self._loop_depth(decl) {
             sym_name = self._owned_name(owned, nd.sym_name);

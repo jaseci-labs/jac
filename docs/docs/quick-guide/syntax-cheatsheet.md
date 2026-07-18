@@ -143,7 +143,7 @@ def say_hi() {
 }
 
 # Abstract function (declaration only, no body)
-def area() -> float abs;
+def area() -> float abst;
 
 # Function with all param types
 def kitchen_sink(
@@ -187,9 +187,9 @@ with entry {
         print(item);
     }
 
-    # --- for-to-by loop (C-style iteration) ---
-    # Syntax: for VAR = START to CONDITION by STEP { ... }
-    for i = 0 to i < 10 by i += 2 {
+    # --- C-style for loop ---
+    # Syntax: for INIT; CONDITION; UPDATE { ... }
+    for i = 0 while i < 10 with i += 2 {
         print(i);   # 0, 2, 4, 6, 8
     }
 
@@ -368,7 +368,7 @@ obj Example {
     static has instances: int = 0;
 
     # Deferred initialization (set in postinit)
-    has computed: int by postinit;
+    has computed: int postinit;
 
     def postinit() {
         self.computed = self.count * 2;
@@ -487,8 +487,12 @@ glob MAX_SIZE: int = 100;
 glob greeting: str = "Hello";
 
 def use_global() {
-    global greeting;          # Reference module-level glob
-    greeting = "Hola";
+    greeting = "Hola";        # Assignment rebinds the module-level glob
+}
+
+def shadow_global() {
+    greeting: str = "Hi";     # Typed declaration = new local; glob untouched
+    print(greeting);
 }
 
 
@@ -1255,11 +1259,17 @@ with entry {
     b = a;                      # moves out of `a`; reading `a` again is E1301
 }
 
-# `region { }` = arena scope: everything allocated inside is freed
-# together at the closing brace; references must not escape it.
+# `in <handle> { }` opens a Region for allocation: everything created
+# under the open is reclaimed wholesale when the handle drops, and
+# references must not outlive it. `in Region() { }` is the anonymous,
+# block-scoped form.
 def scratch() -> None {
-    region {
-        tmp = Buffer();   # reclaimed with the whole arena at `}`
+    in Region() {
+        tmp = Buffer();   # reclaimed with the region at `}`
+    }
+    r: own Region = Region();
+    in r {
+        keep = Buffer();  # reclaimed when `r` drops (scope exit here)
     }
 }
 
@@ -1495,8 +1505,8 @@ cl {
 # Types:    str, int, float, bool, list, tuple, set, dict, bytes, any, type
 # Decl:     obj, class, node, edge, walker, enum, has, can, def, impl,
 #           glob, test, type
-# Modifiers: pub, priv, protect, static, override, abs, async
-# Control:  if, elif, else, for, to, by, while, match, switch, case, default
+# Modifiers: pub, priv, protect, static, override, abst, async
+# Control:  if, elif, else, for, by, while, match, switch, case, default
 # Flow:     return, yield, break, continue, raise, del, assert, skip
 # OSP:      visit, spawn, entry, exit, disengage, report, here, visitor, root
 # AI:       by, llm, sem
@@ -1504,5 +1514,5 @@ cl {
 # Logic:    and, or, not, in, is
 # Codespace: sv, cl, na
 # Other:    import, include, from, as, try, except, finally, with, lambda,
-#           global, nonlocal, self, super, init, postinit
+#           self, super, init, postinit
 ```

@@ -5,10 +5,10 @@ import from .ui.avatar { Avatar, AvatarImage, AvatarFallback }
 import from .ui.button { Button }
 import from .ui.skeleton { Skeleton }
 import from .ui.empty { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription }
-sv import from ..social_graph { UserView }
+sv import from ..social_graph { Profile }
 
 def:pub ExploreTab(
-    allProfiles: list[UserView],
+    allProfiles: list[Profile],
     followingIds: list[str],
     myProfileId: str,
     onFollow: Callable[[str], None],
@@ -32,7 +32,7 @@ def:pub ExploreTab(
             }for u in allProfiles {
                 <div
                     className="lx-fade-up flex items-center gap-3 border-b border-border px-4 py-3 transition-colors hover:bg-muted/30"
-                    key={u.id}
+                    key={jid(u)}
                 >
                     <Avatar className="size-11 shrink-0">
                         <AvatarImage
@@ -66,21 +66,21 @@ def:pub ExploreTab(
                             {u.bio or "No bio yet"}
                         </div>
                     </div>
-                    {if u.id in followingIds {
+                    {if jid(u) in followingIds {
                         <Button
                             variant="outline"
                             size="sm"
                             className="group shrink-0 rounded-full hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
-                            onClick={lambda { onUnfollow(u.id); }}
+                            onClick={lambda { onUnfollow(jid(u)); }}
                         >
                             <span className="group-hover:hidden">Following</span>
                             <span className="hidden group-hover:inline">Unfollow</span>
                         </Button>
-                    } elif u.id != myProfileId {
+                    } elif jid(u) != myProfileId {
                         <Button
                             size="sm"
                             className="shrink-0 rounded-full font-semibold"
-                            onClick={lambda { onFollow(u.id); }}
+                            onClick={lambda { onFollow(jid(u)); }}
                         >
                             Follow
                         </Button>

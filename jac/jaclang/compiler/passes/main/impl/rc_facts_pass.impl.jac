@@ -6,6 +6,7 @@ impl RcFactsPass.transform(ir_in: uni.Module) -> uni.Module {
     self._stamp_param_rebound(ir_in);
     self._stamp_move_lowerable(ir_in);
     self._stamp_escapes(ir_in);
+    self._stamp_region_handles(ir_in);
     self._stamp_last_use(ir_in);
     return ir_in;
 }
@@ -96,6 +97,67 @@ impl RcFactsPass._stamp_escapes(ir_in: uni.Module) -> None {
         }
         sym.na_escapes = escapes;
         sym.na_stack_ok = stack_ok and not escapes;
+    }
+}
+
+impl RcFactsPass._asn_makes_region_handle(nd: uni.Assignment) -> bool {
+    import from jaclang.compiler.symbol_utils { is_builtin_region_name }
+    if isinstance(nd.value, uni.FuncCall) and is_builtin_region_name(nd.value.target) {
+        return True;
+    }
+    if nd.type_tag is not None {
+        _tt_expr = nd.type_tag.tag;
+        while isinstance(_tt_expr, uni.AtomTrailer) {
+            _tt_expr = _tt_expr.target;
+        }
+        if is_builtin_region_name(_tt_expr) {
+            return True;
+        }
+    }
+    if (
+        isinstance(nd.value, uni.FuncCall)
+        and isinstance(nd.value.target, uni.Name)
+        and nd.value.target.sym is not None
+        and nd.value.target.sym.decl is not None
+    ) {
+        _cal_ab = nd.value.target.sym.decl.find_parent_of_type(uni.Ability);
+        if _cal_ab is not None
+        and isinstance(_cal_ab.signature, uni.FuncSignature)
+        and _cal_ab.signature.return_type is not None {
+            _rt_expr = _cal_ab.signature.return_type;
+            while isinstance(_rt_expr, uni.AtomTrailer) {
+                _rt_expr = _rt_expr.target;
+            }
+            if is_builtin_region_name(_rt_expr) {
+                return True;
+            }
+        }
+    }
+    if isinstance(nd.value, uni.Name)
+    and nd.value.sym is not None
+    and nd.value.sym.na_region_handle {
+        return True;
+    }
+    return False;
+}
+
+impl RcFactsPass._stamp_region_handles(ir_in: uni.Module) -> None {
+    _changed = True;
+    while _changed {
+        _changed = False;
+        for asn in ir_in.get_all_sub_nodes(uni.Assignment) {
+            if len(asn.target) != 1 or not isinstance(asn.target[0], uni.Name) {
+                continue;
+            }
+            _tgt = asn.target[0];
+            if _tgt.sym is None or _tgt.sym.na_region_handle {
+                continue;
+            }
+            if self._asn_makes_region_handle(asn) {
+                _tgt.sym.na_region_handle = True;
+                _changed = True;
+            }
+        }
     }
 }
 
