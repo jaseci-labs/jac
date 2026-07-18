@@ -1704,6 +1704,83 @@ test "is and is not emit identity comparison operators" {
     }
 }
 
+test "type is builtin routes through runtime type_is helper not bare identifiers" {
+    # BUG (#6149): `type(x) is str` lowered to `typeof x === str`, referencing
+    # undeclared globals in strict ES modules. Lower to a runtime helper that
+    # dispatches on the value (mirroring `_jac.poly.contains`).
+    jac_code = "\"\"\"Test type() is <builtin> codegen.\"\"\"\n\ncl def TypeIsRepro() -> str {\n    has msg: str = \"\";\n    can with entry {\n        x = 42;\n        if type(x) is str {\n            msg = \"is str\";\n        } elif type(x) is not dict {\n            msg = \"not dict\";\n        } elif type(x) is list {\n            msg = \"is list\";\n        }\n    }\n    return msg;\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert '_jac.poly.type_is(x, "str")' in js_code , (
+            f"`type(x) is str` must call type_is helper, got:\n{js_code}"
+        );
+        assert '!_jac.poly.type_is(x, "dict")' in js_code , (
+            f"`type(x) is not dict` must negate type_is call, got:\n{js_code}"
+        );
+        assert '_jac.poly.type_is(x, "list")' in js_code , (
+            f"`type(x) is list` must call type_is helper, got:\n{js_code}"
+        );
+        # Must not emit bare typename identifiers as JS globals.
+        for bare in ["=== str", "=== dict", "=== list", "typeof x === str"] {
+            assert bare not in js_code , (
+                f"Must not emit bare typename identifier: {bare} in:\n{js_code}"
+            );
+        }
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+test "type is custom archetype passes class ref to type_is helper" {
+    # `type(x) is C` for a user archetype passes the class constructor to the
+    # runtime helper, which does an exact `x.constructor === C` match (NOT
+    # `typeof x === C` (#6149) and NOT subclass-inclusive `instanceof`).
+    jac_code = "\"\"\"Test type() is <archetype> codegen.\"\"\"\n\ncl obj Animal {\n    has name: str = \"\";\n}\n\ncl obj Dog(Animal) {\n    has breed: str = \"\";\n}\n\ncl def TypeIsArch(x: Animal) -> str {\n    has msg: str = \"\";\n    can with entry {\n        if type(x) is Animal {\n            msg = \"animal\";\n        } elif type(x) is not Dog {\n            msg = \"not dog\";\n        }\n    }\n    return msg;\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "_jac.poly.type_is(x, Animal)" in js_code , (
+            f"`type(x) is Animal` must pass class ref to type_is, got:\n{js_code}"
+        );
+        assert "!_jac.poly.type_is(x, Dog)" in js_code , (
+            f"`type(x) is not Dog` must negate type_is call, got:\n{js_code}"
+        );
+        # Must not regress to the broken/typeof or subclass-inclusive forms.
+        for bad in ["typeof x === Animal", "instanceof Animal", "instanceof Dog"] {
+            assert bad not in js_code , (
+                f"Must not emit {bad} for archetype type check in:\n{js_code}"
+            );
+        }
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+test "type is evaluates a side-effecting subject exactly once" {
+    # Routing through `_jac.poly.type_is` (vs inlining the check) guarantees the
+    # subject is evaluated once even for compound checks like `dict`.
+    jac_code = "\"\"\"Test type() is subject single-eval.\"\"\"\n\ncl def Repro(items: list) -> str {\n    has msg: str = \"\";\n    can with entry {\n        if type(items.pop()) is dict {\n            msg = \"dict\";\n        }\n    }\n    return msg;\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert '_jac.poly.type_is(items.pop(), "dict")' in js_code , (
+            f"side-effecting subject must be passed once, got:\n{js_code}"
+        );
+        assert js_code.count("items.pop()") == 1 , (
+            f"subject must be evaluated exactly once, got:\n{js_code}"
+        );
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
 test "fstring format spec invokes runtime format helper" {
     # BUG: exit_formatted_value ignored nd.format_spec, so format mini-language
     # specs like `:.2f` were dropped — `f"{x:.2f}"` rendered "8" instead of
