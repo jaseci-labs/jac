@@ -125,7 +125,12 @@ glob KIND_SPECS: dict[str, KindSpec] = {
              )
          ]
      },
-     VALID_KINDS: list[str] = list(KIND_SPECS.keys());
+     VALID_KINDS: list[str] = list(KIND_SPECS.keys()),
+     CLIENT_KINDS: set[str] = {"web-app", "web-static", "desktop", "mobile"};
+
+def kind_has_client(kind: str) -> bool {
+    return kind in CLIENT_KINDS;
+}
 
 def kind_spec(kind: str) -> KindSpec | None {
     return KIND_SPECS.get(kind);
@@ -188,7 +193,7 @@ def _entry_stem(path: str) -> str {
     return base_stem(path);
 }
 
-def _has_client(config: JacConfig) -> bool {
+def _config_signals_client(config: JacConfig) -> bool {
     if "jac-client" in config.dependencies {
         return True;
     }
@@ -198,6 +203,20 @@ def _has_client(config: JacConfig) -> bool {
     }
 
     return False;
+}
+
+def project_needs_client_stack(config: JacConfig) -> bool {
+    if _config_signals_client(config) {
+        return True;
+    }
+    kind = config.project.kind.strip() if config.project.kind else "";
+    if not kind and config.project_root is not None {
+        entry_path = resolve_entry(config, str(config.project_root));
+        if entry_path {
+            kind = resolve_project_kind(config, entry_path);
+        }
+    }
+    return kind_has_client(kind);
 }
 
 def resolve_entry(config: JacConfig, project_root: str) -> str {
@@ -233,7 +252,7 @@ def resolve_project_kind(config: JacConfig, entry_path: str) -> str {
     if (entry_codespace == 'client') {
         return "web-app";
     }
-    if _has_client(config) {
+    if _config_signals_client(config) {
         return "web-app";
     }
     return "cli";

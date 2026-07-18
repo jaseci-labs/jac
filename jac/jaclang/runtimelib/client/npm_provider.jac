@@ -1,5 +1,6 @@
 import from pathlib { Path }
 import from jaclang.project.config { JacConfig }
+import from jaclang.project.kinds { project_needs_client_stack }
 import from jaclang.project.providers {
     EMIT_EJECT,
     EcosystemProvider,
@@ -99,7 +100,7 @@ obj NpmProvider(EcosystemProvider) {
         config: JacConfig, include_dev: bool = False
     ) -> list[ResolvedDependency] {
         (deps, dev_deps) = manifest_plugin_deps(config, "npm");
-        is_client = "client" in config.plugins;
+        is_client = project_needs_client_stack(config);
         resolved: list[ResolvedDependency] = [];
         for (pkg, version) in deps.items() {
             if is_client and pkg in LEGACY_META_PACKAGES {
