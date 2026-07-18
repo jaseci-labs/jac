@@ -740,6 +740,40 @@ impl NaIRGenPass._bind_match_pattern(pat: uni.MatchPattern, subj: ir.Value) -> N
     }
 }
 
+impl NaIRGenPass._apply_scalar_aug_op(
+    current: ir.Value, rhs: ir.Value, aug_op: str
+) -> (ir.Value | None) {
+    if not isinstance(current.type, (ir.IntType, ir.DoubleType)) {
+        return None;
+    }
+    op_toks = {
+        "+=": Tok.PLUS,
+        "-=": Tok.MINUS,
+        "*=": Tok.STAR_MUL,
+        "/=": Tok.DIV,
+        "//=": Tok.FLOOR_DIV,
+        "%=": Tok.MOD,
+        "**=": Tok.STAR_POW,
+        "&=": Tok.BW_AND,
+        "|=": Tok.BW_OR,
+        "^=": Tok.BW_XOR,
+        "<<=": Tok.LSHIFT,
+        ">>=": Tok.RSHIFT
+    };
+    if aug_op not in op_toks {
+        return None;
+    }
+    if aug_op == "/=" and isinstance(current.type, ir.IntType) {
+        return None;
+    }
+    coerced = self._coerce_type(rhs, current.type);
+    result = self._emit_binary_op(op_toks[aug_op], current, coerced);
+    if result is not None and result.type != current.type {
+        result = self._coerce_type(result, current.type);
+    }
+    return result;
+}
+
 impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
     _rhs_errs_before = len(self.errors_had);
     value = self._codegen_expr(nd.value) if nd.value else None;
@@ -832,10 +866,28 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         if dict_type_key is not None {
                             parts = dict_type_key.split(":");
                             if len(parts) == 2 {
-                                self._codegen_dict_set(
-                                    target_val, idx_val, value, parts[0], parts[1]
-                                );
-                                _idx_stored = True;
+                                store_val: (ir.Value | None) = value;
+                                if nd.aug_op is not None {
+                                    cur_elem = self._codegen_dict_access(
+                                        target_val, idx_val, parts[0], parts[1]
+                                    );
+                                    store_val = None;
+                                    if cur_elem is not None {
+                                        store_val = self._apply_scalar_aug_op(
+                                            cur_elem, value, nd.aug_op.value
+                                        );
+                                    }
+                                }
+                                if store_val is not None {
+                                    self._codegen_dict_set(
+                                        target_val,
+                                        idx_val,
+                                        store_val,
+                                        parts[0],
+                                        parts[1]
+                                    );
+                                    _idx_stored = True;
+                                }
                             }
                         } else {
                             elem_type_name: (str | None) = (
@@ -845,11 +897,25 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                 self._struct_ptr_pointee_name(target_val)
                             );
                             if elem_type_name is not None {
-                                self._codegen_index_set(
-                                    target_val, idx_val, value, elem_type_name
-                                );
-                                _idx_stored = True;
-                            } elif _wr_sname is not None {
+                                store_val: (ir.Value | None) = value;
+                                if nd.aug_op is not None {
+                                    cur_elem = self._codegen_index(
+                                        target_val, idx_val, elem_type_name
+                                    );
+                                    store_val = None;
+                                    if cur_elem is not None {
+                                        store_val = self._apply_scalar_aug_op(
+                                            cur_elem, value, nd.aug_op.value
+                                        );
+                                    }
+                                }
+                                if store_val is not None {
+                                    self._codegen_index_set(
+                                        target_val, idx_val, store_val, elem_type_name
+                                    );
+                                    _idx_stored = True;
+                                }
+                            } elif _wr_sname is not None and nd.aug_op is None {
                                 _struct_t = self.struct_types[_wr_sname];
                                 elem_ptr = self._struct_array_elem_ptr(
                                     target_val, idx_val

@@ -484,6 +484,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
         target: uni.AtomTrailer, rhs: ir.Value, aug_op: str
     ) -> (ir.Value | None);
 
+    def _apply_scalar_aug_op(
+        current: ir.Value, rhs: ir.Value, aug_op: str
+    ) -> (ir.Value | None);
+
     def _codegen_field_assign(target: uni.AtomTrailer, value: ir.Value) -> None;
     def _emit_key_comparison(
         b: ir.IRBuilder,
