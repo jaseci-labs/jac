@@ -10,8 +10,6 @@ obj Res {
     has tag: int = 0;
 
     def drop {
-        global dropped;
-        global last_tag;
         dropped += 1;
         last_tag = self.tag;
     }

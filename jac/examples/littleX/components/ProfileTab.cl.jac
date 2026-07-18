@@ -4,10 +4,10 @@ import from .ui.avatar { Avatar, AvatarImage, AvatarFallback }
 import from .ui.button { Button }
 import from .ui.textarea { Textarea }
 import from .TweetCard { TweetCard }
-sv import from ..social_graph { ProfileView }
+sv import from ..social_graph { ProfileBundle }
 
 def:pub ProfileTab(
-    myProfile: ProfileView | None,
+    myProfile: ProfileBundle | None,
     displayUsername: str,
     profileAvatar: str,
     profileUsername: str,
@@ -80,7 +80,9 @@ def:pub ProfileTab(
                     </div>
                 } else {
                     <p className="mt-3 text-sm text-foreground/90">
-                        {myProfile.bio if myProfile and myProfile.bio else "No bio yet"}
+                        {myProfile.profile.bio
+                            if myProfile and myProfile.profile.bio
+                            else "No bio yet"}
                     </p>
                 } }
                 <div className="mt-4 flex gap-5 text-sm">
@@ -111,7 +113,7 @@ def:pub ProfileTab(
             <div className="border-t border-border">
                 {for tweet in myTweets {
                     <TweetCard
-                        key={tweet.id}
+                        key={jid(tweet)}
                         {tweet}
                         myUsername={profileUsername}
                         {onLike}

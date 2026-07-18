@@ -114,7 +114,6 @@ impl TemplateRegistry.clear -> None {
 
 impl get_template_registry -> TemplateRegistry {
     import from jaclang.project.template_registry { TemplateRegistry }
-    global _registry;
     if _registry is None {
         _registry = TemplateRegistry();
     }

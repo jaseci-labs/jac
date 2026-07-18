@@ -83,7 +83,7 @@ Emitted by the parser and lexer during source code parsing.
 | `E0020` | Walrus operator ':=' requires a simple name on the left side |
 | `E0021` | Expected `:<+` or `:+>` to close connect operator |
 | `E0022` | Expected ':' or '{' after lambda parameters |
-| `E0023` | Expected augmented assignment in for...to...by step |
+| `E0023` | Expected augmented assignment in for-loop step (for init while cond with step) |
 
 ### Statement-Level Errors
 
@@ -107,6 +107,13 @@ Emitted by the parser and lexer during source code parsing.
 | `E0046` | Unexpected token in archetype body |
 | `E0047` | Expected '{' or 'by' for impl body |
 
+### Removed Syntax
+
+| Code | Message |
+|------|---------|
+| `E0048` | Parenthesized filter syntax `(?:...)` was removed. Use bracket syntax `[?:...]` instead. |
+| `E0049` | `'root()'` was removed. Use bare `'root'` instead. |
+
 ### Parameter List Errors
 
 | Code | Message |
@@ -127,8 +134,6 @@ Emitted by the parser and lexer during source code parsing.
 | Code | Message |
 |------|---------|
 | `W0060` | Docstrings in Jac go before the declaration, not inside the body |
-| `W0061` | Parenthesized filter syntax `(?:...)` is deprecated. Use bracket syntax `[?:...]` instead. |
-| `W0062` | `'root()'` is deprecated. Use bare `'root'` instead. |
 | `W0063` | JSX spread `{...expr}` is JS-idiomatic. Prefer `{**expr}` in Jac. |
 
 ### Lexer Errors
@@ -246,7 +251,7 @@ Emitted by the type checker and type evaluator.
 | `E1092` | Type {type} cannot be used in 'with' statement (no \_\_exit\_\_ method) |
 | `E1093` | Cannot yield {actual}, expected {expected} |
 | `E1094` | Visit target must be a node type, got {type} |
-| `E1095` | Field '{field}' declared 'by postinit' is never assigned in {arch}.postinit |
+| `E1095` | Field '{field}' declared 'postinit' is never assigned in {arch}.postinit |
 
 ### Connection Type Errors
 

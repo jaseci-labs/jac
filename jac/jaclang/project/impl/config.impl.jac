@@ -1284,7 +1284,6 @@ impl _interpolate_recursive(`obj: any) -> any {
 impl get_config(
     start_path: Path | None = None, force_discover: bool = False
 ) -> JacConfig | None {
-    global _config,_config_explicit,_config_by_root;
     if _config is None or force_discover {
         _config = JacConfig.discover(start_path=start_path);
 
@@ -1298,7 +1297,6 @@ impl get_config(
 }
 
 impl set_config(config: JacConfig) -> None {
-    global _config,_config_explicit,_config_by_root;
     _config = config;
 
     _config_explicit = config is not None;
@@ -1311,7 +1309,6 @@ impl get_explicit_config -> JacConfig | None {
 }
 
 impl get_config_for_path(start_path: Path) -> JacConfig | None {
-    global _config_by_root;
     explicit = get_explicit_config();
     if explicit is not None {
         return explicit;

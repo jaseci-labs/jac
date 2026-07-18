@@ -49,9 +49,13 @@ with entry {
 The old `region { }` block **no longer parses** (clean break). A `Region` is a first-class, ownable, sendable handle; the `in <handle> { }` statement opens it for allocation. Everything constructed under an open lives in the region and is reclaimed wholesale when the handle drops - on the native backend a bump arena torn down with one LIFO dtor-log walk plus a single bulk free.
 
 ```jac
-in Region() { tmp = Buffer(); }   # anonymous: extent is exactly the block
-r: own Region = Region();
-in r { keep = Buffer(); }         # reclaimed when `r` drops (scope exit, reassignment, early return)
+obj Buffer { has n: int = 0; }
+
+with entry {
+    in Region() { tmp = Buffer(); }   # anonymous: extent is exactly the block
+    r: own Region = Region();
+    in r { keep = Buffer(); }         # reclaimed when `r` drops (scope exit, reassignment, early return)
+}
 ```
 
 - Inside an open there is **no ownership discipline** - alias and build cycles freely. The checker polices the boundary: a region-rooted reference may not be returned, stored to outlive the handle, handed to an opaque callee, or sent across `flow` (E1307).

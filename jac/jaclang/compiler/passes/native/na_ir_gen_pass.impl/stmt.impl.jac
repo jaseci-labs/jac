@@ -214,9 +214,9 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
                 }
             }
         }
-    } elif isinstance(nd, uni.Semi) { } elif isinstance(nd, uni.GlobalStmt) { } elif isinstance(
-        nd, uni.PyInlineCode
-    ) { } elif isinstance(nd, uni.VisitStmt) {
+    } elif isinstance(nd, uni.Semi) { } elif isinstance(nd, uni.PyInlineCode) { } elif isinstance(
+        nd, uni.VisitStmt
+    ) {
         self._codegen_visit(nd);
     } elif isinstance(nd, uni.DisengageStmt) {
         self._codegen_disengage(nd);
@@ -1261,14 +1261,19 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     } elif self._is_owned(value) {
                         self.rc_ops_elided += 1;
                     }
-                    old_val = self.builder.load(alloca, name=f"{var_name}.old");
-                    self._emit_rc_release_typed(
-                        old_val,
-                        op="overwrite",
-                        loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
-                            if nd.loc
-                            else 0}"
-                    );
+                    if not (
+                        self._nogc_headerless()
+                        and getattr(nd, 'na_overwrite_consumed', False)
+                    ) {
+                        old_val = self.builder.load(alloca, name=f"{var_name}.old");
+                        self._emit_rc_release_typed(
+                            old_val,
+                            op="overwrite",
+                            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                                if nd.loc
+                                else 0}"
+                        );
+                    }
                 }
             } elif (
                 self?.jacval_type
@@ -1557,14 +1562,19 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     } elif self._is_owned(value) {
                         self.rc_ops_elided += 1;
                     }
-                    old_val = self.builder.load(alloca, name=f"{var_name}.old");
-                    self._emit_rc_release_typed(
-                        old_val,
-                        op="overwrite",
-                        loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
-                            if nd.loc
-                            else 0}"
-                    );
+                    if not (
+                        self._nogc_headerless()
+                        and getattr(nd, 'na_overwrite_consumed', False)
+                    ) {
+                        old_val = self.builder.load(alloca, name=f"{var_name}.old");
+                        self._emit_rc_release_typed(
+                            old_val,
+                            op="overwrite",
+                            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                                if nd.loc
+                                else 0}"
+                        );
+                    }
                 }
             } elif (
                 self?.jacval_type

@@ -79,8 +79,8 @@ obj RedisBackend(CacheMemory) {
 
 obj MongoBackend(PersistentMemory) {
     has client: MongoClient | None = None,
-        db: any by postinit,
-        collection: any by postinit,
+        db: any postinit,
+        collection: any postinit,
         db_name: str = 'jac_db',
         collection_name: str = '_anchors',
         mongo_url: (str | None) = None,

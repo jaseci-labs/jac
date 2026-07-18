@@ -7,7 +7,6 @@ obj Named {
     has label: str = "";
 
     def drop {
-        global drop_log;
         drop_log += 1;
     }
 }

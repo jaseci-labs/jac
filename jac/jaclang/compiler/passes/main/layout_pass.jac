@@ -103,7 +103,7 @@ obj LayoutPass(Transform[uni.Module, uni.Module]) {
     has ir_in: uni.Module,
         prog: any,
         cancel_token: any = None,
-        registry: LayoutRegistry by postinit;
+        registry: LayoutRegistry postinit;
 
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;

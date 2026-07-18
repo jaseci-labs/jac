@@ -3,7 +3,6 @@ glob a: str,
 glob c: str;
 
 def do() {
-    global a,b,c;
 
     (a, b, c) = ("Welcome", "to", "Jaseci!");
 }
