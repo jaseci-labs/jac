@@ -123,12 +123,20 @@ test "locals shadowing client names do not pull" {
 }
 
 test "pure modules infer native under the shipped default" {
-    import from jaclang.jac0core.codeinfo { set_effective_default_codespace }
+    import from jaclang.jac0core.codeinfo {
+        set_effective_default_codespace,
+        get_effective_default_codespace_override
+    }
+    _prev = get_effective_default_codespace_override();
     set_effective_default_codespace('');
-    mod = compile_fixture("pure_stays_server.jac", cgen=True);
-    assert mod.decided_codespace == 'native' , "the shipped default prefers native for pure modules";
-    assert stamp_of(mod, "add") == 'native';
-    assert stamp_of(mod, "mul_add") == 'native';
+    try {
+        mod = compile_fixture("pure_stays_server.jac", cgen=True);
+        assert mod.decided_codespace == 'native' , "the shipped default prefers native for pure modules";
+        assert stamp_of(mod, "add") == 'native';
+        assert stamp_of(mod, "mul_add") == 'native';
+    } finally {
+        set_effective_default_codespace(_prev);
+    }
 }
 
 test "test blocks keep a module server under native default" {
@@ -173,7 +181,11 @@ test "two colors infer independently and conflicts stay server" {
 process-wide effective default afterwards so later tests are unaffected."""
 def compile_with_default(name: str, dcs: str, cgen: bool = False) -> object {
     import from jaclang.jac0core.compile_options { CompileOptions }
-    import from jaclang.jac0core.codeinfo { set_effective_default_codespace }
+    import from jaclang.jac0core.codeinfo {
+        set_effective_default_codespace,
+        get_effective_default_codespace_override
+    }
+    _prev_dcs = get_effective_default_codespace_override();
     prog = JacProgram();
     try {
         mod = prog.compile(
@@ -183,7 +195,7 @@ def compile_with_default(name: str, dcs: str, cgen: bool = False) -> object {
             )
         );
     } finally {
-        set_effective_default_codespace('');
+        set_effective_default_codespace(_prev_dcs);
     }
     assert not prog.errors_had , f"{name}: {[str(e) for e in prog.errors_had]}";
     return mod;
