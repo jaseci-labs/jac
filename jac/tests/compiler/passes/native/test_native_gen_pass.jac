@@ -244,6 +244,84 @@ test "arithmetic float add" {
     assert abs(fadd(-1.0, 1.0)) < 1e-10;
 }
 
+# Regression (#7593 item 1): f32 operands must promote to double instead of
+# crashing the binop/compare emitters.
+test "arithmetic f32 promotion binops" {
+    (eng, _) = compile_native("f32_promotion.na.jac");
+    ma = get_func(
+        eng, "mixed_add", ctypes.c_double, ctypes.c_float, ctypes.c_double
+    );
+    assert ma(1.5, 2.25) == 3.75;
+    mr = get_func(
+        eng, "mixed_add_rev", ctypes.c_double, ctypes.c_double, ctypes.c_float
+    );
+    assert mr(2.25, 1.5) == 3.75;
+    sa = get_func(
+        eng, "same_add", ctypes.c_double, ctypes.c_float, ctypes.c_float
+    );
+    assert sa(1.5, 2.25) == 3.75;
+    mm = get_func(
+        eng, "mixed_mul", ctypes.c_double, ctypes.c_float, ctypes.c_double
+    );
+    assert mm(1.5, 2.0) == 3.0;
+    md = get_func(
+        eng, "mixed_div", ctypes.c_double, ctypes.c_float, ctypes.c_double
+    );
+    assert md(1.5, 0.5) == 3.0;
+    mo = get_func(
+        eng, "mixed_mod", ctypes.c_double, ctypes.c_float, ctypes.c_double
+    );
+    assert mo(5.5, 2.0) == 1.5;
+    mf = get_func(
+        eng, "mixed_floordiv", ctypes.c_double, ctypes.c_float, ctypes.c_double
+    );
+    assert mf(5.5, 2.0) == 2.0;
+    fi = get_func(
+        eng, "f32_int_add", ctypes.c_double, ctypes.c_float, ctypes.c_int64
+    );
+    assert fi(1.5, 2) == 3.5;
+}
+
+test "arithmetic f32 promotion comparisons" {
+    (eng, _) = compile_native("f32_promotion.na.jac");
+    cl = get_func(
+        eng, "cmp_mixed_lt", ctypes.c_bool, ctypes.c_float, ctypes.c_double
+    );
+    assert cl(1.5, 2.25);
+    assert not cl(2.5, 2.25);
+    cs = get_func(
+        eng, "cmp_same_lt", ctypes.c_bool, ctypes.c_float, ctypes.c_float
+    );
+    assert cs(1.5, 2.25);
+    assert not cs(2.25, 1.5);
+    cc = get_func(
+        eng,
+        "cmp_chain",
+        ctypes.c_bool,
+        ctypes.c_float,
+        ctypes.c_double,
+        ctypes.c_double
+    );
+    assert cc(1.0, 2.0, 3.0);
+    assert not cc(1.0, 3.0, 2.0);
+}
+
+test "arithmetic f32 result narrows at typed sinks" {
+    (eng, _) = compile_native("f32_promotion.na.jac");
+    sn = get_func(
+        eng, "same_add_narrow", ctypes.c_float, ctypes.c_float, ctypes.c_float
+    );
+    assert sn(1.5, 2.25) == 3.75;
+    ng = get_func(eng, "neg32", ctypes.c_double, ctypes.c_float);
+    assert ng(1.5) == -1.5;
+}
+
+test "aug assign f32 field promotes" {
+    (eng, _) = compile_native("f32_promotion.na.jac");
+    fa = get_func(eng, "field_aug", ctypes.c_double, ctypes.c_double);
+    assert fa(0.25) == 1.75;
+}
+
 # --- TestNativeControlFlowExecution ---
 test "control flow abs val" {
     (eng, _) = compile_native("control_flow.na.jac");

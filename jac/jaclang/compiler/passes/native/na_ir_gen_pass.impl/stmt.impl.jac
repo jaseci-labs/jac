@@ -738,8 +738,8 @@ impl NaIRGenPass._match_value_eq(
     and subj.type != pat.type {
         pat = self._coerce_type(pat, subj.type);
     }
-    is_float = isinstance(subj.type, ir.DoubleType)
-    or isinstance(pat.type, ir.DoubleType);
+    is_float = isinstance(subj.type, (ir.DoubleType, ir.FloatType))
+    or isinstance(pat.type, (ir.DoubleType, ir.FloatType));
     (lhs, rhs) = (subj, pat);
     if is_float {
         (lhs, rhs) = self._promote_to_float(subj, pat);
@@ -768,7 +768,7 @@ impl NaIRGenPass._bind_match_pattern(pat: uni.MatchPattern, subj: ir.Value) -> N
 impl NaIRGenPass._apply_scalar_aug_op(
     current: ir.Value, rhs: ir.Value, aug_op: str
 ) -> (ir.Value | None) {
-    if not isinstance(current.type, (ir.IntType, ir.DoubleType)) {
+    if not isinstance(current.type, (ir.IntType, ir.DoubleType, ir.FloatType)) {
         return None;
     }
     op_toks = {

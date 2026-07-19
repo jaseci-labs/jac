@@ -906,8 +906,8 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
         }
         return self._to_bool(left);
     }
-    is_float = isinstance(left.type, ir.DoubleType)
-    or isinstance(right.type, ir.DoubleType);
+    is_float = isinstance(left.type, (ir.DoubleType, ir.FloatType))
+    or isinstance(right.type, (ir.DoubleType, ir.FloatType));
     if is_float {
         (left, right) = self._promote_to_float(left, right);
     }
@@ -952,8 +952,8 @@ impl NaIRGenPass._codegen_compare_chain(
         }
         operands.append(right);
         (l2, r2) = (cur, right);
-        is_float = isinstance(l2.type, ir.DoubleType)
-        or isinstance(r2.type, ir.DoubleType);
+        is_float = isinstance(l2.type, (ir.DoubleType, ir.FloatType))
+        or isinstance(r2.type, (ir.DoubleType, ir.FloatType));
         if is_float {
             (l2, r2) = self._promote_to_float(l2, r2);
         }
@@ -996,7 +996,7 @@ impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
     }
     op = nd.op.name if isinstance(nd.op, uni.Token) else str(nd.op);
     if op == Tok.MINUS {
-        if isinstance(operand.type, ir.DoubleType) {
+        if isinstance(operand.type, (ir.DoubleType, ir.FloatType)) {
             return self.builder.fneg(operand, name="fneg");
         } elif isinstance(operand.type, ir.IntType) {
             return self.builder.neg(operand, name="neg");

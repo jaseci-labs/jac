@@ -558,7 +558,7 @@ impl NaIRGenPass._to_bool(val: ir.Value) -> ir.Value {
             "!=", val, ir.Constant(val.type, 0), name="tobool"
         );
     }
-    if isinstance(val.type, ir.DoubleType) {
+    if isinstance(val.type, (ir.DoubleType, ir.FloatType)) {
         return self.builder.fcmp_unordered(
             "!=", val, ir.Constant(val.type, 0.0), name="tobool"
         );
@@ -901,11 +901,12 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
 impl NaIRGenPass._promote_to_float(
     left: ir.Value, right: ir.Value
 ) -> tuple[(ir.Value, ir.Value)] {
-    if isinstance(left.type, ir.IntType) {
-        left = self.builder.sitofp(left, ir.DoubleType(), name="cast");
+    f64 = ir.DoubleType();
+    if isinstance(left.type, (ir.IntType, ir.FloatType)) {
+        left = self._coerce_type(left, f64);
     }
-    if isinstance(right.type, ir.IntType) {
-        right = self.builder.sitofp(right, ir.DoubleType(), name="cast");
+    if isinstance(right.type, (ir.IntType, ir.FloatType)) {
+        right = self._coerce_type(right, f64);
     }
     return (left, right);
 }
@@ -1264,8 +1265,8 @@ impl NaIRGenPass._emit_binary_op(
         }
     }
 
-    is_float = isinstance(left.type, ir.DoubleType)
-    or isinstance(right.type, ir.DoubleType)
+    is_float = isinstance(left.type, (ir.DoubleType, ir.FloatType))
+    or isinstance(right.type, (ir.DoubleType, ir.FloatType))
     or op == Tok.DIV;
     if is_float {
         (left, right) = self._promote_to_float(left, right);
