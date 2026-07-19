@@ -302,6 +302,7 @@ def _coerce_module(
     context: CodeContext,
     skip_token: (Tok | None) = None
 ) {
+    module.decided_codespace = context.value;
     elements: list[uni.ElementStmt] = [];
     for stmt in module.body {
         if isinstance(stmt, unfold_type) {
