@@ -327,14 +327,6 @@ impl native_capability_violations(mod: uni.Module) -> list {
                 continue;
             }
 
-            if isinstance(nd, uni.BinaryExpr)
-            and isinstance(nd.op, uni.Token)
-            and nd.op.name == Tok.WALRUS_EQ
-            and not isinstance(nd.left, uni.Name) {
-                out.append((nd, "binary operator", "WALRUS_EQ", None));
-                continue;
-            }
-
             if isinstance(nd, uni.FormattedValue) {
                 _conv = nd.conversion if nd.conversion is not None else -1;
                 if _conv not in (-1, 115) {

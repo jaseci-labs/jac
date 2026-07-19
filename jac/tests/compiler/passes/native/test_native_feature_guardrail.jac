@@ -728,6 +728,99 @@ test "declared libc open(path, flags) extern resolves without the file-open buil
     )}";
 }
 
+"""Compile a snippet through the sv pipeline (plain .jac path)."""
+def compile_sv_inline(label: str, code: str) -> JacProgram {
+    path = os.path.join(FIXTURES_DIR, f"_guardrail_{label}.jac");
+    prog = JacProgram();
+    prog.compile(file_path=path, use_str=code);
+    return prog;
+}
+
+# Walrus on non-Name targets is a SyntaxError in CPython; Jac rejects it
+# with the general E0020 in ASTValidationPass on every backend. These pin
+# that E0020 stays the single diagnostic: no native-specific E5090
+# duplicate, no E5007 bootstrap cascade, no E9001/E9002 ICE (#7593 item 3).
+test "walrus on a subscript target: one general E0020, no native cascade" {
+    prog = compile_na_inline(
+        "walrus_subscript_lhs",
+        "with entry { xs = [1, 2, 3]; print((xs[0] := 9)); }\n"
+    );
+    assert has_error_code(prog, "E0020") , f"Expected general E0020, got: {fmt_errors(
+        prog
+    )}";
+    assert not has_error_code(prog, "E5090") , f"native E5090 duplicate leaked: {fmt_errors(
+        prog
+    )}";
+    assert not has_error_code(prog, "E5007") , f"bootstrap E5007 cascade leaked: {fmt_errors(
+        prog
+    )}";
+    for alrt in prog.errors_had {
+        if alrt.code is not None {
+            assert alrt.code.code not in ("E9001", "E9002") , f"ICE leaked: {fmt_errors(
+                prog
+            )}";
+        }
+    }
+}
+
+test "walrus on an attribute target: one general E0020, no native cascade" {
+    prog = compile_na_inline(
+        "walrus_attr_lhs",
+        "obj Box { has f: int = 0; }\n"
+        "with entry { b = Box(); print((b.f := 5)); }\n"
+    );
+    assert has_error_code(prog, "E0020") , f"Expected general E0020, got: {fmt_errors(
+        prog
+    )}";
+    assert not has_error_code(prog, "E5090") , f"native E5090 duplicate leaked: {fmt_errors(
+        prog
+    )}";
+    assert not has_error_code(prog, "E5007") , f"bootstrap E5007 cascade leaked: {fmt_errors(
+        prog
+    )}";
+    for alrt in prog.errors_had {
+        if alrt.code is not None {
+            assert alrt.code.code not in ("E9001", "E9002") , f"ICE leaked: {fmt_errors(
+                prog
+            )}";
+        }
+    }
+}
+
+test "walrus on a subscript target is the same single E0020 on sv" {
+    prog = compile_sv_inline(
+        "walrus_subscript_sv",
+        "with entry { xs = [1, 2, 3]; print((xs[0] := 9)); }\n"
+    );
+    assert has_error_code(prog, "E0020") , f"Expected general E0020, got: {fmt_errors(
+        prog
+    )}";
+    assert not has_error_code(prog, "E5007") , f"bootstrap E5007 cascade leaked: {fmt_errors(
+        prog
+    )}";
+    for alrt in prog.errors_had {
+        if alrt.code is not None {
+            assert alrt.code.code not in ("E9001", "E9002") , f"ICE leaked: {fmt_errors(
+                prog
+            )}";
+        }
+    }
+}
+
+# Green pin (already true on main): check-time shape yields exactly E0020.
+test "walrus on a subscript target at check time is E0020 only" {
+    prog = check_na_inline(
+        "walrus_subscript_lhs_chk",
+        "with entry { xs = [1, 2, 3]; print((xs[0] := 9)); }\n"
+    );
+    assert has_error_code(prog, "E0020") , f"Expected general E0020, got: {fmt_errors(
+        prog
+    )}";
+    assert not has_error_code(prog, "E5090") , f"native E5090 duplicate leaked: {fmt_errors(
+        prog
+    )}";
+}
+
 # Negative control: known clib types must compile without E2018/E5090.
 test "clib decl with known types is not rejected" {
     prog = compile_na_inline(

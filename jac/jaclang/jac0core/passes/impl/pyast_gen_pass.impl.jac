@@ -2654,6 +2654,8 @@ impl PyastGenPass.exit_binary_expr(nd: uni.BinaryExpr) -> None {
                 )
             )
         ];
+    } elif (nd.op.name in [Tok.WALRUS_EQ]) and not isinstance(nd.left, uni.Name) {
+        nd.gen.py_ast = [self.sync(cast(ast3.expr, self.py_ast_val(nd.right)))];
     } elif (nd.op.gen.py_ast and isinstance(self.py_ast_val(nd.op), ast3.AST)) {
         nd.gen.py_ast = [
             self.sync(

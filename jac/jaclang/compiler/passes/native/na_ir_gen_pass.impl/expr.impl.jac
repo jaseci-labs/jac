@@ -333,6 +333,9 @@ impl NaIRGenPass._codegen_pipe_fwd(nd: uni.BinaryExpr) -> (ir.Value | None) {
 }
 
 impl NaIRGenPass._codegen_walrus(nd: uni.BinaryExpr) -> (ir.Value | None) {
+    if not isinstance(nd.left, uni.Name) {
+        return self._codegen_expr(nd.right);
+    }
     var_name = self._get_name(nd.left);
     if var_name is None {
         self.emit(E5092, node_override=nd, kind="binary operator", name="WALRUS_EQ");
