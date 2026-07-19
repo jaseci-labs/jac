@@ -1,0 +1,35 @@
+# EXAMPLE-PASS manifest -- the north-star gate's roster (see
+# bridges/reference/EXAMPLE-PASS-METRIC.md).
+#
+# `required` crates MUST have a built libjac_bridge_<crate>.so AND their
+# example_<crate>.jac test must run GREEN (not skip). CI fails if a required
+# crate's .so is absent (skip_gate would otherwise mask a red example as a
+# trivial pass) or its example test fails.
+#
+# `pending` crates are seeded example programs whose bridge crate is not yet a
+# standing cdylib in the workspace (corpus carries them as rustdoc fixtures
+# only). They skip today; promote crate -> required once its .so builds.
+
+[examples]
+required = ["semver", "regex_binder"]
+pending  = ["uuid", "sha2"]
+
+# crate -> the .so stem skip_gate resolves via bridge_so(), and the canonical
+# example each file encodes (from the crate's docs.rs / README).
+[example.semver]
+so     = "semver"
+title  = "compare two versions"
+
+[example.regex_binder]
+so     = "regex_binder"
+title  = "find + single replace"
+
+[example.uuid]
+so     = "uuid"
+title  = "from_slice -> hyphenated + version"
+blocked_on = "no standing jac-bridge-uuid cdylib (corpus fixture only)"
+
+[example.sha2]
+so     = "sha2"
+title  = "SHA-256 digest of a byte string"
+blocked_on = "no standing jac-bridge-sha2 cdylib (corpus fixture only)"
