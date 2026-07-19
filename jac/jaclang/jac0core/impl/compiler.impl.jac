@@ -687,8 +687,11 @@ impl JacCompiler.parse_str(
 
     JacAnnexPass(ir_in=mod, prog=target_program);
     if run_codespace_infer {
+        _opts = target_program._compile_options;
+        _analysis_only = _opts is not None and _opts.no_cgen;
         if (
-            target_program is not self._internal_program
+            not _analysis_only
+            and target_program is not self._internal_program
             and _default_codespace_for(target_program) == 'native'
             and _native_default_closure_ok(mod)
         ) {
@@ -726,7 +729,7 @@ impl JacCompiler.compile(
     } except Exception as _e {
         _crash = _e;
     }
-    _resolved = str(_WrapPath(file_path).resolve());
+    _resolved = os.path.realpath(file_path);
     _probe = _mod if _mod is not None else _wrap_prog.mod.hub.get(_resolved);
     _inferred_native = (
         _cs_of(file_path) is None
@@ -758,7 +761,8 @@ impl JacCompiler.compile(
         _note_console.print(
             f"note: {file_path} preferred native but did not lower; "
             f"compiled in the server codespace ({_first_err})",
-            style="dim"
+            style="dim",
+            file=sys.stderr
         );
     } except Exception {
         ;

@@ -446,7 +446,12 @@ glob NATIVE_DEFAULT_SV_SIGNAL_NODES: tuple = (
          uni.PyInlineCode,
          uni.ClientBlock,
          uni.ServerBlock,
-         uni.JsxElement
+         uni.JsxElement,
+         uni.Test,
+         uni.MatchSequence,
+         uni.MatchMapping,
+         uni.MatchArch,
+         uni.MatchStar
      ),
      _na_default_scan_cache: dict[str, tuple] = {},
      _na_demotion_memo: dict[str, tuple] = {},
@@ -608,7 +613,7 @@ def _mark_demoted_native(path: str) {
 }
 
 def _native_default_dep_scan(path: str) -> (tuple[bool, list[str]] | None) {
-    if _is_demoted_native(path) {
+    if _is_demoted_native(os.path.realpath(path)) {
         return (True, []);
     }
     import from jaclang.jac0core.bccache {
@@ -742,7 +747,7 @@ def _native_default_closure_ok(module: uni.Module) -> bool {
     if not mod_path {
         return False;
     }
-    if _is_demoted_native(os.path.abspath(mod_path)) {
+    if _is_demoted_native(os.path.realpath(mod_path)) {
         return False;
     }
     if discover_variant_files(mod_path) {

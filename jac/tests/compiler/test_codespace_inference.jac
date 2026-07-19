@@ -122,14 +122,22 @@ test "locals shadowing client names do not pull" {
     assert stamp_of(mod, "server_side") == 'server' , "shadowed names resolve to locals - no pull";
 }
 
-test "native compatibility alone does not infer native by default" {
-    mod = compile_fixture("pure_stays_server.jac");
-    assert stamp_of(mod, "add") == 'server' , "native-compatible code still defaults to server";
-    assert stamp_of(mod, "mul_add") == 'server';
+test "pure modules infer native under the shipped default" {
+    import from jaclang.jac0core.codeinfo { set_effective_default_codespace }
+    set_effective_default_codespace('');
+    mod = compile_fixture("pure_stays_server.jac", cgen=True);
+    assert mod.decided_codespace == 'native' , "the shipped default prefers native for pure modules";
+    assert stamp_of(mod, "add") == 'native';
+    assert stamp_of(mod, "mul_add") == 'native';
+}
+
+test "test blocks keep a module server under native default" {
+    mod = compile_with_default("nadefault_with_tests.jac", "native");
+    assert mod.decided_codespace == '' , "test blocks run through the python harness";
 }
 
 test "pure modules infer native under an explicit native default" {
-    mod = compile_with_default("pure_stays_server.jac", "native");
+    mod = compile_with_default("pure_stays_server.jac", "native", cgen=True);
     assert mod.decided_codespace == 'native' , "native default coerces pure modules";
     assert stamp_of(mod, "add") == 'native';
     assert stamp_of(mod, "mul_add") == 'native';
@@ -182,7 +190,7 @@ def compile_with_default(name: str, dcs: str, cgen: bool = False) -> object {
 }
 
 test "pure markerless module infers native under native default" {
-    mod = compile_with_default("nadefault_pure.jac", "native");
+    mod = compile_with_default("nadefault_pure.jac", "native", cgen=True);
     assert mod.decided_codespace == 'native' , "pure module should coerce whole-module native";
     assert stamp_of(mod, "add") == 'native';
 }
@@ -200,7 +208,7 @@ test "python import keeps module server under native default" {
 }
 
 test "pure import chain infers native under native default" {
-    mod = compile_with_default("nadefault_chain.jac", "native");
+    mod = compile_with_default("nadefault_chain.jac", "native", cgen=True);
     assert mod.decided_codespace == 'native' , "closure of pure plain modules is native";
 }
 

@@ -14,6 +14,7 @@ import from tests.support { JAC_ROOT, TESTS_DIR }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.runtime { JacRuntime }
+import from jaclang.jac0core.compile_options { CompileOptions }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.compiler.passes.native.llvm.binding { ExecutionEngine }
 
@@ -1955,7 +1956,10 @@ test "py interop native function exists in engine" {
 test "py interop py function not defined in native ir" {
     # py_double should be declared (external) but NOT defined in LLVM IR.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop.jac")),
+        options=CompileOptions(default_codespace='server')
+    );
     assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
     llvm_ir_str = str(ir.gen.llvm_ir);
     # Must not have a define (body) for py_double -- it lives in Python
@@ -1967,7 +1971,10 @@ test "py interop py function not defined in native ir" {
 test "py interop py functions in python codegen" {
     # py_double and call_native should appear in Python codegen output.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop.jac")),
+        options=CompileOptions(default_codespace='server')
+    );
     py_src = ir.gen.py;
     assert "py_double" in py_src;
     assert "call_native" in py_src;
@@ -1976,7 +1983,10 @@ test "py interop py functions in python codegen" {
 test "py interop native function has stub in python" {
     # Native function should have a ctypes stub in Python codegen output.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop.jac")),
+        options=CompileOptions(default_codespace='server')
+    );
     py_src = ir.gen.py;
     # Stub for the native function should exist
     assert "native_add_one_to_doubled" in py_src;
@@ -1990,7 +2000,10 @@ test "py interop native function has stub in python" {
 test "py interop interop manifest built" {
     # InteropAnalysisPass should detect cross-boundary calls.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop.jac")),
+        options=CompileOptions(default_codespace='server')
+    );
     manifest = ir.gen.interop_manifest;
     assert manifest is not None;
     # py_double: defined in SERVER, called from NATIVE
@@ -2006,7 +2019,10 @@ test "py interop interop manifest built" {
 test "py interop native calls python function" {
     # Native->Python: native_add_one_to_doubled calls py_double.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop.jac")),
+        options=CompileOptions(default_codespace='server')
+    );
     eng = ir.gen.native_engine;
     assert eng is not None;
     # Register the Python function in the interop callback table
@@ -2025,7 +2041,10 @@ test "py interop full entry chain" {
     import io;
 
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop.jac")),
+        options=CompileOptions(default_codespace='server')
+    );
     assert not prog.errors_had;
     # Execute the compiled module with interop context injected
     py_code = compile(
@@ -2058,7 +2077,10 @@ test "multi module na module compiles" {
 test "multi module module level na import" {
     # Module-level import of .na.jac file is recognized.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop_multi.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop_multi.jac")),
+        options=CompileOptions(default_codespace='server')
+    );
     # Should compile without errors
     assert ir is not None;
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
@@ -2071,7 +2093,10 @@ test "multi module module level na import" {
 test "multi module na scoped import" {
     # Import inside na {} block is recognized.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop_multi.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop_multi.jac")),
+        options=CompileOptions(default_codespace='server')
+    );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     # The na-scoped import should be tracked in manifest
     manifest = ir.gen.interop_manifest;
@@ -2083,7 +2108,10 @@ test "multi module na scoped import" {
 test "multi module native module linking" {
     # Functions from imported .na.jac modules are callable.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop_multi.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop_multi.jac")),
+        options=CompileOptions(default_codespace='server')
+    );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     eng = ir.gen.native_engine;
     assert eng is not None , "No native engine created";
@@ -2098,7 +2126,10 @@ test "multi module full multi module chain" {
     import io;
 
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop_multi.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop_multi.jac")),
+        options=CompileOptions(default_codespace='server')
+    );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     assert ir.gen.native_engine is not None , "No native engine created";
 

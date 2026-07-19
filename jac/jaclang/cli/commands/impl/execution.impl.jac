@@ -352,7 +352,7 @@ impl run(
             }
         } elif filename.endswith('.jac') {
             native_executed = False;
-            if _default_codespace_is_native() {
+            if (_default_codespace_is_native() and sys.stdout is sys.__stdout__) {
                 import ctypes;
                 full_path = os.path.abspath(filename);
                 program = Jac.get_program();
@@ -530,6 +530,9 @@ impl start(
 ) -> int {
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     import from pathlib { Path }
+    import from jaclang.jac0core.codeinfo { set_effective_default_codespace }
+
+    set_effective_default_codespace('server');
 
     import from jaclang.runtimelib.client.cli { run_client_start }
     client_rc = run_client_start(

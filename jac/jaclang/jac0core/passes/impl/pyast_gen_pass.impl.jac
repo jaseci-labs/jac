@@ -142,6 +142,9 @@ impl PyastGenPass.enter_node(nd: uni.UniNode) -> None {
 
 impl PyastGenPass._is_native_ext_module -> bool {
     import from jaclang.jac0core.ext_registry { is_native_module }
+    if self.ir_in is not None and self.ir_in.decided_codespace == 'native' {
+        return True;
+    }
     mod_path = self.ir_in.loc.mod_path if (self.ir_in and self.ir_in.loc) else '';
     return bool(mod_path) and is_native_module(mod_path);
 }
