@@ -689,13 +689,20 @@ impl JacCompiler.parse_str(
     if run_codespace_infer {
         _opts = target_program._compile_options;
         _analysis_only = _opts is not None and _opts.no_cgen;
-        if (
+        _native_eligible = (
             not _analysis_only
             and target_program is not self._internal_program
             and _default_codespace_for(target_program) == 'native'
-            and _native_default_closure_ok(mod)
-        ) {
-            _coerce_native_module(mod);
+        );
+        if _native_eligible {
+            (_na_ok, _na_why) = _native_default_closure_verdict(mod);
+            if _na_ok {
+                _coerce_native_module(mod);
+                na_census_record(mod.loc.mod_path, 'native');
+            } else {
+                _seed_module_codespace(mod);
+                na_census_record(mod.loc.mod_path, 'server', '', _na_why);
+            }
         } else {
             _seed_module_codespace(mod);
         }
@@ -749,6 +756,13 @@ impl JacCompiler.compile(
             if len(_wrap_prog.errors_had) > _pre_errs
             else f"{type(_crash).__name__}: {_crash}"
     );
+    _demote_alerts = _wrap_prog.errors_had[_pre_errs:];
+    _demote_code = (
+        _demote_alerts[0].code.code
+            if (_demote_alerts and _demote_alerts[0].code is not None)
+            else type(_crash).__name__
+    );
+    na_census_record(_resolved, 'demoted', _demote_code, _first_err);
     _mark_demoted_native(_resolved);
     _wrap_prog.errors_had = _wrap_prog.errors_had[:_pre_errs];
     try {

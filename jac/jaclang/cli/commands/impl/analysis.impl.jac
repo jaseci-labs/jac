@@ -5,7 +5,8 @@ import from jaclang.cli.check_report {
     print_file_progress,
     print_failures,
     print_failed_summary,
-    print_final_summary
+    print_final_summary,
+    print_native_census
 }
 
 def _maybe_malloc_trim {
@@ -23,7 +24,8 @@ impl check(
     parse_only: bool = False,
     nowarn: bool = False,
     lint_only: bool = False,
-    fix: bool = False
+    fix: bool = False,
+    native_census: bool = False
 ) -> int {
     import from jaclang.jac0core.program { JacProgram }
     import from jaclang.jac0core.diagnostic_utils { resolve_diagnostic_tokens }
@@ -45,6 +47,10 @@ impl check(
                 unknown_codes
             )
         );
+    }
+    if native_census {
+        import from jaclang.jac0core.compiler { na_census_begin }
+        na_census_begin();
     }
 
     total_files = failed_files=total_errors=total_warnings=0;
@@ -95,7 +101,7 @@ impl check(
                 file_path=file_path,
                 options=CompileOptions(
                     type_check=not parse_only,
-                    no_cgen=True,
+                    no_cgen=not native_census,
                     force_target_program=True,
                     suppress_codes=suppressed_codes
                 )
@@ -159,6 +165,10 @@ impl check(
         _maybe_malloc_trim();
     }
 
+    if native_census {
+        import from jaclang.jac0core.compiler { na_census_end }
+        print_native_census(na_census_end());
+    }
     if print_errs and len(failed_results) > 0 {
         print_failures(failed_results, nowarn);
     }

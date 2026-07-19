@@ -259,6 +259,42 @@ test "cascade: importer of a demoted module demotes with it" {
     assert mod.decided_codespace == '' , "importer of a demoted dep must demote too";
 }
 
+test "census records demotion with first error code" {
+    import from jaclang.jac0core.compiler { na_census_begin, na_census_end }
+    na_census_begin();
+    try {
+        compile_with_default("nadefault_nolower.jac", "native", cgen=True);
+    } finally {
+        census = na_census_end();
+    }
+    rec = census.get(
+        os.path.realpath(os.path.join(FIXTURE_DIR, "nadefault_nolower.jac"))
+    );
+    assert rec is not None , "demoted module missing from census";
+    assert rec['outcome'] == 'demoted' , f"expected demoted, got {rec}";
+    assert rec['code'] == 'E5092' , f"expected first-error code, got {rec}";
+}
+
+test "census records native and server outcomes" {
+    import from jaclang.jac0core.compiler { na_census_begin, na_census_end }
+    na_census_begin();
+    try {
+        compile_with_default("nadefault_pure.jac", "native", cgen=True);
+        compile_with_default("nadefault_walker.jac", "native", cgen=True);
+    } finally {
+        census = na_census_end();
+    }
+    pure = census.get(
+        os.path.realpath(os.path.join(FIXTURE_DIR, "nadefault_pure.jac"))
+    );
+    blocked = census.get(
+        os.path.realpath(os.path.join(FIXTURE_DIR, "nadefault_walker.jac"))
+    );
+    assert pure is not None and pure['outcome'] == 'native' , f"got {pure}";
+    assert blocked is not None and blocked['outcome'] == 'server' , f"got {blocked}";
+    assert blocked['detail'] != '' , "server record must carry the classifier reason";
+}
+
 test "explicit .na.jac mandate still fails loudly" {
     import from jaclang.jac0core.compile_options { CompileOptions }
     prog = JacProgram();

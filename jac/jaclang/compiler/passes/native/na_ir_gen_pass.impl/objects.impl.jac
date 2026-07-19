@@ -558,6 +558,13 @@ impl NaIRGenPass._demote_method_if_unlowerable(
             f"(un-lowerable): {_why}\n"
         );
     }
+    try {
+        import from jaclang.jac0core.compiler { na_census_seam }
+        na_census_seam(
+            self.ir_in.loc.mod_path,
+            f"{full_name}: " + str(self.prog.errors_had[err_mark]).split('\n')[0]
+        );
+    } except Exception { }
     del self.prog.errors_had[err_mark:];
     del self.errors_had[local_mark:];
     func.blocks.clear();
