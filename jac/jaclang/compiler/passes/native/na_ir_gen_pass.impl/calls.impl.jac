@@ -110,6 +110,22 @@ impl NaIRGenPass._codegen_bound_args(
             args.append(v);
         }
     }
+
+    expected_argc = len(func.args) - self_offset;
+    if len(args) > expected_argc {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="expression",
+            name=f"call with {len(args)} arguments (native accepts {expected_argc})",
+            help_text="The resolved (frontend) signature allows more arguments than the native implementation declares (a variadic stub over a bounded native function). Pass fewer arguments or fold the extras before the call."
+        );
+        return args[:expected_argc];
+    }
+    while len(args) < expected_argc {
+        slot = self_offset + len(args);
+        args.append(self._default_arg_fallback(func.args[slot].type));
+    }
     return args;
 }
 
