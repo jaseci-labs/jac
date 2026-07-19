@@ -112,6 +112,9 @@ glob NATIVE_SUPPORTED_STDLIB: set[str] = {
      },
      _effective_codespace_ctx: ContextVar[str] = ContextVar(
          "jac_effective_default_codespace", default=""
+     ),
+     _closure_cap_ctx: ContextVar[int] = ContextVar(
+         "jac_native_closure_cap", default=0
      );
 
 def set_effective_default_codespace(value: str) {
@@ -136,6 +139,31 @@ def effective_default_codespace -> str {
         return BuildConfig().default_codespace;
     } except Exception {
         return "server";
+    }
+}
+
+def set_native_closure_cap(value: int) {
+    _closure_cap_ctx.set(value);
+}
+
+def get_native_closure_cap_override -> int {
+    return _closure_cap_ctx.get();
+}
+
+def effective_native_closure_cap -> int {
+    cur = _closure_cap_ctx.get();
+    if cur > 0 {
+        return cur;
+    }
+    try {
+        import from jaclang.project.config { get_config, BuildConfig }
+        cfg = get_config();
+        if cfg is not None {
+            return cfg.build.native_closure_cap;
+        }
+        return BuildConfig().native_closure_cap;
+    } except Exception {
+        return 256;
     }
 }
 

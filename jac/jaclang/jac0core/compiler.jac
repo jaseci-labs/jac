@@ -457,7 +457,7 @@ glob NATIVE_DEFAULT_SV_SIGNAL_NODES: tuple = (
      _na_demotion_memo: dict[str, tuple] = {},
      _na_census: dict[str, dict] = {},
      _na_census_state: dict[str, bool] = {"enabled": False},
-     _NA_DEFAULT_CLOSURE_CAP: int = 256;
+     _na_cap_noted: dict[str, bool] = {};
 
 def na_census_begin() {
     _na_census.clear();
@@ -657,6 +657,27 @@ def _mark_demoted_native(path: str) {
     }
 }
 
+def _note_native_closure_cap(root_path: str, cap: int) {
+    rp = os.path.realpath(root_path);
+    if rp in _na_cap_noted {
+        return;
+    }
+    _na_cap_noted[rp] = True;
+    try {
+        import from jaclang.cli.console { console }
+        console.print(
+            f"note: {root_path} preferred native but its import closure "
+            f"exceeded the inference cap ({cap} modules); compiled in the "
+            f"server codespace. Raise [build] native_closure_cap in jac.toml "
+            f"to scan larger closures.",
+            style="dim",
+            file=sys.stderr
+        );
+    } except Exception {
+        ;
+    }
+}
+
 def _native_default_dep_scan(path: str) -> (tuple[str, list[str]] | None) {
     if _is_demoted_native(os.path.realpath(path)) {
         return ("previously-demoted", []);
@@ -715,10 +736,13 @@ def _native_default_dep_scan(path: str) -> (tuple[str, list[str]] | None) {
 }
 
 def _native_default_deps_ok(root_path: str, root_deps: list[str]) -> bool {
+    import from jaclang.jac0core.codeinfo { effective_native_closure_cap }
+    cap = effective_native_closure_cap();
     edges: dict[str, list[str]] = {root_path: list(root_deps)};
     queue: list[str] = list(root_deps);
     while queue {
-        if len(edges) > _NA_DEFAULT_CLOSURE_CAP {
+        if len(edges) > cap {
+            _note_native_closure_cap(root_path, cap);
             return False;
         }
         dep = queue.pop();
