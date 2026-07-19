@@ -99,11 +99,14 @@ def compile_native(fixture: str) -> tuple {
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     eng = ir.gen.native_engine;
     if eng is None {
-        import from jaclang.jac0core.compiler { _na_demotion_memo }
+        import from jaclang.compiler.passes.main.capability_check_pass {
+            native_capability_violations
+        }
+        _viols = native_capability_violations(ir);
+        _vdump = [f"{_vk}:{_vn}" for (_vx, _vk, _vn, _vh) in _viols][:6];
         _dbg = (
-            f"cs={ir.decided_codespace} llvm={ir.gen.llvm_ir is not None} "
-            f"warns={len(prog.warnings_had or [])} memo={len(_na_demotion_memo)} "
-            f"memokeys={[os.path.basename(k) for k in list(_na_demotion_memo)[:4]]}"
+            f"llvm={ir.gen.llvm_ir is not None} "
+            f"reported={ir.gen.native_viols_reported} viols={_vdump}"
         );
         assert eng is not None , f"No native engine for {fixture}: {_dbg}";
     }
