@@ -203,6 +203,9 @@ impl PyastGenPass._gen_native_interop_stubs(nd: uni.UniNode) -> None {
     if parts {
         src = '\n'.join(parts);
         parsed = ast3.parse(src);
+        for stub_node in ast3.walk(parsed) {
+            stub_node.jac_link = [];
+        }
         out.extend(parsed.body);
     }
 
