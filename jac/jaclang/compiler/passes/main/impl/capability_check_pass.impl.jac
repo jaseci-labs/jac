@@ -79,6 +79,11 @@ glob JS_GLOBALS: dict[str, str] = {
          "`skip` is an object-spatial walker statement; native lowers it only "
          "inside a walker `with` event ability (a body that returns no value). "
          "In a value-returning function, use an explicit `return` to exit early."
+     ),
+     _NATIVE_DECORATOR_HELP: str = (
+         "Decorators are not lowered by the native backend; compiling would "
+         "silently run the undecorated body. Remove the decorator or move the "
+         "decorated definition to a @sv/Python context."
      );
 
 
@@ -250,6 +255,24 @@ impl native_capability_violations(mod: uni.Module) -> list {
                     out.append((nd, "statement", "SkipStmt", _NATIVE_SKIP_HELP));
                 }
                 continue;
+            }
+
+            if isinstance(nd, (uni.Ability, uni.ArchSpec, uni.ImplDef))
+            and nd.decorators {
+                _dec_owner = "?";
+                if isinstance(nd, uni.Ability) and nd.name_ref {
+                    _dec_owner = nd.name_ref.sym_name;
+                } elif isinstance(nd, uni.Archetype) and nd.name {
+                    _dec_owner = nd.name.value;
+                }
+                out.append(
+                    (
+                        nd.decorators[0],
+                        "decorator",
+                        f"on {_dec_owner}",
+                        _NATIVE_DECORATOR_HELP
+                    )
+                );
             }
 
             if isinstance(nd, uni.ParamVar) and nd.unpack is not None {
@@ -436,12 +459,14 @@ impl module_native_compat(mod: uni.Module) -> bool {
             }
         }
         for arch in m.get_all_sub_nodes(typ=uni.Archetype) {
-            if arch.arch_kind is not None {
+            if arch.arch_kind is not None or arch.decorators {
                 return False;
             }
         }
         for ab in m.get_all_sub_nodes(typ=uni.Ability) {
-            if ab.is_async or isinstance(ab.signature, uni.EventSignature) {
+            if ab.is_async
+            or ab.decorators
+            or isinstance(ab.signature, uni.EventSignature) {
                 return False;
             }
         }
