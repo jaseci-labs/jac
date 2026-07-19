@@ -152,6 +152,7 @@ impl NaIRGenPass._codegen_bound_args(
             );
             return args[:expected_argc];
         }
+
         return args;
     }
     while len(args) < expected_argc {
