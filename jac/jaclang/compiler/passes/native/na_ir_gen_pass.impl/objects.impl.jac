@@ -540,12 +540,7 @@ impl NaIRGenPass._demote_method_if_unlowerable(
     import os;
     _warn = bool(os.environ.get("JAC_NATIVE_DEBUG", ""));
 
-    _accel_quiet = False;
-    try {
-        import from jaclang.jac0core.native_accel { native_accel_warnings_suppressed }
-        _accel_quiet = native_accel_warnings_suppressed();
-    } except Exception { }
-    if not _warn and not _accel_quiet {
+    if not _warn {
         _warn = True;
         try {
             import from jaclang.project.config { get_config }

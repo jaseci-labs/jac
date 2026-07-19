@@ -1093,7 +1093,6 @@ impl _parse_toml_data(
             session=run_data.get("session", ""),
             main=run_data.get("main", True),
             cache=run_data.get("cache", True),
-            autonative=run_data.get("autonative", False),
             topology_index=run_data.get("topology_index", True),
             diagnostics=run_data.get("diagnostics", "error")
         );

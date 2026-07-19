@@ -706,6 +706,77 @@ impl JacCompiler.compile(
     use_str: (str | None) = None,
     options: CompileOptions = CompileOptions()
 ) -> uni.Module {
+    import from pathlib { Path as _WrapPath }
+    import from jaclang.jac0core.ext_registry { codespace_of as _cs_of }
+    if options.force_target_program {
+        _wrap_prog = target_program;
+    } else {
+        _wrap_prog = self._resolve_program(file_path, target_program);
+    }
+    _pre_errs = len(_wrap_prog.errors_had);
+    _mod: (uni.Module | None) = None;
+    _crash: (Exception | None) = None;
+    try {
+        _mod = self._compile_once(
+            file_path=file_path,
+            target_program=target_program,
+            use_str=use_str,
+            options=options
+        );
+    } except Exception as _e {
+        _crash = _e;
+    }
+    _resolved = str(_WrapPath(file_path).resolve());
+    _probe = _mod if _mod is not None else _wrap_prog.mod.hub.get(_resolved);
+    _inferred_native = (
+        _cs_of(file_path) is None
+        and not options.aot_mode
+        and _probe is not None
+        and _probe.decided_codespace == 'native'
+    );
+    _failed = _crash is not None or len(_wrap_prog.errors_had) > _pre_errs;
+    if not (_inferred_native and _failed) {
+        if _crash is not None {
+            raise _crash;
+        }
+        return _mod;
+    }
+    _first_err = (
+        _wrap_prog.errors_had[_pre_errs].pretty_print().split('\n')[0]
+            if len(_wrap_prog.errors_had) > _pre_errs
+            else f"{type(_crash).__name__}: {_crash}"
+    );
+    _mark_demoted_native(_resolved);
+    _wrap_prog.errors_had = _wrap_prog.errors_had[:_pre_errs];
+    try {
+        _wrap_prog.invalidate_module(_resolved);
+    } except Exception {
+        ;
+    }
+    try {
+        import from jaclang.cli.console { console as _note_console }
+        _note_console.print(
+            f"note: {file_path} preferred native but did not lower; "
+            f"compiled in the server codespace ({_first_err})",
+            style="dim"
+        );
+    } except Exception {
+        ;
+    }
+    return self._compile_once(
+        file_path=file_path,
+        target_program=target_program,
+        use_str=use_str,
+        options=options
+    );
+}
+
+impl JacCompiler._compile_once(
+    file_path: str,
+    target_program: JacProgram,
+    use_str: (str | None) = None,
+    options: CompileOptions = CompileOptions()
+) -> uni.Module {
     import from jaclang.jac0core.ext_registry { is_annex }
     if (use_str is None and options.resolve_annex_parent and is_annex(file_path)) {
         import from jaclang.jac0core.bccache { discover_base_file }
@@ -782,12 +853,7 @@ impl JacCompiler.compile(
     and mod_targ.declares_codespace(_CodeCtx.NATIVE, path_hint=file_path);
     is_client_mod = mod_targ is not None
     and mod_targ.declares_codespace(_CodeCtx.CLIENT, path_hint=file_path);
-    is_native_mod = is_explicit_native
-    or (
-        actual_program._auto_promote_native
-        and mod_targ?.gen
-        and mod_targ.gen.native_compat
-    );
+    is_native_mod = is_explicit_native;
 
     run_inference = options.type_check
     or is_native_mod

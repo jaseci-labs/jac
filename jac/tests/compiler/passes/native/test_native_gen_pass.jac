@@ -2887,30 +2887,39 @@ test "keyword arguments bind to their named parameters (issue #7026)" {
     }
 }
 
-# --- Auto-Promotion Tests ---
+# --- Native-Default Inference Tests ---
 glob CHESS_JAC = os.path.join(JAC_ROOT, "examples", "chess", "chess.jac");
 
-"""Compile a regular .jac file with auto-promotion and return the engine."""
+"""Compile a regular .jac file under a native default and return the engine."""
 def compile_auto_native(file_path: str) -> tuple[uni.Module, JacProgram] {
+    import from jaclang.jac0core.compile_options { CompileOptions }
+    import from jaclang.jac0core.codeinfo { set_effective_default_codespace }
     prog = JacProgram();
-    prog._auto_promote_native = True;
-    prog._auto_promote_target = os.path.abspath(file_path);
-    ir = prog.compile(file_path=file_path);
+    try {
+        ir = prog.compile(
+            file_path=file_path,
+            options=CompileOptions(default_codespace='native', type_check=False)
+        );
+    } finally {
+        set_effective_default_codespace('');
+    }
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors: {errors}";
     return (ir, prog);
 }
 
-test "auto promote chess.jac detects native compatible" {
+test "native default infers chess.jac native" {
     (ir, _) = compile_auto_native(CHESS_JAC);
     assert ir is not None;
-    assert ir.gen.native_compat , ("chess.jac should be auto-promoted to native");
+    assert ir.decided_codespace == 'native' , (
+        "chess.jac should infer native under a native default"
+    );
     assert ir.gen.native_engine is not None , (
-        "Auto-promoted chess.jac should have a native engine"
+        "Inferred-native chess.jac should have a native engine"
     );
 }
 
-test "auto promote chess.jac has entry and key functions" {
+test "inferred-native chess.jac has entry and key functions" {
     (ir, _) = compile_auto_native(CHESS_JAC);
     eng = ir.gen.native_engine;
     assert eng is not None;
@@ -2931,28 +2940,45 @@ test "auto promote chess.jac has entry and key functions" {
     }
 }
 
-test "auto promote chess.jac runs via cli" {
-    # End-to-end: jac run --autonative chess.jac should execute natively.
+test "native-default chess.jac runs via cli" {
+    # End-to-end: chess in a project with [build] default_codespace = "na"
+    # executes through the native engine. Congruence makes native-vs-server
+    # unobservable from output; the in-process tests above pin the engine,
+    # this pins the CLI path end to end.
+    import shutil;
+    import tempfile;
     stdin_data = "\n" * 20 + "quit\n";
-    result = subprocess.run(
-        [sys.executable, "-m", "jaclang", "run", "--autonative", CHESS_JAC],
-        input=stdin_data,
-        capture_output=True,
-        text=True,
-        timeout=120
-    );
+    with tempfile.TemporaryDirectory() as tmpdir {
+        shutil.copy(CHESS_JAC, os.path.join(tmpdir, "chess.jac"));
+        shutil.copy(
+            os.path.join(os.path.dirname(CHESS_JAC), "chess.impl.jac"),
+            os.path.join(tmpdir, "chess.impl.jac")
+        );
+        import jaclang as _jl;
+        _src = os.path.dirname(os.path.dirname(os.path.abspath(_jl.__file__)));
+        with open(os.path.join(tmpdir, "jac.toml"), "w") as f {
+            f.write(
+                '[project]\nname = "chess-na"\n\n[dev]\njaclang_source = "' + _src.replace(
+                    "\\", "/"
+                ) + '"\n\n[build]\ndefault_codespace = "na"\n'
+            );
+        }
+        result = subprocess.run(
+            [sys.executable, "-m", "jaclang", "run", "chess.jac"],
+            input=stdin_data,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=tmpdir
+        );
+    }
     assert result.returncode == 0 , (
-        f"Auto-promoted chess crashed with exit code {result.returncode}.\n"
+        f"Native-default chess crashed with exit code {result.returncode}.\n"
         f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
     );
     assert "Game ended." in result.stdout , (
         "Expected 'Game ended.' in output.\n"
         f"stdout tail: {result.stdout[-500:] if result.stdout else '(empty)'}"
-    );
-    # Verify the native execution message appears (may be line-wrapped by Rich)
-    combined = " ".join((result.stdout + result.stderr).split());
-    assert "natively" in combined , (
-        "Expected native execution message.\n" f"output tail: {combined[-500:]}"
     );
 }
 
@@ -3000,25 +3026,39 @@ test "nacompile auto-promoted .jac links a bundled na_stdlib import (#7013 Findi
 }
 
 # --- Native sys Module Tests ---
-test "sys argv via jac run autonative" {
-    # Test that sys.argv works when running via `jac run --autonative`
+test "sys argv via jac run native default" {
+    # sys.argv must reach native code when the knob selects native execution.
+    import shutil;
+    import tempfile;
     fixture = str(os.path.join(FIXTURES, "sys_argv.jac"));
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
-            "run",
-            "--autonative",
-            fixture,
-            "hello",
-            "--test-flag",
-            "world"
-        ],
-        capture_output=True,
-        text=True,
-        timeout=30
-    );
+    with tempfile.TemporaryDirectory() as tmpdir {
+        shutil.copy(fixture, os.path.join(tmpdir, "sys_argv.jac"));
+        import jaclang as _jl;
+        _src = os.path.dirname(os.path.dirname(os.path.abspath(_jl.__file__)));
+        with open(os.path.join(tmpdir, "jac.toml"), "w") as f {
+            f.write(
+                '[project]\nname = "argv-na"\n\n[dev]\njaclang_source = "' + _src.replace(
+                    "\\", "/"
+                ) + '"\n\n[build]\ndefault_codespace = "na"\n'
+            );
+        }
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "jaclang",
+                "run",
+                "sys_argv.jac",
+                "hello",
+                "--test-flag",
+                "world"
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=tmpdir
+        );
+    }
     assert result.returncode == 0 , (
         f"sys_argv fixture crashed: exit={result.returncode}\n"
         f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"

@@ -4,7 +4,7 @@
 
 In this tutorial you will explore a fully playable chess engine written in idiomatic Jac, run it on the native compilation pathway, and compile it to a standalone binary. Along the way you will learn:
 
-- How **`jac run --autonative`** auto-promotes compatible `.jac` files to native execution
+- How **`[build] default_codespace = "na"`** infers native execution for compatible `.jac` files
 - How **`jac nacompile`** produces a standalone binary with no external toolchain
 - How **`sys.argv`** enables command-line argument parsing in native programs
 - How **declaration/implementation separation** keeps large native programs organized
@@ -42,16 +42,22 @@ jac run jac/examples/chess/chess.jac
 
 This runs on the Python backend -- full compatibility, standard execution.
 
-### Option B: Auto-Native Promotion
+### Option B: Native by Preference
 
-```bash
-jac run --autonative jac/examples/chess/chess.jac
+```toml
+# jac.toml
+[build]
+default_codespace = "na"
 ```
 
-The `--autonative` flag tells the compiler to analyze the program and, if it only uses native-compatible features (no walkers, async, lambdas, PyPI imports, etc.), automatically promote it to native execution. The chess engine is fully native-compatible, so the compiler JIT-compiles it to machine code and runs it natively -- same `.jac` file, no changes needed.
+```bash
+jac run jac/examples/chess/chess.jac
+```
 
-!!! info "How auto-promotion works"
-    The `NativeCompatCheckPass` walks the AST and verifies the program uses only native-supported constructs. If it passes, the compiler generates LLVM IR, JIT-compiles it, and executes natively. If it fails (e.g., the file uses walkers or `by llm()`), execution falls back to Python transparently.
+With the project's default codespace set to native, the compiler analyzes each markerless `.jac` module and, if it only uses native-compatible features (no walkers, async, lambdas, PyPI imports, etc.), compiles it whole-module native and JIT-executes it -- same `.jac` file, no changes needed.
+
+!!! info "How native inference works"
+    The compiler scans the module and its plain-`.jac` import closure for server-only constructs at parse time. If the closure is clean, the module is coerced native, lowered to LLVM IR, JIT-compiled, and executed natively. If it carries server signals -- or turns out not to lower yet -- it compiles in the server codespace instead (with a dim `note:` when a native preference could not be honored), so programs always run.
 
 ### Option C: Standalone Binary
 
@@ -67,8 +73,8 @@ This compiles the `.jac` file to a self-contained binary. No Python runtime, no 
 The chess engine accepts command-line arguments via `sys.argv`. Pass `--benchmark` (or `-b`) to run automated random games instead of interactive play:
 
 ```bash
-# With autonative
-jac run --autonative jac/examples/chess/chess.jac -- --benchmark
+# With a native default codespace in jac.toml
+jac run jac/examples/chess/chess.jac -- --benchmark
 
 # With compiled binary
 jac nacompile jac/examples/chess/chess.jac -o chess
@@ -215,7 +221,7 @@ with entry {
 }
 ```
 
-`sys.argv` is a `list[str]` where `argv[0]` is the program/binary name. This works identically whether you run with `jac run --autonative` or as a compiled binary.
+`sys.argv` is a `list[str]` where `argv[0]` is the program/binary name. This works identically whether you run with `jac run` under a native default or as a compiled binary.
 
 **Native features:** `import sys`, `sys.argv`, command-line argument parsing, string comparison.
 
@@ -412,15 +418,15 @@ jac run jac/examples/chess/chess.jac
 
 Uses the standard Python runtime. Full compatibility, familiar debugging tools.
 
-### 2. Auto-Native (`--autonative`)
+### 2. Native by Preference (`default_codespace = "na"`)
 
 ```bash
-jac run --autonative jac/examples/chess/chess.jac -- --benchmark
+jac run jac/examples/chess/chess.jac -- --benchmark
 ```
 
-The compiler analyzes the program at build time. If all code is native-compatible, it JIT-compiles to machine code and runs natively. If not, it falls back to Python. No code changes required -- the same `.jac` file works either way.
+With `[build] default_codespace = "na"` in jac.toml, the compiler analyzes each module at build time. If all code is native-compatible and lowers, it JIT-compiles to machine code and runs natively. If not, it compiles in the server codespace. No code changes required -- the same `.jac` file works either way.
 
-This is ideal during development: write normal Jac, add `--autonative` when you want native speed.
+This is ideal during development: write normal Jac, set the project default to `"na"` when you want native speed.
 
 ### 3. Standalone Binary (`nacompile`)
 

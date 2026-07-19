@@ -90,20 +90,6 @@ impl NaIRGenPass.postinit -> None {
 }
 
 impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
-    if (self.prog._auto_promote_native and self.ir_in.gen.native_compat) {
-        mod_path = self.ir_in.loc.mod_path if self.ir_in.loc else "";
-        main_target = self.prog._auto_promote_target;
-        import from jaclang.jac0core.ext_registry { is_native_module, is_annex }
-        if (
-            mod_path == main_target
-            and not is_native_module(mod_path)
-            and not is_annex(mod_path)
-        ) {
-            import from jaclang.jac0core.compiler { _coerce_native_module }
-            _coerce_native_module(self.ir_in);
-        }
-    }
-
     import from jaclang.compiler.passes.main.capability_check_pass {
         native_capability_violations
     }

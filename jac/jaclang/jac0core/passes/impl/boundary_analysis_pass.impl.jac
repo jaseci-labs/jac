@@ -99,16 +99,6 @@ impl BoundaryAnalysisPass._in_native_module(self: BoundaryAnalysisPass) -> bool 
     if mod_path and is_native_module(mod_path) {
         return True;
     }
-    if (
-        self.prog
-        and self.prog._auto_promote_native
-        and self.prog._auto_promote_target
-        and mod_path
-    ) {
-        return os.path.realpath(mod_path) == os.path.realpath(
-            self.prog._auto_promote_target
-        );
-    }
     return False;
 }
 

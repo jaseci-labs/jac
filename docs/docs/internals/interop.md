@@ -294,8 +294,9 @@ can cross -- the exception being Python-style monkey-patched classes.
 
 ### AOT alternative
 
-`jac run --autonative` JITs `jac_entry` directly when a module is
-`native_compat` (and silently falls back to the Python path otherwise). The
+With `[build] default_codespace = "na"` in jac.toml, `jac run` JITs
+`jac_entry` directly when a markerless module infers native (demoting
+gracefully to the Python path when it cannot lower). The
 *ahead-of-time* counterpart is the **`na → C host`** native-lib export
 path (below), where the native side is packaged as a real `.so` and a host (Python via `ctypes`, or C) loads
 it across the process boundary.

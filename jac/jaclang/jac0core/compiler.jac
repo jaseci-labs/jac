@@ -94,9 +94,6 @@ def get_ir_gen_sched(
     try {
         import from jaclang.compiler.passes.main.cfg_build_pass { CFGBuildPass }
         import from jaclang.compiler.passes.main.sem_def_match_pass { SemDefMatchPass }
-        import from jaclang.compiler.passes.main.capability_check_pass {
-            CapabilityCheckPass
-        }
         import from jaclang.compiler.passes.main.jsx_intrinsic_guard_pass {
             JsxIntrinsicGuardPass
         }
@@ -117,7 +114,6 @@ def get_ir_gen_sched(
             import from jaclang.compiler.passes.main.mtir_gen_pass { MTIRGenPass }
             passes.append(MTIRGenPass);
         }
-        passes.append(CapabilityCheckPass);
         passes.append(JsxIntrinsicGuardPass);
         passes.append(CodespacePullPass);
         return passes;
@@ -453,6 +449,7 @@ glob NATIVE_DEFAULT_SV_SIGNAL_NODES: tuple = (
          uni.JsxElement
      ),
      _na_default_scan_cache: dict[str, tuple] = {},
+     _na_demotion_memo: dict[str, tuple] = {},
      _NA_DEFAULT_CLOSURE_CAP: int = 256;
 
 def _default_codespace_for(target_program: JacProgram) -> str {
@@ -584,7 +581,36 @@ def _try_resolve_import(nd: (uni.ModulePath | uni.ModuleItem)) -> (str | None) {
     return None;
 }
 
+def _is_demoted_native(path: str) -> bool {
+    key = _na_demotion_memo.get(path);
+    if key is None {
+        return False;
+    }
+    try {
+        st = os.stat(path);
+        if key == (st.st_mtime_ns, st.st_size) {
+            return True;
+        }
+    } except OSError {
+        ;
+    }
+    del _na_demotion_memo[path];
+    return False;
+}
+
+def _mark_demoted_native(path: str) {
+    try {
+        st = os.stat(path);
+        _na_demotion_memo[path] = (st.st_mtime_ns, st.st_size);
+    } except OSError {
+        ;
+    }
+}
+
 def _native_default_dep_scan(path: str) -> (tuple[bool, list[str]] | None) {
+    if _is_demoted_native(path) {
+        return (True, []);
+    }
     import from jaclang.jac0core.bccache {
         discover_annex_files,
         discover_variant_files
@@ -716,6 +742,9 @@ def _native_default_closure_ok(module: uni.Module) -> bool {
     if not mod_path {
         return False;
     }
+    if _is_demoted_native(os.path.abspath(mod_path)) {
+        return False;
+    }
     if discover_variant_files(mod_path) {
         return False;
     }
@@ -791,6 +820,13 @@ obj JacCompiler {
     ) -> uni.Module;
 
     def compile(
+        file_path: str,
+        target_program: JacProgram,
+        use_str: (str | None) = None,
+        options: CompileOptions = CompileOptions()
+    ) -> uni.Module;
+
+    def _compile_once(
         file_path: str,
         target_program: JacProgram,
         use_str: (str | None) = None,

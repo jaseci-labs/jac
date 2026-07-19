@@ -850,12 +850,7 @@ impl TypeCheckPass.before_pass(self: TypeCheckPass) -> None {
                 }
             }
         }
-        if (
-            not is_native_mod
-            and self.prog._auto_promote_native
-            and mod?.gen
-            and mod.gen.native_compat
-        ) {
+        if not is_native_mod and mod?.decided_codespace == 'native' {
             is_native_mod = True;
         }
         emit_full = is_native_mod;

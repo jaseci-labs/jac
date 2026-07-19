@@ -227,3 +227,24 @@ test "native default produces a native engine for pure modules" {
     assert mod.decided_codespace == 'native';
     assert mod.gen.native_engine is not None , "inferred-native module should lower to a native engine";
 }
+
+test "non-lowerable pure module demotes to server under native default" {
+    mod = compile_with_default("nadefault_nolower.jac", "native", cgen=True);
+    assert mod.decided_codespace == '' , "demotion recompiles in the server codespace";
+    assert stamp_of(mod, "build") == 'server';
+}
+
+test "cascade: importer of a demoted module demotes with it" {
+    mod = compile_with_default("nadefault_uses_nolower.jac", "native", cgen=True);
+    assert mod.decided_codespace == '' , "importer of a demoted dep must demote too";
+}
+
+test "explicit .na.jac mandate still fails loudly" {
+    import from jaclang.jac0core.compile_options { CompileOptions }
+    prog = JacProgram();
+    prog.compile(
+        os.path.join(FIXTURE_DIR, "nadefault_mandate.na.jac"),
+        options=CompileOptions(type_check=False)
+    );
+    assert prog.errors_had , "explicit native modules must surface lowering errors";
+}

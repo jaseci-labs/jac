@@ -433,54 +433,6 @@ impl native_capability_violations(mod: uni.Module) -> list {
     return out;
 }
 
-impl module_native_compat(mod: uni.Module) -> bool {
-    scan_mods = [mod];
-    has_entry = False;
-    for mc in mod.get_all_sub_nodes(typ=uni.ModuleCode) {
-        for k in mc.kid {
-            if isinstance(k, uni.Token) and k.value == "entry" {
-                has_entry = True;
-                break;
-            }
-        }
-        if has_entry {
-            break;
-        }
-    }
-    if not has_entry {
-        return False;
-    }
-    for m in scan_mods {
-        for nd_type in NATIVE_DISQUALIFIER_NODES {
-            if m.get_all_sub_nodes(typ=nd_type) {
-                return False;
-            }
-        }
-        for arch in m.get_all_sub_nodes(typ=uni.Archetype) {
-            if arch.arch_kind is not None or arch.decorators {
-                return False;
-            }
-        }
-        for ab in m.get_all_sub_nodes(typ=uni.Ability) {
-            if ab.is_async
-            or ab.decorators
-            or isinstance(ab.signature, uni.EventSignature) {
-                return False;
-            }
-        }
-    }
-    return True;
-}
-
-impl CapabilityCheckPass.postinit -> None {
-    super.postinit();
-}
-
-impl CapabilityCheckPass.transform(ir_in: uni.Module) -> uni.Module {
-    ir_in.gen.native_compat = module_native_compat(ir_in);
-    return ir_in;
-}
-
 impl NativeCapabilityCheckPass.postinit -> None {
     super.postinit();
 }

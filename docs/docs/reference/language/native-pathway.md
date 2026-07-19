@@ -611,7 +611,7 @@ non-deterministic, but each reader is congruent with its CPython counterpart.
 | `sys.byteorder` | `"little"` / `"big"` (host arch) |
 | `sys.platform` | e.g. `"linux"` / `"darwin"` |
 
-`sys.argv` works both with `jac run --autonative` and standalone binaries
+`sys.argv` works both with `jac run` under a native default codespace and standalone binaries
 compiled via `jac nacompile`.
 
 #### `os` and `os.path` -- Operating System
@@ -1088,4 +1088,4 @@ with entry {
 
 ### Chess Engine
 
-For a complete walkthrough that covers `--autonative`, `nacompile`, `sys.argv`, declaration/implementation separation, and nearly every other native feature, see the **[Build a Chess Engine](../../tutorials/native/chess.md)** tutorial.
+For a complete walkthrough that covers the native default codespace, `nacompile`, `sys.argv`, declaration/implementation separation, and nearly every other native feature, see the **[Build a Chess Engine](../../tutorials/native/chess.md)** tutorial.
