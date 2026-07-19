@@ -98,18 +98,7 @@ def compile_native(fixture: str) -> tuple {
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     eng = ir.gen.native_engine;
-    if eng is None {
-        import from jaclang.compiler.passes.main.capability_check_pass {
-            native_capability_violations
-        }
-        _viols = native_capability_violations(ir);
-        _vdump = [f"{_vk}:{_vn}" for (_vx, _vk, _vn, _vh) in _viols][:6];
-        _dbg = (
-            f"llvm={ir.gen.llvm_ir is not None} "
-            f"reported={ir.gen.native_viols_reported} viols={_vdump}"
-        );
-        assert eng is not None , f"No native engine for {fixture}: {_dbg}";
-    }
+    assert eng is not None , f"No native engine produced for {fixture}";
     return (eng, ir);
 }
 

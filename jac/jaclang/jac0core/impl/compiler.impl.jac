@@ -747,15 +747,6 @@ impl JacCompiler.compile(
             else f"{type(_crash).__name__}: {_crash}"
     );
     _mark_demoted_native(_resolved);
-    import sys as _dbg_sys;
-    _dbg_sys.stderr.write(f"[NATIVE-DEMOTE-DEBUG] {file_path}: {_first_err}\n");
-    for _dbg_e in _wrap_prog.errors_had[_pre_errs:_pre_errs + 8] {
-        _dbg_sys.stderr.write(f"[NATIVE-DEMOTE-DEBUG] err: {str(_dbg_e)[:400]}\n");
-    }
-    if _crash is not None {
-        import traceback as _dbg_tb;
-        _dbg_tb.print_exception(_crash, file=_dbg_sys.stderr);
-    }
     _wrap_prog.errors_had = _wrap_prog.errors_had[:_pre_errs];
     try {
         _wrap_prog.invalidate_module(_resolved);
