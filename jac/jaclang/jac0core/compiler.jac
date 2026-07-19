@@ -455,7 +455,7 @@ glob NATIVE_DEFAULT_SV_SIGNAL_NODES: tuple = (
      _na_census_state: dict[str, bool] = {"enabled": False},
      _na_cap_noted: dict[str, bool] = {};
 
-def na_census_begin() {
+def na_census_begin {
     _na_census.clear();
     _na_demotion_memo.clear();
     _na_default_scan_cache.clear();
@@ -492,7 +492,7 @@ def na_census_seam(path: str, reason: str) {
     rec['seams'].append(reason);
 }
 
-def na_census_end() -> dict {
+def na_census_end -> dict {
     snap = dict(_na_census);
     _na_census_state["enabled"] = False;
     return snap;
@@ -570,7 +570,11 @@ def _scan_native_default_signals(
             for item in imp.items {
                 if isinstance(item, uni.ModulePath) {
                     targets.append(
-                        (item.dot_path_str, _try_resolve_import(item), True)
+                        (
+                            item.dot_path_str,
+                            _try_resolve_import(item),
+                            not imp.is_absorb
+                        )
                     );
                 }
             }

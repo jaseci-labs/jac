@@ -444,6 +444,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
             continue;
         }
         if (not imp.from_loc)
+        and (not imp.is_absorb)
         and ((not _has_native_code) or (not is_bundled_native_module(mod_name))) {
             continue;
         }
@@ -502,8 +503,12 @@ impl NaIRGenPass._register_imported_struct_types -> None {
 
     self._foreign_modules = [m for (_s, m) in imported_mods];
 
-    for (src_mod_str, _) in imported_mods {
-        if src_mod_str not in manifest.native_transitive_sources {
+    for (src_mod_str, imported_mod) in imported_mods {
+        _has_own_code = any(
+            not isinstance(s, uni.Import)
+            for s in ModuleCodegenPass.iter_context_stmts(imported_mod)
+        );
+        if _has_own_code and src_mod_str not in manifest.native_transitive_sources {
             manifest.native_transitive_sources.append(src_mod_str);
         }
     }

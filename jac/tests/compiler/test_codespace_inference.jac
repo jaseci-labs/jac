@@ -337,6 +337,21 @@ test "census records native and server outcomes" {
     assert blocked['detail'] != '' , "server record must carry the classifier reason";
 }
 
+test "include chain infers native under native default" {
+    mod = compile_with_default("nadefault_star_main.jac", "native", cgen=True);
+    assert mod.decided_codespace == 'native' , (
+        "from-import of an include re-exporter must lower native"
+    );
+    assert mod.gen.native_engine is not None;
+}
+
+test "include chain stays server under server default" {
+    mod = compile_with_default("nadefault_star_main.jac", "server");
+    assert mod.decided_codespace == '' , (
+        "server default keeps include chains undecided"
+    );
+}
+
 test "explicit .na.jac mandate still fails loudly" {
     import from jaclang.jac0core.compile_options { CompileOptions }
     prog = JacProgram();

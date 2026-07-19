@@ -191,6 +191,10 @@ impl native_capability_violations(mod: uni.Module) -> list {
         }
     }
 
+    import os;
+    _base_dir = os.path.dirname(os.path.abspath(mod.loc.mod_path))
+        if (mod?.loc and mod.loc.mod_path)
+        else '.';
     for stmt in _native_stmts {
         if isinstance(stmt, uni.Import) {
             if stmt.clib_decls or not stmt.items {
@@ -199,8 +203,15 @@ impl native_capability_violations(mod: uni.Module) -> list {
             for item in stmt.items {
                 (mod_name, _ok) = classify_native_import(item);
                 if mod_name is not None and not _ok {
-                    import from jaclang.jac0core.codeinfo { is_bundled_native_module }
+                    import from jaclang.jac0core.codeinfo {
+                        is_bundled_native_module,
+                        resolve_native_module
+                    }
                     if is_bundled_native_module(mod_name) {
+                        continue;
+                    }
+                    if stmt.is_absorb
+                    and resolve_native_module(mod_name, _base_dir)[1] is not None {
                         continue;
                     }
 
