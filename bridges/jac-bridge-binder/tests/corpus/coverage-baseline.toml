@@ -115,8 +115,10 @@ dropped = 10
 # base64 has no roundtrip test — its crate declares more than one `#[jac_error]`
 # type, a standing macro limitation — but the added shapes are the OwnSelf/
 # OwnSelfResult arms the uuid + sha2 roundtrips compile-prove.
+# The re-export-path fix (flattened-trait `use` now resolves through a crate's
+# re-exports in ANY public module) lifted base64 6 -> 7. `total` unchanged (13).
 [base64]
-bridged = 6
+bridged = 7
 total = 13
 dropped = 4
 
@@ -195,8 +197,17 @@ dropped = 4
 # types are dense with Display impls (`to_string` readers) and std FromStr impls
 # (`from_str` statics), plus a few Ord `cmp` readers. Same detection-driven arms,
 # no chrono-specific code. total 289 -> 305 folds the newly-considered surface in.
+# The re-export-path fix (flattened-trait `use` paths now resolve through a
+# crate's re-exports in ANY public module, not just the root) then lifted chrono
+# 197 -> 220 for free: chrono re-exports several of its own traits, whose flattened
+# methods now find a compiling `use` path. `total` unchanged (305).
+# The unit-enum PARAM lane (see [time]) then lifted chrono 220 -> 232 for free:
+# chrono's `NaiveDate::from_isoywd(.., weekday: Weekday)`, `Datelike::with_*`, and
+# `Weekday`/`Month`-taking navigation now bridge — the enum crosses as a variant-
+# name string, decoded in the wrapper (unknown name throws). `total` unchanged
+# (305). Same proven arm, no chrono-specific code.
 [chrono]
-bridged = 197
+bridged = 232
 total = 305
 dropped = 6
 
@@ -241,9 +252,22 @@ dropped = 6
 # ctors that the fix briefly admitted are correctly held back: an unusable-trait
 # ctor can no longer WIN the ctor slot (it bypassed the loser-only guard before), so
 # they stay honest skips. Roundtrip-compiled under `-D warnings`.
+# The re-export-path fix (a flattened trait's `use` now resolves through the
+# crate's re-exports in ANY public module, not just the root) then lifted uuid
+# 25 -> 48 for free: uuid re-exports its trait surface through submodules, so more
+# blanket/trait methods gained a compiling `use` path. The UNSAFE-fn skip then
+# trimmed it 48 -> 47 (`NonNilUuid::new_unchecked` is an `unsafe fn` the safe
+# wrapper body can't call — an honest skip, and the fix that keeps the generated
+# crate compiling). `total` 96 -> 108 folds the newly-considered surface in.
+# The unit-enum PARAM lane (see [time]) then lifted uuid 47 -> 48: one enum-taking
+# value-return fn now bridges (its `Variant`/`Version` arg crosses as a variant-name
+# string, decoded in the wrapper). The two `&Self`-returning builder SETTERS
+# (`set_variant`/`set_version`) stay honest skips — a self-identity `-> &Self`
+# return can't be made fallible, which an enum-param decode requires.
+# Compile-verified by the uuid roundtrip test under `-D warnings`.
 [uuid]
-bridged = 25
-total = 96
+bridged = 48
+total = 108
 dropped = 1
 
 # sha2's hashers ARE plain structs (`Sha256`, `Sha512`, …), and their public API
@@ -344,4 +368,142 @@ dropped = 3
 [geo_demo]
 bridged = 8
 total = 8
+dropped = 0
+
+# url@2.5.8 (new seed, 2026-07-18) is a canonical string/handle utility crate:
+# an opaque `Url` handle with a `parse` ctor and a dense scalar/string accessor
+# surface (scheme/username/path/port/... as &str or int), plus Display/FromStr.
+# It bridges 19/47 through the opaque + str-return + int-return + synth-trait
+# lanes with ZERO overlay. Its value is the SKIP profile: it isolates the still-
+# open long-tail lanes on a real crate — `Option<&str>` returns (domain/fragment/
+# host_str/password/query — borrowed-Option, distinct from the supported
+# Option<String>), `Option<&str>`/`Option<u16>` setter PARAMS (nullable-scalar
+# params), unit-error `Result<(),()>` (set_scheme/set_username), a closure arg
+# (socket_addrs), and the `from_file_path`/`parse_with_params` generics. `dropped`
+# 3 are url's lifetime-bearing views (ParseOptions, PathSegmentsMut, UrlQuery),
+# honestly tallied. Raise as the nullable-param / Option-borrow lanes land.
+#
+# url is now COMPILE-VERIFIED and warning-clean under `-D warnings`: the
+# module-level `#[allow(deprecated)]` silences the delegating call to the
+# deprecated-but-live `Url::into_string`, which previously made the generated crate
+# fail `-D deprecated`.
+#
+# The BORROWED-Option-string lane (BridgeReturn::OptStrRef) then lifted url 19 -> 24:
+# `host_str`/`domain`/`fragment`/`password`/`query` return `Option<&str>`, which the
+# wrapper owns with `.map(|s| s.to_string())` and rides the same
+# `TAG_OPT_BIT | TAG_STR` lane as `Option<String>`. Pure classify+codegen (no
+# macro/loader change), compile-verified under `-D warnings`. Remaining url skips
+# isolate nullable-scalar PARAMS (set_port/set_host…), unit-error `Result<(),()>`,
+# the `socket_addrs` closure, and the `from_file_path`/`parse_with_params` generics.
+[url]
+bridged = 24
+total = 47
+dropped = 3
+
+# rust_decimal@1.42.1 (new seed, 2026-07-18) is a fixed-point `Decimal` scalar
+# type — the numeric analogue of the datetime crates. 54/90 bridge with ZERO
+# overlay via the int-return, Display, Ord, and FromStr lanes plus the checked-
+# arithmetic methods that take/return a `Decimal` handle. Its skips isolate the
+# scalar-width open lanes precisely: `f64`/`f32` params+returns (as_f64/from_f64/
+# from_f32_retain — the na-skips-float-params + f64-param gap), `i128`/`u128`
+# params (from_i128/from_u128/as_i128), and trait-vs-inherent duplicate-method
+# dedup (abs/checked_add/... exist as both an inherent fn and a std op-trait, so
+# the second is a "duplicate method name" skip, not lost capability). No serde
+# feature needed (default).
+#
+# rust_decimal is now COMPILE-VERIFIED (corpus crates had no roundtrip test, so it
+# never was). Getting it warning-clean under `-D warnings` drove four GENERAL
+# binder fixes (none decimal-specific):
+#   * FLOAT scalar lane (ScalarType::Float / BridgeReturn::Float): as_f64/from_f64/
+#     from_f32/… cross as an f64 bit pattern in a u64 slot (TAG_F64) — the macro +
+#     loader synth already supported it end-to-end; classify was the only gap (+5).
+#   * `#[allow(deprecated)]` on the generated module: `Decimal::max_value`/
+#     `min_value` are deprecated-but-live public API the binder mirrors; the attr
+#     keeps the delegating call warning-clean under `-D warnings`.
+#   * error-type name is UpperCamelCased (`RustDecimalError`, not the
+#     `Rust_decimalError` that tripped `-D non-camel-case-types`).
+#   * flattened-trait `use` paths now resolve through a crate's re-exports in ANY
+#     public module: rust_decimal re-exports num_traits' Zero/One/Signed/… in its
+#     `prelude`, so the path is `rust_decimal::prelude::Zero`, not the guessed-and-
+#     wrong `rust_decimal::num_traits::Zero`. `num_traits::Inv` is re-exported
+#     nowhere public, so its `inv` is now an honest skip (no reliable use path).
+# Net +5 floats -1 Inv = 54 -> 58. Raise as the i128/u128 + enum-param lanes land.
+# The unit-enum PARAM lane (see [time]) then lifted rust_decimal 58 -> 60:
+# `round_dp_with_strategy(dp, strategy: RoundingStrategy)` and
+# `round_sf_with_strategy` take a fieldless-enum `RoundingStrategy` by value, now
+# crossing as its variant-name string (decoded in the wrapper, unknown name
+# throws). `total` unchanged (90). Compiles clean under `-D warnings`.
+[rust_decimal]
+bridged = 60
+total = 90
+dropped = 0
+
+# time@0.3.53 (new seed, 2026-07-18) is a second real datetime crate beside
+# chrono — Date/Time/OffsetDateTime/PrimitiveDateTime/Duration with a dense
+# integer-accessor + Display/FromStr + cross-type-handle navigation surface.
+# 224/367 bridge with ZERO overlay (chrono needs a monomorphize overlay for its
+# Tz generics; time's core types are non-generic, so it rides the existing lanes
+# directly and is the better serde-free datetime exemplar). Its skips isolate two
+# open shapes on a real crate: the `Month`/`Weekday` ENUM returns/params (unit-
+# enum bridging — from_calendar_date/next_occurrence/month) and the `Duration`/
+# `StdDuration` handle-BY-VALUE arithmetic params (checked_add/sub — the same
+# handle-arg-by-value gap chrono's and_time noted), plus `&mut Formatter` (fmt).
+# `dropped` 0: time exposes no unpinned generics or lifetime structs at the top
+# level.
+#
+# The BY-VALUE handle-param lane (ScalarType::HandleValue) then lifted time
+# 224 -> 266. A method whose inner takes an OWNED bridged handle
+# (`Date::checked_add(self, rhs: Duration) -> Option<Date>`,
+# `OffsetDateTime::to_offset(UtcOffset)`, `PrimitiveDateTime::assume_offset`, …)
+# now bridges: the ABI is identical to the by-value-ref `&Version` lane (the
+# caller passes the other object's handle, the macro reconstructs `&Target`), but
+# the wrapper hands the inner call an owned value via `{name}.0.clone()` — sound
+# because the target is `Clone` (every `Copy` datetime/duration type qualifies;
+# a non-`Clone` target stays a skip). Pure classify+codegen, no macro/loader
+# change. `total` unchanged (367): every gain flips a skip to bridged. The
+# generated crate compiles warning-clean under `-D warnings` (trimmed to one
+# `#[jac_error]` type to sidestep the pre-existing multi-error macro limit).
+# The FLOAT scalar lane (ScalarType::Float / BridgeReturn::Float) then lifted time
+# 266 -> 274: `Duration::seconds_f64`/`as_seconds_f64`/`seconds_f32`/… cross as an
+# f64 bit pattern in a u64 slot (TAG_F64), a lane the macro + loader synth already
+# supported end-to-end (the binder classify was the only gap). Compiles clean.
+# The UNIT-ENUM value lane (BridgeReturn::EnumName reused for by-value returns)
+# then lifted time 274 -> 284: a method returning a public fieldless enum
+# (`Date::month -> Month`, `weekday -> Weekday`, on all five datetime types)
+# crosses as its variant NAME string — the same `-> String` JacBuf lane the
+# fieldless-enum FIELD reader already used, so codegen reuses the `EnumName` arm
+# and no ABI/macro/loader change is needed. Pure classify (one arm before the wide
+# fallback in `classify_return`). `total` unchanged (367): each gain flips a skip
+# to bridged.
+# The UNIT-ENUM PARAM lane (ScalarType::Enum — the inbound mirror of the value
+# return) then lifted time 284 -> 295: a by-value fieldless-enum param
+# (`from_calendar_date(month: Month)`, `replace_month(Month)` ×on all five
+# datetime types, `next_occurrence`/`prev_occurrence`/`nth_next_occurrence`/
+# `nth_prev_occurrence(Weekday)`) crosses as its variant NAME string on the same
+# `&str`/`TAG_STR` lane and is decoded back in the wrapper body. Per the chosen
+# fallibility rule, an unknown name has no valid enum value, so the decode does an
+# early `return Err(..)` — which lifts an infallible method (`next_occurrence ->
+# Self`) to `Result<Self, String>` (already-fallible methods just gain the decode
+# preamble). Pure classify+codegen, no macro/loader change (reuses the string-param
+# lane). An enum-param fn is DEMOTED in ctor tie-break so a fallible variant-name
+# ctor can't steal the slot from a clean sibling. `total` unchanged (367). Compiles
+# clean under `-D warnings`. Remaining skips are the tuple-return (to_hms),
+# StdDuration-by-value, and i128 scalar lanes.
+# The INTEGER-TUPLE return lane (BridgeReturn::Tuple) then lifted time 295 -> 321:
+# a by-value tuple of integer scalars (`Time::as_hms -> (u8, u8, u8)`, the
+# `_milli`/`_micro`/`_nano` siblings, and `to_hms*`, on `Time`/`OffsetDateTime`/
+# `PrimitiveDateTime`) crosses on the EXISTING `List` wire lane — codegen binds the
+# source tuple once and re-projects its fields into a `Vec<i64>`
+# (`vec![__t.0 as i64, …]`), which the macro tags `TAG_LIST_BIT | TAG_INT` and both
+# loaders already decode into a real Jac `list[int]` / Python `list`. No new wire
+# tag, macro arm, or loader branch (na has no tuple type and the frozen v1 ABI has
+# one return out-slot). The lane is NARROW: only elements that widen losslessly to
+# `i64` (`i8..=i64`/`isize`, `u8`/`u16`/`u32`) qualify, so the mixed calendar tuples
+# (`to_calendar_date -> (i32, Month, u8)`, `to_iso_week_date -> (i32, u8, Weekday)`)
+# and any `u64` element stay honest skips via the wide fallback — no pure-std tuple
+# is auto-crossed wide. Pure classify+codegen. `total` unchanged (367). Remaining
+# skips are the StdDuration-by-value and i128 scalar lanes.
+[time]
+bridged = 321
+total = 367
 dropped = 0

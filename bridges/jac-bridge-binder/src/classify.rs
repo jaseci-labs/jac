@@ -170,7 +170,10 @@ pub fn classify_with_overlay(doc: &Crate, overlay: Option<&Overlay>) -> BridgeSp
         pending_wrappers: vec![],
         inherited_excluded: 0,
         ref_type_names: HashSet::new(),
+        clone_ref_names: HashSet::new(),
         root_reexports: collect_root_reexports(doc),
+        reexport_paths: collect_reexport_paths(doc, &module_name),
+        root_module_reexports: collect_root_module_reexports(doc),
         root_glob_modules: collect_root_glob_modules(doc, &module_name),
         wide_record_ids: std::cell::RefCell::new(vec![]),
         qual_stack: std::cell::RefCell::new(vec![]),
@@ -185,6 +188,15 @@ pub fn classify_with_overlay(doc: &Crate, overlay: Option<&Overlay>) -> BridgeSp
     ctx.ref_type_names = types
         .iter()
         .filter(|t| t.mono.is_none() && t.kind == TypeKind::Opaque)
+        .map(|t| t.name.clone())
+        .collect();
+    // The subset of ref types whose inner value is `Clone`: only these can be
+    // passed BY VALUE (`Date::checked_add(Duration)`), since the wrapper must clone
+    // an owned value out of the shared handle. Every `Copy` type is `Clone`, so this
+    // covers the common by-value-arithmetic surface (datetime/decimal deltas).
+    ctx.clone_ref_names = types
+        .iter()
+        .filter(|t| t.mono.is_none() && t.kind == TypeKind::Opaque && ctx.type_is_clone(t))
         .map(|t| t.name.clone())
         .collect();
     for bt in &mut types {
@@ -291,6 +303,93 @@ fn collect_root_reexports(doc: &Crate) -> HashMap<u32, String> {
         }
     }
     map
+}
+
+/// Map every item id re-exported by a non-glob `pub use` in ANY public module to
+/// the SHORTEST accessible path it is reachable under (`num_traits::Zero`
+/// re-exported in `rust_decimal::prelude` → `id → "rust_decimal::prelude::Zero"`).
+/// A crate commonly re-exports its dependency traits in a `prelude` submodule
+/// rather than at the crate root, so a flattened-trait `use` must consult this,
+/// not just the root. Root-level re-exports (fewest path segments) win ties. The
+/// crate root itself is depth 0, so a root `pub use` maps to `{crate}::{alias}`.
+fn collect_reexport_paths(doc: &Crate, module_name: &str) -> HashMap<u32, String> {
+    let mut map: HashMap<u32, (usize, String)> = HashMap::new();
+    // DFS over public modules, carrying each module's path segments from the root
+    // (root itself contributes no segment). A `Use` re-exports its target under the
+    // enclosing module's path.
+    let Some(root) = doc.index.get(&doc.root) else {
+        return HashMap::new();
+    };
+    let mut stack: Vec<(&Id, Vec<String>)> = vec![(&doc.root, vec![])];
+    let _ = root;
+    while let Some((mod_id, segs)) = stack.pop() {
+        let Some(item) = doc.index.get(mod_id) else {
+            continue;
+        };
+        let ItemEnum::Module(m) = &item.inner else {
+            continue;
+        };
+        for child_id in &m.items {
+            let Some(child) = doc.index.get(child_id) else {
+                continue;
+            };
+            match &child.inner {
+                ItemEnum::Module(_) => {
+                    let mut next = segs.clone();
+                    if let Some(n) = &child.name {
+                        next.push(n.clone());
+                    }
+                    stack.push((child_id, next));
+                }
+                ItemEnum::Use(u) if !u.is_glob => {
+                    if let Some(target) = &u.id {
+                        let path = if segs.is_empty() {
+                            format!("{module_name}::{}", u.name)
+                        } else {
+                            format!("{module_name}::{}::{}", segs.join("::"), u.name)
+                        };
+                        let depth = segs.len();
+                        map.entry(target.0)
+                            .and_modify(|e| {
+                                if depth < e.0 {
+                                    *e = (depth, path.clone());
+                                }
+                            })
+                            .or_insert((depth, path));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    map.into_iter().map(|(k, (_, p))| (k, p)).collect()
+}
+
+/// The names under which the crate root re-exports a WHOLE external crate or
+/// module (`pub use digest;` in sha2 → `{"digest"}`). Detected as a root `Use`
+/// whose `source` has no `::` path separator — a bare crate/module name, as
+/// opposed to an individual item re-export (`pub use num_traits::Zero;`, source
+/// `"num_traits::Zero"`). This is what makes a `{crate}::{defining_crate}::{Trait}`
+/// flattened-trait `use` path valid: it resolves only when the bridged crate
+/// re-exports the defining crate as a module under that name.
+fn collect_root_module_reexports(doc: &Crate) -> HashSet<String> {
+    let mut set = HashSet::new();
+    let Some(root) = doc.index.get(&doc.root) else {
+        return set;
+    };
+    let ItemEnum::Module(m) = &root.inner else {
+        return set;
+    };
+    for item_id in &m.items {
+        if let Some(item) = doc.index.get(item_id) {
+            if let ItemEnum::Use(u) = &item.inner {
+                if !u.is_glob && !u.source.contains("::") {
+                    set.insert(u.name.clone());
+                }
+            }
+        }
+    }
+    set
 }
 
 /// The module paths the crate root re-exports with a glob (`pub use
@@ -420,6 +519,19 @@ fn is_fallible_return(ret: &BridgeReturn) -> bool {
     )
 }
 
+/// True when a fn must emit a `Result<_, String>` shim — either its return is a
+/// `Result` (`is_fallible_return`) OR it takes a unit-enum param, whose bad-name
+/// decode does an early `return Err(..)` and so lifts an otherwise-infallible
+/// method into a `Result` (codegen's enum-decode preamble). Used by the fallible
+/// reconcile gate: a crate with no bridged error type can carry no `Result` shim,
+/// so such a method must be dropped even if its source return never fails.
+fn fn_forces_result(f: &BridgeFn) -> bool {
+    is_fallible_return(&f.ret)
+        || f.params
+            .iter()
+            .any(|p| matches!(p.ty, ScalarType::Enum(..)))
+}
+
 /// Demote every `Result<Self, E>` ctor/method to a skip when the crate has NO
 /// bridged error type — the macro would otherwise reject the `Result` return for
 /// lack of a `#[jac_error]` struct. A crate WITH an error type keeps them (the
@@ -433,7 +545,7 @@ fn reconcile_fallible_returns(types: &mut [BridgeType], skips: &mut Vec<Skip>) {
     };
     for bt in types.iter_mut() {
         if let Some(c) = &bt.ctor {
-            if is_fallible_return(&c.ret) {
+            if fn_forces_result(c) {
                 skips.push(Skip {
                     item: format!("{}::{}", bt.name, c.name),
                     reason: reason(),
@@ -444,7 +556,7 @@ fn reconcile_fallible_returns(types: &mut [BridgeType], skips: &mut Vec<Skip>) {
         let name = bt.name.clone();
         let mut kept = Vec::with_capacity(bt.methods.len());
         for m in std::mem::take(&mut bt.methods) {
-            if is_fallible_return(&m.ret) {
+            if fn_forces_result(&m) {
                 skips.push(Skip {
                     item: format!("{name}::{}", m.name),
                     reason: reason(),
@@ -521,12 +633,27 @@ struct Ctx<'a> {
     /// instantiation check `returns_self` does, deferred with the rest of the mono
     /// surface.
     ref_type_names: HashSet<String>,
+    /// The `Clone` subset of [`Self::ref_type_names`] — the types admissible as a
+    /// BY-VALUE handle param (`ScalarType::HandleValue`), since the wrapper clones an
+    /// owned value out of the caller's shared handle. Built once beside
+    /// `ref_type_names`, before method classification.
+    clone_ref_names: HashSet<String>,
     /// Item id → the name it is `pub use`-re-exported under at the crate root.
     /// A type defined in a PRIVATE module (`uuid::non_nil::NonNilUuid`) is only
     /// reachable through its root re-export (`uuid::NonNilUuid`); the canonical
     /// path from `doc.paths` traverses the private module and won't compile. When
     /// present, this shortest public path wins over the canonical one.
     root_reexports: HashMap<u32, String>,
+    /// Item id → shortest accessible path for anything re-exported by a non-glob
+    /// `pub use` in ANY public module (`num_traits::Zero` re-exported in
+    /// `rust_decimal::prelude` → `"rust_decimal::prelude::Zero"`). Consulted by the
+    /// flattened-trait `use` path (traits are often re-exported in a `prelude`, not
+    /// at the crate root). See [`collect_reexport_paths`].
+    reexport_paths: HashMap<u32, String>,
+    /// Names under which the crate root re-exports a whole external crate/module
+    /// (`{"digest"}` for sha2). See [`collect_root_module_reexports`]; consulted by
+    /// [`Self::trait_path_unusable`] to validate a `{crate}::{dep}::{Trait}` path.
+    root_module_reexports: HashSet<String>,
     /// Module paths (crate-root and glob stripped, `"regex::string"`) that the
     /// crate root re-exports with a glob (`pub use crate::regex::string::*;`).
     /// Every pub item in such a module is reachable at the crate root under its
@@ -1634,6 +1761,15 @@ impl<'a> Ctx<'a> {
     ///     way (`sha2::digest::Digest`), so external traits use one uniform shape.
     fn trait_use_path(&self, tr: &rustdoc_types::Path) -> String {
         let simple = self.trait_simple_name(tr);
+        // A trait re-exported individually by a `pub use` (`num_traits::Zero`
+        // re-exported in rust_decimal's `prelude`) is reachable at that shortest
+        // accessible path (`rust_decimal::prelude::Zero`). This must win over the
+        // `{crate}::{defining_crate}::{Trait}` guess, which assumes the whole
+        // dependency crate is re-exported as a module (true for sha2's `pub use
+        // digest;`, FALSE for rust_decimal, which re-exports the traits directly).
+        if let Some(path) = self.reexport_paths.get(&tr.id.0) {
+            return path.clone();
+        }
         // path[0] in the rustdoc summary is the DEFINING crate name.
         if let Some(defining_crate) = self.doc.paths.get(&tr.id).and_then(|s| s.path.first()) {
             if defining_crate != &self.module_name {
@@ -1641,6 +1777,31 @@ impl<'a> Ctx<'a> {
             }
         }
         format!("{}::{}", self.module_name, simple)
+    }
+
+    /// True when a flattened trait's public `use` path can't be recovered, so its
+    /// methods/statics must stay honest skips rather than emit an unresolved import
+    /// in the generated crate. A path is USABLE when the trait is: defined in this
+    /// crate; re-exported individually at the crate root (`root_reexports`); or
+    /// defined in a crate the root re-exports as a whole module
+    /// (`root_module_reexports`, sha2's `digest`). Anything else — an external trait
+    /// reachable only through the dependency crate the bridged crate does NOT
+    /// re-export (rust_decimal's `num_traits::Inv`) — is unusable. The std-family
+    /// guard [`static_trait_path_unusable`] is subsumed here: `core`/`alloc`/`std`
+    /// are never re-exported, so they fall through to unusable.
+    fn trait_path_unusable(&self, tr: &rustdoc_types::Path) -> bool {
+        let Some(defining_crate) = self.doc.paths.get(&tr.id).and_then(|s| s.path.first()) else {
+            // No path summary — an unindexed trait; keep the conservative behavior
+            // of the old code (treat as usable, the `{crate}::{simple}` fallback).
+            return false;
+        };
+        if defining_crate == &self.module_name {
+            return false;
+        }
+        if self.reexport_paths.contains_key(&tr.id.0) {
+            return false;
+        }
+        !self.root_module_reexports.contains(defining_crate)
     }
 
     /// The trait's simple (final-segment) name, for the NOISE policy match.
@@ -1740,6 +1901,41 @@ impl<'a> Ctx<'a> {
             if self.is_noise_trait(tr) {
                 continue;
             }
+            // A semantic trait whose public `use` path can't be recovered (an
+            // external trait the bridged crate re-exports neither individually nor
+            // as a whole module — rust_decimal's `num_traits::Inv`) would emit an
+            // unresolved import. Record its provided methods as honest skips instead
+            // of flattening an uncompilable call.
+            //
+            // Scoped to NON-std-family traits: a std/core trait
+            // (`core::iter::FromIterator`) has no re-export path either, but its
+            // methods are unbridgeable for a MORE specific reason (a generic param)
+            // and are already rejected by param classification with that reason — no
+            // surviving method, so no bad `use` is emitted. Short-circuiting them
+            // here would only replace the precise "generic" skip with a vaguer one.
+            let via_crate = self.doc.paths.get(&tr.id).and_then(|s| s.path.first());
+            let is_std_family =
+                matches!(via_crate.map(String::as_str), Some("core" | "alloc" | "std"));
+            if self.trait_path_unusable(tr) && !is_std_family {
+                for method_id in &impl_block.items {
+                    let Some(mi) = self.item(method_id) else { continue };
+                    if !matches!(mi.inner, ItemEnum::Function(_)) {
+                        continue;
+                    }
+                    if let Some(mname) = &mi.name {
+                        self.skips.push(Skip {
+                            item: format!("{type_name}::{mname}"),
+                            reason: SkipReason::UnsupportedType(
+                                "trait method via a non-re-exported external trait \
+                                 (no reliable public use path)"
+                                    .into(),
+                            ),
+                        });
+                    }
+                }
+                self.inherited_excluded += impl_block.provided_trait_methods.len();
+                continue;
+            }
             let via = self.trait_use_path(tr);
             // 1.1.2: a blanket `impl<D> Trait for D` rustdoc-materialized onto this
             // type keeps its generic param (`D`) in method signatures where `Self`
@@ -1796,8 +1992,21 @@ impl<'a> Ctx<'a> {
                 true
             }
         });
+        // Tie-break, most-preferred first: an INHERENT fn beats a trait-flattened
+        // one, then a CLEAN fn beats one with a unit-enum param, then by name. The
+        // enum-param demotion keeps a fallible, variant-name-string-taking factory
+        // (`NaiveDate::from_isoywd(.., weekday)`) from stealing the ctor slot from a
+        // clean infallible sibling (`from_num_days_from_ce`); it falls through to a
+        // static factory instead. Only wins the ctor if EVERY candidate is
+        // enum-param — then there is no cleaner option.
+        let has_enum_param =
+            |f: &BridgeFn| f.params.iter().any(|p| matches!(p.ty, ScalarType::Enum(..)));
         ctor_candidates.sort_by(|a, b| {
-            (a.1.via_trait.is_some(), &a.1.name).cmp(&(b.1.via_trait.is_some(), &b.1.name))
+            (a.1.via_trait.is_some(), has_enum_param(&a.1), &a.1.name).cmp(&(
+                b.1.via_trait.is_some(),
+                has_enum_param(&b.1),
+                &b.1.name,
+            ))
         });
         let mut candidates = ctor_candidates.into_iter();
         if let Some((_, winner)) = candidates.next() {
@@ -2058,7 +2267,8 @@ impl<'a> Ctx<'a> {
                 // A public FIELDLESS enum (all-unit variants) -> variant-name string.
                 if let Some(variants) = self.fieldless_enum_variants(rp.id.0) {
                     let enum_path = self.accessible_type_path(rp.id.0, &[], rp_name(&rp.path));
-                    return Ok(BridgeReturn::EnumName(enum_path, variants));
+                    let non_exhaustive = self.enum_is_non_exhaustive(rp.id.0);
+                    return Ok(BridgeReturn::EnumName(enum_path, variants, non_exhaustive));
                 }
                 // An `Option<int>` field (`Comparator.minor: Option<u64>`) rides
                 // the Option<int> return lane: Some crosses as an 8-byte JacBuf,
@@ -2130,6 +2340,22 @@ impl<'a> Ctx<'a> {
             names.push(vitem.name.clone()?);
         }
         (!names.is_empty()).then_some(names)
+    }
+
+    /// True if the enum with `id` is `#[non_exhaustive]`. The variant-name `match`
+    /// a fieldless enum lowers to needs a `_ => …` wildcard iff the source is
+    /// non-exhaustive (the compiler forces one); on an exhaustive enum the listed
+    /// variants are total, so a wildcard would be an `unreachable_patterns` warning.
+    fn enum_is_non_exhaustive(&self, id: u32) -> bool {
+        self.doc
+            .index
+            .get(&Id(id))
+            .map(|item| {
+                item.attrs
+                    .iter()
+                    .any(|a| matches!(a, Attribute::NonExhaustive))
+            })
+            .unwrap_or(false)
     }
 
     /// Classify one impl method (inherent or trait-flattened) onto `bt`.
@@ -2276,6 +2502,20 @@ impl<'a> Ctx<'a> {
                 }
             }
             Err(reason) => {
+                // SOUNDNESS (HOLE 1): a callback param whose bound PERMITS storage
+                // must be rejected BEFORE any rescue rule can bridge it. The v1
+                // callback ABI crosses a Jac closure whose env lives on the caller's
+                // stack, so a callee that stashes the callback would dangle. This
+                // guard runs ahead of the callback/replacer rescue chain so the
+                // escaping shape becomes a machine-readable skip, never a silent
+                // bridge (or a silent re-route through the `&str` replacer lane).
+                if let Some(why) = callback_escape_reason(f) {
+                    self.skips.push(Skip {
+                        item: item_path,
+                        reason: SkipReason::CallbackMayEscape(why),
+                    });
+                    return;
+                }
                 // Before recording the skip, try the owning-wrapper rules: a
                 // `fn(&self, &str) -> Option<Borrowed<'_>>` whose borrowed type has
                 // a readable surface becomes a producer + wrapper; failing that, a
@@ -2381,6 +2621,14 @@ impl<'a> Ctx<'a> {
         bt: &BridgeType,
         self_aliases: &[&str],
     ) -> Result<BridgeFn, SkipReason> {
+        // An `unsafe fn` (`NonNilUuid::new_unchecked`, `Uuid::from_bytes_ref`) can't
+        // be called from the safe wrapper body — the delegating call would need an
+        // `unsafe {}` block the codegen doesn't emit. Skip it honestly rather than
+        // generate an uncompilable call. (A safe wrapper over an unsafe fn would have
+        // to assert the fn's safety contract, which the binder can't do generically.)
+        if f.header.is_unsafe {
+            return Err(SkipReason::UnsupportedType("unsafe fn".into()));
+        }
         let mut params = vec![];
 
         // Iterator-of-strings monomorphization: a generic param `I` bounded
@@ -2417,6 +2665,20 @@ impl<'a> Ctx<'a> {
         if ret == BridgeReturn::SelfRef && !f.sig.inputs.iter().any(|(n, _)| n == "self") {
             return Err(SkipReason::UnsupportedType(
                 "&Self return on an associated fn".into(),
+            ));
+        }
+        // A unit-enum param forces the method fallible — its bad-name decode
+        // early-returns `Err`, which needs a `Result<_, String>` return. A `&Self`
+        // self-identity return (`Uuid::set_variant(&mut self, v: Variant) -> &Self`)
+        // can't carry that: the macro's self-borrow lowering needs a bare `-> &Self`
+        // (a builder setter that can throw is not a self-identity chain), and
+        // `Ok(let _ = …; self)` isn't even valid Rust. Skip it honestly — it was a
+        // skip before the enum-param lane admitted its enum param at all.
+        if ret == BridgeReturn::SelfRef
+            && params.iter().any(|p| matches!(p.ty, ScalarType::Enum(..)))
+        {
+            return Err(SkipReason::UnsupportedType(
+                "unit-enum param on a `&Self`-returning builder setter (can't be fallible)".into(),
             ));
         }
 
@@ -2480,6 +2742,9 @@ impl<'a> Ctx<'a> {
                 // width is kept so the wrapper's re-declared param matches the crate.
                 p @ ("u8" | "u16" | "u32" | "u64" | "usize") => Ok(ScalarType::Uint(p.to_string())),
                 p @ ("i8" | "i16" | "i32" | "i64" | "isize") => Ok(ScalarType::Int(p.to_string())),
+                // Float scalars cross as an f64 bit pattern in a u64 slot (TAG_F64);
+                // an f32 is widened to the slot and narrowed back before the call.
+                p @ ("f32" | "f64") => Ok(ScalarType::Float(p.to_string())),
                 other => Err(SkipReason::UnsupportedType(other.to_string())),
             },
             Type::BorrowedRef {
@@ -2522,6 +2787,35 @@ impl<'a> Ctx<'a> {
             // it as `&[u8]`. Any other `impl Trait` stays a Closure skip.
             Type::ImplTrait(bounds) if impl_is_asref_u8(bounds) => Ok(ScalarType::Bytes),
             Type::ImplTrait(_) => Err(SkipReason::Closure),
+            // A BY-VALUE handle param: the inner method takes an owned bridged handle
+            // (`Date::checked_add(self, rhs: Duration)`). The ABI is the same as the
+            // by-value-ref `&Version` lane above (the caller passes the handle, the
+            // macro reconstructs `&Target`), but the inner method wants an OWNED
+            // value, so the target must be `Clone` (every `Copy` type qualifies) and
+            // the wrapper clones it out. Handle-wins: checked before the wide
+            // fallback. A lifetime-bearing handle can't cross.
+            Type::ResolvedPath(inner)
+                if self.clone_ref_names.contains(&inner.path)
+                    && !has_lifetime_args(inner)
+                    && !inner_has_lifetime(inner, self.doc) =>
+            {
+                Ok(ScalarType::HandleValue(inner.path.clone()))
+            }
+            // A by-value public FIELDLESS enum param (`from_calendar_date(month:
+            // Month)`, `next_occurrence(weekday: Weekday)`). The mirror of the
+            // `EnumName` VALUE return: the enum crosses as its variant NAME string
+            // (same `&str`/`TAG_STR` lane), decoded back in the wrapper body. An
+            // unknown name forces the method fallible (see codegen + the reconcile
+            // gate). Handle-wins: the `HandleValue` opaque-handle arm above is tried
+            // first, so a bridged-opaque enum stays a handle.
+            Type::ResolvedPath(inner)
+                if self.fieldless_enum_variants(inner.id.0).is_some() =>
+            {
+                let variants = self.fieldless_enum_variants(inner.id.0).unwrap();
+                let enum_path =
+                    self.accessible_type_path(inner.id.0, &[], rp_name(&inner.path));
+                Ok(ScalarType::Enum(enum_path, variants))
+            }
             // 2.8: no scalar/handle lane fits. A by-value `Deserialize` type (a
             // local serde struct, or a whitelisted std shape like `Vec<f64>`)
             // crosses the wide (msgpack) lane; anything else stays the skip below.
@@ -2591,6 +2885,8 @@ impl<'a> Ctx<'a> {
                 p @ ("i8" | "i16" | "i32" | "i64" | "isize") => {
                     Ok(BridgeReturn::Int(p.to_string()))
                 }
+                // Float return: crosses as an f64 bit pattern in a u64 slot (TAG_F64).
+                p @ ("f32" | "f64") => Ok(BridgeReturn::Float(p.to_string())),
                 other => Err(SkipReason::UnsupportedType(other.to_string())),
             },
             Type::ResolvedPath(rp) => {
@@ -2667,6 +2963,17 @@ impl<'a> Ctx<'a> {
                     // `None` in-band as a null buffer pointer. Only owned `String`
                     // qualifies (an `Option<&str>` inner carries a lifetime); checked
                     // after the owned-handle arm so a bridged inner isn't shadowed.
+                    // `Option<&str>` — a nullable BORROWED string (`url::Url::
+                    // host_str`/`domain`/…). The borrow is owned in the wrapper
+                    // (`.map(|s| s.to_string())`), then rides the same
+                    // `TAG_OPT_BIT | TAG_STR` lane as `Option<String>`. Checked
+                    // before the generic lifetime-borrow rejection below, which would
+                    // otherwise skip it for the `&str`'s lifetime.
+                    if let Some(Type::BorrowedRef { type_, .. }) = vec_first_type_arg(rp) {
+                        if matches!(type_.as_ref(), Type::Primitive(p) if p == "str") {
+                            return Ok(BridgeReturn::OptStrRef);
+                        }
+                    }
                     if let Some(Type::ResolvedPath(inner)) = vec_first_type_arg(rp) {
                         if rp_name(&inner.path) == "String" {
                             return Ok(BridgeReturn::OptStrValue);
@@ -2714,6 +3021,19 @@ impl<'a> Ctx<'a> {
                 if has_lifetime_args(rp) || inner_has_lifetime(rp, self.doc) {
                     return Err(SkipReason::LifetimeBorrow);
                 }
+                // A by-value public FIELDLESS enum return (`Date::month -> Month`,
+                // `weekday -> Weekday`, decimal `RoundingStrategy`) crosses as its
+                // variant NAME string, exactly like a fieldless-enum field reader
+                // (`classify_field_reader`). Codegen's `EnumName` arm maps the
+                // returned value through a `match` to `-> String`, so the whole
+                // stack below rides the existing `Str`/JacBuf lane with no ABI,
+                // macro, or loader change. Checked before the wide fallback so a
+                // human-readable name wins over a msgpack record for a serde enum.
+                if let Some(variants) = self.fieldless_enum_variants(rp.id.0) {
+                    let enum_path = self.accessible_type_path(rp.id.0, &[], rp_name(&rp.path));
+                    let non_exhaustive = self.enum_is_non_exhaustive(rp.id.0);
+                    return Ok(BridgeReturn::EnumName(enum_path, variants, non_exhaustive));
+                }
                 // 2.8: no scalar/handle lane fit — a by-value `Serialize` type
                 // (a local serde struct rustdoc missed no lane for) crosses wide.
                 if let Some(inner) = self.wide_fallback(ty, SerdeTrait::Serialize) {
@@ -2750,8 +3070,33 @@ impl<'a> Ctx<'a> {
             }
             Type::Generic(_) => Err(SkipReason::Generic),
             Type::ImplTrait(_) => Err(SkipReason::Cursor),
-            // 2.8: a by-value tuple/array/slice return of wide values (`(f64, f64)`)
-            // crosses the wide lane; everything else stays an honest skip.
+            // A fixed-arity by-value tuple of INTEGER scalars (`Time::as_hms ->
+            // (u8, u8, u8)`) crosses on the existing `List` wire lane as a
+            // `Vec<i64>` — na has no tuple type and the frozen ABI has one return
+            // out-slot, so codegen re-projects the tuple's fields into a list of
+            // widened ints (see `BridgeReturn::Tuple`). Only widths that widen
+            // losslessly to `i64` qualify; a float/String/handle/`u64` element falls
+            // through to the wide fallback (which keeps it an honest skip absent a
+            // serde-named leaf), so this narrowly unlocks the `to_hms*` family
+            // WITHOUT auto-crossing every pure-std tuple wide and destabilizing the
+            // coverage baselines. Checked before the wide fallback so an int tuple
+            // wins the usable `list[int]` lane over a dynamic msgpack document.
+            Type::Tuple(elems) if !elems.is_empty() => {
+                let ints: Option<Vec<String>> =
+                    elems.iter().map(int_tuple_elem).collect();
+                match ints {
+                    Some(elem_tys) => Ok(BridgeReturn::Tuple(elem_tys)),
+                    // A non-int-scalar element: fall back to the wide lane's intent
+                    // gate (a serde-named leaf crosses wide, a pure-std shape stays
+                    // a skip) — identical to the pre-tuple-lane behaviour.
+                    None => match self.wide_fallback(ty, SerdeTrait::Serialize) {
+                        Some(inner) => Ok(BridgeReturn::Wide(inner)),
+                        None => Err(SkipReason::UnsupportedType(format!("{ty:?}"))),
+                    },
+                }
+            }
+            // 2.8: a by-value array/slice return of wide values crosses the wide
+            // lane; everything else stays an honest skip.
             _ => match self.wide_fallback(ty, SerdeTrait::Serialize) {
                 Some(inner) => Ok(BridgeReturn::Wide(inner)),
                 None => Err(SkipReason::UnsupportedType(format!("{ty:?}"))),
@@ -3757,6 +4102,10 @@ impl<'a> Ctx<'a> {
                 if !f.sig.inputs.iter().any(|(n, _)| n == "self") {
                     continue;
                 }
+                // An unsafe reader can't be called from the safe wrapper body.
+                if f.header.is_unsafe {
+                    continue;
+                }
                 let mname = method.name.clone().unwrap_or_default();
                 if mname.is_empty() || seen_names.contains(&mname) {
                     continue;
@@ -3946,6 +4295,113 @@ fn generic_param_bounds<'f>(
     out
 }
 
+/// Trait names whose bound marks a param as a Jac CALLBACK (a closure crossing
+/// the boundary inward). `Replacer` is regex's closure sink — the one callback
+/// lane the binder currently bridges; `Fn`/`FnMut`/`FnOnce` are the std closure
+/// traits any future/other callback param keys on. Keeping all four here makes the
+/// escape guard cover the lane even as it generalizes past `Replacer`.
+const CALLBACK_TRAITS: &[&str] = &["Fn", "FnMut", "FnOnce", "Replacer"];
+
+/// True when `path` names a callback trait (final segment match, so a fully
+/// qualified `regex::Replacer` / `std::ops::Fn` both hit).
+fn is_callback_trait_path(path: &str) -> bool {
+    CALLBACK_TRAITS.contains(&rp_name(path))
+}
+
+/// True when a single bound is a callback trait bound (`Fn`/`Replacer`/…).
+fn is_callback_trait_bound(b: &rustdoc_types::GenericBound) -> bool {
+    matches!(b, rustdoc_types::GenericBound::TraitBound { trait_, .. }
+        if is_callback_trait_path(&trait_.path))
+}
+
+/// True when a bound list pins its subject to `'static` (an `Outlives("'static")`
+/// bound). On a callback generic that says the callee may STASH the closure past
+/// the synchronous call.
+fn bounds_pin_static(bounds: &[&rustdoc_types::GenericBound]) -> bool {
+    bounds
+        .iter()
+        .any(|b| matches!(b, rustdoc_types::GenericBound::Outlives(l) if l == "'static"))
+}
+
+/// SOUNDNESS (HOLE 1): decide whether any callback-shaped param of `f` MAY escape
+/// — i.e. the callee's bound permits storing the closure past the synchronous
+/// call. The v1 callback ABI crosses a Jac closure whose captured env lives on the
+/// CALLER's stack, so an escaping callback would read freed stack after return.
+///
+/// Returns `Some(explanation)` when an escape is possible (the binder must skip
+/// with `callback-may-escape`), or `None` when every callback param is same-thread
+/// synchronous and safe to bridge. A NON-`'static` `Fn`/`FnMut`/`Replacer` generic
+/// (regex's `replace_all<R: Replacer>`) returns `None` and stays bridged.
+pub(crate) fn callback_escape_reason(f: &rustdoc_types::Function) -> Option<String> {
+    use rustdoc_types::GenericParamDefKind;
+    // (1) A closure GENERIC bounded `'static`: `F: Fn(..) + 'static`, or
+    //     `R: Replacer + 'static` (including the bound written in a `where`
+    //     clause). The `'static` is exactly the permission to store.
+    for p in &f.generics.params {
+        if !matches!(p.kind, GenericParamDefKind::Type { .. }) {
+            continue;
+        }
+        let bounds = generic_param_bounds(f, &p.name);
+        if bounds.iter().any(|b| is_callback_trait_bound(b)) && bounds_pin_static(&bounds) {
+            return Some(format!(
+                "closure generic `{}` is `'static`-bounded — the callee may store it past the call",
+                p.name
+            ));
+        }
+    }
+    // (2) A closure passed as a CONCRETE param type that the callee owns / can
+    //     retain: `impl Fn(..) + 'static`, or a `Box`/`Arc`/`Rc<dyn Fn>` trait
+    //     object (ownership is transferred, so it may outlive the call). A borrowed
+    //     `&dyn Fn` is NOT peeled — the reference itself is call-scoped, so it can't
+    //     escape and stays bridgeable.
+    for (pname, pty) in &f.sig.inputs {
+        if let Some(why) = escaping_callback_param_ty(pty) {
+            return Some(format!("param `{pname}`: {why}"));
+        }
+    }
+    None
+}
+
+/// The escape rationale for a concrete callback param type, or `None` if the type
+/// is not an escape-capable callback shape. Recognizes `impl Fn + 'static` and
+/// owned `Box`/`Arc`/`Rc<dyn Fn>` trait objects.
+fn escaping_callback_param_ty(ty: &Type) -> Option<String> {
+    match ty {
+        // `impl Fn(..) + 'static` — a by-value opaque closure the callee owns and
+        // may keep. Without `'static` an `impl Fn` is still a `SkipReason::Closure`
+        // today (unbridged), so only the storable form needs the explicit reason.
+        Type::ImplTrait(bounds) => {
+            let refs: Vec<&rustdoc_types::GenericBound> = bounds.iter().collect();
+            let is_cb = bounds.iter().any(is_callback_trait_bound);
+            if is_cb && bounds_pin_static(&refs) {
+                Some("`impl Fn + 'static` closure — the callee may store it past the call".into())
+            } else {
+                None
+            }
+        }
+        // `Box`/`Arc`/`Rc<dyn Fn>`: ownership of the trait object crosses in, so the
+        // callee may retain it beyond the synchronous call regardless of any inner
+        // lifetime annotation.
+        Type::ResolvedPath(rp) if matches!(rp_name(&rp.path), "Box" | "Arc" | "Rc") => {
+            let inner = vec_first_type_arg(rp)?;
+            if let Type::DynTrait(dt) = inner {
+                if dt
+                    .traits
+                    .iter()
+                    .any(|pt| is_callback_trait_path(&pt.trait_.path))
+                {
+                    return Some(format!(
+                        "`{}<dyn Fn>` owned trait object — the callee may store it past the call",
+                        rp_name(&rp.path)
+                    ));
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
 /// True when the bound list contains `AsRef<str>`.
 fn bounds_have_asref_str(bounds: &[&rustdoc_types::GenericBound]) -> bool {
     bounds.iter().any(|b| {
@@ -4097,6 +4553,22 @@ fn rp_name(path: &str) -> &str {
 /// Render a `HashMap`/`Vec` value type into the Rust string the wrapper
 /// re-declares, iff the macro can carry it: bool, any integer width, or `String`.
 /// Returns `None` for anything else (opaque values, nested containers, …).
+/// A tuple element type that widens LOSSLESSLY to the `i64` slot the `List` wire
+/// lane carries, returning its Rust spelling. Every signed width and the unsigned
+/// widths `≤ u32` fit in `i64`; `u64`/`usize` are excluded because a value above
+/// `i64::MAX` would misencode in the signed slot, and non-integers (`f32`/`f64`,
+/// `bool`, `String`, handles) have no int projection. Used to gate the tuple return
+/// lane (see [`BridgeReturn::Tuple`]) — a tuple qualifies iff EVERY element does.
+fn int_tuple_elem(ty: &Type) -> Option<String> {
+    match ty {
+        Type::Primitive(p) => match p.as_str() {
+            "i8" | "i16" | "i32" | "i64" | "isize" | "u8" | "u16" | "u32" => Some(p.clone()),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 fn scalar_value_rust(ty: &Type) -> Option<String> {
     match ty {
         Type::Primitive(p) => match p.as_str() {
@@ -4232,7 +4704,10 @@ mod serde_lane_tests {
             pending_wrappers: vec![],
             inherited_excluded: 0,
             ref_type_names: HashSet::new(),
+            clone_ref_names: HashSet::new(),
             root_reexports: collect_root_reexports(doc),
+            reexport_paths: collect_reexport_paths(doc, &module_name),
+            root_module_reexports: collect_root_module_reexports(doc),
             root_glob_modules: collect_root_glob_modules(doc, &module_name),
             wide_record_ids: std::cell::RefCell::new(vec![]),
             qual_stack: std::cell::RefCell::new(vec![]),

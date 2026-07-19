@@ -1,7 +1,19 @@
 # Rust bridges - remaining work
 
 Living checklist for what is **not done** after the M2–M6 branch (na-first product
-policy - see IMPLEMENTATION.md / PLAN.md). Updated 2026-07.
+policy - see IMPLEMENTATION.md / PLAN.md). Updated 2026-07-18.
+
+**Terminology (read this before the tables below):**
+
+- **Wire ABI** (`ABI_VERSION = 1`, `JACBRDG1` in `jac-bridge-schema`) -- frozen tag
+  algebra; scalar tags 1..=8 are full. New shapes ride `TAG_WIDE` msgpack payloads
+  and append-only blob sections -- **not** a bump to `ABI_VERSION = 2`. See Phase 2.12
+  in `bridges/reference/FFI-LANES-PLAN.md`.
+- **FFI-LANES Phases 0–2** -- soundness debt, trait flattening, serde wide lane,
+  typed records, f64/bytes tags: **landed** on this branch.
+- **TYPE-MODEL-V2** -- cancelled; replaced by the wide lane + py-interop tier.
+- **Do not** read “ABI v1” in older prose as “pre-wide-lane capability.” The wire
+  format is v1; the binder/loader stack is post–Phase 2.
 
 **Ship bar:** `nacompile` / `jac bundle`. CPython (`jac run`) is secondary.
 
@@ -30,25 +42,25 @@ policy - see IMPLEMENTATION.md / PLAN.md). Updated 2026-07.
       (likely cold-cache). If it resurfaces in CI, capture the exact rendered source + cache
       state -- the intrinsic's `-> str` is declared in `type_registry.jac` +
       `na_builtins.pyi` and gated on `_in_native_context()`.
-- [x] **ROOT-CAUSED + FIXED (2026-07-18) — it was a TEST-HARNESS BUG, not a na-backend
+- [x] **ROOT-CAUSED + FIXED (2026-07-18) -- it was a TEST-HARNESS BUG, not a na-backend
       resolver bug.** `na/conformance.jac` (regex) failed `E1001: Cannot assign <Unknown>
       to str` at `emsg = __jac_str_from_raw(mb[0], mb[1])`. The earlier "resolver
       import-order priming" diagnosis was WRONG. Real cause: `conformance.jac` named its
       synthesized temp module `"conf.jac"` (line 79), while EVERY other conformance
       (`scalar_conf.na.jac`, …) uses a `.na.jac` name. `__jac_str_from_raw`'s `-> str`
       signature (na_builtins.pyi) is only consulted when the type checker's
-      `_in_native_context()` is true — and that predicate keys off the module being a
+      `_in_native_context()` is true -- and that predicate keys off the module being a
       `.na.jac` file (`is_native_module` / `UniNode.codespace`). A plain `.jac`
       auto-promoted by `nacompile` is NOT seen as native context by the checker, so the
       intrinsic fell back to the plain-builtins name entry (no signature → `<Unknown>`),
       and reassigning `emsg` (already `str`) tripped E1001. Fix: `"conf.jac"` →
       `"conf.na.jac"`. Verified: conformance now PASSES, and the na regex bridge runs
       end-to-end (`is_match("foo42")`→1, `is_match("bar")`→0). Rendered scalar source ALSO
-      E1001s if you nacompile it as a bare `.jac` — confirming the trigger is the filename,
+      E1001s if you nacompile it as a bare `.jac` -- confirming the trigger is the filename,
       not the module shape. **Compiler HARDENED (2026-07-18):** `_in_native_context`
       (`type_evaluator.impl.jac`) now also returns true when the current module is the
       program's `_auto_promote_native` target (mirrors `BoundaryAnalysisPass._in_native_module`),
-      so ANY `.jac` compiled via `nacompile` resolves na builtins — the `.na.jac` naming is no
+      so ANY `.jac` compiled via `nacompile` resolves na builtins -- the `.na.jac` naming is no
       longer load-bearing. Verified: reverting the test back to bare `conf.jac` now passes too;
       guard is scoped (a normal `jac check` of a server module still sees the intrinsic as
       Unknown); type-checker tests (`test_global_narrowing`, `test_prim_equivalence`,
@@ -102,40 +114,46 @@ policy - see IMPLEMENTATION.md / PLAN.md). Updated 2026-07.
 
 ---
 
-## ABI v1 ceiling (honest skips until v2)
+## Remaining FFI gaps (post–Phase 2)
 
-These are **not** “finish M6” items - they need the Lanes Plan (`bridges/reference/FFI-LANES-PLAN.md`, serde wide lane + py tier) or accepted v1 limits:
+Honest skips and platform gaps **after** the serde wide lane landed. These are not
+“waiting for ABI v2” -- they are the next lanes, overlays, or na fixes. Authoritative
+detail: `bridges/reference/FFI-LANES-PLAN.md`.
 
-| Gap | Example |
-|-----|---------|
-| Floats | `f32` / `f64` - macro rejects; f64-return works, f64-PARAM still na-broken |
-| ~~Bytes~~ | **DONE** all 3 runtimes: `Vec<u8>` / `&[u8]` / `Option<Vec<u8>>` - wire+CPython+binder, and na as of 2026-07-18 (both na-backend bytes bugs fixed; `_synth` emits the lane; scalar na↔CPython conformance green) |
-| Collection **params** | pass `Vec` / `HashMap` **into** Rust |
-| Nested containers | `list[list]`, `dict[str, list]` |
-| Nullable scalars | `Option<bool>`, `Option<int>` |
-| General callbacks | only `str→str` replacer; `replacen` still skipped |
-| na callback detection | `_lambda_arg_is_callback` keys off lambda + i64 slot + `make_buf` sink, not callee `TAG_FN` (ABI v1 heuristic) |
-| Tuples | non-empty |
-| Struct / enum by value | opaque handles only |
-| Unpinned generics | `Date<Tz>` dropped without overlay |
-| Trait-object APIs | uuid 0/6, sha2 0/0 |
-
-Reference: `bridges/reference/FFI-LANES-PLAN.md` (cancels TYPE-MODEL-V2)
+| Gap | Status | Example / notes |
+|-----|--------|-----------------|
+| ~~Bytes~~ | **DONE** | `Vec<u8>` / `&[u8]` / `Option<Vec<u8>>` on wire + CPython + na (`scalar_conformance.jac`) |
+| ~~Wide serde lane~~ | **DONE** | `TAG_WIDE` msgpack; typed records; nested/container/enum fields (`geo_demo` 8/8) |
+| ~~`Option<String>` / `Option<Vec<u8>>` returns on na~~ | **DONE** | geo_demo fixtures; M6 tail |
+| ~~Trait flattening (sha2/uuid)~~ | **DONE** | sha2 54/186 (hashing surface complete); uuid 42/108 live |
+| `f64` **params** on na | **OPEN** | `TAG_F64` return works; na miscompiles float params -- synthesizer skips them |
+| Collection **params** (non-serde) | **OPEN** | pass `Vec<T>` / `HashMap` **into** Rust on the list/map wire lanes |
+| Serde collection **params** | **partial** | `IntoIterator<Item=S>` monomorphized to `Wide<Vec<String>>` where the binder pins it (regex set builders) |
+| Nullable scalar **params** | **partial** | `Option<int>` **returns** bridge; `Option<bool>` / nullable scalar args still thin |
+| General callbacks | **OPEN** | `str→str` replacer (`replace_all`) works; `replacen`, typed signatures deferred |
+| na callback detection | **OPEN** | shape-based (`i64` slot + `make_buf`), not callee `TAG_FN` in blob metadata |
+| Tuples | **partial** | INTEGER tuple **returns** bridge (`Time::as_hms -> (u8,u8,u8)`, `to_hms*`; `BridgeReturn::Tuple`) -- re-projected onto the existing `List` wire lane as `Vec<i64>`, decoded as `list[int]`, no new tag. Float / mixed (`(i32, Month, u8)`) / `u64`-element / string tuples and tuple **params** still open |
+| Struct / enum by value (non-serde) | **OPEN** | opaque handles + wide lane for derived-serde types only |
+| Unpinned generics | **OPEN** | `Date<Tz>` / `DateTime<Tz>` dropped without `monomorphize` overlay |
+| Trait-object returns | **OPEN** | `Box<dyn DynDigest>` etc. -- sha2’s remaining skips are duplicates, not new capability |
+| Standing cdylibs for corpus crates | **N/A** | Product uses auto-binder + registry; workspace members are acceptance fixtures only |
+| Static-musl / `.a` link path | **OPEN** | dynamic `cdylib` only today (D1.1) |
 
 ---
 
-## Lanes Plan -- broad interop (serde wide lane + py tier) - ~3–6 months
+## Lanes Plan status
 
-Replaces cancelled TYPE-MODEL-V2. See `bridges/reference/FFI-LANES-PLAN.md` for full plan. Phases:
+See `bridges/reference/FFI-LANES-PLAN.md` for the full checklist. Summary:
 
-0. Foundation - `jac-bridge-typemodel`, postcard metadata, shared `_marshal.jac`, re-encode existing shapes
-1. Floats
-2. Bytes
-3. Nullable scalars / general `Option` / `Result`
-4. Nested containers + collection params
-5. Tuples
-6. Record / Variant by value
-7. Real callback signatures (`Func` / `FnSig`)
+| Phase | Status | What landed |
+|-------|--------|-------------|
+| **0** Soundness + debt | **Done** | per-crate allocators, adversarial suite, SlotKind spec, borrowed-handle lane |
+| **1** Trait flattening + small lanes | **Done** | bytes, `&mut self`, ref-lane, tuple-struct admission, `FN_STATIC`, sha2/uuid/chrono floors met |
+| **2** Serde wide lane | **Done** | `TAG_WIDE`, typed records, semver + geo_demo fixtures, ABI frozen (append-only within v1) |
+| **3** py-interop tier | **In progress** | forwarders + spike landed; flagship polars groupby acceptance landed; CI/pythonless polish remains |
+| **4** Productionization | **Backlog** | registry artifacts, seed overlays, use-site monomorphization, Windows na |
+
+Cancelled: **TYPE-MODEL-V2** recursive type table (superseded by wide lane + py tier).
 
 ---
 
@@ -147,24 +165,67 @@ Replaces cancelled TYPE-MODEL-V2. See `bridges/reference/FFI-LANES-PLAN.md` for 
 
 ---
 
-## Coverage floors today (binder corpus)
+## Coverage today
 
-| Crate | Bridged | Total | Comment |
-|-------|---------|-------|---------|
-| regex | 31 | 84 | north-star; ~37% |
-| chrono | 33 | 181 | needs overlays for `Date<Tz>` / `DateTime<Tz>` |
-| base64 | 1 | 11 | |
-| uuid | 0 | 6 | structural |
-| sha2 | 0 | 0 | `Digest` trait aliases |
+Two metrics -- see `bridges/reference/EXAMPLE-PASS-METRIC.md` for why both exist.
 
-Ratchet floors in `bridges/jac-bridge-binder/tests/corpus/coverage-baseline.toml` as rules land.
+### 1. Binder item-coverage (corpus ratchet)
+
+Gate: `jac-bridge-binder/tests/corpus.rs::coverage_does_not_regress` vs
+`tests/corpus/coverage-baseline.toml`. Run: `cargo test -p jac-bridge-binder
+coverage_does_not_regress -- --nocapture`.
+
+| Crate | Bridged / Total | % | Dropped | In bridges workspace? |
+|-------|-----------------|---|---------|----------------------|
+| geo_demo | 8 / 8 | 100% | 0 | rustdoc fixture only |
+| regex | 79 / 97 | 81% | 10 | yes -- acceptance / conformance seed |
+| semver | 12 / 15 | 80% | 3 | yes -- acceptance seed (**37/39** with opaque overlay) |
+| chrono | 197 / 305 | 65% | 6 | rustdoc fixture only; needs overlay for `Date<Tz>` |
+| uuid | 42 / 108 | 39% | 1 | rustdoc fixture only (floor 25 -- **ratchet pending**) |
+| sha2 | 54 / 186 | 29% | 0 | rustdoc fixture only; hashing surface **complete** at 54 |
+| base64 | 6 / 13 | 46% | 4 | rustdoc fixture only |
+
+**Product path is NOT “add a `jac-bridge-<crate>` workspace member per crate.”**
+Principle zero: the auto-binder is the only front door (`IMPLEMENTATION.md` D6).
+Users declare `jac add rust:<crate>`; `jac install` resolves cache → registry →
+**local auto-build** (`jaclang/compiler/rust_bridge/_build_core.jac`: crates.io
+fetch → rustdoc JSON → binder → generated cdylib). CI publishes the same
+pipeline's output via `bridges/tools/build_bridge_artifacts.jac` +
+`rust-bridges-artifacts.yml` (registry-as-cache). Workspace `jac-bridge-*` crates
+are **binder acceptance fixtures**, not a catalog of hand-maintained bridges.
+
+Item-% is a **trend line** for binder breadth, not a ship definition.
+
+### 2. Example-pass (north-star ship gate)
+
+Roster: `jac-bridge-loader/tests/na/examples.toml`. Each `required` crate must
+match the docs golden on **both** na and CPython.
+
+| Crate | Example-pass | Blocker |
+|-------|--------------|---------|
+| semver | **GREEN** | -- |
+| regex_binder | **GREEN** | -- |
+| uuid | seeded, skips | na test harness looks in `bridges/target/release` only; no auto-built `.so` in that tree yet |
+| sha2 | seeded, skips | same -- test infra, not a missing binder lane |
+
+uuid/sha2 examples are written against surface the binder already bridges. To
+unblock them: run the **auto-build pipeline** in CI (extend `DEFAULT_CRATES` in
+`rust-bridges-artifacts.yml`, or point the harness at a `jac install` cache
+path) -- **not** hand-authored `jac-bridge-uuid` workspace crates.
+
+### 3. na synthesizer floors (hand-built fixtures)
+
+`jac-bridge-loader/tests/na/na-coverage-floor.toml` -- owning 12/12, list/map 7/7,
+semver ≥13/14, regex spike 2/2. Proven by `*_conformance.jac` verticals.
 
 ---
 
 ## Suggested order
 
 1. Merge branch (housekeeping)
-2. Ship **experimental** - regex + registry + native-only docs
-3. Seed crates + overlays + use-site monomorphization
-4. na polish (`Option<String>`, Windows na if needed)
-5. Lanes Plan Phase 0 (serde wide lane) when v1 ceiling blocks real users
+2. Ratchet uuid floor in `coverage-baseline.toml` (live 42/108 > floor 25)
+3. Extend registry CI seed set (`rust-bridges-artifacts.yml` `DEFAULT_CRATES`) as
+   binder coverage allows; wire example-pass harness to auto-built artifacts
+4. Overlays where needed (chrono `monomorphize`, base64) -- data, not hand bridges
+5. na: `f64` params, collection params, callback metadata-driven detection
+6. Lanes Plan Phase 3 polish (pythonless CI) + Phase 4 productionization

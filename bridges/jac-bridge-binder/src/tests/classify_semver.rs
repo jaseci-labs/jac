@@ -193,10 +193,14 @@ fn field_reader_lane_scalar_handle_and_enum() {
     // Fieldless-enum field reader (`Comparator.op: semver::Op`) -> variant-name str.
     let op = method(&spec, "Comparator", "op");
     match &op.ret {
-        BridgeReturn::EnumName(path, variants) => {
+        BridgeReturn::EnumName(path, variants, non_exhaustive) => {
             assert_eq!(path, "semver::Op");
             assert_eq!(variants.first().map(String::as_str), Some("Exact"));
             assert!(variants.contains(&"Wildcard".to_string()));
+            assert!(
+                *non_exhaustive,
+                "semver::Op is #[non_exhaustive] — its match needs a wildcard arm"
+            );
         }
         other => panic!("Comparator::op must be an EnumName reader, got {other:?}"),
     }

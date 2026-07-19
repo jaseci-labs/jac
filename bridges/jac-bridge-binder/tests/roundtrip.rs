@@ -212,8 +212,8 @@ fn sha2_bridge_compiles_clean() {
         "Sha256 constructor (self-alias `D` → Self) missing\n{lib_src}"
     );
     assert!(
-        lib_src.contains("use sha2::digest::Digest;"),
-        "flattened Digest must be `use`d via the module's digest re-export\n{lib_src}"
+        lib_src.contains("use sha2::Digest;"),
+        "flattened Digest must be `use`d via sha2 root re-export\n{lib_src}"
     );
 
     let jac_bridge = manifest_dir().join("../jac-bridge");

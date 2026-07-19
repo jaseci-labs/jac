@@ -143,6 +143,7 @@ fn reason_label(r: &SkipReason) -> String {
         SkipReason::LifetimeBorrow => "lifetime borrow".into(),
         SkipReason::Cursor => "iterator/cursor".into(),
         SkipReason::Closure => "closure arg".into(),
+        SkipReason::CallbackMayEscape(why) => format!("callback-may-escape: {why}"),
         SkipReason::Generic => "generic".into(),
         SkipReason::UnsupportedType(t) => format!("unsupported type: {t}"),
         SkipReason::OverlayTreatAs(m) => format!("overlay treat_as: {m}"),

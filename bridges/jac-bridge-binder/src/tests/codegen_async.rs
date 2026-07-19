@@ -237,6 +237,33 @@ fn emit_cargo_toml_bare_crate_dep_without_features() {
 }
 
 #[test]
+fn emit_cargo_toml_pins_panic_unwind() {
+    // SOUNDNESS (HOLE 2): every shim is `catch_unwind`-guarded, but `catch_unwind`
+    // is a no-op under `panic = "abort"`. The generated crate must PIN
+    // `panic = "unwind"` in BOTH profiles so a user/workspace default can't
+    // silently downgrade the "panics never kill the host" contract.
+    let toml = emit_cargo_toml(&async_spec(), "../jac-bridge");
+    assert!(
+        toml.contains("[profile.release]"),
+        "Cargo.toml must pin a release profile\n{toml}"
+    );
+    assert!(
+        toml.contains("[profile.dev]"),
+        "Cargo.toml must pin a dev profile\n{toml}"
+    );
+    // Exactly the two `panic = "unwind"` lines (release + dev), no `abort`.
+    assert_eq!(
+        toml.matches("panic = \"unwind\"").count(),
+        2,
+        "both profiles must pin panic = unwind\n{toml}"
+    );
+    assert!(
+        !toml.contains("panic = \"abort\""),
+        "Cargo.toml must never emit panic = abort\n{toml}"
+    );
+}
+
+#[test]
 fn emit_cargo_toml_crate_features_land_on_source_dep() {
     // Overlay `[crate] features` must reach the source-crate dependency, else
     // the optional serde impls the wide lane needs compile out of the bridge.

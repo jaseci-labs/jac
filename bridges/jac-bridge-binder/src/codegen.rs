@@ -67,7 +67,22 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 jac-bridge = {{ path = "{jac_bridge_path}" }}
 {crate_dep}
-{wide_deps}{tokio_dep}"#,
+{wide_deps}{tokio_dep}
+# SOUNDNESS: every generated shim wraps its call in `catch_unwind` so a Rust
+# panic surfaces as a clean Jac error instead of killing the host. `catch_unwind`
+# is a NO-OP under a panic=abort strategy, so the whole "panics never kill the
+# host" contract evaporates if the crate is built that way. Pin unwind in BOTH
+# profiles here so a user/workspace default can't silently downgrade it when this
+# crate is the build root. (When this crate is instead a workspace MEMBER, Cargo
+# ignores member `[profile.*]` — the belt-and-suspenders is a cfg(panic) compile
+# guard the `#[bridge]` macro emits, which fails the build loudly rather than
+# dangling in production.)
+[profile.release]
+panic = "unwind"
+
+[profile.dev]
+panic = "unwind"
+"#,
         module = spec.module_name,
         crate_version = spec.crate_version,
         jac_bridge_path = jac_bridge_path,
@@ -124,6 +139,13 @@ pub fn emit(spec: &BridgeSpec) -> String {
     // have a ctor but no reading method (field written, never read). The macro
     // preserves module attrs, so this silences dead_code across the bridge.
     writeln!(out, "#[allow(dead_code)]").unwrap();
+    // A crate's public surface can include DEPRECATED items (`Url::into_string`,
+    // `Decimal::max_value`) that are still callable today. The binder mirrors the
+    // crate's live surface, so it bridges them — but a delegating call to a
+    // deprecated inner method trips `-D deprecated` (implied by `-D warnings`).
+    // Silence it module-wide so the generated bridge stays warning-clean; the
+    // deprecation is the upstream crate's concern, surfaced in its own docs.
+    writeln!(out, "#[allow(deprecated)]").unwrap();
     writeln!(out, "mod bridge_impl {{").unwrap();
 
     // A HashMap<String, V> return re-declares the `HashMap` type in the wrapper
@@ -304,13 +326,23 @@ fn is_dead_opaque(bt: &BridgeType) -> bool {
 
 /// Error types whose source name is just `"Error"` are renamed to
 /// `<Module>Error` so the bridge module has a distinct, namespaced identifier.
+/// The module name is UpperCamelCased first — a crate with an underscore in its
+/// name (`rust_decimal`) would otherwise yield `Rust_decimalError`, which trips
+/// `-D non-camel-case-types` in the generated crate.
 fn error_bridge_name(name: &str, module_name: &str) -> String {
     if name == "Error" {
-        let mut cap = module_name.to_string();
-        if let Some(first) = cap.get_mut(0..1) {
-            first.make_ascii_uppercase();
-        }
-        format!("{}Error", cap)
+        let camel: String = module_name
+            .split('_')
+            .filter(|s| !s.is_empty())
+            .map(|seg| {
+                let mut c = seg.to_string();
+                if let Some(first) = c.get_mut(0..1) {
+                    first.make_ascii_uppercase();
+                }
+                c
+            })
+            .collect();
+        format!("{camel}Error")
     } else {
         name.to_string()
     }
@@ -458,13 +490,25 @@ fn wrap_call(wrapper: &str, args_str: &str) -> String {
     }
 }
 
+/// True when a return already emits a `-> Result<_, String>` signature, so an
+/// enum-decode preamble is prepended in place rather than lifting the fn to
+/// `Result` and wrapping its value in `Ok(..)`.
+fn is_result_return(r: &BridgeReturn) -> bool {
+    matches!(
+        r,
+        BridgeReturn::OwnSelfResult
+            | BridgeReturn::RefResult(_)
+            | BridgeReturn::ReplacerResult(_)
+    )
+}
+
 /// The Rust source type for a scalar param at the bridge boundary.
 fn scalar_ty(t: &ScalarType) -> String {
     match t {
         ScalarType::Str => "&str".into(),
         ScalarType::Bool => "bool".into(),
         ScalarType::Callback => "JacCallback".into(),
-        ScalarType::Int(rust) | ScalarType::Uint(rust) => rust.clone(),
+        ScalarType::Int(rust) | ScalarType::Uint(rust) | ScalarType::Float(rust) => rust.clone(),
         // 1.2.2: a byte string re-declared as `&[u8]`, which satisfies an
         // `AsRef<[u8]>` bound (sha2's `update`), so `self.0.update(data)` compiles.
         ScalarType::Bytes => "&[u8]".into(),
@@ -472,10 +516,19 @@ fn scalar_ty(t: &ScalarType) -> String {
         // serde-transparent newtype the macro imports from the rt module). The
         // body unwraps `.0` before the inner call (see `call_args` in `emit_fn`).
         ScalarType::Wide(inner) => format!("Wide<{inner}>"),
+        // A unit-enum param crosses as its variant-NAME string, so the wrapper
+        // re-declares it as `&str` and decodes it back to the enum in the body
+        // (see the enum-decode preamble in `emit_fn`). The decoded value shadows
+        // the `&str` under the same name, so the inner call still passes `{name}`.
+        ScalarType::Enum(_, _) => "&str".into(),
         // An inbound handle param re-declared as a reference to the target newtype;
         // the macro reconstructs `&Target` from the caller's handle slot. The inner
         // call passes `&{name}.0` (see `call_args`).
         ScalarType::Handle(target) => format!("&{target}"),
+        // A by-value handle param: the boundary ABI is identical to `Handle` (the
+        // wrapper still takes `&Target`, which is what the macro reconstructs), only
+        // the inner call differs — it passes `{name}.0.clone()` (see `call_args`).
+        ScalarType::HandleValue(target) => format!("&{target}"),
     }
 }
 
@@ -525,6 +578,9 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
             // A handle param arrives as `&Target`; the inner method wants
             // `&Inner`, so pass `&{name}.0` (the newtype's wrapped value).
             ScalarType::Handle(_) => format!("&{}.0", p.name),
+            // A by-value handle param arrives as `&Target` too, but the inner
+            // method wants an OWNED `Inner`; clone it out of the shared newtype.
+            ScalarType::HandleValue(_) => format!("{}.0.clone()", p.name),
             _ => p.name.clone(),
         })
         .collect::<Vec<_>>()
@@ -623,12 +679,30 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
         }
         BridgeReturn::Int(rust)
         | BridgeReturn::Uint(rust)
+        | BridgeReturn::Float(rust)
         | BridgeReturn::Map(rust)
         | BridgeReturn::List(rust) => {
-            // Integer / HashMap<String,V> / Vec<V> returns cross verbatim — the
-            // macro tags the width (TAG_INT/TAG_UINT) and marshals the container
-            // into a real Jac dict/list. The wrapper just forwards the value.
+            // Integer / float / HashMap<String,V> / Vec<V> returns cross verbatim —
+            // the macro tags the width (TAG_INT/TAG_UINT/TAG_F64) and marshals a
+            // container into a real Jac dict/list. The wrapper just forwards the value.
             (format!(" -> {rust}"), base_call(&recv_expr))
+        }
+        // A fixed-arity integer tuple re-projected onto the `List` wire lane: bind
+        // the source tuple once, then widen each positional field to `i64` and pack
+        // them into a `Vec<i64>`. The macro tags the `Vec<i64>` `TAG_LIST_BIT |
+        // TAG_INT` and both loaders decode it into a real Jac `list[int]` / Python
+        // `list` — so a tuple return needs NO new wire tag, macro arm, or loader
+        // branch (see `BridgeReturn::Tuple`). Emitted as a block expression so the
+        // `let` binding survives even the (rare) enum-param `Ok(..)` lift below.
+        BridgeReturn::Tuple(elems) => {
+            let projected = (0..elems.len())
+                .map(|i| format!("__t.{i} as i64"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            (
+                " -> Vec<i64>".into(),
+                format!("{{ let __t = {}; vec![{projected}] }}", base_call(&recv_expr)),
+            )
         }
         // A `std::cmp::Ordering` return lowers to the `i8` scalar lane: the wrapper
         // signature is `-> i8` (so the macro tags it `TAG_INT` exactly like any i8)
@@ -649,18 +723,23 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
         // it, `fname == "to_string"`) as a `-> String` return on the `Str` lane. A
         // dedicated arm so the `Str` lane's extra `.to_string()` isn't stacked on top.
         BridgeReturn::DisplayString => (" -> String".into(), base_call(&recv_expr)),
-        // Fieldless-enum reader: map the field's variant to its NAME as a `String`.
-        // The source enum is `#[non_exhaustive]`, so the `_ => "unknown"` arm is
-        // mandatory. `base_call` spells the field access (`self.0.op`).
-        BridgeReturn::EnumName(enum_path, variants) => {
+        // Fieldless-enum reader: map the variant to its NAME as a `String`.
+        // `base_call` spells the source (a field access `self.0.op` for a field
+        // reader, or a method call `self.0.month()` for a by-value enum return).
+        // The `_ => "unknown"` wildcard is emitted ONLY for a `#[non_exhaustive]`
+        // source enum (where the compiler requires it); on an exhaustive enum every
+        // variant is already listed, so a wildcard would trip `unreachable_patterns`
+        // under `-D warnings`.
+        BridgeReturn::EnumName(enum_path, variants, non_exhaustive) => {
             let arms: String = variants
                 .iter()
                 .map(|v| format!("{enum_path}::{v} => \"{v}\", "))
                 .collect();
+            let wildcard = if *non_exhaustive { "_ => \"unknown\", " } else { "" };
             (
                 " -> String".into(),
                 format!(
-                    "match {} {{ {arms}_ => \"unknown\", }}.to_string()",
+                    "match {} {{ {arms}{wildcard}}}.to_string()",
                     base_call(&recv_expr)
                 ),
             )
@@ -780,6 +859,13 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
         // `Option<String>`, so forward it verbatim; the macro carries `None` in-band
         // (null JacBuf pointer) on the `TAG_OPT_BIT | TAG_STR` lane.
         BridgeReturn::OptStrValue => (" -> Option<String>".into(), base_call(&recv_expr)),
+        // A `-> Option<&str>` method (`url::Url::host_str`): the source borrows from
+        // `&self`, so own the borrow with `.map(|s| s.to_string())` before returning.
+        // Same `TAG_OPT_BIT | TAG_STR` lane as `OptStrValue` once owned.
+        BridgeReturn::OptStrRef => (
+            " -> Option<String>".into(),
+            format!("{}.map(|s| s.to_string())", base_call(&recv_expr)),
+        ),
         // M6: a plain `-> Option<Vec<u8>>` method — the byte analogue of
         // `OptStrValue`. The source already yields an owned `Option<Vec<u8>>`, so
         // forward it verbatim; the macro carries `None` in-band (null JacBuf
@@ -869,6 +955,50 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
                  match err.into_inner() {{ Some(e) => Err(e), None => Ok(out) }}"
             );
             (" -> Result<String, String>".into(), body)
+        }
+    };
+
+    // Unit-enum params cross as their variant-name string; decode each back to the
+    // enum here, before the inner call. An unknown name has no valid enum value, so
+    // the decode does an early `return Err(..)` — which forces the whole method into
+    // a `Result<_, String>`. A method already fallible (its `ret` emits a `Result`)
+    // just gains the preamble; an infallible one is lifted to `Result<T, String>`
+    // and its value wrapped in `Ok(..)`. The decoded local shadows the `&str` param
+    // under the same name, so `call_args` already passes the enum value. The decode
+    // match ALWAYS carries a wildcard (the inbound string is open), unlike the
+    // exhaustive `EnumName` return match.
+    let enum_decodes: Vec<String> = f
+        .params
+        .iter()
+        .filter_map(|p| match &p.ty {
+            ScalarType::Enum(path, variants) => {
+                let short = path.rsplit("::").next().unwrap_or(path);
+                let arms: String = variants
+                    .iter()
+                    .map(|v| format!("\"{v}\" => {path}::{v}, "))
+                    .collect();
+                let name = &p.name;
+                Some(format!(
+                    "let {name} = match {name} {{ {arms}_ => return Err(format!(\"unknown {short} variant: {{{name}}}\")), }};"
+                ))
+            }
+            _ => None,
+        })
+        .collect();
+    let (ret_ann, body) = if enum_decodes.is_empty() {
+        (ret_ann, body)
+    } else {
+        let preamble = enum_decodes.join("\n            ");
+        if is_result_return(&f.ret) {
+            (ret_ann, format!("{preamble}\n            {body}"))
+        } else {
+            // Lift the infallible return `-> T` (or void `""`) to `-> Result<T, String>`
+            // and wrap its value in `Ok(..)` so the decode's early `Err` typechecks.
+            let inner_ty = ret_ann.strip_prefix(" -> ").unwrap_or("()");
+            (
+                format!(" -> Result<{inner_ty}, String>"),
+                format!("{preamble}\n            Ok({body})"),
+            )
         }
     };
 

@@ -454,6 +454,14 @@ pub enum BridgeReturn {
     /// already owned, so no `.to_string()`/`.map` transform is needed. Distinct from
     /// [`OptStr`] (the drain pull, whose body pops an internal buffer).
     OptStrValue,
+    /// A nullable BORROWED string return: a source method whose signature is
+    /// `-> Option<&str>` (`url::Url::host_str`/`domain`/`fragment`/`password`/
+    /// `query`). Identical wire lane to [`OptStrValue`] (`TAG_OPT_BIT | TAG_STR`,
+    /// `None` = null JacBuf pointer), but codegen owns the borrow with
+    /// `.map(|s| s.to_string())` before returning so the wrapper yields the
+    /// `Option<String>` the macro expects. Distinct from [`OptStrValue`], whose
+    /// source is already owned and forwarded verbatim.
+    OptStrRef,
     /// A plain nullable owned-`Vec<u8>` return (M6): a source method whose
     /// signature is `-> Option<Vec<u8>>` (also `Option<Array<u8, _>>` digest
     /// shapes). The byte analogue of [`OptStrValue`]: crosses on the SAME JacBuf
@@ -478,6 +486,10 @@ pub enum BridgeReturn {
     /// An unsigned-integer return. The string is the concrete Rust type (`u32`,
     /// `u64`, `usize`, …); carried in a u64 slot tagged `TAG_UINT`.
     Uint(String),
+    /// A floating-point return. The string is the concrete Rust type (`f32`,
+    /// `f64`); the macro widens to `f64`, carries the IEEE-754 bit pattern in a u64
+    /// slot tagged `TAG_F64`, and the loader reinterprets it back to a Jac `float`.
+    Float(String),
     /// A `Display` reader synthesized for an opaque type that implements
     /// `std::fmt::Display` (semver's `Version`/`Comparator`/…). Emitted as a
     /// `to_string(&self) -> String` method whose body is `self.0.to_string()`.
@@ -488,15 +500,20 @@ pub enum BridgeReturn {
     ///
     /// [`Str`]: BridgeReturn::Str
     DisplayString,
-    /// A variant-name string reader synthesized for a public FIELDLESS enum field
-    /// of an opaque type (`Comparator.op: semver::Op`). The enum is not itself a
-    /// bridged handle (it has no methods and no scalar spelling), so its value
-    /// crosses as its variant NAME: codegen emits `-> String` and a `match` mapping
-    /// each variant to its `&str` name, with a `_ => "unknown"` arm (the source enum
-    /// is `#[non_exhaustive]`, so a wildcard is mandatory). The first string is the
-    /// enum's inner path (`semver::Op`), the vec its variant names in declaration
-    /// order. Rides the `Str`/`-> String` lane like [`DisplayString`].
-    EnumName(String, Vec<String>),
+    /// A variant-name string reader synthesized for a public FIELDLESS enum, used
+    /// both for a field of an opaque type (`Comparator.op: semver::Op`) and for a
+    /// by-value enum RETURN (`Date::month -> time::Month`, `weekday -> Weekday`).
+    /// The enum is not itself a bridged handle (it has no scalar spelling), so its
+    /// value crosses as its variant NAME: codegen emits `-> String` and a `match`
+    /// mapping each variant to its `&str` name. The first string is the enum's
+    /// inner path (`semver::Op`), the vec its variant names in declaration order,
+    /// and the bool is `true` when the source enum is `#[non_exhaustive]` — only
+    /// then is a `_ => "unknown"` wildcard emitted (required by the compiler for a
+    /// `#[non_exhaustive]` match; on an EXHAUSTIVE enum like `time::Month` the arms
+    /// already cover every variant, so a wildcard would be an `unreachable_patterns`
+    /// warning under the `-D warnings` gate). Rides the `Str`/`-> String` lane like
+    /// [`DisplayString`].
+    EnumName(String, Vec<String>, bool),
     /// A SELF-IDENTITY reference return (`&Self` / `&mut Self`) on a method with a
     /// receiver - the builder-chain lane (`RegexBuilder::case_insensitive(&mut
     /// self, bool) -> &mut Self`). Codegen emits `-> &Self` with a body that runs
@@ -564,6 +581,21 @@ pub enum BridgeReturn {
     /// A `Vec<V>` return marshaled as a real Jac `list[V]`. The string is the full
     /// Rust type (e.g. `Vec<String>`); V is one of bool/int/str.
     List(String),
+    /// A fixed-arity by-value TUPLE of integer scalars (`Time::as_hms -> (u8, u8,
+    /// u8)`, `to_hms_nano -> (u8, u8, u8, u32)`, decimal `Decimal::mantissa`-adjacent
+    /// shapes). na has no tuple type and the frozen v1 ABI has one return out-slot, so
+    /// a tuple crosses on the EXISTING `List` wire lane rather than a new tag: codegen
+    /// binds the source tuple once and re-projects its fields into a `Vec<i64>`
+    /// (`vec![__t.0 as i64, __t.1 as i64, …]`), which the macro tags `TAG_LIST_BIT |
+    /// TAG_INT` and both loaders already decode into a real Jac `list[int]` / Python
+    /// `list` — no macro or loader change. The vec carries the element Rust type
+    /// spellings in declaration order; only widths that widen losslessly to `i64`
+    /// (`i8..=i64`/`isize`, `u8`/`u16`/`u32`) qualify (a `u64`/`usize` could overflow
+    /// the signed slot, a float/`String`/handle element isn't an int) — a
+    /// non-qualifying tuple stays an honest skip via the wide fallback. Positional
+    /// fidelity is preserved (`t[0]` is the first field); the int widths collapse to a
+    /// single `int` because the Jac side is width-agnostic.
+    Tuple(Vec<String>),
     /// A byte-string return (1.2.2): `Vec<u8>`, or a digest output
     /// (`Array<u8, _>` / `GenericArray<u8, _>` / `Output<Self>`). Carried as an
     /// owned `JacBuf` tagged `TAG_BYTES` and decoded as Jac `bytes` (never utf-8
@@ -611,6 +643,11 @@ pub enum ScalarType {
     Int(String),
     /// An unsigned-integer param; the string is the concrete Rust type (`u32`, …).
     Uint(String),
+    /// A floating-point param; the string is the concrete Rust type (`f32`, `f64`).
+    /// Crosses as an IEEE-754 bit pattern in a u64 slot tagged `TAG_F64`; the macro
+    /// reconstructs `f64::from_bits` and narrows to the concrete width before the
+    /// inner call. The whole stack (macro + loader synth) already supports it.
+    Float(String),
     /// A byte-string param (1.2.2): `&[u8]` or `impl AsRef<[u8]>`. Crosses the
     /// boundary as a `(ptr, len)` slot tagged `TAG_BYTES` with NO utf-8 check;
     /// the wrapper re-declares it as `&[u8]` (which satisfies an `AsRef<[u8]>`
@@ -632,6 +669,31 @@ pub enum ScalarType {
     /// macro reconstructs `&Target` from it, the wrapper re-declares the param as
     /// `&Target` and passes `&{name}.0` to the inner call.
     Handle(String),
+    /// An inbound unit-enum param passed BY VALUE (`Date::from_calendar_date(month:
+    /// Month)`, `Date::next_occurrence(weekday: Weekday)`, `Decimal::round_dp_with_strategy(
+    /// strategy: RoundingStrategy)`). The mirror of the [`BridgeReturn::EnumName`]
+    /// value lane: the enum has no scalar spelling, so it crosses as its variant
+    /// NAME string on the same `TAG_STR` lane as [`Str`] — the wrapper re-declares
+    /// the param as `&str` and decodes it back to the enum via a `match`. An unknown
+    /// name has NO valid enum value, so the decode does an early `return Err(..)`,
+    /// which forces the whole method into a `Result<_, String>` return (a method
+    /// that was already fallible just gains the decode preamble; an infallible one is
+    /// lifted to `Result`). The first string is the enum's accessible path
+    /// (`time::Month`); the vec its variant names. No `non_exhaustive` bit is needed
+    /// (unlike the return): the decode match ALWAYS carries a wildcard, because the
+    /// inbound string is open regardless of the source enum's exhaustiveness.
+    ///
+    /// [`Str`]: ScalarType::Str
+    Enum(String, Vec<String>),
+    /// An inbound handle param passed BY VALUE: the inner method takes an owned
+    /// `OtherBridgedType` (`Date::checked_add(self, rhs: Duration) -> …`), not a
+    /// reference. The ABI is identical to [`Handle`] — the caller passes the other
+    /// object's handle integer and the macro reconstructs `&Target` — but the
+    /// wrapper hands the inner call an OWNED value via `{name}.0.clone()` (every
+    /// `Copy` type is `Clone`, so the clone always compiles; a non-`Clone` target
+    /// stays a skip because a value can't be moved out of a shared handle). The
+    /// string is the target newtype's name.
+    HandleValue(String),
 }
 
 /// A public item the classifier could not bridge, with a machine-readable reason.
@@ -650,6 +712,16 @@ pub enum SkipReason {
     Cursor,
     /// Parameter is a closure / `impl Fn` — needs JacCallback (M4 v2 rules).
     Closure,
+    /// SOUNDNESS: a callback param whose bound PERMITS the callee to store it past
+    /// the call (a `'static`-bounded closure generic, an `impl Fn + 'static`, or an
+    /// owned `Box`/`Arc`/`Rc<dyn Fn>` trait object). The v1 callback ABI crosses a
+    /// Jac closure whose captured env lives on the CALLER's stack — sound only for
+    /// the duration of the synchronous call. A stored callback would read that env
+    /// after the frame is gone (dangling). retain/release for stored callbacks is
+    /// deferred, so the binder REJECTS the escaping shape rather than emit code that
+    /// compiles, demos fine, and dangles in production. The string is the machine-
+    /// visible rationale. Machine tag: `callback-may-escape`.
+    CallbackMayEscape(String),
     /// Unresolved generic parameter.
     Generic,
     /// Type is not in the bridgeable set (e.g. tuples, raw pointers, trait objects).

@@ -32,6 +32,17 @@ CRATES=(
     # does not change coverage): guards serde DETECTION and the manual-impl gate
     # on genuine rustdoc JSON. Reaches 50% via the opaque lane, not the wide lane.
     "semver@1.0.27"
+    # New seeds (2026-07-18) broadening the corpus onto the still-open long-tail
+    # lanes, all ZERO-overlay:
+    #   url        - string/handle utility; isolates Option<&str> returns,
+    #                nullable-scalar params, unit-error Result, closure args.
+    #   rust_decimal - fixed-point scalar; isolates f64/f32/i128/u128 param+return
+    #                and trait-vs-inherent dedup.
+    #   time       - second real datetime crate (serde-free, non-generic core);
+    #                isolates enum (Month/Weekday) + handle-by-value (Duration) params.
+    "url@2.5.8"
+    "rust_decimal@1.42.1"
+    "time@0.3.53"
     # Feature-enabled fixtures (2.4 wide lane): serde impls are optional deps,
     # off by default, so the default-feature fixtures above contain ZERO serde
     # impls. These drive the binder serde-detection tests.

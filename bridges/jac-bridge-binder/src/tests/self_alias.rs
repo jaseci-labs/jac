@@ -54,12 +54,13 @@ fn blanket_new_becomes_self_constructor() {
         );
         // The ctor was flattened off the Digest blanket, so codegen must bring the
         // trait into scope for the `sha2::{name}::new()` call. Digest is EXTERNAL to
-        // sha2 (defined in `digest`), so its use-path routes through sha2's
-        // re-export of that crate: `sha2::digest::Digest`.
+        // sha2 (defined in `digest`) but sha2 re-exports it at its ROOT (`pub use
+        // digest::Digest;`), so the shortest valid use-path is `sha2::Digest` — the
+        // re-export-path lookup prefers it over the deeper `sha2::digest::Digest`.
         assert_eq!(
             ctor.via_trait.as_deref(),
-            Some("sha2::digest::Digest"),
-            "{name}::new must carry its `via_trait` so `use sha2::digest::Digest;` is emitted"
+            Some("sha2::Digest"),
+            "{name}::new must carry its `via_trait` so `use sha2::Digest;` is emitted"
         );
     }
 
@@ -165,7 +166,7 @@ fn emitted_source_has_new_and_trait_use() {
     let src = emit(&spec);
 
     assert!(
-        src.contains("use sha2::digest::Digest;"),
+        src.contains("use sha2::Digest;"),
         "generated module must bring Digest into scope via sha2's digest re-export:\n{src}"
     );
     assert!(

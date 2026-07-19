@@ -240,7 +240,30 @@ fn expand(module_name: String, input: ItemMod) -> Result<TS2, Error> {
     let mod_attrs = &input.attrs;
     let mod_name  = &input.ident;
 
+    // SOUNDNESS: every shim below is `catch_unwind`-guarded so a Rust panic
+    // becomes a clean Jac error instead of aborting the host. `catch_unwind` is a
+    // NO-OP under `panic = "abort"`, so that contract silently evaporates if the
+    // final crate is compiled with abort (a common `[profile.release]` setting).
+    // The generated Cargo.toml pins `panic = "unwind"`, but Cargo IGNORES a
+    // workspace member's `[profile.*]` — so this compile-time guard is the
+    // backstop: if the effective panic strategy is `abort`, fail the build LOUDLY
+    // rather than dangle the "panics never kill the host" guarantee in production.
+    // `cfg(panic = ...)` is stable since Rust 1.60.
+    let panic_guard = quote! {
+        #[cfg(panic = "abort")]
+        const _: () = {
+            compile_error!(
+                "jac-bridge: this bridge crate is being compiled with `panic = \"abort\"`, \
+                 which turns every generated `catch_unwind` shim into a no-op — a Rust panic \
+                 would then ABORT the host process instead of surfacing as a Jac error. Set \
+                 `panic = \"unwind\"` in the build-root `[profile.release]`/`[profile.dev]` \
+                 (the generated Cargo.toml already does; a wrapping workspace root must too)."
+            );
+        };
+    };
+
     Ok(quote! {
+        #panic_guard
         #(#mod_attrs)*
         #vis mod #mod_name { #(#cleaned)* }
         #static_ts

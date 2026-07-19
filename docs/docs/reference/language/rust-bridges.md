@@ -172,6 +172,17 @@ The bridge boundary marshals a fixed set of shapes between Rust and Jac:
   `dict[str, V]`;
 - `Option<T>` and `Result<T, E>` for nullable and fallible returns, where a Rust
   `Err` surfaces as a Jac exception;
+- fieldless enums (all-unit-variant, e.g. `time::Month`, `time::Weekday`) as their
+  variant *name* string -- both directions: a method returning one crosses as a Jac
+  `str` (`"July"`, `"Wednesday"`), and a method *taking* one accepts that same
+  string, decoding it back to the enum. Because an unknown name has no valid enum
+  value, a method with an enum parameter is fallible -- passing a name that is not a
+  variant raises a Jac exception (`Date.from_calendar_date(2026, "Jjuly", 1)` throws);
+- fixed-arity integer *tuple* returns (`time::Time::as_hms(&self) -> (u8, u8, u8)`,
+  `as_hms_nano -> (u8, u8, u8, u32)`) as a Jac `list[int]`, positionally faithful
+  (`t[0]` is the first field). Only tuples whose elements all fit a signed 64-bit
+  slot cross this way; a tuple mixing in a non-integer element (an enum, a float, a
+  string, another handle) is not yet bridged;
 - opaque handles for crate types that cross by reference, with their public
   methods exposed as methods on the Jac-side object.
 
@@ -218,7 +229,14 @@ The reason surfaces verbatim in the coverage report, and the skip is always
 counted there -- a refused method stays visible in the API-coverage ratio
 instead of silently vanishing.
 
-### Known limitations (ABI v1)
+### Known limitations
+
+The wire format is **ABI v1** (`ABI_VERSION = 1` -- frozen, append-only; see
+`bridges/jac-bridge-schema` and `bridges/reference/FFI-LANES-PLAN.md` Phase 2.12).
+That is not the same as “pre-wide-lane” capability: serde types, bytes, `f64`
+returns, typed records, and nested serde containers are already supported. For the
+current gap list (float params on na, collection params, general callbacks, …)
+see `REMAINING.md` § “Remaining FFI gaps”.
 
 !!! warning "Callback detection on na"
     On the native (`nacompile`) path, a `lambda` argument is lowered to a
