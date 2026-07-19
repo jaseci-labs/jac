@@ -308,6 +308,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
         nd: uni.FuncCall, operand: ir.Value, names: list[str]
     ) -> (ir.Value | None);
 
+    def _emit_isinstance_mixed(
+        nd: uni.FuncCall, operand: ir.Value, tags: list[int], names: list[str]
+    ) -> (ir.Value | None);
+
     def _jacval_tags_for_type(name: str) -> list[int];
     def _get_fmt_string(fmt: str) -> ir.GlobalVariable;
     def _get_snprintf_fmt(fmt: str) -> ir.GlobalVariable;

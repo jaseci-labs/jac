@@ -1049,9 +1049,7 @@ impl NaIRGenPass._emit_isinstance(nd: uni.FuncCall) -> (ir.Value | None) {
         if not tags {
             return self._emit_isinstance_user(nd, operand, unresolved);
         }
-
-        self._emit_unsupported_builtin_call(nd, "isinstance");
-        return None;
+        return self._emit_isinstance_mixed(nd, operand, tags, unresolved);
     }
     if not tags {
         self._emit_unsupported_builtin_call(nd, "isinstance");
@@ -1068,6 +1066,86 @@ impl NaIRGenPass._emit_isinstance(nd: uni.FuncCall) -> (ir.Value | None) {
             if result is None
             else self.builder.or_(result, cmp, name="isinst.or");
     }
+
+    if isinstance(operand.type, ir.PointerType) and self._is_owned(operand) {
+        self._emit_rc_release_simple(operand, op="isinstance_arg", loc="");
+    }
+    return result;
+}
+
+impl NaIRGenPass._emit_isinstance_mixed(
+    nd: uni.FuncCall, operand: ir.Value, tags: list[int], names: list[str]
+) -> (ir.Value | None) {
+    i1 = ir.IntType(1);
+    i8 = ir.IntType(8);
+    i32 = ir.IntType(32);
+
+    target_vtables: list[ir.GlobalVariable] = [];
+    for cand in self.vtable_globals {
+        cand_mro = self._mro_of(cand);
+        for name in names {
+            if name in cand_mro {
+                target_vtables.append(self.vtable_globals[cand]);
+                break;
+            }
+        }
+    }
+    if not target_vtables {
+        self._emit_unsupported_builtin_call(nd, "isinstance");
+        return None;
+    }
+
+    boxed = self._box_to_jacval(operand);
+    tag = self.builder.extract_value(boxed, 0, name="isinst.tag");
+    payload = self.builder.extract_value(boxed, 1, name="isinst.payload");
+
+    prim: (ir.Value | None) = None;
+    for t in sorted(tags) {
+        cmp = self.builder.icmp_unsigned(
+            "==", tag, ir.Constant(i8, t), name="isinst.cmp"
+        );
+        prim = cmp if prim is None else self.builder.or_(prim, cmp, name="isinst.or");
+    }
+
+    pre_bb = self.builder.block;
+    obj_bb = self.builder.append_basic_block(name="isinst.mix.obj");
+    load_bb = self.builder.append_basic_block(name="isinst.mix.load");
+    merge_bb = self.builder.append_basic_block(name="isinst.mix.merge");
+    is_obj = self.builder.icmp_unsigned(
+        "==", tag, ir.Constant(i8, 6), name="isinst.isobj"
+    );
+    self.builder.cbranch(is_obj, obj_bb, merge_bb);
+
+    self.builder.position_at_end(obj_bb);
+    is_null = self.builder.icmp_signed(
+        "==", payload, ir.Constant(payload.type, 0), name="isinst.mix.null"
+    );
+    self.builder.cbranch(is_null, merge_bb, load_bb);
+
+    self.builder.position_at_end(load_bb);
+    i8_pp = i8.as_pointer().as_pointer();
+    slot_pp = self.builder.inttoptr(
+        payload, i8_pp.as_pointer(), name="isinst.mix.slot"
+    );
+    vptr = self.builder.load(slot_pp, name="isinst.mix.vptr");
+    user_or: (ir.Value | None) = None;
+    for vt in target_vtables {
+        vt_base = self.builder.gep(
+            vt, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="isinst.mix.vt"
+        );
+        eq = self.builder.icmp_unsigned("==", vptr, vt_base, name="isinst.mix.eq");
+        user_or = eq
+            if user_or is None
+            else self.builder.or_(user_or, eq, name="isinst.mix.uor");
+    }
+    end_load = self.builder.block;
+    self.builder.branch(merge_bb);
+
+    self.builder.position_at_end(merge_bb);
+    result = self.builder.phi(i1, name="isinst.mix.result");
+    result.add_incoming(prim, pre_bb);
+    result.add_incoming(ir.Constant(i1, 0), obj_bb);
+    result.add_incoming(user_or, end_load);
 
     if isinstance(operand.type, ir.PointerType) and self._is_owned(operand) {
         self._emit_rc_release_simple(operand, op="isinstance_arg", loc="");

@@ -5077,22 +5077,10 @@ test "jac test runs test blocks inside inline na blocks (no false green)" {
     assert result.returncode != 0 , "jac test must exit non-zero on failure";
 }
 
-# isinstance over a tuple mixing a supported and an unsupported type must raise
-# a structured error, not silently drop the unsupported arm (review of #6421).
-test "isinstance mixed tuple unsupported type errors" {
-    prog = JacProgram();
-    prog.compile(
-        file_path=str(os.path.join(FIXTURES, "na_isinstance_mixed_tuple.na.jac"))
-    );
-    codes = [
-        e.code.code
-        for e in (prog.errors_had or [])
-        if e.code
-    ];
-    assert "E5092" in codes , (
-        f"expected E5092 for mixed-tuple isinstance, got {codes}"
-    );
-}
+# isinstance over a tuple mixing builtin and archetype targets lowers as a
+# guarded tag/vtable disjunction; behavioral coverage lives in
+# test_native_isinstance_mixed.jac (graduated from the E5092 guardrail that
+# stood here after the review of #6421).
 
 # ─── FIX: clib struct pointer subscript read/write (#6707, #6708) ─────────────
 # Before the fix, buf[i] on a clib struct pointer emitted E5090.
