@@ -802,7 +802,7 @@ jac browse close
 
 ## AI-Assisted Development
 
-Three commands make Jac projects legible to (and drivable by) AI agents -- including Jac's own built-in coding agent. See also [Agent Skills & MCP](../../quick-guide/agent-skills-and-mcp.md) for the workflow overview.
+Three commands make Jac projects legible to (and drivable by) AI agents -- including Jac's own built-in coding agent. See also [Agent Skills & MCP](../agent-skills-and-mcp.md) for the workflow overview.
 
 ### jac ai
 
@@ -1859,7 +1859,7 @@ jac guide --json
 jac guide --export ~/.claude/skills
 ```
 
-See [Agent Skills and MCP](../../quick-guide/agent-skills-and-mcp.md) for using the guides with AI assistants.
+See [Agent Skills and MCP](../agent-skills-and-mcp.md) for using the guides with AI assistants.
 
 ---
 

@@ -100,7 +100,7 @@ Concretely, being synechic is why:
   packages, because each codespace compiles into its host substrate as a
   first-class citizen -- ordinary bytecode among bytecode, ordinary JavaScript
   among JavaScript, machine code with a C ABI. See
-  [Import Anything](import-anything.md).
+  [Import Anything](../reference/import-anything.md).
 - **One declaration per contract.** A `node` declared once is the same type in
   the store, on the wire, and in the browser; the compiler owns every
   representation in between. Rename a field and every stale use in every tier

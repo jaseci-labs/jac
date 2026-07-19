@@ -660,7 +660,7 @@ This is what makes Jac's multi-target compilation practical: you learn one set o
 
 **Related Reference:**
 
-- [Part I: Foundation](foundation.md) - Type system, operators, control flow
+- [Types and Values](types-and-values.md) and [Operators](operators.md) - Type system and operator reference
 - [Core Concepts](../../quick-guide/what-makes-jac-different.md) - Conceptual overview of codespaces
 - [jac-client Reference](../plugins/jac-client.md) - Client codespace plugin details
 - [Appendices](appendices.md) - Operator quick reference, keyword reference

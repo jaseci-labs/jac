@@ -1065,5 +1065,5 @@ with entry {
 
 **Related Reference:**
 
-- [Part I: Foundation](foundation.md) - Variables, types, control flow
+- [Types and Values](types-and-values.md), [Variables and Scope](variables-and-scope.md), [Control Flow](control-flow.md) - The language core
 - [Part III: OSP](osp.md) - Nodes, edges, walkers

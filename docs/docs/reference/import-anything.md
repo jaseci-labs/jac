@@ -342,8 +342,8 @@ jac check myfile.jac                # full type-check (server / client code)
 
 `--parse-only` is the universally safe check for all three codespaces. For **native (`na`) code that calls C libraries**, the most reliable verification is to compile it -- `jac run myfile.na.jac` or `jac nacompile myfile.na.jac` -- since the native backend, not the general type checker, owns C-ABI coercion.
 
-If you have the [`jac mcp`](../reference/mcp.md) server connected, the `check_syntax` and `validate_jac` tools do the same thing from your AI assistant.
+If you have the [`jac mcp`](mcp.md) server connected, the `check_syntax` and `validate_jac` tools do the same thing from your AI assistant.
 
 ---
 
-**Related:** [Syntax Cheatsheet](syntax-cheatsheet.md) · [Code Organization](../reference/code-organization.md) · [Python Integration](../reference/language/python-integration.md) · [Native Compilation](../reference/language/native-pathway.md)
+**Related:** [Syntax Cheatsheet](language/syntax-cheatsheet.md) · [Code Organization](code-organization.md) · [Python Integration](language/python-integration.md) · [Native Compilation](language/native-pathway.md)

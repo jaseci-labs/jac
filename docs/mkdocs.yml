@@ -70,6 +70,10 @@ nav:
       - Overview: "reference/index.md"
       - Language:
           - Foundation: "reference/language/foundation.md"
+          - Types & Values: "reference/language/types-and-values.md"
+          - Variables & Scope: "reference/language/variables-and-scope.md"
+          - Operators: "reference/language/operators.md"
+          - Control Flow: "reference/language/control-flow.md"
           - Primitives & Codespace Semantics: "reference/language/primitives.md"
           - Functions & Objects: "reference/language/functions-objects.md"
           - Access Modifiers: "reference/language/access-modifiers.md"
@@ -80,7 +84,7 @@ nav:
           - Ownership & Borrowing: "reference/language/ownership-borrowing.md"
           - Ownership Checker Specification: "reference/language/ownership-checker-spec.md"
           - Appendices: "reference/language/appendices.md"
-          - Syntax Cheatsheet: "quick-guide/syntax-cheatsheet.md"
+          - Syntax Cheatsheet: "reference/language/syntax-cheatsheet.md"
       - Native Compilation: "reference/language/native-pathway.md"
       - Capabilities & Plugins:
           - byLLM (AI, built-in): "reference/plugins/byllm.md"
@@ -94,12 +98,11 @@ nav:
       - Python Integration:
           - Interoperability: "reference/language/python-integration.md"
           - Library Mode: "reference/language/library-mode.md"
-          - Import Anything: "quick-guide/import-anything.md"
+          - Import Anything: "reference/import-anything.md"
       - Developer Workflow:
           - CLI Commands: "reference/cli/index.md"
           - MCP Server: "reference/mcp.md"
-          - Agent Skills & MCP: "quick-guide/agent-skills-and-mcp.md"
-          - Plugins (Removed): "reference/plugin-authoring.md"
+          - Agent Skills & MCP: "reference/agent-skills-and-mcp.md"
           - Configuration: "reference/config/index.md"
           - Publishing Packages: "reference/publishing.md"
           - Persistence & Schema Migration: "reference/persistence.md"
@@ -112,7 +115,7 @@ nav:
       - Contributing: "community/contributing.md"
       - Codebase Guide: "community/codebase-guide.md"
       - Research & Papers: "community/research.md"
-      - FAQ: "quick-guide/faq.md"
+      - FAQ: "community/faq.md"
       - Breaking Changes: "community/breaking-changes.md"
       - Jac Playground: https://playground.jaseci.org/cl/app
       - Release Notes:
@@ -308,13 +311,17 @@ plugins:
         tutorials/fullstack/todo-app.md: tutorials/first-app/build-ai-day-planner.md
 
         # Removed orphaned pages → nearest equivalent
-        quick-guide/next-steps.md: quick-guide/faq.md
+        quick-guide/next-steps.md: community/faq.md
         reference/language/index.md: reference/language/foundation.md
         tutorials/roadmap.md: quick-guide/index.md
         community/top_contributors.md: community/contributing.md
         community/contributors.md: community/contributing.md
 
         # Documentation restructure redirects
+        quick-guide/syntax-cheatsheet.md: reference/language/syntax-cheatsheet.md
+        quick-guide/import-anything.md: reference/import-anything.md
+        quick-guide/agent-skills-and-mcp.md: reference/agent-skills-and-mcp.md
+        quick-guide/faq.md: community/faq.md
         full-docs-guide.md: reference/index.md
         reference/tools/mcp.md: reference/mcp.md
         quick-guide/mcp.md: reference/mcp.md
