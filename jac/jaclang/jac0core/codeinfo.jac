@@ -1,6 +1,7 @@
 import hashlib;
 import re;
 import from collections.abc { Sequence }
+import from contextvars { ContextVar }
 import from dataclasses { field }
 import from typing { Any }
 import type from jaclang.compiler.passes.ecmascript.estree { IndexInfo, SliceInfo }
@@ -101,6 +102,39 @@ def native_safe_sym(src: str) -> str {
     return f"{safe}_{hashlib.sha1(src.encode()).hexdigest()[:8]}";
 }
 
+glob NATIVE_SUPPORTED_STDLIB: set[str] = {
+         "sys",
+         "math",
+         "time",
+         "os",
+         "random",
+         "struct"
+     },
+     _effective_codespace_ctx: ContextVar[str] = ContextVar(
+         "jac_effective_default_codespace", default=""
+     );
+
+def set_effective_default_codespace(value: str) {
+    _effective_codespace_ctx.set(value);
+}
+
+def effective_default_codespace -> str {
+    cur = _effective_codespace_ctx.get();
+    if cur {
+        return cur;
+    }
+    try {
+        import from jaclang.project.config { get_config, BuildConfig }
+        cfg = get_config();
+        if cfg is not None {
+            return cfg.build.default_codespace;
+        }
+        return BuildConfig().default_codespace;
+    } except Exception {
+        return "server";
+    }
+}
+
 def native_stdlib_root -> (str | None) {
     import os;
     import jaclang;
@@ -122,7 +156,7 @@ def is_bundled_native_module(module_name: str) -> bool {
 }
 
 def resolve_native_module(
-    module_name: str, base_dir: str
+    module_name: str, base_dir: str, allow_inferred: bool = True
 ) -> tuple[(str | None, str | None)] {
     import os;
     clean = module_name.lstrip('.');
@@ -154,6 +188,36 @@ def resolve_native_module(
         bundled = os.path.join(bundled_root, f"{path_name}.na.jac");
         if os.path.exists(bundled) {
             return (f"{path_name}.na", bundled);
+        }
+    }
+    if allow_inferred and effective_default_codespace() == "native" {
+        cand_plain: (str | None) = None;
+        rel_name: (str | None) = None;
+        plain_local = os.path.join(base_dir, f"{clean}.jac");
+        if os.path.exists(plain_local) {
+            cand_plain = plain_local;
+            rel_name = f"{clean}.jac";
+        } elif path_name != clean {
+            search = os.path.abspath(base_dir);
+            while True {
+                cand = os.path.join(search, f"{path_name}.jac");
+                if os.path.exists(cand) {
+                    cand_plain = cand;
+                    rel_name = os.path.relpath(cand, os.path.abspath(base_dir));
+                    break;
+                }
+                parent = os.path.dirname(search);
+                if parent == search {
+                    break;
+                }
+                search = parent;
+            }
+        }
+        if cand_plain is not None and rel_name is not None {
+            import from jaclang.jac0core.compiler { _native_default_path_ok }
+            if _native_default_path_ok(cand_plain) {
+                return (rel_name, cand_plain);
+            }
         }
     }
     return (None, None);

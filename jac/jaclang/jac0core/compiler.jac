@@ -438,6 +438,277 @@ def _seed_module_codespace(module: uni.Module) {
     }
 }
 
+glob NATIVE_DEFAULT_SV_SIGNAL_NODES: tuple = (
+         uni.VisitStmt,
+         uni.DisengageStmt,
+         uni.ReportStmt,
+         uni.YieldExpr,
+         uni.EdgeOpRef,
+         uni.DisconnectOp,
+         uni.TypedCtxBlock,
+         uni.LambdaExpr,
+         uni.PyInlineCode,
+         uni.ClientBlock,
+         uni.ServerBlock,
+         uni.JsxElement
+     ),
+     _na_default_scan_cache: dict[str, tuple] = {},
+     _NA_DEFAULT_CLOSURE_CAP: int = 256;
+
+def _default_codespace_for(target_program: JacProgram) -> str {
+    import from jaclang.jac0core.codeinfo { effective_default_codespace }
+    opts = target_program._compile_options;
+    if opts is not None and opts.default_codespace {
+        return opts.default_codespace;
+    }
+    return effective_default_codespace();
+}
+
+def _scan_native_default_signals(
+    module: uni.Module, base_dir: str
+) -> tuple[bool, list[str]] {
+    import from jaclang.jac0core.codeinfo {
+        NATIVE_SUPPORTED_STDLIB,
+        is_bundled_native_module,
+        resolve_native_module
+    }
+    deps: list[str] = [];
+    for typ in NATIVE_DEFAULT_SV_SIGNAL_NODES {
+        if module.get_all_sub_nodes(typ) {
+            return (True, deps);
+        }
+    }
+    for arch in module.get_all_sub_nodes(uni.Archetype) {
+        if arch.arch_type.name in (Tok.KW_NODE, Tok.KW_EDGE, Tok.KW_WALKER) {
+            return (True, deps);
+        }
+    }
+    for ab in module.get_all_sub_nodes(uni.Ability) {
+        if ab.is_async or isinstance(ab.signature, uni.EventSignature) {
+            return (True, deps);
+        }
+    }
+    for stmt in module.body {
+        if isinstance(stmt, uni.ContextAwareNode) {
+            tok = stmt._source_context_token();
+            if tok is not None and tok.name in (Tok.KW_SERVER, Tok.KW_CLIENT) {
+                return (True, deps);
+            }
+        }
+    }
+    for imp in module.get_all_sub_nodes(uni.Import) {
+        if imp.has_clib_decls {
+            continue;
+        }
+        if imp.is_virtual_jac or imp.has_string_path {
+            return (True, deps);
+        }
+        targets: list[tuple[str, (str | None)]] = [];
+        if imp.from_loc is not None {
+            targets.append(
+                (imp.from_loc.dot_path_str, _try_resolve_import(imp.from_loc))
+            );
+            for item in imp.items {
+                if isinstance(item, uni.ModuleItem) {
+                    item_path = _try_resolve_import(item);
+                    if item_path is not None {
+                        targets.append(("", item_path));
+                    }
+                }
+            }
+        } else {
+            for item in imp.items {
+                if isinstance(item, uni.ModulePath) {
+                    targets.append((item.dot_path_str, _try_resolve_import(item)));
+                }
+            }
+        }
+        for (name, path) in targets {
+            if path is not None and path.endswith('.na.jac') {
+                continue;
+            }
+            if path is not None
+            and (path.endswith('.cl.jac') or path.endswith('.sv.jac')) {
+                return (True, deps);
+            }
+            if path is not None and path.endswith('.jac') {
+                deps.append(os.path.abspath(path));
+                continue;
+            }
+            clean = name.lstrip('.') if name else '';
+            if clean and clean in NATIVE_SUPPORTED_STDLIB {
+                continue;
+            }
+            if clean and is_bundled_native_module(clean) {
+                continue;
+            }
+            if clean
+            and resolve_native_module(clean, base_dir, allow_inferred=False)[
+                1
+            ] is not None {
+                continue;
+            }
+            return (True, deps);
+        }
+    }
+    return (False, deps);
+}
+
+def _try_resolve_import(nd: (uni.ModulePath | uni.ModuleItem)) -> (str | None) {
+    try {
+        path = nd.resolve_relative_path();
+    } except Exception {
+        return None;
+    }
+    if path and os.path.exists(path) {
+        return path;
+    }
+    return None;
+}
+
+def _native_default_dep_scan(path: str) -> (tuple[bool, list[str]] | None) {
+    import from jaclang.jac0core.bccache {
+        discover_annex_files,
+        discover_variant_files
+    }
+    import from jaclang.jac0core.parser { parse as rd_parse }
+    files = [path] + discover_annex_files(path, '.impl.jac') + discover_annex_files(
+        path, '.test.jac'
+    );
+    fresh_parts: list[tuple] = [];
+    for f in files {
+        try {
+            st = os.stat(f);
+            fresh_parts.append((f, st.st_mtime_ns, st.st_size));
+        } except OSError {
+            return None;
+        }
+    }
+    fresh_key = tuple(fresh_parts);
+    cached = _na_default_scan_cache.get(path);
+    if cached is not None and cached[0] == fresh_key {
+        return (cached[1], cached[2]);
+    }
+    has_sv = bool(discover_variant_files(path));
+    deps: list[str] = [];
+    if not has_sv {
+        base_dir = os.path.dirname(os.path.abspath(path)) or '.';
+        for f in files {
+            try {
+                src = read_file_with_encoding(f);
+            } except Exception {
+                has_sv = True;
+                break;
+            }
+            (dep_mod, had_err) = rd_parse(src, f, prog=JacProgram());
+            if had_err {
+                has_sv = True;
+                break;
+            }
+            (f_sv, f_deps) = _scan_native_default_signals(dep_mod, base_dir);
+            if f_sv {
+                has_sv = True;
+                break;
+            }
+            deps.extend(f_deps);
+        }
+    }
+    if has_sv {
+        deps = [];
+    }
+    _na_default_scan_cache[path] = (fresh_key, has_sv, deps);
+    return (has_sv, deps);
+}
+
+def _native_default_deps_ok(root_path: str, root_deps: list[str]) -> bool {
+    edges: dict[str, list[str]] = {root_path: list(root_deps)};
+    queue: list[str] = list(root_deps);
+    while queue {
+        if len(edges) > _NA_DEFAULT_CLOSURE_CAP {
+            return False;
+        }
+        dep = queue.pop();
+        if dep in edges {
+            continue;
+        }
+        info = _native_default_dep_scan(dep);
+        if info is None {
+            return False;
+        }
+        (dep_sv, dep_deps) = info;
+        if dep_sv {
+            return False;
+        }
+        edges[dep] = list(dep_deps);
+        for d in dep_deps {
+            if d not in edges {
+                queue.append(d);
+            }
+        }
+    }
+    color: dict[str, int] = {};
+    for start in edges {
+        if color.get(start, 0) != 0 {
+            continue;
+        }
+        stack: list[tuple[str, int]] = [(start, 0)];
+        while stack {
+            (nd, idx) = stack.pop();
+            if idx == 0 {
+                if color.get(nd, 0) != 0 {
+                    continue;
+                }
+                color[nd] = 1;
+            }
+            kids = edges.get(nd, []);
+            if idx < len(kids) {
+                stack.append((nd, idx + 1));
+                kid = kids[idx];
+                kc = color.get(kid, 0);
+                if kc == 1 {
+                    return False;
+                }
+                if kc == 0 {
+                    stack.append((kid, 0));
+                }
+            } else {
+                color[nd] = 2;
+            }
+        }
+    }
+    return True;
+}
+
+def _native_default_path_ok(path: str) -> bool {
+    ap = os.path.abspath(path);
+    info = _native_default_dep_scan(ap);
+    if info is None {
+        return False;
+    }
+    (has_sv, deps) = info;
+    if has_sv {
+        return False;
+    }
+    return _native_default_deps_ok(ap, deps);
+}
+
+def _native_default_closure_ok(module: uni.Module) -> bool {
+    import from jaclang.jac0core.bccache { discover_variant_files }
+    mod_path = module.loc.mod_path if module.loc is not None else '';
+    if not mod_path {
+        return False;
+    }
+    if discover_variant_files(mod_path) {
+        return False;
+    }
+    base_dir = os.path.dirname(os.path.abspath(mod_path)) or '.';
+    (has_sv, deps) = _scan_native_default_signals(module, base_dir);
+    if has_sv {
+        return False;
+    }
+    return _native_default_deps_ok(os.path.abspath(mod_path), deps);
+}
+
 obj JacCompiler {
     with entry {
         _jaclang_root: (str | None) = None;

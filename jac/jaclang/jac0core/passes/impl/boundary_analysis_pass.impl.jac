@@ -92,6 +92,9 @@ impl BoundaryAnalysisPass._in_native_module(self: BoundaryAnalysisPass) -> bool 
     if not (self.ir_in and self.ir_in.loc) {
         return False;
     }
+    if self.ir_in.decided_codespace == 'native' {
+        return True;
+    }
     mod_path = self.ir_in.loc.mod_path;
     if mod_path and is_native_module(mod_path) {
         return True;

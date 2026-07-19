@@ -147,3 +147,68 @@ test "two colors infer independently and conflicts stay server" {
     assert stamp_of(mod, "styled_len") == 'client' , "uses npm names transitively, hard client";
     assert stamp_of(mod, "render_mixed") == 'server' , "hard-native seed use plus hard-client callee: indirect conflict resolves to server";
 }
+
+"""Compile a fixture under an explicit default codespace; resets the
+process-wide effective default afterwards so later tests are unaffected."""
+def compile_with_default(name: str, dcs: str, cgen: bool = False) -> object {
+    import from jaclang.jac0core.compile_options { CompileOptions }
+    import from jaclang.jac0core.codeinfo { set_effective_default_codespace }
+    prog = JacProgram();
+    try {
+        mod = prog.compile(
+            os.path.join(FIXTURE_DIR, name),
+            options=CompileOptions(default_codespace=dcs, no_cgen=not cgen)
+        );
+    } finally {
+        set_effective_default_codespace('');
+    }
+    assert not prog.errors_had , f"{name}: {[str(e) for e in prog.errors_had]}";
+    return mod;
+}
+
+test "pure markerless module infers native under native default" {
+    mod = compile_with_default("nadefault_pure.jac", "native");
+    assert mod.decided_codespace == 'native' , "pure module should coerce whole-module native";
+    assert stamp_of(mod, "add") == 'native';
+}
+
+test "pure markerless module stays server under server default" {
+    mod = compile_with_default("nadefault_pure.jac", "server");
+    assert mod.decided_codespace == '' , "server default keeps markerless modules undecided";
+    assert stamp_of(mod, "add") == 'server';
+}
+
+test "python import keeps module server under native default" {
+    mod = compile_with_default("nadefault_pyimport.jac", "native");
+    assert mod.decided_codespace == '' , "python import is a server signal";
+    assert stamp_of(mod, "helper") == 'server';
+}
+
+test "pure import chain infers native under native default" {
+    mod = compile_with_default("nadefault_chain.jac", "native");
+    assert mod.decided_codespace == 'native' , "closure of pure plain modules is native";
+}
+
+test "server signal poisons the import closure" {
+    mod = compile_with_default("nadefault_uses_sv.jac", "native");
+    assert mod.decided_codespace == '' , "importing a server-classified module keeps the importer server";
+    assert stamp_of(mod, "helper") == 'server';
+}
+
+test "import cycles fall back to server under native default" {
+    mod = compile_with_default("nadefault_cyc_a.jac", "native");
+    assert mod.decided_codespace == '' , "native backend cannot link circular imports";
+    assert stamp_of(mod, "fa") == 'server';
+}
+
+test "osp constructs keep module server under native default" {
+    mod = compile_with_default("nadefault_walker.jac", "native");
+    assert mod.decided_codespace == '' , "walker/node archetypes are server signals";
+    assert stamp_of(mod, "Visitor") == 'server';
+}
+
+test "native default produces a native engine for pure modules" {
+    mod = compile_with_default("nadefault_pure.jac", "native", cgen=True);
+    assert mod.decided_codespace == 'native';
+    assert mod.gen.native_engine is not None , "inferred-native module should lower to a native engine";
+}

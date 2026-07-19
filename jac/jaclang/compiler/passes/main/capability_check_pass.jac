@@ -1,16 +1,9 @@
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.transform { Transform }
 import from jaclang.jac0core.diagnostics { E5090, W6001, W6002, W6003, W6004 }
+import from jaclang.jac0core.codeinfo { NATIVE_SUPPORTED_STDLIB }
 
-glob NATIVE_SUPPORTED_STDLIB: set[str] = {
-         "sys",
-         "math",
-         "time",
-         "os",
-         "random",
-         "struct"
-     },
-     NATIVE_DISQUALIFIER_NODES: tuple = (
+glob NATIVE_DISQUALIFIER_NODES: tuple = (
          uni.VisitStmt,
          uni.DisengageStmt,
          uni.ReportStmt,

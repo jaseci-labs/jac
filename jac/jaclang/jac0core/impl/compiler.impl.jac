@@ -687,7 +687,15 @@ impl JacCompiler.parse_str(
 
     JacAnnexPass(ir_in=mod, prog=target_program);
     if run_codespace_infer {
-        _seed_module_codespace(mod);
+        if (
+            target_program is not self._internal_program
+            and _default_codespace_for(target_program) == 'native'
+            and _native_default_closure_ok(mod)
+        ) {
+            _coerce_native_module(mod);
+        } else {
+            _seed_module_codespace(mod);
+        }
     }
     return mod;
 }
@@ -726,7 +734,14 @@ impl JacCompiler.compile(
         options.nogc_enforce_modules = _prev_opts.nogc_enforce_modules;
         options.nogc_grandfathered = _prev_opts.nogc_grandfathered;
     }
+    if _prev_opts is not None and not options.default_codespace {
+        options.default_codespace = _prev_opts.default_codespace;
+    }
     actual_program._compile_options = options;
+    if options.default_codespace {
+        import from jaclang.jac0core.codeinfo { set_effective_default_codespace }
+        set_effective_default_codespace(options.default_codespace);
+    }
     keep_str = use_str or read_file_with_encoding(file_path);
     had_parse_errors = len(actual_program.errors_had);
     mod_targ = self.parse_str(

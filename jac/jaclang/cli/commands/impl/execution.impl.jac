@@ -38,6 +38,15 @@ def _discover_config_from_file(filename: str) -> None {
     }
 }
 
+def _default_codespace_is_native -> bool {
+    import from jaclang.project.config { get_config, BuildConfig }
+    cfg = get_config();
+    effective = cfg.build.default_codespace
+        if cfg is not None
+        else BuildConfig().default_codespace;
+    return effective == 'native';
+}
+
 def _populate_native_argv(engine: object, argv: list[str]) -> None {
     import ctypes;
 
@@ -388,6 +397,35 @@ impl run(
                     }
                 } except Exception as _auto_err {
                     _ = _auto_err;
+                }
+            }
+            if not native_executed and _default_codespace_is_native() {
+                import ctypes;
+                full_path = os.path.abspath(filename);
+                program = Jac.get_program();
+                ir_mod = program.compile(file_path=full_path);
+                if program.errors_had {
+                    for _err in program.errors_had {
+                        console.error(_err.pretty_print());
+                    }
+                    mach.close();
+                    return 1;
+                }
+                if (
+                    ir_mod
+                    and ir_mod.decided_codespace == 'native'
+                    and ir_mod.gen.native_engine
+                ) {
+                    engine = ir_mod.gen.native_engine;
+                    _populate_native_argv(engine, sys.argv);
+                    if main {
+                        addr = engine.get_function_address("jac_entry");
+                        if addr != 0 {
+                            fn = ctypes.CFUNCTYPE(None)(addr);
+                            fn();
+                            native_executed = True;
+                        }
+                    }
                 }
             }
             if not native_executed {
