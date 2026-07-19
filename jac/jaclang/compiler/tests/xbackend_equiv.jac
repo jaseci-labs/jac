@@ -98,7 +98,15 @@ def compile_native(fixture: str) -> tuple {
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     eng = ir.gen.native_engine;
-    assert eng is not None , f"No native engine produced for {fixture}";
+    if eng is None {
+        import from jaclang.jac0core.compiler { _na_demotion_memo }
+        _dbg = (
+            f"cs={ir.decided_codespace} llvm={ir.gen.llvm_ir is not None} "
+            f"warns={len(prog.warnings_had or [])} memo={len(_na_demotion_memo)} "
+            f"memokeys={[os.path.basename(k) for k in list(_na_demotion_memo)[:4]]}"
+        );
+        assert eng is not None , f"No native engine for {fixture}: {_dbg}";
+    }
     return (eng, ir);
 }
 
