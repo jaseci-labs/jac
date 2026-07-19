@@ -82,14 +82,12 @@ impl NaIRGenPass._codegen_bound_args(
     }
 
     sig_params = callee_sig.get_parameters();
-    explicit_flags: list[bool] = [];
     for (pix, sp) in enumerate(sig_params) {
         slot = self_offset + pix;
         expected_type = func.args[slot].type
             if slot < len(func.args)
             else ir.IntType(64);
         chosen: (uni.Expr | None) = None;
-        explicit_flags.append(pix < len(positional) or sp.name.sym_name in kw_map);
         if pix < len(positional) {
             chosen = positional[pix];
         } elif sp.name.sym_name in kw_map {
@@ -113,7 +111,6 @@ impl NaIRGenPass._codegen_bound_args(
         v = self._codegen_expr(positional[pix]);
         if v is not None {
             args.append(v);
-            explicit_flags.append(True);
         }
     }
 
@@ -144,13 +141,6 @@ impl NaIRGenPass._codegen_bound_args(
         return args;
     }
     expected_argc = len(func.args) - self_offset;
-    while (
-        len(args) > expected_argc
-        and len(args) <= len(explicit_flags)
-        and not explicit_flags[len(args) - 1]
-    ) {
-        args.pop();
-    }
     if len(args) > expected_argc {
         if len(args) > len(sig_params) {
             self.emit(
@@ -160,8 +150,9 @@ impl NaIRGenPass._codegen_bound_args(
                 name=f"call with {len(args)} arguments (native accepts {expected_argc})",
                 help_text="The resolved (frontend) signature allows more arguments than the native implementation declares (a variadic stub over a bounded native function). Pass fewer arguments or fold the extras before the call."
             );
+            return args[:expected_argc];
         }
-        return args[:expected_argc];
+        return args;
     }
     while len(args) < expected_argc {
         slot = self_offset + len(args);
