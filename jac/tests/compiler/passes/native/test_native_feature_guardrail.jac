@@ -839,3 +839,15 @@ test "clib decl with known types is not rejected" {
         prog
     )}";
 }
+
+# !r and dynamic format specs now lower natively (#7593 item 6); the !a
+# conversion still requires CPython-exact ascii() escaping and stays gated.
+test "guardrail: f-string !a conversion is rejected" {
+    prog = compile_na_inline(
+        "fstr_ascii",
+        "def f(s: str) -> str { return f\"{s!a}\"; }\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for !a, got: {fmt_errors(
+        prog
+    )}";
+}

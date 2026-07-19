@@ -362,27 +362,55 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
                 continue;
             }
             _conv = part.conversion if part.conversion is not None else -1;
-            if _conv not in (-1, 115) {
+            if _conv == 114 {
+                val = self._emit_fstr_repr(val, part);
+                if val is None {
+                    return None;
+                }
+                if self._is_owned(val) {
+                    obj_strs.append(val);
+                }
+            } elif _conv not in (-1, 115) {
                 self.emit(
-                    E5092,
-                    node_override=part,
-                    kind="f-string conversion",
-                    name=("!r" if _conv == 114 else "!a")
+                    E5092, node_override=part, kind="f-string conversion", name="!a"
                 );
                 return None;
             }
             _spec_txt: (str | None) = None;
+            _spec_val: (ir.Value | None) = None;
             if part.format_spec is not None {
                 _spec_txt = self._fstring_spec_text(part.format_spec);
                 if _spec_txt is None {
-                    self.emit(
-                        E5092,
-                        node_override=part,
-                        kind="f-string format spec",
-                        name="<dynamic spec>"
-                    );
+                    if not isinstance(part.format_spec, uni.FString) {
+                        self.emit(
+                            E5092,
+                            node_override=part,
+                            kind="f-string format spec",
+                            name="<dynamic spec>"
+                        );
+                        return None;
+                    }
+                    _spec_val = self._codegen_fstring(part.format_spec);
+                    if _spec_val is None {
+                        return None;
+                    }
+                }
+            }
+            if _spec_val is not None {
+                _dyn = self._emit_dyn_spec_format(val, _spec_val, part);
+                if _dyn is None {
                     return None;
                 }
+                if _conv != 114
+                and isinstance(val.type, ir.PointerType)
+                and self._is_owned(val) {
+                    obj_strs.append(val);
+                }
+                obj_strs.append(_spec_val);
+                obj_strs.append(_dyn);
+                fmt_parts.append("%s");
+                args.append(_dyn);
+                continue;
             }
             if _spec_txt {
                 if isinstance(val.type, ir.IntType) and val.type.width == 1 {
@@ -398,13 +426,20 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
                 }
                 _tr = self._fstring_spec_to_printf(_spec_txt, _fs_kind or "");
                 if _tr is None {
-                    self.emit(
-                        E5092,
-                        node_override=part,
-                        kind="f-string format spec",
-                        name=_spec_txt
-                    );
-                    return None;
+                    _sg = self._make_global_string(_spec_txt, name_prefix=".fspec");
+                    _sdyn = self._emit_dyn_spec_format(val, _sg, part);
+                    if _sdyn is None {
+                        return None;
+                    }
+                    if _conv != 114
+                    and isinstance(val.type, ir.PointerType)
+                    and self._is_owned(val) {
+                        obj_strs.append(val);
+                    }
+                    obj_strs.append(_sdyn);
+                    fmt_parts.append("%s");
+                    args.append(_sdyn);
+                    continue;
                 }
                 (directive, want) = _tr;
                 if want == "float" {
@@ -1109,6 +1144,120 @@ impl NaIRGenPass._emit_sys_exit(args: list[ir.Value]) -> (ir.Value | None) {
     self.builder.call(exit_fn, [code]);
     self.builder.unreachable();
     return ir.Constant(ir.IntType(64), 0);
+}
+
+impl NaIRGenPass._emit_fstr_repr(
+    val: ir.Value, part: uni.FormattedValue
+) -> (ir.Value | None) {
+    i8p = ir.IntType(8).as_pointer();
+    i64 = ir.IntType(64);
+    if self.rc_alloc_fn is None {
+        self._emit_rc_helpers();
+    }
+    if isinstance(val.type, ir.IntType) and val.type.width == 1 {
+        t_g = self._make_global_string("True", name_prefix=".repr.true");
+        f_g = self._make_global_string("False", name_prefix=".repr.false");
+        return self.builder.select(val, t_g, f_g, name="fstr.repr.bool");
+    }
+    if isinstance(val.type, ir.IntType) {
+        fn = self._repr_leaf_fn("int");
+        if fn is not None {
+            _iv = self._coerce_type(val, i64);
+            res = self.builder.call(fn, [_iv], name="fstr.repr.int");
+            return self._mark_owned(res);
+        }
+    } elif isinstance(val.type, (ir.FloatType, ir.DoubleType)) {
+        return self._emit_float_repr(self._coerce_type(val, ir.DoubleType()));
+    } elif isinstance(val.type, ir.PointerType) and val.type == i8p {
+        res = self.builder.call(self._repr_str_fn(), [val], name="fstr.repr.str");
+        return self._mark_owned(res);
+    } elif isinstance(val.type, (ir.PointerType, ir.LiteralStructType)) {
+        _r = self._emit_container_repr(val, self._type_key_of(part.format_part));
+        if _r is None and isinstance(val.type, ir.PointerType) {
+            _r = self._dispatch_builtin(
+                "repr", [val], type_key=(self._type_key_of(part.format_part) or "")
+            );
+        }
+        if _r is not None {
+            if isinstance(val.type, ir.PointerType)
+            and self._is_owned(val)
+            and (_r is not val) {
+                self._emit_rc_release_typed(val, op="fstr_repr_src", loc="");
+            }
+            return _r;
+        }
+    }
+    self.emit(E5092, node_override=part, kind="f-string conversion", name="!r");
+    return None;
+}
+
+impl NaIRGenPass._emit_dyn_spec_format(
+    val: ir.Value, spec_val: ir.Value, part: uni.FormattedValue
+) -> (ir.Value | None) {
+    i8p = ir.IntType(8).as_pointer();
+    kname: (str | None) = None;
+    sval = val;
+    if isinstance(val.type, ir.IntType) and val.type.width == 1 {
+        kname = "jac_fmt_bool";
+    } elif isinstance(val.type, ir.IntType) {
+        kname = "jac_fmt_int";
+        if val.type.width != 64 {
+            sval = self.builder.sext(val, ir.IntType(64), name="fstr.dyn.sext");
+        }
+    } elif isinstance(val.type, (ir.FloatType, ir.DoubleType)) {
+        kname = "jac_fmt_float";
+        if isinstance(val.type, ir.FloatType) {
+            sval = self.builder.fpext(val, ir.DoubleType(), name="fstr.dyn.fpext");
+        }
+    } elif isinstance(val.type, ir.PointerType) and val.type == i8p {
+        kname = "jac_fmt_str";
+    } elif isinstance(val.type, (ir.PointerType, ir.LiteralStructType)) {
+        _s: (ir.Value | None) = None;
+        if isinstance(val.type, ir.PointerType) {
+            _s = self._emit_obj_str(val);
+        }
+        if _s is None {
+            _s = self._emit_container_repr(val, self._type_key_of(part.format_part));
+        }
+        if _s is None {
+            self.emit(
+                E5092,
+                node_override=part,
+                kind="f-string value",
+                name=type(part.format_part).__name__
+            );
+            return None;
+        }
+        sval = _s;
+        kname = "jac_fmt_str";
+    } else {
+        self.emit(
+            E5092,
+            node_override=part,
+            kind="f-string format spec",
+            name="<dynamic spec>"
+        );
+        return None;
+    }
+    fn = self._get_fmt_kernel_fn(kname);
+    if fn is None {
+        self.emit(
+            E5092,
+            node_override=part,
+            kind="f-string format spec",
+            name="<fmt kernel unavailable>"
+        );
+        return None;
+    }
+    _a0 = self._coerce_type(sval, fn.args[0].type);
+    _a1 = self._coerce_type(spec_val, fn.args[1].type);
+    res = self.builder.call(fn, [_a0, _a1], name="fstr.dyn");
+    if (sval is not val)
+    and isinstance(sval.type, ir.PointerType)
+    and self._is_owned(sval) {
+        self._emit_rc_release_typed(sval, op="fstr_dyn_tmp", loc="");
+    }
+    return self._mark_owned(res);
 }
 
 impl NaIRGenPass._emit_float_repr(fv: ir.Value) -> ir.Value {

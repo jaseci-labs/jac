@@ -145,6 +145,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         _osp_thunk_uid: int = 0,
         imported_osp_archs: dict[str, tuple] = {},
         _osp_kernel_mod: (object | None) = None,
+        _fmt_kernel_mod: (object | None) = None,
         _osp_desc_global: (object | None) = None,
         _osp_rt_global: (object | None) = None,
         _osp_setup_fn: (object | None) = None,
@@ -434,6 +435,13 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_fstring(nd: uni.FString) -> (ir.Value | None);
     def _fstring_spec_text(spec: uni.Expr) -> (str | None);
     def _fstring_spec_to_printf(spec: str, kind: str) -> (tuple | None);
+    def _ensure_fmt_kernel -> bool;
+    def _get_fmt_kernel_fn(name: str) -> (ir.Function | None);
+    def _emit_fstr_repr(val: ir.Value, part: uni.FormattedValue) -> (ir.Value | None);
+    def _emit_dyn_spec_format(
+        val: ir.Value, spec_val: ir.Value, part: uni.FormattedValue
+    ) -> (ir.Value | None);
+
     def _make_global_string(text: str, name_prefix: str = ".str") -> ir.Value;
     def _forward_declare_archetype_names(module: uni.Module) -> None;
     def _native_archetypes(module: uni.Module) -> list[uni.Archetype];

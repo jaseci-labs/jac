@@ -166,6 +166,34 @@ test "builtins" {
     run_with_both("prim_builtins.jac", "builtins_py", "builtins_cl", "builtins_na");
 }
 
+test "builtins format long" {
+    run_with_both(
+        "prim_format_builtin.jac",
+        "fmt_long_py",
+        "fmt_long_cl",
+        "fmt_long_na",
+        require=["na"]
+    );
+}
+
+test "fstring repr conversion" {
+    run_with_both(
+        "prim_fstring_conv.jac", "fconv_py", "fconv_cl", "fconv_na", require=["na"]
+    );
+}
+
+test "fstring dynamic spec" {
+    run_with_both(
+        "prim_fstring_conv.jac", "fdyn_py", "fdyn_cl", "fdyn_na", require=["na"]
+    );
+}
+
+test "fstring repr containers" {
+    run_with_both(
+        "prim_fstring_conv.jac", "fcont_py", "fcont_cl", "fcont_na", require=["na"]
+    );
+}
+
 test "math" {
     run_with_both("prim_math.jac", "math_py", "math_cl", "math_na", require=["na"]);
 }

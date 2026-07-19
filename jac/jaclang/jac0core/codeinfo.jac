@@ -95,8 +95,8 @@ def native_test_symbol(name: str, line: int) -> str {
 }
 
 def native_safe_sym(src: str) -> str {
-    if src == "osp_kernel" {
-        return "osp_kernel";
+    if src in ("osp_kernel", "fmt_kernel") {
+        return src;
     }
     safe = re.sub(r'[^a-zA-Z0-9_]', '_', src);
     return f"{safe}_{hashlib.sha1(src.encode()).hexdigest()[:8]}";

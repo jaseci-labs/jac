@@ -214,6 +214,32 @@ test "fstring: numeric and string format specs render like CPython" {
     assert result == 1111 , f"Expected 1111, got {result}";
 }
 
+test "fstring: !r conversion matches CPython repr" {
+    (eng, _) = compile_native("py_fstring.na.jac");
+    get_func(eng, "jac_entry", None)();
+    fn = get_func(eng, "fstring_repr", ctypes.c_int64);
+    result = fn();
+    # int, float, bool, quote-switching str repr, and repr-then-pad ordering
+    assert result == 11111 , f"Expected 11111, got {result}";
+}
+
+test "fstring: dynamic format specs render like CPython" {
+    (eng, _) = compile_native("py_fstring.na.jac");
+    get_func(eng, "jac_entry", None)();
+    fn = get_func(eng, "fstring_dynspec", ctypes.c_int64);
+    result = fn();
+    # {w}.{p}f, {w}x, 0{w}d, and *^{w} all correct
+    assert result == 1111 , f"Expected 1111, got {result}";
+}
+
+test "fstring: invalid dynamic spec raises ValueError" {
+    (eng, _) = compile_native("py_fstring.na.jac");
+    get_func(eng, "jac_entry", None)();
+    fn = get_func(eng, "fstring_dynspec_invalid", ctypes.c_int64);
+    result = fn();
+    assert result == 1 , f"Expected 1 (ValueError raised), got {result}";
+}
+
 test "range with zero step raises ValueError instead of looping" {
     (eng, _) = compile_native("py_dropped_args.na.jac");
     get_func(eng, "jac_entry", None)();

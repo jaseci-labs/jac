@@ -329,20 +329,18 @@ impl native_capability_violations(mod: uni.Module) -> list {
 
             if isinstance(nd, uni.FormattedValue) {
                 _conv = nd.conversion if nd.conversion is not None else -1;
-                if _conv not in (-1, 115) {
+                if _conv == 97 {
                     out.append(
                         (
                             nd,
                             "f-string conversion",
-                            ("!r" if _conv == 114 else "!a"),
-                            None
+                            "!a",
+                            (
+                                "ascii() escaping is not implemented natively; "
+                                "use !r or move the statement to @sv"
+                            )
                         )
                     );
-                    continue;
-                }
-                if nd.format_spec is not None
-                and static_fstring_spec_text(nd.format_spec) is None {
-                    out.append((nd, "f-string format spec", "<dynamic spec>", None));
                     continue;
                 }
             }
