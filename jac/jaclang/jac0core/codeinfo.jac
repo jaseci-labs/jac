@@ -118,6 +118,10 @@ def set_effective_default_codespace(value: str) {
     _effective_codespace_ctx.set(value);
 }
 
+def get_effective_default_codespace_override -> str {
+    return _effective_codespace_ctx.get();
+}
+
 def effective_default_codespace -> str {
     cur = _effective_codespace_ctx.get();
     if cur {
