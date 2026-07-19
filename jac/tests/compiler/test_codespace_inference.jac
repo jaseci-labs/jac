@@ -2,8 +2,9 @@
 
 Covers the full pipeline: parse-time seeding (JSX / string-path imports),
 symbol-based propagation in CodespacePullPass (scope-aware, exclusion policy),
-the placement-vs-boundary edge model for `sv` imports, and the design rule
-that native placement is explicit-only.
+the placement-vs-boundary edge model for `sv` imports, and the
+default_codespace-driven whole-module native inference (native by default,
+server signals and closure poison opt modules back out).
 """
 
 import os;
@@ -121,10 +122,22 @@ test "locals shadowing client names do not pull" {
     assert stamp_of(mod, "server_side") == 'server' , "shadowed names resolve to locals - no pull";
 }
 
-test "native compatibility alone does not infer native" {
+test "native compatibility alone does not infer native by default" {
     mod = compile_fixture("pure_stays_server.jac");
     assert stamp_of(mod, "add") == 'server' , "native-compatible code still defaults to server";
     assert stamp_of(mod, "mul_add") == 'server';
+}
+
+test "pure modules infer native under an explicit native default" {
+    mod = compile_with_default("pure_stays_server.jac", "native");
+    assert mod.decided_codespace == 'native' , "native default coerces pure modules";
+    assert stamp_of(mod, "add") == 'native';
+    assert stamp_of(mod, "mul_add") == 'native';
+}
+
+test "module-level pub endpoints keep a module server under native default" {
+    mod = compile_with_default("infer_native_ffi.jac", "native");
+    assert mod.decided_codespace == '' , "def:pub is a serve endpoint, a server signal";
 }
 
 test "extern decl imports seed native and pull the module" {
@@ -157,7 +170,9 @@ def compile_with_default(name: str, dcs: str, cgen: bool = False) -> object {
     try {
         mod = prog.compile(
             os.path.join(FIXTURE_DIR, name),
-            options=CompileOptions(default_codespace=dcs, no_cgen=not cgen)
+            options=CompileOptions(
+                default_codespace=dcs, no_cgen=not cgen, type_check=False
+            )
         );
     } finally {
         set_effective_default_codespace('');

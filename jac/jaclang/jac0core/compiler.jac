@@ -495,6 +495,13 @@ def _scan_native_default_signals(
                 return (True, deps);
             }
         }
+        if (
+            isinstance(stmt, (uni.Ability, uni.GlobalVars))
+            and stmt.access is not None
+            and stmt.access.tag.name == Tok.KW_PUB
+        ) {
+            return (True, deps);
+        }
     }
     for imp in module.get_all_sub_nodes(uni.Import) {
         if imp.has_clib_decls {
@@ -503,27 +510,39 @@ def _scan_native_default_signals(
         if imp.is_virtual_jac or imp.has_string_path {
             return (True, deps);
         }
-        targets: list[tuple[str, (str | None)]] = [];
+        targets: list[tuple[str, (str | None), bool]] = [];
         if imp.from_loc is not None {
             targets.append(
-                (imp.from_loc.dot_path_str, _try_resolve_import(imp.from_loc))
+                (imp.from_loc.dot_path_str, _try_resolve_import(imp.from_loc), False)
             );
             for item in imp.items {
                 if isinstance(item, uni.ModuleItem) {
                     item_path = _try_resolve_import(item);
                     if item_path is not None {
-                        targets.append(("", item_path));
+                        targets.append(("", item_path, False));
                     }
                 }
             }
         } else {
             for item in imp.items {
                 if isinstance(item, uni.ModulePath) {
-                    targets.append((item.dot_path_str, _try_resolve_import(item)));
+                    targets.append(
+                        (item.dot_path_str, _try_resolve_import(item), True)
+                    );
                 }
             }
         }
-        for (name, path) in targets {
+        for (name, path, is_bare) in targets {
+            clean = name.lstrip('.') if name else '';
+            if is_bare {
+                if clean and clean in NATIVE_SUPPORTED_STDLIB {
+                    continue;
+                }
+                if clean and is_bundled_native_module(clean) {
+                    continue;
+                }
+                return (True, deps);
+            }
             if path is not None and path.endswith('.na.jac') {
                 continue;
             }
@@ -535,7 +554,6 @@ def _scan_native_default_signals(
                 deps.append(os.path.abspath(path));
                 continue;
             }
-            clean = name.lstrip('.') if name else '';
             if clean and clean in NATIVE_SUPPORTED_STDLIB {
                 continue;
             }
