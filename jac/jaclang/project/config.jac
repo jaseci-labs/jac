@@ -63,6 +63,7 @@ obj GcConfig {
 obj BuildConfig {
     has typecheck: bool = False,
         dir: str = ".jac",
+        default_codespace: str = "server",
         native: NativeBuildConfig = NativeBuildConfig();
 }
 

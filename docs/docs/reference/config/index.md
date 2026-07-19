@@ -226,9 +226,12 @@ Build configuration:
 
 ```toml
 [build]
-typecheck = false   # Enable type checking
-dir = ".jac"        # Build artifacts directory
+typecheck = false           # Enable type checking
+dir = ".jac"                # Build artifacts directory
+default_codespace = "server"  # Codespace for markerless .jac modules: "server"/"sv" or "native"/"na"
 ```
+
+`default_codespace` controls how a plain `.jac` module with no explicit codespace marker (no `.sv.jac`/`.cl.jac`/`.na.jac` suffix and no top-level `sv`/`cl`/`na` markers) is treated. With `"server"` (the default) it compiles in the server codespace as before. With `"native"` the compiler infers: a markerless module with no server-requiring constructs, and whose imported plain `.jac` modules are likewise native-clean, is compiled whole-module in the native codespace; `sv { }` blocks remain the per-block escape hatch. Modules with server-requiring constructs stay in the server codespace either way.
 
 The `dir` setting controls where all build artifacts are stored:
 

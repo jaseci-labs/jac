@@ -1100,9 +1100,23 @@ impl _parse_toml_data(
     }
     if "build" in data {
         build_data = data["build"];
+        _codespace_aliases = {"sv": "server", "na": "native"};
+        _default_cs = str(
+            build_data.get("default_codespace", "server")
+        ).strip().lower();
+        _default_cs = _codespace_aliases.get(_default_cs, _default_cs);
+        if _default_cs not in ("server", "native") {
+            import from jaclang.cli.console { console }
+            console.warning(
+                f"[build] default_codespace='{build_data.get('default_codespace')}' "
+                "is not one of 'server'/'sv', 'native'/'na'; defaulting to 'server'."
+            );
+            _default_cs = "server";
+        }
         config.build = BuildConfig(
             typecheck=build_data.get("typecheck", False),
-            dir=build_data.get("dir", ".jac")
+            dir=build_data.get("dir", ".jac"),
+            default_codespace=_default_cs
         );
     }
     if "gc" in data {
