@@ -42,6 +42,34 @@ glob BAD_NA_SOURCE: str = (
          "with entry {\n"
          "    print(answer());\n"
          "}\n"
+     ),
+     # An unresolvable type in a native *signature* position (issue #7139).
+     # `_resolve_jac_type` must route this through the `_emit_unlowerable_type`
+     # backstop (E5092) instead of silently defaulting the ABI to i64 -- every
+     # caller of `_resolve_jac_type` is an annotation position, so a silent
+     # i64 here would mis-lay-out storage with no diagnostic.
+     UNRESOLVED_ANNOT_SOURCE: str = (
+         "def takes(x: type) -> int {\n"
+         "    return 1;\n"
+         "}\n"
+         "\n"
+         "with entry {\n"
+         "    print(takes(int));\n"
+         "}\n"
+     ),
+     # An ability with *no* return annotation is a legitimately-absent type,
+     # not an unresolved one: `_resolve_jac_type(None)` must keep its i64
+     # default WITHOUT emitting a diagnostic. Guards against over-eagerly
+     # turning the absent-annotation default into a false positive.
+     NO_RET_ANNOT_SOURCE: str = (
+         "def noret() {\n"
+         "    x = 1;\n"
+         "    print(x);\n"
+         "}\n"
+         "\n"
+         "with entry {\n"
+         "    noret();\n"
+         "}\n"
      );
 
 """Write a module source into a fresh temp dir; return its path."""
@@ -134,6 +162,33 @@ test "check-path compile surfaces native codegen errors (check/run parity)" {
         assert key not in seen , f"duplicate diagnostic reported: {alrt}";
         seen.add(key);
     }
+}
+
+test "unresolvable annotation in a native signature diagnoses, not silent i64" {
+    src = write_module("gate_unresolved_annot.na.jac", UNRESOLVED_ANNOT_SOURCE);
+    prog = JacProgram();
+    mod = prog.compile(file_path=src);
+    assert has_error_code(prog, "E5092") , (
+        f"an unresolvable type in a native signature position must be "
+        f"diagnosed (not silently laid out as i64), got: {fmt_errors(prog)}"
+    );
+    assert mod.gen.llvm_ir is None , (
+        "a module with an unresolvable signature type must not publish llvm ir"
+    );
+}
+
+test "absent return annotation is a legitimate i64 default, not a diagnostic" {
+    src = write_module("gate_no_ret_annot.na.jac", NO_RET_ANNOT_SOURCE);
+    prog = JacProgram();
+    mod = prog.compile(file_path=src);
+    assert not prog.errors_had , (
+        f"an ability with no return annotation must compile clean "
+        f"(absent != unresolved), got: {fmt_errors(prog)}"
+    );
+    assert mod.gen.llvm_ir is not None , (
+        "a clean na module with an unannotated return type must still "
+        "publish llvm ir"
+    );
 }
 
 test "clean na module still publishes artifacts and caches" {
