@@ -2,14 +2,21 @@ import os;
 import from jaclang.scale.runtime.context.tracing { start_memory_span, end_memory_span }
 import from jaclang.runtimelib.exceptions { WriteConflict }
 
+import from jaclang.scale.persistence.mongo_health { warn_mongo_unreachable }
+
 impl MongoBackend.postinit -> None {
     if self.mongo_url is None {
         self.mongo_url = _get_db_config().get('mongodb_uri');
     }
     if self.mongo_url {
         if 'mongo_client' not in _process_cache {
+            timeout_ms = int(_get_db_config().get('mongodb_timeout_ms', 5000));
             try {
-                _process_cache['mongo_client'] = MongoClient(self.mongo_url);
+                _process_cache['mongo_client'] = MongoClient(
+                    self.mongo_url,
+                    serverSelectionTimeoutMS=timeout_ms,
+                    connectTimeoutMS=timeout_ms
+                );
             } except Exception as e {
                 logger.warning(f"MongoDB connection failed: {e}");
             }
@@ -21,6 +28,15 @@ impl MongoBackend.postinit -> None {
         }
     }
     if self.client is not None {
+        self._probe_ok = self.is_available();
+        if not self._probe_ok {
+            warn_mongo_unreachable(
+                self.mongo_url,
+                int(_get_db_config().get('mongodb_timeout_ms', 5000)),
+                "local persistence"
+            );
+            return;
+        }
         try {
             self._load_db_aliases();
         } except Exception as e {
@@ -249,6 +265,10 @@ impl MongoBackend.set_l1_id(l1_id: str) -> None {
 impl MongoBackend.is_available -> bool {
     if _process_cache.get('mongo_available') is True {
         return True;
+    }
+
+    if self._probe_ok is not None {
+        return self._probe_ok;
     }
     if not self.mongo_url {
         self.mongo_url = _get_db_config().get('mongodb_uri');

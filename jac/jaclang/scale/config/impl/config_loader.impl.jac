@@ -211,6 +211,10 @@ impl JacScaleConfig.get_database_config(self: JacScaleConfig) -> dict[str, any] 
     return {
         'type': db_config.get('type'),
         'mongodb_uri': os.environ.get('MONGODB_URI') or db_config.get('mongodb_uri'),
+        'mongodb_timeout_ms': int(
+            os.environ.get('MONGODB_TIMEOUT_MS')
+            or db_config.get('mongodb_timeout_ms', 5000)
+        ),
         'redis_url': os.environ.get('REDIS_URL') or db_config.get('redis_url'),
         'project_id': resolve_firebase_project_id(
             FIRESTORE_PROJECT_ID_ENV, db_config.get('project_id')
