@@ -14,7 +14,9 @@ import from jaclang.scale._optdeps.kubernetes {
 import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
     ensure_namespace_exists,
     create_k8s_secret,
-    get_cluster_provider
+    get_cluster_provider,
+    _resolve_current_rs_hashes,
+    _refresh_rs_hashes
 }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
@@ -32,7 +34,8 @@ import from jaclang.scale.deploy.autoscale.autoscaler {
     AutoscalerSpec,
     Trigger,
     TriggerAuth,
-    DEFAULT_CPU_UTILIZATION_TARGET
+    DEFAULT_CPU_UTILIZATION_TARGET,
+    DEFAULT_MEMORY_UTILIZATION_TARGET
 }
 import from jaclang.scale.deploy.target.kubernetes.monitoring { MonitoringDeployer }
 import from jaclang.scale.config.config_loader { get_scale_config }
@@ -136,13 +139,192 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return DeploymentResult(success=True, message=success_msg, details=bundle);
     }
 
+    def _scan_for_crash_loop(
+        core_v1: any, ns: str, current_hashes: set, fleet_app_names: set
+    ) -> dict[str, any] {
+        imagepull_reasons: set = {
+            "ImagePullBackOff",
+            "ErrImagePull",
+            "InvalidImageName"
+        };
+        transient_reasons: set = {"PodInitializing", "ContainerCreating"};
+        crash = "";
+        crash_pod = None;
+        pulls: dict[str, any] = {};
+        creating: dict[str, any] = {};
+        phases: list[str] = [];
+        states: list[str] = [];
+        try {
+            for p in core_v1.list_namespaced_pod(namespace=ns).items {
+                if p.metadata?.deletion_timestamp is not None {
+                    continue;
+                }
+                pod_name = str(p.metadata.name);
+                labels = p.metadata.labels or {};
+                app = str(labels.get("app", ""));
+                in_fleet = (app in fleet_app_names) if fleet_app_names else True;
+                if current_hashes and app in fleet_app_names {
+                    pod_hash = labels.get("pod-template-hash");
+                    if pod_hash is not None and pod_hash not in current_hashes {
+                        continue;
+                    }
+                }
+                phase = str(p.status.phase or '?');
+                statuses = list(p.status.init_container_statuses or []) + list(
+                    p.status.container_statuses or []
+                );
+                pod_reason = "";
+                pod_crash = "";
+                pod_crash_restarts = 0;
+                pod_pull = "";
+                pod_pull_reason = "";
+                for cs in statuses {
+                    waiting = cs.state.waiting if cs.state else None;
+                    reason = (waiting.reason if waiting else "") or "";
+                    restarts = cs.restart_count or 0;
+                    states.append(f"{pod_name}/{cs.name}={phase}/{reason}/{restarts}");
+                    if reason and reason not in transient_reasons {
+                        pod_reason = reason;
+                    }
+
+                    crashing = restarts >= 3 and reason not in imagepull_reasons;
+                    if crashing and not pod_crash {
+                        pod_crash = str(cs.name);
+                        pod_crash_restarts = restarts;
+                    } elif reason in imagepull_reasons and not pod_pull and in_fleet {
+                        pod_pull = str(cs.name);
+                        pod_pull_reason = reason;
+                    }
+                }
+                if pod_pull {
+                    pulls[pod_name] = (pod_pull, pod_pull_reason, p);
+                }
+
+                reasons = [
+                    str(
+                        (
+                            cs.state.waiting.reason
+                                if cs.state and cs.state.waiting
+                                else ""
+                        )
+                        or ""
+                    ) for cs in statuses
+                ];
+                stuck_creating = (
+                    bool(statuses)
+                    and not pod_reason
+                    and not pod_pull
+                    and ("ContainerCreating" in reasons)
+                    and ("PodInitializing" not in reasons)
+                );
+                if phase == "Pending" and stuck_creating and in_fleet {
+                    creating[pod_name] = p;
+                }
+                if pod_crash and not crash {
+                    crash = (
+                        f"pod '{pod_name}' container '{pod_crash}' "
+                        f"crash-looping ({pod_crash_restarts} restarts)"
+                    );
+                    crash_pod = p;
+                }
+                if app {
+                    token = f"{app}={phase}";
+                    if pod_reason {
+                        token = f"{app}={phase}/{pod_reason}";
+                    }
+                    phases.append(token);
+                }
+            }
+        } except Exception {
+            _ = 0;
+        }
+        return {
+            "crash": crash,
+            "crash_pod": crash_pod,
+            "pulls": pulls,
+            "creating": creating,
+            "phases": phases,
+            "states": states
+        };
+    }
+
+    def _pod_mount_wedged(core_v1: any, ns: str, pod_name: str) -> bool {
+        import from datetime { datetime, timezone }
+        try {
+            evs = core_v1.list_namespaced_event(
+                namespace=ns, field_selector=f"involvedObject.name={pod_name}"
+            ).items;
+        } except Exception {
+            return False;
+        }
+        now = datetime.now(timezone.utc);
+        for e in evs {
+            if str(e.reason or "") not in {"FailedMount", "FailedAttachVolume"} {
+                continue;
+            }
+
+            ts = e.last_timestamp or e.event_time or e.first_timestamp;
+            if ts is None {
+                continue;
+            }
+            try {
+                age = (now - ts).total_seconds();
+            } except Exception {
+                continue;
+            }
+            if age <= 360 {
+                return True;
+            }
+        }
+        return False;
+    }
+
+    def _try_self_heal(
+        core_v1: any, ns: str, pod: any, why: str, healed_apps: dict[str, int]
+    ) -> bool {
+        app = str((pod.metadata.labels or {}).get("app", "")) or str(pod.metadata.name);
+        if healed_apps.get(app, 0) >= 1 or sum(healed_apps.values()) >= 3 {
+            return False;
+        }
+        pod_name = str(pod.metadata.name);
+        try {
+            core_v1.delete_namespaced_pod(name=pod_name, namespace=ns);
+        } except Exception {
+            return False;
+        }
+        healed_apps[app] = healed_apps.get(app, 0) + 1;
+        if self.logger {
+            self.logger.warn(
+                f"Self-heal: deleted wedged pod '{pod_name}' ({why}); "
+                f"its ReplicaSet schedules a replacement. One retry per "
+                f"service, then the rollout fails as usual.",
+                {"namespace": ns, "app": app}
+            );
+        }
+        return True;
+    }
+
     def _wait_for_fleet_rollout(bundle: dict[str, any], timeout: int = 1200) -> None {
         import time;
+        import sys;
         import from kubernetes { client }
         import from jaclang.cli.console { console }
         names: list[str] = [];
+        app_labels: list[str] = [];
         for dep in bundle.get("deployments", {}).values() {
             names.append(dep["metadata"]["name"]);
+            app: str = "";
+            try {
+                app = str(dep["spec"]["selector"]["matchLabels"]["app"]);
+            } except Exception { }
+            if not app {
+                try {
+                    app = str((dep["metadata"].get("labels") or {}).get("app") or "");
+                } except Exception { }
+            }
+            if app {
+                app_labels.append(app);
+            }
         }
         if not names {
             return;
@@ -154,9 +336,28 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         total = len(names);
         elapsed = 0;
         ready = 0;
-        # console.status is an in-place spinner that never streams on a non-TTY log (CI); fall back to plain lines so progress isn't stuck at "0/{total}".
-        interactive = bool(getattr(console, "is_terminal", False));
-        last_line = "";
+        interactive = bool(sys.stdout.isatty());
+        fleet_apps: set = set(app_labels);
+        pod_selector = "app in ({})".format(", ".join(app_labels))
+            if app_labels
+            else None;
+        imagepull_streak: dict[str, int] = {};
+        creating_streak: dict[str, int] = {};
+        healed_apps: dict[str, int] = {};
+        last_sig = "";
+        last_heartbeat = -90;
+
+        current_hashes: set = set();
+        if pod_selector {
+            try {
+                current_hashes = _resolve_current_rs_hashes(ns, pod_selector);
+            } except Exception as exc {
+                console.print(
+                    f"[warn] RS hash lookup failed, falling back to broad pod "
+                    f"scan: {exc}"
+                );
+            }
+        }
 
         with console.status(f"Rolling out fleet: 0/{total} services ready...") as st {
             while elapsed < timeout {
@@ -180,51 +381,160 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     return;
                 }
 
-                crash = "";
-                phases: list[str] = [];
-                try {
-                    for p in core_v1.list_namespaced_pod(namespace=ns).items {
-                        for cs in (p.status.container_statuses or []) {
-                            if (cs.restart_count or 0) >= 3 {
-                                crash = (
-                                    f"pod '{p.metadata.name}' crash-looping "
-                                    f"({cs.restart_count} restarts)"
-                                );
-                            }
+                scan = self._scan_for_crash_loop(
+                    core_v1, ns, current_hashes, fleet_apps
+                );
+                phase_tokens = scan["phases"];
+                state_tokens = scan["states"];
+                crash_failure = scan["crash"];
+                crash_pod = scan["crash_pod"];
+
+                if crash_failure and pod_selector {
+                    refreshed = _refresh_rs_hashes(ns, pod_selector, current_hashes);
+                    current_hashes = refreshed or set();
+                    recheck = self._scan_for_crash_loop(
+                        core_v1, ns, current_hashes, fleet_apps
+                    );
+                    crash_failure = recheck["crash"];
+                    crash_pod = recheck["crash_pod"];
+                }
+
+                pulls = scan["pulls"];
+                imagepull_streak = {k: imagepull_streak.get(k, 0) + 1 for k in pulls};
+                pull_failure = "";
+                pull_pod = None;
+                for (pod_name, info) in pulls.items() {
+                    if imagepull_streak.get(pod_name, 0) >= 2 {
+                        if self._try_self_heal(
+                            core_v1,
+                            ns,
+                            info[2],
+                            f"container '{info[0]}' cannot pull image ({info[1]})",
+                            healed_apps
+                        ) {
+                            imagepull_streak.pop(pod_name, None);
+                            continue;
                         }
-                        labels = p.metadata.labels or {};
-                        app = str(labels.get("app", ""));
-                        if app {
-                            phases.append(f"{app}={p.status.phase or '?'}");
+                        pull_failure = (
+                            f"pod '{pod_name}' container '{info[0]}' "
+                            f"cannot pull image ({info[1]})"
+                        );
+                        pull_pod = info[2];
+                        break;
+                    }
+                }
+                creating_now = scan.get("creating", {});
+                creating_streak = {
+                    k: creating_streak.get(k, 0) + 1 for k in creating_now
+                };
+                for (pod_name, pod) in creating_now.items() {
+                    if creating_streak.get(pod_name, 0) >= 30
+                    and self._pod_mount_wedged(core_v1, ns, pod_name) {
+                        if self._try_self_heal(
+                            core_v1,
+                            ns,
+                            pod,
+                            "stuck >5min with FailedMount events",
+                            healed_apps
+                        ) {
+                            creating_streak.pop(pod_name, None);
                         }
                     }
-                } except Exception {
-                    _ = 0;
                 }
-                if crash {
-                    raise Exception(crash);
+
+                failure = crash_failure or pull_failure;
+                failed_pod = crash_pod if crash_failure else pull_pod;
+                if failure and failed_pod is not None {
+                    detail = self._pod_failure_detail(
+                        core_v1, ns, str(failed_pod.metadata.name), failed_pod
+                    );
+                    raise Exception(f"{failure}.{detail}");
                 }
-                detail = ", ".join(phases) if phases else "scheduling pods";
+
+                summary = ", ".join(phase_tokens)
+                    if phase_tokens
+                    else "scheduling pods";
                 line = (
                     f"Rolling out fleet: {ready}/{total} ready - {elapsed}s "
-                    f"elapsed ({detail}) - pods install jac + start the app"
+                    f"elapsed ({summary}) - pods install jac + start the app"
                 );
                 st.update(line);
-                # Emit to CI when the count moves or ~every 30s; dedupe to avoid spam.
-                if not interactive {
-                    stamp = f"{ready}/{total} {detail}";
-                    if stamp != last_line or elapsed % 30 == 0 {
+
+                sig = f"{ready}/{total}|" + "|".join(sorted(state_tokens));
+                if sig != last_sig or (elapsed - last_heartbeat) >= 90 {
+                    if not interactive {
                         console.print(line);
-                        last_line = stamp;
                     }
+                    last_sig = sig;
+                    last_heartbeat = elapsed;
                 }
                 time.sleep(10);
                 elapsed += 10;
             }
         }
+        timeout_detail = "";
+        try {
+            stuck = core_v1.list_namespaced_pod(
+                namespace=ns, label_selector=pod_selector
+            ).items
+                if pod_selector
+                else [];
+            for p in stuck {
+                timeout_detail += (
+                    f" [pod {p.metadata.name}]" + self._pod_failure_detail(
+                        core_v1, ns, str(p.metadata.name), p
+                    )
+                );
+            }
+        } except Exception {
+            _ = 0;
+        }
         raise Exception(
-            f"timed out after {timeout}s ({ready}/{total} deployments ready)"
+            f"timed out after {timeout}s ({ready}/{total} deployments ready)."
+            f"{timeout_detail}"
         );
+    }
+
+    def _pod_failure_detail(
+        core_v1: any, namespace: str, pod_name: str, pod: any = None
+    ) -> str {
+        import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
+            describe_pod_status
+        }
+        detail = describe_pod_status(core_v1, namespace, pod_name, pod);
+        term_lines: list[str] = [];
+        try {
+            if pod is None {
+                pod = core_v1.read_namespaced_pod(pod_name, namespace);
+            }
+            statuses = (pod.status.init_container_statuses or []) + (
+                pod.status.container_statuses or []
+            );
+            for cs in statuses {
+                states: list = [];
+                if cs.state and cs.state.terminated {
+                    states.append(("terminated", cs.state.terminated));
+                }
+                if cs.last_state and cs.last_state.terminated {
+                    states.append(("last-terminated", cs.last_state.terminated));
+                }
+                for (label, term) in states {
+                    message = (term.message or "").strip();
+                    if message or term.reason {
+                        term_lines.append(
+                            f"container '{cs.name}' {label}: "
+                            f"{term.reason or '?'} (exit={term.exit_code}) {message}"
+                        );
+                    }
+                }
+            }
+        } except Exception {
+            _ = 0;
+        }
+        if term_lines {
+            detail = detail + " " + "; ".join(term_lines);
+        }
+        return detail;
     }
 
     def _deploy_observability(app_name: str) -> None {
@@ -344,15 +654,19 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     }
 
     def generate_manifests(app_config: AppConfig) -> dict[str, any] {
+        import from jaclang.scale.injector.binary { resolve_pod_base_image }
+        self.k8s_config.python_image = resolve_pod_base_image(
+            app_config.code_folder, self.k8s_config.python_image, probe=not self.dry_run
+        );
         builder = MicroserviceManifestBuilder(
             k8s_config=self.k8s_config,
             secrets=self.secrets,
             deploy_context=self._deploy_context,
             logger=self.logger,
             no_image=True,
-            channel=app_config.channel,
             project_dir=app_config.code_folder,
-            microservices_config=self.microservices_config
+            microservices_config=self.microservices_config,
+            dry_run=self.dry_run
         );
         return builder.generate_manifests(app_config, self.k8s_config.python_image);
     }
@@ -507,6 +821,16 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                                 cfg.get("cpu_target", DEFAULT_CPU_UTILIZATION_TARGET)
                             )
                         }
+                    ),
+                    Trigger(
+                        type="memory",
+                        metadata={
+                            "averageUtilization": str(
+                                cfg.get(
+                                    "memory_target", DEFAULT_MEMORY_UTILIZATION_TARGET
+                                )
+                            )
+                        }
                     )
                 ];
             }
@@ -551,6 +875,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     polling_interval=self.k8s_config.autoscaler_polling_interval,
                     cooldown_period=self.k8s_config.autoscaler_cooldown,
                     initial_cooldown_period=self.k8s_config.autoscaler_initial_cooldown,
+                    scale_up_stabilization=self.k8s_config.autoscaler_scale_up_stabilization,
+                    scale_up_max_pods=self.k8s_config.autoscaler_scale_up_max_pods,
                     triggers=triggers
                 )
             );

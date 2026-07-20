@@ -1,6 +1,6 @@
 # jac-client Reference
 
-jac-client adds client-side compilation to Jac so you can write React-style UI components using `cl { }` blocks (or `.cl.jac` files). The compiler separates your code automatically -- server-side logic compiles to Python, while client-side components compile to JavaScript with React as the rendering engine.
+jac-client adds client-side compilation to Jac so you can write React-style UI components in ordinary `.jac` files. The compiler separates your code automatically: declarations with client-only syntax (JSX, npm imports) -- plus anything client code references -- compile to JavaScript with React as the rendering engine, while the rest compiles to Python on the server. You never have to mark the split, though explicit `cl { }` blocks and `.cl.jac` files remain available when you want the boundary pinned in source.
 
 You also get project scaffolding (`jac create --use web-static`), npm dependency management, a Vite-powered dev server with HMR, and automatic HTTP bridge generation so your client components can call server walkers without manual API wiring. This reference covers installation, project structure, the module system, component authoring, and build configuration.
 
@@ -34,25 +34,32 @@ myapp/
 ├── README.md          # Project readme
 ├── AGENTS.md          # Agent guide for the project
 ├── components/        # Reusable components
-│   └── Button.cl.jac  # Example component (.cl.jac = client-side)
+│   └── Button.jac     # Example component (client-side by inference)
 └── assets/            # Static assets (images, fonts)
 ```
 
 TypeScript/TSX and CSS files are also supported -- drop a `.tsx` component or
 a `.css` file anywhere in the project and import it from your Jac code.
 
-### The `.cl.jac` Convention
+### Client Code Is Inferred
 
-Files ending in `.cl.jac` are automatically treated as client-side code -- no `cl { }` block needed:
+A component file needs no marker at all -- JSX and npm imports are client-only syntax, so the compiler places these declarations (and any helpers they use) in the client bundle automatically:
 
 ```jac
-# components/Header.cl.jac -- automatically client-side
+# components/Header.jac -- client-side by inference
 def:pub Header() -> JsxElement {
     return <header>My App</header>;
 }
 ```
 
-This is equivalent to wrapping a regular `.jac` file's contents in a `cl { }` block.
+If you prefer the placement to be visible in the filename, the `.cl.jac` extension still works and pins the whole file client-side:
+
+```jac
+# components/Header.cl.jac -- explicitly client-side
+def:pub Header() -> JsxElement {
+    return <header>My App</header>;
+}
+```
 
 ---
 
@@ -86,6 +93,29 @@ import from "@mui/material" { Button, TextField }
 import "./styles.css";
 import "./global.css";
 ```
+
+### npm import type checking (`jac check`)
+
+Client npm imports are type-checked from each package's TypeScript declarations. During `jac check`, Jac locates the `.d.ts` for a specifier (via `package.json` `types`/`typings`, the `exports` `types` condition, a sibling declaration file next to the resolved entry, or `@types/<package>` fallback) and ingests a pragmatic subset:
+
+- **Functions, constants, and type aliases** get their declared signatures.
+- **`interface` and `class` declarations** are synthesized into structural types, so member access on imported values and on locals annotated with an imported interface/class resolves with real field types, and **method calls** (`c.onChange(v)`) are checked against their declared parameter and return types.
+- **Unions, arrays, literals, optional/rest parameters, namespaces with `export =`, and `extends` heritage** are modeled where the parser supports them.
+
+```jac
+cl import from "cfgpkg" { getConfig, Config }
+
+def:pub use() -> str {
+    c: Config = getConfig();
+    theme: str = c.theme;   # field access is checked
+    c.onChange("ready");    # method call is checked against its signature
+    return theme;
+}
+```
+
+Constructs outside the supported subset (generics, conditional/mapped types, `export *`, and similar) degrade to a declared foreign `any` at that boundary rather than failing the whole module. Imports with no declarations at all carry foreign `any` and surface **`W1102`** once; set **`[check] untyped-external = "error"`** in `jac.toml` to escalate those to **`E1120`**. Synthesized interface values use their declared structure: field access and matching interface annotations are checked precisely; whole-object assignment into an unrelated Jac type is rejected. Individual `any` fields on an interface still flow gradually, like other foreign sources. Assignments *into* an imported interface annotation remain strict.
+
+This is a type-checker feature only; bundling under `jac start` / `jac build` is unchanged.
 
 ### Include Statements
 
@@ -237,7 +267,21 @@ with entry {
 
 ## Client Sections
 
-Wrap client-side (React) code in a `cl { ... }` block -- the braces bracket exactly the tagged region, which is the clearest way to mix client and server code in one file:
+Client placement is inferred, so mixing client and server code in one file needs no wrapper -- a component sits next to server logic and each lands on its own side:
+
+```jac
+def:pub app() -> JsxElement {           # JSX -> client
+    return <div>
+        <h1>Hello, World!</h1>
+    </div>;
+}
+
+def:pub get_greeting() -> str {         # unmarked -> server endpoint
+    return "Hello from the server";
+}
+```
+
+When you want the boundary explicit, wrap client code in a `cl { ... }` block -- the braces bracket exactly the tagged region:
 
 ```jac
 cl {
@@ -249,23 +293,7 @@ cl {
 }
 ```
 
-A `cl { ... }` block also works inside a function or class body to locally override the active codespace. In `.cl.jac` files, the whole file is already client-side, so no wrapper is needed.
-
-### Section Headers
-
-As an alternative to a block, the `to cl:` section header tags **every following module-level element** as client-side, until the next `to X:` header or end of file. This is convenient for a file that is mostly client code, since it avoids a wrapping block:
-
-```jac
-to cl:
-
-def:pub app() -> JsxElement {
-    return <div>
-        <h1>Hello, World!</h1>
-    </div>;
-}
-```
-
-You can switch back with `to sv:`, `to na:`, or end the file.
+A `cl { ... }` block also works inside a function or class body to locally override the active codespace. In `.cl.jac` files, the whole file is already client-side, so no wrapper is needed. Inference never overrides an explicit marker.
 
 ### Single-Statement Forms
 
@@ -357,7 +385,7 @@ cl {
 
 ### The `has` Keyword
 
-Inside client-tagged code (a `cl { }` block, a `.cl.jac` file, or a `to cl:` section), `has` creates reactive state:
+Inside client-tagged code (a `cl { }` block or a `.cl.jac` file), `has` creates reactive state:
 
 ```jac
 cl {
@@ -538,7 +566,7 @@ cl {
             localStorage.setItem(key, JSON.stringify(value));
         }, [value]);
 
-        return (value, lambda v: any -> None { value = v; });
+        return (value, lambda (v: any) -> None { value = v; });
     }
 
     def:pub Settings() -> JsxElement {
@@ -1174,7 +1202,7 @@ cl {
 }
 ```
 
-> **Note:** In jac-shadcn projects `jac add --shadcn` / `jac create --use jac-shadcn` generate `lib/utils.cl.jac` for you. You can also write `cn()` by hand -- entirely in Jac (no TypeScript needed) with a variadic parameter:
+> **Note:** In jac-shadcn projects `jac install --shadcn` / `jac create --use jac-shadcn` generate `lib/utils.cl.jac` for you. You can also write `cn()` by hand -- entirely in Jac (no TypeScript needed) with a variadic parameter:
 >
 > ```jac
 > # lib/utils.cl.jac
@@ -1379,7 +1407,7 @@ _authToken = "${NODE_AUTH_TOKEN}"
 
 The `${NODE_AUTH_TOKEN}` syntax is resolved via the existing jac.toml environment variable interpolation. If the variable is not set at config load time, it passes through as a literal `${NODE_AUTH_TOKEN}` in the generated `.npmrc`, which npm and bun also resolve natively.
 
-The generated `.npmrc` is placed in `.jac/client/configs/` and is automatically applied when Jac installs dependencies (e.g., via `jac add --npm`, `jac start`, or `jac build`).
+The generated `.npmrc` is placed in `.jac/client/configs/` and is automatically applied when Jac installs dependencies (e.g., via `jac install --npm`, `jac start`, or `jac build`).
 
 ### Import Path Aliases
 
@@ -1427,7 +1455,7 @@ These are written directly into the generated `vite.config.js` - `lib_imports` b
 **Example: Tailwind CSS v4**
 
 ```bash
-jac add --npm --dev tailwindcss @tailwindcss/vite
+jac install --npm --dev tailwindcss @tailwindcss/vite
 ```
 
 ```toml
@@ -1495,7 +1523,7 @@ cors = true
 **Example: Tailwind CSS v3 + PostCSS**
 
 ```bash
-jac add --npm --dev tailwindcss autoprefixer postcss
+jac install --npm --dev tailwindcss autoprefixer postcss
 ```
 
 ```toml
@@ -1528,11 +1556,11 @@ The `[jac-shadcn]` section configures the shadcn/ui component system, provided a
 
 - `jac create --use jac-shadcn [--style … --theme … --font … --radius … --baseColor … --menuAccent …]` scaffolds a themed starter and writes these fields here.
 - `jac retheme [--theme … --font … --style …]` regenerates `global.css` from this section (and re-resolves installed components when `style` changes).
-- `jac add --shadcn <name>` reads `style` to choose which style's Tailwind classes to emit.
+- `jac install --shadcn <name>` reads `style` to choose which style's Tailwind classes to emit.
 
 ```toml
 [jac-shadcn]
-style = "nova"            # Component style variant (read by `jac add`)
+style = "nova"            # Component style variant (read by `jac install --shadcn`)
 baseColor = "neutral"     # Base color palette
 theme = "amber"           # Accent color theme
 font = "inter"            # Font family
@@ -1543,7 +1571,7 @@ menuColor = "default"     # Menu color scheme
 
 | Key | Description | Examples |
 |-----|-------------|---------|
-| `style` | Component style variant -- read by `jac add` to resolve bundled components | `"nova"`, `"vega"`, `"maia"`, `"lyra"`, `"mira"` |
+| `style` | Component style variant -- read by `jac install --shadcn` to resolve bundled components | `"nova"`, `"vega"`, `"maia"`, `"lyra"`, `"mira"` |
 | `baseColor` | Base neutral color palette | `"neutral"`, `"stone"`, `"zinc"`, `"gray"` |
 | `theme` | Accent/primary color | `"amber"`, `"blue"`, `"green"`, `"red"` |
 | `font` | Typography font family | `"figtree"` (default), `"inter"`, `"geist"`, `"outfit"` |
@@ -1642,9 +1670,9 @@ Defaults to `"/"`. Can also be set to `"./"` for relative path resolution if nee
 | `jac build --client static` | Build client-only app as a portable, self-contained page (opens from `file://`) |
 | `jac start --client static` | Serve a client-only app with a minimal static server |
 | `jac setup pwa` | One-time PWA setup (icons directory) |
-| `jac add --npm <pkg>` | Add npm package |
-| `jac add --npm --dev <pkg>` | Add npm dev dependency |
-| `jac add --npm` | Install all npm dependencies from jac.toml |
+| `jac install --npm <pkg>` | Add npm package |
+| `jac install --npm --dev <pkg>` | Add npm dev dependency |
+| `jac install --npm` | Install all npm dependencies from jac.toml |
 | `jac remove --npm <pkg>` | Remove npm package |
 
 npm dependencies can also be declared in `jac.toml`:
@@ -1800,8 +1828,8 @@ jac-client extends several core commands:
 | `jac create` | `--use web-static` | Create full-stack project template |
 | `jac create` | `--skip` | Skip npm package installation |
 | `jac start` | `--client <target>` | Client build target for dev server |
-| `jac add` | `--npm` | Add npm (client-side) dependency |
-| `jac add` | `--npm --dev` | Add npm dev dependency |
+| `jac install` | `--npm` | Add npm (client-side) dependency |
+| `jac install` | `--npm --dev` | Add npm dev dependency |
 | `jac remove` | `--npm` | Remove npm (client-side) dependency |
 
 ---
@@ -1912,7 +1940,7 @@ ios_destination = "platform=iOS Simulator,name=iPhone 16,OS=latest"
 - Android mobile dev auto-attempts `adb reverse` for Vite/API ports before launching Capacitor.
 - iOS device builds and App Store archives require Xcode provisioning profiles. Use `npx cap open ios` to open the project in Xcode for signing configuration.
 - Android release builds and signing require a keystore configured in `android/app/build.gradle`.
-- Native Capacitor plugins (camera, geolocation, etc.) can be added via `jac add --npm @capacitor/<plugin>` followed by `npx cap sync`.
+- Native Capacitor plugins (camera, geolocation, etc.) can be added via `jac install --npm @capacitor/<plugin>` followed by `npx cap sync`.
 
 For a step-by-step tutorial, see [Building a Mobile App](../../tutorials/fullstack/mobile.md).
 
@@ -2249,7 +2277,7 @@ When client builds fail, jac-client displays structured error diagnostics instea
 
 | Code | Issue | Example Fix |
 |------|-------|-------------|
-| `JAC_CLIENT_001` | Missing npm dependency | `jac add --npm <package>` |
+| `JAC_CLIENT_001` | Missing npm dependency | `jac install --npm <package>` |
 | `JAC_CLIENT_003` | Syntax error in client code | Check source snippet |
 | `JAC_CLIENT_004` | Unresolved import | Verify import path |
 
@@ -2326,8 +2354,8 @@ cl {
         return <div>
             <input
                 value={value}
-                onChange={lambda e: ChangeEvent { value = e.target.value; }}
-                onKeyPress={lambda e: KeyboardEvent {
+                onChange={lambda (e: ChangeEvent) { value = e.target.value; }}
+                onKeyPress={lambda (e: KeyboardEvent) {
                     if e.key == "Enter" { submit(); }
                 }}
             />
@@ -2390,17 +2418,17 @@ cl {
         return <div>
             <input
                 value={text}
-                onChange={lambda e: ChangeEvent { text = e.target.value; }}
-                onKeyDown={lambda e: KeyboardEvent {
+                onChange={lambda (e: ChangeEvent) { text = e.target.value; }}
+                onKeyDown={lambda (e: KeyboardEvent) {
                     if e.key == "Enter" and not e.shiftKey { submit(); }
                 }}
             />
             <input
                 type="checkbox"
                 checked={checked}
-                onChange={lambda e: ChangeEvent { checked = e.target.checked; }}
+                onChange={lambda (e: ChangeEvent) { checked = e.target.checked; }}
             />
-            <form onSubmit={lambda e: FormEvent {
+            <form onSubmit={lambda (e: FormEvent) {
                 e.preventDefault();
                 handleSubmit();
             }}>
@@ -2416,10 +2444,10 @@ cl {
 
     ```jac
     # Before
-    onChange={lambda e: any -> None { value = e.target.value; }}
+    onChange={lambda (e: any) -> None { value = e.target.value; }}
 
     # After (no import needed)
-    onChange={lambda e: ChangeEvent { value = e.target.value; }}
+    onChange={lambda (e: ChangeEvent) { value = e.target.value; }}
     ```
 
 ---

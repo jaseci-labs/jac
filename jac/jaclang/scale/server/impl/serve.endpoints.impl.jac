@@ -137,6 +137,13 @@ impl JacAPIServerEndpoints.create_walker_callback(
             );
         }
         if 'error' in result {
+            if result.get('error') == 'User not found' {
+                return TransportResponse.fail(
+                    code='UNAUTHORIZED',
+                    message='Unauthorized: unknown user',
+                    meta=Meta(extra={'http_status': 401})
+                );
+            }
             return TransportResponse.fail(
                 code='EXECUTION_ERROR',
                 message=result.get('error', 'Walker execution failed'),
@@ -156,6 +163,9 @@ impl JacAPIServerEndpoints.register_functions_endpoints -> None {
         func_obj = self.get_functions()[func_name];
 
         if func_obj?.schedule_spec {
+            continue;
+        }
+        if self.get_function_protocol(func_name) == APIProtocol.WEBSOCKET {
             continue;
         }
         restspec = func_obj.restspec if func_obj?.restspec else None;
@@ -265,6 +275,13 @@ impl JacAPIServerEndpoints.create_function_callback(
             );
         }
         if 'error' in result {
+            if result.get('error') == 'User not found' {
+                return TransportResponse.fail(
+                    code='UNAUTHORIZED',
+                    message='Unauthorized: unknown user',
+                    meta=Meta(extra={'http_status': 401})
+                );
+            }
             return TransportResponse.fail(
                 code='EXECUTION_ERROR',
                 message=result.get('error', 'Function execution failed'),
@@ -286,6 +303,19 @@ impl JacAPIServerEndpoints.get_walker_protocol(walker_name: str) -> str {
     }
     walker_cls = walkers[walker_name];
     restspec = walker_cls.restspec if walker_cls?.restspec else None;
+    if restspec?.protocol {
+        return restspec.protocol;
+    }
+    return APIProtocol.HTTP;
+}
+
+impl JacAPIServerEndpoints.get_function_protocol(func_name: str) -> str {
+    functions = self.get_functions();
+    if func_name not in functions {
+        return APIProtocol.HTTP;
+    }
+    func_obj = functions[func_name];
+    restspec = func_obj.restspec if func_obj?.restspec else None;
     if restspec?.protocol {
         return restspec.protocol;
     }
@@ -565,94 +595,216 @@ impl JacAPIServerEndpoints.register_webhook_endpoints -> None {
 
 impl JacAPIServerEndpoints.get_ws_manager -> WebSocketConnectionManager {
     if not self._ws_manager {
-        self._ws_manager = WebSocketConnectionManager();
+        ws_cfg = get_scale_config().get_websocket_config();
+        backplane = build_backplane(ws_cfg);
+        manager = WebSocketConnectionManager(
+            max_per_target=int(ws_cfg['max_connections_per_target']),
+            max_per_user=int(ws_cfg['max_connections_per_user']),
+            max_anonymous_per_target=int(ws_cfg['max_anonymous_per_target']),
+            send_timeout=SEND_TIMEOUT_SECONDS,
+            backplane=backplane,
+            metrics=self._metrics
+        );
+        self._ws_manager = manager;
+        async def _shutdown_ws_manager {
+            await manager.shutdown();
+        }
+        self.server.app.router.on_shutdown.append(_shutdown_ws_manager);
     }
     return self._ws_manager;
 }
 
-impl JacAPIServerEndpoints.create_websocket_handler(walker_name: str) -> Callable {
-    ws_manager = self.get_ws_manager();
-    requires_auth = self.introspector.is_auth_required_for_walker(walker_name);
-
-    walker_cls = self.get_walkers()[walker_name];
-    restspec = walker_cls.restspec
-        if walker_cls?.restspec and walker_cls.restspec
-        else None;
-    is_broadcast = restspec.broadcast if restspec and restspec?.broadcast else False;
-    async def websocket_handler(websocket: WebSocket) {
-        await ws_manager.connect(websocket, walker_name);
-        try {
-            while True {
-                data = await websocket.receive_json();
-
-                username: (str | None) = None;
-                if requires_auth {
-                    token = data.pop('token', None)
-                    or websocket.query_params.get('token');
-                    if token {
-                        username = self.user_manager.validate_jwt_token(token);
-                    }
-                    if not username {
-                        await websocket.send_json(
-                            {
-                                'ok': False,
-                                'error': {
-                                    'code': 'UNAUTHORIZED',
-                                    'message': 'Invalid or missing token'
-                                }
-                            }
-                        );
-                        continue;
-                    }
-                }
-
-                try {
-                    result = await self.execution_manager.spawn_walker(
-                        self.get_walkers()[walker_name],
-                        data,
-                        (username or Con.GUEST.value)
-                    );
-                    if isinstance(result, dict) and 'error' in result {
-                        await websocket.send_json(
-                            {
-                                'ok': False,
-                                'error': {
-                                    'code': 'EXECUTION_ERROR',
-                                    'message': result.get(
-                                        'error', 'Walker execution failed'
-                                    )
-                                }
-                            }
-                        );
-                    } else {
-                        response = {'ok': True, 'data': result};
-                        if is_broadcast {
-                            await ws_manager.broadcast(walker_name, response);
-                        } else {
-                            await websocket.send_json(response);
-                        }
-                    }
-                } except Exception as e {
-                    logger.error(
-                        f"WebSocket walker execution error for '{walker_name}': {e}"
-                    );
-
-                    await websocket.send_json(
-                        {
-                            'ok': False,
-                            'error': {'code': 'INTERNAL_ERROR', 'message': str(e)}
-                        }
-                    );
-                }
-            }
-        } except WebSocketDisconnect {
-            ws_manager.disconnect(websocket, walker_name);
-        } except Exception as e {
-            logger.error(f"WebSocket error for walker '{walker_name}': {e}");
-            ws_manager.disconnect(websocket, walker_name);
+async def _ws_serve_connection(
+    websocket: WebSocket,
+    ws_manager: WebSocketConnectionManager,
+    user_manager: any,
+    requires_auth: bool,
+    target_kind: str,
+    target_name: str,
+    is_broadcast: bool,
+    label: str,
+    max_bytes: int,
+    target_timeout: float,
+    msgs_per_sec: float,
+    make_awaitable: any
+) {
+    rate_capacity = max(msgs_per_sec, 1.0);
+    user_id: (str | None) = None;
+    token_exp: (float | None) = None;
+    first_data: (dict | None) = None;
+    pre_auth: (dict | None) = None;
+    if requires_auth {
+        pre_auth = ws_pre_accept_auth(websocket, user_manager);
+        if pre_auth is not None and pre_auth['status'] != 'ok' {
+            await ws_reject_pre_accept(websocket, pre_auth);
+            return;
         }
     }
+    await websocket.accept();
+    if requires_auth {
+        if pre_auth is not None {
+            user_id = pre_auth.get('user_id');
+            token_exp = pre_auth.get('exp');
+        } else {
+            (auth_detail, first_data) = await ws_authenticate(
+                websocket, user_manager, AUTH_HANDSHAKE_TIMEOUT_SECONDS, max_bytes
+            );
+            if auth_detail['status'] != 'ok' {
+                await ws_reject_auth(websocket, auth_detail);
+                return;
+            }
+            user_id = auth_detail.get('user_id');
+            token_exp = auth_detail.get('exp');
+        }
+    }
+    ctx = ConnectionContext(
+        websocket=websocket,
+        target_kind=target_kind,
+        target_name=target_name,
+        user_id=user_id,
+        exp=token_exp,
+        rate_tokens=rate_capacity
+    );
+    rejection = await ws_manager.register(ctx);
+    if rejection {
+        await ws_reject_registration(websocket, rejection);
+        return;
+    }
+    heartbeat_task = asyncio.create_task(
+        ws_heartbeat_loop(ctx, HEARTBEAT_SECONDS, HEARTBEAT_MISSED_ALLOWED)
+    );
+    async def send_result(payload: dict) {
+        if is_broadcast {
+            await ws_manager.broadcast_target(target_kind, target_name, payload);
+        } else {
+            await websocket.send_json(payload);
+        }
+    }
+    try {
+        while True {
+            if first_data {
+                data = first_data;
+                first_data = None;
+            } else {
+                (status, data) = await ws_receive_frame(websocket, max_bytes);
+                if status == 'close' {
+                    break;
+                }
+                if status == 'skip' {
+                    continue;
+                }
+            }
+            ctx.last_seen = time.monotonic();
+            control = await ws_handle_control(
+                websocket,
+                ctx,
+                data,
+                user_manager,
+                requires_auth,
+                msgs_per_sec,
+                rate_capacity
+            );
+            if control == 'break' {
+                break;
+            }
+            if control == 'continue' {
+                continue;
+            }
+            data.pop('token', None);
+            (ok, result) = await ws_execute_target(
+                websocket,
+                label,
+                target_name,
+                make_awaitable(data, (ctx.user_id or Con.GUEST.value)),
+                target_timeout
+            );
+            if not ok {
+                continue;
+            }
+            if (isgenerator(result) or isinstance(result, AsyncGenerator)) {
+                await _ws_stream_result(send_result, result);
+            } elif isinstance(result, dict) and 'error' in result {
+                await websocket.send_json(
+                    ws_error_frame(
+                        'EXECUTION_ERROR',
+                        result.get('error', f"{label} execution failed")
+                    )
+                );
+            } else {
+                await send_result({'ok': True, 'data': result});
+            }
+        }
+    } except WebSocketDisconnect {
+        logger.debug(f"WS client disconnected conn_id={ctx.conn_id}");
+    } except Exception as e {
+        logger.error(
+            f"WS error {label.lower()}='{target_name}' conn_id={ctx.conn_id}: {e}"
+        );
+    } finally {
+        heartbeat_task.cancel();
+        try {
+            await heartbeat_task;
+        } except Exception as e {
+            logger.debug(f"WS heartbeat cleanup exception: {e}");
+        }
+        await ws_manager.unregister(ctx);
+    }
+}
+
+impl JacAPIServerEndpoints._create_websocket_target_handler(
+    target_kind: str,
+    target_name: str,
+    target: any,
+    requires_auth: bool,
+    execute: Callable
+) -> Callable {
+    ws_manager = self.get_ws_manager();
+    ws_cfg = get_scale_config().get_websocket_config();
+    restspec = target.restspec if target?.restspec and target.restspec else None;
+    is_broadcast = restspec.broadcast if restspec and restspec?.broadcast else False;
+    user_manager = self.user_manager;
+    async def websocket_handler(websocket: WebSocket) {
+        def make_awaitable(data: dict, user: str) -> any {
+            return execute(target, data, user);
+        }
+        await _ws_serve_connection(
+            websocket,
+            ws_manager,
+            user_manager,
+            requires_auth,
+            target_kind,
+            target_name,
+            bool(is_broadcast),
+            target_kind.capitalize(),
+            int(ws_cfg['max_message_bytes']),
+            float(ws_cfg['target_timeout_seconds']),
+            float(ws_cfg['messages_per_second']),
+            make_awaitable
+        );
+    }
     return websocket_handler;
+}
+
+impl JacAPIServerEndpoints.create_websocket_handler(walker_name: str) -> Callable {
+    return self._create_websocket_target_handler(
+        'walker',
+        walker_name,
+        self.get_walkers()[walker_name],
+        self.introspector.is_auth_required_for_walker(walker_name),
+        self.execution_manager.spawn_walker
+    );
+}
+
+impl JacAPIServerEndpoints.create_websocket_function_handler(
+    func_name: str
+) -> Callable {
+    return self._create_websocket_target_handler(
+        'function',
+        func_name,
+        self.get_functions()[func_name],
+        self.introspector.is_auth_required_for_function(func_name),
+        self.execution_manager.execute_function
+    );
 }
 
 impl JacAPIServerEndpoints.register_websocket_endpoints -> None {
@@ -660,8 +812,22 @@ impl JacAPIServerEndpoints.register_websocket_endpoints -> None {
         protocol = self.get_walker_protocol(walker_name);
         if protocol == APIProtocol.WEBSOCKET {
             handler = self.create_websocket_handler(walker_name);
+            self.server.app.websocket(f"/ws/walker/{walker_name}")(handler);
             self.server.app.websocket(f"/ws/{walker_name}")(handler);
-            logger.info(f"Registered WebSocket endpoint: /ws/{walker_name}");
+            logger.info(
+                f"Registered WebSocket walker endpoint: /ws/walker/{walker_name} "
+                f"(+ legacy /ws/{walker_name})"
+            );
+        }
+    }
+    for func_name in self.get_functions() {
+        protocol = self.get_function_protocol(func_name);
+        if protocol == APIProtocol.WEBSOCKET {
+            handler = self.create_websocket_function_handler(func_name);
+            self.server.app.websocket(f"/ws/function/{func_name}")(handler);
+            logger.info(
+                f"Registered WebSocket function endpoint: /ws/function/{func_name}"
+            );
         }
     }
 }

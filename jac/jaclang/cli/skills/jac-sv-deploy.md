@@ -7,7 +7,7 @@ Production serving is the built-in `scale` subsystem's job. Scale ships inside `
 
 ## jac start
 
-`jac start [app.jac]` (default entry `main.jac`; needs a `jac.toml` in the cwd). Flags use **underscores**: `--no_client` (API only, skip client bundling), `--port/-p` (auto-falls back if taken), `--faux` (print the generated API surface without starting - cheap endpoint preview), `--profile prod` (config profile), `--dev` (HMR). `jac start` exits when stdin closes - any backgrounded/daemonized server must be launched with `< /dev/null` (systemd/containers do this for you; shell scripts and CI must do it explicitly). For prod, kill Swagger:
+`jac start [app.jac]` (default entry `main.jac`; needs a `jac.toml` in the cwd). Boolean flags are **hyphenated**: `--no-client` (API only, skip client bundling), `--port/-p` (auto-falls back if taken), `--faux` (print the generated API surface without starting - cheap endpoint preview), `--profile prod` (config profile), `--dev` (HMR). `jac start` exits when stdin closes - any backgrounded/daemonized server must be launched with `< /dev/null` (systemd/containers do this for you; shell scripts and CI must do it explicitly). For prod, kill Swagger:
 
 ```toml
 [scale.server]
@@ -29,10 +29,9 @@ JWT_SECRET = "${JWT_SECRET}"        # see jac-sv-auth: the default JWT secret MU
 
 ```bash
 jac start app.jac --scale --dry-run   # lint config + print the plan; nothing applied. Use before every deploy.
-jac start app.jac --scale             # dev deploy (no image build)
-jac start app.jac --scale --build     # build+push Docker image (DOCKER_USERNAME/PASSWORD in .env), then deploy
-jac status app.jac                    # component health table (app, Mongo, Redis, Grafana)
-jac destroy app.jac                   # DELETES THE NAMESPACE INCLUDING PERSISTENT VOLUMES - all data is lost
+jac start app.jac --scale             # deploy (no image build: source ships into the cluster on a PVC)
+jac scale status app.jac              # component health table (app, Mongo, Redis, Grafana)
+jac scale destroy app.jac             # DELETES THE NAMESPACE INCLUDING PERSISTENT VOLUMES - all data is lost
 ```
 
 ```toml
@@ -89,7 +88,7 @@ bucket = "my-app-uploads"      # region, prefix, endpoint_url (non-AWS), public_
 
 ## Pitfalls
 
-- **`jac destroy` deletes data.** PVCs included. There is a y/N prompt; there is no undo.
+- **`jac scale destroy` deletes data.** PVCs included. There is a y/N prompt; there is no undo.
 - `--dry-run` catches config errors (HPA min>max, bad resource units like `500MB` vs `500Mi`) in ~1s vs finding out after a 5-10 minute build-push-deploy.
 - HPA does nothing without `cpu_request` - Kubernetes can't compute a utilization %.
 - Multi-replica + SQLite = corruption/confusion. Going past one replica requires `MONGODB_URI` (+ Redis for cache/locks).

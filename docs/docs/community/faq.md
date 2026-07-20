@@ -1,0 +1,182 @@
+# Frequently Asked Questions
+
+Answers to common questions about Jac, organized by topic. Click a category to expand it, then click a specific question to see the answer. If you don't see your question below and couldn't find a solution in the docs, ask your question in our [Discord Community](https://discord.gg/6j3QNdtcN6) (we try to answer within 2hrs).
+
+---
+
+??? "Getting Started & Setup"
+
+    ??? question "I updated to the latest Jac toolchain and my project won't `jac start` properly."
+        Run `jac purge` to clear the global bytecode cache. This is the recommended approach after upgrading packages:
+        ```bash
+        jac purge
+        ```
+
+        This command works even when the cache is corrupted. If `jac purge` is not available (older versions), manually clear the cache:
+        ```
+        Linux:   rm -rf ~/.cache/jac/bytecode/
+        macOS:   rm -rf ~/Library/Caches/jac/bytecode/
+        Windows: rmdir /s /q %LOCALAPPDATA%\jac\cache\bytecode
+        ```
+
+    ??? question "What do I need to install to get started with Jac?"
+        See the [Installation Guide](https://docs.jaseci.org/quick-guide/install/)
+
+    ??? question "What are good first projects to build with Jac?"
+        Check out the [AI Day Planner Tutorial](https://docs.jaseci.org/tutorials/first-app/build-ai-day-planner/)
+
+??? "Language & Concepts"
+
+    ??? question "What's the difference between Jac, Jaclang, and Jaseci?"
+        - Jac: The language
+        - Jaclang: The compiler/runtime, shipped as the self-contained `jac` binary
+        - Jaseci: The broader framework and ecosystem. All core capabilities -- `scale` for serving and deployment, byLLM for AI, the full-stack client framework, and the MCP server -- ship built into the `jac` binary; only their optional third-party dependencies are pulled per-project via `jac install`
+
+    ??? question "Do I need to know graph theory to use Jaseci?"
+        No. Learn OSP: [OSP Guide](https://docs.jaseci.org/tutorials/language/osp/)
+
+    ??? question "Can I use Python libraries (PyPI) in Jac?"
+        Yes. Jac integrates seamlessly with Python libraries.
+
+    ??? question "What's the learning curve coming from Python? How is Jac different from just using Python?"
+        Jac compiles to Python bytecode and shares familiar syntax -- you'll feel at home. Key differences:
+
+        - Braces `{ }` instead of indentation
+        - Semicolons `;` required
+        - Type annotations encouraged
+        - New keywords: `node`, `edge`, `walker`, `has`, `can`
+
+        Start here: [Jac Basics](https://docs.jaseci.org/tutorials/language/basics/)
+
+    ??? question "I'm coming from JavaScript/TypeScript -- what should I know?"
+        Jac's frontend syntax will look familiar (JSX-style):
+
+        - Braces and semicolons (same as JS)
+        - JSX for components
+        - React-like patterns (`useState`, `useEffect`)
+
+        What's different:
+
+        - Python-based syntax for logic
+        - No `const`/`let` -- just variable assignment
+        - Type annotations use `:` not TypeScript syntax
+
+        Start here: [Full-Stack Setup](https://docs.jaseci.org/tutorials/fullstack/setup/)
+
+    ??? question "I'm new to programming / coming from another language -- where do I start?"
+        Key concepts to learn:
+
+        1. **Python ecosystem** -- Jac uses Python libraries
+        2. **Graph thinking** -- Model data as nodes and edges
+        3. **Walker pattern** -- Computation that moves through data
+
+        Start here: [Installation](https://docs.jaseci.org/quick-guide/install/) → [Build an AI Day Planner](https://docs.jaseci.org/tutorials/first-app/build-ai-day-planner/)
+
+    ??? question "Can ____ be done in Jac? Is ____ compatible with Jac?"
+        **Yes**, if the answer to any of these questions is yes:
+
+        - Can it be done in Python with any PyPI package?
+        - Can it be done in TypeScript/JavaScript with any Node.js package?
+        - Can it be done in C with any C-compatible library?
+
+        Jac compiles to Python (server), JavaScript (client), and native binaries (C ABI), so any library or tool compatible with those ecosystems is compatible with Jac.
+
+        **If you find something that works in Python/Node.js/C but doesn't work in Jac, that's a bug!** Please [file an issue](https://github.com/Jaseci-Labs/jaseci/issues) or let us know in the [Discord](https://discord.gg/6j3QNdtcN6).
+
+??? "AI & LLM Integration"
+
+    ??? question "How does byLLM differ from calling OpenAI/Anthropic directly?"
+        - Standardized interface across AI providers
+        - Integrated model management in Jac
+        - Simplified prompt engineering
+        See [API key setup](https://docs.jaseci.org/tutorials/first-app/build-ai-day-planner/#part-5-making-it-smart-with-ai)
+
+    ??? question "How do I structure by llm() functions so that the output is deterministic and parseable?"
+        Use structured prompts and response templates. [byLLM Reference](https://docs.jaseci.org/reference/plugins/byllm/)
+
+??? "Production & Deployment"
+
+    ??? question "How do I deploy a Jac app to production?"
+        - [Local Deployment](https://docs.jaseci.org/tutorials/production/local/): `jac start` creates an HTTP API server.
+        - [Kubernetes Deployment](https://docs.jaseci.org/tutorials/production/kubernetes/): Deploy with a single command.
+
+    ??? question "Do I need Docker/Kubernetes knowledge to deploy with scale?"
+        No. Scale (built into `jaclang`) handles containerization and orchestration automatically.
+
+    ??? question "What does scale do automatically?"
+        - Containerizes Jac application
+        - Sets up Kubernetes deployment
+        - Manages scaling and load balancing
+        [Kubernetes Deployment Reference](https://docs.jaseci.org/tutorials/production/kubernetes/)
+
+??? "Common Issues"
+
+    ??? question "I installed Jac with the one-line installer but `pip show` says packages aren't installed."
+        The one-line installer downloads the self-contained native `jac` binary -- it does not install anything into a Python environment, so `pip show` and `pip list` have nothing to find. Use `jac --version` to confirm the installed version.
+
+    ??? question "`jac clean --all` says 'No jac.toml found'."
+        `jac clean --all` (and the project-level cleanup flags it implies) needs a Jac project -- a directory with a `jac.toml`. Plain `jac clean` (no flags) only clears the local `.jac/data/` directory, but `--all`, `--cache`, and `--packages` operate on project artifacts and require the project root. If you're running standalone `.jac` scripts outside a project, delete the data directory manually: `rm -rf .jac/`. To create a project, run `jac create <name>`.
+
+    ??? question "I see 'Address already in use' when running `jac start`."
+        Another process is using the port (default 8000). Either stop the other process or use a different port: `jac start --port 3000`.
+
+    ??? question "My frontend shows data but fields are empty or undefined."
+        When returning node objects directly from `def:pub` endpoints, use `jid(node)` to access the node's unique identity. For reliable client-side access, return explicit dictionaries from your endpoints:
+        <!-- jac-skip -->
+        ```jac
+        # Instead of: return task;
+        # Use:
+        return {"id": jid(task), "title": task.title, "done": task.done};
+        ```
+
+    ??? question "`jac create --use web-static` fails or asks about Bun."
+        The `--use web-static` template requires [Bun](https://bun.sh) for frontend bundling. If Bun isn't installed, `jac create` will offer to install it automatically. You can also install it manually: `curl -fsSL https://bun.sh/install | bash`.
+
+??? "Debugging & Support"
+
+    ??? question "Where's the best place to get help?"
+        Join the [Jaseci Discord Community](https://discord.gg/6j3QNdtcN6) and use the #get-help channel
+
+    ??? question "What debugging tools are available for Jac?"
+        - VS Code debugger support: [Debugging Guide](https://docs.jaseci.org/tutorials/language/debugging/)
+        - Writing and running tests: [Testing Reference](https://docs.jaseci.org/reference/testing/)
+
+    ??? question "How do I debug graph state visually and trace execution flow?"
+        Use the graph visualization tool in the debugger: [Graph Visualization](https://docs.jaseci.org/tutorials/language/debugging/#graph-visualization)
+
+    ??? question "How do I test Jac walkers and nodes?"
+        [Testing Guide for Nodes and Walkers](https://docs.jaseci.org/reference/testing/#testing-nodes-and-walkers)
+
+??? "Project Structure & Best Practices"
+
+    ??? question "Can I build a complete app in one .jac file?"
+        Technically yes, but not recommended for larger apps. Use modular structure for scalability:
+        - [Full-Stack Setup](https://docs.jaseci.org/tutorials/fullstack/setup/) -- Project structure and multi-file organization
+        - [jac-client Reference](https://docs.jaseci.org/reference/plugins/jac-client/) -- Complete client plugin documentation
+
+    ??? question "Can I use Jac with React/frontend frameworks?"
+        Yes. Jac supports:
+        - [React component style](https://docs.jaseci.org/tutorials/fullstack/components/)
+        - [npm package imports](https://docs.jaseci.org/reference/plugins/jac-client/#importing-npm-packages)
+
+    ??? question "How do I structure multi-agent AI systems in Jac?"
+        - [Use project template](https://docs.jaseci.org/reference/cli/#jac-create)
+        `jac create <project_name> --use <template_name>`
+        - Organize files by purpose:
+          - .jac: Core logic
+          - .cl.jac: Client-side code
+          - .impl.jac: Implementation details
+
+    ??? question "How do I handle authentication and authorization in Jac walkers?"
+        Use built-in authentication functions: [Authentication Tutorial](https://docs.jaseci.org/tutorials/fullstack/auth/)
+
+??? "Community & Contributing"
+
+    ??? question "How active is the Jaseci community?"
+        Very active! Join the [Jaseci Discord Community](https://discord.gg/6j3QNdtcN6) for support and discussions with fellow contributors.
+
+    ??? question "How often is Jac updated?"
+        Check the [GitHub Releases](https://docs.jaseci.org/community/release_notes/jaclang/) for the latest updates and versions.
+    ??? question "How do I contribute to Jaseci?"
+        - [Discord contributors channel](https://discord.gg/6j3QNdtcN6)
+        - Read the [Contributing Guide](https://docs.jaseci.org/community/contributing/)

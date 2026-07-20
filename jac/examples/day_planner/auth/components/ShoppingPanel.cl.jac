@@ -51,7 +51,7 @@ def:pub ShoppingPanel -> JsxElement {
                 <input
                     class="input"
                     value={mealText}
-                    onChange={lambda e: ChangeEvent { mealText = e.target.value; }}
+                    onChange={lambda (e: ChangeEvent) { mealText = e.target.value; }}
                     onKeyPress={handleKeyPress}
                     placeholder="e.g. 'chicken stir fry for 4'"
                 />

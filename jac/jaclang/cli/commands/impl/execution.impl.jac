@@ -6,6 +6,7 @@ import from pathlib { Path }
 import from jaclang.cli.console { console }
 import from jaclang.cli.commands.cli_helpers { proc_file as _proc_file }
 import from jaclang.jac0core.ext_registry { is_native_module }
+import from jaclang.project.kinds { RunPlan }
 
 def _discover_config_from_file(filename: str) -> None {
     import from pathlib { Path }
@@ -37,6 +38,15 @@ def _discover_config_from_file(filename: str) -> None {
     }
 }
 
+def _default_codespace_is_native -> bool {
+    import from jaclang.project.config { get_config, BuildConfig }
+    cfg = get_config();
+    effective = cfg.build.default_codespace
+        if cfg is not None
+        else BuildConfig().default_codespace;
+    return effective == 'native';
+}
+
 def _populate_native_argv(engine: object, argv: list[str]) -> None {
     import ctypes;
 
@@ -58,7 +68,7 @@ def _populate_native_argv(engine: object, argv: list[str]) -> None {
     engine._jac_argv_refs = (c_strings, c_argv);
 }
 
-def _print_plan(plan: object) {
+def _print_plan(plan: RunPlan) {
     console.print(f"project kind : {plan.kind}");
     console.print(f"action       : {plan.action}");
     console.print(f"summary      : {plan.summary}");
@@ -66,59 +76,27 @@ def _print_plan(plan: object) {
         console.print(f"entry-point  : {plan.entry_path}");
     }
     console.print(f"equivalent   : {plan.command_line()}");
-    if plan.requires_plugin {
-        console.print(f"requires     : {plan.requires_plugin} plugin");
-    }
-}
-
-def _plugin_available(pkg: str) -> bool {
-    import importlib.util;
-    try {
-        return importlib.util.find_spec(pkg.replace("-", "_")) is not None;
-    } except (ImportError, ValueError) {
-        return False;
-    }
 }
 
 def _execute_plan(
-    plan: object,
-    main: bool,
-    cache: bool,
-    autonative: bool,
-    diagnostics: str,
-    args: list
+    plan: RunPlan, main: bool, cache: bool, diagnostics: str, args: list
 ) -> int {
-    if plan.requires_plugin and not _plugin_available(plan.requires_plugin) {
-        console.error(
-            f"Project kind '{plan.kind}' requires the {plan.requires_plugin} plugin, "
-            f"which is not installed. Install it, then: {plan.command_line()}"
-        );
-        return 1;
-    }
     if plan.action == "execute" {
         return run(
             filename=plan.entry_path,
             main=main,
             cache=cache,
-            autonative=autonative,
             diagnostics=diagnostics,
             args=args
         );
     }
     if plan.action == "serve" {
-        if "client" in plan.flags {
-            console.error(
-                f"Project kind '{plan.kind}' is run via the {plan.requires_plugin} "
-                f"plugin command: {plan.command_line()}"
-            );
-            return 1;
-        }
-
         return start(
             filename=plan.entry_path,
             port=plan.flags.get("port", 8000),
             no_client=plan.flags.get("no_client", False),
-            dev=plan.flags.get("dev", False)
+            dev=plan.flags.get("dev", False),
+            client=plan.flags.get("client", "web")
         );
     }
     if plan.action == "build" {
@@ -139,13 +117,13 @@ def _execute_plan(
         }
         if plan.verb == "build" {
             import from jaclang.cli.commands.build { build }
-            return build(projection=plan.flags.get("as", "jab"));
+            return build(
+                projection=plan.flags.get("as", "jab"),
+                client=plan.flags.get("client", "")
+            );
         }
 
-        console.error(
-            f"Project kind '{plan.kind}' builds via the {plan.requires_plugin} "
-            f"plugin command: {plan.command_line()}"
-        );
+        console.error(f"Project kind '{plan.kind}' has no build verb '{plan.verb}'.");
         return 1;
     }
     console.error(f"Unsupported run action '{plan.action}' for kind '{plan.kind}'.");
@@ -236,7 +214,7 @@ def _jab_native_bin(img_root: object, entry_rel: str) -> (str | None) {
 }
 
 def _run_project(
-    show: bool, main: bool, cache: bool, autonative: bool, diagnostics: str, args: list
+    show: bool, main: bool, cache: bool, diagnostics: str, args: list
 ) -> int {
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
@@ -276,12 +254,7 @@ def _run_project(
         return 0;
     }
     return _execute_plan(
-        plan,
-        main=main,
-        cache=cache,
-        autonative=autonative,
-        diagnostics=diagnostics,
-        args=args
+        plan, main=main, cache=cache, diagnostics=diagnostics, args=args
     );
 }
 
@@ -290,7 +263,6 @@ impl run(
     show: bool = False,
     main: bool = True,
     cache: bool = True,
-    autonative: bool = False,
     diagnostics: str = "",
     entry_name: str = "",
     nd: str = "",
@@ -317,12 +289,7 @@ impl run(
     }
     if not filename {
         return _run_project(
-            show=show,
-            main=main,
-            cache=cache,
-            autonative=autonative,
-            diagnostics=diagnostics,
-            args=args
+            show=show, main=main, cache=cache, diagnostics=diagnostics, args=args
         );
     }
     if filename.endswith(".jab") {
@@ -385,35 +352,33 @@ impl run(
             }
         } elif filename.endswith('.jac') {
             native_executed = False;
-            if autonative {
-                try {
-                    import from jaclang.jac0core.program { JacProgram }
-                    full_path = os.path.abspath(filename);
-                    na_program = JacProgram();
-                    na_program._auto_promote_native = True;
-                    na_program._auto_promote_target = full_path;
-                    ir_mod = na_program.compile(file_path=full_path);
-                    if (
-                        ir_mod and ir_mod.gen.native_compat and ir_mod.gen.native_engine
-                    ) {
-                        import ctypes;
-                        engine = ir_mod.gen.native_engine;
-                        _populate_native_argv(engine, sys.argv);
-                        if main {
-                            addr = engine.get_function_address("jac_entry");
-                            if addr != 0 {
-                                fn = ctypes.CFUNCTYPE(None)(addr);
-                                fn();
-                                native_executed = True;
-                                console.print(
-                                    f"[Module '{filename}' executed natively]",
-                                    style="dim"
-                                );
-                            }
+            if (_default_codespace_is_native() and sys.stdout is sys.__stdout__) {
+                import ctypes;
+                full_path = os.path.abspath(filename);
+                program = Jac.get_program();
+                ir_mod = program.compile(file_path=full_path);
+                if program.errors_had {
+                    for _err in program.errors_had {
+                        console.error(_err.pretty_print());
+                    }
+                    mach.close();
+                    return 1;
+                }
+                if (
+                    ir_mod
+                    and ir_mod.decided_codespace == 'native'
+                    and ir_mod.gen.native_engine
+                ) {
+                    engine = ir_mod.gen.native_engine;
+                    _populate_native_argv(engine, sys.argv);
+                    if main {
+                        addr = engine.get_function_address("jac_entry");
+                        if addr != 0 {
+                            fn = ctypes.CFUNCTYPE(None)(addr);
+                            fn();
+                            native_executed = True;
                         }
                     }
-                } except Exception as _auto_err {
-                    _ = _auto_err;
                 }
             }
             if not native_executed {
@@ -565,6 +530,9 @@ impl start(
 ) -> int {
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     import from pathlib { Path }
+    import from jaclang.jac0core.codeinfo { set_effective_default_codespace }
+
+    set_effective_default_codespace('server');
 
     import from jaclang.runtimelib.client.cli { run_client_start }
     client_rc = run_client_start(
@@ -591,19 +559,7 @@ impl start(
         return _run_jab(filename, port, [], serve_only=True);
     }
     if not Path(filename).exists() {
-        if filename == "main.jac" {
-            console.error(
-                f"Error: File 'main.jac' not found in the current directory."
-            );
-            console.error(f"  Current directory: {os.getcwd()}");
-            console.error(
-                "  Please specify a file: jac start <filename.jac> or make sure main.jac exists in the current directory"
-            );
-        } else {
-            console.error(f"Error: File '{filename}' not found.");
-            console.error(f"  Current directory: {os.getcwd()}");
-            console.error("  Please check the file path and try again.");
-        }
+        console.error(f"couldn't read `{filename}`: No such file or directory");
         return 1;
     }
 
@@ -704,7 +660,7 @@ impl start(
             mach.close();
             return 1;
         } except Exception as e {
-            console.error(f"Warning: HMR initialization failed: {e}");
+            console.warning(f"HMR initialization failed: {e}");
         }
 
         if not no_client {
@@ -713,7 +669,7 @@ impl start(
                 compiler.compile(server.introspector._module, Path(filename));
                 console.print("  ✔ Initial client compilation completed");
             } except Exception as e {
-                console.error(f"Warning: Initial client compilation failed: {e}");
+                console.warning(f"Initial client compilation failed: {e}");
 
                 if hot_reloader {
                     hot_reloader.record_error(str(filename), str(e));
@@ -746,7 +702,7 @@ impl start(
         server.start(dev=dev, no_client=no_client, on_ready=_announce_ready);
         return 0;
     } except KeyboardInterrupt {
-        console.print('\nShutting down...');
+        console.print('\nShutting down');
         if hot_reloader {
             hot_reloader.stop();
         }
@@ -799,7 +755,7 @@ def _ensure_watchdog_installed -> bool {
     }
 
     console.print(
-        "\n  📦 Installing watchdog (required for --dev mode)...\n", style="info"
+        "\n  Installing watchdog (required for --dev mode)...\n", style="info"
     );
     python = get_python_provider();
     if python.install_specs(config, ["watchdog>=3.0.0"], InstallContext()) {
@@ -856,9 +812,9 @@ def _print_startup_message(
 
     try {
         version = pkg_version('jaclang');
-        console.print(f"\n  JAC DEV SERVER v{version}\n", style="bold cyan");
+        console.print(f"\n  jac dev server v{version}\n", style="bold cyan");
     } except Exception {
-        console.print(f"\n  JAC DEV SERVER\n", style="bold cyan");
+        console.print(f"\n  jac dev server\n", style="bold cyan");
     }
 
     urls = [];
@@ -874,7 +830,7 @@ def _print_startup_message(
     console.print();
 
     if dev and not no_client {
-        console.print("  🚀 Server ready", style="bold green");
+        console.print("  Server ready", style="bold green");
         console.print();
         console.print("  Mode: Development (with HMR)", style="muted");
         console.print(f"    App:  http://localhost:{primary_port}/", style="muted");
@@ -885,21 +841,21 @@ def _print_startup_message(
         if file_count > 0 {
             console.print_watching("**/*.jac", file_count);
         } else {
-            console.print("  👀 Watching for changes...", style="info");
+            console.print("  Watching for changes", style="info");
         }
     } elif dev and no_client {
-        console.print("  🚀 Server ready (API only)", style="bold green");
+        console.print("  Server ready (API only)", style="bold green");
         console.print();
         file_count = _count_jac_files(base_path);
         if file_count > 0 {
             console.print_watching("**/*.jac", file_count);
         } else {
-            console.print("  👀 Watching for changes...", style="info");
+            console.print("  Watching for changes", style="info");
         }
     } elif no_client {
-        console.print("  🚀 Server ready (no client)", style="bold green");
+        console.print("  Server ready (no client)", style="bold green");
     } else {
-        console.print("  🚀 Server ready", style="bold green");
+        console.print("  Server ready", style="bold green");
     }
 
     console.print();
@@ -950,12 +906,10 @@ def _start_vite_dev_server(base_path: str, vite_port: int, api_port: int) -> any
         process = bundler.start_dev_server(vite_port, suppress_initial_output=True);
         return (process, bundler.dev_server_port or vite_port);
     } except ImportError as e {
-        console.error(
-            f"[Vite] Warning: client bundler unavailable, skipping Vite dev server: {e}"
-        );
+        console.warning(f"client bundler unavailable, skipping Vite dev server: {e}");
         return (None, vite_port);
     } except Exception as e {
-        console.error(f"[Vite] Warning: Could not start Vite dev server: {e}");
+        console.warning(f"Could not start Vite dev server: {e}");
         return (None, vite_port);
     }
 }

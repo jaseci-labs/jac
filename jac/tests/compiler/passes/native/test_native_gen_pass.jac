@@ -14,6 +14,7 @@ import from tests.support { JAC_ROOT, TESTS_DIR }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.runtime { JacRuntime }
+import from jaclang.jac0core.compile_options { CompileOptions }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.compiler.passes.native.llvm.binding { ExecutionEngine }
 
@@ -40,6 +41,22 @@ def get_func(eng: object, name: str, restype: type | None, *argtypes: type) -> o
     return functype(addr);
 }
 
+"""Current resident-set-size of this process in kB (Linux), or -1 if the
+/proc interface is unavailable (e.g. macOS) so callers can skip the gate."""
+def _rss_kb -> int {
+    if not os.path.exists("/proc/self/status") {
+        return -1;
+    }
+    with open("/proc/self/status") as f {
+        for line in f {
+            if line.startswith("VmRSS") {
+                return int(line.split()[1]);
+            }
+        }
+    }
+    return -1;
+}
+
 # --- TestNativeArithmeticExecution ---
 test "arithmetic add" {
     (eng, _) = compile_native("arithmetic.na.jac");
@@ -56,6 +73,30 @@ test "arithmetic multiply" {
     assert mul(5, 6) == 30;
     assert mul(-3, 7) == -21;
     assert mul(0, 999) == 0;
+}
+
+# Regression: sub-64-bit integer arithmetic must run at the operands'
+# true width, not force i64 overflow intrinsics (i32/i16/i8 kernels).
+test "arithmetic narrow int width" {
+    (eng, _) = compile_native("narrow_int_truediv.na.jac");
+    add32 = get_func(eng, "add32", ctypes.c_int32, ctypes.c_int32, ctypes.c_int32);
+    assert add32(3, 4) == 7;
+    sub32 = get_func(eng, "sub32", ctypes.c_int32, ctypes.c_int32, ctypes.c_int32);
+    assert sub32(10, 3) == 7;
+    mul32 = get_func(eng, "mul32", ctypes.c_int32, ctypes.c_int32, ctypes.c_int32);
+    assert mul32(6, 7) == 42;
+}
+
+# Regression: `/` is true division (Python semantics) -- int / int is a
+# float, while `//` stays integer floor division.
+test "arithmetic true division" {
+    (eng, _) = compile_native("narrow_int_truediv.na.jac");
+    td = get_func(eng, "truediv", ctypes.c_double, ctypes.c_int64, ctypes.c_int64);
+    assert td(3, 4) == 0.75;
+    assert td(10, 2) == 5.0;
+    fd = get_func(eng, "floordiv", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
+    assert fd(3, 4) == 0;
+    assert fd(7, 2) == 3;
 }
 
 # --- Function pointers in struct fields (the OSP dispatch-slot shape) ---
@@ -158,13 +199,13 @@ test "native partial class: native caller of a demoted method errors, not silent
         for e in (prog.errors_had or [])
         if e.code
     ];
-    assert "E5090" in codes , (
-        f"expected E5090 for native call to a demoted method, got {codes}"
+    assert "E5092" in codes , (
+        f"expected E5092 for native call to a demoted method, got {codes}"
     );
     # The diagnostic names the call site (the method), not the discarded
     # eval body that was demoted away.
     msgs = " ".join(str(e) for e in (prog.errors_had or []));
-    assert "Box.evaluate" in msgs , f"E5090 should name Box.evaluate, got: {msgs}";
+    assert "Box.evaluate" in msgs , f"E5092 should name Box.evaluate, got: {msgs}";
 }
 
 test "native partial class: un-lowerable virtual method stays a hard error" {
@@ -181,8 +222,8 @@ test "native partial class: un-lowerable virtual method stays a hard error" {
         for e in (prog.errors_had or [])
         if e.code
     ];
-    assert "E5090" in codes , (
-        f"expected E5090 for un-lowerable virtual method, got {codes}"
+    assert "E5092" in codes , (
+        f"expected E5092 for un-lowerable virtual method, got {codes}"
     );
 }
 
@@ -1014,6 +1055,37 @@ test "builtins strip split" {
     assert f() == 2;
 }
 
+test "builtins split and slice do not leak (#6814)" {
+    (eng, _) = compile_native("builtins.na.jac");
+    f_split = get_func(
+        eng, "split_count", ctypes.c_int64, ctypes.c_char_p, ctypes.c_char_p
+    );
+    f_slice = get_func(eng, "slice_half_len", ctypes.c_int64, ctypes.c_char_p);
+    many = b",".join([b"x"] * 200);
+    big = b"x" * 10000;
+    # Correctness must survive the ownership fix.
+    assert f_split(many, b",") == 200;
+    assert f_slice(big) == 5000;
+    # Warm up the allocator to steady state before sampling, so arena growth is
+    # not mistaken for a leak.
+    for _w in range(2000) {
+        f_split(many, b",");
+        f_slice(big);
+    }
+    base = _rss_kb();
+    for _i in range(20000) {
+        f_split(many, b",");
+        f_slice(big);
+    }
+    if base >= 0 {
+        growth = _rss_kb() - base;
+        assert growth < 32768 , (
+            f"split/slice leaked: RSS grew {growth} kB over 20k iters "
+            f"(expected ~0; unpatched leaks ~350 MB) -- #6814 regressed"
+        );
+    }
+}
+
 # --- TestNativeRuntime ---
 test "runtime for list literal" {
     (eng, _) = compile_native("runtime_validate.na.jac");
@@ -1104,6 +1176,18 @@ test "aug assign aug in for" {
     (eng, _) = compile_native("aug_assign.na.jac");
     f = get_func(eng, "test_aug_in_for", ctypes.c_int64);
     assert f() == 45;  # 0+1+2+...+9
+}
+
+test "forever loop with break" {
+    (eng, _) = compile_native("aug_assign.na.jac");
+    f = get_func(eng, "test_forever_break", ctypes.c_int64);
+    assert f() == 45;  # 0+1+2+...+9, then break
+}
+
+test "forever loop with continue" {
+    (eng, _) = compile_native("aug_assign.na.jac");
+    f = get_func(eng, "test_forever_continue", ctypes.c_int64);
+    assert f() == 30;  # 2+4+6+8+10, odds skipped via continue
 }
 
 test "aug assign aug conditional" {
@@ -1872,7 +1956,10 @@ test "py interop native function exists in engine" {
 test "py interop py function not defined in native ir" {
     # py_double should be declared (external) but NOT defined in LLVM IR.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop.jac")),
+        options=CompileOptions(default_codespace='server')
+    );
     assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
     llvm_ir_str = str(ir.gen.llvm_ir);
     # Must not have a define (body) for py_double -- it lives in Python
@@ -1884,7 +1971,10 @@ test "py interop py function not defined in native ir" {
 test "py interop py functions in python codegen" {
     # py_double and call_native should appear in Python codegen output.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop.jac")),
+        options=CompileOptions(default_codespace='server')
+    );
     py_src = ir.gen.py;
     assert "py_double" in py_src;
     assert "call_native" in py_src;
@@ -1893,7 +1983,10 @@ test "py interop py functions in python codegen" {
 test "py interop native function has stub in python" {
     # Native function should have a ctypes stub in Python codegen output.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop.jac")),
+        options=CompileOptions(default_codespace='server')
+    );
     py_src = ir.gen.py;
     # Stub for the native function should exist
     assert "native_add_one_to_doubled" in py_src;
@@ -1907,7 +2000,10 @@ test "py interop native function has stub in python" {
 test "py interop interop manifest built" {
     # InteropAnalysisPass should detect cross-boundary calls.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop.jac")),
+        options=CompileOptions(default_codespace='server')
+    );
     manifest = ir.gen.interop_manifest;
     assert manifest is not None;
     # py_double: defined in SERVER, called from NATIVE
@@ -1923,12 +2019,15 @@ test "py interop interop manifest built" {
 test "py interop native calls python function" {
     # Native->Python: native_add_one_to_doubled calls py_double.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop.jac")),
+        options=CompileOptions(default_codespace='server')
+    );
     eng = ir.gen.native_engine;
     assert eng is not None;
     # Register the Python function in the interop callback table
     py_func_table = ir.gen.interop_py_funcs;
-    py_func_table["py_double"] = lambda x : x * 2;
+    py_func_table["py_double"] = lambda (x) { x * 2; };
     # Now call the native function
     f = get_func(eng, "native_add_one_to_doubled", ctypes.c_int64, ctypes.c_int64);
     assert f(5) == 11;  # py_double(5) = 10, + 1 = 11
@@ -1942,7 +2041,10 @@ test "py interop full entry chain" {
     import io;
 
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop.jac")),
+        options=CompileOptions(default_codespace='server')
+    );
     assert not prog.errors_had;
     # Execute the compiled module with interop context injected
     py_code = compile(
@@ -1975,7 +2077,10 @@ test "multi module na module compiles" {
 test "multi module module level na import" {
     # Module-level import of .na.jac file is recognized.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop_multi.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop_multi.jac")),
+        options=CompileOptions(default_codespace='server')
+    );
     # Should compile without errors
     assert ir is not None;
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
@@ -1988,7 +2093,10 @@ test "multi module module level na import" {
 test "multi module na scoped import" {
     # Import inside na {} block is recognized.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop_multi.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop_multi.jac")),
+        options=CompileOptions(default_codespace='server')
+    );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     # The na-scoped import should be tracked in manifest
     manifest = ir.gen.interop_manifest;
@@ -2000,7 +2108,10 @@ test "multi module na scoped import" {
 test "multi module native module linking" {
     # Functions from imported .na.jac modules are callable.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop_multi.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop_multi.jac")),
+        options=CompileOptions(default_codespace='server')
+    );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     eng = ir.gen.native_engine;
     assert eng is not None , "No native engine created";
@@ -2015,7 +2126,10 @@ test "multi module full multi module chain" {
     import io;
 
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop_multi.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop_multi.jac")),
+        options=CompileOptions(default_codespace='server')
+    );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     assert ir.gen.native_engine is not None , "No native engine created";
 
@@ -2667,6 +2781,24 @@ test "rc stress large dict" {
     assert f(1000) == 1000;
 }
 
+test "cycle collector reclaims A<->B cycles without double-free" {
+    # collect_white reclaims each white node through its own per-type destructor
+    # so container backing arrays are freed, not just the header allocation. The
+    # dtor's recursive child-release is gated on __rc_collecting, so mid-sweep it
+    # frees backing storage + the struct WITHOUT re-releasing the cyclic members
+    # that collect_white already reclaims (which would double-free). The probe
+    # drives both a plain struct A<->B cycle and a cycle routed through a list
+    # field, over repeated sweeps in-process: an invalid/double free aborts the
+    # JIT here, and a leaked backing array shows up under ASan/valgrind. This runs
+    # without the static musl toolchain the RSS reclamation test in
+    # test_native_gc.jac needs, so it guards the free path locally and in CI.
+    (eng, _) = compile_native("cycle_collect_jit_probe.na.jac");
+    f = get_func(eng, "drive_cycles", ctypes.c_int64, ctypes.c_int64);
+    assert f(20000) == 20000;
+    assert f(20000) == 20000;
+    assert f(20000) == 20000;
+}
+
 test "dicts items iteration sum" {
     (eng, _) = compile_native("dicts_sets.na.jac");
     f = get_func(eng, "dict_items_iter_sum", ctypes.c_int64);
@@ -2786,30 +2918,39 @@ test "keyword arguments bind to their named parameters (issue #7026)" {
     }
 }
 
-# --- Auto-Promotion Tests ---
+# --- Native-Default Inference Tests ---
 glob CHESS_JAC = os.path.join(JAC_ROOT, "examples", "chess", "chess.jac");
 
-"""Compile a regular .jac file with auto-promotion and return the engine."""
+"""Compile a regular .jac file under a native default and return the engine."""
 def compile_auto_native(file_path: str) -> tuple[uni.Module, JacProgram] {
+    import from jaclang.jac0core.compile_options { CompileOptions }
+    import from jaclang.jac0core.codeinfo { set_effective_default_codespace }
     prog = JacProgram();
-    prog._auto_promote_native = True;
-    prog._auto_promote_target = os.path.abspath(file_path);
-    ir = prog.compile(file_path=file_path);
+    try {
+        ir = prog.compile(
+            file_path=file_path,
+            options=CompileOptions(default_codespace='native', type_check=False)
+        );
+    } finally {
+        set_effective_default_codespace('');
+    }
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors: {errors}";
     return (ir, prog);
 }
 
-test "auto promote chess.jac detects native compatible" {
+test "native default infers chess.jac native" {
     (ir, _) = compile_auto_native(CHESS_JAC);
     assert ir is not None;
-    assert ir.gen.native_compat , ("chess.jac should be auto-promoted to native");
+    assert ir.decided_codespace == 'native' , (
+        "chess.jac should infer native under a native default"
+    );
     assert ir.gen.native_engine is not None , (
-        "Auto-promoted chess.jac should have a native engine"
+        "Inferred-native chess.jac should have a native engine"
     );
 }
 
-test "auto promote chess.jac has entry and key functions" {
+test "inferred-native chess.jac has entry and key functions" {
     (ir, _) = compile_auto_native(CHESS_JAC);
     eng = ir.gen.native_engine;
     assert eng is not None;
@@ -2830,28 +2971,45 @@ test "auto promote chess.jac has entry and key functions" {
     }
 }
 
-test "auto promote chess.jac runs via cli" {
-    # End-to-end: jac run --autonative chess.jac should execute natively.
+test "native-default chess.jac runs via cli" {
+    # End-to-end: chess in a project with [build] default_codespace = "na"
+    # executes through the native engine. Congruence makes native-vs-server
+    # unobservable from output; the in-process tests above pin the engine,
+    # this pins the CLI path end to end.
+    import shutil;
+    import tempfile;
     stdin_data = "\n" * 20 + "quit\n";
-    result = subprocess.run(
-        [sys.executable, "-m", "jaclang", "run", "--autonative", CHESS_JAC],
-        input=stdin_data,
-        capture_output=True,
-        text=True,
-        timeout=120
-    );
+    with tempfile.TemporaryDirectory() as tmpdir {
+        shutil.copy(CHESS_JAC, os.path.join(tmpdir, "chess.jac"));
+        shutil.copy(
+            os.path.join(os.path.dirname(CHESS_JAC), "chess.impl.jac"),
+            os.path.join(tmpdir, "chess.impl.jac")
+        );
+        import jaclang as _jl;
+        _src = os.path.dirname(os.path.dirname(os.path.abspath(_jl.__file__)));
+        with open(os.path.join(tmpdir, "jac.toml"), "w") as f {
+            f.write(
+                '[project]\nname = "chess-na"\n\n[dev]\njaclang_source = "' + _src.replace(
+                    "\\", "/"
+                ) + '"\n\n[build]\ndefault_codespace = "na"\n'
+            );
+        }
+        result = subprocess.run(
+            [sys.executable, "-m", "jaclang", "run", "chess.jac"],
+            input=stdin_data,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=tmpdir
+        );
+    }
     assert result.returncode == 0 , (
-        f"Auto-promoted chess crashed with exit code {result.returncode}.\n"
+        f"Native-default chess crashed with exit code {result.returncode}.\n"
         f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
     );
     assert "Game ended." in result.stdout , (
         "Expected 'Game ended.' in output.\n"
         f"stdout tail: {result.stdout[-500:] if result.stdout else '(empty)'}"
-    );
-    # Verify the native execution message appears (may be line-wrapped by Rich)
-    combined = " ".join((result.stdout + result.stderr).split());
-    assert "executed natively" in combined , (
-        "Expected native execution message.\n" f"output tail: {combined[-500:]}"
     );
 }
 
@@ -2899,25 +3057,39 @@ test "nacompile auto-promoted .jac links a bundled na_stdlib import (#7013 Findi
 }
 
 # --- Native sys Module Tests ---
-test "sys argv via jac run autonative" {
-    # Test that sys.argv works when running via `jac run --autonative`
+test "sys argv via jac run native default" {
+    # sys.argv must reach native code when the knob selects native execution.
+    import shutil;
+    import tempfile;
     fixture = str(os.path.join(FIXTURES, "sys_argv.jac"));
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
-            "run",
-            "--autonative",
-            fixture,
-            "hello",
-            "--test-flag",
-            "world"
-        ],
-        capture_output=True,
-        text=True,
-        timeout=30
-    );
+    with tempfile.TemporaryDirectory() as tmpdir {
+        shutil.copy(fixture, os.path.join(tmpdir, "sys_argv.jac"));
+        import jaclang as _jl;
+        _src = os.path.dirname(os.path.dirname(os.path.abspath(_jl.__file__)));
+        with open(os.path.join(tmpdir, "jac.toml"), "w") as f {
+            f.write(
+                '[project]\nname = "argv-na"\n\n[dev]\njaclang_source = "' + _src.replace(
+                    "\\", "/"
+                ) + '"\n\n[build]\ndefault_codespace = "na"\n'
+            );
+        }
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "jaclang",
+                "run",
+                "sys_argv.jac",
+                "hello",
+                "--test-flag",
+                "world"
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=tmpdir
+        );
+    }
     assert result.returncode == 0 , (
         f"sys_argv fixture crashed: exit={result.returncode}\n"
         f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
@@ -4976,22 +5148,10 @@ test "jac test runs test blocks inside inline na blocks (no false green)" {
     assert result.returncode != 0 , "jac test must exit non-zero on failure";
 }
 
-# isinstance over a tuple mixing a supported and an unsupported type must raise
-# a structured error, not silently drop the unsupported arm (review of #6421).
-test "isinstance mixed tuple unsupported type errors" {
-    prog = JacProgram();
-    prog.compile(
-        file_path=str(os.path.join(FIXTURES, "na_isinstance_mixed_tuple.na.jac"))
-    );
-    codes = [
-        e.code.code
-        for e in (prog.errors_had or [])
-        if e.code
-    ];
-    assert "E5090" in codes , (
-        f"expected E5090 for mixed-tuple isinstance, got {codes}"
-    );
-}
+# isinstance over a tuple mixing builtin and archetype targets lowers as a
+# guarded tag/vtable disjunction; behavioral coverage lives in
+# test_native_isinstance_mixed.jac (graduated from the E5092 guardrail that
+# stood here after the review of #6421).
 
 # ─── FIX: clib struct pointer subscript read/write (#6707, #6708) ─────────────
 # Before the fix, buf[i] on a clib struct pointer emitted E5090.

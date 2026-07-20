@@ -82,8 +82,6 @@ KEYWORDS = {
     "break",
     "continue",
     "del",
-    "global",
-    "nonlocal",
     "yield",
     "as",
     "in",
@@ -563,16 +561,6 @@ class DeleteStmt:
 
 
 @dataclass
-class GlobalStmt:
-    names: list = field(default_factory=list)
-
-
-@dataclass
-class NonlocalStmt:
-    names: list = field(default_factory=list)
-
-
-@dataclass
 class ExprStmt:
     expr: str = ""
 
@@ -681,13 +669,104 @@ def _pop_primary_expr(out: list[Token]) -> list[Token]:
     return result
 
 
+def _lower_braced_lambdas(tokens: list[Token]) -> list[Token]:
+    """Lower braced Jac lambdas to the colon form the arms below understand.
+
+    `lambda (params)? (-> T)? { expr; }` (and the explicit
+    `{ return expr; }` spelling) becomes `lambda (params)? : expr`, which the
+    existing lambda arms then strip of annotations. A multi-statement body has
+    no Python-lambda equivalent and raises ParseError.
+    """
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if not (tok.type == TT.NAME and tok.value == "lambda"):
+            i += 1
+            continue
+        j = i + 1
+        # Optional parenthesized parameter list.
+        if j < len(tokens) and tokens[j].type == TT.LPAREN:
+            d = 0
+            k = j
+            while k < len(tokens):
+                if tokens[k].type == TT.LPAREN:
+                    d += 1
+                elif tokens[k].type == TT.RPAREN:
+                    d -= 1
+                    if d == 0:
+                        break
+                k += 1
+            if k >= len(tokens):
+                i += 1
+                continue
+            j = k + 1
+        # Optional `-> T` return hint (dropped: Python lambdas are unhinted).
+        arrow_start = None
+        if j < len(tokens) and tokens[j].type == TT.ARROW:
+            arrow_start = j
+            k = j + 1
+            d = 0
+            while k < len(tokens):
+                t = tokens[k]
+                if t.type in (TT.LPAREN, TT.LBRACKET):
+                    d += 1
+                elif t.type in (TT.RPAREN, TT.RBRACKET):
+                    d -= 1
+                elif t.type == TT.LBRACE and d == 0:
+                    break
+                k += 1
+            j = k
+        if not (j < len(tokens) and tokens[j].type == TT.LBRACE):
+            # Old colon-form lambda; the arms below handle it.
+            i += 1
+            continue
+        lbrace = j
+        d = 0
+        k = lbrace
+        while k < len(tokens):
+            if tokens[k].type == TT.LBRACE:
+                d += 1
+            elif tokens[k].type == TT.RBRACE:
+                d -= 1
+                if d == 0:
+                    break
+            k += 1
+        if k >= len(tokens):
+            i += 1
+            continue
+        rbrace = k
+        body = tokens[lbrace + 1 : rbrace]
+        if body and body[0].type == TT.NAME and body[0].value == "return":
+            body = body[1:]
+        if body and body[-1].type == TT.SEMI:
+            body = body[:-1]
+        d = 0
+        for t in body:
+            if t.type in (TT.LPAREN, TT.LBRACKET, TT.LBRACE):
+                d += 1
+            elif t.type in (TT.RPAREN, TT.RBRACKET, TT.RBRACE):
+                d -= 1
+            elif t.type == TT.SEMI and d == 0:
+                raise ParseError(
+                    f"line {tok.line}: multi-statement lambda body cannot be "
+                    "lowered to a Python lambda in jac0core bootstrap code"
+                )
+        head_end = arrow_start if arrow_start is not None else lbrace
+        colon = Token(TT.COLON, ":", tokens[lbrace].line, tokens[lbrace].col)
+        tokens = tokens[:head_end] + [colon] + body + tokens[rbrace + 1 :]
+        i += 1
+    return tokens
+
+
 def transform_tokens(tokens: list[Token]) -> list[Token]:
     """Apply Jac→Python transformations on a token list.
 
     1. super.method → super().method
     2. NAME[( ... )] → NAME[ ... ] (Jac generic syntax)
     3. lambda(args): → lambda args: (Jac lambda syntax)
+    4. lambda (args)? { expr; } → lambda args: expr (braced single-expression)
     """
+    tokens = _lower_braced_lambdas(tokens)
     out: list[Token] = []
     i = 0
     bracket_stack: list[int] = []
@@ -1125,10 +1204,6 @@ class Parser:
                 return self._parse_assert()
             if v == "del":
                 return self._parse_delete()
-            if v == "global":
-                return self._parse_global_stmt()
-            if v == "nonlocal":
-                return self._parse_nonlocal_stmt()
             if v == "break":
                 self._advance()
                 self._match(TT.SEMI)
@@ -1429,7 +1504,7 @@ class Parser:
         while True:
             name = self._expect(TT.NAME).value
             self._expect(TT.COLON)
-            type_ann = self._collect_type(stop_vals={"="}, stop_names={"by"})
+            type_ann = self._collect_type(stop_vals={"="}, stop_names={"postinit"})
             default = ""
             by_postinit = False
             accessors: list[Accessor] = []
@@ -1443,9 +1518,8 @@ class Parser:
                 break
             if self._match_op("="):
                 default = self._collect_until(TT.COMMA, TT.SEMI)
-            elif self._at(TT.NAME, "by"):
+            elif self._at(TT.NAME, "postinit"):
                 self._advance()
-                self._expect(TT.NAME, "postinit")
                 by_postinit = True
             vars_list.append(
                 HasVar(
@@ -1767,24 +1841,6 @@ class Parser:
         self._match(TT.SEMI)
         return DeleteStmt(expr=expr)
 
-    def _parse_global_stmt(self) -> GlobalStmt:
-        self._expect(TT.NAME, "global")
-        names: list[str] = []
-        names.append(self._expect(TT.NAME).value)
-        while self._match(TT.COMMA):
-            names.append(self._expect(TT.NAME).value)
-        self._match(TT.SEMI)
-        return GlobalStmt(names=names)
-
-    def _parse_nonlocal_stmt(self) -> NonlocalStmt:
-        self._expect(TT.NAME, "nonlocal")
-        names: list[str] = []
-        names.append(self._expect(TT.NAME).value)
-        while self._match(TT.COMMA):
-            names.append(self._expect(TT.NAME).value)
-        self._match(TT.SEMI)
-        return NonlocalStmt(names=names)
-
     def _parse_expr_stmt(self) -> ExprStmt:
         expr = self._collect_until(TT.SEMI)
         self._match(TT.SEMI)
@@ -1913,10 +1969,6 @@ class CodeGen:
             self._line(f"assert {node.expr}")
         elif isinstance(node, DeleteStmt):
             self._line(f"del {node.expr}")
-        elif isinstance(node, GlobalStmt):
-            self._line(f"global {', '.join(node.names)}")
-        elif isinstance(node, NonlocalStmt):
-            self._line(f"nonlocal {', '.join(node.names)}")
         elif isinstance(node, ExprStmt):
             if node.expr:
                 self._line(node.expr)

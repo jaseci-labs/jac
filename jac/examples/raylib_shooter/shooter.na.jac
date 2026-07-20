@@ -378,7 +378,6 @@ def jsin(a: float) -> float {
 
 """Uniform pseudo-random float in [0, 1) via a 31-bit LCG."""
 def rand01 -> float {
-    global rng;
     rng = (rng * 1103515245 + 12345) % 2147483648;
     return float(rng) / 2147483648.0;
 }
@@ -427,7 +426,6 @@ def fire(bullets: list[Bullet]) -> None {
 
 """Advance bullets, resolve hits against targets, and tally score."""
 def update_bullets(bullets: list[Bullet], targets: list[Target], step: float) {
-    global score;
     bi = 0;
     while bi < len(bullets) {
         b = bullets[bi];
@@ -459,7 +457,6 @@ def update_bullets(bullets: list[Bullet], targets: list[Target], step: float) {
 
 """Read keyboard + mouse and update camera orientation + position this frame."""
 def handle_input(step: float) {
-    global yaw,pitch,px,pz,prev_mx,prev_my,mouse_warmup,mouse_captured;
     turn = 90.0 * step;
 
     if key_tapped(KEY_TAB) {

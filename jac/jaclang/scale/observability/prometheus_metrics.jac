@@ -28,14 +28,16 @@ glob DEFAULT_BUCKETS: tuple = (
 
 obj PrometheusMetricsCollector(MetricsCollector) {
     has config: dict[str, any] = {},
-        _enabled: bool by postinit,
-        _namespace: str by postinit,
-        _include_walker_metrics: bool by postinit,
+        _enabled: bool postinit,
+        _namespace: str postinit,
+        _include_walker_metrics: bool postinit,
         _registry: CollectorRegistry | None = None,
         _request_count: Counter | None = None,
         _request_latency: Histogram | None = None,
         _active_requests: Gauge | None = None,
-        _walker_latency: Histogram | None = None;
+        _walker_latency: Histogram | None = None,
+        _ws_connections_active: Gauge | None = None,
+        _ws_broadcasts_total: Counter | None = None;
 
     def postinit {
         self._enabled = bool(self.config.get("enabled", True));
@@ -86,6 +88,36 @@ obj PrometheusMetricsCollector(MetricsCollector) {
                 buckets=buckets,
                 registry=self._registry
             );
+        }
+
+        self._ws_connections_active = Gauge(
+            f"{self._namespace}_ws_connections_active",
+            "Active WebSocket connections",
+            registry=self._registry
+        );
+
+        self._ws_broadcasts_total = Counter(
+            f"{self._namespace}_ws_broadcasts_total",
+            "WebSocket broadcast publishes",
+            registry=self._registry
+        );
+    }
+
+    def record_ws_connection_opened {
+        if self._enabled and self._ws_connections_active {
+            self._ws_connections_active.inc();
+        }
+    }
+
+    def record_ws_connection_closed {
+        if self._enabled and self._ws_connections_active {
+            self._ws_connections_active.dec();
+        }
+    }
+
+    def record_ws_broadcast {
+        if self._enabled and self._ws_broadcasts_total {
+            self._ws_broadcasts_total.inc();
         }
     }
 

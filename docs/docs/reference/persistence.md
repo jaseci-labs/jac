@@ -26,6 +26,9 @@ After `jac run --entry create app.jac`, alice and bob live in `.jac/data/<app>.d
 
 **Backends.** Out of the box, `SqliteMemory` writes to `.jac/data/<app>.db`. Configure a Mongo database under `[scale.*]` and set `MONGODB_URI`, then `jac install` pulls in `pymongo` and persistence flips to the [scale](plugins/jac-scale.md) `MongoBackend`. The storage swaps; the developer-facing model (this page) doesn't change.
 
+!!! info "Why reachability? Persistence is a predicate, not an event"
+    In the I/O conception, persistence is something a program *does* at a moment -- open a session, call save -- and forgetting to do it is a bug. Jac makes persistence a *predicate*: a datum is durable exactly while it stands in a reachable position, the same way a value is live under garbage collection exactly while it's reachable from the collector's roots. One rule serves both temporal directions -- reachability decides what survives the past (collection) and what survives into the future (persistence). The idea has a research lineage (it is the identification rule of *orthogonal persistence*, pioneered in PS-algol in the 1980s), with one deliberate restriction that makes it practical: Jac persists the **topology** (nodes and edges), not the whole language heap -- closures, walker-local state, and ordinary objects stay transient, because they are the moving parts, not the remembered world.
+
 ---
 
 ## Concurrent writes: check-then-create and convergence
@@ -35,7 +38,7 @@ A common walker pattern is *find-or-create*: look something up, create it only i
 ```jac
 walker ensure_profile {
     can go with Root entry {
-        profiles = [-->(?:UserProfile)];
+        profiles = [-->[?:UserProfile]];
         if profiles {
             report profiles[0];
         } else {
@@ -45,9 +48,9 @@ walker ensure_profile {
 }
 ```
 
-Under concurrency this is a race: two requests against the same `root` can both read an empty `[-->(?:UserProfile)]`, both take the create branch, and both attach a profile -- a duplicate that was meant to be unique. The runtime closes this race with **optimistic concurrency at the node level**, so the pattern above is safe without app-level locks.
+Under concurrency this is a race: two requests against the same `root` can both read an empty `[-->[?:UserProfile]]`, both take the create branch, and both attach a profile -- a duplicate that was meant to be unique. The runtime closes this race with **optimistic concurrency at the node level**, so the pattern above is safe without app-level locks.
 
-**How it works.** Every node carries a version. When a request reads an out-traversal from a node (the `[-->(?:UserProfile)]` above), it snapshots that node's version. At commit, an edge-list change to a node the request *read* is applied with a compare-and-swap on that version: if a concurrent request already changed the node, the swap misses and the commit raises a conflict. The first committer wins; the second is rejected before it can write a duplicate.
+**How it works.** Every node carries a version. When a request reads an out-traversal from a node (the `[-->[?:UserProfile]]` above), it snapshots that node's version. At commit, an edge-list change to a node the request *read* is applied with a compare-and-swap on that version: if a concurrent request already changed the node, the swap misses and the commit raises a conflict. The first committer wins; the second is rejected before it can write a duplicate.
 
 **Convergence (default).** A rejected request does not error. The server aborts its uncommitted work, reloads the node, and **replays the walker (or function) from the start**. The replay re-reads the graph -- now containing the winner's node -- takes the *find* branch, and returns normally. Two racing find-or-creates converge on one node; the client sees a normal `200`, not a duplicate and not an error.
 
@@ -63,9 +66,9 @@ Under concurrency this is a race: two requests against the same `root` can both 
 ```jac
 walker me {
     can go with Root entry {
-        if not [-->(?:UserProfile)] {
+        if not [-->[?:UserProfile]] {
             new = here ++> UserProfile(tier="free");
-            on_commit(lambda () { grant_signup_bonus(new); });   # once, post-commit
+            on_commit(lambda { grant_signup_bonus(new); });   # once, post-commit
         }
     }
 }
@@ -282,7 +285,7 @@ impl User.__jac_schema__ -> None {
     schema_drop("legacy_bio");                # removed field: preserve its remains
     schema_upgrade(
         split_tags,
-        when=(lambda doc: dict : isinstance(doc.get("tags"), str))
+        when=(lambda (doc: dict) { isinstance(doc.get("tags"), str); })
     );
 }
 ```

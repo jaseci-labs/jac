@@ -38,7 +38,7 @@ with entry {
 
 **Declare `has reports: list[T]` on every walker.** It is the recommended default, not an opt-in optimization. The declaration is a single-source-of-truth contract: `report X` on the write side and `(spawn W).reports[i]` on the read side both type-check against the same `T`, so a typo or shape drift surfaces at `jac check` time instead of at the call site.
 
-A bare walker assumes `reports: list[any]`. That works, but it propagates `any` into consumer code -- and Jac's [strict gradual-typing rule](foundation.md#the-any-type-and-gradual-typing) will reject the consumer's typed assignment downstream. Typing `reports` at the source is almost always cheaper than annotating every receiving local as `any` and narrowing back.
+A bare walker assumes `reports: list[any]`. That works, but it propagates `any` into consumer code -- and Jac's [strict gradual-typing rule](types-and-values.md#the-any-type-and-gradual-typing) will reject the consumer's typed assignment downstream. Typing `reports` at the source is almost always cheaper than annotating every receiving local as `any` and narrowing back.
 
 #### Pattern A: Single typed report (most walkers)
 
@@ -103,9 +103,9 @@ When `has reports` is declared, two rules are checked:
 1. The declaration itself must be a list type. `has reports: int = 0;` is rejected -- `reports` is the walker's report channel, not arbitrary state, so it must be `list[T]` for some `T`.
 2. Every `report` statement in the walker body must produce a value compatible with the element type `T`. If you `report "oops"` inside `ListTasks` above, the checker flags it as a type error.
 
-If you omit the declaration, the walker falls back to `reports: list[any]` and any value can be reported -- but downstream code that receives those values into typed destinations will hit Jac's strict-`any` rule. See [The `any` Type and Gradual Typing](foundation.md#the-any-type-and-gradual-typing) for the consumer side.
+If you omit the declaration, the walker falls back to `reports: list[any]` and any value can be reported -- but downstream code that receives those values into typed destinations will hit Jac's strict-`any` rule. See [The `any` Type and Gradual Typing](types-and-values.md#the-any-type-and-gradual-typing) for the consumer side.
 
-When you cannot type the walker (for example, a third-party walker) but know the shape of a particular report, the [`as` cast operator](foundation.md#10-the-as-cast-operator) re-types it at the call site: `tasks = result.reports[0] as list[Task];`. The cast is unchecked -- prefer a typed `has reports: list[T]` declaration whenever the walker is yours to change.
+When you cannot type the walker (for example, a third-party walker) but know the shape of a particular report, the [`as` cast operator](operators.md#10-the-as-cast-operator) re-types it at the call site: `tasks = result.reports[0] as list[Task];`. The cast is unchecked -- prefer a typed `has reports: list[T]` declaration whenever the walker is yours to change.
 
 ## Common Patterns
 
@@ -343,7 +343,7 @@ with entry {
 
 ## Best Practices
 
-1. **Always declare `has reports: list[T]`** - The default `list[any]` propagates `any` into consumer code, and Jac's strict gradual-typing rule rejects `any` flowing into typed destinations. Typing the report channel at the walker is almost always cheaper than annotating every receiving local as `any` and narrowing back. See [The `any` Type and Gradual Typing](foundation.md#the-any-type-and-gradual-typing).
+1. **Always declare `has reports: list[T]`** - The default `list[any]` propagates `any` into consumer code, and Jac's strict gradual-typing rule rejects `any` flowing into typed destinations. Typing the report channel at the walker is almost always cheaper than annotating every receiving local as `any` and narrowing back. See [The `any` Type and Gradual Typing](types-and-values.md#the-any-type-and-gradual-typing).
 2. **Prefer single reports** - Accumulate data and report once at the end
 3. **Use `with Root exit`** - Best place for final reports after traversal
 4. **Report typed objects directly** - Return node/obj instances instead of manually constructing dicts. The runtime automatically serializes typed objects with field metadata, and client code receives them as hydrated typed instances with proper field access (e.g., `task.title` instead of `task["title"]`)

@@ -82,21 +82,11 @@ test "guardrail: structural match pattern is rejected" {
     )}";
 }
 
-# Non-capturing nested functions are supported (see test_native_gen_pass.jac).
-# A nested function that captures an enclosing-function local is still
-# rejected, since closure capture is not yet implemented.
-test "guardrail: nested function capturing an enclosing local is rejected" {
-    prog = compile_na_inline(
-        "nested_def_capture",
-        "def outer(y: int) -> int {\n"
-        "    def inner(x: int) -> int { return x * y; }\n"
-        "    return inner(5);\n"
-        "}\n"
-    );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for capturing nested Ability, got: {fmt_errors(
-        prog
-    )}";
-}
+# Nested functions capturing enclosing locals lower natively (read captures
+# bind by value at each call, rebound captures write through a frame-slot
+# pointer); behavioral coverage lives in test_native_closures.jac. Only the
+# escape shapes (a capturing closure used as a value) remain rejected, with
+# a structured E5092 from codegen.
 
 # NOTE (issue #6146, Phase 4c): the `visit` / `disengage` / `report` guardrails
 # were removed because these statements are now LOWERED to the portable kernel
@@ -138,11 +128,15 @@ test "guardrail: union trigger with mismatched field layout is rejected" {
 # ─────────────────────────────────────────────────────────────────────
 # Expression-level gaps
 # ─────────────────────────────────────────────────────────────────────
-test "guardrail: yield expression is rejected" {
+# Generators lower natively (state-machine resume over the JacIter ABI);
+# behavioral coverage lives in test_native_generators.jac. A yield in a
+# function that does not declare a generator-family return type is still a
+# structured error, never a silent drop.
+test "guardrail: yield without a generator return type is rejected" {
     prog = compile_na_inline(
         "yield_expr", "def gen() -> int {\n" "    yield 1;\n" "    return 0;\n" "}\n"
     );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for YieldExpr, got: {fmt_errors(
+    assert has_error_code(prog, "E5092") , f"Expected E5092 for yield in a non-generator signature, got: {fmt_errors(
         prog
     )}";
 }
@@ -255,7 +249,7 @@ test "guardrail: unsupported builtin over an iterable is rejected" {
     prog = compile_na_inline(
         "py_builtin_sum", "with entry { print(f\"Total: {sum(range(1, 101))}\"); }\n"
     );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for unsupported builtin 'sum', got: {fmt_errors(
+    assert has_error_code(prog, "E5092") , f"Expected E5092 for unsupported builtin 'sum', got: {fmt_errors(
         prog
     )}";
 }
@@ -266,7 +260,7 @@ test "guardrail: call to an undefined function is rejected" {
         "undefined_call",
         "def use() -> int { return mystery(3); }\n" "with entry { print(use()); }\n"
     );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for call to undefined 'mystery', got: {fmt_errors(
+    assert prog.errors_had , f"Expected a loud analysis-time rejection for call to undefined 'mystery', got: {fmt_errors(
         prog
     )}";
 }
@@ -284,7 +278,7 @@ test "guardrail: for-loop over a set is rejected" {
         "    return total;\n"
         "}\n"
     );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for for-over-set, got: {fmt_errors(
+    assert has_error_code(prog, "E5092") , f"Expected E5092 for for-over-set, got: {fmt_errors(
         prog
     )}";
 }
@@ -414,7 +408,7 @@ test "guardrail: dereferencing an opaque foreign field is rejected" {
         "}\n"
         "with entry { print(Carrier().line()); }\n"
     );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for dereference of an opaque foreign field, got: {fmt_errors(
+    assert prog.errors_had , f"Expected a loud analysis-time rejection for dereference of an opaque foreign field, got: {fmt_errors(
         prog
     )}";
 }
@@ -655,7 +649,8 @@ test "check rejects a native def with an unknown return type" {
     )}";
 }
 
-# Object field annotations are caught at codegen; E2018 must name the written type.
+# Unknown object field annotations are rejected at analysis time (E2018 from
+# StaticAnalysisPass, the single detection source) naming the written type.
 test "native object field with an unknown type names the type, not '<Unknown>'" {
     prog = compile_na_inline(
         "obj_field_unknown",
@@ -691,7 +686,7 @@ test "native object field with an unknown type names the type, not '<Unknown>'" 
 # builder — an internal compiler crash, not a diagnostic. It must surface the
 # same clean E5090 every other unlowerable native call gets. A regression
 # re-raises the TypeError, failing this test with an error (not an assertion).
-test "guardrail: open() with a non-string (POSIX flags) mode is a clean E5090, not an ICE" {
+test "guardrail: open() with a non-string (POSIX flags) mode is a clean diagnostic, not an ICE" {
     prog = compile_na_inline(
         "posix_open_flags",
         "def parse_argc(path: str) -> i32 {\n"
@@ -700,9 +695,16 @@ test "guardrail: open() with a non-string (POSIX flags) mode is a clean E5090, n
         "    return -1;\n"
         "}\n"
     );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for POSIX open(path, flags), got: {fmt_errors(
+    assert prog.errors_had , f"Expected a clean diagnostic for POSIX open(path, flags), got: {fmt_errors(
         prog
     )}";
+    for alrt in prog.errors_had {
+        if alrt.code is not None {
+            assert alrt.code.code not in ("E9001", "E9002") , f"ICE leaked for POSIX open(path, flags): {fmt_errors(
+                prog
+            )}";
+        }
+    }
 }
 
 # Positive control: with the libc `open(path, flags) -> i32` extern in scope

@@ -15,7 +15,8 @@ jac nacompile app.jac -o app               # standalone zero-dependency binary
 - `jac nacompile` accepts **plain `.jac` too** (auto-promotes when only native-compatible features are used) - it is NOT restricted to `*.na.jac`. A `.na.jac` file is all-native by convention.
 - `--autonative` prints `[Module 'app.jac' executed natively]` when a plain `.jac` is promoted; a file using walkers/async just runs on Python with no message.
 - A standalone binary REQUIRES `with entry { }` - otherwise: *"No entry point found."*
-- `jac nacompile --target wasm32|windows|macos` cross-targets; `--shared` builds a C-ABI library (see the sibling skills).
+- `jac nacompile --target wasm32|windows|macos` cross-targets; `--shared` builds a C-ABI library (see the sibling skills); `--gc cycles|rc|none` picks the memory-management runtime (see `jac-native-memory`).
+- **Native placement is inferred from extern C declarations.** An import whose braces declare C-ABI functions (`import from raylib { def InitWindow(w: i32, h: i32, title: str) -> None; }`) is an FFI surface only the native backend can satisfy, so it seeds native placement and the declarations using it follow (see `jac-codespaces`). Consuming a native *module* (`import from mymod { fast_fn }`) is not a signal, and pure code that merely fits the native subset stays server: without an FFI seed, going native takes an `na { }` block, a `.na.jac` file, or an explicit verb (`jac nacompile`, `jac run --autonative`) - all still fully valid as overrides.
 
 ## Headline example - a CLI tool
 
@@ -99,7 +100,7 @@ with entry {
 }
 ```
 
-Run with plain `jac run`. Interop stubs are generated automatically in both directions; primitives, collections, and `obj` instances cross the boundary. Each codespace only sees its own definitions at compile time (context isolation) - a native function referencing a Python function defined *after* the `na` block fails E5090 and returns 0. Variants: `to na:` section header (rest of module is native) or `na` prefix on a single declaration.
+Run with plain `jac run`. Interop stubs are generated automatically in both directions; primitives, collections, and `obj` instances cross the boundary. Each codespace only sees its own definitions at compile time (context isolation) - a native function referencing a Python function defined *after* the `na` block fails E5090 and returns 0. Variants: a `na { ... }` block or an `na` prefix on a single declaration.
 
 ## Native-to-native imports + decl/impl separation
 
@@ -171,5 +172,5 @@ with entry {
 
 - `JAC_DUMP_IR=/tmp/out.ll jac nacompile app.na.jac` writes the optimized LLVM IR to a readable `.ll` file.
 - Stale behavior after moving/regenerating files: use `jac nacompile --scrub` (or `jac run --no-cache`) to wipe the native IR cache, which lives in the module's cache dir (`.jac/cache/native/`, or the global `~/.cache/jac/jir/` for installed sources).
-- Memory: automatic reference counting, but deep release of nested structures is currently disabled - long-running daemons may leak; bounded-allocation programs are unaffected.
+- Memory: reference counting by default, with emit-time modes - `jac nacompile --gc cycles|rc|none` - and an opt-in ownership/borrow surface (`own`, `&`/`&mut`, `imm`, `Region` arenas opened with `in r { }`, `def drop`) that scales to fully RC-free binaries (`--enforce-nogc --assert-no-rc`). `JAC_RC_STATS=1` prints per-module RC coverage. Any `E13xx`/`E14xx` diagnostic, leak, or refcount question: see `jac-native-memory`.
 - Run native test files with `jac test <file>`, not pytest. See `jac-testing` and `jac-debugging`.

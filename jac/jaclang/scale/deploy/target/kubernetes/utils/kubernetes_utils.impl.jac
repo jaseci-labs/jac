@@ -403,17 +403,89 @@ impl get_cluster_provider -> ClusterProvider {
     return LocalProvider();
 }
 
-impl check_pods_restarted(namespace: str, app_name: str) -> bool {
+impl _resolve_current_rs_hashes(namespace: str, selector: str) -> set {
+    apps_v1 = client.AppsV1Api();
+    rs_items = apps_v1.list_namespaced_replica_set(
+        namespace=namespace, label_selector=selector
+    ).items;
+    best: dict = {};
+    for rs in rs_items {
+        app_val = (rs.metadata.labels or {}).get("app", "");
+        if not app_val {
+            continue;
+        }
+        rev_str = (rs.metadata.annotations or {}).get(
+            "deployment.kubernetes.io/revision", "0"
+        );
+        try {
+            rev = int(rev_str);
+        } except (ValueError, TypeError) {
+            rev = 0;
+        }
+        prev = best.get(app_val);
+        if prev is None or rev > prev[0] {
+            best[app_val] = (rev, rs);
+        }
+    }
+    pending: set = set();
+    for (_, rs) in best.values() {
+        h = (rs.metadata.labels or {}).get("pod-template-hash");
+        if h {
+            pending.add(h);
+        }
+    }
+    return pending;
+}
+
+impl _refresh_rs_hashes(
+    namespace: str, selector: str, current: (set | None)
+) -> (set | None) {
     try {
-        config.load_kube_config();
-    } except ConfigException {
-        config.load_incluster_config();
+        return _resolve_current_rs_hashes(namespace, selector);
+    } except Exception as exc {
+        console.print(f"[warn] RS hash refresh failed, keeping prior hash set: {exc}");
+        return current;
+    }
+}
+
+impl check_pods_restarted(
+    namespace: str,
+    app_name: str,
+    _rs_hashes: (set | None) = None,
+    _skip_config_load: bool = False
+) -> bool {
+    if not _skip_config_load {
+        try {
+            config.load_kube_config();
+        } except ConfigException {
+            config.load_incluster_config();
+        }
     }
     v1 = client.CoreV1Api();
     app_labels = [app_name + d[0] for d in COMPANION_DEFS];
     selector = "app in ({})".format(", ".join(app_labels));
+
+    current_hashes: set = set();
+    if _rs_hashes is not None {
+        current_hashes = _rs_hashes;
+    } else {
+        try {
+            current_hashes = _resolve_current_rs_hashes(namespace, selector);
+        } except Exception as exc {
+            console.print(
+                f"[warn] RS hash lookup failed, falling back to broad pod scan: {exc}"
+            );
+        }
+    }
+
     pods = v1.list_namespaced_pod(namespace=namespace, label_selector=selector);
     for pod in pods.items {
+        if current_hashes {
+            pod_hash = (pod.metadata.labels or {}).get("pod-template-hash");
+            if pod_hash is not None and pod_hash not in current_hashes {
+                continue;
+            }
+        }
         statuses = (pod.status.init_container_statuses or []) + (
             pod.status.container_statuses or []
         );
@@ -514,6 +586,22 @@ impl check_deployment_status(
     } else {
         url = f"http://localhost:{node_port}{path}";
     }
+    try {
+        config.load_kube_config();
+    } except ConfigException {
+        config.load_incluster_config();
+    }
+    _app_labels = [app_name + d[0] for d in COMPANION_DEFS];
+    _selector = "app in ({})".format(", ".join(_app_labels));
+    rs_hashes: (set | None) = None;
+    try {
+        rs_hashes = _resolve_current_rs_hashes(namespace, _selector);
+    } except Exception as exc {
+        console.print(
+            f"[warn] RS hash lookup failed, falling back to broad pod scan: {exc}"
+        );
+    }
+
     for attempt in range(1, (max_retries + 1)) {
         try {
             response = requests.get(url, timeout=10);
@@ -521,12 +609,18 @@ impl check_deployment_status(
                 return (True, "Successful");
             }
 
-            if check_pods_restarted(namespace, app_name) {
-                return (False, "Containers restarted");
+            if check_pods_restarted(namespace, app_name, rs_hashes, True) {
+                rs_hashes = _refresh_rs_hashes(namespace, _selector, rs_hashes);
+                if check_pods_restarted(namespace, app_name, rs_hashes, True) {
+                    return (False, "Containers restarted");
+                }
             }
         } except RequestException as e {
-            if check_pods_restarted(namespace, app_name) {
-                return (False, "Containers restarted");
+            if check_pods_restarted(namespace, app_name, rs_hashes, True) {
+                rs_hashes = _refresh_rs_hashes(namespace, _selector, rs_hashes);
+                if check_pods_restarted(namespace, app_name, rs_hashes, True) {
+                    return (False, "Containers restarted");
+                }
             }
 
             if (attempt == max_retries) {
@@ -538,11 +632,6 @@ impl check_deployment_status(
         }
     }
 
-    try {
-        config.load_kube_config();
-    } except ConfigException {
-        config.load_incluster_config();
-    }
     diag_v1 = client.CoreV1Api();
     diag_labels = [app_name + d[0] for d in COMPANION_DEFS];
     diag_selector = "app in ({})".format(", ".join(diag_labels));

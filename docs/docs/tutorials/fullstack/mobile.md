@@ -182,7 +182,7 @@ Both platforms use the exact same web bundle. Write your UI once; Capacitor wrap
 Capacitor has a rich plugin ecosystem for camera, geolocation, push notifications, etc. Install them via npm:
 
 ```bash
-jac add --npm @capacitor/camera
+jac install --npm @capacitor/camera
 npx cap sync
 ```
 
@@ -296,7 +296,7 @@ cl {
                 <TextInput
                     value={name}
                     placeholder="Type your name"
-                    onChangeText={lambda t: str { name = t; }}
+                    onChangeText={lambda (t: str) { name = t; }}
                 />
                 <Pressable style={styles.button} onPress={lambda { name = "Jac"; }}>
                     <Text>Reset</Text>

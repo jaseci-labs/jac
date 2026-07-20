@@ -3,7 +3,7 @@ name: jac-cl-js-interop
 description: JavaScript interop in client Jac - the `new()` builtin for browser constructors (WebSocket, URL, Date, CustomEvent), `.call(None, ...)` for callbacks, `glob` module state, browser globals (localStorage, window, document), polling/debounce/RAF recipes, jac2js gotchas (chr(10) newlines, let-scoping/TDZ), and debugging compiled output. Load when client code needs a browser API that isn't a React pattern.
 ---
 
-Client Jac compiles to JavaScript, so the whole browser API surface is reachable - but a few idioms differ from both Python and JS. The three you cannot guess: `new(Cls, ...)`, `.call(None, ...)`, and `glob` module state.
+Client Jac compiles to JavaScript, so the whole browser API surface is reachable - but a few idioms differ from both Python and JS. The three you cannot guess: `new(Cls, ...)`, `.call(None, ...)`, and `glob` module state. (All of it applies to any client code - `.cl.jac` files or plain `.jac` inferred client from JSX/npm imports; markers are optional overrides. See `jac-codespaces`.)
 
 > **`jac check` vs runtime:** isolated `jac check` has no typed stubs for browser globals yet, so it flags these patterns - `W2001` ("Name 'WebSocket' may be undefined"), `E1053`/`E1030`/`E1031` on `new()` args, `window.*`, `JSON.parse` - plus `W6002` portability nags. **They are correct at runtime and `jac build` succeeds.** Don't "fix" them into broken shapes; suppress per line with `# jac:ignore[CODE]` if you need a clean check.
 
@@ -16,8 +16,9 @@ ws = new(WebSocket, url);
 parsed = new(URL, String(window.location.origin));
 now = new(Date);
 evt = new(CustomEvent, "my-event", {"detail": {"key": "value"}});
+params = new(URLSearchParams, window.location.search);
 m = new(Map);
-promise = new(Promise, lambda(resolve: any, reject: any) {
+promise = new(Promise, lambda (resolve: any, reject: any) {
     resolve.call(None, result);
 });
 ```
@@ -28,7 +29,7 @@ A callback held in a variable/dict and invoked later must be called with `.call(
 
 ```
 msgHandler = onMessage;                      # assign to a local first
-ws.onmessage = lambda(e: any) {
+ws.onmessage = lambda (e: any) {
     msgHandler.call(None, JSON.parse(e.data));
 };
 ```
@@ -52,7 +53,7 @@ glob _ws: any = None;
 def:pub connectWs(url: str) {
     _ws = new(WebSocket, url);
     _ws.onopen = lambda { console.log("[ws] connected"); };
-    _ws.onmessage = lambda(event: any) {
+    _ws.onmessage = lambda (event: any) {
         try { handleMessage(JSON.parse(event.data)); }
         except Exception as e { console.error("[ws] message error:", e); }
     };
@@ -75,7 +76,7 @@ Dispatch: `window.dispatchEvent(new(CustomEvent, "theme-change", {"detail": {"th
 
 ```
 useEffect(lambda {
-    handler = lambda(e: any) { theme = e.detail.theme; };
+    handler = lambda (e: any) { theme = e.detail.theme; };
     window.addEventListener("theme-change", handler);
     return lambda { window.removeEventListener("theme-change", handler); };
 }, []);
@@ -83,7 +84,7 @@ useEffect(lambda {
 
 ## Browser globals
 
-`localStorage.getItem/setItem/removeItem`, `window.addEventListener`, `document.querySelector`, `setTimeout`/`setInterval`/`clearInterval`, `requestAnimationFrame`, `JSON.parse/stringify`, `URLSearchParams`, `encodeURIComponent`, `globalThis.*` (including `[client.vite.define]` build-time constants) - all available directly, no import. See the `jac check` note above.
+`localStorage.getItem/setItem/removeItem`, `window.addEventListener`, `document.querySelector`, `setTimeout`/`setInterval`/`clearInterval`, `requestAnimationFrame`, `JSON.parse/stringify`, `encodeURIComponent`, `globalThis.*` (including `[client.vite.define]` build-time constants) - all available directly, no import. `URLSearchParams` is available too, but it's a constructor - build it with `new(URLSearchParams, ...)`, not a bare call (see above). See the `jac check` note above.
 
 ## Timing patterns (all use `Ref` value fields - see `jac-npm-packages`)
 
