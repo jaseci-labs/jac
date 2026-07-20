@@ -53,6 +53,24 @@ test "MONGODB_TIMEOUT_MS overrides the default probe budget" {
 }
 
 
+test "a malformed MONGODB_TIMEOUT_MS falls back instead of raising" {
+    saved = os.environ.get("MONGODB_TIMEOUT_MS");
+    try {
+        for bad in ["abc", "", "0", "-1", "5.5"] {
+            os.environ["MONGODB_TIMEOUT_MS"] = bad;
+            cfg = JacScaleConfig().get_database_config();
+            assert cfg["mongodb_timeout_ms"] == 5000 , f"{bad!r} did not fall back";
+        }
+    } finally {
+        if saved is None {
+            os.environ.pop("MONGODB_TIMEOUT_MS", None);
+        } else {
+            os.environ["MONGODB_TIMEOUT_MS"] = saved;
+        }
+    }
+}
+
+
 test "an unreachable mongo resolves unavailable within the probe budget" {
     if not HAS_PYMONGO {
         return;
