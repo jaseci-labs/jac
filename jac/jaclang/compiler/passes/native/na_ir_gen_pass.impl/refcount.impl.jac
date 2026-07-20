@@ -20,6 +20,9 @@ impl NaIRGenPass._emit_rc_helpers -> None {
             _ha_bb = _ha_fn.append_basic_block("entry");
             _ha_b = ir.IRBuilder(_ha_bb);
             _ha_raw = _ha_b.call(self.malloc_fn, [_ha_fn.args[0]], name="raw");
+            _ha_b = self._emit_malloc_null_guard(
+                _ha_fn, _ha_b, _ha_raw, ok_bb_name="halloc.ok", oom_bb_name="halloc.oom"
+            );
             _ha_b.ret(_ha_raw);
             self.rc_alloc_fn = _ha_fn;
         }
@@ -136,6 +139,7 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     total = b.add(total, ir.Constant(i64, 15), name="total.pad");
     total = b.and_(total, ir.Constant(i64, -16), name="total.align");
     raw = b.call(self.malloc_fn, [total], name="raw");
+    b = self._emit_malloc_null_guard(alloc_fn, b, raw);
 
     _aid_old = b.atomic_rmw(
         "add", alloc_id_gv, ir.Constant(i64, 1), ordering="monotonic"
@@ -576,6 +580,38 @@ impl NaIRGenPass._emit_set_type_tag(
         _tag_gv, [ir.Constant(_i32, 0), ir.Constant(_i32, 0)], name="tag.gep"
     );
     b.call(self.rc_set_type_fn, [ptr_i8, _tag_gep]);
+}
+
+impl NaIRGenPass._emit_malloc_null_guard(
+    parent_fn: ir.Function,
+    b: ir.IRBuilder,
+    raw: ir.Value,
+    ok_bb_name: str = "alloc.ok",
+    oom_bb_name: str = "oom"
+) -> ir.IRBuilder {
+    i8_ptr = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    _raw_null = b.icmp_unsigned("==", raw, ir.Constant(i8_ptr, None), name="raw.null");
+    _oom_bb = parent_fn.append_basic_block(oom_bb_name);
+    _ok_bb = parent_fn.append_basic_block(ok_bb_name);
+    b.cbranch(_raw_null, _oom_bb, _ok_bb);
+    _b_oom = ir.IRBuilder(_oom_bb);
+    _oom_msg = "jac native: out of memory\n";
+    _oom_msg_gv = self._get_snprintf_fmt(_oom_msg);
+    _oom_msg_ptr = _b_oom.gep(
+        _oom_msg_gv, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="oom.msg"
+    );
+    _write_fn = self._get_or_declare_extern("write", i64, [i32, i8_ptr, i64]);
+    _abort_fn = self._get_or_declare_extern("abort", ir.VoidType(), []);
+
+    _b_oom.call(
+        _write_fn,
+        [ir.Constant(i32, 2), _oom_msg_ptr, ir.Constant(i64, len(_oom_msg.encode())), ]
+    );
+    _b_oom.call(_abort_fn, []);
+    _b_oom.unreachable();
+    return ir.IRBuilder(_ok_bb);
 }
 
 impl NaIRGenPass._rc_alloc(size: ir.Value, name: str = "rc.alloc") -> ir.Value {
