@@ -137,9 +137,6 @@ def _scan_project(entry_file: str) -> tuple {
 
     services.discard(entry_stem);
 
-    # A service found only as an sv-import target (no `sv { }` block of its
-    # own) still lives at its module file -- fall back to any scanned .jac
-    # whose stem matches the service name.
     files: dict[str, str] = {};
     for name in services {
         path = service_files.get(name) or all_stems.get(name);

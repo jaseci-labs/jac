@@ -159,24 +159,30 @@ test "pass keyword errors" {
     # ASTValidationPass catches all 17 occurrences of 'pass' with the same
     # message. The 5 archetype body usages also produce 'Missing ;' from the
     # parser (fixture omits semicolons for those, mimicking Python style).
+    # The parameter named 'pass' additionally emits E0067 (Python reserved
+    # word as parameter name).
     captured_output = io.StringIO();
     sys.stdout = captured_output;
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURES, "pass_keyword_err.jac"));
     sys.stdout = sys.__stdout__;
-    assert len(prog.errors_had) == 22;
+    assert len(prog.errors_had) == 23;
     keyword_errors = 0;
     missing_semi = 0;
+    reserved_param = 0;
     for alrt in prog.errors_had {
         pretty = alrt.pretty_print();
         if "'pass' is not supported in Jac" in pretty {
             keyword_errors += 1;
         } elif "Missing ';'" in pretty {
             missing_semi += 1;
+        } elif "Python reserved word" in pretty {
+            reserved_param += 1;
         }
     }
     assert keyword_errors == 17;
     assert missing_semi == 5;
+    assert reserved_param == 1;
 }
 
 test "multiple syntax errors" {
@@ -754,10 +760,10 @@ test "standalone bracket filter expr" {
     assert not err , "Failed to parse standalone [?:Foo, a<3]";
 }
 
-test "bracket vs paren filter produce same AST" {
-    (mod_old, _) = rd_parse('with entry { x(?:Foo, a==5); }', "");
-    (mod_new, _) = rd_parse('with entry { x[?:Foo, a==5]; }', "");
-    # Find FilterCompr nodes in both trees
+test "bracket filter trailer produces FilterCompr AST" {
+    (mod_new, err) = rd_parse('with entry { x[?:Foo, a==5]; }', "");
+    assert not err , "Failed to parse x[?:Foo, a==5]";
+    # Find the FilterCompr node in the tree
     def find_fc(nd: object) -> object {
         if isinstance(nd, uni.FilterCompr) {
             return nd;
@@ -774,11 +780,9 @@ test "bracket vs paren filter produce same AST" {
         }
         return None;
     }
-    old_fc = find_fc(mod_old);
     new_fc = find_fc(mod_new);
-    assert old_fc is not None , "Old syntax should produce FilterCompr";
-    assert new_fc is not None , "New syntax should produce FilterCompr";
-    assert len(old_fc.compares) == len(new_fc.compares) , "Both syntaxes should have same number of compares";
+    assert new_fc is not None , "Bracket filter trailer should produce FilterCompr";
+    assert len(new_fc.compares) == 1 , "Filter should carry exactly the a==5 compare";
 }
 
 test "bracket filter on list" {
@@ -787,7 +791,7 @@ test "bracket filter on list" {
 }
 
 test "typed edge ref after start expr - no filter" {
-    # BUG: `[root()->:Type:->]` failed to parse because parse_list_or_compr
+    # BUG: `[root->:Type:->]` failed to parse because parse_list_or_compr
     # only checked for ARROW_R/ARROW_L/ARROW_BI/ARROW_R_P1/ARROW_L_P1 after
     # the first expression, missing the (RETURN_HINT, COLON, ...) form the
     # lexer actually produces for `->:`. The bare-start form `[->:Type:->]`
@@ -798,13 +802,13 @@ test "typed edge ref after start expr - no filter" {
         'edge Scheduled { has time: str; }'
         'node Task { has title: str; }'
         'with entry {'
-        '    root() +>: Scheduled(time="9:00am") :+> Task(title="Run");'
-        '    x = [root()->:Scheduled:->];'
+        '    root +>: Scheduled(time="9:00am") :+> Task(title="Run");'
+        '    x = [root->:Scheduled:->];'
         '}'
     );
     (mod, err) = rd_parse(src, "");
     assert not err , (
-        "Failed to parse [root()->:Scheduled:->] (typed edge ref after "
+        "Failed to parse [root->:Scheduled:->] (typed edge ref after "
         "explicit start expression)"
     );
 }
@@ -817,13 +821,13 @@ test "typed edge ref after start expr - with filter condition" {
         'edge Scheduled { has priority: int = 1; }'
         'node Task { has title: str; }'
         'with entry {'
-        '    root() +>: Scheduled(priority=3) :+> Task(title="A");'
-        '    urgent = [root()->:Scheduled:priority>=3:->];'
+        '    root +>: Scheduled(priority=3) :+> Task(title="A");'
+        '    urgent = [root->:Scheduled:priority>=3:->];'
         '}'
     );
     (mod, err) = rd_parse(src, "");
     assert not err , (
-        "Failed to parse [root()->:Scheduled:priority>=3:->] (typed edge "
+        "Failed to parse [root->:Scheduled:priority>=3:->] (typed edge "
         "ref with a filter condition after an explicit start expression)"
     );
 }
@@ -852,7 +856,7 @@ test "typed edge ref produces FilterCompr with compares" {
         'edge Scheduled { has priority: int = 1; }'
         'node Task { has title: str; }'
         'with entry {'
-        '    urgent = [root()->:Scheduled:priority>=3:->];'
+        '    urgent = [root->:Scheduled:priority>=3:->];'
         '}'
     );
     (mod, err) = rd_parse(src, "");
@@ -876,7 +880,7 @@ test "typed edge ref produces FilterCompr with compares" {
     }
     fc = find_filter_compr_with_compares(mod);
     assert fc is not None , (
-        "Typed edge ref `[root()->:Scheduled:priority>=3:->]` must produce "
+        "Typed edge ref `[root->:Scheduled:priority>=3:->]` must produce "
         "a FilterCompr carrying the `priority>=3` condition; an EdgeOpRef "
         "with an empty FilterCompr means the filter clause was silently "
         "dropped."

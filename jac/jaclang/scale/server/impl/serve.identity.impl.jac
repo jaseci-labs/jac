@@ -8,7 +8,6 @@ glob _forgot_password_limiter: InProcessRateLimiter | None = None,
      _send_verification_limiter: InProcessRateLimiter | None = None;
 
 def _get_identity_limiters -> tuple[InProcessRateLimiter, InProcessRateLimiter] {
-    global _forgot_password_limiter,_send_verification_limiter;
     if _forgot_password_limiter is None or _send_verification_limiter is None {
         auth_cfg = get_scale_config().get_auth_config();
         fp_rate_per_hour = float(auth_cfg.get('forgot_password_rate_per_hour', 3));

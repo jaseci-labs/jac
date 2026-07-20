@@ -6,7 +6,7 @@ import zlib;
 import from pathlib { Path }
 
 glob MAGIC = b"JIR\x00",
-     FORMAT_VERSION: int = 15,
+     FORMAT_VERSION: int = 16,
      HEADER_SIZE: int = 32,
      HEADER_FMT: str = "<4sHHIIIIII",
      EXTERNAL_REF: int = 0xFFFFFF,
@@ -135,14 +135,26 @@ def _related_files(source_path: str) -> list[tuple[str, str]] {
     return result;
 }
 
-glob _client_kind_probe_active: bool = False;
+glob _client_kind_probe: dict = {"active": False};
+
+def _module_codespace_mode(source_path: str) -> str {
+    import from jaclang.jac0core.ext_registry { codespace_of }
+    if codespace_of(source_path) is not None {
+        return "explicit";
+    }
+    try {
+        import from jaclang.jac0core.codeinfo { effective_default_codespace }
+        return effective_default_codespace();
+    } except Exception {
+        return "server";
+    }
+}
 
 def _module_client_kind(source_path: str) -> str {
-    global _client_kind_probe_active;
-    if _client_kind_probe_active {
+    if _client_kind_probe["active"] {
         return "web";
     }
-    _client_kind_probe_active = True;
+    _client_kind_probe["active"] = True;
     try {
         import from jaclang.project.client_kind { resolve_client_kind_context }
         (kind, _) = resolve_client_kind_context(source_path);
@@ -150,7 +162,7 @@ def _module_client_kind(source_path: str) -> str {
     } except Exception {
         return "web";
     } finally {
-        _client_kind_probe_active = False;
+        _client_kind_probe["active"] = False;
     }
 }
 
@@ -187,6 +199,7 @@ def compute_module_key(source_path: str) -> str {
     h.update(struct.pack('<H', FORMAT_VERSION));
     h.update(schema_digest().encode());
     h.update(_module_client_kind(source_path).encode());
+    h.update(_module_codespace_mode(source_path).encode());
     h.update(compute_content_sha256(source_path).encode());
     for (rel, digest) in _related_files(source_path) {
         h.update(rel.encode());

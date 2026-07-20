@@ -9,7 +9,7 @@ Two defects motivated these:
 
   1. Read capture lived only in the `edges_to_nodes` slow path. Once a root
      carries any child its topology index is populated, so `refs` resolves
-     `[-->(?:T)]` via the planner fast path (`execute_path`) and returns
+     `[-->[?:T]]` via the planner fast path (`execute_path`) and returns
      without ever calling `edges_to_nodes` -- no read version recorded, the
      CAS never fires, and concurrent find-or-create still duplicates. Edge
      references (`[edge -->]`) recorded nothing either.
@@ -69,7 +69,7 @@ walker Seed {
 root. Asserts inside the walk so the read-set is observed on the live ctx."""
 walker ReadProfiles {
     can go with entry {
-        existing = [-->(?:Profile)];
+        existing = [-->[?:Profile]];
         rv = JacRuntime.get_context().read_versions;
         assert here.__jac__.id in rv , "planner fast path must record the origin version for OCC";
     }

@@ -67,6 +67,7 @@ obj OwnershipCheckPass(Transform[uni.Module, uni.Module]) {
     def _nogc_local_shape(nm: uni.Name) -> str;
     def _nogc_local_shape_expr_heap(expr: uni.Expr | None) -> bool;
     def _nogc_expr_type_is_heap(expr: uni.Expr | None) -> bool;
+    def _expr_scalar_typed(expr: uni.Expr | None) -> bool;
     def _nogc_is_container_expr(expr: uni.Expr | None) -> bool;
     def _nogc_container_grow_method(call: uni.FuncCall) -> (str | None);
     def _nogc_module_enforced(mod_name: str) -> bool;
@@ -74,6 +75,7 @@ obj OwnershipCheckPass(Transform[uni.Module, uni.Module]) {
     def _emit_enforcement_diagnostics -> None;
     def _build_index(tree: uni.UniNode) -> None;
     def _stamp_ownership -> None;
+    def _stamp_overwrite_consumed -> None;
     def _has_region_blocks -> bool;
     def _emit_region_escape_diagnostics -> None;
     def _emit_sendability_diagnostics -> None;

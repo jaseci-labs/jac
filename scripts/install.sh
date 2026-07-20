@@ -334,7 +334,9 @@ install_binary() {
         info "Jac installed successfully!"
         info ""
         info "Performing initial setup, this may take a moment..."
-        jac --version 2>/dev/null || true
+        # No stderr redirect: the launcher narrates its one-time extract
+        # (payload read, sha256, live percent) on stderr -- show it.
+        jac --version || true
         info ""
         info "Get started:"
         info "  jac --help"

@@ -1,4 +1,3 @@
-"""Build the standard {ok:false, error:{...}} frame used over WS."""
 impl ws_error_frame(code: str, message: any, reason: any = None) -> dict {
     err: dict = {'code': code, 'message': message};
     if reason {
@@ -7,12 +6,10 @@ impl ws_error_frame(code: str, message: any, reason: any = None) -> dict {
     return {'ok': False, 'error': err};
 }
 
-"""Build a failed auth detail, the shape ws_reject_auth reads."""
 impl _auth_fail(status: str, reason: str) -> dict {
     return {'status': status, 'user_id': None, 'exp': None, 'reason': reason};
 }
 
-"""Send a final frame then close, tolerating a peer that is already gone."""
 impl _ws_send_then_close(
     websocket: WebSocket, frame: dict, close_code: int, close_reason: str
 ) -> None {
@@ -28,18 +25,6 @@ impl _ws_send_then_close(
     }
 }
 
-"""Validate `?token=...` before accepting the socket.
-
-Returns auth detail if the query param is present, else None. A non-'ok'
-status should be rejected before accept so the client sees a clean handshake
-rejection.
-
-The query-token path is a convenience for browser clients that cannot set
-custom headers on a WebSocket upgrade. It has a tradeoff: the token appears in
-server and proxy access logs. Deployments that treat access logs as sensitive
-should prefer the first-frame auth path (send the token in the first message
-body, not the URL) and suppress WS upgrade lines from access logs.
-"""
 impl ws_pre_accept_auth(websocket: WebSocket, user_manager: Any) -> any {
     query_token = websocket.query_params.get('token');
     if not query_token {
@@ -48,12 +33,6 @@ impl ws_pre_accept_auth(websocket: WebSocket, user_manager: Any) -> any {
     return user_manager.validate_jwt_token_detail(query_token);
 }
 
-"""Reject a connection before accept(), surfacing a clean handshake failure.
-
-Closing before accept completes the handshake as an HTTP rejection, so the
-4401 code carries no further than the server log; the client sees a refused
-upgrade rather than a coded close frame.
-"""
 impl ws_reject_pre_accept(websocket: WebSocket, auth_detail: dict) {
     status = auth_detail.get('status', 'invalid');
     try {
@@ -63,11 +42,6 @@ impl ws_reject_pre_accept(websocket: WebSocket, auth_detail: dict) {
     }
 }
 
-"""Read auth from the first frame of an already-accepted WS connection.
-
-The frame is size-capped before it is parsed: an unauthenticated peer must not
-be able to make the server buffer and JSON-decode an arbitrarily large payload.
-"""
 impl ws_authenticate(
     websocket: WebSocket, user_manager: Any, handshake_timeout: float, max_bytes: int
 ) -> (dict, dict | None) {
@@ -93,19 +67,6 @@ impl ws_authenticate(
     return (user_manager.validate_jwt_token_detail(token), first_data);
 }
 
-"""Background heartbeat: enforce token expiry, send pings, close idle connections.
-
-Expiry is enforced here, not only on the inbound message path, because a client
-that sends nothing (or only control frames) never reaches that check. On a
-broadcast target such a connection would keep receiving pushed messages after
-its token expired. This loop is the only one that runs independently of client
-traffic, so it bounds a connection's life by its token, within one heartbeat
-interval.
-
-The ping send is bounded by `SEND_TIMEOUT_SECONDS`: a peer that has stopped
-reading leaves its send buffer full, and an unbounded `send_json` would block
-this loop forever, defeating the idle close it exists to trigger.
-"""
 impl ws_heartbeat_loop(
     ctx: ConnectionContext, heartbeat_seconds: float, missed_allowed: int
 ) -> None {
@@ -172,7 +133,6 @@ impl ws_heartbeat_loop(
     }
 }
 
-"""Reject a failed auth handshake with a structured error then close 4401."""
 impl ws_reject_auth(websocket: WebSocket, auth_detail: dict) {
     status = auth_detail.get('status', 'invalid');
     message_map = {
@@ -191,12 +151,6 @@ impl ws_reject_auth(websocket: WebSocket, auth_detail: dict) {
     );
 }
 
-"""Reject a connection the manager refused, tagged by why it refused it.
-
-A capacity cap is the client's problem and closes 4403; a backplane that cannot
-be subscribed is the server's problem and closes 4503, so a client can tell a
-transient outage from a limit it should back off from.
-"""
 impl ws_reject_registration(websocket: WebSocket, rejection: str) {
     if rejection == 'subscribe_unavailable' {
         await _ws_send_then_close(
@@ -217,7 +171,6 @@ impl ws_reject_registration(websocket: WebSocket, rejection: str) {
     );
 }
 
-"""Receive one JSON frame from the socket, enforcing the message-size limit."""
 impl ws_receive_frame(websocket: WebSocket, max_bytes: int) -> (str, dict | None) {
     raw = await websocket.receive_text();
     if len(raw.encode()) > max_bytes {
@@ -246,16 +199,6 @@ impl ws_receive_frame(websocket: WebSocket, max_bytes: int) -> (str, dict | None
     return ('ok', data);
 }
 
-"""Handle ping/pong, token refresh, expiry enforcement and rate limiting.
-
-Returns one of: 'continue' (handled, read next frame), 'break' (close the
-connection), or 'proceed' (dispatch this frame to the target).
-
-The rate limit is charged first, so control frames cannot evade it: a `refresh`
-frame costs a JWT decode and a user-existence lookup, and an unmetered flood of
-them would amplify into unbounded work. Expiry is checked after the control
-frames so an expired connection can still be rescued by a `refresh`.
-"""
 impl ws_handle_control(
     websocket: WebSocket,
     ctx: ConnectionContext,
@@ -329,10 +272,6 @@ impl ws_handle_control(
     return 'proceed';
 }
 
-"""Run an awaitable target with a timeout, sending a structured error on failure.
-
-Returns (True, result) on success and (False, None) on timeout or error.
-"""
 impl ws_execute_target(
     websocket: WebSocket, label: str, name: str, awaitable: Any, target_timeout: float
 ) -> (bool, Any) {

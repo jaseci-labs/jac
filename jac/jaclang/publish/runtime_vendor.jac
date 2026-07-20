@@ -33,7 +33,6 @@ glob _SEEDS: list[str] = [
          "jaclang.jac0core.unitree",
          "jaclang.jac0core.bccache",
          "jaclang.jac0core.jir",
-         "jaclang.jac0core.native_accel",
          "jaclang.jac0core.native_marshal",
          "jaclang.jac0core.interop_bridge",
          "jaclang.jac0core.gen_jir_registry",

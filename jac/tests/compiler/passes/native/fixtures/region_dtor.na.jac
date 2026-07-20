@@ -11,7 +11,6 @@ obj Res {
     has id: int = 0;
 
     def drop {
-        global drop_log;
         drop_log = drop_log * 10 + self.id;
     }
 }
@@ -25,7 +24,6 @@ def read_log -> int {
 }
 
 def dtor_order -> int {
-    global drop_log;
     drop_log = 0;
     in Region() {
         a: own Res = Res(id=1);
@@ -36,7 +34,6 @@ def dtor_order -> int {
 }
 
 def named_handle -> int {
-    global drop_log;
     drop_log = 0;
     r = Region();
     in r {
@@ -52,7 +49,6 @@ def named_handle -> int {
 }
 
 def early_return(flag: int) -> int {
-    global drop_log;
     drop_log = 0;
     in Region() {
         a: own Res = Res(id=5);
