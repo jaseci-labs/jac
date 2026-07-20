@@ -26,6 +26,7 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
     name = nd.name_ref.sym_name if nd.name_ref else "unnamed";
     if nd.type_params {
         self.generic_fns[name] = nd;
+        self.has_native_code = True;
         return;
     }
     sig = nd.signature;

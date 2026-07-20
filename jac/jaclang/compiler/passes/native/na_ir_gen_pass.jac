@@ -358,8 +358,12 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> (ir.Function | None);
 
     def _stamp_mono_fn(
-        ability: uni.Ability, spec_name: str
+        ability: uni.Ability, spec_name: str, memo_key: str
     ) -> (ir.Function | None);
+
+    def _find_source_ability(
+        mod_name: str, func_name: str
+    ) -> (uni.Ability | None);
     def _adapter_callee(fn_expr: uni.UniNode) -> (tuple | None);
     def _adapter_clos_parts(clos: ir.Value) -> (tuple | None);
     def _generator_elem_type(nd: uni.Ability) -> (ir.Type | None);

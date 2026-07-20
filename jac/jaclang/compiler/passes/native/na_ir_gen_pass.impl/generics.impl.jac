@@ -43,6 +43,10 @@ impl NaIRGenPass._solve_generic_call(
         if decl is None or actual is None {
             return;
         }
+        _outer = self._mono_solution;
+        if isinstance(actual, _TVT) and _outer is not None and actual.name in _outer {
+            actual = _outer[actual.name];
+        }
         if isinstance(decl, _TVT) {
             if decl.name not in solution {
                 solution[decl.name] = actual;
@@ -137,22 +141,17 @@ impl NaIRGenPass._instantiate_generic(
     saved_map = self._mono_mangle_map;
     self._mono_solution = solution;
     self._mono_mangle_map = _mangles;
-    _errs0 = len(self.errors_had);
     try {
-        fn = self._stamp_mono_fn(ability, spec_name);
+        fn = self._stamp_mono_fn(ability, spec_name, key);
     } finally {
         self._mono_solution = saved_sol;
         self._mono_mangle_map = saved_map;
-    }
-    if fn is not None and len(self.errors_had) == _errs0 {
-        self._mono_fns[key] = fn;
-        return fn;
     }
     return fn;
 }
 
 impl NaIRGenPass._stamp_mono_fn(
-    ability: uni.Ability, spec_name: str
+    ability: uni.Ability, spec_name: str, memo_key: str
 ) -> (ir.Function | None) {
     name = ability.name_ref.sym_name if ability.name_ref else "unnamed";
     sig = ability.signature;
@@ -169,6 +168,7 @@ impl NaIRGenPass._stamp_mono_fn(
     for (i, p) in enumerate(sig.get_parameters()) {
         fn.args[i].name = p.name.value if p.name else f"arg{i}";
     }
+    self._mono_fns[memo_key] = fn;
     self._record_ret_facts(spec_name, sig);
 
     saved_builder = self._builder;
@@ -195,4 +195,47 @@ impl NaIRGenPass._stamp_mono_fn(
         self.func_symtab = saved_symtab;
     }
     return fn;
+}
+
+impl NaIRGenPass._find_source_ability(
+    mod_name: str, func_name: str
+) -> (uni.Ability | None) {
+    import os;
+    import from jaclang.jac0core.codeinfo { resolve_native_module }
+    _base = os.path.dirname(self.ir_in.loc.mod_path) if self.ir_in?.loc else None;
+    _clean = mod_name[:-3] if mod_name.endswith(".na") else mod_name;
+    (_src, full_path) = resolve_native_module(_clean, _base);
+    if full_path is None {
+        return None;
+    }
+    imported_mod = self.prog.mod.hub.get(full_path);
+    if imported_mod is None {
+        imported_mod = self.prog.mod.hub.get(os.path.abspath(full_path));
+    }
+    if imported_mod is None and os.path.isfile(full_path) {
+        _saved_opts = self.prog._compile_options;
+        try {
+            imported_mod = self.prog.compile(
+                full_path, no_cgen=True, symtab_ir_only=True
+            );
+        } except Exception {
+            imported_mod = None;
+        } finally {
+            self.prog._compile_options = _saved_opts;
+        }
+    }
+    if imported_mod is None {
+        return None;
+    }
+    for stmt in (imported_mod.body or []) {
+        if (
+            isinstance(stmt, uni.Ability)
+            and stmt.name_ref is not None
+            and stmt.name_ref.sym_name == func_name
+            and isinstance(stmt.signature, uni.FuncSignature)
+        ) {
+            return stmt;
+        }
+    }
+    return None;
 }
