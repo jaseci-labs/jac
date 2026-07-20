@@ -195,7 +195,8 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
         }
         is_client = is_client_module(rel.name);
         is_native = is_native_module(rel.name);
-        server = _is_meaningful_python(py_code) and (not is_client) and (not is_native);
+        emit = _is_meaningful_python(py_code) and not is_client;
+        server = emit and not is_native;
 
         if server {
             for item in ir.body {
@@ -250,6 +251,7 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
                 "orig": ".".join(parent_parts + [stem]),
                 "py": py_code,
                 "server": server,
+                "emit": emit,
                 "sv": has_sv,
                 "native": is_native
             }
@@ -322,8 +324,7 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
             console.error(
                 "Conversion refused: emitting these as plain HTTP endpoints "
                 "would silently drop their semantics (auth handshakes, HMAC "
-                "verification, schedules), and native modules are not emitted "
-                "at all, so importing them would fail at boot."
+                "verification, schedules)."
             );
             console.print(
                 "  To convert anyway with these features OMITTED from the "
@@ -336,7 +337,7 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
         excluded_syms: set = set();
         excluded_mods: set = set();
         for b in blockers {
-            if b["kind"] in ("scale_imports", "sv", "native") {
+            if b["kind"] in ("scale_imports", "sv") {
                 excluded_mods.add(str(b["module"]));
             } else {
                 for s in b["symbols"] {
@@ -1299,55 +1300,13 @@ def _scan_module_features(py_code: str) -> dict {
 }
 
 
-def _import_target(line: str) -> str {
-    if line.startswith("from ") {
-        seg = line[5:].split(" import")[0];
-    } elif line.startswith("import ") {
-        seg = line[7:].split(" as ")[0].split(",")[0];
-    } else {
-        return "";
-    }
-    return seg.strip().lstrip(".");
-}
-
-
-def _scan_native_imports(py_code: str, natives: dict) -> list {
-    hits: list = [];
-    for raw in py_code.splitlines() {
-        line = raw.strip();
-        target = _import_target(line);
-        if not target {
-            continue;
-        }
-        for (leaf, dotted) in natives.items() {
-            if (target == dotted)
-            or (target == leaf)
-            or target.endswith("." + str(leaf)) {
-                if dotted not in hits {
-                    hits.append(dotted);
-                }
-            }
-        }
-    }
-    return hits;
-}
-
-
 def _audit_capabilities(compiled: list, reachable: (set | None)) -> list {
     labels: dict = {
         "websocket": "WebSocket function endpoint (protocol=WEBSOCKET)",
         "webhook": "Webhook function endpoint (protocol=WEBHOOK)",
         "scale_imports": "jac-scale runtime import",
-        "sv": "Microservice split (sv import / sv block)",
-        "native": "Native codespace module (.na.jac) imported by server code"
+        "sv": "Microservice split (sv import / sv block)"
     };
-    natives: dict = {};
-    for unit in compiled {
-        if unit.get("native") {
-            dotted = str(unit["module"]);
-            natives[dotted.split(".")[-1]] = dotted;
-        }
-    }
     blockers: list = [];
     for unit in compiled {
         if not unit["server"] {
@@ -1359,12 +1318,6 @@ def _audit_capabilities(compiled: list, reachable: (set | None)) -> list {
         found = _scan_module_features(str(unit["py"]));
         if unit.get("sv") {
             found["sv"] = ["(module-level)"];
-        }
-        if natives {
-            native_hits = _scan_native_imports(str(unit["py"]), natives);
-            if native_hits {
-                found["native"] = native_hits;
-            }
         }
         for (feature, symbols) in found.items() {
             if symbols {

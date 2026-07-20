@@ -374,7 +374,7 @@ test "eject honors an explicit output directory" {
 
 
 # ==================== errors ====================
-test "audit refuses native modules that server code imports" {
+test "native modules are emitted as python so server imports resolve" {
     with TemporaryDirectory() as td {
         src = Path(td) / "naapp";
         src.mkdir(parents=True, exist_ok=True);
@@ -387,18 +387,18 @@ test "audit refuses native modules that server code imports" {
         (src / "main.jac").write_text(
             'import from compute { double }\n\n' + 'def:pub twice(n: int) -> int {\n    return double(n);\n}\n'
         );
-        # `.na.jac` modules are never emitted to the backend, so a server module
-        # importing one would raise ImportError at boot. The audit must refuse.
-        assert _silent_eject(str(src)) == 1;
-        assert not (src / "ejected" / "backend" / "main.py").exists();
-        # With the escape hatch the importing module is dropped whole, so
-        # whatever is emitted still boots.
-        (src / "jac.toml").write_text(
-            '[project]\nname = "naapp"\nentry-point = "main.jac"\n' + '\n[eject]\nallow_unsupported = true\n'
-        );
-        assert _silent_eject(str(src), force=True) == 0;
-        emitted = (src / "ejected" / "backend" / "main.py").read_text();
-        assert "twice" not in emitted;
+        assert _silent_eject(str(src)) == 0;
+        # A `.na.jac` module lowers to ordinary Python, so it must be written to
+        # the backend or every server module importing it dies at boot.
+        emitted = _backend(src, "compute.py");
+        assert emitted.exists();
+        assert "def double" in emitted.read_text();
+        # It is still not API surface: only the importing server module is.
+        main_py = _backend(src, "_jac_main.py");
+        assert main_py.exists();
+        app_py = _backend(src, "main.py").read_text();
+        assert "/function/twice" in app_py;
+        assert "/function/double" not in app_py;
     }
 }
 

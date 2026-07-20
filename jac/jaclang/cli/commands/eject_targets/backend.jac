@@ -32,7 +32,7 @@ def emit_backend(
     emitted_codes: list = [];
     written = 0;
     for unit in compiled {
-        if not unit["server"] {
+        if not unit.get("emit", unit["server"]) {
             continue;
         }
         module = str(unit["module"]);
