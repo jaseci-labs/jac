@@ -368,8 +368,11 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         # Execute the bytecode directly in the module's namespace
         exec(codeobj, module.__dict__)
 
-        # Auto-install native wrappers if native engine is available
-        if native_engine is not None:
+        # Auto-install native wrappers only for explicit .na.jac modules: a
+        # markerless module that merely inferred native keeps its plain
+        # python side for python callers (the preference must not route
+        # sv-side calls through the marshal bridge).
+        if native_engine is not None and ext_registry.is_native_module(file_path):
             layout = compiler.get_native_layout(file_path, program)
             if layout is not None:
                 try:

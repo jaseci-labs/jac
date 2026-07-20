@@ -486,6 +486,29 @@ impl NaIRGenPass._get_name(nd: (uni.UniNode | None)) -> (str | None) {
 
 impl NaIRGenPass._entry_alloca(var_type: ir.Type, name: str) -> ir.Value {
     func = self.builder.function;
+
+    _gc = self._gen_ctx;
+    if _gc is not None and func is _gc["resume_fn"] {
+        i64 = ir.IntType(64);
+        size = self._abi_sizeof(var_type);
+        offset = (_gc["cursor"] + 7) // 8 * 8;
+        _gc["cursor"] = offset + size;
+        _gc["slots"].append((name, offset, var_type));
+        cur_block = self.builder.block;
+        entry_block = func.entry_basic_block;
+        if entry_block.instructions {
+            self.builder.position_before(entry_block.instructions[0]);
+        } else {
+            self.builder.position_at_start(entry_block);
+        }
+        raw = self.builder.gep(
+            _gc["frame_i8"], [ir.Constant(i64, offset)], name=f"{name}.slot"
+        );
+        slot = self.builder.bitcast(raw, var_type.as_pointer(), name=f"{name}.frame");
+        self.builder.position_at_end(cur_block);
+        return slot;
+    }
+
     entry_block = func.entry_basic_block;
 
     cur_block = self.builder.block;
@@ -499,6 +522,28 @@ impl NaIRGenPass._entry_alloca(var_type: ir.Type, name: str) -> ir.Value {
 
     self.builder.position_at_end(cur_block);
     return alloca;
+}
+
+impl NaIRGenPass._abi_sizeof(t: ir.Type) -> int {
+    if isinstance(t, (ir.IntType, ir.DoubleType, ir.PointerType, ir.FloatType)) {
+        return 8;
+    }
+    if isinstance(t, ir.ArrayType) {
+        return t.count * ((self._abi_sizeof(t.element) + 7) // 8 * 8);
+    }
+    elems = t?.elements;
+    if elems {
+        total = 0;
+        for e in elems {
+            total += (self._abi_sizeof(e) + 7) // 8 * 8;
+        }
+        return total;
+    }
+    raise RuntimeError(
+        f"native codegen internal error: _abi_sizeof has no layout for {t!r}. "
+        f"A generator-frame slot of unknown size would silently corrupt "
+        f"adjacent slots; teach _abi_sizeof this type instead."
+    );
 }
 
 impl NaIRGenPass._to_bool(val: ir.Value) -> ir.Value {

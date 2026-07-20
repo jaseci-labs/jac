@@ -796,6 +796,18 @@ export default defineConfig({{
     watch: {{
       usePolling: true,
       interval: 100,
+      // Runtime state (the desktop SQLite anchor store lives under
+      // <root>/.jac/data/ and mutates on every DB write, WAL/SHM included)
+      // must not retrigger HMR, or a --dev app that touches its DB reloads
+      // in a loop.
+      ignored: [
+        "**/.jac/data/**",
+        "**/*.sqlite",
+        "**/*.sqlite3",
+        "**/*.db",
+        "**/*.db-wal",
+        "**/*.db-shm",
+      ],
     }},
     proxy: {{
       "/walker": {{

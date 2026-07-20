@@ -59,6 +59,8 @@ impl NormalizePass.enter_global_vars(nd: uni.GlobalVars) -> None {
     if nd.code_context == CodeContext.CLIENT
     and (client_tok is not None or not nd.in_client_context()) {
         new_kid.append(client_tok or nd.gen_token(Tok.KW_CLIENT));
+    } elif (nd.code_context == CodeContext.NATIVE and client_tok is not None) {
+        new_kid.append(client_tok);
     }
     new_kid.append(nd.gen_token(Tok.KW_GLOBAL));
     if nd.access {
@@ -82,6 +84,8 @@ impl NormalizePass.enter_test(nd: uni.Test) -> None {
     if nd.code_context == CodeContext.CLIENT
     and (client_tok is not None or not nd.in_client_context()) {
         new_kid.append(client_tok or nd.gen_token(Tok.KW_CLIENT));
+    } elif (nd.code_context == CodeContext.NATIVE and client_tok is not None) {
+        new_kid.append(client_tok);
     }
     if nd.decorators {
         new_kid.append(nd.gen_token(Tok.DECOR_OP));
@@ -116,6 +120,8 @@ impl NormalizePass.enter_module_code(nd: uni.ModuleCode) -> None {
     if nd.code_context == CodeContext.CLIENT
     and (client_tok is not None or not nd.in_client_context()) {
         new_kid.append(client_tok or nd.gen_token(Tok.KW_CLIENT));
+    } elif (nd.code_context == CodeContext.NATIVE and client_tok is not None) {
+        new_kid.append(client_tok);
     }
     new_kid.append(nd.gen_token(Tok.KW_WITH));
     new_kid.append(nd.gen_token(Tok.KW_ENTRY));
@@ -185,6 +191,8 @@ impl NormalizePass.enter_import(nd: uni.Import) -> None {
     } elif nd.code_context == CodeContext.SERVER
     and (ctx_tok is not None or nd.in_client_context()) {
         new_kid.append(ctx_tok or nd.gen_token(Tok.KW_SERVER));
+    } elif (nd.code_context == CodeContext.NATIVE and ctx_tok is not None) {
+        new_kid.append(ctx_tok);
     }
     if nd.is_absorb {
         new_kid.append(nd.gen_token(Tok.KW_INCLUDE));
@@ -255,6 +263,8 @@ impl NormalizePass.enter_archetype(nd: uni.Archetype) -> None {
     if nd.code_context == CodeContext.CLIENT
     and (client_tok is not None or not nd.in_client_context()) {
         new_kid.append(client_tok or nd.gen_token(Tok.KW_CLIENT));
+    } elif (nd.code_context == CodeContext.NATIVE and client_tok is not None) {
+        new_kid.append(client_tok);
     }
     if nd.decorators {
         new_kid.append(nd.gen_token(Tok.DECOR_OP));
@@ -394,6 +404,8 @@ impl NormalizePass.enter_enum(nd: uni.Enum) -> None {
     if nd.code_context == CodeContext.CLIENT
     and (client_tok is not None or not nd.in_client_context()) {
         new_kid.append(client_tok or nd.gen_token(Tok.KW_CLIENT));
+    } elif (nd.code_context == CodeContext.NATIVE and client_tok is not None) {
+        new_kid.append(client_tok);
     }
     new_kid.append(nd.gen_token(Tok.KW_ENUM));
     if nd.access {
@@ -458,6 +470,8 @@ impl NormalizePass.enter_ability(nd: uni.Ability) -> None {
     if nd.code_context == CodeContext.CLIENT
     and (client_tok is not None or not nd.in_client_context()) {
         new_kid.append(client_tok or nd.gen_token(Tok.KW_CLIENT));
+    } elif (nd.code_context == CodeContext.NATIVE and client_tok is not None) {
+        new_kid.append(client_tok);
     }
     if nd.decorators {
         new_kid.append(nd.gen_token(Tok.DECOR_OP));

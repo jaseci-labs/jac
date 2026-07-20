@@ -1314,9 +1314,8 @@ impl TypeEvaluator._resolve_from_path(from_mod: uni.ModulePath) -> Path {
 }
 
 impl TypeEvaluator._resolve_client_npm_module(node_: uni.ModulePath) -> (str | None) {
-    if not (
-        node_.path and len(node_.path) == 1 and isinstance(node_.path[0], uni.String)
-    ) {
+    spv = node_.string_path_value;
+    if spv is None {
         return None;
     }
     if not node_.in_client_context() {
@@ -1327,7 +1326,7 @@ impl TypeEvaluator._resolve_client_npm_module(node_: uni.ModulePath) -> (str | N
         return None;
     }
     import from jaclang.jac0core.modresolver { resolve_client_npm_package }
-    return resolve_client_npm_package(node_.path[0].lit_value, mod_path);
+    return resolve_client_npm_package(spv, mod_path);
 }
 
 impl TypeEvaluator._is_fstring_all_literal(fstring: uni.FString) -> bool {

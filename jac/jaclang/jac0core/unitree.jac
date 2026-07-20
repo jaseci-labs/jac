@@ -338,7 +338,8 @@ obj Module(AstDocNode, UniScopeNode) {
         terminals: list[Token],
         stub_only: bool = False,
         src_terminals: list[Token] = [],
-        is_raised_from_py: bool = False;
+        is_raised_from_py: bool = False,
+        decided_codespace: str = "";
 
     def postinit -> None;
 
@@ -479,6 +480,12 @@ obj Import(ContextAwareNode, ElementStmt, CodeBlockStmt) {
 
     has is_jac: bool { getter; }
     has __jac_detected: bool { getter; }
+    has has_string_path: bool { getter; }
+    has has_clib_decls: bool { getter; }
+    has is_sv_marked: bool { getter; }
+    has is_cl_marked: bool { getter; }
+    has is_virtual_jac: bool { getter; }
+    has ecosystem: str { getter; }
 }
 
 obj ModulePath(UniNode) {
@@ -495,6 +502,7 @@ obj ModulePath(UniNode) {
     has is_import_from: bool { getter; }
     has dot_path_str: str { getter; }
     has base_module_name: str { getter; }
+    has string_path_value: (str | None) { getter; }
 
     def resolve_relative_path(target_item: (str | None) = None) -> str;
     def resolve_relative_path_list -> list[str];

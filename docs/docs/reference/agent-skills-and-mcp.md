@@ -63,7 +63,7 @@ Then register it with your client. For Claude Code:
 claude mcp add jac -- jac mcp
 ```
 
-Other clients (Claude Desktop, Cursor, Windsurf, VS Code) use a JSON configuration block. The **[MCP Server reference](../reference/mcp.md)** has copy-paste configuration for every supported client, the full tool and resource catalog, transport options, and troubleshooting.
+Other clients (Claude Desktop, Cursor, Windsurf, VS Code) use a JSON configuration block. The **[MCP Server reference](mcp.md)** has copy-paste configuration for every supported client, the full tool and resource catalog, transport options, and troubleshooting.
 
 !!! tip
     The MCP server is built into the `jac` binary -- there is nothing to install. Just run `jac mcp`. (It has no third-party dependencies; the protocol is implemented on the Python standard library.)
@@ -79,14 +79,14 @@ jac ai -m local:gemma-4-e4b              # fully local -- no API key
 jac ai --ui                              # web UI with a live phase-graph visualizer
 ```
 
-It uses your `[byllm.model]` configuration (falling back to the bundled local model), reads the same built-in guides, and can edit files and run code in your project -- pass `--safe` to approve every write and command. See the [`jac ai` reference](../reference/cli/index.md#jac-ai).
+It uses your `[byllm.model]` configuration (falling back to the bundled local model), reads the same built-in guides, and can edit files and run code in your project -- pass `--safe` to approve every write and command. See the [`jac ai` reference](cli/index.md#jac-ai).
 
 ## Structured code access for agents
 
 Two more commands exist mainly to make your project legible to agents (yours or an external one):
 
-- **`jac code`** -- compiler-backed structural queries (`symbol`, `uses`, `map`, `walkers`, `slice`, `diag`) that return JSON. An agent can ask "which walkers touch `Todo` nodes?" instead of grepping. See the [`jac code` reference](../reference/cli/index.md#jac-code).
-- **`jac browse`** -- headless-browser automation over CDP (navigate, click, snapshot, screenshot), so an agent can drive and visually verify the web app it just built. See the [`jac browse` reference](../reference/cli/index.md#jac-browse).
+- **`jac code`** -- compiler-backed structural queries (`symbol`, `uses`, `map`, `walkers`, `slice`, `diag`) that return JSON. An agent can ask "which walkers touch `Todo` nodes?" instead of grepping. See the [`jac code` reference](cli/index.md#jac-code).
+- **`jac browse`** -- headless-browser automation over CDP (navigate, click, snapshot, screenshot), so an agent can drive and visually verify the web app it just built. See the [`jac browse` reference](cli/index.md#jac-browse).
 
 ## Which to use
 
@@ -101,4 +101,4 @@ For the strongest setup, export the guides so your assistant *writes* idiomatic 
 
 ---
 
-**Related:** [Installation](install.md) · [AI-Assisted Development tutorial](../tutorials/ai/mcp-quickstart.md) · [MCP Server reference](../reference/mcp.md) · [Import Anything](import-anything.md)
+**Related:** [Installation](../quick-guide/install.md) · [AI-Assisted Development tutorial](../tutorials/ai/mcp-quickstart.md) · [MCP Server reference](mcp.md) · [Import Anything](import-anything.md)

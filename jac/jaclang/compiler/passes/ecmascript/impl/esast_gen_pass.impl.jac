@@ -4635,11 +4635,7 @@ impl EsastGenPass.exit_import(nd: uni.Import) -> None {
         return;
     }
 
-    if (
-        nd.code_context != CodeContext.CLIENT
-        and nd._source_context_token() is not None
-        and nd._source_context_token().name == Tok.KW_SERVER
-    ) {
+    if nd.is_sv_marked {
         if (nd.from_loc and nd.items) {
             self._generate_sv_import_stubs(nd);
             self._record_sv_backend(nd);
@@ -4653,7 +4649,7 @@ impl EsastGenPass.exit_import(nd: uni.Import) -> None {
         self.client_manifest.has_client = True;
 
         import_path = nd.from_loc.dot_path_str;
-        is_jac_runtime = import_path.startswith('@jac/');
+        is_jac_runtime = nd.is_virtual_jac;
         if resolved_path.endswith('.jac')
         and not import_path.startswith('.')
         and not is_jac_runtime {
@@ -6081,11 +6077,7 @@ impl EsastGenPass.exit_node(nd: uni.UniNode) -> None {
         and nd.code_context != CodeContext.CLIENT
         and ((nd.parent is None) or isinstance(nd.parent, uni.Module))
     ) {
-        is_sv_import = (
-            isinstance(nd, uni.Import)
-            and nd._source_context_token() is not None
-            and nd._source_context_token().name == Tok.KW_SERVER
-        );
+        is_sv_import = isinstance(nd, uni.Import) and nd.is_sv_marked;
 
         is_shared_arch = (
             isinstance(nd, uni.Archetype)
@@ -6119,11 +6111,7 @@ impl EsastGenPass.enter_node(nd: uni.UniNode) -> None {
         and nd.code_context != CodeContext.CLIENT
         and ((nd.parent is None) or isinstance(nd.parent, uni.Module))
     ) {
-        is_sv_import = (
-            isinstance(nd, uni.Import)
-            and nd._source_context_token() is not None
-            and nd._source_context_token().name == Tok.KW_SERVER
-        );
+        is_sv_import = isinstance(nd, uni.Import) and nd.is_sv_marked;
 
         is_shared_arch = (
             isinstance(nd, uni.Archetype)

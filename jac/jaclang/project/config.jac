@@ -40,7 +40,6 @@ obj RunConfig {
     has session: str = "",
         main: bool = True,
         cache: bool = True,
-        autonative: bool = False,
         topology_index: bool = True,
         diagnostics: str = "error";
 }
@@ -63,6 +62,7 @@ obj GcConfig {
 obj BuildConfig {
     has typecheck: bool = False,
         dir: str = ".jac",
+        default_codespace: str = "native",
         native: NativeBuildConfig = NativeBuildConfig();
 }
 

@@ -1,8 +1,8 @@
 # Syntax Quick Reference
 
-This page is a **lookup reference**, not a learning guide. For hands-on learning, start with the [AI Day Planner tutorial](../tutorials/first-app/build-ai-day-planner.md) which teaches these concepts progressively.
+This page is a **lookup reference**, not a learning guide. For hands-on learning, start with the [AI Day Planner tutorial](../../tutorials/first-app/build-ai-day-planner.md) which teaches these concepts progressively.
 
-**Try it:** [Functions](../tutorials/language/basics.md#functions) | [Objects](../tutorials/language/basics.md#objects-classes) | [Walkers & Graphs](../tutorials/language/osp.md) | [AI Integration](../tutorials/ai/quickstart.md) | [Full Reference](../reference/language/foundation.md)
+**Try it:** [Functions](../../tutorials/language/basics.md#functions) | [Objects](../../tutorials/language/basics.md#objects-classes) | [Walkers & Graphs](../../tutorials/language/osp.md) | [AI Integration](../../tutorials/ai/quickstart.md) | [Full Reference](foundation.md)
 
 ```jac
 # ============================================================
@@ -1287,14 +1287,26 @@ obj Res {
 # ============================================================
 # FULL-STACK DEVELOPMENT (Codespaces)
 # ============================================================
-# Jac code can target different execution environments:
+# Jac code can target different execution environments.
+# The codespace is INFERRED by default:
+#   JSX / "npm" string import => declaration placed client; placement
+#                                propagates (scope-aware) to helpers,
+#                                globs, and imports the client code uses
+#   unmarked code             => server (the default, as always)
+#   def:pub / walkers         => stay server endpoints (client calls
+#                                become RPC bridges automatically)
+#   C extern-decl import      => declaration placed native; consumers
+#                                follow (importing a native module is
+#                                NOT a signal; pure code stays server)
+#   explicit markers          => always win over inference
+# Explicit override markers:
 #   sv { } = server (Python/PyPI)
 #   cl { } = client (JavaScript/npm)
 #   na { } = native (C ABI)
 
 
 # ============================================================
-# Codespace Sections
+# Codespace Sections (explicit markers -- optional overrides)
 # ============================================================
 
 # Server code (default -- code before any header is server)
@@ -1307,7 +1319,8 @@ def:pub get_todos() -> list {
 }
 
 # Client code in a braced block (compiles to JavaScript/React).
-# The braces bracket exactly the client region.
+# The braces bracket exactly the client region. The block is optional
+# here -- the JSX return would infer client placement on its own.
 cl {
     def:pub app() -> JsxElement {
         has items: list = [];
@@ -1333,10 +1346,13 @@ cl import from react { useState }
 # ============================================================
 # File Extension Conventions
 # ============================================================
-# .jac           Default (server codespace)
-# .sv.jac        Server-only variant
-# .cl.jac        Client-only variant (auto client codespace)
-# .na.jac        Native variant
+# Extensions pin a file's default codespace explicitly -- an
+# override, not a requirement (a plain .jac file infers placement):
+# .jac           Default (server; client/native parts inferred from
+#                JSX/npm and C extern-decl imports)
+# .sv.jac        Server-only variant (explicit)
+# .cl.jac        Client-only variant (explicit client codespace)
+# .na.jac        Native variant (explicit native codespace)
 # .impl.jac      Implementation annex (method bodies)
 # .test.jac      Test annex
 # .style.css     Scoped CSS annex (auto-scopes classes for the matching .cl.jac)

@@ -416,3 +416,61 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 | Data loading effect | `useEffect` hook | `can with entry` |
 | Build tooling config | Required (Vite, TS) | Automatic |
 | HTML entry point | Required | Automatic |
+
+---
+
+## Counting What Matters
+
+Line count is the least of it. The sharper comparison is structural: how many
+notations you maintain, how many times one fact is written down, and how many
+pairs of artifacts are kept consistent only by discipline -- because a pair no
+tool can check is where the next bug comes from.
+
+| Measure | Traditional stack (this page) | Jac |
+|---|---|---|
+| General-purpose languages | 3 (Python, TypeScript, SQL via the ORM) | 1 |
+| Auxiliary dialects | 5 (JSON ×2, TS config, HTML, `requirements.txt`) | 0 in this app (1 `jac.toml` in a full project) |
+| Copies of the `Todo` shape | 3 (SQLAlchemy model, Pydantic schema, TS interface) | 1 (`node Todo`) |
+| Boundary-only artifacts (files or config sections) | 5 (`database.py`, `types.ts`, `api.ts`, the `vite.config.ts` proxy section, the CORS block in `main.py`) | 0 |
+| Artifact pairs synced by discipline alone | at least 4 (model↔schema, schema↔interface, route↔client, proxy↔server port) | 0 -- one compiler sees every pair |
+
+That last row is the load-bearing one. Every "kept in sync by hand" pair is a
+place where meaning is re-encoded and **no verifier has jurisdiction over the
+encoding** -- the comment in `types.ts` above says it out loud: "These must be
+kept in sync with the backend Pydantic schemas." Kept in sync *by whom*? By
+convention, by review, and ultimately by `grep`. The whole-program type
+checker of a traditional stack is `grep`.
+
+## The Rename Test
+
+Don't take the table's word for it -- run the experiment. Rename `title` to
+`name` on the Todo type in each stack, then run every checker the stack has to
+exhaustion, and count what gets caught.
+
+**Traditional stack.** Rename the column and `TodoModel.title`. Now:
+
+- `mypy`/`pyright` flags backend *code* that uses the old attribute -- but not
+  the Pydantic `TodoResponse`, which is a separate class and still says
+  `title`, and still type-checks fine on its own.
+- `tsc` flags frontend uses of `Todo.title` -- *if* you remember to edit
+  `types.ts`, which no tool connects to the backend. If you don't, everything
+  compiles green on both sides.
+- Nothing checks the wire. The first sign of a missed copy is `undefined`
+  rendering in the browser, or a 500 in production -- discovered at runtime,
+  by whoever is on call.
+- The database migration is a fourth, separately authored artifact.
+
+**Jac.** Rename `title` on `node Todo`. Run `jac check`. Every stale use --
+the `def:pub` function on the server, the `item.title` in the JSX on the
+client -- is a **compile error with a file and line number**, because the
+client and server are the same program checked by the same compiler against
+one declaration. When it builds again, it works again. (Persisted data
+migrates by rule rather than by hand -- see
+[Persistence & Schema Migration](../reference/persistence.md).)
+
+This is the practical meaning of Jac's design bet: not that boundaries
+disappear, but that every boundary crossing lands inside the reach of the
+compiler -- across tiers, as this page shows, and equally across the package
+ecosystems (PyPI, npm, C) a real application draws on, which enter through a
+plain `import` instead of a wrapper. The property has a name, *synechic*,
+and the full argument is on [The Ideas Behind Jac](ideas-behind-jac.md).

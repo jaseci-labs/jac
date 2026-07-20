@@ -232,6 +232,65 @@ def _precompile_app(base: Path, pod_binary: bytes) -> Path {
 }
 
 
+def fat_bundle_setting(project_dir: str) -> tuple[bool, bool] {
+    import from jaclang.project.config { get_config_for_path }
+
+    try {
+        config = get_config_for_path(Path(project_dir));
+    } except Exception as exc {
+        logger.warning(f"fat_bundle check skipped, jac.toml unparseable: {exc}");
+        return (False, False);
+    }
+    if config is None {
+        return (False, False);
+    }
+    section = config.get_section("scale");
+    if section is None or "fat_bundle" not in section {
+        return (True, False);
+    }
+    return (bool(section.get("fat_bundle")), True);
+}
+
+
+def fat_bundle_enabled(project_dir: str) -> bool {
+    (enabled, _) = fat_bundle_setting(project_dir);
+    return enabled;
+}
+
+
+def _vendor_stage(stage: Path, sanitized_toml: (str | None), pod_binary: bytes) {
+    if sanitized_toml is not None {
+        (stage / "jac.toml").write_text(sanitized_toml, encoding="utf-8");
+    }
+    jac_path = stage.parent / ".pod-jac";
+    jac_path.write_bytes(pod_binary);
+    jac_path.chmod(0o755);
+    script = Path(str(__file__)).parent.parent / "utils" / "vendor_wheels.jac";
+    try {
+        result = subprocess.run(
+            [str(jac_path), "run", str(script), str(stage)],
+            capture_output=True,
+            text=True,
+            timeout=900
+        );
+    } finally {
+        jac_path.unlink(missing_ok=True);
+    }
+    if (result.returncode != 0 or not (stage / "_vendor" / "VENDOR.json").is_file()) {
+        raise RuntimeError(
+            f"Fat bundle vendoring failed, so the deploy cannot ship offline "
+            f"deps: {(result.stderr or result.stdout).strip()[-300:]}"
+        );
+    }
+
+    for line in f"{result.stdout}\n{result.stderr}".splitlines() {
+        if line.strip() {
+            logger.info(f"vendor: {line.strip()}");
+        }
+    }
+}
+
+
 def pack_jab(project_dir: str, provisioned_database: str, pod_binary: bytes) -> bytes {
     if not pod_binary {
         raise ValueError(
@@ -242,6 +301,24 @@ def pack_jab(project_dir: str, provisioned_database: str, pod_binary: bytes) -> 
     staged = _precompile_app(base, pod_binary);
 
     try {
+        sanitized = sanitized_jac_toml(base, provisioned_database);
+        (fat, fat_explicit) = fat_bundle_setting(project_dir);
+        if fat {
+            try {
+                _vendor_stage(staged, sanitized, pod_binary);
+            } except Exception as exc {
+                if fat_explicit {
+                    raise;
+                }
+
+                shutil.rmtree(str(staged / "_vendor"), ignore_errors=True);
+                logger.warning(
+                    f"Fat bundle vendoring failed; shipping a thin bundle "
+                    f"(pods will install python deps from PyPI at boot). "
+                    f"Set [scale] fat_bundle = true to make this fatal. {exc}"
+                );
+            }
+        }
         buf = io.BytesIO();
         (tar, gz) = open_det_tar(buf);
         try {
@@ -268,7 +345,23 @@ def pack_jab(project_dir: str, provisioned_database: str, pod_binary: bytes) -> 
                 logger.info(
                     f"Sealed {count} precompiled app-module artifacts into the .jab."
                 );
-                sanitized = sanitized_jac_toml(base, provisioned_database);
+                ven = staged / "_vendor";
+                if ven.is_dir() {
+                    wheel_count = 0;
+                    for path in sorted(ven.rglob("*")) {
+                        if path.is_file() {
+                            rel = path.relative_to(staged);
+                            tar.add(str(path), arcname=str(rel), filter=det_tar_member);
+                            if path.suffix == ".whl" {
+                                wheel_count += 1;
+                            }
+                        }
+                    }
+                    logger.info(
+                        f"Fat bundle: vendored {wheel_count} wheel(s) into the "
+                        f".jab; pods install python deps offline."
+                    );
+                }
                 if sanitized is not None {
                     data = sanitized.encode("utf-8");
                     info = tarfile.TarInfo(name="jac.toml");
