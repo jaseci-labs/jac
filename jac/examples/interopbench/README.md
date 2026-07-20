@@ -1,14 +1,65 @@
 # interopbench
 
-`interopbench` measures Jac's marshalled cross-codespace boundaries. The
-runnable slice covers both mixed-JIT scalar directions and full-native value
-views: `sv → na` calls, `sv → na → sv` inverse callbacks, and zero-copy
-`NativeListView` / `NativeStructView` consumption. Later cells remain
-design-only in the repository-level `INTEROP_BENCH.md` until their phase
-acceptance gates pass.
+Benchmark suite for Jac's marshalled cross-codespace boundaries. Two
+experiment families share one tree, one measurement discipline, and one
+differential-identity oracle per cell:
+
+| family | prefix | harness | what it measures |
+|---|---|---|---|
+| native bridges | `iop_*` | `harness/measure.jac` | mixed-JIT `sv↔na`, C FFI, zero-copy views |
+| cross-runtime | `xop_*` | `harness/xbench.jac` | loopback RPC, generated clients, wasm hosts |
+
+Kernels print a deterministic digest on stdout plus one `ns=<wall ns>` timing
+line and typed `m:<key>=<value>` metrics. Byte-identical digests across each
+cell's oracle group are the executable witness of boundary correctness; timing
+values never gate CI.
 
 Do not add a `jac.toml` here. The repository-root project configuration keeps
 commands on the in-tree compiler.
+
+## Part 1: native-bridge kernels (`iop_*`)
+
+Mixed-JIT scalar cells (`iop_call`, `iop_cb`, `iop_symmetric`), the
+full-native view consumer (`iop_view` via `harness/view_driver.jac`), and
+optional C-ABI fixtures (`iop_ffi_*`, requires `cc` for struct/vtable cells).
+
+Read paired variants for boundary cost:
+
+- `iop_call`: `free` vs `bridge` (`sv → na`, work in native)
+- `iop_cb`: `free` vs `bridge` (`sv → na → sv` callback)
+- `iop_symmetric`: `sv_local` vs `sv_to_na` and `na_local` vs `na_to_sv`
+  (matched caller/callee roles, work always on the callee)
+- `iop_view`: `materialised` vs `view` (explicit copy vs zero-copy views)
+
+## Part 2: cross-runtime kernels (`xop_*`)
+
+Live loopback hosts only (no NIC egress). Each cell compares in-process
+dispatch against a generated client, RPC, or wasm adapter:
+
+- `xop_svc_split`: direct billing dispatch vs `jac start` microservice RPC
+- `xop_feed`: in-process provider vs generated Node client
+- `xop_wasm_call`: native driver vs wasm32 export under Node
+
+## Running
+
+From this directory (`jac/examples/interopbench`; the dev-mode `jac` reroutes
+to the in-repo compiler anywhere inside the repo):
+
+    ./run_bridges.sh            # family 1: identity gate + measurements + audit
+    ./run_xruntime.sh [--quick] # family 2: identity gate + measurements
+    ./run_all.sh                # both families
+    ./ci_bridges.sh             # fast native-bridge gate only (small sizes)
+    ./ci_xruntime.sh            # fast cross-runtime gate only (small sizes)
+
+Outputs land in `results/` (gitignored): `bridges_results.json`,
+`interop_audit.json`, and `xruntime_results.json`.
+
+The native-bridge kernels double as compiler regression tests:
+`tests/compiler/passes/native/test_interopbench_bridges.jac` compiles and
+runs every dependency-light cell at small sizes and asserts digest identity.
+
+Later cells remain design-only in the repository-level `INTEROP_BENCH.md`
+until their phase acceptance gates pass.
 
 ## Enabled-cell catalog
 
@@ -25,8 +76,8 @@ not enabled merely because it appears in the design document.
 | command adapter | `mixed_jit_jac_run` in `harness/measure.jac` |
 | exact command | `<sys.executable> -m jaclang run <absolute>/kernels/iop_call.jac <variant> <work> <calls>` |
 | direct commands | `jac run kernels/iop_call.jac free 100 10`; `jac run kernels/iop_call.jac bridge 100 10` |
-| small args | `work=100`, `calls=10` |
-| default args | `work=1000`, `calls=100` |
+| small args | `work=200`, `calls=20` |
+| default args | `work=5000`, `calls=500` |
 | timing owner | Kernel, using `time.perf_counter_ns()` after one same-variant warm-up call |
 | prerequisites | In-repository Jac runtime and native JIT support only; no C compiler, GNU time, NumPy, Node, browser, or live server |
 | reference twin | `free` in the same source, calling `sv_checksum` over the same seeds, work, call count, order, and checksum reduction |
@@ -49,8 +100,8 @@ not enabled merely because it appears in the design document.
 | command adapter | `mixed_jit_jac_run` in `harness/measure.jac` |
 | exact command | `<sys.executable> -m jaclang run <absolute>/kernels/iop_cb.jac <variant> <work> <calls>` |
 | direct commands | `jac run kernels/iop_cb.jac free 100 10`; `jac run kernels/iop_cb.jac bridge 100 10` |
-| small args | `work=100`, `calls=10` |
-| default args | `work=1000`, `calls=100` |
+| small args | `work=200`, `calls=20` |
+| default args | `work=5000`, `calls=500` |
 | timing owner | Kernel, using `time.perf_counter_ns()` after one same-variant warm-up callback |
 | prerequisites | In-repository Jac runtime and native JIT support only; no C compiler, GNU time, NumPy, Node, browser, or live server |
 | reference twin | `free` in the same source, calling `sv_direct_checksum` over the same seeds, work, callback count, order, and checksum reduction |
@@ -63,6 +114,30 @@ not enabled merely because it appears in the design document.
 | manifest audit | Exact imports: `sv_callback_checksum`; exact exports: `native_invoke_callback`; `sv_direct_checksum` has no native binding |
 | RSS | Not recorded in Phase 2; result cells explicitly use `rss_scope: "not_recorded"` |
 
+### `iop_symmetric`
+
+| field | contract |
+|---|---|
+| scenario | Matched sv↔na scalar calls where the callee always executes the same LCG work once per call |
+| variants | `sv_local` (sv caller, sv callee), `sv_to_na` (sv caller, na callee), `na_local` (na caller, na callee), `na_to_sv` (na caller, sv callee) |
+| source/roles | `kernels/iop_symmetric.jac`; `sv_lcg` owns the binding-free server implementation, `native_lcg` owns the native implementation, and `run_na_local` / `run_na_to_sv` own the native-side outer loops |
+| command adapter | `mixed_jit_jac_run` in `harness/measure.jac` |
+| exact command | `<sys.executable> -m jaclang run <absolute>/kernels/iop_symmetric.jac <variant> <work> <calls>` |
+| direct commands | `jac run kernels/iop_symmetric.jac sv_local 100 10`; `jac run kernels/iop_symmetric.jac na_to_sv 100 10` |
+| small args | `work=200`, `calls=20` |
+| default args | `work=5000`, `calls=500` |
+| timing owner | Kernel, using `time.perf_counter_ns()` after five same-variant warm-up calls |
+| prerequisites | In-repository Jac runtime and native JIT support only |
+| reference twins | Compare `sv_local` vs `sv_to_na` for sv→na overhead and `na_local` vs `na_to_sv` for na→sv overhead |
+| measured paths | `sv_to_na` crosses once per call with work in na; `na_to_sv` crosses once per call with work in sv |
+| canonical digest | Exactly one `symmetric:<checksum>` line |
+| timing output | Exactly one `ns=<integer>` line |
+| metric keys | Exactly one `m:per_call_ns=<integer>` line |
+| reset rule | No persistent state; every process invocation reconstructs all scalar state from fixed call-number seeds |
+| oracle | Require byte identity across all four variants |
+| manifest audit | Exact imports: `sv_lcg`; exact exports: `native_lcg`, `run_na_local`, `run_na_to_sv` |
+| RSS | Not recorded; result cells use `rss_scope: "not_recorded"` |
+
 ### `iop_view`
 
 | field | contract |
@@ -74,7 +149,7 @@ not enabled merely because it appears in the design document.
 | exact command | `<sys.executable> -m jaclang run <absolute>/harness/view_driver.jac <variant> <count>` |
 | direct commands | `jac run harness/view_driver.jac materialised 17`; `jac run harness/view_driver.jac view 17` |
 | acceptance args | `empty=0`, `one=1`, `small=17` |
-| default args | `count=1000` |
+| default args | `count=5000` |
 | timing owner | Driver, using `time.perf_counter_ns()` after wrapper activation and one producer warm-up; native-view checksum and materialise-plus-copy-checksum scopes are timed separately |
 | prerequisites | In-repository Jac runtime, native JIT support, and the existing `jaclang.jac0core.native_accel` / `native_marshal` wrapper path only |
 | reference twin | `materialised`, checksumming ordinary `list[int]` and `list[tuple[int, int]]` copied from the same native result |
@@ -146,16 +221,7 @@ gate CI.
 `CFUNCTYPE`, and callback-registration markers, and confirms each direct-`sv`
 baseline symbol has no native binding. It does not report a generic stub count.
 
-## Running
-
-From this directory:
-
-```bash
-./ci.sh
-./run_bridges.sh
-./run_all.sh
-jac run harness/audit.jac
-```
+## Running (harness details)
 
 Direct harness use:
 
@@ -163,6 +229,10 @@ Direct harness use:
 jac run harness/measure.jac \
   --kernels iop_call,iop_cb --variants free,bridge --sizes small \
   --invocations 2 --out /tmp/interopbench.json
+jac run harness/measure.jac \
+  --kernels iop_symmetric \
+  --variants sv_local,sv_to_na,na_local,na_to_sv --sizes small \
+  --invocations 2 --out /tmp/interop_symmetric.json
 jac run harness/measure.jac \
   --kernels iop_view --variants materialised,view --sizes small \
   --invocations 2 --out /tmp/interop_view.json
@@ -173,16 +243,15 @@ Omit `--variants` when selecting cells with different oracle groups (or when
 running the default catalog); the harness then uses each cell's declared
 variants.
 
-`ci.sh` runs one small invocation per scalar variant, exercises `iop_view` at
-empty, one-element, and small-list sizes, and then runs the named mixed-JIT
-manifest/wrapper audit. It does not reimplement output parsing or structural
-checks in shell. `run_bridges.sh` runs that gate, writes default
-measurements to `results/bridges_results.json`, and writes the structural audit
-to `results/interop_audit.json`. `run_all.sh` currently invokes only the
-implemented native-bridge family; it does not claim a cross-runtime result.
+`ci_bridges.sh` delegates identity checks to `harness/measure.jac` at small
+sizes and then runs the named mixed-JIT manifest audit. It does not
+reimplement output parsing or structural checks in shell. `run_bridges.sh`
+runs that gate, writes default measurements to `results/bridges_results.json`,
+and writes the structural audit to `results/interop_audit.json`.
+`run_xruntime.sh` mirrors the pattern for `results/xruntime_results.json`.
 
 From the repository root, the compiler regression gate is:
 
 ```bash
-jac test jac/tests/compiler/passes/native/test_interop_differential.jac
+jac test jac/tests/compiler/passes/native/test_interopbench_bridges.jac
 ```

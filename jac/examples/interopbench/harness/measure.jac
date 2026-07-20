@@ -1,26 +1,54 @@
 """Measure enabled native-bridge interopbench cells.
 
 Usage:
-  jac run harness/measure.jac [--kernels iop_call,iop_cb,iop_view]
+  jac run harness/measure.jac [--kernels iop_call,iop_cb,iop_symmetric,iop_view]
       [--variants <exact-oracle-group>] [--sizes empty|one|small|default]
       [--invocations N] [--out results/bridges_results.json]
 
 Omit --variants to use each selected cell's catalogued oracle group.
 """
 
+import shutil;
+import subprocess;
 import sys;
 import from pathlib { Path }
-import from common { aggregate_runs, compare_oracle, run_command, write_results, }
+import from common {
+    aggregate_runs,
+    compare_oracle,
+    DEFAULT_INVOCATIONS,
+    run_command,
+    SIZE_DEFAULT_CHURN,
+    SIZE_SMALL_CHURN,
+    SIZE_VIEW_DEFAULT,
+    write_results,
+}
 
 
 glob BENCH = Path(str(__file__)).resolve().parent.parent,
+     CLIB_SOURCE = BENCH / "kernels" / "support" / "interopbench.c",
+     CLIB_BINARY = BENCH / "bin" / "libinteropbench.so",
+     CLIB_EXPORTED_SYMBOLS = [
+         "ib_lcg_step",
+         "ib_vec4_make",
+         "ib_vec4_sum",
+         "ib_vec12_make",
+         "ib_vec12_sum",
+         "ib_vec16_make",
+         "ib_vec16_sum",
+         "ib_vec24_make",
+         "ib_vec24_sum",
+         "ib_vec44_make",
+         "ib_vec44_sum",
+         "ib_invoke_event",
+
+     ],
      CATALOG: dict[str, dict] = {
          "iop_call": {
              "scenario": "scalar checksum call churn",
              "source": "kernels/iop_call.jac",
              "variants": ["free", "bridge"],
              "reference": "free",
-             "sizes": {"small": ["100", "10"], "default": ["1000", "100"],},
+             "sizes": {"small": SIZE_SMALL_CHURN, "default": SIZE_DEFAULT_CHURN,},
              "metrics": ["per_call_ns"],
              "command_adapter": "mixed_jit_jac_run",
              "timing_source": "kernel_perf_counter_ns",
@@ -32,8 +60,20 @@ glob BENCH = Path(str(__file__)).resolve().parent.parent,
              "source": "kernels/iop_cb.jac",
              "variants": ["free", "bridge"],
              "reference": "free",
-             "sizes": {"small": ["100", "10"], "default": ["1000", "100"],},
+             "sizes": {"small": SIZE_SMALL_CHURN, "default": SIZE_DEFAULT_CHURN,},
              "metrics": ["invoke_ns"],
+             "command_adapter": "mixed_jit_jac_run",
+             "timing_source": "kernel_perf_counter_ns",
+             "rss_scope": "not_recorded",
+
+         },
+         "iop_symmetric": {
+             "scenario": "symmetric sv↔na scalar calls with callee-side LCG work",
+             "source": "kernels/iop_symmetric.jac",
+             "variants": ["sv_local", "sv_to_na", "na_local", "na_to_sv"],
+             "reference": "sv_local",
+             "sizes": {"small": SIZE_SMALL_CHURN, "default": SIZE_DEFAULT_CHURN,},
+             "metrics": ["per_call_ns"],
              "command_adapter": "mixed_jit_jac_run",
              "timing_source": "kernel_perf_counter_ns",
              "rss_scope": "not_recorded",
@@ -49,12 +89,66 @@ glob BENCH = Path(str(__file__)).resolve().parent.parent,
                  "empty": ["0"],
                  "one": ["1"],
                  "small": ["17"],
-                 "default": ["1000"],
+                 "default": SIZE_VIEW_DEFAULT,
 
              },
              "metrics": ["view_ns", "materialise_ns"],
              "command_adapter": "full_native_view_driver",
              "timing_source": "driver_perf_counter_ns",
+             "rss_scope": "not_recorded",
+
+         },
+         "iop_ffi_scalar": {
+             "scenario": "libm sqrt extern call churn over perfect-square inputs",
+             "source": "kernels/iop_ffi_scalar.na.jac",
+             "variants": ["ref", "ffi"],
+             "reference": "ref",
+             "sizes": {
+                 "one": ["1", "1"],
+                 "small": SIZE_SMALL_CHURN,
+                 "default": SIZE_DEFAULT_CHURN,
+
+             },
+             "metrics": ["per_call_ns"],
+             "command_adapter": "clib_jit_jac_run",
+             "requires_clib": False,
+             "timing_source": "kernel_perf_counter_ns",
+             "rss_scope": "not_recorded",
+
+         },
+         "iop_ffi_struct": {
+             "scenario": "C ABI struct-by-value churn across INTEGER and MEMORY classes",
+             "source": "kernels/iop_ffi_struct.na.jac",
+             "variants": ["ref", "ffi"],
+             "reference": "ref",
+             "sizes": {
+                 "one": ["1", "1"],
+                 "small": SIZE_SMALL_CHURN,
+                 "default": SIZE_DEFAULT_CHURN,
+
+             },
+             "metrics": ["per_call_ns"],
+             "command_adapter": "clib_jit_jac_run",
+             "requires_clib": True,
+             "timing_source": "kernel_perf_counter_ns",
+             "rss_scope": "not_recorded",
+
+         },
+         "iop_ffi_vtable": {
+             "scenario": "C-invoked Jac callback through a __clibcb trampoline",
+             "source": "kernels/iop_ffi_vtable.na.jac",
+             "variants": ["ref", "ffi"],
+             "reference": "ref",
+             "sizes": {
+                 "one": ["1", "1"],
+                 "small": SIZE_SMALL_CHURN,
+                 "default": SIZE_DEFAULT_CHURN,
+
+             },
+             "metrics": ["trampoline_call_ns"],
+             "command_adapter": "clib_jit_jac_run",
+             "requires_clib": True,
+             "timing_source": "kernel_perf_counter_ns",
              "rss_scope": "not_recorded",
 
          },
@@ -65,10 +159,10 @@ glob BENCH = Path(str(__file__)).resolve().parent.parent,
 """Parse the benchmark CLI."""
 def parse_opts(argv: list[str]) -> dict[str, str | int] {
     opts: dict[str, str | int] = {
-        "kernels": "iop_call,iop_cb,iop_view",
+        "kernels": "iop_call,iop_cb,iop_symmetric,iop_view,iop_ffi_scalar,iop_ffi_struct,iop_ffi_vtable",
         "variants": "",
         "sizes": "default",
-        "invocations": 10,
+        "invocations": DEFAULT_INVOCATIONS,
         "out": str(BENCH / "results" / "bridges_results.json"),
 
     };
@@ -91,11 +185,76 @@ def parse_opts(argv: list[str]) -> dict[str, str | int] {
 }
 
 
+"""Build the Phase 4 C fixture into bin/ and verify its exported symbols.
+
+The path is CWD-relative in the kernel source (`bin/libinteropbench.so`),
+so the harness changes into the bench directory before invoking any
+FFI kernel. We build deterministically: same source, same flags, same
+output path, overwritten in place. Errors are actionable: missing cc,
+failed compile, or missing symbols each raise a named message.
+
+Linux x86_64 is the only runtime platform this adapter claims; the
+failure mode on any other platform is a clear "cc unavailable" or
+"build failed" message rather than a silent skip."""
+def ensure_clib {
+    if not CLIB_SOURCE.exists() {
+        raise RuntimeError(f"C fixture source missing: {CLIB_SOURCE}");
+    }
+    cc = shutil.which("cc") or shutil.which("gcc");
+    if not cc {
+        raise RuntimeError(
+            "no C compiler found on PATH (cc/gcc); required for iop_ffi_* kernels"
+        );
+    }
+    CLIB_BINARY.parent.mkdir(parents=True, exist_ok=True);
+    build = subprocess.run(
+        [cc, "-shared", "-fPIC", "-O2", "-o", str(CLIB_BINARY), str(CLIB_SOURCE)],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    );
+    if build.returncode != 0 {
+        raise RuntimeError(
+            f"cc failed to build {CLIB_BINARY}\n"
+            f"stdout:\n{build.stdout}\nstderr:\n{build.stderr}"
+        );
+    }
+    verify = subprocess.run(
+        ["nm", "-D", "--defined-only", str(CLIB_BINARY)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    );
+    if verify.returncode != 0 {
+        raise RuntimeError(
+            f"nm failed to inspect {CLIB_BINARY}\n"
+            f"stdout:\n{verify.stdout}\nstderr:\n{verify.stderr}"
+        );
+    }
+    exported = {
+        line.split()[-1]
+        for line in verify.stdout.splitlines()
+        if " T " in line
+    };
+    missing = [
+        sym
+        for sym in CLIB_EXPORTED_SYMBOLS
+        if sym not in exported
+    ];
+    if missing {
+        raise RuntimeError(
+            f"{CLIB_BINARY} missing expected exports: {missing}; "
+            f"got {sorted(exported)}"
+        );
+    }
+}
+
+
 """Build the exact command for one catalogued adapter."""
 def build_command(spec: dict[str, object], variant: str, args: list[str]) -> list[str] {
     adapter = spec["command_adapter"] as str;
     source = spec["source"] as str;
-    if adapter == "mixed_jit_jac_run" {
+    if adapter in ("mixed_jit_jac_run", "clib_jit_jac_run") {
         entry = source;
     } elif adapter == "full_native_view_driver" {
         entry = spec["driver"] as str;
@@ -119,7 +278,7 @@ def measure_variant(
     spec: dict[str, object], variant: str, args: list[str], count: int
 ) -> dict[str, object] {
     command = build_command(spec, variant, args);
-    runs = [run_command(command, 300) for _ in range(count)];
+    runs = [run_command(command, 300, cwd=str(BENCH)) for _ in range(count)];
     cell = aggregate_runs(runs) as dict[str, object];
     actual_metrics = set((cell["metrics"] as dict[str, int]).keys());
     expected_metrics = set(spec["metrics"] as list[str]);
@@ -160,6 +319,10 @@ def main(opts: dict[str, str | int]) {
         raise ValueError("--kernels must select at least one kernel");
     }
     invocations = opts["invocations"] as int;
+    needs_clib = any((CATALOG[k].get("requires_clib", False) is True) for k in kernels);
+    if needs_clib {
+        ensure_clib();
+    }
     cells: dict[str, dict] = {};
     for kernel in kernels {
         if kernel not in CATALOG {

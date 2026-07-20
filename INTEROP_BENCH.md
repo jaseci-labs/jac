@@ -181,7 +181,7 @@ compiler anywhere inside the repo; do not add a nested `jac.toml`):
     ./run_bridges.sh             # family 1: identity gate + measurements (+ enabled audits)
     ./run_xruntime.sh [--quick]  # family 2: server/wasm host lifecycle + measurements
     ./run_all.sh                 # both families
-    ./ci.sh                      # fast differential-identity gate (small sizes)
+    ./ci_bridges.sh              # fast differential-identity gate (small sizes)
 
 Outputs land in `results/` (gitignored): `bridges_results.json`,
 `xruntime_results.json` (median ns, labelled RSS scope, per-`m:` metric
@@ -194,16 +194,18 @@ medians, digest per kernel × variant), and - after phase 2 - `interop_audit.jso
 interopbench/
   README.md
   .gitignore               # bin/ results/
-  run_bridges.sh           # family 1: ci.sh + measure.jac + enabled audits
-  run_xruntime.sh          # family 2: xbench.jac (host lifecycle)
+  run_bridges.sh           # family 1: ci_bridges.sh + measure.jac + enabled audits
+  run_xruntime.sh          # family 2: ci_xruntime.sh + xbench.jac (host lifecycle)
   run_all.sh               # umbrella
-  ci.sh                    # fast differential-identity gate (small sizes)
+  ci_bridges.sh            # fast family-1 differential-identity gate (small sizes)
+  ci_xruntime.sh           # fast family-2 differential-identity gate (small sizes)
   kernels/
     base_call.jac
     base_pyimport.jac
     iop_call.jac           # na {} block + exact sv reference
     iop_view.na.jac        # full native producer; driven by view_driver.jac
     iop_cb.jac
+    iop_symmetric.jac      # matched sv↔na caller/callee pair
     support/interopbench.c # deterministic struct/callback implementation
     iop_ffi_scalar.na.jac
     iop_ffi_struct.na.jac
@@ -241,7 +243,7 @@ the driver; client RSS is recorded separately, while server RSS is either
 sampled by PID and labelled or omitted. Host startup is excluded from steady-
 state timing and state/cache/auth are reset between variants.
 
-## CI gate (`ci.sh`)
+## CI gate (`ci_bridges.sh` / `ci_xruntime.sh`)
 
 Mirrors `ownbench/ci_own.sh` in policy, not implementation: enabled kernels,
 small sizes, canonical digest identity across each declared pair, and named
@@ -258,7 +260,7 @@ provider; otherwise `xbench.jac` starts and tears down one host per scenario.
 
 Mirrors ownbench's doubling as a compiler regression test:
 
-- `jac/tests/compiler/passes/native/test_interop_differential.jac` starts
+- `jac/tests/compiler/passes/native/test_interopbench_bridges.jac` starts
   with the mixed-JIT scalar pair, invokes both paths through
   `sys.executable -m jaclang run`, and asserts canonical digest identity.
   It has no GNU-time, NumPy, C compiler, Node, server, or wasm prerequisite.
@@ -344,13 +346,13 @@ without naming files, args, and expected output shape.
 jac/examples/interopbench/
   README.md
   .gitignore
-  ci.sh
+  ci_bridges.sh
   run_bridges.sh
   run_all.sh
   harness/common.jac
   harness/measure.jac
   kernels/iop_call.jac
-jac/tests/compiler/passes/native/test_interop_differential.jac
+jac/tests/compiler/passes/native/test_interopbench_bridges.jac
 ```
 
 `iop_call.jac` contains both a plain-`sv` scalar checksum and the same
@@ -361,7 +363,7 @@ NumPy, compute a per-byte slope, invoke a C compiler, or start a host.
 
 `common.jac` is the deep module: strict output parser, subprocess result,
 aggregation, identity comparison, versioned JSON. `measure.jac` supplies the
-cell catalog and mixed-JIT command adapter. `ci.sh` delegates to it with
+cell catalog and mixed-JIT command adapter. `ci_bridges.sh` delegates to it with
 small args and one invocation; shell does not duplicate parsing or kernel
 arguments. `run_bridges.sh` runs the gate then writes default measurements.
 `run_all.sh` calls only implemented families and must not report an empty
@@ -376,7 +378,7 @@ jac run jac/examples/interopbench/kernels/iop_call.jac bridge 100 10
 jac run jac/examples/interopbench/harness/measure.jac \
   --kernels iop_call --variants free,bridge --sizes small \
   --invocations 2 --out /tmp/interopbench.json
-jac test jac/tests/compiler/passes/native/test_interop_differential.jac
+jac test jac/tests/compiler/passes/native/test_interopbench_bridges.jac
 ```
 
 **Accept when:** filtered outputs are the same non-empty digest; malformed or

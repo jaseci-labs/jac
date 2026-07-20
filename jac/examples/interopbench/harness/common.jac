@@ -7,6 +7,16 @@ import subprocess;
 import from pathlib { Path }
 
 
+glob DEFAULT_INVOCATIONS: int = 30,
+     WARMUP_CALLS: int = 5,
+     SIZE_SMALL_CHURN: list[str] = ["200", "20"],
+     SIZE_DEFAULT_CHURN: list[str] = ["5000", "500"],
+     SIZE_VIEW_DEFAULT: list[str] = ["5000"],
+     DEFAULT_WORK: int = 5000,
+     DEFAULT_CALLS: int = 500,
+     DEFAULT_VIEW_COUNT: int = 5000;
+
+
 """Parse one kernel invocation and enforce the canonical output contract."""
 def parse_output(stdout: str) -> dict {
     timing: int | None = None;
@@ -66,10 +76,26 @@ def parse_output(stdout: str) -> dict {
 
 
 """Run one adapter command and parse its output."""
-def run_command(command: list[str], timeout_s: int) -> dict {
+def run_command(
+    command: list[str],
+    timeout_s: int,
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
+) -> dict {
+    run_env = None;
+    if env is not None {
+        import os;
+        run_env = os.environ.copy();
+        run_env.update(env);
+    }
     try {
         result = subprocess.run(
-            command, capture_output=True, text=True, timeout=timeout_s,
+            command,
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+            cwd=cwd,
+            env=run_env,
         );
     } except subprocess.TimeoutExpired {
         raise RuntimeError(
