@@ -260,6 +260,67 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$rc"
 
+      - name: Boot the ejected app (needs the serve deps)
+        working-directory: jac
+        # test_eject_boot.jac boots the generated FastAPI app in-process through
+        # starlette's TestClient, so it needs fastapi + httpx. The step above runs
+        # under a scratch HOME, which hides globally-installed packages, so the
+        # file importorskip's itself there and is really exercised here. Guard
+        # against that skip becoming permanent: assert the tests actually ran.
+        # Pin mirrors jac/jaclang/project/capabilities.jac.
+        run: |
+          set -uxo pipefail
+          jac install "fastapi>=0.121.3,<0.122.0" "httpx>=0.28.1,<1.0.0" --global
+          rc=0
+          jac test tests/project/test_eject_boot.jac | tee /tmp/eject_boot.log || rc=$?
+          if ! grep -qE '[0-9]+ passed' /tmp/eject_boot.log; then
+            echo "::error::eject boot tests did not run (fastapi/httpx missing?); they must not silently skip here"
+            exit 1
+          fi
+          exit "$rc"
+
+      - name: Eject an example and boot it from a clean venv
+        working-directory: jac
+        # The harness above imports the ejected backend in-process, where jaclang
+        # is already in sys.modules -- so it never exercises the runtime vendored
+        # into backend/. A venv holding nothing but the generated requirements.txt
+        # does, and it is the only check that the ejected tree stands on its own.
+        # `jac build --as source` exits 0 on output that cannot boot, so emitting
+        # the tree proves nothing: this boots it and drives it over HTTP.
+        run: |
+          set -euxo pipefail
+          # -n skips the type-check gate: this step is about whether the ejected
+          # tree boots, and the examples are not typecheck-clean (todo_app trips
+          # E1115 on main). Coupling the eject smoke to that is a false failure.
+          (cd examples/todo_app && jac build --as source -n -o /tmp/ejected)
+
+          python3 -m venv /tmp/ejected-venv
+          /tmp/ejected-venv/bin/pip install -q -r /tmp/ejected/backend/requirements.txt
+
+          (cd /tmp/ejected/backend && /tmp/ejected-venv/bin/uvicorn main:app --port 8099 \
+            > /tmp/ejected-app.log 2>&1 &)
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8099/__health >/dev/null && break
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:8099/__health >/dev/null \
+            || { echo "::error::ejected app did not come up"; cat /tmp/ejected-app.log; exit 1; }
+
+          BASE=http://127.0.0.1:8099
+          curl -sf -X POST $BASE/user/register -H 'content-type: application/json' \
+            -d '{"username":"ci@example.com","password":"pw123456"}' >/dev/null
+          TOKEN=$(curl -sf -X POST $BASE/user/login -H 'content-type: application/json' \
+            -d '{"username":"ci@example.com","password":"pw123456"}' \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["token"])')
+          test -n "$TOKEN"
+
+          # A walker must actually run and persist, not merely be routable.
+          curl -sf -X POST $BASE/walker/create_todo -H 'content-type: application/json' \
+            -H "Authorization: Bearer $TOKEN" -d '{"text":"from ci"}' >/dev/null
+          curl -sf -X POST $BASE/walker/read_todos -H 'content-type: application/json' \
+            -H "Authorization: Bearer $TOKEN" -d '{}' | grep -q "from ci" \
+            || { echo "::error::walker ran but did not persist/report the todo"; exit 1; }
+
   # Required check: no needs on build-jac (a skipped required check would
   # satisfy branch protection); it restores the same binary cache itself.
   jac-check:
