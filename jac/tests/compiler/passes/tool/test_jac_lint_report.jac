@@ -14,22 +14,26 @@ import from jaclang.compiler.passes.tool.jac_auto_lint_pass {
     JacAutoLintPass,
     JacLintCheckPass
 }
+import from jaclang.project.config { JacConfig, CheckConfig, LintConfig, set_config }
 
-def _warn_keys(prog: JacProgram) -> list[str] {
+def _diag_keys(prog: JacProgram) -> list[str] {
     keys: list[str] = [];
+    for e in (prog.errors_had or []) {
+        keys.append(str(e));
+    }
     for w in (prog.warnings_had or []) {
         keys.append(str(w));
     }
     return sorted(keys);
 }
 
-def _full_pass_warnings(source: str, path: str) -> list[str] {
+def _full_pass_diags(source: str, path: str) -> list[str] {
     (p, m) = JacCompiler._prepare_tool_program(source, path);
     if m is None {
         return [];
     }
     JacAutoLintPass(ir_in=m, prog=p).ir_out;
-    return _warn_keys(p);
+    return _diag_keys(p);
 }
 
 def _write_tmp(src: str) -> str {
@@ -47,7 +51,7 @@ test "lint report scheduler uses JacLintCheckPass" {
     assert sched[0] is JacLintCheckPass;
 }
 
-test "lint report path preserves every warning the mutation pass emits" {
+test "lint report path preserves every diagnostic the mutation pass emits" {
     sources = [
         # W3020 unnecessary pass in non-empty body
         "obj Foo {\n    has x: int = 5;\n    pass;\n}\n",
@@ -59,16 +63,38 @@ test "lint report path preserves every warning the mutation pass emits" {
         "with entry {\n    x = 5;\n    if x is 5 {\n        print(\"five\");\n    }\n}\n",
         # W3024 repeated condition in if/elif chain
         "with entry {\n    x = 5;\n    if x > 0 {\n        print(\"p\");\n    } elif x > 0 {\n        print(\"q\");\n    }\n}\n",
+        # W3005 empty parens on zero-arg function
+        "def no_params() {\n    return;\n}\n",
+        # W3006 unnecessary keyword escape on a non-reserved name
+        "with entry {\n    `myvar = 5;\n}\n",
+        # W3007 hasattr in boolean expression can become null-safe access
+        "obj Instance {\n    has value: int = 1;\n}\n"
+        "with entry {\n    instance = Instance();\n"
+        "    ok = hasattr(instance, \"value\") and instance.value > 0;\n}\n",
+        # E3012 bare print() (opt-in rule; enabled via select = [\"all\"] below)
+        "def greet(name: str) -> None {\n    print(\"hi \" + name);\n}\n",
 
     ];
-    for src in sources {
-        path = _write_tmp(src);
-        prog = JacProgram.jac_file_linter(path);
-        rep_keys = _warn_keys(prog);
-        full_keys = _full_pass_warnings(src, path);
-        assert rep_keys == full_keys , (
-            f"warning set diverged for {path}: " f"report={rep_keys} full={full_keys}"
-        );
-        os.remove(path);
+
+    config = JacConfig();
+    config.check = CheckConfig(lint=LintConfig(select=["all"]));
+    set_config(config);
+    try {
+        for src in sources {
+            path = _write_tmp(src);
+            try {
+                prog = JacProgram.jac_file_linter(path);
+                rep_keys = _diag_keys(prog);
+                full_keys = _full_pass_diags(src, path);
+                assert rep_keys == full_keys , (
+                    f"diagnostic set diverged for {path}: "
+                    f"report={rep_keys} full={full_keys}"
+                );
+            } finally {
+                os.remove(path);
+            }
+        }
+    } finally {
+        set_config(None);
     }
 }

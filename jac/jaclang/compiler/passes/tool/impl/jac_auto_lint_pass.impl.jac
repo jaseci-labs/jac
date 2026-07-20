@@ -32,7 +32,7 @@ impl JacAutoLintPass.exit_ability(ability_node: uni.Ability) -> None {
     if not self.report_only and self._pending_setters {
         self._pending_setters.pop();
     }
-    if not self.report_only and not self._is_suppressed(W3005) {
+    if not self._is_suppressed(W3005) {
         sig = ability_node.signature;
         if isinstance(sig, uni.FuncSignature) {
             self._remove_empty_parens_from_sig(ability_node, sig, "signature");
@@ -195,7 +195,7 @@ impl JacAutoLintPass.enter_impl_def(nd: uni.ImplDef) -> None {
 }
 
 impl JacAutoLintPass.exit_impl_def(nd: uni.ImplDef) -> None {
-    if not self.lint_enabled or self.report_only or self._is_suppressed(W3005) {
+    if not self.lint_enabled or self._is_suppressed(W3005) {
         return;
     }
     spec = nd.spec;
@@ -597,7 +597,7 @@ impl JacAutoLintPass.enter_module(nd: uni.Module) -> None {
 }
 
 impl JacAutoLintPass.enter_name(nd: uni.Name) -> None {
-    if not self.lint_enabled or self.report_only {
+    if not self.lint_enabled {
         return;
     }
     if not nd.is_kwesc or isinstance(nd, uni.SpecialVarRef) {
@@ -608,7 +608,8 @@ impl JacAutoLintPass.enter_name(nd: uni.Name) -> None {
     reserved = jac_keywords | python_keywords;
     raw_value = nd.value[1:] if nd.value.startswith("`") else nd.value;
     if raw_value not in reserved
-    and self.emit(W3006, node_override=nd, name=raw_value) {
+    and self.emit(W3006, node_override=nd, name=raw_value)
+    and not self.report_only {
         nd.is_kwesc = False;
         if nd.name == Tok.KWESC_NAME {
             nd.name = Tok.NAME;
@@ -617,14 +618,19 @@ impl JacAutoLintPass.enter_name(nd: uni.Name) -> None {
 }
 
 impl JacAutoLintPass.enter_special_var_ref(nd: uni.SpecialVarRef) -> None {
-    if not self.lint_enabled or self.report_only {
+    if not self.lint_enabled {
         return;
     }
     if nd.orig.is_kwesc and self.emit(W3006, node_override=nd, name=nd.orig.value) {
-        nd.orig.is_kwesc = False;
-        if nd.orig.name == Tok.KWESC_NAME {
-            nd.orig.name = Tok.NAME;
+        if not self.report_only {
+            nd.orig.is_kwesc = False;
+            if nd.orig.name == Tok.KWESC_NAME {
+                nd.orig.name = Tok.NAME;
+            }
         }
+    }
+    if self.report_only {
+        return;
     }
     if nd.is_kwesc {
         nd.is_kwesc = False;
@@ -632,13 +638,15 @@ impl JacAutoLintPass.enter_special_var_ref(nd: uni.SpecialVarRef) -> None {
 }
 
 impl JacAutoLintPass.enter_builtin_type(nd: uni.BuiltinType) -> None {
-    if not self.lint_enabled or self.report_only {
+    if not self.lint_enabled {
         return;
     }
     if nd.is_kwesc and self.emit(W3006, node_override=nd, name=nd.value) {
-        nd.is_kwesc = False;
-        if nd.name == Tok.KWESC_NAME {
-            nd.name = Tok.NAME;
+        if not self.report_only {
+            nd.is_kwesc = False;
+            if nd.name == Tok.KWESC_NAME {
+                nd.name = Tok.NAME;
+            }
         }
     }
 }
@@ -871,6 +879,100 @@ impl JacAutoLintPass.exit_func_call(nd: uni.FuncCall) -> None {
         return;
     }
     self._check_no_print(nd);
+
+    if not self._is_suppressed(W3007) {
+        replacement = self._convert_hasattr_to_null_ok(nd);
+        if replacement is not None {
+            obj_expr = nd.params[0];
+            attr_expr = nd.params[1];
+            attr_name = self._extract_string_literal_value(attr_expr);
+
+            cfg_wrapper: uni.CfgExpr | None = None;
+            parent = nd.parent;
+            if isinstance(parent, uni.CfgExpr) {
+                cfg_wrapper = parent;
+                parent = parent.parent;
+            }
+            if parent is None {
+                return;
+            }
+
+            if isinstance(parent, uni.IfElseExpr) { } elif isinstance(
+                parent, uni.BoolExpr
+            ) {
+                if attr_name is None
+                or not self._bool_expr_has_matching_access(
+                    parent, nd, obj_expr, attr_name
+                ) {
+                    return;
+                }
+            } else {
+                return;
+            }
+            if not self.emit(W3007, node_override=nd) {
+                return;
+            }
+            if self.report_only {
+                return;
+            }
+            if cfg_wrapper is not None {
+                replacement.parent = cfg_wrapper;
+                cfg_wrapper.expr = replacement;
+                cfg_wrapper.kid = [replacement];
+                cfg_wrapper._invalidate_sub_node_tab();
+                if isinstance(parent, uni.IfElseExpr)
+                and parent.condition is cfg_wrapper
+                and attr_name is not None
+                and isinstance(parent.value.expr, uni.AtomTrailer)
+                and self._is_matching_attr_access(
+                    parent.value.expr, obj_expr, attr_name
+                ) {
+                    self._make_null_ok(parent.value.expr);
+                }
+                return;
+            }
+            replacement.parent = parent;
+            if isinstance(parent, uni.IfElseExpr) {
+                if parent.condition is nd {
+                    parent.condition = replacement;
+                    if attr_name is not None
+                    and isinstance(parent.value, uni.AtomTrailer) {
+                        if self._is_matching_attr_access(
+                            parent.value, obj_expr, attr_name
+                        ) {
+                            self._make_null_ok(parent.value);
+                        }
+                    }
+                } elif parent.value is nd {
+                    parent.value = replacement;
+                } elif parent.else_value is nd {
+                    parent.else_value = replacement;
+                }
+            } elif isinstance(parent, uni.BoolExpr) {
+                new_values: list[uni.Expr] = [];
+                for val in parent.values {
+                    if val is nd {
+                        new_values.append(replacement);
+                    } else {
+                        new_values.append(val);
+                    }
+                }
+                parent.values = new_values;
+            }
+            new_kids: list[uni.UniNode] = [];
+            for kid in parent.kid {
+                if kid is nd {
+                    new_kids.append(replacement);
+                } else {
+                    new_kids.append(kid);
+                }
+            }
+            parent.kid = new_kids;
+            parent._invalidate_sub_node_tab();
+            return;
+        }
+    }
+
     if self.report_only {
         return;
     }
@@ -889,87 +991,6 @@ impl JacAutoLintPass.exit_func_call(nd: uni.FuncCall) -> None {
             }
         }
     }
-    if self._is_suppressed(W3007) {
-        return;
-    }
-    replacement = self._convert_hasattr_to_null_ok(nd);
-    if replacement is None {
-        return;
-    }
-    obj_expr = nd.params[0];
-    attr_expr = nd.params[1];
-    attr_name = self._extract_string_literal_value(attr_expr);
-
-    cfg_wrapper: uni.CfgExpr | None = None;
-    parent = nd.parent;
-    if isinstance(parent, uni.CfgExpr) {
-        cfg_wrapper = parent;
-        parent = parent.parent;
-    }
-    if parent is None {
-        return;
-    }
-
-    if isinstance(parent, uni.IfElseExpr) { } elif isinstance(parent, uni.BoolExpr) {
-        if attr_name is None
-        or not self._bool_expr_has_matching_access(parent, nd, obj_expr, attr_name) {
-            return;
-        }
-    } else {
-        return;
-    }
-    if not self.emit(W3007, node_override=nd) {
-        return;
-    }
-    if cfg_wrapper is not None {
-        replacement.parent = cfg_wrapper;
-        cfg_wrapper.expr = replacement;
-        cfg_wrapper.kid = [replacement];
-        cfg_wrapper._invalidate_sub_node_tab();
-        if isinstance(parent, uni.IfElseExpr)
-        and parent.condition is cfg_wrapper
-        and attr_name is not None
-        and isinstance(parent.value.expr, uni.AtomTrailer)
-        and self._is_matching_attr_access(parent.value.expr, obj_expr, attr_name) {
-            self._make_null_ok(parent.value.expr);
-        }
-        return;
-    }
-    replacement.parent = parent;
-    if isinstance(parent, uni.IfElseExpr) {
-        if parent.condition is nd {
-            parent.condition = replacement;
-            if attr_name is not None and isinstance(parent.value, uni.AtomTrailer) {
-                if self._is_matching_attr_access(parent.value, obj_expr, attr_name) {
-                    self._make_null_ok(parent.value);
-                }
-            }
-        } elif parent.value is nd {
-            parent.value = replacement;
-        } elif parent.else_value is nd {
-            parent.else_value = replacement;
-        }
-    } elif isinstance(parent, uni.BoolExpr) {
-        new_values: list[uni.Expr] = [];
-        for val in parent.values {
-            if val is nd {
-                new_values.append(replacement);
-            } else {
-                new_values.append(val);
-            }
-        }
-        parent.values = new_values;
-    }
-    new_kids: list[uni.UniNode] = [];
-    for kid in parent.kid {
-        if kid is nd {
-            new_kids.append(replacement);
-        } else {
-            new_kids.append(kid);
-        }
-    }
-    parent.kid = new_kids;
-    parent._invalidate_sub_node_tab();
 }
 
 impl JacAutoLintPass._collect_atom_trailers(
@@ -1508,6 +1529,9 @@ impl JacAutoLintPass._remove_empty_parens_from_sig(
         if not self.emit(W3005, node_override=target_node) {
             return;
         }
+        if self.report_only {
+            return;
+        }
         setattr(target_node, sig_attr, None);
         new_kid: list[uni.UniNode] = [];
         for kid in target_node.kid {
@@ -1528,6 +1552,9 @@ impl JacAutoLintPass._remove_empty_parens_from_sig(
         if not self.emit(W3005, node_override=target_node) {
             return;
         }
+        if self.report_only {
+            return;
+        }
         new_kid: list[uni.UniNode] = [];
         for kid in sig.kid {
             if isinstance(kid, uni.Token) and kid.name in (Tok.LPAREN, Tok.RPAREN) {
@@ -1542,7 +1569,7 @@ impl JacAutoLintPass._remove_empty_parens_from_sig(
 }
 
 impl JacAutoLintPass._check_no_print(nd: uni.FuncCall) -> None {
-    if self.report_only or not isinstance(nd.target, uni.Name) {
+    if not isinstance(nd.target, uni.Name) {
         return;
     }
     if nd.target.value != "print" {
