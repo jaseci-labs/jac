@@ -181,6 +181,46 @@ def _relative_dep_specs(js: str) -> list[str] {
     return specs;
 }
 
+def _index_import_spec(from_rel: str) -> str {
+    import posixpath;
+    dirpart = posixpath.dirname(from_rel);
+    if not dirpart or dirpart == "." {
+        return "./index.js";
+    }
+    depth = 0;
+    for part in dirpart.split("/") {
+        if part {
+            depth += 1;
+        }
+    }
+    return ("../" * depth) + "index.js";
+}
+
+def _jac_runtime_import_symbols(js: str) -> set[str] {
+    names: set[str] = set();
+    norm = js.replace("'", '"');
+    for m in re.finditer('import\\s*\\{([^}]*)\\}\\s*from\\s*"@jac/runtime"', norm) {
+        for part in m.group(1).split(",") {
+            piece = part.strip();
+            if piece {
+                tokens = re.split(r"\\s+as\\s+", piece);
+                names.add(tokens[-1].strip());
+            }
+        }
+    }
+    return names;
+}
+
+def _remap_bundle_runtime_imports(js: str, from_rel: str) -> str {
+    spec = _index_import_spec(from_rel);
+    out = js.replace('from "@jac/runtime"', f'from "{spec}"');
+    return out.replace("from '@jac/runtime'", f"from '{spec}'");
+}
+
+def _strip_jac_runtime_imports(js: str) -> str {
+    return re.sub(r'import\s*\{[^}]*\}\s*from\s*["\']@jac/runtime["\'];?\n?', "", js);
+}
+
 def _collect_dep_modules(entry_js: str) -> list[tuple[str, str]] {
     import jaclang;
     import posixpath;
@@ -234,6 +274,31 @@ impl build_runtime_tarball(
     entry_js = compile_runtime_js(framework);
 
     deps = _collect_dep_modules(entry_js);
+
+    bundle_symbols: set[str] = set();
+    for (_, dep_js) in deps {
+        bundle_symbols.update(_jac_runtime_import_symbols(dep_js));
+    }
+
+    entry_js = _strip_jac_runtime_imports(entry_js);
+    if bundle_symbols {
+        missing_exports = sorted(
+            sym
+            for sym in bundle_symbols
+            if sym not in _already_exported(entry_js)
+        );
+        if missing_exports {
+            entry_js = (
+                entry_js.rstrip("\n") + "\nexport { " + ", ".join(missing_exports) + " };\n"
+            );
+        }
+    }
+
+    rewritten_deps: list[tuple[str, str]] = [];
+    for (rel, dep_js) in deps {
+        rewritten_deps.append((rel, _remap_bundle_runtime_imports(dep_js, rel)));
+    }
+    deps = rewritten_deps;
 
     exports = runtime_export_names(entry_js, framework);
     if exports {
