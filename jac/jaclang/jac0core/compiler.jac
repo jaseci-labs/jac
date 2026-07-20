@@ -446,8 +446,7 @@ glob NATIVE_DEFAULT_SV_SIGNAL_NODES: tuple = (
          uni.PyInlineCode,
          uni.ClientBlock,
          uni.ServerBlock,
-         uni.JsxElement,
-         uni.Test
+         uni.JsxElement
      ),
      _na_default_scan_cache: dict[str, tuple] = {},
      _na_demotion_memo: dict[str, tuple] = {},

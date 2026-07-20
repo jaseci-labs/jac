@@ -5305,6 +5305,66 @@ test "jac test runs test blocks inside inline na blocks (no false green)" {
     assert result.returncode != 0 , "jac test must exit non-zero on failure";
 }
 
+test "jac test runs inferred-native test blocks natively (item #19)" {
+    fixture = os.path.join(FIXTURES, "test_blocks_inferred.jac");
+    result = subprocess.run(
+        [sys.executable, "-m", "jaclang", "test", fixture],
+        capture_output=True,
+        text=True,
+        timeout=300
+    );
+    output = result.stdout + result.stderr;
+    assert "1 passed" in output and "1 failed" in output , (
+        f"expected 2 tests to run with 1 failure.\nstdout: {result.stdout[-800:]}\n"
+        f"stderr: {result.stderr[-800:]}"
+    );
+    # The native failure format carries the source location; the python path
+    # reports a bare AssertionError -- this is the native-execution discriminator.
+    assert "assertion failed at" in output , (
+        f"inferred test blocks must execute natively.\noutput tail: {output[-800:]}"
+    );
+    assert "test_blocks_inferred.jac:12" in output , (
+        f"failure report must point at the failing assert.\noutput tail: {output[-800:]}"
+    );
+    assert result.returncode != 0 , "jac test must exit non-zero on failure";
+}
+
+test "restore-failure falls back to recompile for inferred modules (item #19)" {
+    import shutil;
+    import from unittest.mock { patch }
+    import from jaclang.jac0core.compiler { JacCompiler }
+    import from jaclang.jac0core.codeinfo {
+        set_effective_default_codespace,
+        get_effective_default_codespace_override
+    }
+    tmpdir = tempfile.mkdtemp();
+    fx = os.path.join(tmpdir, "test_blocks_restore.jac");
+    shutil.copyfile(os.path.join(FIXTURES, "test_blocks_inferred.jac"), fx);
+    _prev = get_effective_default_codespace_override();
+    set_effective_default_codespace('native');
+    try {
+        comp = JacCompiler();
+        bc1 = comp.get_bytecode(fx, JacProgram());
+        assert bc1 is not None , "warm-up compile must produce bytecode";
+        prog2 = JacProgram();
+        with patch.object(
+            JacCompiler, '_load_native_from_bitcode', side_effect=RuntimeError('boom')
+        ), patch.object(
+            JacCompiler, '_load_native_from_cache', side_effect=RuntimeError('boom')
+        ) {
+            bc2 = comp.get_bytecode(fx, prog2);
+        }
+        assert bc2 is not None;
+        (eng, _) = comp.get_native_interop_setup(fx, prog2);
+        assert eng is not None , (
+            "restore failure must trigger recompile for inferred modules"
+        );
+    } finally {
+        set_effective_default_codespace(_prev);
+        shutil.rmtree(tmpdir, ignore_errors=True);
+    }
+}
+
 # isinstance over a tuple mixing builtin and archetype targets lowers as a
 # guarded tag/vtable disjunction; behavioral coverage lives in
 # test_native_isinstance_mixed.jac (graduated from the E5092 guardrail that

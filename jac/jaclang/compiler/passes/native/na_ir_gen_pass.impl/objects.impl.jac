@@ -835,6 +835,20 @@ impl NaIRGenPass._codegen_instantiation(
     struct_type = self.struct_types[type_name];
     struct_ptr_type = struct_type.as_pointer();
 
+    if _is_call
+    and any([not isinstance(p, uni.KWPair) for p in (nd.params or [])])
+    and f"{type_name}.init" not in self.method_funcs
+    and f"{type_name}.__init__" not in self.method_funcs {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="constructor call",
+            name=type_name,
+            help_text=f"Positional arguments to '{type_name}' only lower natively when it declares an explicit init; pass has-fields as keyword arguments (field=value) or add an init method."
+        );
+        return None;
+    }
+
     _vt_struct = type_name in self.clib_vtable_structs;
     _stack_ok = (
         not _vt_struct

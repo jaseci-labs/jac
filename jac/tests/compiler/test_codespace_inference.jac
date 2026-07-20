@@ -139,9 +139,14 @@ test "pure modules infer native under the shipped default" {
     }
 }
 
-test "test blocks keep a module server under native default" {
-    mod = compile_with_default("nadefault_with_tests.jac", "native");
-    assert mod.decided_codespace == '' , "test blocks run through the python harness";
+test "test blocks lower native under native default" {
+    mod = compile_with_default("nadefault_with_tests.jac", "native", cgen=True);
+    assert mod.decided_codespace == 'native' , (
+        "test blocks no longer block native inference"
+    );
+    assert mod.gen.native_engine is not None;
+    names = [t.name for t in mod.gen.native_layout.tests];
+    assert "test_double_works" in names;
 }
 
 test "pure modules infer native under an explicit native default" {
@@ -269,6 +274,14 @@ test "non-lowerable pure module demotes to server under native default" {
     mod = compile_with_default("nadefault_nolower.jac", "native", cgen=True);
     assert mod.decided_codespace == '' , "demotion recompiles in the server codespace";
     assert stamp_of(mod, "build") == 'server';
+}
+
+test "implicit-ctor positional args demote to server under native default" {
+    mod = compile_with_default("nadefault_posctor.jac", "native", cgen=True);
+    assert mod.decided_codespace == '' , (
+        "positional implicit-ctor args do not lower; module must demote"
+    );
+    assert stamp_of(mod, "make") == 'server';
 }
 
 test "cascade: importer of a demoted module demotes with it" {

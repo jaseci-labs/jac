@@ -182,14 +182,10 @@ impl JacCompiler.get_bytecode(
                     self._restore_sections(full_target, actual_program, secs);
                     _had_native_secs = SEC_NATIVE_OBJ in secs or SEC_LLVM_IR in secs;
                 }
-                import from jaclang.jac0core.ext_registry {
-                    is_native_module as _bc_is_na
-                }
                 if (
                     _had_native_secs
                     and full_target not in actual_program._native_cache
                     and actual_program is not self._internal_program
-                    and _bc_is_na(full_target)
                 ) {
                     import logging as _bc_logging;
                     _bc_logging.getLogger(__name__).warning(

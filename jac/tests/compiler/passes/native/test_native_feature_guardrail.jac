@@ -729,8 +729,7 @@ def compile_sv_inline(label: str, code: str) -> JacProgram {
 # duplicate, no E5007 bootstrap cascade, no E9001/E9002 ICE (#7593 item 3).
 test "walrus on a subscript target: one general E0020, no native cascade" {
     prog = compile_na_inline(
-        "walrus_subscript_lhs",
-        "with entry { xs = [1, 2, 3]; print((xs[0] := 9)); }\n"
+        "walrus_subscript_lhs", "with entry { xs = [1, 2, 3]; print((xs[0] := 9)); }\n"
     );
     assert has_error_code(prog, "E0020") , f"Expected general E0020, got: {fmt_errors(
         prog
@@ -753,8 +752,7 @@ test "walrus on a subscript target: one general E0020, no native cascade" {
 test "walrus on an attribute target: one general E0020, no native cascade" {
     prog = compile_na_inline(
         "walrus_attr_lhs",
-        "obj Box { has f: int = 0; }\n"
-        "with entry { b = Box(); print((b.f := 5)); }\n"
+        "obj Box { has f: int = 0; }\n" "with entry { b = Box(); print((b.f := 5)); }\n"
     );
     assert has_error_code(prog, "E0020") , f"Expected general E0020, got: {fmt_errors(
         prog
@@ -776,8 +774,7 @@ test "walrus on an attribute target: one general E0020, no native cascade" {
 
 test "walrus on a subscript target is the same single E0020 on sv" {
     prog = compile_sv_inline(
-        "walrus_subscript_sv",
-        "with entry { xs = [1, 2, 3]; print((xs[0] := 9)); }\n"
+        "walrus_subscript_sv", "with entry { xs = [1, 2, 3]; print((xs[0] := 9)); }\n"
     );
     assert has_error_code(prog, "E0020") , f"Expected general E0020, got: {fmt_errors(
         prog
@@ -831,10 +828,33 @@ test "clib decl with known types is not rejected" {
 # conversion still requires CPython-exact ascii() escaping and stays gated.
 test "guardrail: f-string !a conversion is rejected" {
     prog = compile_na_inline(
-        "fstr_ascii",
-        "def f(s: str) -> str { return f\"{s!a}\"; }\n"
+        "fstr_ascii", "def f(s: str) -> str { return f\"{s!a}\"; }\n"
     );
     assert has_error_code(prog, "E5090") , f"Expected E5090 for !a, got: {fmt_errors(
+        prog
+    )}";
+}
+
+# Positional arguments to an archetype WITHOUT an explicit init map onto the
+# implicit field constructor in Python semantics, but the native implicit-ctor
+# lowering only maps keyword arguments -- positionals were silently DROPPED,
+# leaving default/zero fields (observed via item #19: inferred-native test
+# blocks flipped on wrong field values). Until positional field mapping lowers,
+# this must be a structured E5092, never a silent wrong-value compile.
+# Explicit-init positionals are supported (objects.na.jac KWInit coverage).
+test "guardrail: implicit-ctor positional args are rejected" {
+    prog = compile_na_inline(
+        "pos_ctor",
+        "obj Vec {\n"
+        "    has x: float = 0.0;\n"
+        "    has z: float = 0.0;\n"
+        "}\n"
+        "def make() -> float {\n"
+        "    return Vec(1.0, 3.0).z;\n"
+        "}\n"
+        "with entry {}\n"
+    );
+    assert has_error_code(prog, "E5092") , f"Expected E5092 for implicit-ctor positional args, got: {fmt_errors(
         prog
     )}";
 }
