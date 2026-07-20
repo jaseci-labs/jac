@@ -6,6 +6,9 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
     if elem_type_name == "ptr" {
         elem_type = ir.IntType(8).as_pointer();
     }
+    if elem_type_name == "i64" and isinstance(elem_type, ir.IntType) {
+        elem_type = ir.IntType(64);
+    }
 
     list_struct = self.llvm_module.context.get_identified_type(
         f"List.{elem_type_name}"
@@ -218,6 +221,8 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
     append_val = first_val;
     if elem_type_name == "ptr" and isinstance(first_val.type, ir.PointerType) {
         append_val = self.builder.bitcast(first_val, i8p, name="elem.cast");
+    } else {
+        append_val = self._coerce_type(append_val, helpers["elem_type"]);
     }
     _linit_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
@@ -248,7 +253,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             if elem_type_name == "ptr" and isinstance(val.type, ir.PointerType) {
                 val = self.builder.bitcast(val, i8p, name="elem.cast");
             } else {
-                val = self._coerce_type(val, elem_type);
+                val = self._coerce_type(val, helpers["elem_type"]);
             }
             self._rc_call_with_ctx(
                 helpers["append"], [list_val, val], op="list_init", loc=_linit_loc

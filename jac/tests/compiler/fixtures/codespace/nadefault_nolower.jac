@@ -7,7 +7,7 @@ obj Widget {
 }
 
 def build -> str {
-    w = new(Widget, 5);
+    w: any = Widget();
     return w.render();
 }
 

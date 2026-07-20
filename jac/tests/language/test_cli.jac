@@ -2244,6 +2244,55 @@ test "jac check disable_error_code warns on unknown diagnostics" {
     assert "E9999" in combined , "unknown warning should use canonical code casing";
 }
 
+test "jac check native-census flag maps to check arg" {
+    parser = get_registry().finalize();
+    (args, _) = parser.parse_known_args(
+        ["check", fixture_path("warnings_only.jac"), "--native-census"]
+    );
+    assert getattr(args, "native_census", False) == True , (
+        "kebab flag should map to native_census dest"
+    );
+}
+
+test "jac check native census ranks module outcomes" {
+    with tempfile.TemporaryDirectory() as td {
+        with open(os.path.join(td, "pure.jac"), "w") as f {
+            f.write("def add(a: int, b: int) -> int {\n    return a + b;\n}\n");
+        }
+        with open(os.path.join(td, "demote.jac"), "w") as f {
+            f.write(
+                "obj Widget {\n    has size: int = 0;\n\n    def render -> str {\n" + "        return \"ok\";\n    }\n}\n\ndef build -> str {\n" + "    w: any = Widget();\n    return w.render();\n}\n"
+            );
+        }
+        with open(os.path.join(td, "blocked.jac"), "w") as f {
+            f.write(
+                "node Item {\n    has label: str = \"\";\n}\n\nwalker Visitor {\n" + "    can look with Item entry {\n        print(here.label);\n" + "    }\n}\n"
+            );
+        }
+        (captured_stdout, captured_stderr, old_stdout, old_stderr) = _capture_output();
+        _reset_config();
+        try {
+            result = analysis.check([td], native_census=True);
+            combined = captured_stdout.getvalue() + captured_stderr.getvalue();
+        } finally {
+            _restore_output(old_stdout, old_stderr);
+            set_config(None);
+            _reset_config();
+        }
+        assert "native census" in combined.lower() , "census header missing";
+        assert "E5092" in combined , (
+            "demoted module must be ranked by its first error code"
+        );
+        assert "demote.jac" in combined , "demoted module path missing";
+        assert "blocked.jac" in combined , "server module path missing";
+        assert "pure.jac" in combined , "native module path missing";
+        assert "osp archetype" in combined , (
+            "server reason strings must be real signal labels"
+        );
+        assert result == 0 , "census demotions must not flip exit code";
+    }
+}
+
 test "lexer does not hang on unterminated jsx" {
     # BUG: Unterminated JSX (e.g. `<div>hello` with no closing tag)
     # hits EOF while the lexer is still in JSX_CONTENT mode.

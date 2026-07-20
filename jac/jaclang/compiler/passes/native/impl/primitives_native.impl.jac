@@ -5619,7 +5619,6 @@ impl NativeBuiltinEmitter.emit_format(
     i8p = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
     rc_alloc_fn = p.rc_alloc_fn;
-    buf_ptr = b.call(rc_alloc_fn, [ir.Constant(i64, 64)], name="fmt.buf");
     snprintf = p._get_or_declare_extern(
         "snprintf", ir.IntType(32), [i8p, i64, i8p], var_arg=True
     );
@@ -5637,7 +5636,22 @@ impl NativeBuiltinEmitter.emit_format(
     copy_len = b.add(spec_len, ir.Constant(i64, 1), name="fmt.copylen");
     b.call(memcpy_fn, [fmt_rest, spec_val, copy_len]);
 
-    b.call(snprintf, [buf_ptr, ir.Constant(i64, 64), fmt_buf, arg_val]);
+    if isinstance(arg_val.type, ir.IntType) and arg_val.type.width == 1 {
+        arg_val = b.zext(arg_val, i64, name="fmt.arg.zext");
+    } elif isinstance(arg_val.type, ir.IntType) and arg_val.type.width != 64 {
+        arg_val = b.sext(arg_val, i64, name="fmt.arg.sext");
+    }
+    need32 = b.call(
+        snprintf,
+        [ir.Constant(i8p, None), ir.Constant(i64, 0), fmt_buf, arg_val],
+        name="fmt.need"
+    );
+    need = b.sext(need32, i64, name="fmt.need64");
+    buf_size = b.add(need, ir.Constant(i64, 1), name="fmt.size");
+    buf_ptr = b.call(rc_alloc_fn, [buf_size], name="fmt.buf");
+    b.call(snprintf, [buf_ptr, buf_size, fmt_buf, arg_val]);
+    p._emit_set_type_tag(b, buf_ptr, "str");
+    p._emit_rc_release_simple(fmt_buf, op="fmt_tmp", loc="");
     return buf_ptr;
 }
 
@@ -5674,6 +5688,10 @@ impl NativeBuiltinEmitter.emit_str(
             if obj_s is not None {
                 return obj_s;
             }
+            cont_s = p._emit_container_repr(arg_val, ctx.type_key or None);
+            if cont_s is not None {
+                return cont_s;
+            }
             return b.bitcast(arg_val, i8p, name="str.identity");
         }
 
@@ -5686,6 +5704,13 @@ impl NativeBuiltinEmitter.emit_str(
 
     if isinstance(arg_val.type, ir.DoubleType) {
         return p._emit_float_repr(arg_val);
+    }
+
+    if isinstance(arg_val.type, ir.LiteralStructType) {
+        cont_s = p._emit_container_repr(arg_val, ctx.type_key or None);
+        if cont_s is not None {
+            return cont_s;
+        }
     }
     rc_alloc_fn = p.rc_alloc_fn;
     buf_ptr = b.call(rc_alloc_fn, [ir.Constant(ir.IntType(64), 32)], name="str.buf");

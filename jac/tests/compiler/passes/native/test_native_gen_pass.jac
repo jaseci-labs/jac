@@ -244,6 +244,68 @@ test "arithmetic float add" {
     assert abs(fadd(-1.0, 1.0)) < 1e-10;
 }
 
+# Regression (#7593 item 1): f32 operands must promote to double instead of
+# crashing the binop/compare emitters.
+test "arithmetic f32 promotion binops" {
+    (eng, _) = compile_native("f32_promotion.na.jac");
+    ma = get_func(eng, "mixed_add", ctypes.c_double, ctypes.c_float, ctypes.c_double);
+    assert ma(1.5, 2.25) == 3.75;
+    mr = get_func(
+        eng, "mixed_add_rev", ctypes.c_double, ctypes.c_double, ctypes.c_float
+    );
+    assert mr(2.25, 1.5) == 3.75;
+    sa = get_func(eng, "same_add", ctypes.c_double, ctypes.c_float, ctypes.c_float);
+    assert sa(1.5, 2.25) == 3.75;
+    mm = get_func(eng, "mixed_mul", ctypes.c_double, ctypes.c_float, ctypes.c_double);
+    assert mm(1.5, 2.0) == 3.0;
+    md = get_func(eng, "mixed_div", ctypes.c_double, ctypes.c_float, ctypes.c_double);
+    assert md(1.5, 0.5) == 3.0;
+    mo = get_func(eng, "mixed_mod", ctypes.c_double, ctypes.c_float, ctypes.c_double);
+    assert mo(5.5, 2.0) == 1.5;
+    mf = get_func(
+        eng, "mixed_floordiv", ctypes.c_double, ctypes.c_float, ctypes.c_double
+    );
+    assert mf(5.5, 2.0) == 2.0;
+    fi = get_func(eng, "f32_int_add", ctypes.c_double, ctypes.c_float, ctypes.c_int64);
+    assert fi(1.5, 2) == 3.5;
+}
+
+test "arithmetic f32 promotion comparisons" {
+    (eng, _) = compile_native("f32_promotion.na.jac");
+    cl = get_func(eng, "cmp_mixed_lt", ctypes.c_bool, ctypes.c_float, ctypes.c_double);
+    assert cl(1.5, 2.25);
+    assert not cl(2.5, 2.25);
+    cs = get_func(eng, "cmp_same_lt", ctypes.c_bool, ctypes.c_float, ctypes.c_float);
+    assert cs(1.5, 2.25);
+    assert not cs(2.25, 1.5);
+    cc = get_func(
+        eng,
+        "cmp_chain",
+        ctypes.c_bool,
+        ctypes.c_float,
+        ctypes.c_double,
+        ctypes.c_double
+    );
+    assert cc(1.0, 2.0, 3.0);
+    assert not cc(1.0, 3.0, 2.0);
+}
+
+test "arithmetic f32 result narrows at typed sinks" {
+    (eng, _) = compile_native("f32_promotion.na.jac");
+    sn = get_func(
+        eng, "same_add_narrow", ctypes.c_float, ctypes.c_float, ctypes.c_float
+    );
+    assert sn(1.5, 2.25) == 3.75;
+    ng = get_func(eng, "neg32", ctypes.c_double, ctypes.c_float);
+    assert ng(1.5) == -1.5;
+}
+
+test "aug assign f32 field promotes" {
+    (eng, _) = compile_native("f32_promotion.na.jac");
+    fa = get_func(eng, "field_aug", ctypes.c_double, ctypes.c_double);
+    assert fa(0.25) == 1.75;
+}
+
 # --- TestNativeControlFlowExecution ---
 test "control flow abs val" {
     (eng, _) = compile_native("control_flow.na.jac");
@@ -1010,6 +1072,37 @@ test "cross-module chained method calls" {
     (eng, _) = compile_native("na_method_import.na.jac");
     f = get_func(eng, "test_imported_chained_methods", ctypes.c_int64);
     assert f() == 12;
+}
+
+# Regression test for: a TRANSITIVE from-import chain (a -> b -> c) failed
+# native lowering with E5092 ("type 'int'") under inferred-native, while a
+# flat diamond (a imports b and c directly) lowered fine.
+test "cross-module transitive chain executes via native inference" {
+    import from jaclang.jac0core.codeinfo {
+        set_effective_default_codespace,
+        get_effective_default_codespace_override
+    }
+    _prev = get_effective_default_codespace_override();
+    prog = JacProgram();
+    try {
+        ir = prog.compile(
+            file_path=os.path.join(
+                TESTS_DIR,
+                "compiler",
+                "fixtures",
+                "codespace",
+                "nadefault_transchain_a.jac"
+            ),
+            options=CompileOptions(default_codespace="native")
+        );
+    } finally {
+        set_effective_default_codespace(_prev);
+    }
+    assert not prog.errors_had , (f"errors: {[str(e) for e in prog.errors_had]}");
+    eng = ir.gen.native_engine;
+    assert eng is not None , "transitive chain did not produce a native engine";
+    f = get_func(eng, "fa", ctypes.c_int64);
+    assert f() == 5;
 }
 
 # --- TestNativeBuiltins ---
@@ -3163,6 +3256,70 @@ test "sys argv via nacompile" {
     }
 }
 
+test "native sys stream write returns count and hits the real fds" {
+    (eng, _) = compile_native("sys_streams.na.jac");
+    wout = get_func(eng, "write_out", ctypes.c_int64);
+    (r, w) = os.pipe();
+    saved = os.dup(1);
+    os.dup2(w, 1);
+    os.close(w);
+    try {
+        n = wout();
+    } finally {
+        os.dup2(saved, 1);
+        os.close(saved);
+    }
+    got = os.read(r, 64);
+    os.close(r);
+    assert n == 10 , f"write must return the byte count, got {n}";
+    assert got == b"out-bytes\n" , f"fd1 bytes wrong: {got!r}";
+    werr = get_func(eng, "write_err", ctypes.c_int64);
+    (r2, w2) = os.pipe();
+    saved2 = os.dup(2);
+    os.dup2(w2, 2);
+    os.close(w2);
+    try {
+        n2 = werr();
+    } finally {
+        os.dup2(saved2, 2);
+        os.close(saved2);
+    }
+    got2 = os.read(r2, 64);
+    os.close(r2);
+    assert n2 == 6 , f"stderr write count wrong, got {n2}";
+    assert got2 == b"err-7\n" , f"fd2 bytes wrong: {got2!r}";
+}
+
+test "sys stdout/stderr streams via nacompile" {
+    import tempfile;
+    fixture = str(os.path.join(FIXTURES, "sys_streams_bin.jac"));
+    with tempfile.TemporaryDirectory() as tmpdir {
+        out_bin = os.path.join(tmpdir, "sys_streams_bin");
+        comp = subprocess.run(
+            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out_bin],
+            capture_output=True,
+            text=True,
+            timeout=120
+        );
+        assert comp.returncode == 0 , (
+            f"nacompile failed: exit={comp.returncode}\n"
+            f"stderr: {comp.stderr[-500:] if comp.stderr else '(empty)'}"
+        );
+        result = subprocess.run([out_bin], capture_output=True, text=True, timeout=10);
+        assert result.returncode == 0 , (
+            f"Native binary crashed: exit={result.returncode}\n"
+            f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
+        );
+        assert result.stdout == "A:bc\nn 2\n" , (
+            f"stream writes must share the stdio buffer with print, "
+            f"got stdout: {result.stdout!r}"
+        );
+        assert result.stderr == "E:err\n" , (
+            f"stderr bytes must stay on fd 2, got: {result.stderr!r}"
+        );
+    }
+}
+
 test "native osp kernel links transitively through an imported module (issue #6669)" {
     # A thin entry that uses no OSP itself but imports a module whose `run_it`
     # does the `spawn`. The kernel's glob-init is referenced only transitively,
@@ -3826,52 +3983,47 @@ test "layout exports all expected functions" {
     assert expected == set(layout.functions.keys());
 }
 
-# --- Jac-to-Jac function pointer tests (Callable[[...], ret] type annotation) ---
+# --- Jac-to-Jac callable tests (Callable[[...], ret] type annotation) ---
+# Callable params carry the native closure-pair ABI, so the tests enter
+# through native wrappers that pass a plain `def` (null-env wrap path).
 test "fnptr apply2 with add" {
     (eng, _) = compile_native("fnptr_jac.na.jac");
-    apply2 = get_func(
-        eng, "apply2", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
+    apply2_add = get_func(
+        eng, "apply2_add", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
     );
-    add_addr = eng.get_function_address("add");
-    assert apply2(add_addr, 3, 4) == 7;
-    assert apply2(add_addr, 0, 0) == 0;
-    assert apply2(add_addr, -1, 1) == 0;
+    assert apply2_add(3, 4) == 7;
+    assert apply2_add(0, 0) == 0;
+    assert apply2_add(-1, 1) == 0;
 }
 
 test "fnptr apply2 with mul" {
     (eng, _) = compile_native("fnptr_jac.na.jac");
-    apply2 = get_func(
-        eng, "apply2", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
+    apply2_mul = get_func(
+        eng, "apply2_mul", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
     );
-    mul_addr = eng.get_function_address("mul");
-    assert apply2(mul_addr, 3, 4) == 12;
-    assert apply2(mul_addr, 0, 99) == 0;
-    assert apply2(mul_addr, -2, 5) == -10;
+    assert apply2_mul(3, 4) == 12;
+    assert apply2_mul(0, 99) == 0;
+    assert apply2_mul(-2, 5) == -10;
 }
 
 test "fnptr apply1 with negate" {
     (eng, _) = compile_native("fnptr_jac.na.jac");
-    apply1 = get_func(eng, "apply1", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
-    neg_addr = eng.get_function_address("negate");
-    assert apply1(neg_addr, 5) == -5;
-    assert apply1(neg_addr, 0) == 0;
-    assert apply1(neg_addr, -3) == 3;
+    apply1_negate = get_func(eng, "apply1_negate", ctypes.c_int64, ctypes.c_int64);
+    assert apply1_negate(5) == -5;
+    assert apply1_negate(0) == 0;
+    assert apply1_negate(-3) == 3;
 }
 
 test "fnptr call_via_local stores and calls pointer" {
     (eng, _) = compile_native("fnptr_jac.na.jac");
-    call_via_local = get_func(
-        eng,
-        "call_via_local",
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64
+    cvl_add = get_func(
+        eng, "call_via_local_add", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
     );
-    add_addr = eng.get_function_address("add");
-    mul_addr = eng.get_function_address("mul");
-    assert call_via_local(add_addr, 6, 7) == 13;
-    assert call_via_local(mul_addr, 6, 7) == 42;
+    cvl_mul = get_func(
+        eng, "call_via_local_mul", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
+    );
+    assert cvl_add(6, 7) == 13;
+    assert cvl_mul(6, 7) == 42;
 }
 
 # --- Callable null (`= 0`) field defaults (issue #6569) ---
@@ -5148,6 +5300,66 @@ test "jac test runs test blocks inside inline na blocks (no false green)" {
     assert result.returncode != 0 , "jac test must exit non-zero on failure";
 }
 
+test "jac test runs inferred-native test blocks natively (item #19)" {
+    fixture = os.path.join(FIXTURES, "test_blocks_inferred.jac");
+    result = subprocess.run(
+        [sys.executable, "-m", "jaclang", "test", fixture],
+        capture_output=True,
+        text=True,
+        timeout=300
+    );
+    output = result.stdout + result.stderr;
+    assert "1 passed" in output and "1 failed" in output , (
+        f"expected 2 tests to run with 1 failure.\nstdout: {result.stdout[-800:]}\n"
+        f"stderr: {result.stderr[-800:]}"
+    );
+    # The native failure format carries the source location; the python path
+    # reports a bare AssertionError -- this is the native-execution discriminator.
+    assert "assertion failed at" in output , (
+        f"inferred test blocks must execute natively.\noutput tail: {output[-800:]}"
+    );
+    assert "test_blocks_inferred.jac:12" in output , (
+        f"failure report must point at the failing assert.\noutput tail: {output[-800:]}"
+    );
+    assert result.returncode != 0 , "jac test must exit non-zero on failure";
+}
+
+test "restore-failure falls back to recompile for inferred modules (item #19)" {
+    import shutil;
+    import from unittest.mock { patch }
+    import from jaclang.jac0core.compiler { JacCompiler }
+    import from jaclang.jac0core.codeinfo {
+        set_effective_default_codespace,
+        get_effective_default_codespace_override
+    }
+    tmpdir = tempfile.mkdtemp();
+    fx = os.path.join(tmpdir, "test_blocks_restore.jac");
+    shutil.copyfile(os.path.join(FIXTURES, "test_blocks_inferred.jac"), fx);
+    _prev = get_effective_default_codespace_override();
+    set_effective_default_codespace('native');
+    try {
+        comp = JacCompiler();
+        bc1 = comp.get_bytecode(fx, JacProgram());
+        assert bc1 is not None , "warm-up compile must produce bytecode";
+        prog2 = JacProgram();
+        with patch.object(
+            JacCompiler, '_load_native_from_bitcode', side_effect=RuntimeError('boom')
+        ), patch.object(
+            JacCompiler, '_load_native_from_cache', side_effect=RuntimeError('boom')
+        ) {
+            bc2 = comp.get_bytecode(fx, prog2);
+        }
+        assert bc2 is not None;
+        (eng, _) = comp.get_native_interop_setup(fx, prog2);
+        assert eng is not None , (
+            "restore failure must trigger recompile for inferred modules"
+        );
+    } finally {
+        set_effective_default_codespace(_prev);
+        shutil.rmtree(tmpdir, ignore_errors=True);
+    }
+}
+
 # isinstance over a tuple mixing builtin and archetype targets lowers as a
 # guarded tag/vtable disjunction; behavioral coverage lives in
 # test_native_isinstance_mixed.jac (graduated from the E5092 guardrail that
@@ -5174,4 +5386,100 @@ test "ptr subscript read/write: no E5090 and correct GEP IR (#6707, #6708)" {
     assert "ptr.elem.ptr" in s , "Expected array-element GEP (ptr.elem.ptr)";
     # Write path (#6707): GEP the element, load the source struct value, store.
     assert "arr.val.struct" in s , "Expected struct load for write (arr.val.struct)";
+}
+
+# ─── #7593 item 10: bare `import x` of a sibling plain .jac module ───────────
+# Before the fix, `import bare_import_helper;` in a .na.jac emitted E5090
+# "Python module import 'bare_import_helper'". After the fix, unaliased
+# single-segment bare imports of resolvable Jac modules register the dep and
+# `mod.fn()` / `mod.GLOB` resolve at compile time to the linked symbols.
+test "bare import of user jac module compiles and links" {
+    (eng, _) = compile_native("bare_import_main.na.jac");
+    assert eng is not None;
+}
+
+test "bare import module-qualified call resolves to linked symbol" {
+    (eng, _) = compile_native("bare_import_main.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    use_fn = get_func(eng, "use_fn", ctypes.c_int64);
+    assert use_fn() == 42 , f"Expected 42, got {use_fn()}";
+    use_twice = get_func(eng, "use_twice", ctypes.c_int64, ctypes.c_int64);
+    assert use_twice(21) == 42 , f"Expected 42, got {use_twice(21)}";
+}
+
+test "bare import module glob attr reads dep glob" {
+    (eng, _) = compile_native("bare_import_main.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    read_glob = get_func(eng, "read_glob", ctypes.c_int64);
+    assert read_glob() == 7 , f"Expected 7, got {read_glob()}";
+}
+
+test "default-codespace option does not leak across compiles in one process" {
+    # Regression: JacCompiler used to stamp the process-wide effective
+    # default codespace from CompileOptions.default_codespace and never
+    # restore it, so one server-pinned compile disabled plain-.jac native
+    # dep resolution (bare and from-import) for every later program in the
+    # same process.
+    prog0 = JacProgram();
+    prog0.compile(
+        str(os.path.join(FIXTURES, "na_py_interop_multi.jac")),
+        options=CompileOptions(default_codespace='server')
+    );
+    assert not prog0.errors_had , f"Errors: {prog0.errors_had}";
+    (eng_a, _) = compile_native("bare_import_main.na.jac");
+    assert eng_a is not None;
+    (eng_b, _) = compile_native("glob_dep_main.na.jac");
+    assert eng_b is not None;
+}
+
+test "from-imported plain jac dep with glob does not demote" {
+    # Pins the dep-glob type-tag path: `glob G: int` in a plain .jac dep must
+    # lower via the inferred tag type instead of demoting with E5092.
+    (eng, _) = compile_native("glob_dep_main.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    use_dep_glob = get_func(eng, "use_dep_glob", ctypes.c_int64);
+    assert use_dep_glob() == 5 , f"Expected 5, got {use_dep_glob()}";
+}
+
+# ─── #7593 item 14 (M1): new(Cls, ...) builtin + positional implicit ctors ───
+# `new(Cls, args...)` is the builtin direct-constructor form (sv impl is
+# `cls(*args)`, positional-only). Natively it must delegate to the same
+# instantiation path as a direct `Cls(...)` call, and positional args on an
+# archetype WITHOUT an explicit init must map onto the declared has-field
+# order (dataclass semantics) instead of demoting with E5092.
+test "native new(): positional construction of a has-field obj" {
+    (eng, _) = compile_native("new_builtin.na.jac");
+    make_area = get_func(eng, "make_area", ctypes.c_int64, ctypes.c_int64);
+    assert make_area(5) == 25 , f"Expected 25, got {make_area(5)}";
+    assert make_area(0) == 0 , f"Expected 0, got {make_area(0)}";
+}
+
+test "native new(): forwards positionally to explicit init" {
+    (eng, _) = compile_native("new_builtin.na.jac");
+    make_sum = get_func(
+        eng, "make_sum", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
+    );
+    assert make_sum(3, 4) == 7 , f"Expected 7, got {make_sum(3, 4)}";
+    assert make_sum(-2, 2) == 0 , f"Expected 0, got {make_sum(-2, 2)}";
+}
+
+test "native new(): no-arg call applies field defaults" {
+    (eng, _) = compile_native("new_builtin.na.jac");
+    make_tag = get_func(eng, "make_tag", ctypes.c_int64);
+    assert make_tag() == 7 , f"Expected 7, got {make_tag()}";
+}
+
+test "native positional construction maps has fields (parity with sv)" {
+    (eng, _) = compile_native("pos_ctor.na.jac");
+    direct_area = get_func(eng, "direct_area", ctypes.c_int64, ctypes.c_int64);
+    assert direct_area(5) == 25 , f"Expected 25, got {direct_area(5)}";
+    vec_mix = get_func(
+        eng, "vec_mix", ctypes.c_double, ctypes.c_double, ctypes.c_double
+    );
+    assert vec_mix(1.5, 3.25) == 153.25 , f"Expected 153.25, got {vec_mix(1.5, 3.25)}";
+    label_count = get_func(eng, "label_count", ctypes.c_int64, ctypes.c_int64);
+    assert label_count(9) == 12 , f"Expected 12, got {label_count(9)}";
 }

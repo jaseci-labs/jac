@@ -1788,6 +1788,19 @@ fn zstdCompressAlloc(gpa: Allocator, bytes: []const u8) ![]u8 {
     return gpa.realloc(dst, n) catch dst[0..n];
 }
 
+/// On-disk mode of `sub_path`, or 0 (tar Writer's 0o664 default) when
+/// unreadable or on a platform without real exec bits. Guarded on
+/// `has_executable_bit` rather than `@hasDecl(Permissions, "toMode")` because
+/// WASI has `toMode` but `has_executable_bit = false`.
+fn sourceFileMode(io: Io, dir: Dir, sub_path: []const u8) u32 {
+    const Perm = Io.File.Permissions;
+    if (Perm.has_executable_bit) {
+        const st = dir.statFile(io, sub_path, .{}) catch return 0;
+        return @intCast(st.permissions.toMode());
+    }
+    return 0;
+}
+
 /// tar `stage` (its top-level `python` + `site`) and zstd it to `out`. The
 /// runtime side (runtime.zig extractPayload) decompresses this exact format
 /// with pure std. The full tar is built in memory (~430 MB plus the compress
@@ -1808,7 +1821,10 @@ fn tarZstDir(io: Io, gpa: Allocator, a: Allocator, stage: []const u8, out: []con
             else => {
                 const bytes = try stage_dir.readFileAlloc(io, entry.path, a, .unlimited);
                 defer a.free(bytes);
-                try tw.writeFileBytes(entry.path, bytes, .{});
+                // Carry the real on-disk mode so executable scripts keep their
+                // exec bit; `mode = 0` would strip IXUSR (see runtime.zig
+                // extractPayload's matching .executable_bit_only).
+                try tw.writeFileBytes(entry.path, bytes, .{ .mode = sourceFileMode(io, stage_dir, entry.path) });
             },
         }
     }
@@ -1893,6 +1909,17 @@ test "tarZstDir round-trips through the launcher's payload decoder" {
         .sub_path = try std.fmt.allocPrint(a, "{s}/python/bin/python", .{stage}),
         .data = text,
     });
+    // A 0o755 script must survive pack/extract with its exec bit intact.
+    // Guarded on `has_executable_bit` so the test compiles on Windows/WASI.
+    const exec_script = "#!/bin/sh\necho hi\n";
+    const has_mode = Io.File.Permissions.has_executable_bit;
+    if (has_mode) {
+        try Dir.cwd().writeFile(io, .{
+            .sub_path = try std.fmt.allocPrint(a, "{s}/python/bin/build_x.sh", .{stage}),
+            .data = exec_script,
+            .flags = .{ .permissions = .fromMode(0o755) },
+        });
+    }
     const big = try a.alloc(u8, 3 * zstd.block_size_max + 12345);
     var prng = std.Random.DefaultPrng.init(42);
     prng.random().bytes(big);
@@ -1916,8 +1943,28 @@ test "tarZstDir round-trips through the launcher's payload decoder" {
     try Dir.cwd().createDirPath(io, dest);
     var dest_dir = try Dir.cwd().openDir(io, dest, .{});
     defer dest_dir.close(io);
-    try std.tar.extract(io, dest_dir, &dec.reader, .{ .mode_mode = .ignore, .strip_components = 0 });
+    // Extract through the same mode_mode production uses, so this test covers
+    // the extract side too (reverting it to `.ignore` fails the IXUSR check).
+    try std.tar.extract(io, dest_dir, &dec.reader, .{ .mode_mode = runtime.payload_extract_mode_mode, .strip_components = 0 });
 
     try testing.expectEqualStrings(text, try dest_dir.readFileAlloc(io, "python/bin/python", a, .unlimited));
     try testing.expectEqualSlices(u8, big, try dest_dir.readFileAlloc(io, "python/big.bin", a, .unlimited));
+
+    // Regression: an executable source file must keep IXUSR through pack/extract.
+    if (has_mode) {
+        try testing.expectEqualStrings(exec_script, try dest_dir.readFileAlloc(io, "python/bin/build_x.sh", a, .unlimited));
+        const sf = try dest_dir.openFile(io, "python/bin/build_x.sh", .{});
+        defer sf.close(io);
+        const sst = try sf.stat(io);
+        try testing.expect(sst.permissions.toMode() & 0o100 != 0); // IXUSR preserved
+    }
+
+    // Symmetric guard: a non-executable file must stay non-exec, so the fix
+    // can't be over-broad.
+    if (has_mode) {
+        const pf = try dest_dir.openFile(io, "python/bin/python", .{});
+        defer pf.close(io);
+        const pst = try pf.stat(io);
+        try testing.expect(pst.permissions.toMode() & 0o100 == 0);
+    }
 }

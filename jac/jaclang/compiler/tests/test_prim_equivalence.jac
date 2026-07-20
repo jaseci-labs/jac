@@ -166,6 +166,34 @@ test "builtins" {
     run_with_both("prim_builtins.jac", "builtins_py", "builtins_cl", "builtins_na");
 }
 
+test "builtins format long" {
+    run_with_both(
+        "prim_format_builtin.jac",
+        "fmt_long_py",
+        "fmt_long_cl",
+        "fmt_long_na",
+        require=["na"]
+    );
+}
+
+test "fstring repr conversion" {
+    run_with_both(
+        "prim_fstring_conv.jac", "fconv_py", "fconv_cl", "fconv_na", require=["na"]
+    );
+}
+
+test "fstring dynamic spec" {
+    run_with_both(
+        "prim_fstring_conv.jac", "fdyn_py", "fdyn_cl", "fdyn_na", require=["na"]
+    );
+}
+
+test "fstring repr containers" {
+    run_with_both(
+        "prim_fstring_conv.jac", "fcont_py", "fcont_cl", "fcont_na", require=["na"]
+    );
+}
+
 test "math" {
     run_with_both("prim_math.jac", "math_py", "math_cl", "math_na", require=["na"]);
 }
@@ -194,9 +222,39 @@ test "closures nested capture" {
     );
 }
 
+test "closures escaping" {
+    run_with_both(
+        "prim_closures.jac",
+        "closures_escape_py",
+        "closures_escape_cl",
+        "closures_escape_na",
+        require=["na"]
+    );
+}
+
 test "generators yield" {
     run_with_both(
         "prim_generators.jac", "gens_py", "gens_cl", "gens_na", require=["na"]
+    );
+}
+
+test "varargs parameter forms" {
+    run_with_both(
+        "prim_varargs.jac", "varargs_py", "varargs_cl", "varargs_na", require=["na"]
+    );
+}
+
+test "container repr" {
+    run_with_both("prim_repr.jac", "repr_py", "repr_cl", "repr_na", require=["na"]);
+}
+
+test "chained comparisons with membership and identity" {
+    run_with_both(
+        "prim_chain_cmp.jac",
+        "chain_cmp_py",
+        "chain_cmp_cl",
+        "chain_cmp_na",
+        require=["na"]
     );
 }
 
@@ -543,4 +601,40 @@ test "builtins introspection" {
         "builtins_introspection_cl",
         "builtins_introspection_na"
     );
+}
+
+test "match sequence" {
+    run_with_both(
+        "prim_match.jac", "match_seq_py", "match_seq_cl", "match_seq_na", require=["na"]
+    );
+}
+
+test "match star" {
+    run_with_both(
+        "prim_match.jac",
+        "match_star_py",
+        "match_star_cl",
+        "match_star_na",
+        require=["na"]
+    );
+}
+
+test "match mapping" {
+    run_with_both(
+        "prim_match.jac", "match_map_py", "match_map_cl", "match_map_na", require=["na"]
+    );
+}
+
+test "match class" {
+    run_with_both(
+        "prim_match.jac",
+        "match_arch_py",
+        "match_arch_cl",
+        "match_arch_na",
+        require=["na"]
+    );
+}
+
+test "new builtin and positional ctors" {
+    run_with_both("prim_new.jac", "new_py", "new_cl", "new_na", require=["na"]);
 }

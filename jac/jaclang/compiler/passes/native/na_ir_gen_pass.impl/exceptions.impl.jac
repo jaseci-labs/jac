@@ -271,13 +271,27 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
             exc_type_name = self._get_name(nd.cause.target) or "Exception";
             exc_type_id = self._get_or_register_exc_type(exc_type_name);
 
-            if exc_type_name in self.struct_types {
-                exc_payload = self._codegen_expr(nd.cause);
-            } else {
-                params = nd.cause.params or [];
-                if params {
-                    exc_msg = self._codegen_expr(params[0]);
+            _exc_pos_args = [];
+            for _p in (nd.cause.params or []) {
+                if not isinstance(_p, uni.KWPair) {
+                    _exc_pos_args.append(_p);
                 }
+            }
+            _exc_has_init = f"{exc_type_name}.init" in self.method_funcs;
+            if f"{exc_type_name}.__init__" in self.method_funcs {
+                _exc_has_init = True;
+            }
+            _exc_order = self.struct_field_order.get(exc_type_name);
+            _exc_struct_ok = _exc_has_init;
+            if (not _exc_struct_ok) and (_exc_order is not None) {
+                _exc_struct_ok = len(_exc_pos_args) <= len(_exc_order);
+            }
+            if (exc_type_name in self.struct_types) and _exc_struct_ok {
+                exc_payload = self._codegen_expr(nd.cause);
+            } elif _exc_pos_args {
+                exc_msg = self._codegen_expr(_exc_pos_args[0]);
+            } elif nd.cause.params {
+                exc_msg = self._codegen_expr(nd.cause.params[0]);
             }
         } else {
             exc_msg = self._codegen_expr(nd.cause);

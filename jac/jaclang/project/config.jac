@@ -63,6 +63,7 @@ obj BuildConfig {
     has typecheck: bool = False,
         dir: str = ".jac",
         default_codespace: str = "native",
+        native_closure_cap: int = 256,
         native: NativeBuildConfig = NativeBuildConfig();
 }
 

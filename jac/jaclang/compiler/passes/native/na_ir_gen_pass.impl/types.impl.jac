@@ -268,6 +268,8 @@ impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
             spec = "f64";
         } elif isinstance(elem_llvm, ir.PointerType) {
             spec = "ptr";
+        } elif self?.jacval_type and elem_llvm == self.jacval_type {
+            spec = "jacval";
         }
         self._emit_list_helpers(spec, elem_llvm);
         return self.list_types[spec].as_pointer();
@@ -347,6 +349,12 @@ impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
 }
 
 impl NaIRGenPass._lower_function_type(t: any) -> ir.Type {
+    raw = self._lower_function_type_raw(t);
+    (_sig_name, sig_st, _fnty_env) = self._closure_sig_struct(raw.pointee);
+    return sig_st.as_pointer();
+}
+
+impl NaIRGenPass._lower_function_type_raw(t: any) -> ir.Type {
     ret_type: ir.Type = ir.VoidType();
     if t.return_type is not None {
         _r = self._lower_type(t.return_type);
@@ -403,6 +411,14 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
 impl NaIRGenPass._try_resolve_field_type(var: uni.UniNode) -> tuple {
     _ptb = var?.type;
     if _ptb is not None {
+        try {
+            import from jaclang.compiler.type_system.types {
+                FunctionType as _FieldFnType
+            }
+            if isinstance(_ptb, _FieldFnType) {
+                return (self._lower_function_type_raw(_ptb), False);
+            }
+        } except ImportError { }
         lowered = self._lower_type(_ptb);
         if lowered is not None {
             return (lowered, False);
@@ -464,6 +480,15 @@ impl NaIRGenPass._resolve_clib_type(type_expr: (uni.UniNode | None)) -> ir.Type 
     if type_name == "bytes" or type_name == "bytearray" {
         return ir.IntType(8).as_pointer();
     }
+
+    try {
+        import from jaclang.compiler.type_system.types {
+            FunctionType as _ClibSigFnType
+        }
+        if isinstance(type_expr?.type, _ClibSigFnType) {
+            return self._lower_function_type_raw(type_expr.type);
+        }
+    } except ImportError { }
 
     return self._resolve_jac_type(type_expr);
 }
@@ -558,7 +583,7 @@ impl NaIRGenPass._to_bool(val: ir.Value) -> ir.Value {
             "!=", val, ir.Constant(val.type, 0), name="tobool"
         );
     }
-    if isinstance(val.type, ir.DoubleType) {
+    if isinstance(val.type, (ir.DoubleType, ir.FloatType)) {
         return self.builder.fcmp_unordered(
             "!=", val, ir.Constant(val.type, 0.0), name="tobool"
         );
@@ -753,6 +778,56 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
         return self.builder.fpext(val, target_type, name="fpext");
     }
 
+    _clos_tgt = self._closure_struct_of(target_type);
+    if _clos_tgt is not None {
+        _src_is_fn = isinstance(val.type, ir.FunctionType)
+        or (
+            isinstance(val.type, ir.PointerType)
+            and isinstance(val.type.pointee, ir.FunctionType)
+        );
+        if _src_is_fn {
+            if self._pending_lambda_captures is not None {
+                self._pending_lambda_captures = None;
+                self.emit(
+                    E5092,
+                    kind="expression",
+                    name="capturing lambda used as a value",
+                    help_text="This lambda captures enclosing locals that could not be promoted to shared heap cells in this frame, so it cannot escape as a value here. Bind the lambda's inputs through parameters, or use a named nested function."
+                );
+                return ir.Constant(target_type, None);
+            }
+            if self.rc_alloc_fn is None {
+                self._emit_rc_helpers();
+            }
+            _wi32 = ir.IntType(32);
+            _wi64 = ir.IntType(64);
+            _wi8p = ir.IntType(8).as_pointer();
+            _wfn = val;
+            if isinstance(_wfn.type, ir.FunctionType) {
+                _wfn = self.builder.bitcast(
+                    _wfn, _wfn.type.as_pointer(), name="clos.wrap.fnp"
+                );
+            }
+            _wclos = self._alloc_iter_struct(_clos_tgt);
+            _wfn_slot = self.builder.gep(
+                _wclos,
+                [ir.Constant(_wi32, 0), ir.Constant(_wi32, 0)],
+                name="clos.wrap.fn.slot"
+            );
+            self.builder.store(
+                self.builder.ptrtoint(_wfn, _wi64, name="clos.wrap.fn.i64"), _wfn_slot
+            );
+            _wenv_slot = self.builder.gep(
+                _wclos,
+                [ir.Constant(_wi32, 0), ir.Constant(_wi32, 1)],
+                name="clos.wrap.env.slot"
+            );
+            self.builder.store(ir.Constant(_wi8p, None), _wenv_slot);
+            self._mark_owned(_wclos);
+            return _wclos;
+        }
+    }
+
     if isinstance(val.type, ir.PointerType)
     and isinstance(target_type, ir.PointerType) {
         return self.builder.bitcast(val, target_type, name="ptrcast");
@@ -901,11 +976,12 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
 impl NaIRGenPass._promote_to_float(
     left: ir.Value, right: ir.Value
 ) -> tuple[(ir.Value, ir.Value)] {
-    if isinstance(left.type, ir.IntType) {
-        left = self.builder.sitofp(left, ir.DoubleType(), name="cast");
+    f64 = ir.DoubleType();
+    if isinstance(left.type, (ir.IntType, ir.FloatType)) {
+        left = self._coerce_type(left, f64);
     }
-    if isinstance(right.type, ir.IntType) {
-        right = self.builder.sitofp(right, ir.DoubleType(), name="cast");
+    if isinstance(right.type, (ir.IntType, ir.FloatType)) {
+        right = self._coerce_type(right, f64);
     }
     return (left, right);
 }
@@ -1264,8 +1340,8 @@ impl NaIRGenPass._emit_binary_op(
         }
     }
 
-    is_float = isinstance(left.type, ir.DoubleType)
-    or isinstance(right.type, ir.DoubleType)
+    is_float = isinstance(left.type, (ir.DoubleType, ir.FloatType))
+    or isinstance(right.type, (ir.DoubleType, ir.FloatType))
     or op == Tok.DIV;
     if is_float {
         (left, right) = self._promote_to_float(left, right);
