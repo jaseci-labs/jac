@@ -252,8 +252,7 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
                 "py": py_code,
                 "server": server,
                 "emit": emit,
-                "sv": has_sv,
-                "native": is_native
+                "sv": has_sv
             }
         );
         console.print(f"  ✔ {rel}", style="success");

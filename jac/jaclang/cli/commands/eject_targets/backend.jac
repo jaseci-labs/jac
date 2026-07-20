@@ -32,7 +32,7 @@ def emit_backend(
     emitted_codes: list = [];
     written = 0;
     for unit in compiled {
-        if not unit.get("emit", unit["server"]) {
+        if not unit["emit"] {
             continue;
         }
         module = str(unit["module"]);
@@ -150,21 +150,7 @@ def emit_backend(
         );
     }
 
-    uses_upload = False;
-    for f in functions_full {
-        for p in f["params"] {
-            if _is_upload_type(str(p["type"])) {
-                uses_upload = True;
-            }
-        }
-    }
-    for w in walkers_full {
-        for fld in w["fields"] {
-            if _is_upload_type(str(fld["type"])) {
-                uses_upload = True;
-            }
-        }
-    }
+    uses_upload = _uses_upload(walkers_full, functions_full);
 
     detected_caps: set = set();
     if sql {
@@ -640,6 +626,25 @@ def _is_upload_type(ptype: str) -> bool {
 }
 
 
+def _uses_upload(walkers: list, functions: list) -> bool {
+    for f in functions {
+        for p in f["params"] {
+            if _is_upload_type(str(p["type"])) {
+                return True;
+            }
+        }
+    }
+    for w in walkers {
+        for fld in w["fields"] {
+            if _is_upload_type(str(fld["type"])) {
+                return True;
+            }
+        }
+    }
+    return False;
+}
+
+
 glob _JSON_SAFE_TYPE_NAMES: set = {
          "str",
          "int",
@@ -725,21 +730,7 @@ def _emit_main_py(
     has_env: bool,
     entry_module: str
 ) {
-    uses_upload = False;
-    for f in functions {
-        for p in f["params"] {
-            if _is_upload_type(str(p["type"])) {
-                uses_upload = True;
-            }
-        }
-    }
-    for w in walkers {
-        for fld in w["fields"] {
-            if _is_upload_type(str(fld["type"])) {
-                uses_upload = True;
-            }
-        }
-    }
+    uses_upload = _uses_upload(walkers, functions);
     fastapi_import = (
         "from fastapi import FastAPI, Header, HTTPException, "
         "Request, WebSocket, WebSocketDisconnect"
@@ -1319,7 +1310,7 @@ def _emit_main_py(
             lines.append(
                 "_mount_endpoint(_W_" + wn + ", run_" + wn + ", None, " + '["/walker/' + wn + '", "/walker/' + wn + '/{node_id}"], ' + repr(
                     wn
-                ) + ", " + ("False" if w["pub"] else "True") + ")"
+                ) + ", " + required + ")"
             );
             continue;
         }
@@ -1359,7 +1350,7 @@ def _emit_main_py(
         lines.append(
             "_mount_endpoint(_W_" + wn + ", run_" + wn + ", " + model + ", " + '["/walker/' + wn + '", "/walker/' + wn + '/{node_id}"], ' + repr(
                 wn
-            ) + ", " + ("False" if w["pub"] else "True") + ")"
+            ) + ", " + required + ")"
         );
     }
 

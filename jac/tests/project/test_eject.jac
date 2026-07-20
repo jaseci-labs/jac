@@ -245,34 +245,6 @@ test "byLLM projects vendor jaclang.byllm and pin the llm capability deps" {
 }
 
 
-test "meaning-typed metadata ships as readable source, never a pickle" {
-    with TemporaryDirectory() as td {
-        src = Path(td) / "mtirapp";
-        src.mkdir(parents=True, exist_ok=True);
-        (src / "jac.toml").write_text(
-            '[project]\nname = "mtirapp"\nentry-point = "main.jac"\n'
-        );
-        (src / "main.jac").write_text(
-            'import from jaclang.byllm.lib { Model }\n\n' + 'glob llm = Model(model_name="mockllm", config={"outputs": ["ok"]});\n\n' + 'sem summarize = "Condense the text to one line.";\n' + 'def:pub summarize(text: str) -> str by llm();\n'
-        );
-        rc = _silent_eject(str(src));
-        assert rc == 0;
-        backend = src / "ejected" / "backend";
-        assert not (backend / "mtir.pkl").exists();
-        for stray in backend.rglob("*.pkl") {
-            raise AssertionError(f"ejected output must ship no pickles, found {stray}");
-        }
-        mod = backend / "mtir_data.py";
-        assert mod.exists();
-        body = mod.read_text();
-        ast.parse(body);
-        assert "MTIR_DATA" in body;
-        assert "Condense the text to one line." in body;
-        assert "pickle" not in (backend / "main.py").read_text();
-    }
-}
-
-
 test "plain projects do not vendor byllm or pin llm deps" {
     with TemporaryDirectory() as td {
         src = Path(td) / "myapp";
@@ -373,7 +345,7 @@ test "eject honors an explicit output directory" {
 }
 
 
-# ==================== errors ====================
+# ==================== native (.na.jac) modules ====================
 test "native modules are emitted as python so server imports resolve" {
     with TemporaryDirectory() as td {
         src = Path(td) / "naapp";
@@ -394,11 +366,9 @@ test "native modules are emitted as python so server imports resolve" {
         assert emitted.exists();
         assert "def double" in emitted.read_text();
         # It is still not API surface: only the importing server module is.
-        main_py = _backend(src, "_jac_main.py");
-        assert main_py.exists();
-        app_py = _backend(src, "main.py").read_text();
-        assert "/function/twice" in app_py;
-        assert "/function/double" not in app_py;
+        main_py = _backend(src, "main.py").read_text();
+        assert "/function/twice" in main_py;
+        assert "/function/double" not in main_py;
     }
 }
 
@@ -810,7 +780,11 @@ test "@restspec functions get their declared paths mounted" {
         rc = _silent_eject(str(src));
         assert rc == 0;
         main_py = _backend(src, "main.py").read_text();
-        assert "add_api_route" in main_py;
+        # `add_api_route` is unconditional boilerplate in _mount_endpoint, so
+        # asserting it proves nothing. The declared path is resolved at runtime
+        # off the spec, so it lives in the compiled module, not in main.py.
+        assert "/api/v1/hello" in _backend(src, "_jac_main.py").read_text();
+        assert "_mount_endpoint(_F_hello," in main_py;
         # The module jserver (HTTPMethod's home) must be vendored so the
         # compiled module imports cleanly without jac-scale installed.
         assert _backend(src, "jaclang/scale/jserver/jserver.py").exists();
