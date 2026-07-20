@@ -57,7 +57,14 @@ def download_wheels(
     }
     (rc, out) = _pip(args + specs);
     if rc != 0 {
-        return (False, out);
+        if platform_tag or python_version {
+            return (False, out);
+        }
+
+        (rc2, out2) = _pip(["wheel", "--wheel-dir", str(dest)] + specs);
+        if rc2 != 0 {
+            return (False, f"{out}\n{out2}");
+        }
     }
     return (True, "");
 }
