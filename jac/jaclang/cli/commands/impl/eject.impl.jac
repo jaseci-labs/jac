@@ -1235,8 +1235,14 @@ def _emit_readme(out: Path, project_name: str, has_frontend: bool, env_files: li
         "## API",
         "",
         "- Walkers: `POST /walker/<name>`; functions: `POST /function/<name>`.",
+        "- `@restspec(path=...)` replaces the default path. Under "
+        "`method=GET` the symbol's fields bind as query parameters "
+        "(fields without a default are required, and a missing one is a 422).",
         "- Auth: `POST /user/register` and `POST /user/login`; `:pub` "
         "endpoints need no token.",
+        "- Streaming responses are Server-Sent Events where every frame is "
+        "JSON, so a string chunk arrives as `data: \"hello\"`, not "
+        "`data: hello`. The stream ends with an `event: end` frame.",
         "- OpenAPI docs at `/docs`; health check at `/__health`.",
         ""
     ];

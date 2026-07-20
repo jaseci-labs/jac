@@ -792,6 +792,32 @@ test "@restspec functions get their declared paths mounted" {
 }
 
 
+test "a GET @restspec symbol binds its fields as query params, not a bare model" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "getapp";
+        src.mkdir(parents=True, exist_ok=True);
+        (src / "jac.toml").write_text(
+            '[project]\nname = "getapp"\nentry-point = "main.jac"\n'
+        );
+        (src / "main.jac").write_text(
+            'import from jaclang.runtimelib.builtin { restspec }\n' + 'import from jaclang.scale.jserver.jserver { HTTPMethod }\n\n' + '@restspec(method=HTTPMethod.GET, path="/search")\n' + 'def:pub search(query: str) -> dict {\n' + '    return {"q": query};\n' + '}\n'
+        );
+        rc = _silent_eject(str(src));
+        assert rc == 0;
+        main_py = _backend(src, "main.py").read_text();
+        # `jac start` classifies every field of a GET symbol as a query param.
+        # Calling the model with no arguments would 500 on `query` (required)
+        # and would discard caller input even where every field had a default.
+        assert "_query_route(handler, model)" in main_py;
+        assert "_bodyless" not in main_py;
+        assert "Query(...) if finfo.is_required() else Query(finfo.default)" in main_py;
+        # The required field must stay required rather than gain a default to
+        # make the bare-model call survive.
+        assert "    query: str" in main_py;
+    }
+}
+
+
 # ==================== file upload (multipart) endpoints ====================
 """A project whose entry imports a `:pub` function taking an UploadFile."""
 def _write_upload_project(src: Path, name: str = "up_app") {
