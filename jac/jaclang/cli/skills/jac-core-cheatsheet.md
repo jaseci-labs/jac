@@ -101,18 +101,20 @@ import type from billing { Invoice }    # annotation-only - breaks circular impo
 import ".styles/global.css";            # file - takes `;`
 ```
 
-**Client imports (inside `.cl.jac` files, or inside a `cl { }` block in `main.jac`):**
+**Client imports (in client code - a `.cl.jac` file, a `cl { }` block, or plain `.jac` code inferred client):**
 
 ```
 import from .button { Button }                        # relative (dots)
 import from "@jac/runtime" { Router, Routes, Route }  # npm (quoted)
 ```
 
-**`main.jac` is the one mixed-context file.** Server imports go at the top (server is the default context - no block needed). Then a `cl { ... }` block holds the client section: CSS import, top-level component, `def:pub app` (no-arg for manual routing; `app(children)` that renders `children` for file-based routing - see `jac-cl-routing`).
+**Codespaces are inferred - markers are optional overrides.** JSX and string-path npm imports mark a declaration client, and the helpers/`glob`s/imports client code references join the client bundle (scope-aware propagation); unmarked code defaults to server; `def:pub` endpoints and walkers always stay server (client calls become auto-RPC); extern C-decl imports (`import from lib { def f(x: f64) -> f64; }`) mark a declaration native and its users follow (consuming a native module is not a signal; pure code stays server). Explicit `cl`/`sv`/`na` blocks, statement prefixes, and `.cl.jac`/`.sv.jac`/`.na.jac` extensions always win over inference - the useful one is `sv` to pin a declaration server-side. See `jac-codespaces`.
+
+**`main.jac` mixes contexts.** Server imports go at the top (server is the default context - no block needed). The client section - CSS import, top-level component, `def:pub app` (no-arg for manual routing; `app(children)` that renders `children` for file-based routing - see `jac-cl-routing`) - is inferred client from its JSX and string-path imports; a `cl { ... }` block around it is the optional explicit wrapper.
 
 **No-dot imports are project-root absolute.** In server/native code (`.jac`, `.na.jac`, `.sv.jac`), `import from engine.math.vec3 { Vec3 }` resolves against the **project root** (the nearest `jac.toml` dir) from *anywhere* in the project - the importing file may sit at the root, under `tests/`, or any depth, and the import is identical. This is the idiomatic form; prefer it over dot-counting. A test in `tests/` imports the modules it exercises with the same no-dot path it would use at the root.
 
-**Relative (dotted) imports** walk up from the importing file's own directory - each leading `.` is one folder. They are mainly needed in **client** code (`.cl.jac` files / `cl { }` blocks), where the bundler resolves them. `sv import` carries the same dot semantics.
+**Relative (dotted) imports** walk up from the importing file's own directory - each leading `.` is one folder. They are mainly needed in **client** code (`.cl.jac` files, `cl { }` blocks, or inferred-client `.jac` code), where the bundler resolves them. `sv import` carries the same dot semantics.
 
 | Dots | Meaning | Use when |
 |---|---|---|
@@ -148,4 +150,4 @@ Generators (`yield` / `yield from`), decorators (`@deco` above `def`), walrus `(
 
 ## See also
 
-`jac-types` (type system, `as` casts, `any` boundaries) · `jac-has-fields` (fields) · `jac-impl-files` (file layout) · `jac-python-interop` (PyPI, `::py::`, calling Jac from Python) · `jac-concurrency` (`flow`/`wait`, async)
+`jac-types` (type system, `as` casts, `any` boundaries) · `jac-has-fields` (fields) · `jac-impl-files` (file layout) · `jac-codespaces` (inferred client/server/native placement) · `jac-python-interop` (PyPI, `::py::`, calling Jac from Python) · `jac-concurrency` (`flow`/`wait`, async)

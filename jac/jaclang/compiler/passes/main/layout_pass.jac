@@ -103,11 +103,13 @@ obj LayoutPass(Transform[uni.Module, uni.Module]) {
     has ir_in: uni.Module,
         prog: any,
         cancel_token: any = None,
-        registry: LayoutRegistry postinit;
+        registry: LayoutRegistry postinit,
+        isinstance_targets: set[str] postinit;
 
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;
     def _collect_archetypes(module: uni.Module) -> dict[str, uni.Archetype];
+    def _collect_isinstance_targets(module: uni.Module) -> None;
     def _build_hierarchy(archetypes: dict[str, uni.Archetype]) -> None;
     def _compute_c3_mro(class_name: str) -> list[str];
     def _topo_sort(arch_map: dict[str, uni.Archetype]) -> list[str];

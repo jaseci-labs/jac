@@ -453,7 +453,7 @@ with entry {
 2. **Drop the annotation** -- `x = src();` makes `x` inferred-`any` and no check fires.
 3. **Annotate `any` explicitly** -- `x: any = src();` documents the boundary.
 
-See [The `any` Type and Gradual Typing](../reference/language/foundation.md#the-any-type-and-gradual-typing) for the full rule and [Walker Response Patterns](../reference/language/walker-responses.md#typing-your-reports) for typing the walker `reports` channel.
+See [The `any` Type and Gradual Typing](../reference/language/types-and-values.md#the-any-type-and-gradual-typing) for the full rule and [Walker Response Patterns](../reference/language/walker-responses.md#typing-your-reports) for typing the walker `reports` channel.
 
 ---
 

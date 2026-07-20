@@ -6,6 +6,7 @@ import from pathlib { Path }
 import from typing { Any, Optional, cast }
 import from jaclang.cli.console { console }
 import from jaclang.runtimelib.client.targets.build_common { SUBPROCESS_TIMEOUT_SHORT }
+import from jaclang.runtimelib.sv_client { headless_start_args }
 import from jaclang.runtimelib.watcher { FileChangeEvent }
 
 def port_bind_error(port: int) -> Optional[str] {
@@ -121,16 +122,7 @@ def ensure_watchdog_common(target_name: str) -> bool {
 def start_backend_server_common(entry_file: Path, project_dir: Path, port: int) -> any {
     import sys;
     return subprocess.Popen(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
-            "start",
-            str(entry_file),
-            "--port",
-            str(port),
-            "--no_client"
-        ],
+        [sys.executable, "-m", "jaclang"] + headless_start_args(str(entry_file), port),
         cwd=str(project_dir),
         stdout=None,
         stderr=None

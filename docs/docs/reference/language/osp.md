@@ -15,8 +15,8 @@
 
 > **Related Sections:**
 >
-> - [Graph Operators](foundation.md#7-graph-operators-osp) - Connection and edge reference syntax
-> - [Pipe Operators](foundation.md#8-pipe-operators) - Spawn traversal modes
+> - [Graph Operators](operators.md#7-graph-operators-osp) - Connection and edge reference syntax
+> - [Pipe Operators](operators.md#8-pipe-operators) - Spawn traversal modes
 
 ## Introduction to OSP
 
@@ -629,7 +629,7 @@ These keywords have special meaning in specific contexts:
 | `root` | Anywhere | Root node of the current graph | [Graph Construction](#graph-construction) |
 | `super` | Subclass method | Parent class reference | [Part II](functions-objects.md#3-inheritance) |
 | `init` | Object body | Constructor method name | [Part II](functions-objects.md#1-objects-classes) |
-| `postinit` | Object body | Post-constructor hook | [Part I](foundation.md#2-instance-variables-has) |
+| `postinit` | Object body | Post-constructor hook | [Variables and Scope](variables-and-scope.md#2-instance-variables-has) |
 | `props` | JSX context | Component props reference | [Part IV: Full-Stack](../plugins/jac-client.md#client-sections) |
 
 **Usage examples:**

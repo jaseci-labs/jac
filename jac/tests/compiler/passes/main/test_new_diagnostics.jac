@@ -50,9 +50,12 @@ def assert_error_pretty_found(needle: str, haystack: str) {
 
 """Compile a fixture with type checking and static analysis. Returns (program, module)."""
 def compile_and_check(fixture_name: str) -> tuple {
+    import from jaclang.jac0core.compile_options { CompileOptions }
     path = os.path.join(NEW_DIAG_FIXTURES, fixture_name);
     program = JacProgram();
-    mod = program.compile(path, type_check=True);
+    mod = program.compile(
+        path, options=CompileOptions(type_check=True, default_codespace='server')
+    );
     return (program, mod);
 }
 

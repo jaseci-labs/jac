@@ -6,6 +6,24 @@ For production, the `--scale` flag automates Docker image builds and Kubernetes 
 
 Scale ships **built into `jaclang` core** as the `scale` subsystem (importable as `jaclang.scale`) -- there is no separate `jac-scale` package to install. It arrives with the `jac` binary, so the serving and deployment machinery is always present; only the heavier optional third-party libraries it can use (MongoDB, Redis, Kubernetes, Prometheus, ...) are pulled in per-project, on demand.
 
+## The scale-invariance contract
+
+Scale exists to keep one promise: **your program text does not change with the shape of its deployment.** The program that runs as a script serves as an API and deploys to a cluster --
+
+```bash
+jac run main.jac             # one user, one process, local store
+jac start main.jac           # N users, one machine, walkers as endpoints
+jac start main.jac --scale   # N users, M machines, Kubernetes
+```
+
+-- and the diff between those three configurations is empty. The strata a conventional stack adds at each step (the web framework, the auth middleware, the tenancy filter on every query, the serialization schema, the deployment manifests) encode the *shape of the deployment*, not application meaning, and Scale's position is that deployment shape is a runtime concern, the way garbage collection is a runtime concern. Three mechanisms carry the promise: walkers project as endpoints (a walker's `has` fields and `report`s already form a complete, typed interface description, so there is no route table or client SDK to drift), `root` binds per-caller (each authenticated user's traversals are scoped to their own graph by construction, so isolation is geometry rather than middleware), and persistence follows reachability (transient vs. durable is not a code change).
+
+**What the contract does not hide.** The equivalence is per-user and semantic, not operational -- a deployment with more machines answers with different latencies and fails in different ways, and pretending otherwise is the mistake that sank a generation of RPC systems. So the physics stays visible on purpose:
+
+- **Latency** is excluded from the promise. A traversal that was correct on one machine is correct on twenty; making it *fast* is a placement and caching problem (see [Data & Storage](jac-scale-persistence.md)), not a rewrite.
+- **Concurrency conflicts** are handled by a documented rule, not silently: writes are guarded by per-node optimistic concurrency -- a losing request's work is discarded atomically and replayed against the winner's state (with `on_commit` side effects firing exactly once, for the attempt that wins), or surfaced as a typed conflict error if you configure conflicts to be explicit. See [Concurrent writes](../persistence.md#concurrent-writes-check-then-create-and-convergence).
+- **Cost** moves, it doesn't vanish: scaling is paid in machines and operator attention instead of engineering time. The single system image hides the deployment's shape from the program, not the bill from the people running it.
+
 This reference is split across three focused pages, hubbed here. Use the quick reference below to jump to the area you need.
 
 <!-- This page was split into three sub-pages (see "Reference pages" below). Old
@@ -87,7 +105,7 @@ For example, configuring a Mongo database under `[scale.database]` makes `jac in
 
 | Capability | What it needs | When you need it |
 |-------|-------------|-----------------|
-| _(core serving)_ | FastAPI, uvicorn, JWT auth | Always available -- ships with `jaclang` |
+| *(core serving)* | FastAPI, uvicorn, JWT auth | Always available -- ships with `jaclang` |
 | Mongo/Redis storage | pymongo, redis | Using MongoDB/Redis for storage (`jac start` with `[scale.database]`) |
 | Firestore | google-cloud-firestore | Using Firestore with `kvstore(db_type='firestore')` |
 | Cloud object storage | boto3 | Using S3-compatible cloud storage |

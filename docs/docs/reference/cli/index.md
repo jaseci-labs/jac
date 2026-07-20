@@ -249,7 +249,7 @@ jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a A
 | `-f, --faux` | Print docs only (no server) | `False` |
 | `-d, --dev` | Enable HMR (Hot Module Replacement) mode | `False` |
 | `--api_port` | Separate API port for HMR mode (0=same as port) | `0` |
-| `--no_client` | Skip client bundling/serving (API only) | `False` |
+| `--no-client` | Skip client bundling/serving (API only) | `False` |
 | `--profile` | Configuration profile to load (e.g. prod, staging) | `""` |
 | `--client` | Client build target (`web`, `desktop`, `pwa`, `mobile`) | None |
 | `--host` | Mobile dev (`--client mobile --dev`) optional live-reload host/IP override | `""` |
@@ -273,7 +273,7 @@ jac start -p 3000
 jac start --dev
 
 # HMR mode without client bundling (API only)
-jac start --dev --no_client
+jac start --dev --no-client
 
 # Mobile dev (Android default)
 jac start main.jac --client mobile --dev
@@ -802,7 +802,7 @@ jac browse close
 
 ## AI-Assisted Development
 
-Three commands make Jac projects legible to (and drivable by) AI agents -- including Jac's own built-in coding agent. See also [Agent Skills & MCP](../../quick-guide/agent-skills-and-mcp.md) for the workflow overview.
+Three commands make Jac projects legible to (and drivable by) AI agents -- including Jac's own built-in coding agent. See also [Agent Skills & MCP](../agent-skills-and-mcp.md) for the workflow overview.
 
 ### jac ai
 
@@ -1859,7 +1859,7 @@ jac guide --json
 jac guide --export ~/.claude/skills
 ```
 
-See [Agent Skills and MCP](../../quick-guide/agent-skills-and-mcp.md) for using the guides with AI assistants.
+See [Agent Skills and MCP](../agent-skills-and-mcp.md) for using the guides with AI assistants.
 
 ---
 
