@@ -341,6 +341,50 @@ test "react native scaffold writes Expo project files" {
     }
 }
 
+test "scaffold merges [dependencies.npm.native] into package.json" {
+    import tempfile;
+    import from jaclang.runtimelib.client.targets.react_native.scaffold {
+        write_expo_scaffold
+    }
+
+    with tempfile.TemporaryDirectory() as tmp {
+        project_root = Path(tmp);
+        (project_root / "jac.toml").write_text(
+            "[project]\n"
+            'name = "demo"\n\n'
+            "[dependencies.npm]\n"
+            'left-pad = "^1.3.0"\n\n'
+            "[dependencies.npm.native]\n"
+            'react-native-webview = "^13.15.0"\n'
+            'react-native-svg = "^15.13.0"\n'
+        );
+        rn_dir = project_root / "mobile-rn";
+        write_expo_scaffold(rn_dir, project_root);
+        pkg_content = (rn_dir / "package.json").read_text();
+        assert "react-native-webview" in pkg_content;
+        assert "^13.15.0" in pkg_content;
+        assert "react-native-svg" in pkg_content;
+        assert "left-pad" not in pkg_content;
+        assert "react-native-gesture-handler" in pkg_content;
+        assert "expo-asset" in pkg_content;
+    }
+}
+
+test "scaffold tolerates a project with no jac.toml" {
+    import tempfile;
+    import from jaclang.runtimelib.client.targets.react_native.scaffold {
+        write_expo_scaffold
+    }
+
+    with tempfile.TemporaryDirectory() as tmp {
+        project_root = Path(tmp);
+        rn_dir = project_root / "mobile-rn";
+        write_expo_scaffold(rn_dir, project_root);
+        assert (rn_dir / "package.json").exists();
+        assert "expo" in (rn_dir / "package.json").read_text();
+    }
+}
+
 test "scaffold preserves user-edited files on re-run" {
     # Re-running setup must not stomp on user customizations. The scaffold
     # marker line opts a file into auto-refresh; removing it pins the file.
