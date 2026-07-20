@@ -24,12 +24,12 @@ repos:
         args: [--fix=lf]
       - id: end-of-file-fixer
   - repo: https://github.com/DavidAnson/markdownlint-cli2
-    rev: v0.22.0
+    rev: v0.23.1
     hooks:
     - id: markdownlint-cli2
       args: [--fix]
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.11
+    rev: v0.15.22
     hooks:
       - id: ruff
         args: [--fix]
