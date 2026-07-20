@@ -14,14 +14,56 @@ import from jaclang.scale.deploy.autoscale.http_activation {
     HTTPTimeoutSpec
 }
 
+# Base HTTPActivationSpec shared by most tests below: a Deployment target on
+# port 8080 with a concurrency=10 trigger. Override only what a given test
+# cares about; pass concurrency=None when testing the metric-required check.
+def _spec(**overrides: any) -> HTTPActivationSpec {
+    defaults = {
+        "name": "preview",
+        "namespace": "default",
+        "scale_target_name": "preview-deployment",
+        "target": HTTPServiceTarget(service="preview-svc", port=8080),
+        "concurrency": HTTPConcurrencyMetric(target_value=10)
+    };
+    if "request_rate" in overrides {
+        defaults.pop("concurrency");
+    }
+    defaults.update(overrides);
+    return HTTPActivationSpec(**defaults);
+}
+
+# KEDAAutoscaler wired to MagicMock clients, with the HTTP Add-on preflight
+# check (list_cluster_custom_object) pre-configured as installed by default.
+# Pass a pre-configured apps_api/core_api/custom_api to control target,
+# Service, or route/ScaledObject existence for a specific test. Returns the
+# mocks alongside the instance since KEDAAutoscaler's api fields are typed
+# `any | None`, which the checker won't let a caller re-narrow after the fact.
+def _mocked_keda(
+    http_addon_installed: bool = True,
+    custom_api: any = None,
+    apps_api: any = None,
+    core_api: any = None
+) -> tuple[KEDAAutoscaler, any, any, any] {
+    KEDAAutoscaler._http_preflight_cache.clear();
+    custom_api = custom_api or unittest.mock.MagicMock();
+    if http_addon_installed {
+        custom_api.list_cluster_custom_object.return_value = {};
+    } else {
+        custom_api.list_cluster_custom_object.side_effect = ApiException(status=404);
+    }
+    apps_api = apps_api or unittest.mock.MagicMock();
+    core_api = core_api or unittest.mock.MagicMock();
+    keda = KEDAAutoscaler(
+        _custom_api=custom_api, _apps_api=apps_api, _core_api=core_api
+    );
+    return (keda, custom_api, apps_api, core_api);
+}
+
 
 # --- Section A: typed model validation -------------------------------------
 test "validate rejects a Service target with both port and port_name set" {
     keda = KEDAAutoscaler();
-    spec = HTTPActivationSpec(
-        name="preview",
-        namespace="default",
-        scale_target_name="preview-deployment",
+    spec = _spec(
         target=HTTPServiceTarget(service="preview-svc", port=8080, port_name="http")
     );
     raised = False;
@@ -35,12 +77,7 @@ test "validate rejects a Service target with both port and port_name set" {
 
 test "validate rejects a Service target with neither port nor port_name set" {
     keda = KEDAAutoscaler();
-    spec = HTTPActivationSpec(
-        name="preview",
-        namespace="default",
-        scale_target_name="preview-deployment",
-        target=HTTPServiceTarget(service="preview-svc")
-    );
+    spec = _spec(target=HTTPServiceTarget(service="preview-svc"));
     raised = False;
     try {
         keda._validate_http_activation_spec(spec);
@@ -52,12 +89,7 @@ test "validate rejects a Service target with neither port nor port_name set" {
 
 test "validate requires at least one of concurrency or request_rate" {
     keda = KEDAAutoscaler();
-    spec = HTTPActivationSpec(
-        name="preview",
-        namespace="default",
-        scale_target_name="preview-deployment",
-        target=HTTPServiceTarget(service="preview-svc", port=8080)
-    );
+    spec = _spec(concurrency=None);
     raised = False;
     try {
         keda._validate_http_activation_spec(spec);
@@ -136,13 +168,8 @@ test "rule with multiple paths expands into one OR-grouped match block per path"
 # --- Section C: InterceptorRoute manifest builder ---------------------------
 test "build_interceptor_route produces a complete and valid InterceptorRoute body" {
     keda = KEDAAutoscaler();
-    spec = HTTPActivationSpec(
-        name="preview",
-        namespace="staging",
-        scale_target_name="preview-deployment",
-        target=HTTPServiceTarget(service="preview-svc", port=8080),
-        rules=[HTTPRoutingRule(hosts=["preview.jac.dev"])],
-        concurrency=HTTPConcurrencyMetric(target_value=10)
+    spec = _spec(
+        namespace="staging", rules=[HTTPRoutingRule(hosts=["preview.jac.dev"])]
     );
     m = keda._build_interceptor_route(spec);
     body = m["body"];
@@ -158,13 +185,7 @@ test "build_interceptor_route produces a complete and valid InterceptorRoute bod
 
 test "build_interceptor_route uses port_name instead of port when port is unset" {
     keda = KEDAAutoscaler();
-    spec = HTTPActivationSpec(
-        name="preview",
-        namespace="default",
-        scale_target_name="preview-deployment",
-        target=HTTPServiceTarget(service="preview-svc", port_name="http"),
-        concurrency=HTTPConcurrencyMetric(target_value=10)
-    );
+    spec = _spec(target=HTTPServiceTarget(service="preview-svc", port_name="http"));
     m = keda._build_interceptor_route(spec);
     assert m["body"]["spec"]["target"]["portName"] == "http";
     assert "port" not in m["body"]["spec"]["target"];
@@ -172,24 +193,14 @@ test "build_interceptor_route uses port_name instead of port when port is unset"
 
 test "build_interceptor_route includes cold_start placeholder only when set" {
     keda = KEDAAutoscaler();
-    base_kwargs = {
-        "name": "preview",
-        "namespace": "default",
-        "scale_target_name": "preview-deployment",
-        "target": HTTPServiceTarget(service="preview-svc", port=8080),
-        "concurrency": HTTPConcurrencyMetric(target_value=10)
-    };
     with_cold_start = keda._build_interceptor_route(
-        HTTPActivationSpec(
-            **base_kwargs,
+        _spec(
             cold_start=HTTPColdStartSpec(
                 placeholder=HTTPStaticResponse(status_code=503, body="warming up")
             )
         )
     );
-    without_cold_start = keda._build_interceptor_route(
-        HTTPActivationSpec(**base_kwargs)
-    );
+    without_cold_start = keda._build_interceptor_route(_spec());
     assert with_cold_start["body"]["spec"]["coldStart"]["placeholder"]["response"][
         "statusCode"
     ] == 503;
@@ -198,12 +209,7 @@ test "build_interceptor_route includes cold_start placeholder only when set" {
 
 test "build_interceptor_route includes cold_start fallback_service only when set" {
     keda = KEDAAutoscaler();
-    spec = HTTPActivationSpec(
-        name="preview",
-        namespace="default",
-        scale_target_name="preview-deployment",
-        target=HTTPServiceTarget(service="preview-svc", port=8080),
-        concurrency=HTTPConcurrencyMetric(target_value=10),
+    spec = _spec(
         cold_start=HTTPColdStartSpec(
             fallback_service=HTTPServiceTarget(service="fallback-svc", port=8080)
         )
@@ -215,11 +221,7 @@ test "build_interceptor_route includes cold_start fallback_service only when set
 
 test "build_interceptor_route encodes request_rate as scalingMetric.requestRate" {
     keda = KEDAAutoscaler();
-    spec = HTTPActivationSpec(
-        name="preview",
-        namespace="default",
-        scale_target_name="preview-deployment",
-        target=HTTPServiceTarget(service="preview-svc", port=8080),
+    spec = _spec(
         request_rate=HTTPRequestRateMetric(
             target_value=50, window="5m", granularity="10s"
         )
@@ -234,22 +236,14 @@ test "build_interceptor_route encodes request_rate as scalingMetric.requestRate"
 
 test "build_interceptor_route includes timeouts only when set, omitted otherwise" {
     keda = KEDAAutoscaler();
-    base_kwargs = {
-        "name": "preview",
-        "namespace": "default",
-        "scale_target_name": "preview-deployment",
-        "target": HTTPServiceTarget(service="preview-svc", port=8080),
-        "concurrency": HTTPConcurrencyMetric(target_value=10)
-    };
     with_timeouts = keda._build_interceptor_route(
-        HTTPActivationSpec(
-            **base_kwargs,
+        _spec(
             timeouts=HTTPTimeoutSpec(
                 readiness="30s", request="60s", response_header="5s"
             )
         )
     );
-    without_timeouts = keda._build_interceptor_route(HTTPActivationSpec(**base_kwargs));
+    without_timeouts = keda._build_interceptor_route(_spec());
     assert with_timeouts["body"]["spec"]["timeouts"]["readiness"] == "30s";
     assert with_timeouts["body"]["spec"]["timeouts"]["request"] == "60s";
     assert "timeouts" not in without_timeouts["body"]["spec"];
@@ -259,15 +253,7 @@ test "build_interceptor_route includes timeouts only when set, omitted otherwise
 # --- Section D: ScaledObject external-push builder --------------------------
 test "build_http_scaled_object produces a complete external-push ScaledObject" {
     keda = KEDAAutoscaler();
-    spec = HTTPActivationSpec(
-        name="preview",
-        namespace="staging",
-        scale_target_name="preview-deployment",
-        target=HTTPServiceTarget(service="preview-svc", port=8080),
-        min_replicas=0,
-        max_replicas=5,
-        concurrency=HTTPConcurrencyMetric(target_value=10)
-    );
+    spec = _spec(namespace="staging", min_replicas=0, max_replicas=5);
     m = keda._build_http_scaled_object(spec);
     body = m["body"];
     trigger = body["spec"]["triggers"][0];
@@ -284,13 +270,7 @@ test "build_http_scaled_object produces a complete external-push ScaledObject" {
 
 test "build_http_scaled_object encodes concurrency metric as targetValue" {
     keda = KEDAAutoscaler();
-    spec = HTTPActivationSpec(
-        name="preview",
-        namespace="default",
-        scale_target_name="preview-deployment",
-        target=HTTPServiceTarget(service="preview-svc", port=8080),
-        concurrency=HTTPConcurrencyMetric(target_value=25)
-    );
+    spec = _spec(concurrency=HTTPConcurrencyMetric(target_value=25));
     m = keda._build_http_scaled_object(spec);
     metadata = m["body"]["spec"]["triggers"][0]["metadata"];
     assert metadata["targetValue"] == "25";
@@ -299,11 +279,7 @@ test "build_http_scaled_object encodes concurrency metric as targetValue" {
 
 test "build_http_scaled_object encodes request_rate metric with window and granularity" {
     keda = KEDAAutoscaler();
-    spec = HTTPActivationSpec(
-        name="preview",
-        namespace="default",
-        scale_target_name="preview-deployment",
-        target=HTTPServiceTarget(service="preview-svc", port=8080),
+    spec = _spec(
         request_rate=HTTPRequestRateMetric(
             target_value=50, window="5m", granularity="10s"
         )
@@ -319,14 +295,7 @@ test "build_http_scaled_object encodes request_rate metric with window and granu
 # --- Section E: standalone-Pod rejection ------------------------------------
 test "apply_http_activation rejects a standalone Pod target with a /scale explanation" {
     keda = KEDAAutoscaler();
-    spec = HTTPActivationSpec(
-        name="preview",
-        namespace="default",
-        scale_target_name="preview-pod",
-        scale_target_kind="Pod",
-        target=HTTPServiceTarget(service="preview-svc", port=8080),
-        concurrency=HTTPConcurrencyMetric(target_value=10)
-    );
+    spec = _spec(scale_target_name="preview-pod", scale_target_kind="Pod");
     raised = False;
     error_msg = "";
     try {
@@ -340,44 +309,18 @@ test "apply_http_activation rejects a standalone Pod target with a /scale explan
 }
 
 test "apply_http_activation accepts a StatefulSet target without raising" {
-    KEDAAutoscaler._http_preflight_cache.clear();
-    mock_api = unittest.mock.MagicMock();
-    mock_api.list_cluster_custom_object.return_value = {};
-    mock_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
-    mock_apps = unittest.mock.MagicMock();
-    mock_core = unittest.mock.MagicMock();
-    keda = KEDAAutoscaler(
-        _custom_api=mock_api, _apps_api=mock_apps, _core_api=mock_core
-    );
-    spec = HTTPActivationSpec(
-        name="preview",
-        namespace="default",
-        scale_target_name="preview-statefulset",
-        scale_target_kind="StatefulSet",
-        target=HTTPServiceTarget(service="preview-svc", port=8080),
-        concurrency=HTTPConcurrencyMetric(target_value=10)
+    (keda, custom_api, _, _) = _mocked_keda();
+    custom_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
+    spec = _spec(
+        scale_target_name="preview-statefulset", scale_target_kind="StatefulSet"
     );
     result = keda.apply_http_activation(spec);
     assert result == True;
 }
 
 test "apply_http_activation raises for an unrecognized scale_target_kind when scale_target_plural is unset" {
-    KEDAAutoscaler._http_preflight_cache.clear();
-    mock_api = unittest.mock.MagicMock();
-    mock_api.list_cluster_custom_object.return_value = {};
-    mock_apps = unittest.mock.MagicMock();
-    mock_core = unittest.mock.MagicMock();
-    keda = KEDAAutoscaler(
-        _custom_api=mock_api, _apps_api=mock_apps, _core_api=mock_core
-    );
-    spec = HTTPActivationSpec(
-        name="preview",
-        namespace="default",
-        scale_target_name="preview-rollout",
-        scale_target_kind="Rollout",
-        target=HTTPServiceTarget(service="preview-svc", port=8080),
-        concurrency=HTTPConcurrencyMetric(target_value=10)
-    );
+    (keda, custom_api, apps_api, _) = _mocked_keda();
+    spec = _spec(scale_target_name="preview-rollout", scale_target_kind="Rollout");
     raised = False;
     error_msg = "";
     try {
@@ -389,37 +332,26 @@ test "apply_http_activation raises for an unrecognized scale_target_kind when sc
     assert raised , "Expected ValueError when scale_target_kind is unrecognized and scale_target_plural is unset";
     assert "Rollout" in error_msg;
     assert "scale_target_plural" in error_msg;
-    mock_apps.read_namespaced_deployment.assert_not_called();
-    mock_apps.read_namespaced_stateful_set.assert_not_called();
-    mock_api.create_namespaced_custom_object.assert_not_called();
+    apps_api.read_namespaced_deployment.assert_not_called();
+    apps_api.read_namespaced_stateful_set.assert_not_called();
+    custom_api.create_namespaced_custom_object.assert_not_called();
 }
 
 test "apply_http_activation validates a custom target when scale_target_plural is set" {
-    KEDAAutoscaler._http_preflight_cache.clear();
-    mock_api = unittest.mock.MagicMock();
-    mock_api.list_cluster_custom_object.return_value = {};
-    mock_apps = unittest.mock.MagicMock();
-    mock_core = unittest.mock.MagicMock();
-    keda = KEDAAutoscaler(
-        _custom_api=mock_api, _apps_api=mock_apps, _core_api=mock_core
-    );
-    spec = HTTPActivationSpec(
-        name="preview",
-        namespace="default",
+    (keda, custom_api, apps_api, _) = _mocked_keda();
+    spec = _spec(
         scale_target_name="preview-rollout",
         scale_target_kind="Rollout",
         scale_target_api_version="argoproj.io/v1alpha1",
-        scale_target_plural="rollouts",
-        target=HTTPServiceTarget(service="preview-svc", port=8080),
-        concurrency=HTTPConcurrencyMetric(target_value=10)
+        scale_target_plural="rollouts"
     );
     result = keda.apply_http_activation(spec);
     assert result == True;
-    mock_apps.read_namespaced_deployment.assert_not_called();
-    mock_apps.read_namespaced_stateful_set.assert_not_called();
+    apps_api.read_namespaced_deployment.assert_not_called();
+    apps_api.read_namespaced_stateful_set.assert_not_called();
     target_check_calls = [
         c
-        for c in mock_api.get_namespaced_custom_object.call_args_list
+        for c in custom_api.get_namespaced_custom_object.call_args_list
         if c[1].get("plural") == "rollouts"
     ];
     assert len(target_check_calls) == 1;
@@ -429,24 +361,13 @@ test "apply_http_activation validates a custom target when scale_target_plural i
 }
 
 test "apply_http_activation raises when a custom target with scale_target_plural is missing" {
-    KEDAAutoscaler._http_preflight_cache.clear();
-    mock_api = unittest.mock.MagicMock();
-    mock_api.list_cluster_custom_object.return_value = {};
-    mock_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
-    mock_apps = unittest.mock.MagicMock();
-    mock_core = unittest.mock.MagicMock();
-    keda = KEDAAutoscaler(
-        _custom_api=mock_api, _apps_api=mock_apps, _core_api=mock_core
-    );
-    spec = HTTPActivationSpec(
-        name="preview",
-        namespace="default",
+    (keda, custom_api, _, _) = _mocked_keda();
+    custom_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
+    spec = _spec(
         scale_target_name="missing-rollout",
         scale_target_kind="Rollout",
         scale_target_api_version="argoproj.io/v1alpha1",
-        scale_target_plural="rollouts",
-        target=HTTPServiceTarget(service="preview-svc", port=8080),
-        concurrency=HTTPConcurrencyMetric(target_value=10)
+        scale_target_plural="rollouts"
     );
     raised = False;
     try {
@@ -455,7 +376,7 @@ test "apply_http_activation raises when a custom target with scale_target_plural
         raised = True;
     }
     assert raised , "Expected ValueError when a custom target with scale_target_plural is missing";
-    mock_api.create_namespaced_custom_object.assert_not_called();
+    custom_api.create_namespaced_custom_object.assert_not_called();
 }
 
 
@@ -472,82 +393,41 @@ test "InterceptorRoute and ScaledObject names are deterministic and distinct" {
 
 # --- Section G: apply ordering, validation, and preflight -------------------
 test "apply_http_activation creates InterceptorRoute before ScaledObject when neither exists" {
-    KEDAAutoscaler._http_preflight_cache.clear();
-    mock_api = unittest.mock.MagicMock();
-    mock_api.list_cluster_custom_object.return_value = {};
-    mock_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
-    mock_apps = unittest.mock.MagicMock();
-    mock_core = unittest.mock.MagicMock();
-    keda = KEDAAutoscaler(
-        _custom_api=mock_api, _apps_api=mock_apps, _core_api=mock_core
-    );
-    spec = HTTPActivationSpec(
-        name="preview",
-        namespace="default",
-        scale_target_name="preview-deployment",
-        target=HTTPServiceTarget(service="preview-svc", port=8080),
-        concurrency=HTTPConcurrencyMetric(target_value=10)
-    );
-    result = keda.apply_http_activation(spec);
+    (keda, custom_api, _, _) = _mocked_keda();
+    custom_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
+    result = keda.apply_http_activation(_spec());
     assert result == True;
-    create_calls = mock_api.create_namespaced_custom_object.call_args_list;
+    create_calls = custom_api.create_namespaced_custom_object.call_args_list;
     assert len(create_calls) == 2;
     assert create_calls[0][1]["plural"] == "interceptorroutes";
     assert create_calls[1][1]["plural"] == "scaledobjects";
 }
 
 test "apply_http_activation patches InterceptorRoute and ScaledObject when both already exist" {
-    KEDAAutoscaler._http_preflight_cache.clear();
-    mock_api = unittest.mock.MagicMock();
-    mock_api.list_cluster_custom_object.return_value = {};
-    mock_api.get_namespaced_custom_object.return_value = {
+    (keda, custom_api, _, _) = _mocked_keda();
+    custom_api.get_namespaced_custom_object.return_value = {
         "metadata": {"name": "existing"}
     };
-    mock_apps = unittest.mock.MagicMock();
-    mock_core = unittest.mock.MagicMock();
-    keda = KEDAAutoscaler(
-        _custom_api=mock_api, _apps_api=mock_apps, _core_api=mock_core
-    );
-    spec = HTTPActivationSpec(
-        name="preview",
-        namespace="default",
-        scale_target_name="preview-deployment",
-        target=HTTPServiceTarget(service="preview-svc", port=8080),
-        concurrency=HTTPConcurrencyMetric(target_value=10)
-    );
-    result = keda.apply_http_activation(spec);
+    result = keda.apply_http_activation(_spec());
     assert result == True;
-    patch_calls = mock_api.patch_namespaced_custom_object.call_args_list;
+    patch_calls = custom_api.patch_namespaced_custom_object.call_args_list;
     assert len(patch_calls) == 2;
     assert patch_calls[0][1]["plural"] == "interceptorroutes";
     assert patch_calls[1][1]["plural"] == "scaledobjects";
-    mock_api.create_namespaced_custom_object.assert_not_called();
+    custom_api.create_namespaced_custom_object.assert_not_called();
 }
 
 test "apply_http_activation raises when the referenced scale target or Service does not exist" {
-    KEDAAutoscaler._http_preflight_cache.clear();
-    mock_api = unittest.mock.MagicMock();
-    mock_api.list_cluster_custom_object.return_value = {};
+    custom_api = unittest.mock.MagicMock();
 
     missing_target_apps = unittest.mock.MagicMock();
     missing_target_apps.read_namespaced_deployment.side_effect = ApiException(
         status=404
     );
-    keda = KEDAAutoscaler(
-        _custom_api=mock_api,
-        _apps_api=missing_target_apps,
-        _core_api=unittest.mock.MagicMock()
-    );
-    spec = HTTPActivationSpec(
-        name="preview",
-        namespace="default",
-        scale_target_name="missing-deployment",
-        target=HTTPServiceTarget(service="preview-svc", port=8080),
-        concurrency=HTTPConcurrencyMetric(target_value=10)
-    );
+    (keda, _, _, _) = _mocked_keda(custom_api=custom_api, apps_api=missing_target_apps);
     raised_for_missing_target = False;
     try {
-        keda.apply_http_activation(spec);
+        keda.apply_http_activation(_spec(scale_target_name="missing-deployment"));
     } except ValueError as e {
         raised_for_missing_target = True;
     }
@@ -555,47 +435,26 @@ test "apply_http_activation raises when the referenced scale target or Service d
 
     missing_service_core = unittest.mock.MagicMock();
     missing_service_core.read_namespaced_service.side_effect = ApiException(status=404);
-    keda2 = KEDAAutoscaler(
-        _custom_api=mock_api,
-        _apps_api=unittest.mock.MagicMock(),
-        _core_api=missing_service_core
-    );
-    spec2 = HTTPActivationSpec(
-        name="preview",
-        namespace="default",
-        scale_target_name="preview-deployment",
-        target=HTTPServiceTarget(service="missing-svc", port=8080),
-        concurrency=HTTPConcurrencyMetric(target_value=10)
+    (keda2, _, _, _) = _mocked_keda(
+        custom_api=custom_api, core_api=missing_service_core
     );
     raised_for_missing_service = False;
     try {
-        keda2.apply_http_activation(spec2);
+        keda2.apply_http_activation(
+            _spec(target=HTTPServiceTarget(service="missing-svc", port=8080))
+        );
     } except ValueError as e {
         raised_for_missing_service = True;
     }
     assert raised_for_missing_service , "Expected ValueError when the Service is missing";
-    mock_api.create_namespaced_custom_object.assert_not_called();
+    custom_api.create_namespaced_custom_object.assert_not_called();
 }
 
 test "apply_http_activation returns False and skips creation when HTTP Add-on CRDs are not installed" {
-    KEDAAutoscaler._http_preflight_cache.clear();
-    mock_api = unittest.mock.MagicMock();
-    mock_api.list_cluster_custom_object.side_effect = ApiException(status=404);
-    mock_apps = unittest.mock.MagicMock();
-    mock_core = unittest.mock.MagicMock();
-    keda = KEDAAutoscaler(
-        _custom_api=mock_api, _apps_api=mock_apps, _core_api=mock_core
-    );
-    spec = HTTPActivationSpec(
-        name="preview",
-        namespace="default",
-        scale_target_name="preview-deployment",
-        target=HTTPServiceTarget(service="preview-svc", port=8080),
-        concurrency=HTTPConcurrencyMetric(target_value=10)
-    );
-    result = keda.apply_http_activation(spec);
+    (keda, custom_api, _, _) = _mocked_keda(http_addon_installed=False);
+    result = keda.apply_http_activation(_spec());
     assert result == False;
-    mock_api.create_namespaced_custom_object.assert_not_called();
+    custom_api.create_namespaced_custom_object.assert_not_called();
 }
 
 
