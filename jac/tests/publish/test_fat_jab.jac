@@ -193,7 +193,7 @@ test "a fat jab runs offline with its vendored dependency" {
 
 def _pip_scripted(calls: list, args: list[str]) -> tuple[int, str] {
     calls.append(list(args));
-    if len(calls) == 1 {
+    if args[0] == "download" {
         return (1, "ResolutionImpossible: no wheels for http-ece");
     }
     return (0, "");
