@@ -1,4 +1,3 @@
-import re;
 import from jaclang.cli.command { Arg, ArgKind, CommandSpec }
 import from jaclang.cli.manifest { TIER_SECTIONS, TOMBSTONED_VERBS, VERB_BUDGET }
 
@@ -25,9 +24,7 @@ glob CORE_MODULES: list[str] = [
          "jaclang.scale.plugin",
 
      ],
-     MANIFEST_IMPL_REL: str = "cli/impl/manifest.impl.jac",
-     ROUTES_BEGIN: str = "    # >>> generated route table (jac gen-cli-manifest) >>>",
-     ROUTES_END: str = "    # <<< generated route table <<<";
+     MANIFEST_IMPL_REL: str = "cli/impl/manifest.impl.jac";
 
 def collect -> list[CommandSpec] {
     import importlib;
@@ -244,12 +241,11 @@ def _route_rows -> list[str] {
 }
 
 def generate_body -> str {
-    lines: list[str] = [ROUTES_BEGIN, "    return ["];
+    lines: list[str] = ["    return ["];
     for row in _route_rows() {
         lines.append(row);
     }
     lines.append("    ];");
-    lines.append(ROUTES_END);
     return "\n".join(lines);
 }
 
@@ -269,28 +265,61 @@ def _read_current -> str {
     }
 }
 
-def apply_block(src: str, body: str) -> str {
-    pat = re.escape(ROUTES_BEGIN) + r"[\s\S]*?" + re.escape(ROUTES_END);
-    if re.search(pat, src) {
-        return re.sub(pat, lambda (m: any) { body; }, src);
-    }
-    func_pat = r"def _command_routes -> list\[CommandMeta\] \{[\s\S]*?\n\}";
-    if not re.search(func_pat, src) {
+def _handwritten_tail(src: str) -> str {
+    marker = "glob _COMMANDS:";
+    idx = src.find(marker);
+    if idx < 0 {
         raise RuntimeError(
-            f"Could not find `_command_routes` in {_manifest_impl_path()}."
+            f"Could not find hand-written manifest tail in {_manifest_impl_path()}."
         );
     }
-    replacement = "def _command_routes -> list[CommandMeta] {\n" + body + "\n}";
-    return re.sub(func_pat, lambda (m: any) { replacement; }, src);
+    return src[idx:];
 }
 
 def generate -> str {
-    return apply_block(_read_current(), generate_body());
+    body = generate_body();
+    routes = "def _command_routes -> list[CommandMeta] {\n" + body + "\n}\n\n";
+    return routes + _handwritten_tail(_read_current());
+}
+
+def _format_generated(content: str, *, restore_original: bool = False) -> str {
+    import os;
+    import subprocess;
+    import sys;
+    import from pathlib { Path }
+    import jaclang;
+    file_path = jaclang.__file__;
+    if file_path is None {
+        raise RuntimeError("jaclang.__file__ is None; cannot locate package");
+    }
+    pkg_root = Path(file_path).parent;
+    impl_path = Path(_manifest_impl_path());
+    manifest_path = pkg_root / "cli" / "manifest.jac";
+    original = impl_path.read_text(encoding="utf-8") if restore_original else "";
+    impl_path.write_text(content, encoding="utf-8");
+    env = os.environ.copy();
+    env["PYTHONPATH"] = str(pkg_root.parent);
+    try {
+        subprocess.run(
+            [sys.executable, "-m", "jaclang", "fmt", "--lintfix", str(manifest_path), ],
+            capture_output=True,
+            cwd=str(pkg_root.parent),
+            env=env,
+            check=False,
+        );
+        formatted = impl_path.read_text(encoding="utf-8");
+    } except Exception {
+        formatted = content;
+    }
+    if restore_original {
+        impl_path.write_text(original, encoding="utf-8");
+    }
+    return formatted;
 }
 
 def write_routes -> str {
     out = _manifest_impl_path();
-    content = generate();
+    content = _format_generated(generate());
     with open(out, "w", encoding="utf-8") as f {
         f.write(content);
     }
@@ -298,7 +327,7 @@ def write_routes -> str {
 }
 
 def verify_drift -> list[str] {
-    fresh = generate();
+    fresh = _format_generated(generate(), restore_original=True);
     if _read_current() == fresh {
         return [];
     }

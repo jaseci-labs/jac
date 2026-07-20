@@ -1,5 +1,4 @@
 def _command_routes -> list[CommandMeta] {
-    # >>> generated route table (jac gen-cli-manifest) >>>
     return [
         CommandMeta(
             name='ai',
@@ -11,7 +10,31 @@ def _command_routes -> list[CommandMeta] {
             handler_name='ai',
             needs=[],
             description="",
-            examples=[('jac ai', "Start a session (uses jac.toml's model, else local default)"), ('jac ai "add a walker to main.jac"', 'Run a single request and exit'), ('jac ai -m openai/gpt-4o', 'Use a cloud model (key from jac.toml or env)'), ('jac ai -m local:gemma-4-e2b', 'Use a smaller/faster local model'), ('jac ai --n_ctx 32768', 'Give the local model a larger context window'), ('jac ai --safe', 'Approve each file write and command before it runs'), ('jac ai -q "fix the build"', 'Compact output -- just tool calls and the answer'), ('jac ai --ui', 'Open a web UI with a live agent phase-graph visualizer')],
+            examples=[
+                (
+                    'jac ai',
+                    "Start a session (uses jac.toml's model, else local default)"
+                ),
+                ('jac ai "add a walker to main.jac"', 'Run a single request and exit'),
+                (
+                    'jac ai -m openai/gpt-4o',
+                    'Use a cloud model (key from jac.toml or env)'
+                ),
+                ('jac ai -m local:gemma-4-e2b', 'Use a smaller/faster local model'),
+                (
+                    'jac ai --n_ctx 32768',
+                    'Give the local model a larger context window'
+                ),
+                ('jac ai --safe', 'Approve each file write and command before it runs'),
+                (
+                    'jac ai -q "fix the build"',
+                    'Compact output -- just tool calls and the answer'
+                ),
+                (
+                    'jac ai --ui',
+                    'Open a web UI with a live agent phase-graph visualizer'
+                )
+            ],
             args=[
                 ArgMeta(
                     name='prompt',
@@ -91,6 +114,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -103,7 +127,25 @@ def _command_routes -> list[CommandMeta] {
             handler_name='browse',
             needs=[],
             description="",
-            examples=[('jac browse open example.com', 'Launch a browser and navigate'), ('jac browse snapshot', 'Accessibility tree with @e1/@e2 refs'), ('jac browse click @e5', 'Click an element by snapshot ref (real input)'), ("jac browse fill '#email' you@example.com", 'Clear and fill a field'), ('jac browse get title', 'Read the page title'), ("jac browse wait '#app'", 'Wait until a selector is actionable'), ('jac browse console', 'Read buffered console/log output'), ('jac browse scroll down', 'Scroll the page by ~one viewport'), ('jac browse -s work open example.com', "Use an isolated 'work' session"), ('jac browse state save auth.json', 'Save cookies + localStorage'), ('jac browse close', 'Close the browser')],
+            examples=[
+                ('jac browse open example.com', 'Launch a browser and navigate'),
+                ('jac browse snapshot', 'Accessibility tree with @e1/@e2 refs'),
+                (
+                    'jac browse click @e5',
+                    'Click an element by snapshot ref (real input)'
+                ),
+                ("jac browse fill '#email' you@example.com", 'Clear and fill a field'),
+                ('jac browse get title', 'Read the page title'),
+                ("jac browse wait '#app'", 'Wait until a selector is actionable'),
+                ('jac browse console', 'Read buffered console/log output'),
+                ('jac browse scroll down', 'Scroll the page by ~one viewport'),
+                (
+                    'jac browse -s work open example.com',
+                    "Use an isolated 'work' session"
+                ),
+                ('jac browse state save auth.json', 'Save cookies + localStorage'),
+                ('jac browse close', 'Close the browser')
+            ],
             args=[
                 ArgMeta(
                     name='action',
@@ -157,6 +199,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -169,7 +212,15 @@ def _command_routes -> list[CommandMeta] {
             handler_name='build',
             needs=['providers', 'client'],
             description="",
-            examples=[('jac build', 'Gate + build a single .jab into dist/'), ('jac build --as binary', 'Gate + build a self-contained executable'), ('jac build --fat', 'Gate + build a fat jab (Python deps vendored)'), ('jac build --as wheel', 'Gate + build a PyPI wheel'), ('jac build --check_only', 'Run the whole-program gate only'), ('jac build --no_typecheck', 'Build without the gate (escape hatch)'), ('jac build --client mobile', 'Build the mobile client shell')],
+            examples=[
+                ('jac build', 'Gate + build a single .jab into dist/'),
+                ('jac build --as binary', 'Gate + build a self-contained executable'),
+                ('jac build --fat', 'Gate + build a fat jab (Python deps vendored)'),
+                ('jac build --as wheel', 'Gate + build a PyPI wheel'),
+                ('jac build --check_only', 'Run the whole-program gate only'),
+                ('jac build --no_typecheck', 'Build without the gate (escape hatch)'),
+                ('jac build --client mobile', 'Build the mobile client shell')
+            ],
             args=[
                 ArgMeta(
                     name='filename',
@@ -191,7 +242,15 @@ def _command_routes -> list[CommandMeta] {
                     default='jab',
                     help="What to emit: 'jab' (single-file sealed app bundle, default), 'sealed' (unpacked image dir), 'binary' (self-contained executable), 'wheel' (PyPI), 'npm' (tarball), 'source' (ejected FastAPI+JS tree), 'native' (AOT native binary)",
                     short='a',
-                    choices=['jab', 'sealed', 'binary', 'wheel', 'npm', 'source', 'native'],
+                    choices=[
+                        'jab',
+                        'sealed',
+                        'binary',
+                        'wheel',
+                        'npm',
+                        'source',
+                        'native'
+                    ],
                     required=False,
                     dest='projection',
                     metavar=None,
@@ -256,7 +315,15 @@ def _command_routes -> list[CommandMeta] {
                     default='',
                     help='Build a client shell instead of the artifact: web, pwa, mobile, desktop (desktop builds a native webview app).',
                     short='',
-                    choices=['web', 'pwa', 'static', 'mobile', 'desktop', 'cef', 'react-native'],
+                    choices=[
+                        'web',
+                        'pwa',
+                        'static',
+                        'mobile',
+                        'desktop',
+                        'cef',
+                        'react-native'
+                    ],
                     required=False,
                     dest=None,
                     metavar=None,
@@ -275,6 +342,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -287,7 +355,23 @@ def _command_routes -> list[CommandMeta] {
             handler_name='check',
             needs=[],
             description="",
-            examples=[('jac check myprogram.jac', 'Check a single file'), ('jac check . --lint', 'Report lint violations only'), ('jac check . --lint --fix', 'Auto-fix lint violations'), ('jac check file1.jac file2.jac', 'Check multiple files'), ('jac check myproject/', 'Check all files in directory'), ('jac check . --ignore jac scale test', 'Check excluding directories'), ('jac check myprogram.jac --disable-error-code E1030 W2001', 'Check while suppressing selected diagnostics'), ('jac check myprogram.jac --parse-only', 'Only check syntax, skip type checking'), ('jac check myprogram.jac --nowarn', 'Check without warnings')],
+            examples=[
+                ('jac check myprogram.jac', 'Check a single file'),
+                ('jac check . --lint', 'Report lint violations only'),
+                ('jac check . --lint --fix', 'Auto-fix lint violations'),
+                ('jac check file1.jac file2.jac', 'Check multiple files'),
+                ('jac check myproject/', 'Check all files in directory'),
+                ('jac check . --ignore jac scale test', 'Check excluding directories'),
+                (
+                    'jac check myprogram.jac --disable-error-code E1030 W2001',
+                    'Check while suppressing selected diagnostics'
+                ),
+                (
+                    'jac check myprogram.jac --parse-only',
+                    'Only check syntax, skip type checking'
+                ),
+                ('jac check myprogram.jac --nowarn', 'Check without warnings')
+            ],
             args=[
                 ArgMeta(
                     name='paths',
@@ -393,6 +477,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -405,7 +490,12 @@ def _command_routes -> list[CommandMeta] {
             handler_name='clean',
             needs=['providers'],
             description="",
-            examples=[('jac clean', 'Clean data directory (default)'), ('jac clean --all', 'Clean all .jac artifacts'), ('jac clean --cache', 'Clean only cache directory'), ('jac clean --data --cache', 'Clean data and cache directories')],
+            examples=[
+                ('jac clean', 'Clean data directory (default)'),
+                ('jac clean --all', 'Clean all .jac artifacts'),
+                ('jac clean --cache', 'Clean only cache directory'),
+                ('jac clean --data --cache', 'Clean data and cache directories')
+            ],
             args=[
                 ArgMeta(
                     name='all',
@@ -472,6 +562,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -484,7 +575,28 @@ def _command_routes -> list[CommandMeta] {
             handler_name='code',
             needs=[],
             description="",
-            examples=[('jac code symbol User', 'Definition(s) of a symbol plus where it is used'), ('jac code uses make_user', 'Every read/write of a symbol, def/use-precise'), ('jac code map', 'Structural overview: nodes, walkers, edges, objs'), ('jac code map walker', 'Only walker archetypes'), ('jac code walkers User', 'Walkers whose entry points traverse a node type'), ('jac code slice Profile --depth 2', 'Typed neighbourhood for prompt assembly'), ('jac code diag', 'Structured compiler errors and warnings'), ('jac code symbol User --text', 'Same query, human-readable output')],
+            examples=[
+                (
+                    'jac code symbol User',
+                    'Definition(s) of a symbol plus where it is used'
+                ),
+                (
+                    'jac code uses make_user',
+                    'Every read/write of a symbol, def/use-precise'
+                ),
+                ('jac code map', 'Structural overview: nodes, walkers, edges, objs'),
+                ('jac code map walker', 'Only walker archetypes'),
+                (
+                    'jac code walkers User',
+                    'Walkers whose entry points traverse a node type'
+                ),
+                (
+                    'jac code slice Profile --depth 2',
+                    'Typed neighbourhood for prompt assembly'
+                ),
+                ('jac code diag', 'Structured compiler errors and warnings'),
+                ('jac code symbol User --text', 'Same query, human-readable output')
+            ],
             args=[
                 ArgMeta(
                     name='action',
@@ -538,6 +650,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -550,7 +663,14 @@ def _command_routes -> list[CommandMeta] {
             handler_name='completions',
             needs=[],
             description="",
-            examples=[('jac completions --install', 'Install bash completions to ~/.bashrc'), ('jac completions --shell zsh --install', 'Install zsh completions to ~/.zshrc'), ('jac completions --shell bash', 'Print bash completions to stdout')],
+            examples=[
+                ('jac completions --install', 'Install bash completions to ~/.bashrc'),
+                (
+                    'jac completions --shell zsh --install',
+                    'Install zsh completions to ~/.zshrc'
+                ),
+                ('jac completions --shell bash', 'Print bash completions to stdout')
+            ],
             args=[
                 ArgMeta(
                     name='shell',
@@ -578,6 +698,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -590,7 +711,14 @@ def _command_routes -> list[CommandMeta] {
             handler_name='config',
             needs=[],
             description="",
-            examples=[('jac config show', 'Show all configuration'), ('jac config get run.cache', 'Get specific setting'), ('jac config set run.cache false', 'Set a value'), ('jac config reset run.cache', 'Reset to default'), ('jac config list', 'List available settings'), ('jac config show --group run', 'Show settings in a group')],
+            examples=[
+                ('jac config show', 'Show all configuration'),
+                ('jac config get run.cache', 'Get specific setting'),
+                ('jac config set run.cache false', 'Set a value'),
+                ('jac config reset run.cache', 'Reset to default'),
+                ('jac config list', 'List available settings'),
+                ('jac config show --group run', 'Show settings in a group')
+            ],
             args=[
                 ArgMeta(
                     name='action',
@@ -657,6 +785,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -669,7 +798,27 @@ def _command_routes -> list[CommandMeta] {
             handler_name='create',
             needs=['providers', 'templates'],
             description="",
-            examples=[('jac create', 'Initialize a cli project in the current directory (name from cwd)'), ('jac create --pack ./my-template --pack_output my.jacpack', 'Bundle a template directory into a .jacpack'), ('jac create myapp', 'Create new myapp/ directory (cli kind)'), ('jac create myapp --kind service', 'Scaffold a headless API service'), ('jac create myapp --kind native-binary', 'Scaffold a natively-compiled binary'), ('jac create myapp --kind web-app', 'Scaffold a full-stack web app'), ('jac create --force', 'Reinitialize existing project'), ('jac create --use ./my.jacpack', 'Create from local .jacpack file'), ('jac create --use https://example.com/t.jacpack', 'Create from URL'), ('jac create --list', 'List available project kinds and named variants')],
+            examples=[
+                (
+                    'jac create',
+                    'Initialize a cli project in the current directory (name from cwd)'
+                ),
+                (
+                    'jac create --pack ./my-template --pack_output my.jacpack',
+                    'Bundle a template directory into a .jacpack'
+                ),
+                ('jac create myapp', 'Create new myapp/ directory (cli kind)'),
+                ('jac create myapp --kind service', 'Scaffold a headless API service'),
+                (
+                    'jac create myapp --kind native-binary',
+                    'Scaffold a natively-compiled binary'
+                ),
+                ('jac create myapp --kind web-app', 'Scaffold a full-stack web app'),
+                ('jac create --force', 'Reinitialize existing project'),
+                ('jac create --use ./my.jacpack', 'Create from local .jacpack file'),
+                ('jac create --use https://example.com/t.jacpack', 'Create from URL'),
+                ('jac create --list', 'List available project kinds and named variants')
+            ],
             args=[
                 ArgMeta(
                     name='name',
@@ -866,6 +1015,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -878,7 +1028,26 @@ def _command_routes -> list[CommandMeta] {
             handler_name='db',
             needs=[],
             description="",
-            examples=[('jac db inspect', 'Summarize the DB for the .jac in cwd'), ('jac db inspect --app path/to/app.jac', "Summarize a specific app's DB"), ('jac db fsck', 'Scan for dangling refs / orphans (read-only)'), ('jac db fsck repair', 'Heal dangling refs and collect orphans'), ('jac db quarantine list', 'List quarantined anchors'), ('jac db quarantine show <row-id>', 'Show one quarantined row in full'), ('jac db alias list', 'List DB-resident aliases'), ('jac db alias add old.mod.OldName new.mod.NewName', 'Register a rescue alias'), ('jac db alias remove old.mod.OldName', 'Remove a rescue alias'), ('jac db recover <row-id>', 'Try to un-quarantine one row'), ('jac db recover-all', 'Try to un-quarantine every row; report counts'), ('jac db schema rules', 'List registered __jac_schema__ drift rules')],
+            examples=[
+                ('jac db inspect', 'Summarize the DB for the .jac in cwd'),
+                (
+                    'jac db inspect --app path/to/app.jac',
+                    "Summarize a specific app's DB"
+                ),
+                ('jac db fsck', 'Scan for dangling refs / orphans (read-only)'),
+                ('jac db fsck repair', 'Heal dangling refs and collect orphans'),
+                ('jac db quarantine list', 'List quarantined anchors'),
+                ('jac db quarantine show <row-id>', 'Show one quarantined row in full'),
+                ('jac db alias list', 'List DB-resident aliases'),
+                (
+                    'jac db alias add old.mod.OldName new.mod.NewName',
+                    'Register a rescue alias'
+                ),
+                ('jac db alias remove old.mod.OldName', 'Remove a rescue alias'),
+                ('jac db recover <row-id>', 'Try to un-quarantine one row'),
+                ('jac db recover-all', 'Try to un-quarantine every row; report counts'),
+                ('jac db schema rules', 'List registered __jac_schema__ drift rules')
+            ],
             args=[
                 ArgMeta(
                     name='action',
@@ -958,6 +1127,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -970,7 +1140,13 @@ def _command_routes -> list[CommandMeta] {
             handler_name='dev',
             needs=['providers'],
             description="",
-            examples=[('jac dev', 'Dev-serve the current project with hot reload'), ('jac dev main.jac --port 3000', 'Dev-serve a specific entry on port 3000')],
+            examples=[
+                ('jac dev', 'Dev-serve the current project with hot reload'),
+                (
+                    'jac dev main.jac --port 3000',
+                    'Dev-serve a specific entry on port 3000'
+                )
+            ],
             args=[
                 ArgMeta(
                     name='filename',
@@ -1011,6 +1187,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -1023,7 +1200,11 @@ def _command_routes -> list[CommandMeta] {
             handler_name='dot',
             needs=[],
             description="",
-            examples=[('jac dot myprogram.jac', 'Generate DOT graph'), ('jac dot myprogram.jac --saveto graph.dot', 'Save to file'), ('jac dot myprogram.jac --depth 3', 'Limit traversal depth')],
+            examples=[
+                ('jac dot myprogram.jac', 'Generate DOT graph'),
+                ('jac dot myprogram.jac --saveto graph.dot', 'Save to file'),
+                ('jac dot myprogram.jac --depth 3', 'Limit traversal depth')
+            ],
             args=[
                 ArgMeta(
                     name='filename',
@@ -1181,6 +1362,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -1193,7 +1375,13 @@ def _command_routes -> list[CommandMeta] {
             handler_name='format',
             needs=[],
             description="",
-            examples=[('jac fmt myfile.jac', 'Format a single file'), ('jac fmt myproject/', 'Format all files in directory'), ('jac fmt myfile.jac --to_screen', 'Preview formatted output'), ('jac fmt . --lintfix', 'Format and auto-fix lint violations'), ('jac fmt . --check', 'Check formatting without modifying files')],
+            examples=[
+                ('jac fmt myfile.jac', 'Format a single file'),
+                ('jac fmt myproject/', 'Format all files in directory'),
+                ('jac fmt myfile.jac --to_screen', 'Preview formatted output'),
+                ('jac fmt . --lintfix', 'Format and auto-fix lint violations'),
+                ('jac fmt . --check', 'Check formatting without modifying files')
+            ],
             args=[
                 ArgMeta(
                     name='paths',
@@ -1260,6 +1448,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -1272,7 +1461,13 @@ def _command_routes -> list[CommandMeta] {
             handler_name='gen_cli_manifest',
             needs=[],
             description="",
-            examples=[('jac gen-cli-manifest', 'Regenerate the manifest route table'), ('jac gen-cli-manifest --verify', 'Check the manifest is up to date (for CI)')],
+            examples=[
+                ('jac gen-cli-manifest', 'Regenerate the manifest route table'),
+                (
+                    'jac gen-cli-manifest --verify',
+                    'Check the manifest is up to date (for CI)'
+                )
+            ],
             args=[
                 ArgMeta(
                     name='verify',
@@ -1287,6 +1482,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -1299,7 +1495,13 @@ def _command_routes -> list[CommandMeta] {
             handler_name='gen_jir_registry',
             needs=[],
             description="",
-            examples=[('jac gen-jir-registry', 'Regenerate jir_registry.jac'), ('jac gen-jir-registry --verify', 'Check registry is up to date (for CI)')],
+            examples=[
+                ('jac gen-jir-registry', 'Regenerate jir_registry.jac'),
+                (
+                    'jac gen-jir-registry --verify',
+                    'Check registry is up to date (for CI)'
+                )
+            ],
             args=[
                 ArgMeta(
                     name='verify',
@@ -1314,6 +1516,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -1326,7 +1529,13 @@ def _command_routes -> list[CommandMeta] {
             handler_name='gen_uni_dispatch',
             needs=[],
             description="",
-            examples=[('jac gen-uni-dispatch', 'Regenerate all dispatch annexes'), ('jac gen-uni-dispatch --verify', 'Check annexes are up to date (for CI)')],
+            examples=[
+                ('jac gen-uni-dispatch', 'Regenerate all dispatch annexes'),
+                (
+                    'jac gen-uni-dispatch --verify',
+                    'Check annexes are up to date (for CI)'
+                )
+            ],
             args=[
                 ArgMeta(
                     name='verify',
@@ -1341,6 +1550,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -1354,8 +1564,7 @@ def _command_routes -> list[CommandMeta] {
             needs=[],
             description="",
             examples=[('jac gen_parser', 'Regenerate the Jac parser')],
-            args=[
-            ]
+            args=[]
         ),
         CommandMeta(
             name='guide',
@@ -1367,7 +1576,13 @@ def _command_routes -> list[CommandMeta] {
             handler_name='guide',
             needs=[],
             description="",
-            examples=[('jac guide', 'List every available guide'), ('jac guide jac-types', 'Print the jac-types guide'), ('jac guide --search walker', "List guides mentioning 'walker'"), ('jac guide --json', 'List guides as JSON for tooling'), ('jac guide --export ~/.claude/skills', 'Export guides as Agent Skills')],
+            examples=[
+                ('jac guide', 'List every available guide'),
+                ('jac guide jac-types', 'Print the jac-types guide'),
+                ('jac guide --search walker', "List guides mentioning 'walker'"),
+                ('jac guide --json', 'List guides as JSON for tooling'),
+                ('jac guide --export ~/.claude/skills', 'Export guides as Agent Skills')
+            ],
             args=[
                 ArgMeta(
                     name='topic',
@@ -1421,6 +1636,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -1433,7 +1649,73 @@ def _command_routes -> list[CommandMeta] {
             handler_name='install',
             needs=['providers'],
             description="",
-            examples=[('jac install', 'Install all dependencies from jac.toml'), ('jac install --plan', 'Show the fully resolved dependency plan'), ('jac install --scale', 'Also install deploy-time capabilities (kubernetes/docker) for the operator machine'), ('jac install requests', 'Add requests to jac.toml and install it'), ('jac install "numpy>=1.24" pandas', 'Add multiple packages with version constraints'), ('jac install pytest --dev', 'Add a dev dependency'), ('jac install numpy --no-save', 'Install without recording in jac.toml'), ('jac install --git https://github.com/user/plugin.git', 'Install and record a git dependency'), ('jac install --npm left-pad', 'Add a client-side npm dependency'), ('jac install --shadcn button card', 'Add shadcn UI components'), ('jac install -e .', 'Install current package in editable mode'), ('jac install -e /path/to/lib', 'Install a cloned library in editable mode'), ('jac install -e ./my-plugin -e ./my-lib', 'Install multiple packages in editable mode (space-separated or repeated -e)'), ('jac install --dev', 'Include dev dependencies'), ('jac install --extras data monitoring', 'Include optional dependency groups'), ('jac install -e . --extras all', 'Editable install with all optional deps'), ('jac install --force-reinstall', 'Reinstall all packages from scratch'), ('jac install --pre', 'Include pre-release versions'), ('jac install --no-cache-dir', "Install without using pip's download cache"), ('jac install --dry-run', 'Preview what would be installed without doing it'), ('jac install --no-deps', 'Install packages without their dependencies'), ('jac install --prefer-binary', 'Prefer pre-built wheels over source builds'), ('jac install -e ./my-plugin --global', "Install a plugin into the global site so it's importable from any project")],
+            examples=[
+                ('jac install', 'Install all dependencies from jac.toml'),
+                ('jac install --plan', 'Show the fully resolved dependency plan'),
+                (
+                    'jac install --scale',
+                    'Also install deploy-time capabilities (kubernetes/docker) for the operator machine'
+                ),
+                ('jac install requests', 'Add requests to jac.toml and install it'),
+                (
+                    'jac install "numpy>=1.24" pandas',
+                    'Add multiple packages with version constraints'
+                ),
+                ('jac install pytest --dev', 'Add a dev dependency'),
+                (
+                    'jac install numpy --no-save',
+                    'Install without recording in jac.toml'
+                ),
+                (
+                    'jac install --git https://github.com/user/plugin.git',
+                    'Install and record a git dependency'
+                ),
+                ('jac install --npm left-pad', 'Add a client-side npm dependency'),
+                ('jac install --shadcn button card', 'Add shadcn UI components'),
+                ('jac install -e .', 'Install current package in editable mode'),
+                (
+                    'jac install -e /path/to/lib',
+                    'Install a cloned library in editable mode'
+                ),
+                (
+                    'jac install -e ./my-plugin -e ./my-lib',
+                    'Install multiple packages in editable mode (space-separated or repeated -e)'
+                ),
+                ('jac install --dev', 'Include dev dependencies'),
+                (
+                    'jac install --extras data monitoring',
+                    'Include optional dependency groups'
+                ),
+                (
+                    'jac install -e . --extras all',
+                    'Editable install with all optional deps'
+                ),
+                (
+                    'jac install --force-reinstall',
+                    'Reinstall all packages from scratch'
+                ),
+                ('jac install --pre', 'Include pre-release versions'),
+                (
+                    'jac install --no-cache-dir',
+                    "Install without using pip's download cache"
+                ),
+                (
+                    'jac install --dry-run',
+                    'Preview what would be installed without doing it'
+                ),
+                (
+                    'jac install --no-deps',
+                    'Install packages without their dependencies'
+                ),
+                (
+                    'jac install --prefer-binary',
+                    'Prefer pre-built wheels over source builds'
+                ),
+                (
+                    'jac install -e ./my-plugin --global',
+                    "Install a plugin into the global site so it's importable from any project"
+                )
+            ],
             args=[
                 ArgMeta(
                     name='packages',
@@ -1695,6 +1977,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -1708,8 +1991,7 @@ def _command_routes -> list[CommandMeta] {
             needs=[],
             description="",
             examples=[('jac lsp', 'Start language server for IDE integration')],
-            args=[
-            ]
+            args=[]
         ),
         CommandMeta(
             name='model',
@@ -1721,7 +2003,11 @@ def _command_routes -> list[CommandMeta] {
             handler_name='model',
             needs=[],
             description="",
-            examples=[('jac model list', 'Show bundled aliases and download status'), ('jac model pull gemma-4-e4b', 'Download Gemma 4 E4B GGUF weights'), ('jac model rm gemma-4-e4b', 'Delete cached weights for an alias')],
+            examples=[
+                ('jac model list', 'Show bundled aliases and download status'),
+                ('jac model pull gemma-4-e4b', 'Download Gemma 4 E4B GGUF weights'),
+                ('jac model rm gemma-4-e4b', 'Delete cached weights for an alias')
+            ],
             args=[
                 ArgMeta(
                     name='action',
@@ -1749,6 +2035,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -1761,7 +2048,31 @@ def _command_routes -> list[CommandMeta] {
             handler_name='nacompile',
             needs=[],
             description="",
-            examples=[('jac nacompile program.na.jac', 'Compile to ./program'), ('jac nacompile program.jac', 'Auto-promote and compile to ./program'), ('jac nacompile program.na.jac -o mybin', 'Compile to ./mybin'), ('jac nacompile program.na.jac --scrub', 'Clean rebuild (wipe IR cache)'), ('jac nacompile program.na.jac -g', 'Compile with DWARF debug info (gdb ./program works)'), ('jac nacompile game.na.jac --target wasm32 -o game.wasm', 'Compile to a wasm module'), ('jac nacompile mathlib.na.jac --shared', 'Build ./libmathlib.so exporting its `:pub` functions over the C ABI'), ('jac nacompile service.na.jac --gc none --assert-no-rc', 'Compile and prove the artifact contains no RC/collector machinery')],
+            examples=[
+                ('jac nacompile program.na.jac', 'Compile to ./program'),
+                ('jac nacompile program.jac', 'Auto-promote and compile to ./program'),
+                ('jac nacompile program.na.jac -o mybin', 'Compile to ./mybin'),
+                (
+                    'jac nacompile program.na.jac --scrub',
+                    'Clean rebuild (wipe IR cache)'
+                ),
+                (
+                    'jac nacompile program.na.jac -g',
+                    'Compile with DWARF debug info (gdb ./program works)'
+                ),
+                (
+                    'jac nacompile game.na.jac --target wasm32 -o game.wasm',
+                    'Compile to a wasm module'
+                ),
+                (
+                    'jac nacompile mathlib.na.jac --shared',
+                    'Build ./libmathlib.so exporting its `:pub` functions over the C ABI'
+                ),
+                (
+                    'jac nacompile service.na.jac --gc none --assert-no-rc',
+                    'Compile and prove the artifact contains no RC/collector machinery'
+                )
+            ],
             args=[
                 ArgMeta(
                     name='filename',
@@ -1880,6 +2191,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -1893,8 +2205,7 @@ def _command_routes -> list[CommandMeta] {
             needs=[],
             description="",
             examples=[('jac ninja file.jac', 'Edit a jac file in the built-in editor')],
-            args=[
-            ]
+            args=[]
         ),
         CommandMeta(
             name='precommit',
@@ -1906,7 +2217,15 @@ def _command_routes -> list[CommandMeta] {
             handler_name='precommit',
             needs=[],
             description="",
-            examples=[('jac precommit', 'Format (lintfix) and check the whole project'), ('jac precommit --staged', "Run on staged '.jac' files only"), ('jac precommit --install', 'Install a .git/hooks/pre-commit hook'), ('jac precommit --install --force', 'Replace an existing hook (kept as pre-commit.bak)')],
+            examples=[
+                ('jac precommit', 'Format (lintfix) and check the whole project'),
+                ('jac precommit --staged', "Run on staged '.jac' files only"),
+                ('jac precommit --install', 'Install a .git/hooks/pre-commit hook'),
+                (
+                    'jac precommit --install --force',
+                    'Replace an existing hook (kept as pre-commit.bak)'
+                )
+            ],
             args=[
                 ArgMeta(
                     name='paths',
@@ -1973,6 +2292,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -1985,7 +2305,12 @@ def _command_routes -> list[CommandMeta] {
             handler_name='remove',
             needs=['providers'],
             description="",
-            examples=[('jac remove requests', 'Remove a package'), ('jac remove pytest --dev', 'Remove dev dependency'), ('jac remove --npm left-pad', 'Remove a client-side npm dependency'), ('jac remove --shadcn button', 'Remove shadcn UI components')],
+            examples=[
+                ('jac remove requests', 'Remove a package'),
+                ('jac remove pytest --dev', 'Remove dev dependency'),
+                ('jac remove --npm left-pad', 'Remove a client-side npm dependency'),
+                ('jac remove --shadcn button', 'Remove shadcn UI components')
+            ],
             args=[
                 ArgMeta(
                     name='packages',
@@ -2039,6 +2364,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -2051,7 +2377,20 @@ def _command_routes -> list[CommandMeta] {
             handler_name='retheme',
             needs=[],
             description="",
-            examples=[('jac retheme', 'Regenerate global.css from the current [jac-shadcn] config'), ('jac retheme --theme rose --font inter', 'Switch accent + font in place'), ('jac retheme --style mira', 'Switch style and re-resolve installed components')],
+            examples=[
+                (
+                    'jac retheme',
+                    'Regenerate global.css from the current [jac-shadcn] config'
+                ),
+                (
+                    'jac retheme --theme rose --font inter',
+                    'Switch accent + font in place'
+                ),
+                (
+                    'jac retheme --style mira',
+                    'Switch style and re-resolve installed components'
+                )
+            ],
             args=[
                 ArgMeta(
                     name='style',
@@ -2144,6 +2483,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -2156,7 +2496,31 @@ def _command_routes -> list[CommandMeta] {
             handler_name='run',
             needs=['providers'],
             description="",
-            examples=[('jac run hello.jac', 'Run a simple program'), ('jac run', 'Run the current project per its jac.toml kind'), ('jac run app.jab', "Run a sealed app bundle (kind-aware; servable kinds use the app's configured port -- override with jac start app.jab --port N)"), ('jac run --entry my_walker app.jac arg1', 'Invoke a specific entrypoint'), ('jac run --debug app.jac', 'Run under the Python debugger'), ('jac run --show', 'Print what the project would run/build, without doing it'), ('jac run --no-cache app.jac', 'Run without caching'), ('jac run --profile prod app.jac', 'Run with production profile'), ('jac run -e all app.jac', 'Run and show all diagnostics (errors+warnings)'), ('jac run -e none app.jac', 'Run silently, suppress all diagnostics'), ('jac run script.jac arg1 arg2', 'Run with script arguments')],
+            examples=[
+                ('jac run hello.jac', 'Run a simple program'),
+                ('jac run', 'Run the current project per its jac.toml kind'),
+                (
+                    'jac run app.jab',
+                    "Run a sealed app bundle (kind-aware; servable kinds use the app's configured port -- override with jac start app.jab --port N)"
+                ),
+                (
+                    'jac run --entry my_walker app.jac arg1',
+                    'Invoke a specific entrypoint'
+                ),
+                ('jac run --debug app.jac', 'Run under the Python debugger'),
+                (
+                    'jac run --show',
+                    'Print what the project would run/build, without doing it'
+                ),
+                ('jac run --no-cache app.jac', 'Run without caching'),
+                ('jac run --profile prod app.jac', 'Run with production profile'),
+                (
+                    'jac run -e all app.jac',
+                    'Run and show all diagnostics (errors+warnings)'
+                ),
+                ('jac run -e none app.jac', 'Run silently, suppress all diagnostics'),
+                ('jac run script.jac arg1 arg2', 'Run with script arguments')
+            ],
             args=[
                 ArgMeta(
                     name='filename',
@@ -2301,6 +2665,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -2313,7 +2678,19 @@ def _command_routes -> list[CommandMeta] {
             handler_name='scale_cmd',
             needs=['providers'],
             description="",
-            examples=[('jac scale status', 'Show status of all microservices'), ('jac scale stop orders', 'Stop the orders service'), ('jac scale restart cart', 'Restart the cart service'), ('jac scale logs products', 'Show logs for products service'), ('jac scale destroy', 'Stop all services'), ('jac scale status app.jac', 'Show platform deployment status of app'), ('jac scale destroy app.jac', "Remove app's platform deployment"), ('jac scale destroy app.jac --component database', 'Remove only MongoDB from the deployment')],
+            examples=[
+                ('jac scale status', 'Show status of all microservices'),
+                ('jac scale stop orders', 'Stop the orders service'),
+                ('jac scale restart cart', 'Restart the cart service'),
+                ('jac scale logs products', 'Show logs for products service'),
+                ('jac scale destroy', 'Stop all services'),
+                ('jac scale status app.jac', 'Show platform deployment status of app'),
+                ('jac scale destroy app.jac', "Remove app's platform deployment"),
+                (
+                    'jac scale destroy app.jac --component database',
+                    'Remove only MongoDB from the deployment'
+                )
+            ],
             args=[
                 ArgMeta(
                     name='action',
@@ -2380,6 +2757,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -2392,7 +2770,14 @@ def _command_routes -> list[CommandMeta] {
             handler_name='setup',
             needs=['providers', 'client'],
             description="",
-            examples=[('jac setup mobile', 'Setup mobile target (default platform)'), ('jac setup mobile --platform ios', 'Setup iOS scaffold only'), ('jac setup mobile --platform all', 'Setup both Android and iOS (macOS)')],
+            examples=[
+                ('jac setup mobile', 'Setup mobile target (default platform)'),
+                ('jac setup mobile --platform ios', 'Setup iOS scaffold only'),
+                (
+                    'jac setup mobile --platform all',
+                    'Setup both Android and iOS (macOS)'
+                )
+            ],
             args=[
                 ArgMeta(
                     name='target',
@@ -2420,6 +2805,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -2432,7 +2818,23 @@ def _command_routes -> list[CommandMeta] {
             handler_name='start',
             needs=['providers', 'client'],
             description="",
-            examples=[('jac start', 'Start server with default main.jac'), ('jac start app.jac', 'Start server with specific file'), ('jac start --port 3000', 'Start main.jac on port 3000'), ('jac start app.jac --faux', 'Generate API docs without starting'), ('jac start --dev', 'Start with hot module replacement'), ('jac start app.jac --dev --no-client', 'HMR mode without client bundling'), ('jac start --profile prod', 'Start with production profile'), ('jac start --client mobile', 'Run the mobile client dev server'), ('jac start --scale', 'Deploy to a platform target instead of serving locally')],
+            examples=[
+                ('jac start', 'Start server with default main.jac'),
+                ('jac start app.jac', 'Start server with specific file'),
+                ('jac start --port 3000', 'Start main.jac on port 3000'),
+                ('jac start app.jac --faux', 'Generate API docs without starting'),
+                ('jac start --dev', 'Start with hot module replacement'),
+                (
+                    'jac start app.jac --dev --no-client',
+                    'HMR mode without client bundling'
+                ),
+                ('jac start --profile prod', 'Start with production profile'),
+                ('jac start --client mobile', 'Run the mobile client dev server'),
+                (
+                    'jac start --scale',
+                    'Deploy to a platform target instead of serving locally'
+                )
+            ],
             args=[
                 ArgMeta(
                     name='filename',
@@ -2545,7 +2947,15 @@ def _command_routes -> list[CommandMeta] {
                     default='web',
                     help='Client build target for dev server (web, pwa, mobile, desktop). Choices reflect installed targets (desktop builds a native webview app).',
                     short='',
-                    choices=['web', 'pwa', 'static', 'mobile', 'desktop', 'cef', 'react-native'],
+                    choices=[
+                        'web',
+                        'pwa',
+                        'static',
+                        'mobile',
+                        'desktop',
+                        'cef',
+                        'react-native'
+                    ],
                     required=False,
                     dest=None,
                     metavar=None,
@@ -2642,6 +3052,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -2654,7 +3065,16 @@ def _command_routes -> list[CommandMeta] {
             handler_name='test',
             needs=[],
             description="",
-            examples=[('jac test', 'Run all tests in current directory'), ('jac test mytest.jac', 'Run tests in specific file'), ('jac test a.jac b.jac', 'Run tests in several files'), ('jac test --test_name my_test', 'Run only test_my_test'), ('jac test --xit --verbose', 'Stop on first failure with verbose output')],
+            examples=[
+                ('jac test', 'Run all tests in current directory'),
+                ('jac test mytest.jac', 'Run tests in specific file'),
+                ('jac test a.jac b.jac', 'Run tests in several files'),
+                ('jac test --test_name my_test', 'Run only test_my_test'),
+                (
+                    'jac test --xit --verbose',
+                    'Stop on first failure with verbose output'
+                )
+            ],
             args=[
                 ArgMeta(
                     name='paths',
@@ -2773,6 +3193,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -2785,7 +3206,10 @@ def _command_routes -> list[CommandMeta] {
             handler_name='tool',
             needs=[],
             description="",
-            examples=[('jac tool list_tools', 'List all available AST tools'), ('jac tool <tool_name> [args...]', 'Run a specific tool')],
+            examples=[
+                ('jac tool list_tools', 'List all available AST tools'),
+                ('jac tool <tool_name> [args...]', 'Run a specific tool')
+            ],
             args=[
                 ArgMeta(
                     name='tool',
@@ -2813,6 +3237,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -2825,7 +3250,11 @@ def _command_routes -> list[CommandMeta] {
             handler_name='update',
             needs=['providers'],
             description="",
-            examples=[('jac update', 'Update all dependencies to latest compatible versions'), ('jac update requests', 'Update a specific package'), ('jac update --dev', 'Also update dev dependencies')],
+            examples=[
+                ('jac update', 'Update all dependencies to latest compatible versions'),
+                ('jac update requests', 'Update a specific package'),
+                ('jac update --dev', 'Also update dev dependencies')
+            ],
             args=[
                 ArgMeta(
                     name='packages',
@@ -2866,6 +3295,7 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
         CommandMeta(
@@ -2878,7 +3308,23 @@ def _command_routes -> list[CommandMeta] {
             handler_name='x',
             needs=['providers'],
             description="",
-            examples=[('jac x hf download gpt2', "Run the 'hf' tool (project venv first, else global)"), ('jac x black .', 'Run an installed formatter on the current directory'), ('jac x eslint .', 'Run a project npm tool (node_modules/.bin) via bun'), ('jac x --global hf whoami', 'Force the global-site copy of a tool'), ('jac x --node vite build', "Force the project's npm tool"), ('jac x --list', 'List the CLI tools available here')],
+            examples=[
+                (
+                    'jac x hf download gpt2',
+                    "Run the 'hf' tool (project venv first, else global)"
+                ),
+                (
+                    'jac x black .',
+                    'Run an installed formatter on the current directory'
+                ),
+                (
+                    'jac x eslint .',
+                    'Run a project npm tool (node_modules/.bin) via bun'
+                ),
+                ('jac x --global hf whoami', 'Force the global-site copy of a tool'),
+                ('jac x --node vite build', "Force the project's npm tool"),
+                ('jac x --list', 'List the CLI tools available here')
+            ],
             args=[
                 ArgMeta(
                     name='name',
@@ -2945,10 +3391,11 @@ def _command_routes -> list[CommandMeta] {
                     metavar=None,
                     config_key=None
                 ),
+
             ]
         ),
+
     ];
-    # <<< generated route table <<<
 }
 
 glob _COMMANDS: dict[str, CommandMeta] = {},
