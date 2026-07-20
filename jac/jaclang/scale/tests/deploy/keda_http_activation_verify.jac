@@ -7,7 +7,7 @@ KEDAAutoscaler.apply_http_activation / destroy_http_activation for real.
     jac run keda_http_activation_verify.jac destroy
 
 Target namespace/name/host are read from env vars (defaults match
-../tests/fixtures/keda_http_activation_e2e/fixture.yaml) so the orchestrating
+../fixtures/keda_http_activation_e2e/fixture.yaml) so the orchestrating
 shell script controls them without editing this file.
 """
 import os;

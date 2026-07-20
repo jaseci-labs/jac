@@ -12,17 +12,17 @@
 
 set -euo pipefail
 
-FIXTURE_DIR="${1:-$(cd "$(dirname "$0")/../tests/fixtures/keda_http_activation_e2e" && pwd)}"
+FIXTURE_DIR="${1:-$(cd "$(dirname "$0")/../fixtures/keda_http_activation_e2e" && pwd)}"
 if [ ! -f "${FIXTURE_DIR}/fixture.yaml" ]; then
     echo "FAIL: ${FIXTURE_DIR}/fixture.yaml not found" >&2
     echo "Usage: $0 [FIXTURE_DIR]" >&2
     exit 1
 fi
 
-# This script lives at jac/jaclang/scale/scripts/, so the repo root is four
-# levels up.
-REPO_ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
-DRIVER="${REPO_ROOT}/jac/jaclang/scale/scripts/keda_http_activation_verify.jac"
+# This script lives at jac/jaclang/scale/tests/deploy/, so the repo root is
+# five levels up.
+REPO_ROOT="$(cd "$(dirname "$0")/../../../../.." && pwd)"
+DRIVER="${REPO_ROOT}/jac/jaclang/scale/tests/deploy/keda_http_activation_verify.jac"
 if [ ! -f "${DRIVER}" ]; then
     echo "FAIL: driver script not found at ${DRIVER}" >&2
     exit 1

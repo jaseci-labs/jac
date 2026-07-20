@@ -15,8 +15,8 @@ runs a client for it.
 
 ## What the e2e covers
 
-[`../../scripts/keda_http_activation_real_e2e.sh`](../../scripts/keda_http_activation_real_e2e.sh)
-drives [`../../scripts/keda_http_activation_verify.jac`](../../scripts/keda_http_activation_verify.jac),
+[`../deploy/keda_http_activation_real_e2e.sh`](../deploy/keda_http_activation_real_e2e.sh)
+drives [`../deploy/keda_http_activation_verify.jac`](../deploy/keda_http_activation_verify.jac),
 which calls `KEDAAutoscaler.apply_http_activation` / `destroy_http_activation`
 directly against whatever cluster the current kubeconfig points at. No
 mocking. The flow:
@@ -81,7 +81,7 @@ CRD and fails immediately with the commands above if it is missing.
 
 ```bash
 cd ~/jaseci
-bash jac/jaclang/scale/scripts/keda_http_activation_real_e2e.sh \
+bash jac/jaclang/scale/tests/deploy/keda_http_activation_real_e2e.sh \
      jac/jaclang/scale/tests/fixtures/keda_http_activation_e2e
 ```
 
@@ -97,7 +97,7 @@ KEDA_HTTP_E2E_SERVICE=echo-svc \
 KEDA_HTTP_E2E_ROUTE_HOST=echo.jac-http-e2e.local \
 KEDA_HTTP_E2E_POLLING_INTERVAL=10 \
 KEDA_HTTP_E2E_COOLDOWN_PERIOD=60 \
-bash jac/jaclang/scale/scripts/keda_http_activation_real_e2e.sh
+bash jac/jaclang/scale/tests/deploy/keda_http_activation_real_e2e.sh
 ```
 
 Expected runtime: around a minute and a half with default settings
@@ -112,8 +112,8 @@ without the surrounding e2e script:
 
 ```bash
 cd jac
-jac run jaclang/scale/scripts/keda_http_activation_verify.jac apply
-jac run jaclang/scale/scripts/keda_http_activation_verify.jac destroy
+jac run jaclang/scale/tests/deploy/keda_http_activation_verify.jac apply
+jac run jaclang/scale/tests/deploy/keda_http_activation_verify.jac destroy
 ```
 
 `apply` prints the resolved `InterceptorRoute` and `ScaledObject` names;
