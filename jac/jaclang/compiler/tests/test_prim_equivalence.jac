@@ -232,6 +232,16 @@ test "closures escaping" {
     );
 }
 
+test "generic functions monomorphize" {
+    run_with_both(
+        "prim_generics.jac",
+        "generics_py",
+        "generics_cl",
+        "generics_na",
+        require=["na"]
+    );
+}
+
 test "closures as adapter callbacks" {
     run_with_both(
         "prim_closures.jac",

@@ -24,6 +24,10 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
         return;
     }
     name = nd.name_ref.sym_name if nd.name_ref else "unnamed";
+    if nd.type_params {
+        self.generic_fns[name] = nd;
+        return;
+    }
     sig = nd.signature;
 
     param_types: list[ir.Type] = [];
@@ -111,7 +115,7 @@ impl NaIRGenPass._record_ret_facts(name: str, sig: uni.FuncSignature) -> None {
     _rtb = _rt?.type;
     if _rtb is not None {
         try {
-            self.func_ret_type_key[name] = self._normalize_type_key(_rtb.mangle());
+            self.func_ret_type_key[name] = self._normalize_type_key(self._mangled_of(_rtb));
         } except Exception { }
     }
     elems: list = [];
@@ -134,7 +138,7 @@ impl NaIRGenPass._record_ret_facts(name: str, sig: uni.FuncSignature) -> None {
             _etb = e?.type if isinstance(e, uni.Expr) else None;
             if _etb is not None {
                 try {
-                    _ek = self._normalize_type_key(_etb.mangle());
+                    _ek = self._normalize_type_key(self._mangled_of(_etb));
                 } except Exception { }
             }
             keys.append(_ek);
@@ -296,6 +300,9 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
 
 impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     name = (nd).name_ref.sym_name if (nd).name_ref else "unnamed";
+    if nd.type_params and self._mono_solution is None {
+        return;
+    }
     func = self.func_symtab.get(name);
     if func is None {
         return;
@@ -624,7 +631,7 @@ impl NaIRGenPass._generator_elem_type(nd: uni.Ability) -> (ir.Type | None) {
     if not isinstance(rt, uni.Expr) or rt.type is None {
         return None;
     }
-    mangled = rt.type.mangle();
+    mangled = self._mangled_of(rt.type);
     if mangled.startswith("type[") {
         mangled = mangled[5:];
     }

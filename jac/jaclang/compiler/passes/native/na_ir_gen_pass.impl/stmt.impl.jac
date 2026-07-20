@@ -801,7 +801,7 @@ impl NaIRGenPass._match_seq_parts(pat: uni.MatchSequence) -> tuple {
 impl NaIRGenPass._match_elem_ty_of(
     subj_ty: (object | None), prefix: str, idx: int
 ) -> (object | None) {
-    if subj_ty is None or not subj_ty.mangle().startswith(prefix) {
+    if subj_ty is None or not self._mangled_of(subj_ty).startswith(prefix) {
         return None;
     }
     targs = subj_ty.private.type_args or [];
@@ -1068,7 +1068,7 @@ impl NaIRGenPass._match_arch_cond(
     if static_name is None
     and subj_ty is not None
     and isinstance(subj.type, ir.PointerType) {
-        tk = subj_ty.mangle();
+        tk = self._mangled_of(subj_ty);
         cands = [tk] + (tk.split("|") if "|" in tk else []);
         for part in cands {
             if part in self.struct_types {

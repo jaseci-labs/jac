@@ -309,6 +309,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
         _pending_lambda_captures: (list[tuple] | None) = None,
         nested_captures: dict[str, tuple] = {},
         generator_fns: dict[str, uni.Ability] = {},
+        generic_fns: dict[str, uni.Ability] = {},
+        _mono_fns: dict[str, ir.Function] = {},
+        _mono_solution: (dict | None) = None,
+        _mono_mangle_map: (dict | None) = None,
         _gen_ctx: (dict | None) = None,
         _gen_try_stack: list = [],
         decorated_fns: dict[str, tuple] = {},
@@ -347,6 +351,15 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_yield_from(nd: uni.YieldExpr) -> (ir.Value | None);
     def _emit_yield_suspend(v: ir.Value) -> None;
     def _stack_entry_alloca(var_type: ir.Type, name: str) -> ir.Value;
+    def _mangled_of(t: any) -> (str | None);
+    def _solve_generic_call(ability: uni.Ability, nd: uni.FuncCall) -> (dict | None);
+    def _instantiate_generic(
+        nd: uni.FuncCall, func_name: str
+    ) -> (ir.Function | None);
+
+    def _stamp_mono_fn(
+        ability: uni.Ability, spec_name: str
+    ) -> (ir.Function | None);
     def _adapter_callee(fn_expr: uni.UniNode) -> (tuple | None);
     def _adapter_clos_parts(clos: ir.Value) -> (tuple | None);
     def _generator_elem_type(nd: uni.Ability) -> (ir.Type | None);

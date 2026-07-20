@@ -1126,6 +1126,12 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             func = self._get_or_declare_extern(func_name, ret_ir_type, param_ir_types);
         }
     }
+    if func is None and func_name in self.generic_fns {
+        func = self._instantiate_generic(nd, func_name);
+        if func is None {
+            return None;
+        }
+    }
     if func is None {
         if func_name in self.local_vars {
             _alloca = self.local_vars[func_name];

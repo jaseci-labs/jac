@@ -808,15 +808,18 @@ impl NaIRGenPass._make_map_iter(up: tuple, callee: tuple) -> (tuple | None) {
         st, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="map.up.field"
     );
     self.builder.store(up_i8, st_slot);
+    fn_field = self.builder.gep(
+        st, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="map.fn.field"
+    );
+    env_field = self.builder.gep(
+        st, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="map.env.field"
+    );
     if ckind == "clos" {
-        fn_field = self.builder.gep(
-            st, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="map.fn.field"
-        );
         self.builder.store(cfn, fn_field);
-        env_field = self.builder.gep(
-            st, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="map.env.field"
-        );
         self.builder.store(cenv, env_field);
+    } else {
+        self.builder.store(ir.Constant(ir.IntType(64), 0), fn_field);
+        self.builder.store(ir.Constant(i8p, None), env_field);
     }
     return (self._make_jac_iter(nfn, st), "adapter", out_type);
 }
@@ -882,15 +885,18 @@ impl NaIRGenPass._make_filter_iter(up: tuple, callee: tuple) -> (tuple | None) {
         st, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="flt.up.field"
     );
     self.builder.store(up_i8, st_slot);
+    fn_field = self.builder.gep(
+        st, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="flt.fn.field"
+    );
+    env_field = self.builder.gep(
+        st, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="flt.env.field"
+    );
     if ckind == "clos" {
-        fn_field = self.builder.gep(
-            st, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="flt.fn.field"
-        );
         self.builder.store(cfn, fn_field);
-        env_field = self.builder.gep(
-            st, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="flt.env.field"
-        );
         self.builder.store(cenv, env_field);
+    } else {
+        self.builder.store(ir.Constant(ir.IntType(64), 0), fn_field);
+        self.builder.store(ir.Constant(i8p, None), env_field);
     }
     return (self._make_jac_iter(nfn, st), up_name, up_type);
 }
