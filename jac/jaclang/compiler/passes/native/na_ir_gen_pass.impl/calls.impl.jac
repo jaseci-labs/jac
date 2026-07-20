@@ -40,7 +40,10 @@ impl NaIRGenPass._default_arg_fallback(t: ir.Type) -> ir.Value {
         }
         return ir.Constant(t, None);
     }
-    return ir.Constant(t, 0);
+    if isinstance(t, (ir.IntType, ir.DoubleType)) {
+        return ir.Constant(t, 0);
+    }
+    return ir.Constant(t, None);
 }
 
 impl NaIRGenPass._codegen_bound_args(
@@ -110,6 +113,52 @@ impl NaIRGenPass._codegen_bound_args(
             args.append(v);
         }
     }
+
+    _nc_name = nd.target.sym_name if isinstance(nd.target, uni.Name) else None;
+    _nc_entry = self.nested_captures.get(_nc_name) if _nc_name is not None else None;
+    if _nc_entry is not None and _nc_entry[0] is func {
+        for (_cname, _cmode) in _nc_entry[1] {
+            _c_slot = self.local_vars.get(_cname);
+            if _c_slot is None {
+                self.emit(
+                    E5092,
+                    node_override=nd,
+                    kind="function",
+                    name=f"{_nc_name} (captured '{_cname}' not in the calling frame)",
+                    help_text="A capturing nested function can only be called from the frame that defines its captures. Pass the value as an explicit parameter instead."
+                );
+                return args;
+            }
+            if _cmode == "ptr" {
+                args.append(_c_slot);
+            } else {
+                args.append(self.builder.load(_c_slot, name=f"cap.{_cname}"));
+            }
+        }
+    }
+
+    if func.function_type.var_arg {
+        return args;
+    }
+    expected_argc = len(func.args) - self_offset;
+    if len(args) > expected_argc {
+        if len(args) > len(sig_params) {
+            self.emit(
+                E5092,
+                node_override=nd,
+                kind="expression",
+                name=f"call with {len(args)} arguments (native accepts {expected_argc})",
+                help_text="The resolved (frontend) signature allows more arguments than the native implementation declares (a variadic stub over a bounded native function). Pass fewer arguments or fold the extras before the call."
+            );
+            return args[:expected_argc];
+        }
+
+        return args;
+    }
+    while len(args) < expected_argc {
+        slot = self_offset + len(args);
+        args.append(self._default_arg_fallback(func.args[slot].type));
+    }
     return args;
 }
 
@@ -128,6 +177,25 @@ impl NaIRGenPass._emit_take_ref(value: ir.Value, op: str, loc: str = "") -> None
     if isinstance(value.type, ir.PointerType) and not self._is_owned(value) {
         self._emit_rc_retain(value, op=op, loc=loc);
     }
+}
+
+impl NaIRGenPass._codegen_decorated_call(
+    nd: uni.FuncCall, func_name: str
+) -> (ir.Value | None) {
+    (raw_fn, slot_gv, _dec_names, fnty) = self.decorated_fns[func_name];
+    args: list[ir.Value] = self._codegen_bound_args(nd, raw_fn, self_offset=0);
+    coerced: list[ir.Value] = [];
+    for (i, arg) in enumerate(args) {
+        if i < len(fnty.args) {
+            coerced.append(self._coerce_type(arg, fnty.args[i]));
+        } else {
+            coerced.append(arg);
+        }
+    }
+    fptr = self.builder.load(slot_gv, name=f"decslot.{func_name}");
+    result = self.builder.call(fptr, coerced, name=f"call.{func_name}");
+    self._release_owned_args(coerced, op="call_arg");
+    return result;
 }
 
 impl NaIRGenPass._emit_unsupported_builtin_call(
@@ -735,6 +803,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     if func_name in self.struct_types {
         return self._codegen_instantiation(nd);
     }
+    if func_name in self.decorated_fns {
+        return self._codegen_decorated_call(nd, func_name);
+    }
     func = self.func_symtab.get(func_name);
     if func is None {
         manifest = self.ir_in.gen.interop_manifest;
@@ -1033,9 +1104,7 @@ impl NaIRGenPass._emit_isinstance(nd: uni.FuncCall) -> (ir.Value | None) {
         if not tags {
             return self._emit_isinstance_user(nd, operand, unresolved);
         }
-
-        self._emit_unsupported_builtin_call(nd, "isinstance");
-        return None;
+        return self._emit_isinstance_mixed(nd, operand, tags, unresolved);
     }
     if not tags {
         self._emit_unsupported_builtin_call(nd, "isinstance");
@@ -1052,6 +1121,86 @@ impl NaIRGenPass._emit_isinstance(nd: uni.FuncCall) -> (ir.Value | None) {
             if result is None
             else self.builder.or_(result, cmp, name="isinst.or");
     }
+
+    if isinstance(operand.type, ir.PointerType) and self._is_owned(operand) {
+        self._emit_rc_release_simple(operand, op="isinstance_arg", loc="");
+    }
+    return result;
+}
+
+impl NaIRGenPass._emit_isinstance_mixed(
+    nd: uni.FuncCall, operand: ir.Value, tags: list[int], names: list[str]
+) -> (ir.Value | None) {
+    i1 = ir.IntType(1);
+    i8 = ir.IntType(8);
+    i32 = ir.IntType(32);
+
+    target_vtables: list[ir.GlobalVariable] = [];
+    for cand in self.vtable_globals {
+        cand_mro = self._mro_of(cand);
+        for name in names {
+            if name in cand_mro {
+                target_vtables.append(self.vtable_globals[cand]);
+                break;
+            }
+        }
+    }
+    if not target_vtables {
+        self._emit_unsupported_builtin_call(nd, "isinstance");
+        return None;
+    }
+
+    boxed = self._box_to_jacval(operand);
+    tag = self.builder.extract_value(boxed, 0, name="isinst.tag");
+    payload = self.builder.extract_value(boxed, 1, name="isinst.payload");
+
+    prim: (ir.Value | None) = None;
+    for t in sorted(tags) {
+        cmp = self.builder.icmp_unsigned(
+            "==", tag, ir.Constant(i8, t), name="isinst.cmp"
+        );
+        prim = cmp if prim is None else self.builder.or_(prim, cmp, name="isinst.or");
+    }
+
+    pre_bb = self.builder.block;
+    obj_bb = self.builder.append_basic_block(name="isinst.mix.obj");
+    load_bb = self.builder.append_basic_block(name="isinst.mix.load");
+    merge_bb = self.builder.append_basic_block(name="isinst.mix.merge");
+    is_obj = self.builder.icmp_unsigned(
+        "==", tag, ir.Constant(i8, 6), name="isinst.isobj"
+    );
+    self.builder.cbranch(is_obj, obj_bb, merge_bb);
+
+    self.builder.position_at_end(obj_bb);
+    is_null = self.builder.icmp_signed(
+        "==", payload, ir.Constant(payload.type, 0), name="isinst.mix.null"
+    );
+    self.builder.cbranch(is_null, merge_bb, load_bb);
+
+    self.builder.position_at_end(load_bb);
+    i8_pp = i8.as_pointer().as_pointer();
+    slot_pp = self.builder.inttoptr(
+        payload, i8_pp.as_pointer(), name="isinst.mix.slot"
+    );
+    vptr = self.builder.load(slot_pp, name="isinst.mix.vptr");
+    user_or: (ir.Value | None) = None;
+    for vt in target_vtables {
+        vt_base = self.builder.gep(
+            vt, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="isinst.mix.vt"
+        );
+        eq = self.builder.icmp_unsigned("==", vptr, vt_base, name="isinst.mix.eq");
+        user_or = eq
+            if user_or is None
+            else self.builder.or_(user_or, eq, name="isinst.mix.uor");
+    }
+    end_load = self.builder.block;
+    self.builder.branch(merge_bb);
+
+    self.builder.position_at_end(merge_bb);
+    result = self.builder.phi(i1, name="isinst.mix.result");
+    result.add_incoming(prim, pre_bb);
+    result.add_incoming(ir.Constant(i1, 0), obj_bb);
+    result.add_incoming(user_or, end_load);
 
     if isinstance(operand.type, ir.PointerType) and self._is_owned(operand) {
         self._emit_rc_release_simple(operand, op="isinstance_arg", loc="");

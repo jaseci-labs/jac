@@ -87,6 +87,33 @@ impl PyastGenPass.enter_node(nd: uni.UniNode) -> None {
         return;
     }
     if (
+        isinstance(nd, uni.ContextAwareNode)
+        and (nd.code_context == CodeContext.NATIVE)
+        and ((nd.parent is None) or isinstance(nd.parent, uni.Module))
+        and not isinstance(nd, (uni.Import, uni.Test))
+        and not self._is_native_ext_module()
+    ) {
+        first_native = True;
+        for sib in self.ir_in.body {
+            if sib is nd {
+                break;
+            }
+            if (
+                isinstance(sib, uni.ContextAwareNode)
+                and sib.code_context == CodeContext.NATIVE
+                and not isinstance(sib, uni.Import)
+            ) {
+                first_native = False;
+                break;
+            }
+        }
+        if first_native {
+            self._gen_native_interop_stubs(nd);
+        }
+        self.prune();
+        return;
+    }
+    if (
         isinstance(nd, uni.ClientBlock)
         or (
             isinstance(nd, uni.ContextAwareNode)
@@ -113,6 +140,15 @@ impl PyastGenPass.enter_node(nd: uni.UniNode) -> None {
     super.enter_node(nd);
 }
 
+impl PyastGenPass._is_native_ext_module -> bool {
+    import from jaclang.jac0core.ext_registry { is_native_module }
+    if self.ir_in is not None and self.ir_in.decided_codespace == 'native' {
+        return True;
+    }
+    mod_path = self.ir_in.loc.mod_path if (self.ir_in and self.ir_in.loc) else '';
+    return bool(mod_path) and is_native_module(mod_path);
+}
+
 impl PyastGenPass.exit_node(nd: uni.UniNode) -> None {
     if isinstance(nd, (uni.ClientBlock, uni.NativeBlock)) {
         return;
@@ -121,6 +157,15 @@ impl PyastGenPass.exit_node(nd: uni.UniNode) -> None {
         isinstance(nd, uni.ContextAwareNode)
         and (nd.code_context == CodeContext.CLIENT)
         and ((nd.parent is None) or isinstance(nd.parent, uni.Module))
+    ) {
+        return;
+    }
+    if (
+        isinstance(nd, uni.ContextAwareNode)
+        and (nd.code_context == CodeContext.NATIVE)
+        and ((nd.parent is None) or isinstance(nd.parent, uni.Module))
+        and not isinstance(nd, (uni.Import, uni.Test))
+        and not self._is_native_ext_module()
     ) {
         return;
     }
@@ -135,7 +180,7 @@ impl PyastGenPass.exit_node(nd: uni.UniNode) -> None {
     super.exit_node(nd);
 }
 
-impl PyastGenPass._gen_native_interop_stubs(nd: uni.NativeBlock) -> None {
+impl PyastGenPass._gen_native_interop_stubs(nd: uni.UniNode) -> None {
     manifest = self.ir_in.gen.interop_manifest;
     parts: list[str] = [];
     if (manifest and manifest.bindings) {
@@ -161,13 +206,18 @@ impl PyastGenPass._gen_native_interop_stubs(nd: uni.NativeBlock) -> None {
     if parts {
         src = '\n'.join(parts);
         parsed = ast3.parse(src);
+        for stub_node in ast3.walk(parsed) {
+            stub_node.jac_link = [];
+        }
         out.extend(parsed.body);
     }
 
-    for stmt in nd.body {
-        if isinstance(stmt, uni.Test) {
-            self.exit_test(stmt);
-            out.extend(stmt.gen.py_ast);
+    if isinstance(nd, uni.NativeBlock) {
+        for stmt in nd.body {
+            if isinstance(stmt, uni.Test) {
+                self.exit_test(stmt);
+                out.extend(stmt.gen.py_ast);
+            }
         }
     }
     if out {
@@ -1081,12 +1131,11 @@ impl PyastGenPass.exit_import(nd: uni.Import) -> None {
         }
     }
 
-    src_token = nd._source_context_token();
     if (
         nd.from_loc
         and nd.items
-        and src_token is not None
-        and src_token.name == Tok.KW_SERVER
+        and nd.is_sv_marked
+        and nd.code_context != CodeContext.CLIENT
         and self._generate_sv_to_sv_stubs(nd)
     ) {
         return;
@@ -1167,10 +1216,10 @@ impl PyastGenPass.exit_import(nd: uni.Import) -> None {
 }
 
 impl PyastGenPass.exit_module_path(nd: uni.ModulePath) -> None {
-    if (nd.path and (len(nd.path) == 1) and isinstance(nd.path[0], uni.String)) {
+    if nd.string_path_value is not None {
         import_node = nd.parent_of_type(uni.Import);
         if (import_node and (import_node.code_context != CodeContext.CLIENT)) {
-            self.emit(E5001, node_override=nd, path=str(nd.path[0].lit_value));
+            self.emit(E5001, node_override=nd, path=str(nd.string_path_value));
         }
     }
     nd.gen.py_ast = [

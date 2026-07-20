@@ -41,6 +41,9 @@ exclude = [
     #  - uni_pass.jac carries the `# >>> generated visitor surface >>>` markers
     #    that `jac gen-uni-dispatch` uses to locate the region it rewrites.
     "uni_pass.jac",
+    #  - llvm/ir/*.jac is the vendored llvmlite IR port; it keeps upstream's
+    #    docstring/property style so diffs against llvmlite stay reviewable.
+    "*/llvm/ir/*",
 ]
 
 [byllm.model]

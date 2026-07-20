@@ -45,21 +45,6 @@ def _load_jac_runtime() -> None:
         }
     )
 
-    # Schedule deferred native acceleration if autonative is enabled in jac.toml.
-    # Coupled to the runtime (it accelerates runtime hot loops), so it runs once
-    # the runtime is available; fast paths that never load the runtime
-    # (jac --version / --help / purge) skip it entirely.
-    try:
-        from jaclang.project.config import get_config as _get_jac_config
-
-        _jac_cfg = _get_jac_config()
-        if _jac_cfg and _jac_cfg.run.autonative:
-            from jaclang.jac0core.native_accel import schedule_native_acceleration
-
-            schedule_native_acceleration()
-    except Exception:
-        pass  # Config not available or acceleration failed — continue normally
-
 
 def _install_runtime_shim() -> None:
     # Preserve the legacy `import jaclang.runtimelib.runtime` /

@@ -7,12 +7,12 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 declare -A ARGS=(
-  [binarytrees]="10"
-  [vecdot]="2000 20"
-  [histogram]="20000 5"
-  [vm]="500 200"
-  [rbtree]="5000 3"
-  [deriv]="40 10"
+  [own_binarytrees]="10"
+  [own_vecdot]="2000 20"
+  [own_histogram]="20000 5"
+  [own_vm]="500 200"
+  [own_rbtree]="5000 3"
+  [own_deriv]="40 10"
 )
 
 mkdir -p bin results
@@ -20,7 +20,7 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 fail=0
 
-for k in binarytrees vecdot histogram vm rbtree deriv; do
+for k in own_binarytrees own_vecdot own_histogram own_vm own_rbtree own_deriv; do
   for mode in none rc cycles; do
     if [ "$mode" = none ]; then
       flags=(--enforce-nogc --gc none --assert-no-rc)

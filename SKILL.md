@@ -65,7 +65,7 @@ Read before writing Jac; it is not Python:
 - `node`, `edge`, and `walker` are archetypes for graph-based programming. `root ++> MyNode(...)` attaches a node to the persistent root graph; `[-->]` collects outgoing neighbors; `spawn` sends a walker traversing.
 - The graph under `root` persists between runs and across server requests automatically.
 - `def f(x: str) -> T by llm();` delegates a function body to an LLM with the return type enforced as the output schema (requires `jac install byllm` and a model in `jac.toml`).
-- Code inside `cl { }` blocks (or `cl def`) compiles to JavaScript/JSX for the browser; the rest runs on the server. Cross-boundary calls are generated RPCs.
+- Client and native code are inferred: declarations carrying JSX or npm imports (plus the helpers they reference) compile to JavaScript/JSX for the browser, and imports declaring C-ABI extern functions seed native compilation the same way; the rest runs on the server, and `def:pub` functions and walkers always stay server endpoints. Explicit `cl { }` blocks (or `cl def`) still work as overrides. Cross-boundary calls are generated RPCs.
 - Interfaces can be separated from implementations with `impl`.
 
 Primary references:

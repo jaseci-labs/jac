@@ -103,7 +103,8 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
     def postinit -> None;
     def enter_node(nd: uni.UniNode) -> None;
     def exit_node(nd: uni.UniNode) -> None;
-    def _gen_native_interop_stubs(nd: uni.NativeBlock) -> None;
+    def _gen_native_interop_stubs(nd: uni.UniNode) -> None;
+    def _is_native_ext_module -> bool;
     def _native_test_shim_stmts(nd: uni.Test) -> list;
     def _generate_sv_to_sv_stubs(nd: uni.Import) -> bool;
     def _gen_py_sv_func_stub(

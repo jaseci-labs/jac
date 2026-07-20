@@ -76,6 +76,8 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
         _result = self._codegen_expr(nd.value);
     } elif isinstance(nd, uni.LambdaExpr) {
         _result = self._codegen_lambda(nd);
+    } elif isinstance(nd, uni.YieldExpr) {
+        _result = self._codegen_yield(nd);
     } elif isinstance(nd, uni.AwaitExpr) {
         _result = self._codegen_expr(nd.target);
     } elif isinstance(nd, uni.ConcurrentExpr) {
@@ -119,6 +121,50 @@ impl NaIRGenPass._codegen_required(nd: (uni.UniNode | None)) -> (ir.Value | None
         self.emit(E5092, node_override=nd, kind="expression", name=type(nd).__name__);
     }
     return val;
+}
+
+impl NaIRGenPass._codegen_yield(nd: uni.YieldExpr) -> (ir.Value | None) {
+    gc = self._gen_ctx;
+    i1 = ir.IntType(1);
+    i64 = ir.IntType(64);
+    if gc is None or self.builder.function is not gc["resume_fn"] {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="expression",
+            name="YieldExpr",
+            help_text="yield lowers natively only directly inside a generator function (declared `-> Iterator[T]`); it is not supported in lambdas, nested functions, or non-generator bodies."
+        );
+        return None;
+    }
+    if nd.with_from or nd.expr is None {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="expression",
+            name="yield from" if nd.with_from else "bare yield",
+            help_text="Native generators support `yield <expr>` only; loop over the inner iterable instead of `yield from`, and yield an explicit value."
+        );
+        return None;
+    }
+    v = self._codegen_expr(nd.expr);
+    if v is None {
+        return None;
+    }
+    v = self._coerce_type(v, gc["elem_type"]);
+    out_typed = self.builder.bitcast(
+        gc["out_i8"], gc["elem_type"].as_pointer(), name="yield.out"
+    );
+    self.builder.store(v, out_typed);
+    k = len(gc["resume_blocks"]) + 1;
+    ip_slot = self.builder.bitcast(gc["frame_i8"], i64.as_pointer(), name="yield.ip");
+    self.builder.store(ir.Constant(i64, k), ip_slot);
+    self.builder.ret(ir.Constant(i1, 1));
+
+    rbb = gc["resume_fn"].append_basic_block(f"resume{k}");
+    gc["resume_blocks"].append(rbb);
+    self.builder.position_at_end(rbb);
+    return ir.Constant(i64, 0);
 }
 
 impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
@@ -240,6 +286,21 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
 
 impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
     var_name = nd.value;
+    _has_caps = var_name in self.lambda_captures or var_name in self.nested_captures;
+    if _has_caps {
+        _np = nd.parent;
+        _is_call_target = isinstance(_np, uni.FuncCall) and _np.target is nd;
+        if not _is_call_target {
+            self.emit(
+                E5092,
+                node_override=nd,
+                kind="expression",
+                name=f"'{var_name}' (capturing closure used as a value)",
+                help_text="A closure that captures enclosing locals is bound to its defining frame; it can only be called directly here. To pass or return callable behavior, use a non-capturing function, or an object holding the state."
+            );
+            return None;
+        }
+    }
     if var_name in self.local_vars {
         alloca = self.local_vars[var_name];
         return self.builder.load(alloca, name=var_name);

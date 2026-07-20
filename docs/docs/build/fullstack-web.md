@@ -4,7 +4,7 @@ Backend, frontend, and data model in one language -- the compiler generates the 
 
 ## Your 5-minute quick win {#web-app}
 
-Code in a `cl` block compiles to a React/JSX bundle for the browser; everything else compiles to Python for the server. `await add_todo(...)` in the client is a real RPC to the server function:
+The client/server split is **inferred**: a declaration carrying JSX (plus anything it uses) compiles to a React/JSX bundle for the browser; everything else compiles to Python for the server. Explicit markers like the `cl` prefix below are optional overrides -- here the JSX alone would place `app` on the client. `await add_todo(...)` in the client is a real RPC to the server function:
 
 ```jac
 # main.jac

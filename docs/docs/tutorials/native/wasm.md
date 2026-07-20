@@ -57,7 +57,7 @@ Two things to know, both visible in that snippet:
 
 ## 4. The integrated path: `na` blocks in a web app
 
-Hand-loading wasm is the mechanics; in a real app you don't do any of it. In a [`web-static` project](../../quick-guide/project-kinds.md#in-browser-native-wasm), an `na` block in your app module is compiled to wasm and wired to your client code by the build:
+Hand-loading wasm is the mechanics; in a real app you don't do any of it. In a [`web-static` project](../../quick-guide/project-kinds.md#in-browser-native-wasm), the native code in your app module -- inferred from extern-decl imports and their users, or marked with an explicit `na` block -- is compiled to wasm and wired to your client code by the build:
 
 ```bash
 jac create wasmapp --kind web-static

@@ -151,10 +151,14 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         crash = "";
         crash_pod = None;
         pulls: dict[str, any] = {};
+        creating: dict[str, any] = {};
         phases: list[str] = [];
         states: list[str] = [];
         try {
             for p in core_v1.list_namespaced_pod(namespace=ns).items {
+                if p.metadata?.deletion_timestamp is not None {
+                    continue;
+                }
                 pod_name = str(p.metadata.name);
                 labels = p.metadata.labels or {};
                 app = str(labels.get("app", ""));
@@ -195,6 +199,27 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 if pod_pull {
                     pulls[pod_name] = (pod_pull, pod_pull_reason, p);
                 }
+
+                reasons = [
+                    str(
+                        (
+                            cs.state.waiting.reason
+                                if cs.state and cs.state.waiting
+                                else ""
+                        )
+                        or ""
+                    ) for cs in statuses
+                ];
+                stuck_creating = (
+                    bool(statuses)
+                    and not pod_reason
+                    and not pod_pull
+                    and ("ContainerCreating" in reasons)
+                    and ("PodInitializing" not in reasons)
+                );
+                if phase == "Pending" and stuck_creating and in_fleet {
+                    creating[pod_name] = p;
+                }
                 if pod_crash and not crash {
                     crash = (
                         f"pod '{pod_name}' container '{pod_crash}' "
@@ -217,9 +242,66 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             "crash": crash,
             "crash_pod": crash_pod,
             "pulls": pulls,
+            "creating": creating,
             "phases": phases,
             "states": states
         };
+    }
+
+    def _pod_mount_wedged(core_v1: any, ns: str, pod_name: str) -> bool {
+        import from datetime { datetime, timezone }
+        try {
+            evs = core_v1.list_namespaced_event(
+                namespace=ns, field_selector=f"involvedObject.name={pod_name}"
+            ).items;
+        } except Exception {
+            return False;
+        }
+        now = datetime.now(timezone.utc);
+        for e in evs {
+            if str(e.reason or "") not in {"FailedMount", "FailedAttachVolume"} {
+                continue;
+            }
+
+            ts = e.last_timestamp or e.event_time or e.first_timestamp;
+            if ts is None {
+                continue;
+            }
+            try {
+                age = (now - ts).total_seconds();
+            } except Exception {
+                continue;
+            }
+            if age <= 360 {
+                return True;
+            }
+        }
+        return False;
+    }
+
+    def _try_self_heal(
+        core_v1: any, ns: str, pod: any, why: str, healed_apps: dict[str, int]
+    ) -> bool {
+        app = str((pod.metadata.labels or {}).get("app", "")) or str(pod.metadata.name);
+        if healed_apps.get(app, 0) >= 1 or sum(healed_apps.values()) >= 3 {
+            return False;
+        }
+        pod_name = str(pod.metadata.name);
+        try {
+            core_v1.delete_namespaced_pod(name=pod_name, namespace=ns);
+        } except Exception {
+            return False;
+        }
+        healed_apps[app] = healed_apps.get(app, 0) + 1;
+        if self.logger {
+            self.logger.warn(
+                f"Self-heal: deleted wedged pod '{pod_name}' ({why}); "
+                f"its ReplicaSet schedules a replacement. One retry per "
+                f"service, then the rollout fails as usual.",
+                {"namespace": ns, "app": app}
+            );
+        }
+        return True;
     }
 
     def _wait_for_fleet_rollout(bundle: dict[str, any], timeout: int = 1200) -> None {
@@ -260,6 +342,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             if app_labels
             else None;
         imagepull_streak: dict[str, int] = {};
+        creating_streak: dict[str, int] = {};
+        healed_apps: dict[str, int] = {};
         last_sig = "";
         last_heartbeat = -90;
 
@@ -321,12 +405,40 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 pull_pod = None;
                 for (pod_name, info) in pulls.items() {
                     if imagepull_streak.get(pod_name, 0) >= 2 {
+                        if self._try_self_heal(
+                            core_v1,
+                            ns,
+                            info[2],
+                            f"container '{info[0]}' cannot pull image ({info[1]})",
+                            healed_apps
+                        ) {
+                            imagepull_streak.pop(pod_name, None);
+                            continue;
+                        }
                         pull_failure = (
                             f"pod '{pod_name}' container '{info[0]}' "
                             f"cannot pull image ({info[1]})"
                         );
                         pull_pod = info[2];
                         break;
+                    }
+                }
+                creating_now = scan.get("creating", {});
+                creating_streak = {
+                    k: creating_streak.get(k, 0) + 1 for k in creating_now
+                };
+                for (pod_name, pod) in creating_now.items() {
+                    if creating_streak.get(pod_name, 0) >= 30
+                    and self._pod_mount_wedged(core_v1, ns, pod_name) {
+                        if self._try_self_heal(
+                            core_v1,
+                            ns,
+                            pod,
+                            "stuck >5min with FailedMount events",
+                            healed_apps
+                        ) {
+                            creating_streak.pop(pod_name, None);
+                        }
                     }
                 }
 

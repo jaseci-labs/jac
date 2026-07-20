@@ -246,10 +246,9 @@ def resolve_pod_base_image(
     }
 
     try {
-        _http_get_bytes(
+        raw = _http_get_bytes(
             f"https://hub.docker.com/v2/repositories/{OFFICIAL_IMAGE}/tags/{tag}"
         );
-        return image;
     } except Exception {
         logger.info(
             f"Official base image {image} is not published or not reachable; "
@@ -257,6 +256,20 @@ def resolve_pod_base_image(
         );
         return fallback;
     }
+
+    if channel == Channel.EXPERIMENTAL {
+        return image;
+    }
+    try {
+        digest = str(json.loads(raw.decode("utf-8")).get("digest", "") or "");
+    } except Exception {
+        digest = "";
+    }
+    if digest.startswith("sha256:") {
+        logger.info(f"Pod base image {image} pinned to {digest} for this deploy.");
+        return f"{OFFICIAL_IMAGE}@{digest}";
+    }
+    return image;
 }
 
 
