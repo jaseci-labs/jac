@@ -228,10 +228,14 @@ test "generators yield" {
     );
 }
 
-test "container repr" {
+test "varargs parameter forms" {
     run_with_both(
-        "prim_repr.jac", "repr_py", "repr_cl", "repr_na", require=["na"]
+        "prim_varargs.jac", "varargs_py", "varargs_cl", "varargs_na", require=["na"]
     );
+}
+
+test "container repr" {
+    run_with_both("prim_repr.jac", "repr_py", "repr_cl", "repr_na", require=["na"]);
 }
 
 test "chained comparisons with membership and identity" {
@@ -591,28 +595,32 @@ test "builtins introspection" {
 
 test "match sequence" {
     run_with_both(
-        "prim_match.jac", "match_seq_py", "match_seq_cl", "match_seq_na",
-        require=["na"]
+        "prim_match.jac", "match_seq_py", "match_seq_cl", "match_seq_na", require=["na"]
     );
 }
 
 test "match star" {
     run_with_both(
-        "prim_match.jac", "match_star_py", "match_star_cl", "match_star_na",
+        "prim_match.jac",
+        "match_star_py",
+        "match_star_cl",
+        "match_star_na",
         require=["na"]
     );
 }
 
 test "match mapping" {
     run_with_both(
-        "prim_match.jac", "match_map_py", "match_map_cl", "match_map_na",
-        require=["na"]
+        "prim_match.jac", "match_map_py", "match_map_cl", "match_map_na", require=["na"]
     );
 }
 
 test "match class" {
     run_with_both(
-        "prim_match.jac", "match_arch_py", "match_arch_cl", "match_arch_na",
+        "prim_match.jac",
+        "match_arch_py",
+        "match_arch_cl",
+        "match_arch_na",
         require=["na"]
     );
 }

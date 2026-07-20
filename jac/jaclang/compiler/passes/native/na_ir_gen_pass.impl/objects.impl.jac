@@ -1778,6 +1778,8 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     }
     result = self.builder.call(func, coerced, name=f"call.{method_name}");
 
+    self._release_owned_args(coerced, op="call_arg");
+
     if isinstance(func.return_value.type, ir.VoidType) {
         return ir.Constant(ir.IntType(64), 0);
     }

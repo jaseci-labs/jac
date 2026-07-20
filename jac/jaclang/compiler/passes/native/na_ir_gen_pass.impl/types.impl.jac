@@ -268,6 +268,8 @@ impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
             spec = "f64";
         } elif isinstance(elem_llvm, ir.PointerType) {
             spec = "ptr";
+        } elif self?.jacval_type and elem_llvm == self.jacval_type {
+            spec = "jacval";
         }
         self._emit_list_helpers(spec, elem_llvm);
         return self.list_types[spec].as_pointer();

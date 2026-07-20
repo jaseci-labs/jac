@@ -258,6 +258,13 @@ test "native default produces a native engine for pure modules" {
     assert mod.gen.native_engine is not None , "inferred-native module should lower to a native engine";
 }
 
+test "variadic defs infer native under native default" {
+    mod = compile_with_default("nadefault_varargs.jac", "native", cgen=True);
+    assert mod.decided_codespace == 'native' , "variadic params are native-lowerable; no demotion";
+    assert mod.gen.native_engine is not None , "variadic module should lower to a native engine";
+    assert stamp_of(mod, "pack_sum") == 'native';
+}
+
 test "non-lowerable pure module demotes to server under native default" {
     mod = compile_with_default("nadefault_nolower.jac", "native", cgen=True);
     assert mod.decided_codespace == '' , "demotion recompiles in the server codespace";

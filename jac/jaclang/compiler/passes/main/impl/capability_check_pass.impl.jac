@@ -87,6 +87,11 @@ glob JS_GLOBALS: dict[str, str] = {
          "archetype, and dynamically-computed decorators would silently run "
          "the undecorated body; remove the decorator or move the definition "
          "to a @sv/Python context."
+     ),
+     _NATIVE_UNPACK_HELP: str = (
+         "Unpacking arguments at a native call site is not lowered yet; "
+         "pass the elements explicitly or move the call to a @sv/Python "
+         "context."
      );
 
 
@@ -309,14 +314,91 @@ impl native_capability_violations(mod: uni.Module) -> list {
             }
 
             if isinstance(nd, uni.ParamVar) and nd.unpack is not None {
+                _vp_name = f"{nd.unpack.value}{nd.name.value if nd.name else ''}";
+                _vp_encl = nd.find_parent_of_type(uni.Ability);
+                if _vp_encl is None {
+                    _vp_impl = nd.find_parent_of_type(uni.ImplDef);
+                    if _vp_impl is not None
+                    and isinstance(_vp_impl.decl_link, uni.Ability) {
+                        _vp_encl = _vp_impl.decl_link;
+                    }
+                }
+                if nd.type_tag is None {
+                    out.append(
+                        (
+                            nd,
+                            "variadic parameter",
+                            _vp_name,
+                            (
+                                "Annotate the variadic parameter (e.g. "
+                                "`*args: int`, `*args: any`) so the native "
+                                "pack type is known."
+                            )
+                        )
+                    );
+                    continue;
+                }
+                if nd.find_parent_of_type(uni.LambdaExpr) is not None {
+                    out.append((nd, "variadic parameter", _vp_name, None));
+                    continue;
+                }
+                if (
+                    _vp_encl is not None
+                    and _vp_encl.name_ref is not None
+                    and _vp_encl.name_ref.sym_name in ("init", "__init__")
+                    and isinstance(_vp_encl.parent, uni.Archetype)
+                ) {
+                    out.append(
+                        (
+                            nd,
+                            "variadic parameter",
+                            _vp_name,
+                            (
+                                "Native constructors are lowered as field "
+                                "initializers; give `init` a fixed "
+                                "parameter list."
+                            )
+                        )
+                    );
+                    continue;
+                }
+                if (
+                    _vp_encl is not None
+                    and _vp_encl.access is not None
+                    and _vp_encl.access.tag.name == Tok.KW_PUB
+                ) {
+                    out.append(
+                        (
+                            nd,
+                            "variadic parameter",
+                            _vp_name,
+                            (
+                                "The interop bridge cannot marshal a "
+                                "parameter pack; expose a fixed-arity "
+                                "`def:pub` wrapper that calls the variadic "
+                                "function instead."
+                            )
+                        )
+                    );
+                    continue;
+                }
+            }
+
+            if isinstance(nd, uni.UnaryExpr)
+            and isinstance(nd.op, uni.Token)
+            and nd.op.name in (Tok.STAR_MUL, Tok.STAR_POW)
+            and isinstance(nd.parent, uni.FuncCall)
+            and nd in (nd.parent.params or []) {
                 out.append(
-                    (
-                        nd,
-                        "variadic parameter",
-                        f"{nd.unpack.value}{nd.name.value if nd.name else ''}",
-                        None
-                    )
+                    (nd, "call argument unpacking", nd.op.value, _NATIVE_UNPACK_HELP)
                 );
+                continue;
+            }
+
+            if isinstance(nd, uni.KWPair)
+            and nd.key is None
+            and isinstance(nd.parent, uni.FuncCall) {
+                out.append((nd, "call argument unpacking", "**", _NATIVE_UNPACK_HELP));
                 continue;
             }
 
