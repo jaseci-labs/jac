@@ -293,11 +293,12 @@ impl NormalizePass.enter_archetype(nd: uni.Archetype) -> None {
         }
         new_kid.append(nd.gen_token(Tok.RSQUARE));
     }
-    if nd.base_classes {
+    inherit: list = list(nd.base_classes) + list(nd.keywords);
+    if inherit {
         new_kid.append(nd.gen_token(Tok.LPAREN));
-        for idx in range(len(nd.base_classes)) {
-            new_kid.append(nd.base_classes[idx]);
-            if idx < len(nd.base_classes) - 1 {
+        for idx in range(len(inherit)) {
+            new_kid.append(inherit[idx]);
+            if idx < len(inherit) - 1 {
                 new_kid.append(nd.gen_token(Tok.COMMA));
             }
         }

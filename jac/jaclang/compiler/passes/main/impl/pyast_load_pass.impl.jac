@@ -1898,6 +1898,12 @@ impl PyastBuildPass.proc_class_def(nd: py_ast.ClassDef) -> (uni.Archetype | uni.
         for base in converted_base_classes
         if isinstance(base, uni.Expr)
     ];
+    converted_keywords = [self.convert(kw) for kw in nd.keywords];
+    keywords: list[uni.KWPair] = [
+        kw
+        for kw in converted_keywords
+        if isinstance(kw, uni.KWPair)
+    ];
     converted_decorators_list = [self.convert(i) for i in nd.decorator_list];
     decorators = [
         i
@@ -1914,6 +1920,7 @@ impl PyastBuildPass.proc_class_def(nd: py_ast.ClassDef) -> (uni.Archetype | uni.
     }
     kid.append(name);
     kid.extend(base_classes);
+    kid.extend(keywords);
     kid.extend(valid_body);
     if doc {
         kid.append(doc);
@@ -1923,6 +1930,7 @@ impl PyastBuildPass.proc_class_def(nd: py_ast.ClassDef) -> (uni.Archetype | uni.
         name=name,
         access=None,
         base_classes=base_classes,
+        keywords=keywords,
         body=valid,
         kid=kid,
         doc=doc,
