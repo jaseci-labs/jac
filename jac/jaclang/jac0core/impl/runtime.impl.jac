@@ -1493,7 +1493,7 @@ impl JacServe.ensure_sv_service(module_name: str, base_path: str) -> None {
 
 impl JacServe.sv_service_call(module_name: str, func_name: str, args: dict) -> any {
     _sp = _scale_provider();
-    if _sp is not None {
+    if _sp is not None and _sp.sv_transport_available() {
         return _sp.sv_service_call(module_name, func_name, args);
     }
     import from jaclang.runtimelib { sv_client }
@@ -1557,7 +1557,7 @@ impl JacServe.sv_walker_call(
     module_name: str, walker_name: str, args: dict, stub_cls: any
 ) -> any {
     _sp = _scale_provider();
-    if _sp is not None {
+    if _sp is not None and _sp.sv_transport_available() {
         return _sp.sv_walker_call(module_name, walker_name, args, stub_cls);
     }
     import from jaclang.runtimelib { sv_client }

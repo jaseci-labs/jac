@@ -249,14 +249,10 @@ impl nacompile(
 
     try {
         prog = JacProgram();
-        if auto_promote {
-            prog._auto_promote_native = True;
-            prog._auto_promote_target = os.path.abspath(filename);
-        }
-
         options = CompileOptions(
             aot_mode=True,
             type_check=False,
+            default_codespace=('native' if auto_promote else ''),
             na_gc_mode=gc,
             nogc_cli_target=(base_stem(filename) if enforce_nogc else ""),
             nogc_enforce_modules=(_gc_cfg.enforce.modules if _gc_cfg else []),
@@ -286,7 +282,8 @@ impl nacompile(
     }
 
     if ir_module is None or ir_module.gen.llvm_ir is None {
-        if auto_promote and not (ir_module and ir_module.gen.native_compat) {
+        if auto_promote
+        and not (ir_module and ir_module.decided_codespace == 'native') {
             console.error(
                 "This .jac file is not compatible with native compilation.\n"
                 "  It may use walkers, nodes, edges, async, lambdas, or other\n"

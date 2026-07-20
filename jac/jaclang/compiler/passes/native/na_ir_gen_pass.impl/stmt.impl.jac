@@ -228,6 +228,30 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
 }
 
 impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
+    _gc = self._gen_ctx;
+    if _gc is not None and self.builder.function is _gc["resume_fn"] {
+        if nd.expr is not None {
+            self.emit(
+                E5092,
+                node_override=nd,
+                kind="statement",
+                name="return <value> in a generator",
+                help_text="A native generator supports only bare `return` (stop iteration); a StopIteration value has no consumer on the JacIter surface."
+            );
+            return;
+        }
+        _gr_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+            if nd.loc
+            else 0}";
+        self._emit_scope_cleanup(skip_var=None, loc=_gr_loc);
+        _gr_i64 = ir.IntType(64);
+        _gr_ip = self.builder.bitcast(
+            _gc["frame_i8"], _gr_i64.as_pointer(), name="gen.ret.ip"
+        );
+        self.builder.store(ir.Constant(_gr_i64, -1), _gr_ip);
+        self.builder.ret(ir.Constant(ir.IntType(1), 0));
+        return;
+    }
     func_ret_type = self.builder.function.return_value.type;
     if nd.expr is not None {
         val = self._codegen_required(nd.expr);
@@ -301,7 +325,8 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
     } elif isinstance(func_ret_type, ir.PointerType) {
         self.builder.ret(ir.Constant(func_ret_type, None));
     } else {
-        self.builder.ret(ir.Constant(func_ret_type, 0));
+        _fb = 0 if isinstance(func_ret_type, (ir.IntType, ir.DoubleType)) else None;
+        self.builder.ret(ir.Constant(func_ret_type, _fb));
     }
 }
 
@@ -1984,12 +2009,38 @@ impl NaIRGenPass._codegen_for_indexed(
         if nd.loc
         else 0}";
 
+    _gen_yield_loop = (
+        self._gen_ctx is not None
+        and self.builder.function is self._gen_ctx["resume_fn"]
+        and bool(nd.get_all_sub_nodes(typ=uni.YieldExpr))
+    );
+    _gen_stop_slot: (ir.Value | None) = None;
+    _gen_step_slot: (ir.Value | None) = None;
+    if _gen_yield_loop and kind != "range" {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="statement",
+            name=f"yield inside a for over a {kind}",
+            help_text="Inside a native generator, a loop body that yields can iterate ranges or iterator values (`for x in iter(xs)` / another generator); direct indexed iteration over this collection cannot resume mid-loop yet."
+        );
+        return;
+    }
+
     if kind == "range" {
         len_val = collection_val;
         idx_alloca = self._entry_alloca(i64, var_names[0]);
         self.builder.store(range_start, idx_alloca);
         self.local_vars[var_names[0]] = idx_alloca;
         allocas = [idx_alloca];
+        if _gen_yield_loop {
+            _gen_stop_slot = self._entry_alloca(i64, "for.stop.slot");
+            self.builder.store(len_val, _gen_stop_slot);
+            if range_step is not None {
+                _gen_step_slot = self._entry_alloca(i64, "for.step.slot");
+                self.builder.store(range_step, _gen_step_slot);
+            }
+        }
     } else {
         if kind == "str" {
             strlen_fn = self._get_or_declare_extern(
@@ -2042,6 +2093,12 @@ impl NaIRGenPass._codegen_for_indexed(
     end_bb = func.append_basic_block(name="for.end");
     self.builder.branch(cond_bb);
     self.builder.position_at_end(cond_bb);
+    if _gen_stop_slot is not None {
+        len_val = self.builder.load(_gen_stop_slot, name="for.stop");
+    }
+    if _gen_step_slot is not None {
+        range_step = self.builder.load(_gen_step_slot, name="for.step");
+    }
     cur_idx = self.builder.load(idx_alloca, name="for.cur.idx");
     if kind == "range" and range_step is not None {
         _step_pos = self.builder.icmp_signed(
@@ -2150,6 +2207,9 @@ impl NaIRGenPass._codegen_for_indexed(
     }
     self.loop_stack.pop();
     self.builder.position_at_end(incr_bb);
+    if _gen_step_slot is not None {
+        range_step = self.builder.load(_gen_step_slot, name="for.step.inc");
+    }
     inc_idx = self.builder.load(idx_alloca, name="for.inc.idx");
     _idx_delta = range_step
         if kind == "range" and range_step is not None

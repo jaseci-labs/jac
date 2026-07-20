@@ -15,7 +15,11 @@ The complete technical reference for Jac -- pure lookup, organized by subject. I
 
 The core language -- syntax, types, objects, graphs, concurrency, and native compilation.
 
-- **[Foundation](language/foundation.md)** -- syntax, types, literals, variables, scoping, operators, control flow, pattern matching
+- **[Foundation](language/foundation.md)** -- what Jac is, getting started, syntax and code structure
+- **[Types and Values](language/types-and-values.md)** -- the type system, annotations, generics, literals
+- **[Variables and Scope](language/variables-and-scope.md)** -- locals, `has` fields, `glob`, scoping and rebinding rules
+- **[Operators](language/operators.md)** -- arithmetic through graph operators, pipes, `by`, `as`, precedence
+- **[Control Flow](language/control-flow.md)** -- conditionals, loops, pattern matching, exceptions, generators
 - **[Primitives & Codespace Semantics](language/primitives.md)** -- values, the `sv`/`cl`/`na` codespaces
 - **[Functions & Objects](language/functions-objects.md)** -- `can` vs `def`, OOP, inheritance, enums, impl blocks
 - **[Access Modifiers](language/access-modifiers.md)** -- `:pub` / `:protect` / `:priv` across member, module, and service contexts
@@ -25,7 +29,7 @@ The core language -- syntax, types, objects, graphs, concurrency, and native com
 - **[Walker Patterns](language/walker-responses.md)** -- the `.reports` array, response patterns, nested spawning
 - **[Ownership & Borrowing](language/ownership-borrowing.md)** -- `own`/`imm`/`&`/`&mut` bindings, move checking, `Region` arenas (`in <handle> { }` opens), `def drop` ([checker spec](language/ownership-checker-spec.md))
 - **[Appendices](language/appendices.md)** -- keyword & operator reference, grammar, gotchas, migration
-- **[Syntax Cheatsheet](../quick-guide/syntax-cheatsheet.md)** -- one-page lookup
+- **[Syntax Cheatsheet](language/syntax-cheatsheet.md)** -- one-page lookup
 - **[Native Compilation](language/native-pathway.md)** -- compiling to native binaries and C-ABI shared libraries; gc modes and zero-RC ownership builds
 
 ## Capabilities and Plugins
@@ -42,14 +46,14 @@ AI, deployment, and the full-stack frameworks. byLLM and Scale are **built into 
 
 - **[Interoperability](language/python-integration.md)** -- importing and using Python packages in Jac, the adoption patterns
 - **[Library Mode](language/library-mode.md)** -- using Jac from pure Python (`jaclang.lib`, `jac2py`)
-- **[Import Anything](../quick-guide/import-anything.md)** -- importing from PyPI, npm, and C across the codespaces
+- **[Import Anything](import-anything.md)** -- importing from PyPI, npm, and C across the codespaces
 
 ## Developer Workflow
 
 - **[CLI Commands](cli/index.md)** -- every `jac` subcommand with options and examples
 - **[MCP Server](mcp.md)** -- expose your project to AI coding assistants via `jac mcp`
-- **[Agent Skills & MCP](../quick-guide/agent-skills-and-mcp.md)** -- `jac guide`, exportable skills, and when to use each
-- **[Plugin Authoring](plugin-authoring.md)** -- write your own CLI/runtime/config plugin
+- **[Agent Skills & MCP](agent-skills-and-mcp.md)** -- `jac guide`, exportable skills, and when to use each
+- **[Plugins (Removed)](plugin-authoring.md)** -- why Jac no longer has a plugin system; custom persistence backends
 - **[Configuration](config/index.md)** -- `jac.toml`, profiles, environments
 - **[Publishing Packages](publishing.md)** -- building wheels and npm tarballs
 - **[Persistence & Schema Migration](persistence.md)** -- the `root` graph, schema drift, migrations

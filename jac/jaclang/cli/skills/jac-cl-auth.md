@@ -12,6 +12,8 @@ Client auth uses four helpers from `@jac/runtime`. **Return types differ - get t
 | `jacLogout()` | no | `None` | - (call it, no assign) |
 | `jacIsLoggedIn()` | no | `bool` | - (use inline) |
 
+These patterns apply in any client code - explicit `.cl.jac` files or plain `.jac` components inferred client (the `@jac/runtime` import itself is a string-path npm import, which is client-only syntax; markers are optional overrides - see `jac-codespaces`).
+
 The two return types behave differently for failure checks. `jacLogin` returns a plain `bool` - `if not ok { ... }` detects a failed login directly. `jacSignup` returns a **`dict`** shaped `{"success": bool, "user_id" | "error": ...}`, and it is *always* a non-empty (truthy) dict - so `if not signup_result` can **never** catch a failed signup. Check the `success` key instead: `if not signup_result["success"] { ... }`. (Typing a `jacSignup` result as `bool` also fails `jac check` with `E1001: Cannot assign dict to bool`.)
 
 ## ⚠ Read first - signup + first `def:priv` call must be 3 awaited steps

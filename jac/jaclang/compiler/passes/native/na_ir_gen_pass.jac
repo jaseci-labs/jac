@@ -293,8 +293,21 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _emit_unsupported_builtin_call(nd: uni.FuncCall, func_name: str) -> None;
 
     has lambda_captures: dict[str, list[tuple]] = {},
-        _pending_lambda_captures: (list[tuple] | None) = None;
+        _pending_lambda_captures: (list[tuple] | None) = None,
+        nested_captures: dict[str, tuple] = {},
+        generator_fns: dict[str, uni.Ability] = {},
+        _gen_ctx: (dict | None) = None,
+        decorated_fns: dict[str, tuple] = {};
 
+    def _apply_static_decorators -> None;
+    def _codegen_decorated_call(nd: uni.FuncCall, func_name: str) -> (ir.Value | None);
+    def _ability_is_generator(nd: uni.Ability) -> bool;
+    def _codegen_yield(nd: uni.YieldExpr) -> (ir.Value | None);
+    def _adapter_callee_fn(fn_expr: uni.UniNode) -> (ir.Function | None);
+    def _generator_elem_type(nd: uni.Ability) -> (ir.Type | None);
+    def _codegen_generator(nd: uni.Ability, func: ir.Function) -> None;
+    def _emit_generator_drop_fn(name: str, slots: list[tuple]) -> ir.Function;
+    def _abi_sizeof(t: ir.Type) -> int;
     def _codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None);
     def _get_or_declare_extern(
         name: str, ret_type: ir.Type, arg_types: list[ir.Type], var_arg: bool = False
@@ -306,6 +319,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _isinstance_type_name(nd: uni.UniNode) -> (str | None);
     def _emit_isinstance_user(
         nd: uni.FuncCall, operand: ir.Value, names: list[str]
+    ) -> (ir.Value | None);
+
+    def _emit_isinstance_mixed(
+        nd: uni.FuncCall, operand: ir.Value, tags: list[int], names: list[str]
     ) -> (ir.Value | None);
 
     def _jacval_tags_for_type(name: str) -> list[int];

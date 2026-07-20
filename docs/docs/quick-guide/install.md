@@ -88,7 +88,7 @@ jac install byllm
 # `jac start --scale`. Scale's optional deps install per-project via jac.toml.
 ```
 
-The MCP server for AI-assisted Jac development is built into the binary -- run `jac mcp` directly, no install needed (see [Agent Skills and MCP](agent-skills-and-mcp.md)).
+The MCP server for AI-assisted Jac development is built into the binary -- run `jac mcp` directly, no install needed (see [Agent Skills and MCP](../reference/agent-skills-and-mcp.md)).
 
 `jac install` resolves packages from PyPI into your project environment; jaclang itself is provided by the binary, so it is never reinstalled. See [One Binary, Build Anything](one-binary.md) for the full picture of what the binary bundles, and the [CLI reference](../reference/cli/index.md#jac-install) for all options.
 

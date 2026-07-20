@@ -165,7 +165,7 @@ Emitted by the type checker and type evaluator.
 | `E1004` | Function '{name}' declared return type {ret_type} but may implicitly return None |
 
 !!! tip "`E1001`/`E1002` with `any` on the right-hand side"
-    A common trigger for `E1001` and `E1002` is Jac's strict gradual-typing rule: in `.jac` source, an `any` value cannot silently flow into a declared non-`any`, non-`object` destination. Ways to clear it -- type the source (e.g. `has reports: list[T]` on a walker, `.pyi` stub on a Python utility), drop the annotation (`x = src()` makes `x` inferred-`any`), annotate `any` explicitly (`x: any = src()`) and narrow before downstream use, or re-type at the use site with the [`as` cast](language/foundation.md#10-the-as-cast-operator) (`src() as list[T]`) when you know more than the checker. See [The `any` Type and Gradual Typing](language/foundation.md#the-any-type-and-gradual-typing).
+    A common trigger for `E1001` and `E1002` is Jac's strict gradual-typing rule: in `.jac` source, an `any` value cannot silently flow into a declared non-`any`, non-`object` destination. Ways to clear it -- type the source (e.g. `has reports: list[T]` on a walker, `.pyi` stub on a Python utility), drop the annotation (`x = src()` makes `x` inferred-`any`), annotate `any` explicitly (`x: any = src()`) and narrow before downstream use, or re-type at the use site with the [`as` cast](language/operators.md#10-the-as-cast-operator) (`src() as list[T]`) when you know more than the checker. See [The `any` Type and Gradual Typing](language/types-and-values.md#the-any-type-and-gradual-typing).
 
 ### Operator Errors
 
