@@ -198,7 +198,11 @@ impl NaIRGenPass._typed_elem_llvm_of(
     if not args {
         return None;
     }
-    return self._lower_type(args[0]);
+    lowered = self._lower_type(args[0]);
+    if lowered is not None and isinstance(lowered, ir.VoidType) {
+        return ir.IntType(64);
+    }
+    return lowered;
 }
 
 impl NaIRGenPass._elem_spec_of(expr: (uni.UniNode | None)) -> (str | None) {
@@ -545,6 +549,20 @@ impl NaIRGenPass._entry_alloca(var_type: ir.Type, name: str) -> ir.Value {
     }
     alloca = self.builder.alloca(var_type, name=name);
 
+    self.builder.position_at_end(cur_block);
+    return alloca;
+}
+
+impl NaIRGenPass._stack_entry_alloca(var_type: ir.Type, name: str) -> ir.Value {
+    func = self.builder.function;
+    entry_block = func.entry_basic_block;
+    cur_block = self.builder.block;
+    if entry_block.instructions {
+        self.builder.position_before(entry_block.instructions[0]);
+    } else {
+        self.builder.position_at_start(entry_block);
+    }
+    alloca = self.builder.alloca(var_type, name=name);
     self.builder.position_at_end(cur_block);
     return alloca;
 }

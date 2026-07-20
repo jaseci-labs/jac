@@ -438,7 +438,6 @@ glob NATIVE_DEFAULT_SV_SIGNAL_NODES: tuple = (
          uni.VisitStmt,
          uni.DisengageStmt,
          uni.ReportStmt,
-         uni.YieldExpr,
          uni.EdgeOpRef,
          uni.DisconnectOp,
          uni.TypedCtxBlock,

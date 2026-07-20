@@ -632,7 +632,11 @@ impl NaIRGenPass._generator_elem_type(nd: uni.Ability) -> (ir.Type | None) {
         if mangled.startswith(prefix) {
             targs = rt.type.private.type_args or [];
             if targs {
-                return self._lower_type(targs[0]);
+                _low = self._lower_type(targs[0]);
+                if _low is not None and isinstance(_low, ir.VoidType) {
+                    return ir.IntType(64);
+                }
+                return _low;
             }
         }
     }
@@ -660,14 +664,16 @@ impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None 
         return;
     }
     for y in nd.get_all_sub_nodes(typ=uni.YieldExpr) {
+        _fin = y.find_parent_of_type(uni.FinallyStmt);
         if y.find_parent_of_type(uni.Ability) is nd
-        and y.find_parent_of_type(uni.TryStmt) is not None {
+        and _fin is not None
+        and _fin.find_parent_of_type(uni.Ability) is nd {
             self.emit(
                 E5092,
                 node_override=y,
                 kind="expression",
-                name="yield inside try",
-                help_text="Suspending inside a try block is not supported on native yet; move the yield outside the try or the try into the consumer."
+                name="yield inside finally",
+                help_text="A native finally block runs exactly once and cannot suspend; move the yield outside the finally."
             );
             return;
         }
@@ -688,6 +694,7 @@ impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None 
     saved_region = self.region_handle_vars;
     saved_cell_vars = self.closure_cell_vars;
     saved_cell_handles = self.closure_cell_handles;
+    saved_try_stack = self._gen_try_stack;
 
     entry_bb = resume_fn.append_basic_block("entry");
     self._builder = ir.IRBuilder(entry_bb);
@@ -697,6 +704,7 @@ impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None 
     self.region_handle_vars = set();
     self.closure_cell_vars = set();
     self.closure_cell_handles = {};
+    self._gen_try_stack = [];
 
     gc: dict = {
         "resume_fn": resume_fn,
@@ -773,6 +781,7 @@ impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None 
     self.region_handle_vars = saved_region;
     self.closure_cell_vars = saved_cell_vars;
     self.closure_cell_handles = saved_cell_handles;
+    self._gen_try_stack = saved_try_stack;
 
     drop_fn = self._emit_generator_drop_fn(name, frame_slots);
 

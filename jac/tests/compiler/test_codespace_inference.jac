@@ -212,6 +212,14 @@ test "pure markerless module infers native under native default" {
     assert stamp_of(mod, "add") == 'native';
 }
 
+test "generator module infers native under native default" {
+    mod = compile_with_default("nadefault_generator.jac", "native", cgen=True);
+    assert mod.decided_codespace == 'native' , (
+        "generators lower natively (state machines incl. yield from) and are not server signals"
+    );
+    assert stamp_of(mod, "evens") == 'native';
+}
+
 test "structural match no longer forces server under native default" {
     mod = compile_with_default("nadefault_match.jac", "native", cgen=True);
     assert mod.decided_codespace == 'native' , (

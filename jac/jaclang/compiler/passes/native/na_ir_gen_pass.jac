@@ -310,6 +310,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         nested_captures: dict[str, tuple] = {},
         generator_fns: dict[str, uni.Ability] = {},
         _gen_ctx: (dict | None) = None,
+        _gen_try_stack: list = [],
         decorated_fns: dict[str, tuple] = {},
         closure_cell_vars: set[str] = set(),
         closure_cell_handles: dict[str, ir.Value] = {},
@@ -343,6 +344,9 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_decorated_call(nd: uni.FuncCall, func_name: str) -> (ir.Value | None);
     def _ability_is_generator(nd: uni.Ability) -> bool;
     def _codegen_yield(nd: uni.YieldExpr) -> (ir.Value | None);
+    def _codegen_yield_from(nd: uni.YieldExpr) -> (ir.Value | None);
+    def _emit_yield_suspend(v: ir.Value) -> None;
+    def _stack_entry_alloca(var_type: ir.Type, name: str) -> ir.Value;
     def _adapter_callee_fn(fn_expr: uni.UniNode) -> (ir.Function | None);
     def _generator_elem_type(nd: uni.Ability) -> (ir.Type | None);
     def _codegen_generator(nd: uni.Ability, func: ir.Function) -> None;

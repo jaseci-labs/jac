@@ -109,19 +109,71 @@ test "generator: composes under the lazy map adapter" {
     assert f(4) == 12 , "2*(0+1+2+3)";
 }
 
-test "generator guardrail: yield inside try is a structured error" {
+test "generator: yield from chains generators, lists, and plain yields" {
+    (eng, _) = compile_native("generators_residual.na.jac");
+    f = get_func(eng, "total_chain", ctypes.c_int64, ctypes.c_int64);
+    assert f(3) == 1302 , "0+1+2 + 100+200 + 999";
+    assert f(0) == 1299 , "empty inner generator, then 100+200+999";
+}
+
+test "generator: yield from a string yields its characters" {
+    (eng, _) = compile_native("generators_residual.na.jac");
+    f = get_func(eng, "count_chars", ctypes.c_int64, ctypes.c_char_p);
+    assert f(b"abcd") == 4;
+    assert f(b"") == 0;
+}
+
+test "generator: bare yield paces iteration" {
+    (eng, _) = compile_native("generators_residual.na.jac");
+    f = get_func(eng, "count_pacer", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == 5;
+    assert f(0) == 0;
+}
+
+test "generator: return <value> stops iteration, value discarded on JacIter" {
+    (eng, _) = compile_native("generators_residual.na.jac");
+    f = get_func(eng, "total_upto_return", ctypes.c_int64, ctypes.c_int64);
+    assert f(7) == 3 , "1+2, the returned 70 has no JacIter consumer";
+}
+
+test "generator: yield inside a for over a list resumes mid-loop" {
+    (eng, _) = compile_native("generators_residual.na.jac");
+    f = get_func(eng, "total_doubles", ctypes.c_int64);
+    assert f() == 12 , "2+4+6";
+}
+
+test "generator: yield inside a for over dict keys resumes mid-loop" {
+    (eng, _) = compile_native("generators_residual.na.jac");
+    f = get_func(eng, "count_keys", ctypes.c_int64);
+    assert f() == 3 , "len('a') + len('bb')";
+}
+
+test "generator: yield inside a for over a string resumes mid-loop" {
+    (eng, _) = compile_native("generators_residual.na.jac");
+    f = get_func(eng, "count_per_char", ctypes.c_int64, ctypes.c_char_p);
+    assert f(b"xyz") == 3;
+}
+
+test "generator: yield inside try, exception raised and caught across resumes" {
+    (eng, _) = compile_native("generators_residual.na.jac");
+    f = get_func(eng, "total_resilient", ctypes.c_int64, ctypes.c_int64);
+    assert f(0) == 7 , "1+2+4, no exception";
+    assert f(1) == 8 , "1, boom caught, 3, 4";
+}
+
+test "generator guardrail: yield inside finally is a structured error" {
     prog = compile_na_inline(
-        "yield_in_try",
+        "yield_in_finally",
         "def g(n: int) -> Iterator[int] {\n"
         "    try {\n"
         "        yield n;\n"
-        "    } except Exception as e {\n"
-        "        return;\n"
+        "    } finally {\n"
+        "        yield n + 1;\n"
         "    }\n"
         "}\n"
     );
     assert has_error_code(prog, "E5092") , (
-        f"expected E5092 for yield inside try, got: "
+        f"expected E5092 for yield inside finally, got: "
         f"{[str(e) for e in prog.errors_had]}"
     );
 }
