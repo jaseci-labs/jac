@@ -41,6 +41,40 @@ Re-run the install command to upgrade to the latest version. The installer repla
 
 ---
 
+## Other installation options
+
+### AUR (Arch Linux)
+
+Jac is available in the Arch User Repository. Install it with your AUR helper of choice.
+
+```bash
+paru -S jaclang
+```
+
+### Docker
+
+Pull the official image:
+
+```bash
+docker pull jaseci/jaclang
+```
+
+Tags: `jaseci/jaclang:latest` (stable), `jaseci/jaclang:<version>` (specific), `jaseci/jaclang:dev` (main HEAD).
+
+Run a project from your working directory:
+
+```bash
+docker run --rm -v "$(pwd):/app" -w /app jaseci/jaclang run main.jac
+```
+
+Or drop into an interactive shell:
+
+```bash
+docker run --rm -it --entrypoint bash jaseci/jaclang
+```
+
+---
+
 ## Built-in Subsystems & Optional Dependencies
 
 The `jac` binary bundles every capability -- the AI (byLLM), MCP, full-stack client, and deployment & scaling subsystems are all built in. There is nothing to enable; what `jac install` does is resolve a capability's **optional third-party dependencies** into your project:
@@ -54,7 +88,7 @@ jac install byllm
 # `jac start --scale`. Scale's optional deps install per-project via jac.toml.
 ```
 
-The MCP server for AI-assisted Jac development is built into the binary -- run `jac mcp` directly, no install needed (see [Agent Skills and MCP](agent-skills-and-mcp.md)).
+The MCP server for AI-assisted Jac development is built into the binary -- run `jac mcp` directly, no install needed (see [Agent Skills and MCP](../reference/agent-skills-and-mcp.md)).
 
 `jac install` resolves packages from PyPI into your project environment; jaclang itself is provided by the binary, so it is never reinstalled. See [One Binary, Build Anything](one-binary.md) for the full picture of what the binary bundles, and the [CLI reference](../reference/cli/index.md#jac-install) for all options.
 
@@ -64,6 +98,9 @@ The MCP server for AI-assisted Jac development is built into the binary -- run `
 ---
 
 ## IDE Setup
+
+!!! tip "No setup at all: `jac ninja`"
+    Only for the worthy.
 
 The **Jac Language Support** extension is available on both major extension marketplaces:
 

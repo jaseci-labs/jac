@@ -1,3 +1,4 @@
+import json;
 import os;
 import io;
 import functools;
@@ -12,6 +13,7 @@ import from types { SimpleNamespace }
 import jaclang.scale.injector.binary as binary_mod;
 import from jaclang.scale.config.dev_config {
     resolve_dev_channel,
+    resolve_experimental_pr,
     Channel,
     BINARY_PATH_ENV
 }
@@ -76,6 +78,28 @@ test "JAC_SCALE_BINARY_PATH forces the LOCAL channel over any [dev] stanza" {
             os.environ[BINARY_PATH_ENV] = saved;
         }
     }
+}
+
+
+test "[experimental] pr = N resolves to the experimental channel, outranking [dev]" {
+    d = _write_toml("[dev]\ntest_jobs = \"auto\"\n\n[experimental]\npr = 7494\n");
+    assert resolve_dev_channel(d) == Channel.EXPERIMENTAL;
+    assert resolve_experimental_pr(d) == "7494";
+}
+
+
+test "experimental base image resolves to jaseci/jaclang:experimental-<PR#>" {
+    d = _write_toml("[experimental]\npr = 7494\n");
+    image = binary_mod.resolve_pod_base_image(d, "", probe=False);
+    assert image == "jaseci/jaclang:experimental-7494";
+}
+
+
+test "[experimental] without pr falls back to the dev base image" {
+    d = _write_toml("[experimental]\nnote = \"oops, no pr\"\n");
+    assert resolve_experimental_pr(d) == "";
+    image = binary_mod.resolve_pod_base_image(d, "", probe=False);
+    assert image == "jaseci/jaclang:dev";
 }
 
 
@@ -158,8 +182,16 @@ test "[dependencies.system] in jac.toml installs into the service container" {
         assert "apt-get install -y" in prefix;
         assert "git" in prefix;
         assert "ffmpeg" in prefix;
+        # Packages baked into the pod image skip apt entirely: apt-get update
+        # is a network fetch that can stall the pod behind flaky NAT egress.
+        assert prefix.startswith("if dpkg-query -W");
+        # Removed-but-not-purged packages pass a bare dpkg -s; only the full
+        # installed status may skip apt.
+        assert prefix.count("grep -q 'install ok installed'") == 2;
+        assert prefix.index("ffmpeg") < prefix.index("git");
+        assert "else export DEBIAN_FRONTEND=noninteractive && apt-get update" in prefix;
         # Chains into app-start so a failed apt aborts the boot (no silent start).
-        assert prefix.endswith("&& ");
+        assert prefix.endswith("fi && ");
     }
 }
 
@@ -497,14 +529,28 @@ test "unpublished official image falls back to the plain python base" {
 }
 
 
-test "only the mutable dev tag forces imagePullPolicy Always" {
+test "mutable tags (dev, experimental-<PR#>) force imagePullPolicy Always" {
     import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
         image_pull_policy
     }
     assert image_pull_policy("jaseci/jaclang:dev") == "Always";
+    assert image_pull_policy("jaseci/jaclang:experimental-7494") == "Always";
     assert image_pull_policy("jaseci/jaclang:latest") == "";
     assert image_pull_policy("jaseci/jaclang:0.31.2") == "";
     assert image_pull_policy("python:3.12-slim") == "";
+}
+
+
+test "experimental base image: pod boots the image binary over the injected one" {
+    script = str(
+        build_bootstrap_init_container(
+            KubernetesConfig(), "jaseci/jaclang:experimental-7494"
+        )["args"][0]
+    );
+    # Image binary wins with no checksum gate; injected binary is only the fallback.
+    assert "ln -sf /usr/local/bin/jac" in script;
+    assert "sha256sum /usr/local/bin/jac" not in script;
+    assert f"{TOOLCHAIN_SUBDIR}/bin/jac" in script;
 }
 
 
@@ -515,4 +561,77 @@ test "bootstrap reuses the image binary only on a checksum match" {
     assert "ln -sf /usr/local/bin/jac" in joined;
     # the shipped-binary install stays as the mismatch/absence fallback
     assert f"{TOOLCHAIN_SUBDIR}/bin/jac" in joined;
+}
+
+
+test "pod dep installs are routed to the shared-volume venv" {
+    script = str(
+        build_bootstrap_init_container(KubernetesConfig(), "jaseci/jaclang:dev")["args"][
+            0
+        ]
+    );
+    # exported before jac install: the image's cache site is container-local
+    assert 'export PIP_PREFIX="/app/.jac/venv"' in script;
+    assert script.index("PIP_PREFIX") < script.index("jac install");
+}
+
+
+def _payload_response(payload: bytes, url: str) -> bytes {
+    return payload;
+}
+
+
+test "channel tags are pinned to the registry digest at deploy time" {
+    d = _write_toml("[dev]\ntest_jobs = \"auto\"\n");
+    payload = json.dumps({"digest": "sha256:" + ("ab" * 32)}).encode();
+    saved = binary_mod._http_get_bytes;
+    binary_mod._http_get_bytes = functools.partial(_payload_response, payload);
+    try {
+        image = binary_mod.resolve_pod_base_image(d, "");
+        assert image == "jaseci/jaclang@sha256:" + ("ab" * 32);
+    } finally {
+        binary_mod._http_get_bytes = saved;
+    }
+}
+
+
+test "a hub response without a digest keeps the tag form" {
+    d = _write_toml("[dev]\ntest_jobs = \"auto\"\n");
+    saved = binary_mod._http_get_bytes;
+    binary_mod._http_get_bytes = functools.partial(
+        _payload_response, json.dumps({"name": "dev"}).encode()
+    );
+    try {
+        assert binary_mod.resolve_pod_base_image(d, "") == "jaseci/jaclang:dev";
+    } finally {
+        binary_mod._http_get_bytes = saved;
+    }
+}
+
+
+test "experimental images stay in tag form (downstream keys on the tag)" {
+    d = _write_toml("[experimental]\npr = 7494\n");
+    payload = json.dumps({"digest": "sha256:" + ("cd" * 32)}).encode();
+    saved = binary_mod._http_get_bytes;
+    binary_mod._http_get_bytes = functools.partial(_payload_response, payload);
+    try {
+        image = binary_mod.resolve_pod_base_image(d, "");
+        assert image == "jaseci/jaclang:experimental-7494";
+    } finally {
+        binary_mod._http_get_bytes = saved;
+    }
+}
+
+
+test "explicit python_image is never rewritten" {
+    d = _write_toml("[dev]\ntest_jobs = \"auto\"\n");
+    payload = json.dumps({"digest": "sha256:" + ("ef" * 32)}).encode();
+    saved = binary_mod._http_get_bytes;
+    binary_mod._http_get_bytes = functools.partial(_payload_response, payload);
+    try {
+        image = binary_mod.resolve_pod_base_image(d, "my.registry/app:v1");
+        assert image == "my.registry/app:v1";
+    } finally {
+        binary_mod._http_get_bytes = saved;
+    }
 }

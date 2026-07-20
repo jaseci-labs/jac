@@ -6,13 +6,15 @@ Exposes public functions for cart operations. Callable via:
 """
 
 import from shared.models { Cart, Product, Products, Order }
+# declared pip dep imported at boot: proves pod installs reach the served process
+import humanize;
 
 def _get_or_create_cart -> Cart {
-    carts = [root()-->][?:Cart];
+    carts = [root-->][?:Cart];
     if carts {
         return carts[0];
     }
-    return root() ++> Cart();
+    return root ++> Cart();
 }
 
 sv {
@@ -27,6 +29,7 @@ sv {
                 return {
                     "action": "updated",
                     "product_id": product_id,
+                    "qty_words": humanize.apnumber(item.get("qty", 0)),
                     "qty": item["qty"]
                 };
             }
@@ -43,7 +46,7 @@ sv {
     }
 
     def:pub view_cart -> dict {
-        carts = [root()-->][?:Cart];
+        carts = [root-->][?:Cart];
         if not carts {
             return {"items": [], "total": 0, "item_count": 0};
         }
@@ -71,7 +74,7 @@ sv {
     }
 
     def:pub remove_from_cart(product_id: str) -> dict {
-        carts = [root()-->][?:Cart];
+        carts = [root-->][?:Cart];
         if not carts {
             return {"error": "Cart not found"};
         }
@@ -87,7 +90,7 @@ sv {
     }
 
     def:pub clear_cart -> dict {
-        carts = [root()-->][?:Cart];
+        carts = [root-->][?:Cart];
         if not carts {
             return {"action": "cleared", "items_removed": 0};
         }

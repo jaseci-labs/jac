@@ -76,6 +76,8 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
         _result = self._codegen_expr(nd.value);
     } elif isinstance(nd, uni.LambdaExpr) {
         _result = self._codegen_lambda(nd);
+    } elif isinstance(nd, uni.YieldExpr) {
+        _result = self._codegen_yield(nd);
     } elif isinstance(nd, uni.AwaitExpr) {
         _result = self._codegen_expr(nd.target);
     } elif isinstance(nd, uni.ConcurrentExpr) {
@@ -90,14 +92,17 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
         or isinstance(nd, uni.InnerCompr)
         or isinstance(nd, uni.FormattedValue)
     ) { } else {
-        self.emit(E5090, node_override=nd, kind="expression", name=type(nd).__name__);
+        self.emit(E5092, node_override=nd, kind="expression", name=type(nd).__name__);
     }
 
     if _result is not None {
         _result.jac_loc = _jac_loc;
 
         if isinstance(_result.type, ir.PointerType) {
-            import from jaclang.compiler.ownership { Ownership, result_ownership }
+            import from jaclang.compiler.passes.main.rc_facts_pass {
+                Ownership,
+                result_ownership
+            }
             if result_ownership(nd) == Ownership.OWNED {
                 self._mark_owned(_result);
             }
@@ -113,9 +118,53 @@ impl NaIRGenPass._codegen_required(nd: (uni.UniNode | None)) -> (ir.Value | None
     _errs_before = len(self.errors_had);
     val = self._codegen_expr(nd);
     if val is None and len(self.errors_had) == _errs_before {
-        self.emit(E5090, node_override=nd, kind="expression", name=type(nd).__name__);
+        self.emit(E5092, node_override=nd, kind="expression", name=type(nd).__name__);
     }
     return val;
+}
+
+impl NaIRGenPass._codegen_yield(nd: uni.YieldExpr) -> (ir.Value | None) {
+    gc = self._gen_ctx;
+    i1 = ir.IntType(1);
+    i64 = ir.IntType(64);
+    if gc is None or self.builder.function is not gc["resume_fn"] {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="expression",
+            name="YieldExpr",
+            help_text="yield lowers natively only directly inside a generator function (declared `-> Iterator[T]`); it is not supported in lambdas, nested functions, or non-generator bodies."
+        );
+        return None;
+    }
+    if nd.with_from or nd.expr is None {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="expression",
+            name="yield from" if nd.with_from else "bare yield",
+            help_text="Native generators support `yield <expr>` only; loop over the inner iterable instead of `yield from`, and yield an explicit value."
+        );
+        return None;
+    }
+    v = self._codegen_expr(nd.expr);
+    if v is None {
+        return None;
+    }
+    v = self._coerce_type(v, gc["elem_type"]);
+    out_typed = self.builder.bitcast(
+        gc["out_i8"], gc["elem_type"].as_pointer(), name="yield.out"
+    );
+    self.builder.store(v, out_typed);
+    k = len(gc["resume_blocks"]) + 1;
+    ip_slot = self.builder.bitcast(gc["frame_i8"], i64.as_pointer(), name="yield.ip");
+    self.builder.store(ir.Constant(i64, k), ip_slot);
+    self.builder.ret(ir.Constant(i1, 1));
+
+    rbb = gc["resume_fn"].append_basic_block(f"resume{k}");
+    gc["resume_blocks"].append(rbb);
+    self.builder.position_at_end(rbb);
+    return ir.Constant(i64, 0);
 }
 
 impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
@@ -177,6 +226,8 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
     entry_bb = anon_fn.append_basic_block("entry");
     self._builder = ir.IRBuilder(entry_bb);
     self.local_vars = {};
+    self.nogc_stack_vars = set();
+    self.region_handle_vars = set();
 
     for (i, arg) in enumerate(anon_fn.args) {
         alloca = self._entry_alloca(arg.type, all_param_names[i]);
@@ -235,6 +286,21 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
 
 impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
     var_name = nd.value;
+    _has_caps = var_name in self.lambda_captures or var_name in self.nested_captures;
+    if _has_caps {
+        _np = nd.parent;
+        _is_call_target = isinstance(_np, uni.FuncCall) and _np.target is nd;
+        if not _is_call_target {
+            self.emit(
+                E5092,
+                node_override=nd,
+                kind="expression",
+                name=f"'{var_name}' (capturing closure used as a value)",
+                help_text="A closure that captures enclosing locals is bound to its defining frame; it can only be called directly here. To pass or return callable behavior, use a non-capturing function, or an object holding the state."
+            );
+            return None;
+        }
+    }
     if var_name in self.local_vars {
         alloca = self.local_vars[var_name];
         return self.builder.load(alloca, name=var_name);
@@ -269,7 +335,7 @@ impl NaIRGenPass._codegen_pipe_fwd(nd: uni.BinaryExpr) -> (ir.Value | None) {
 impl NaIRGenPass._codegen_walrus(nd: uni.BinaryExpr) -> (ir.Value | None) {
     var_name = self._get_name(nd.left);
     if var_name is None {
-        self.emit(E5090, node_override=nd, kind="binary operator", name="WALRUS_EQ");
+        self.emit(E5092, node_override=nd, kind="binary operator", name="WALRUS_EQ");
         return None;
     }
     value = self._codegen_expr(nd.right);
@@ -362,7 +428,7 @@ impl NaIRGenPass._codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None) {
         (walker_name, walker_val, loc_val) = (right_name, right_val, left_val);
     } else {
         self.emit(
-            E5090,
+            E5092,
             node_override=nd,
             kind="binary operator",
             name="KW_SPAWN",
@@ -375,7 +441,7 @@ impl NaIRGenPass._codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None) {
     _xhelp = self._xmod_osp_help([_loc_name]);
     if _xhelp is not None {
         self.emit(
-            E5090,
+            E5092,
             node_override=nd,
             kind="binary operator",
             name="KW_SPAWN",
@@ -392,7 +458,7 @@ impl NaIRGenPass._codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None) {
         return self._codegen_kernel_spawn(walker_name, walker_val, loc_val);
     }
 
-    self.emit(E5090, node_override=nd, kind="binary operator", name="KW_SPAWN");
+    self.emit(E5092, node_override=nd, kind="binary operator", name="KW_SPAWN");
     return walker_val;
 }
 
@@ -870,7 +936,7 @@ impl NaIRGenPass._codegen_compare_chain(
         _name = _o.name if isinstance(_o, uni.Token) else str(_o);
         if _name not in _plain {
             self.emit(
-                E5090, node_override=nd, kind="chained comparison operator", name=_name
+                E5092, node_override=nd, kind="chained comparison operator", name=_name
             );
             return None;
         }
@@ -916,6 +982,18 @@ impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
     if operand is None {
         return None;
     }
+    import from jaclang.jac0core.constant { is_borrow_kind, OwnershipKind }
+    if is_borrow_kind(nd.ownership) {
+        return operand;
+    }
+    if nd.ownership == OwnershipKind.OWN {
+        if isinstance(operand.type, ir.PointerType)
+        and operand.type == ir.IntType(8).as_pointer() {
+            _rb = self._rc_strdup(operand, name="rebox.str");
+            return self._mark_owned(_rb);
+        }
+        return operand;
+    }
     op = nd.op.name if isinstance(nd.op, uni.Token) else str(nd.op);
     if op == Tok.MINUS {
         if isinstance(operand.type, ir.DoubleType) {
@@ -960,7 +1038,8 @@ impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
             return self.builder.xor(operand, all_ones, name="bwnot");
         }
     } elif op == Tok.PLUS {
-        if operand.type == self.complex_struct_type.as_pointer() {
+        if isinstance(operand.type, (ir.IntType, ir.DoubleType, ir.FloatType))
+        or operand.type == self.complex_struct_type.as_pointer() {
             return operand;
         }
     }
@@ -1507,7 +1586,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
     }
 
     self.emit(
-        E5090,
+        E5092,
         node_override=nd,
         kind="attribute access" if nd.is_attr else "subscript/index access",
         name=(self._get_name(nd.right) or "<expr>")

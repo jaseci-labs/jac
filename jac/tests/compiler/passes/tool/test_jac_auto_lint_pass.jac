@@ -31,8 +31,10 @@ test "auto lint full extraction" {
     formatted = prog.mod.main.gen.jac;
 
     # Should contain glob declarations for all extracted values
-    # Note: consecutive globs with same modifiers are now combined
-    assert "glob x = 5,\n     y = " in formatted;
+    # Note: consecutive globs with same modifiers are now combined; leading
+    # comments stay attached to their assignment inside the combined glob
+    assert ("glob x = 5,\n     y = " in formatted)
+    or ("x = 5,\n     y = " in formatted);
     assert "y = " in formatted;
     assert "z = " in formatted;
     assert "int_val" in formatted;
@@ -55,6 +57,9 @@ test "auto lint full extraction" {
     # Globs should come after imports
     import_pos = formatted.find("import from os");
     glob_pos = formatted.find("glob x = ");
+    if (glob_pos < 0) {
+        glob_pos = formatted.find("x = 5");
+    }
     def_pos = formatted.find("def main");
     assert import_pos < glob_pos < def_pos;
 }
@@ -148,10 +153,13 @@ test "auto lint class entry not extracted" {
     assert "glob another_var" not in formatted;
     assert "glob list_var" not in formatted;
 
-    # Module-level with entry SHOULD be fully extracted (all assignments)
-    # Note: consecutive globs with same modifiers are now combined
-    # Format is now multiline with all assignments indented
-    assert "glob module_var = 100,\n     cls_obj = MyClass();" in formatted;
+    # Module-level literal assignments SHOULD be extracted; call-bearing
+    # initializers must stay in with entry (glob initializers run before all
+    # entry blocks on the native backend, so hoisting a call reorders its
+    # side effects relative to the surrounding entry statements)
+    assert "glob module_var = 100;" in formatted;
+    assert "glob cls_obj" not in formatted;
+    assert "cls_obj = MyClass();" in formatted;
 
     # Module-level with entry containing TYPE_CHECKING blocks should extract
     # assignments to glob while keeping if blocks in with entry (since if
@@ -162,6 +170,38 @@ test "auto lint class entry not extracted" {
     assert "with entry {\n    if TYPE_CHECKING" in formatted;
     assert "import from math { SupportsFloat }" in formatted;
     assert "import from math { SupportsIndex }" in formatted;
+}
+
+test "auto lint reassigned entry var not globalized" {
+    input_path = auto_lint_fixture_path("reassigned_entry.jac");
+
+    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    formatted = prog.mod.main.gen.jac;
+
+    # A name bound exactly once is still extracted to its own glob.
+    assert "glob once = 5;" in formatted;
+
+    # `count` is reassigned, so promoting it would emit duplicate `glob count`
+    # declarations. It must stay a reassignment inside a with entry block.
+    assert "glob count" not in formatted;
+    assert "with entry" in formatted;
+    assert "count = 0;" in formatted;
+    assert "count = count + 1;" in formatted;
+}
+
+test "auto lint entry reassignment of existing glob not globalized" {
+    input_path = auto_lint_fixture_path("entry_reassigns_glob.jac");
+
+    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    formatted = prog.mod.main.gen.jac;
+
+    # `config` is already a module-level glob; the entry assignment is a
+    # reassignment and must not become a second `glob config` declaration.
+    assert "with entry" in formatted;
+    assert "config = 2;" in formatted;
+
+    # `fresh` is bound exactly once and is still extracted to its own glob.
+    assert "glob fresh = 10;" in formatted;
 }
 
 test "auto lint init postinit conversion" {
@@ -699,7 +739,17 @@ test "signature mismatch fixed" {
     # signatures, so we format the .impl.jac annex directly.
     input_path = auto_lint_fixture_path(os.path.join("impl", "sig_mismatch.impl.jac"));
 
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    # Explicit config: the repo jac.toml excludes */tests/* from lint fixes
+    # (fixtures must keep their pre-transform syntax), so the transform under
+    # test needs a config whose exclude list is empty.
+    config = JacConfig();
+    config.check = CheckConfig(lint=LintConfig(select=["all"]));
+    set_config(config);
+    try {
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    } finally {
+        set_config(None);
+    }
 
     # Check the impl signatures were fixed by examining the AST nodes directly
     impl_mod = prog.mod.main;
@@ -751,7 +801,17 @@ test "nested class impl signature fixed" {
         os.path.join("impl", "nested_class_sig.impl.jac")
     );
 
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    # Explicit config: the repo jac.toml excludes */tests/* from lint fixes
+    # (fixtures must keep their pre-transform syntax), so the transform under
+    # test needs a config whose exclude list is empty.
+    config = JacConfig();
+    config.check = CheckConfig(lint=LintConfig(select=["all"]));
+    set_config(config);
+    try {
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    } finally {
+        set_config(None);
+    }
 
     impl_mod = prog.mod.main;
 
@@ -1374,4 +1434,72 @@ test "deslop rules are disabled under default select" {
     }
     assert "# standalone comment" in formatted;
     assert "Module docstring to deslop" in formatted;
+}
+
+test "property-to-native folds '@x.getter' into the accessor block" {
+    input_path = auto_lint_fixture_path("property_getter_decorator.jac");
+    # Explicit config: the repo jac.toml excludes */tests/* from lint fixes
+    # (fixtures must keep their pre-transform syntax), so the transform under
+    # test needs a config whose exclude list is empty.
+    config = JacConfig();
+    config.check = CheckConfig(lint=LintConfig(select=["all"]));
+    set_config(config);
+    try {
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+    } finally {
+        set_config(None);
+    }
+
+    # The whole '@property'/'@val.getter'/'@val.setter' cluster collapses into one
+    # native property, and '@val.getter' -- which supersedes the '@property' it
+    # extends -- supplies the getter body.
+    assert "has val: int {" in formatted;
+    assert "return self._val + 1;" in formatted;
+    assert "setter(new_val: int)" in formatted;
+
+    # No stray accessor method may survive the rewrite.
+    assert "@property" not in formatted;
+    assert "@val.getter" not in formatted;
+    assert "@val.setter" not in formatted;
+
+    # A cross-object accessor has no local native form; rewriting it as a local
+    # 'has val { setter }' would drop Container's getter, so it must be left alone.
+    assert "@Container.val.setter" in formatted;
+}
+
+test "property-to-native re-targets impl-separated accessor bodies" {
+    import from jaclang.cli.commands { analysis }
+
+    # The declaring object and its impl file are linted as two separate runs, so the
+    # impl side has to read the accessors back out of the file it annexes. A getter
+    # impl and a setter impl share the dotted target 'Temperature.celsius', so only
+    # their signatures say which accessor each one fills.
+    fixture_dir = os.path.dirname(auto_lint_fixture_path("property_impl_split.jac"));
+    with tempfile.TemporaryDirectory() as tmpdir {
+        main_dst = os.path.join(tmpdir, "property_impl_split.jac");
+        shutil.copy2(auto_lint_fixture_path("property_impl_split.jac"), main_dst);
+        impl_dir = os.path.join(tmpdir, "impl");
+        os.makedirs(impl_dir);
+        impl_dst = os.path.join(impl_dir, "property_impl_split.impl.jac");
+        shutil.copy2(
+            os.path.join(fixture_dir, "impl", "property_impl_split.impl.jac"), impl_dst
+        );
+        with contextlib.suppress(SystemExit) {
+            analysis.lint([main_dst], fix=True);
+        }
+        with open(main_dst) as f {
+            updated_main = f.read();
+        }
+        with open(impl_dst) as f {
+            updated_impl = f.read();
+        }
+        # Declarations collapse into one native accessor block.
+        assert "has celsius: float {" in updated_main , updated_main;
+        assert "@property" not in updated_main , updated_main;
+        assert "@celsius.setter" not in updated_main , updated_main;
+        # Impl bodies are re-targeted to dotted-impl form so they still bind.
+        assert "impl Temperature.celsius.getter" in updated_impl , updated_impl;
+        assert "impl Temperature.celsius.setter" in updated_impl , updated_impl;
+    }
 }

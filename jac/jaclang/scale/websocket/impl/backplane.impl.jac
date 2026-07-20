@@ -194,12 +194,6 @@ impl RedisBackplane.close{
     }
 }
 
-"""Select a backplane from WebSocket config.
-
-Precedence: an explicit `backplane = 'memory' | 'redis'` wins; otherwise a
-Redis URL (WS section, then database fallback) auto-selects Redis; otherwise
-in-process memory.
-"""
 impl build_backplane(cfg: dict) -> BaseBackplane {
     backplane = cfg.get('backplane');
     url = cfg.get('redis_url');

@@ -29,13 +29,6 @@ glob registry = get_registry();
             "cache", typ=bool, default=True, help="Enable compilation cache", short="c"
         ),
         Arg.create(
-            "autonative",
-            typ=bool,
-            default=False,
-            help="Auto-promote compatible modules to native execution (experimental)",
-            short="N"
-        ),
-        Arg.create(
             "profile",
             default="",
             short="",
@@ -92,7 +85,6 @@ glob registry = get_registry();
         ("jac run --debug app.jac", "Run under the Python debugger"),
         ("jac run --show", "Print what the project would run/build, without doing it"),
         ("jac run --no-cache app.jac", "Run without caching"),
-        ("jac run --autonative app.jac", "Run with native auto-promotion"),
         ("jac run --profile prod app.jac", "Run with production profile"),
         ("jac run -e all app.jac", "Run and show all diagnostics (errors+warnings)"),
         ("jac run -e none app.jac", "Run silently, suppress all diagnostics"),
@@ -106,7 +98,6 @@ def run(
     show: bool = False,
     main: bool = True,
     cache: bool = True,
-    autonative: bool = False,
     diagnostics: str = "",
     entry_name: str = "",
     nd: str = "",
@@ -188,7 +179,7 @@ def enter(
             help="Separate API port for HMR mode (0=same as port)"
         ),
         Arg.create(
-            "no_client",
+            "no-client",
             typ=bool,
             default=False,
             help="Skip client bundling/serving (API only)"
@@ -207,7 +198,7 @@ def enter(
                 "Client build target for dev server (web, pwa, mobile, desktop). "
                 "Choices reflect installed targets (desktop builds a native webview app)."
             ),
-            choices=["web", "pwa", "mobile"],
+            choices=["web", "pwa", "mobile", "desktop"],
             short=""
         ),
         Arg.create(
@@ -255,7 +246,7 @@ def enter(
             "dry-run",
             typ=bool,
             default=False,
-            help="Print manifests + image plan that would be applied; touch nothing (no cluster contact, no build, no DB provisioning)",
+            help="Print the manifests that would be applied; touch nothing (no cluster contact, no downloads, no client build, no DB provisioning, no TLS issuance, no deploy tooling installed)",
             short=""
         ),
         Arg.create(

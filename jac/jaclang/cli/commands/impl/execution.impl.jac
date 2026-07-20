@@ -6,6 +6,7 @@ import from pathlib { Path }
 import from jaclang.cli.console { console }
 import from jaclang.cli.commands.cli_helpers { proc_file as _proc_file }
 import from jaclang.jac0core.ext_registry { is_native_module }
+import from jaclang.project.kinds { RunPlan }
 
 def _discover_config_from_file(filename: str) -> None {
     import from pathlib { Path }
@@ -37,6 +38,15 @@ def _discover_config_from_file(filename: str) -> None {
     }
 }
 
+def _default_codespace_is_native -> bool {
+    import from jaclang.project.config { get_config, BuildConfig }
+    cfg = get_config();
+    effective = cfg.build.default_codespace
+        if cfg is not None
+        else BuildConfig().default_codespace;
+    return effective == 'native';
+}
+
 def _populate_native_argv(engine: object, argv: list[str]) -> None {
     import ctypes;
 
@@ -58,7 +68,7 @@ def _populate_native_argv(engine: object, argv: list[str]) -> None {
     engine._jac_argv_refs = (c_strings, c_argv);
 }
 
-def _print_plan(plan: object) {
+def _print_plan(plan: RunPlan) {
     console.print(f"project kind : {plan.kind}");
     console.print(f"action       : {plan.action}");
     console.print(f"summary      : {plan.summary}");
@@ -66,59 +76,27 @@ def _print_plan(plan: object) {
         console.print(f"entry-point  : {plan.entry_path}");
     }
     console.print(f"equivalent   : {plan.command_line()}");
-    if plan.requires_plugin {
-        console.print(f"requires     : {plan.requires_plugin} plugin");
-    }
-}
-
-def _plugin_available(pkg: str) -> bool {
-    import importlib.util;
-    try {
-        return importlib.util.find_spec(pkg.replace("-", "_")) is not None;
-    } except (ImportError, ValueError) {
-        return False;
-    }
 }
 
 def _execute_plan(
-    plan: object,
-    main: bool,
-    cache: bool,
-    autonative: bool,
-    diagnostics: str,
-    args: list
+    plan: RunPlan, main: bool, cache: bool, diagnostics: str, args: list
 ) -> int {
-    if plan.requires_plugin and not _plugin_available(plan.requires_plugin) {
-        console.error(
-            f"Project kind '{plan.kind}' requires the {plan.requires_plugin} plugin, "
-            f"which is not installed. Install it, then: {plan.command_line()}"
-        );
-        return 1;
-    }
     if plan.action == "execute" {
         return run(
             filename=plan.entry_path,
             main=main,
             cache=cache,
-            autonative=autonative,
             diagnostics=diagnostics,
             args=args
         );
     }
     if plan.action == "serve" {
-        if "client" in plan.flags {
-            console.error(
-                f"Project kind '{plan.kind}' is run via the {plan.requires_plugin} "
-                f"plugin command: {plan.command_line()}"
-            );
-            return 1;
-        }
-
         return start(
             filename=plan.entry_path,
             port=plan.flags.get("port", 8000),
             no_client=plan.flags.get("no_client", False),
-            dev=plan.flags.get("dev", False)
+            dev=plan.flags.get("dev", False),
+            client=plan.flags.get("client", "web")
         );
     }
     if plan.action == "build" {
@@ -139,13 +117,13 @@ def _execute_plan(
         }
         if plan.verb == "build" {
             import from jaclang.cli.commands.build { build }
-            return build(projection=plan.flags.get("as", "jab"));
+            return build(
+                projection=plan.flags.get("as", "jab"),
+                client=plan.flags.get("client", "")
+            );
         }
 
-        console.error(
-            f"Project kind '{plan.kind}' builds via the {plan.requires_plugin} "
-            f"plugin command: {plan.command_line()}"
-        );
+        console.error(f"Project kind '{plan.kind}' has no build verb '{plan.verb}'.");
         return 1;
     }
     console.error(f"Unsupported run action '{plan.action}' for kind '{plan.kind}'.");
@@ -236,7 +214,7 @@ def _jab_native_bin(img_root: object, entry_rel: str) -> (str | None) {
 }
 
 def _run_project(
-    show: bool, main: bool, cache: bool, autonative: bool, diagnostics: str, args: list
+    show: bool, main: bool, cache: bool, diagnostics: str, args: list
 ) -> int {
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
@@ -276,12 +254,7 @@ def _run_project(
         return 0;
     }
     return _execute_plan(
-        plan,
-        main=main,
-        cache=cache,
-        autonative=autonative,
-        diagnostics=diagnostics,
-        args=args
+        plan, main=main, cache=cache, diagnostics=diagnostics, args=args
     );
 }
 
@@ -290,7 +263,6 @@ impl run(
     show: bool = False,
     main: bool = True,
     cache: bool = True,
-    autonative: bool = False,
     diagnostics: str = "",
     entry_name: str = "",
     nd: str = "",
@@ -317,12 +289,7 @@ impl run(
     }
     if not filename {
         return _run_project(
-            show=show,
-            main=main,
-            cache=cache,
-            autonative=autonative,
-            diagnostics=diagnostics,
-            args=args
+            show=show, main=main, cache=cache, diagnostics=diagnostics, args=args
         );
     }
     if filename.endswith(".jab") {
@@ -385,34 +352,33 @@ impl run(
             }
         } elif filename.endswith('.jac') {
             native_executed = False;
-            if autonative {
-                try {
-                    import from jaclang.jac0core.program { JacProgram }
-                    full_path = os.path.abspath(filename);
-                    na_program = JacProgram();
-                    na_program._auto_promote_native = True;
-                    na_program._auto_promote_target = full_path;
-                    ir_mod = na_program.compile(file_path=full_path);
-                    if (
-                        ir_mod and ir_mod.gen.native_compat and ir_mod.gen.native_engine
-                    ) {
-                        import ctypes;
-                        engine = ir_mod.gen.native_engine;
-                        _populate_native_argv(engine, sys.argv);
-                        if main {
-                            addr = engine.get_function_address("jac_entry");
-                            if addr != 0 {
-                                fn = ctypes.CFUNCTYPE(None)(addr);
-                                fn();
-                                native_executed = True;
-                                console.print(
-                                    f"  Executed {filename} natively", style="dim"
-                                );
-                            }
+            if (_default_codespace_is_native() and sys.stdout is sys.__stdout__) {
+                import ctypes;
+                full_path = os.path.abspath(filename);
+                program = Jac.get_program();
+                ir_mod = program.compile(file_path=full_path);
+                if program.errors_had {
+                    for _err in program.errors_had {
+                        console.error(_err.pretty_print());
+                    }
+                    mach.close();
+                    return 1;
+                }
+                if (
+                    ir_mod
+                    and ir_mod.decided_codespace == 'native'
+                    and ir_mod.gen.native_engine
+                ) {
+                    engine = ir_mod.gen.native_engine;
+                    _populate_native_argv(engine, sys.argv);
+                    if main {
+                        addr = engine.get_function_address("jac_entry");
+                        if addr != 0 {
+                            fn = ctypes.CFUNCTYPE(None)(addr);
+                            fn();
+                            native_executed = True;
                         }
                     }
-                } except Exception as _auto_err {
-                    _ = _auto_err;
                 }
             }
             if not native_executed {
@@ -564,6 +530,9 @@ impl start(
 ) -> int {
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     import from pathlib { Path }
+    import from jaclang.jac0core.codeinfo { set_effective_default_codespace }
+
+    set_effective_default_codespace('server');
 
     import from jaclang.runtimelib.client.cli { run_client_start }
     client_rc = run_client_start(

@@ -22,15 +22,15 @@ jac start
 | `--faux` `-f` | Print generated API docs only (no server) | false |
 | `--dev` `-d` | Enable HMR (Hot Module Replacement) mode | false |
 | `--api_port` `-a` | Separate API port for HMR mode (0=same as port) | 0 |
-| `--no_client` `-n` | Skip client bundling/serving (API only) | false |
+| `--no-client` `-n` | Skip client bundling/serving (API only) | false |
 | `--profile` | Configuration profile to load (e.g. prod, staging) | - |
 | `--client` | Client build target for dev server (web, desktop, pwa) | - |
 | `--scale` | Deploy to a target platform instead of running locally | false |
-| `--build` `-b` | Build and push Docker image (with --scale) | false |
 | `--experimental` `-e` | Use experimental mode (install from repo instead of PyPI) | false |
 | `--target` | Deployment target (kubernetes, aws, gcp) | kubernetes |
-| `--registry` | Image registry (dockerhub, ecr, gcr) | dockerhub |
 | `--enable-tls` | Enable HTTPS via Let's Encrypt (run after pointing your domain CNAME to the NLB) | false |
+| `--dry-run` | Print the manifests that would be applied; change nothing | false |
+| `--show-yaml` | With `--dry-run`: dump the raw YAML stream | false |
 
 ### Examples
 
@@ -42,7 +42,7 @@ jac start --port 3000
 jac start --dev
 
 # API only -- skip client bundling
-jac start --dev --no_client
+jac start --dev --no-client
 
 # Preview generated API endpoints without starting
 jac start --faux
@@ -1750,7 +1750,7 @@ Overrides for `sv_walker_call` must end by returning the rehydrated walker insta
 |---------|-------------|
 | `jac start app.jac` | Start local API server |
 | `jac start app.jac --scale` | Deploy to Kubernetes |
-| `jac start app.jac --scale --build` | Build image and deploy |
+| `jac start app.jac --scale --dry-run` | Print the manifests that would be applied; change nothing |
 | `jac start app.jac --scale --target kubernetes` | Explicit deployment target (default) |
 | `jac start app.jac --scale --enable-tls` | Enable HTTPS on a live deployment (no redeploy) |
 | `jac scale status app.jac` | Show live deployment status |

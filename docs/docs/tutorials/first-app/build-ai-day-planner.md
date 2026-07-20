@@ -269,7 +269,7 @@ Take a moment to compare the two versions. With `obj`, you don't write `self` in
 - **f-strings** -- string interpolation with `f"...{expr}..."`
 - **Ternary** -- `value if condition else other`
 
-For a quick reference of all Jac syntax, see the [Syntax Cheatsheet](../../quick-guide/syntax-cheatsheet.md).
+For a quick reference of all Jac syntax, see the [Syntax Cheatsheet](../../reference/language/syntax-cheatsheet.md).
 
 !!! example "Try It Yourself"
     Write a `plan_day` function that takes a list of task names and an `hour: int`, and returns a formatted string like `"Good morning! Today's tasks: Buy groceries, Go running"`. Use `check_time` for the greeting and a `for` loop to build the task list.

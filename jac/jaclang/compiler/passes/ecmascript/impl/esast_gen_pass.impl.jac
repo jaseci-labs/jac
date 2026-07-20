@@ -140,10 +140,6 @@ impl EsastGenPass.exit_module_code(nd: uni.ModuleCode) -> None {
     nd.gen.es_ast = self._collect_body_stmts(nd.body);
 }
 
-impl EsastGenPass.exit_non_local_stmt(nd: uni.NonLocalStmt) -> None {
-    nd.gen.es_ast = [];
-}
-
 impl EsastGenPass.exit_global_vars(nd: uni.GlobalVars) -> None {
     if nd.code_context == CodeContext.CLIENT {
         self.client_manifest.has_client = True;
@@ -199,8 +195,53 @@ impl EsastGenPass.exit_name(nd: uni.Name) -> None {
     nd.gen.es_ast = identifier;
 }
 
+impl EsastGenPass._in_type_slot(nd: uni.UniNode) -> bool {
+    child = nd;
+    parent = nd.parent;
+    while parent is not None {
+        if (
+            isinstance(parent, uni.SubTag)
+            or (isinstance(parent, uni.FuncSignature) and parent.return_type is child)
+            or (isinstance(parent, uni.CastExpr) and parent.cast_type is child)
+            or (isinstance(parent, uni.TypedCtxBlock) and parent.type_ctx is child)
+            or (isinstance(parent, uni.Except) and parent.ex_type is child)
+        ) {
+            return True;
+        }
+        child = parent;
+        parent = parent.parent;
+    }
+    return False;
+}
+
+impl EsastGenPass._is_call_target(nd: uni.UniNode) -> bool {
+    return isinstance(nd.parent, uni.FuncCall) and nd.parent.target is nd;
+}
+
 impl EsastGenPass.exit_builtin_type(nd: uni.BuiltinType) -> None {
     type_name = nd.sym_name;
+    self._ensure_emitters();
+    if (
+        not self._in_type_slot(nd)
+        and getattr(self._builtin_emitter, "emit_" + type_name, None) is not None
+    ) {
+        nd.gen.es_ast = self.sync_loc(
+            es.MemberExpression(
+                object=es.MemberExpression(
+                    object=es.Identifier(name='_jac'),
+                    property=es.Identifier(name='types'),
+                    computed=False
+                ),
+                property=es.Identifier(name=type_name),
+                computed=False
+            ),
+            jac_node=nd
+        );
+        if not self._is_call_target(nd) {
+            self.needs_jac_runtime = True;
+        }
+        return;
+    }
     tag = self.sync_loc(
         es.Literal(value=type_name, raw=json.dumps(type_name)), jac_node=nd
     );
@@ -1789,10 +1830,6 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
     self._ensure_emitters();
 
     _call_kind = nd.call_kind;
-    if _call_kind is None {
-        import from jaclang.compiler.symbol_utils { classify_call }
-        _call_kind = classify_call(nd).value;
-    }
     if _call_kind == "builtin" and isinstance(nd.target, uni.Name) {
         import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
         _builtin_name = nd.target.sym_name;
@@ -1830,6 +1867,11 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
                 return;
             }
         }
+    }
+
+    if isinstance(nd.target, uni.BuiltinType)
+    and isinstance(callee, es.MemberExpression) {
+        self.needs_jac_runtime = True;
     }
 
     args_obj = self.sync_loc(es.ObjectExpression(properties=props), jac_node=nd);
@@ -3906,14 +3948,9 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
 }
 
 impl EsastGenPass._osp_model -> OspModel {
+    import from jaclang.jac0core.osp_model { get_osp_model }
     _root = self.ir_in if isinstance(self.ir_in, uni.Module) else self.get_main_mod();
-    _existing = _root.gen.osp_model;
-    if _existing is not None {
-        return _existing;
-    }
-    _model = OspAnalysis.compute(_root, _root.get_all_sub_nodes(uni.Archetype));
-    _root.gen.osp_model = _model;
-    return _model;
+    return get_osp_model(_root);
 }
 
 impl EsastGenPass._osp_ability_info(nd: uni.Ability) -> (dict | None) {
@@ -4598,11 +4635,7 @@ impl EsastGenPass.exit_import(nd: uni.Import) -> None {
         return;
     }
 
-    if (
-        nd.code_context != CodeContext.CLIENT
-        and nd._source_context_token() is not None
-        and nd._source_context_token().name == Tok.KW_SERVER
-    ) {
+    if nd.is_sv_marked {
         if (nd.from_loc and nd.items) {
             self._generate_sv_import_stubs(nd);
             self._record_sv_backend(nd);
@@ -4616,7 +4649,7 @@ impl EsastGenPass.exit_import(nd: uni.Import) -> None {
         self.client_manifest.has_client = True;
 
         import_path = nd.from_loc.dot_path_str;
-        is_jac_runtime = import_path.startswith('@jac/');
+        is_jac_runtime = nd.is_virtual_jac;
         if resolved_path.endswith('.jac')
         and not import_path.startswith('.')
         and not is_jac_runtime {
@@ -6044,11 +6077,7 @@ impl EsastGenPass.exit_node(nd: uni.UniNode) -> None {
         and nd.code_context != CodeContext.CLIENT
         and ((nd.parent is None) or isinstance(nd.parent, uni.Module))
     ) {
-        is_sv_import = (
-            isinstance(nd, uni.Import)
-            and nd._source_context_token() is not None
-            and nd._source_context_token().name == Tok.KW_SERVER
-        );
+        is_sv_import = isinstance(nd, uni.Import) and nd.is_sv_marked;
 
         is_shared_arch = (
             isinstance(nd, uni.Archetype)
@@ -6082,11 +6111,7 @@ impl EsastGenPass.enter_node(nd: uni.UniNode) -> None {
         and nd.code_context != CodeContext.CLIENT
         and ((nd.parent is None) or isinstance(nd.parent, uni.Module))
     ) {
-        is_sv_import = (
-            isinstance(nd, uni.Import)
-            and nd._source_context_token() is not None
-            and nd._source_context_token().name == Tok.KW_SERVER
-        );
+        is_sv_import = isinstance(nd, uni.Import) and nd.is_sv_marked;
 
         is_shared_arch = (
             isinstance(nd, uni.Archetype)

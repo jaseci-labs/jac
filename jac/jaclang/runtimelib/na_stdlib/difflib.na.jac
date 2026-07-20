@@ -197,6 +197,13 @@ def _ratio(a: str, b: str, autojunk: bool) -> float {
 }
 
 
+obj:pub Match {
+    has a: int = 0,
+        b: int = 0,
+        size: int = 0;
+}
+
+
 obj:pub SequenceMatcher {
     has a: str = "",
         b: str = "",
@@ -218,8 +225,15 @@ obj:pub SequenceMatcher {
         self.b = b;
     }
 
-    def get_matching_blocks -> list[list[int]] {
-        return _matching_blocks(self.a, self.b, self._autojunk);
+    def get_matching_blocks -> list[Match] {
+        raw: list[list[int]] = _matching_blocks(self.a, self.b, self._autojunk);
+        out: list[Match] = [];
+        idx: int = 0;
+        while idx < len(raw) {
+            out.append(Match(a=raw[idx][0], b=raw[idx][1], size=raw[idx][2]));
+            idx += 1;
+        }
+        return out;
     }
 
     def ratio -> float {

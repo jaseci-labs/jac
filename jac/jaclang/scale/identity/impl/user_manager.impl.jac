@@ -119,6 +119,13 @@ impl JacScaleUserManager.get_root_id(user_id: str) -> str | None {
     return result;
 }
 
+impl JacScaleUserManager.ensure_user_root(user_id: str) -> str | None {
+    if not user_id or user_id == '__system__' {
+        return None;
+    }
+    return self._identity_storage.ensure_user_by_id(user_id);
+}
+
 impl JacScaleUserManager.update_password(
     user_id: str, current_password: str, new_password: str
 ) -> dict[str, str] {
@@ -184,10 +191,15 @@ impl JacScaleUserManager.create_jwt_token(
 ) -> str {
     now = datetime.now(UTC);
     payload: dict[(str, any)] = {
+        'sub': user_id,
         'user_id': user_id,
         'exp': (now + timedelta(days=JWT_EXP_DELTA_DAYS)),
         'iat': now.timestamp()
     };
+    username = self.get_username(user_id);
+    if username {
+        payload['preferred_username'] = username;
+    }
     if include_role {
         role = self.get_user_role(user_id);
         if role {
@@ -250,13 +262,13 @@ impl JacScaleUserManager.validate_jwt_token_detail(
             'reason': 'API key tokens are not valid user sessions'
         };
     }
-    user_id = decoded.get('user_id');
+    user_id = decoded.get('sub') or decoded.get('user_id');
     if not user_id {
         return {
             'status': 'invalid',
             'user_id': None,
             'exp': decoded.get('exp'),
-            'reason': 'Token has no user_id'
+            'reason': 'Token has no subject'
         };
     }
     if check_existence and not self.user_exists(user_id) {
@@ -280,7 +292,10 @@ impl JacScaleUserManager.refresh_jwt_token(token: str) -> str | None {
         decoded = jwt.decode(
             token, JWT_SECRET, algorithms=[JWT_ALGORITHM], options={"verify_exp": True}
         );
-        user_id = decoded.get('user_id');
+        if decoded.get('type') == 'api_key' {
+            return None;
+        }
+        user_id = decoded.get('sub') or decoded.get('user_id');
         return self.create_jwt_token(user_id) if user_id else None;
     } except Exception as e {
         logger.debug(f"Failed to refresh JWT token: {str(e)}");

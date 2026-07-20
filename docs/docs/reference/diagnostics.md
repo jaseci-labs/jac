@@ -49,7 +49,7 @@ Use `jac.toml` to suppress diagnostics project-wide. See the [Configuration](con
 ### CLI Flags
 
 - `--nowarn` on `jac check` suppresses all warnings (errors are still shown)
-- `-e` / `--diagnostics` on `jac run` controls diagnostic verbosity: `error` (default -- fail on errors with full details), `all` (errors + warnings), or `none` (silent)
+- `-e` / `--diagnostics` on `jac run` controls diagnostic verbosity: `error` (default -- report error-level diagnostics with full detail), `all` (errors + warnings), or `none` (silent). This flag governs *what is printed*, not whether the program runs. `jac run` still executes -- and exits `0` -- when the type checker finds errors: for example, `x: int = "no";` reports `E1001` under `jac check` but runs anyway under `jac run`. Only errors that stop the compiler from producing runnable code (parse/lex and codegen errors, such as a missing `;`) abort a run. To gate on type errors, use `jac check`, which exits non-zero
 
 ---
 
@@ -83,7 +83,7 @@ Emitted by the parser and lexer during source code parsing.
 | `E0020` | Walrus operator ':=' requires a simple name on the left side |
 | `E0021` | Expected `:<+` or `:+>` to close connect operator |
 | `E0022` | Expected ':' or '{' after lambda parameters |
-| `E0023` | Expected augmented assignment in for...to...by step |
+| `E0023` | Expected augmented assignment in for-loop step (for init while cond with step) |
 
 ### Statement-Level Errors
 
@@ -107,12 +107,20 @@ Emitted by the parser and lexer during source code parsing.
 | `E0046` | Unexpected token in archetype body |
 | `E0047` | Expected '{' or 'by' for impl body |
 
+### Removed Syntax
+
+| Code | Message |
+|------|---------|
+| `E0048` | Parenthesized filter syntax `(?:...)` was removed. Use bracket syntax `[?:...]` instead. |
+| `E0049` | `'root()'` was removed. Use bare `'root'` instead. |
+
 ### Parameter List Errors
 
 | Code | Message |
 |------|---------|
 | `E0050` | Duplicate '{param}' in parameter list |
 | `E0051` | '{first}' must appear before '{second}' in parameter list |
+| `E0052` | Parameter '{name}' is missing a type annotation |
 
 ### Property Declaration Errors
 
@@ -126,8 +134,6 @@ Emitted by the parser and lexer during source code parsing.
 | Code | Message |
 |------|---------|
 | `W0060` | Docstrings in Jac go before the declaration, not inside the body |
-| `W0061` | Parenthesized filter syntax `(?:...)` is deprecated. Use bracket syntax `[?:...]` instead. |
-| `W0062` | `'root()'` is deprecated. Use bare `'root'` instead. |
 | `W0063` | JSX spread `{...expr}` is JS-idiomatic. Prefer `{**expr}` in Jac. |
 
 ### Lexer Errors
@@ -159,7 +165,7 @@ Emitted by the type checker and type evaluator.
 | `E1004` | Function '{name}' declared return type {ret_type} but may implicitly return None |
 
 !!! tip "`E1001`/`E1002` with `any` on the right-hand side"
-    A common trigger for `E1001` and `E1002` is Jac's strict gradual-typing rule: in `.jac` source, an `any` value cannot silently flow into a declared non-`any`, non-`object` destination. Ways to clear it -- type the source (e.g. `has reports: list[T]` on a walker, `.pyi` stub on a Python utility), drop the annotation (`x = src()` makes `x` inferred-`any`), annotate `any` explicitly (`x: any = src()`) and narrow before downstream use, or re-type at the use site with the [`as` cast](language/foundation.md#10-the-as-cast-operator) (`src() as list[T]`) when you know more than the checker. See [The `any` Type and Gradual Typing](language/foundation.md#the-any-type-and-gradual-typing).
+    A common trigger for `E1001` and `E1002` is Jac's strict gradual-typing rule: in `.jac` source, an `any` value cannot silently flow into a declared non-`any`, non-`object` destination. Ways to clear it -- type the source (e.g. `has reports: list[T]` on a walker, `.pyi` stub on a Python utility), drop the annotation (`x = src()` makes `x` inferred-`any`), annotate `any` explicitly (`x: any = src()`) and narrow before downstream use, or re-type at the use site with the [`as` cast](language/operators.md#10-the-as-cast-operator) (`src() as list[T]`) when you know more than the checker. See [The `any` Type and Gradual Typing](language/types-and-values.md#the-any-type-and-gradual-typing).
 
 ### Operator Errors
 
@@ -167,6 +173,7 @@ Emitted by the type checker and type evaluator.
 |------|---------|
 | `E1010` | Operator "{op}" not supported for type "{type}" |
 | `E1011` | Unsupported operand types for {op}: {left} and {right} |
+| `E1110` | Operator "{op}" not supported between types "{left}" and "{right}" (comparison operators) |
 
 ### Iterability / Callable
 
@@ -244,7 +251,7 @@ Emitted by the type checker and type evaluator.
 | `E1092` | Type {type} cannot be used in 'with' statement (no \_\_exit\_\_ method) |
 | `E1093` | Cannot yield {actual}, expected {expected} |
 | `E1094` | Visit target must be a node type, got {type} |
-| `E1095` | Field '{field}' declared 'by postinit' is never assigned in {arch}.postinit |
+| `E1095` | Field '{field}' declared 'postinit' is never assigned in {arch}.postinit |
 
 ### Connection Type Errors
 
@@ -268,7 +275,7 @@ Emitted by `JsxIntrinsicGuardPass` when a `mobui` project (see [React Native tar
 
 ### Ownership / Borrow Errors
 
-Emitted by `OwnershipCheckPass` for `own`/`val`/`linear`/`borrow`/`&`/`&mut` bindings and `region` blocks. See [Ownership & Borrowing](language/ownership-borrowing.md). These are diagnostics only -- no backend reads the checker's results, and generated code is identical whether or not the checker ran.
+Emitted by `OwnershipCheckPass` for `own`/`imm`/`borrow`/`&`/`&mut` bindings and `in <handle> { }` region opens. See [Ownership & Borrowing](language/ownership-borrowing.md). On the native pathway the checker is one of the required analyses: it always runs there, and error-severity findings block native codegen -- a clean check is what makes the annotations trustworthy facts for lowering (see the [Ownership Fact Schema](language/ownership-checker-spec.md)). Whether diagnostics are *displayed* never changes generated code; builds with and without display are bit-identical.
 
 | Code | Message |
 |------|---------|
@@ -276,20 +283,35 @@ Emitted by `OwnershipCheckPass` for `own`/`val`/`linear`/`borrow`/`&`/`&mut` bin
 | `E1302` | Conflicting mutable borrow of '{name}' while another borrow is live |
 | `E1303` | Cannot mutate '{name}' while a shared borrow of it is live |
 | `E1304` | '{name}' is destroyed while still borrowed |
-| `E1305` | Linear resource '{name}' is never consumed (a `linear` binding must be moved exactly once; plain `own` is affine and may be silently dropped) |
+| `E1305` | *Reserved, not yet registered* -- will be "Linear resource '{name}' is never consumed" once the planned `linear` marker lands (a `linear` binding must be moved exactly once; plain `own` is affine and may be silently dropped) |
 | `E1306` | Borrow of '{name}' escapes its scope |
-| `E1307` | Reference to '{name}' escapes its `region` block |
+| `E1307` | Reference to '{name}' escapes its region |
 | `E1308` | '{name}' is not sendable across a concurrency boundary |
-| `E1309` | Cannot mutate '{name}' through a deep-immutable `val` binding |
+| `E1309` | Cannot mutate '{name}' through a deep-immutable `imm` binding |
+
+### Zero-RC Enforcement Errors
+
+Emitted by `OwnershipCheckPass` only in **nogc-enforced** native modules (`jac nacompile --enforce-nogc`, or a module matching a `jac.toml [gc.enforce]` pattern -- see [Zero-RC ownership compilation](language/native-pathway.md#zero-rc-ownership-compilation)). They make zero-RC ownership coverage a compile-time contract: every heap-typed contract position must be in the owned world, and each violation is a hard error that blocks native codegen. The `{provenance}` in every message states why the module is enforced (the CLI flag or the matching config pattern).
+
+| Code | Message |
+|------|---------|
+| `E1401` | Heap-typed {position} '{name}' has no ownership state in a nogc-enforced module ({provenance}) |
+| `E1402` | Owned value '{name}' is sealed into managed storage inside a nogc-enforced module ({provenance}) |
+| `E1403` | Heap value '{name}' crosses implicitly out of a nogc-enforced module ({provenance}) |
+| `E1404` | '{name}' is `any`-typed and could be heap-allocated in a nogc-enforced module ({provenance}) |
+| `E1405` | Closure capture of '{name}' escapes its scope in a nogc-enforced module ({provenance}) |
+| `E1406` | '{name}' has retaining or aliasing semantics not supported in a nogc-enforced module ({provenance}) |
 
 ### Type Warnings
 
 | Code | Message |
 |------|---------|
 | `W1036` | Generic type "{type}" used without type arguments, defaulting to "{type}[Any]"; consider adding explicit type arguments |
+| `W1037` | Explicit 'any' type annotation disables type checking here; consider a more specific type |
 | `W1050` | Unknown intrinsic JSX element '<{tag}>' |
 | `W1051` | Expression type could not be resolved (Unknown) |
 | `W1052` | JSX component '{component}' uses an untyped props bag (`props: any`); its JSX props cannot be type-checked |
+| `W1310` | Region open on '{name}' has an empty body |
 
 ---
 
@@ -327,6 +349,26 @@ Emitted by static analysis and declaration-implementation matching passes.
 | `W2006` | '@classmethod' decorator is not recommended in '{kind}' definitions |
 | `W2007` | '@staticmethod' is not supported in '{kind}' definitions |
 | `E2008` | Invalid target for context update: {target} |
+| `W2029` | '@{decorator}' is not recommended in '{kind}' definitions -- use native property syntax |
+
+`W2029` covers the Python property decorators -- `@property`, and the same-object
+`@x.getter` / `@x.setter` / `@x.deleter` -- in favour of [native property
+syntax](language/functions-objects.md#6-properties-and-encapsulation):
+
+```jac
+obj Account {
+    has _balance: float = 0.0,
+        balance: float {
+            getter -> float { return self._balance; }
+            setter(value: float) { self._balance = value; }
+        }
+}
+```
+
+`jac check --lint --fix` rewrites the decorator form automatically
+([`property-to-native`](#lint-rules-w3xxx-e3xxx)). As with `W2006`/`W2007`, a
+Python-compat `class` is exempt. A cross-object `@Base.x.setter` extends a parent's
+property and has no direct native form, so it is not reported.
 
 ### Declaration-Implementation Matching
 
@@ -357,7 +399,7 @@ Emitted by `ViewLowerPass` when a `{...}` JSX slot's statement-template body vio
 
 ---
 
-## Lint Rules (W3xxx / E3xxx)
+## Lint Rules (W3xxx, E3xxx)
 
 Emitted by `jac check --lint`. Rules can be configured in [`jac.toml`](config/index.md#checklint). The kebab-case name in brackets is used for `jac.toml` configuration.
 

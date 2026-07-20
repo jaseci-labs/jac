@@ -336,7 +336,10 @@ jobs:
           fi
           BIN="$PWD/$(ls jacbin/jac-*linux-x86_64)"
           chmod +x "$BIN"
-          ( cd jac/jaclang/scale/admin/ui && "$BIN" build main.jac )
+          # The admin console is a pure client app; its client bundle is
+          # type-checked by the client toolchain during `build`. Skip the
+          # whole-program gate, which applies native rules to `.cl.jac` code.
+          ( cd jac/jaclang/scale/admin/ui && "$BIN" build main.jac --no_typecheck )
           DIST=jac/jaclang/scale/admin/ui/.jac/client/dist
           test -f "$DIST/index.html"
           mkdir -p dist
@@ -425,7 +428,7 @@ jobs:
       # mean a misconfiguration (e.g. a caller not passing them through) --
       # fail loudly instead of green-skipping the publish.
       - name: Fail if publishing secrets are missing (org repo)
-        if: github.repository == 'Jaseci-Labs/jaseci' && (env.DOCKERHUB_USERNAME == '' || env.DOCKERHUB_TOKEN_SET != 'true')
+        if: github.repository == 'jaseci-labs/jac' && (env.DOCKERHUB_USERNAME == '' || env.DOCKERHUB_TOKEN_SET != 'true')
         run: |
           echo "::error::DOCKERHUB_USERNAME/DOCKERHUB_TOKEN did not reach this job; workflow_call callers must pass them via 'secrets:'."
           exit 1

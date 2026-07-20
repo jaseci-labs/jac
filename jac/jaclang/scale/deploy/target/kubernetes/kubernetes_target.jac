@@ -53,9 +53,10 @@ import time;
 obj KubernetesTarget(DeploymentTarget) {
     has config: KubernetesConfig,
         logger: (Logger | None) = None,
-        k8s_config: KubernetesConfig by postinit,
+        k8s_config: KubernetesConfig postinit,
         env_list: list = [],
-        secrets: dict[str, str] = {};
+        secrets: dict[str, str] = {},
+        dry_run: bool = False;
 
     def postinit {
         self.k8s_config = self.config;
@@ -1153,6 +1154,19 @@ obj KubernetesTarget(DeploymentTarget) {
                         }
                     )
                 ];
+
+                if self.k8s_config.memory_request {
+                    triggers.append(
+                        Trigger(
+                            type="memory",
+                            metadata={
+                                "averageUtilization": str(
+                                    self.k8s_config.memory_utilization_target
+                                )
+                            }
+                        )
+                    );
+                }
             }
             for raw in self.k8s_config.extra_triggers {
                 t = Trigger(
@@ -1160,6 +1174,16 @@ obj KubernetesTarget(DeploymentTarget) {
                     metadata=dict(raw.get("metadata", {})),
                     name=raw.get("name")
                 );
+                if t.type == "memory" and not self.k8s_config.memory_request {
+                    if self.logger {
+                        self.logger.warn(
+                            "Skipping 'memory' trigger: memory_request is unset; "
+                            "HPA cannot compute memory utilization without a "
+                            "request baseline"
+                        );
+                    }
+                    continue;
+                }
                 raw_auth = raw.get("auth");
                 if raw_auth {
                     t.auth = TriggerAuth(
@@ -1182,6 +1206,8 @@ obj KubernetesTarget(DeploymentTarget) {
                     polling_interval=self.k8s_config.autoscaler_polling_interval,
                     cooldown_period=self.k8s_config.autoscaler_cooldown,
                     initial_cooldown_period=self.k8s_config.autoscaler_initial_cooldown,
+                    scale_up_stabilization=self.k8s_config.autoscaler_scale_up_stabilization,
+                    scale_up_max_pods=self.k8s_config.autoscaler_scale_up_max_pods,
                     triggers=triggers
                 )
             );

@@ -13,7 +13,7 @@
 - [Supported Language Features](#supported-language-features) - What works in native code
 - [C Library Interop](#c-library-interop) - Calling C functions from Jac
 - [Platform Support](#platform-support-currently) - Supported OS and architecture targets
-- [Memory Management](#memory-management) - Reference counting model
+- [Memory Management](#memory-management) - GC modes and ownership-checked zero-RC builds
 - [Debugging](#debugging) - Tools for inspecting native compilation
 - [Roadmap Items](#roadmap-items-current-limitations) - Features not yet available in native code
 - [Examples](#examples) - Complete native programs
@@ -37,6 +37,17 @@ Native compilation is ideal for:
 
 ## Quick Reference
 
+Native placement is **inferred from extern C declarations** -- an import
+whose braces declare C-ABI functions, e.g. `import from raylib {
+def InitWindow(w: i32, h: i32, title: str) -> None; }`, is an FFI surface
+only the native backend can satisfy, so the compiler routes it -- and the
+declarations that use it -- to the native codespace automatically, just as
+JSX and npm imports infer the client codespace. Merely importing *from* a
+native module is not such a signal, and native-compatible pure code still
+defaults to the server: without an FFI seed, whether code *should* be
+compiled natively is a build decision, made with one of the selectors
+below (all of which remain valid as explicit overrides):
+
 | Aspect | Details |
 |--------|---------|
 | **Inline section** | `na { }` block (or `na` prefix) in any `.jac` file |
@@ -49,7 +60,7 @@ Native compilation is ideal for:
 | **C interop (in)** | `import from libname` (logical) or `import from "path"` (explicit) |
 | **C interop (out)** | `jac nacompile --shared` exports `:pub` symbols as a `.so`/`.dylib`/`.dll` |
 | **Std library** | `import math` / `time` / `sys` / `os` / `random` (Python-congruent subset) |
-| **Memory model** | Automatic reference counting |
+| **Memory model** | Emit-time `--gc` modes: `cycles` (RC + cycle collector, default), `rc`, `none`; ownership-checked zero-RC builds via `--enforce-nogc` + `--assert-no-rc` |
 | **Testing** | `test "description" { }` blocks compile native and run via `jac test` |
 
 ---
@@ -600,7 +611,7 @@ non-deterministic, but each reader is congruent with its CPython counterpart.
 | `sys.byteorder` | `"little"` / `"big"` (host arch) |
 | `sys.platform` | e.g. `"linux"` / `"darwin"` |
 
-`sys.argv` works both with `jac run --autonative` and standalone binaries
+`sys.argv` works both with `jac run` under a native default codespace and standalone binaries
 compiled via `jac nacompile`.
 
 #### `os` and `os.path` -- Operating System
@@ -771,10 +782,46 @@ The platform and architecture are auto-detected at compile time. The correct bin
 
 ## Memory Management
 
-Native Jac uses **automatic reference counting** for memory management. Heap-allocated values (objects, strings, lists, dicts, sets) carry a reference count that is incremented on copy and decremented when a reference goes out of scope. Memory is freed when the count reaches zero.
+Native Jac manages heap values (objects, strings, lists, dicts, sets) with **automatic reference counting** by default -- and how much memory-management machinery ends up in the artifact is an emit-time choice. `jac nacompile --gc <mode>` selects the runtime the backend emits (the default comes from [`jac.toml [gc]`](../config/index.md#gc), else `cycles`):
 
-!!! warning "Current Status"
-    Deep release of nested structures is currently disabled to prevent use-after-free in complex ownership scenarios. This means certain long-running native programs may leak memory. Programs with bounded allocation are unaffected. Proper ownership tracking is a planned improvement.
+| Mode | What is emitted |
+|------|-----------------|
+| `cycles` (default) | Reference counting plus the Bacon-Rajan cycle collector (trace functions, roots buffer). Automatic cycle collection is switched on at runtime by setting `JAC_GC_CYCLES` in the environment; `__rc_collect_cycles()` triggers a collection explicitly. |
+| `rc` | Plain reference counting. No collector functions, trace functions, roots buffer, or `JAC_GC_CYCLES` entry probe are emitted; objects that die as members of a reference cycle are never reclaimed. |
+| `none` | No retain/release call sites at all -- the compile-time analogue of the `JAC_NO_GC` runtime switch. Without ownership coverage, heap memory is never reclaimed; in a nogc-enforced module (below), frees are inserted statically instead. |
+
+Under the managed modes (`cycles`, `rc`) a heap value carries a reference count that is incremented on copy and decremented when a reference goes out of scope; the value is freed when its count reaches zero, and its destructor releases field and element references in turn. A [`def drop` hook](ownership-borrowing.md#the-drop-hook) is invoked from the reference-count destructor -- for a uniquely-owned value at the same last-use point a zero-RC build drops at, so program output is identical across gc modes. Setting `JAC_NO_GC` in the environment disables reclamation in a managed-mode binary at runtime (memory is then never freed; useful for isolating memory-management bugs).
+
+There is a third allocation lane alongside reference counting and headerless owned codegen: objects, nodes, and edges constructed under an [`in <handle> { }` region open](ownership-borrowing.md#regions-first-class-region-handles-and-in-opens) bump-allocate into the handle's arena and are reclaimed wholesale -- one LIFO dtor-log walk plus a single bulk free -- at the handle's drop point. Arena-allocated values carry sentinel-stamped headers that make the managed modes' retain/release call sites inert on them, so regions and reference counting compose safely in the same module.
+
+### Zero-RC ownership compilation
+
+For a module written against the [ownership and borrow-checking surface](ownership-borrowing.md), memory management compiles to what Rust would emit: an allocation at construction, a free at a statically determined drop point, and **no reference counting or collector in the binary at all** -- and the absence of that machinery is checkable in the artifact. Three pieces turn this into a compile-time contract rather than a best-effort optimization:
+
+- **nogc enforcement** (`jac nacompile --enforce-nogc`, or per-module patterns in [`jac.toml [gc.enforce]`](../config/index.md#gc)). In an enforced module, every heap-typed contract position -- parameter, return type, `has` field -- must live in the owned world (`own`, `&`, `&mut`, `imm`); locals infer ownership from a fresh right-hand side. Anything the contract cannot prove is a hard error ([`E1401`-`E1406`](../diagnostics.md#zero-rc-enforcement-errors)) that blocks codegen.
+- **Headerless owned codegen** (under `--gc none`). Owned payloads are bare `malloc` allocations with no reference-count header, and each free is a direct call to the statically inserted `__drop_<T>` at the value's drop point -- after its last use, NLL-style (see [drop timing](ownership-borrowing.md#the-drop-hook)). User `def drop` hooks run from that same static call.
+- **`--assert-no-rc`** proves the result: it scans the emitted IR and fails the build if any RC/collector machinery is present -- `__rc_*` helpers, trace functions, roots-buffer globals, or entry-point GC env probes. A build that passes is observably RC-free.
+
+```bash
+jac nacompile service.na.jac --gc none --enforce-nogc --assert-no-rc
+```
+
+Notes on the enforced world:
+
+- **The `managed()` membrane.** In an enforced module compiled under a managed gc mode, a heap value may cross out to unenforced (reference-counted) code only through the explicit `managed(x)` builtin at the boundary -- an implicit crossing is `E1403`, and sealing an owned value into managed storage is `E1402`. Under `--gc none` the artifact has no reference-counted side to cross into, so `managed()` of a heap value is itself rejected (`E1406`). Scalars and `imm` values cross freely everywhere, and on the Python backend `managed()` is the identity function.
+- **Region opens are rejected (`E1406`).** An [`in <handle> { }` region open](ownership-borrowing.md#regions-first-class-region-handles-and-in-opens) is not yet legal inside a nogc-enforced module: arena interiors currently rely on the sentinel-header scheme that presumes retain/release call sites exist to be inert against. Making opens legal there (headerless arena interiors that stay `--assert-no-rc`-clean) is the planned follow-up; until then, keep region-using code outside enforced modules.
+- **Unhandled exceptions abort.** In a nogc-enforced module, a `raise` with no local handler prints a diagnostic line and calls `abort()` rather than unwinding -- unwinding would require the managed runtime.
+- **Grandfathering.** `[gc.enforce] grandfathered` patterns exempt matching modules from enforcement so a codebase can adopt the contract incrementally.
+
+### RC coverage stats
+
+Compiling with `JAC_RC_STATS=1` prints a per-module line to stderr reporting the retain/release call sites emitted versus the reference-count operations elided by move-lowering:
+
+```text
+rc-stats [mod.na.jac] gc=cycles retains=1 releases=10 elided=3 coverage=21.4%
+```
+
+A module with zero emitted retains and releases is tagged `rc-free` at the end of the line -- the same condition `--assert-no-rc` checks structurally in the IR.
 
 ### Reserved `__rc_*` runtime hooks
 
@@ -786,12 +833,12 @@ These hooks exist only in native code. On the Python backend they have no runtim
 
 A move assignment `b = a` would normally emit a defensive `__rc_retain` on the source so that both slots can be released independently. When the move is the *last* use of `a`, that retain is pure overhead: the reference can simply be handed to `b` and the source slot nulled, so `a`'s later cleanup release loads null and is a no-op and the object is freed exactly once.
 
-The native backend decides where this is safe with `RcElisionProofPass`, a small intraprocedural pass that runs unconditionally in the native codegen path -- *before* `NaIRGenPass` and independent of the [ownership & borrow checker](ownership-borrowing.md), which does not run under `nacompile` (`type_check=False`). The pass reads only the syntactic AST and the CFG; it consults no checker or symbol facts, so the elision is sound whether or not the ownership diagnostics ever ran.
+The elision is proven by the core `RcFactsPass` (`passes/main/rc_facts_pass.jac`), a small intraprocedural pass scheduled unconditionally in the native codegen path -- *before* `NaIRGenPass`. It runs a backward-liveness proof on the compiler's shared dataflow framework and stamps `Assignment.na_move_lowerable`, which the backend's reference-count lowering consumes. The proof reads the AST and the core CFG and serves annotated and unannotated code alike; because it always runs on the native path, the elision is identical whether or not ownership diagnostics were displayed.
 
 It is deliberately conservative -- it proves only the safe case and retains everywhere else. An assignment `b = a` is elided only when:
 
 - `b` is a single, plain, **local** name (never a field, subscript, global, or parameter);
-- the binding is not a `borrow`/`val` binding;
+- the binding is not a `borrow`/`imm` binding;
 - `a` is a plain **local** name (an `own` *parameter* is never elided);
 - **every** use of `a` in its function is an alias-value into a plain local -- this one invariant excludes call-args, returns, field/container stores, `&a` borrows, and closure/concurrent captures, any of which is a use that is not an alias-value; and
 - `a` is **dead-out** at the move site, proven by backward liveness over the CFG. A later use reached through a loop back-edge without an intervening redefinition keeps `a` live and blocks the elision, so a `b = a` inside a loop is elided only when `a` is redefined each iteration before the move.
@@ -1041,4 +1088,4 @@ with entry {
 
 ### Chess Engine
 
-For a complete walkthrough that covers `--autonative`, `nacompile`, `sys.argv`, declaration/implementation separation, and nearly every other native feature, see the **[Build a Chess Engine](../../tutorials/native/chess.md)** tutorial.
+For a complete walkthrough that covers the native default codespace, `nacompile`, `sys.argv`, declaration/implementation separation, and nearly every other native feature, see the **[Build a Chess Engine](../../tutorials/native/chess.md)** tutorial.

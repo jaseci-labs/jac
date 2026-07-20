@@ -723,6 +723,13 @@ impl TypeEvaluator._get_type_of_expression_core(
                         expr.right.type = sym_type;
                         return sym_type;
                     }
+
+                    if submod_type := self._resolve_submodule_attr(
+                        base_type, expr.right.value
+                    ) {
+                        expr.right.type = submod_type;
+                        return submod_type;
+                    }
                     return types.UnknownType();
                 } elif base_type.is_instantiable_class() {
                     assert isinstance(base_type, types.ClassType);
@@ -1691,6 +1698,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                 if expr.op.name == Tok.BW_AND {
                     return self.get_type_of_expression(expr.operand);
                 }
+                if expr.ownership == OwnershipKind.OWN {
+                    return self.get_type_of_expression(expr.operand);
+                }
                 if expr.op.name == Tok.NOT {
                     operand_type = self.get_type_of_expression(expr.operand);
                     if (
@@ -1702,9 +1712,11 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                     return operand_type;
                 }
-                if expr.op.name in (Tok.MINUS, Tok.BW_NOT) {
+                if expr.op.name in (Tok.MINUS, Tok.BW_NOT, Tok.PLUS) {
                     operand_type = self.get_type_of_expression(expr.operand);
-                    op_name = "__neg__" if expr.op.name == Tok.MINUS else "__invert__";
+                    op_name = "__neg__"
+                        if expr.op.name == Tok.MINUS
+                        else ("__pos__" if expr.op.name == Tok.PLUS else "__invert__");
 
                     if isinstance(operand_type, types.TypeVarType) {
                         if operand_type.constraints {
@@ -2832,20 +2844,7 @@ impl TypeEvaluator.assign_type(
     }
 
     if self.is_explicit_any(src_type) {
-        if not strict {
-            return True;
-        }
-        if isinstance(dest_type, types.TypeVarType) {
-            return True;
-        }
-
-        if self._in_native_context() {
-            return True;
-        }
-        if isinstance(src_type, types.AnyType) and src_type.is_foreign {
-            return True;
-        }
-        return False;
+        return True;
     }
 
     if self.prefetch
@@ -3274,8 +3273,7 @@ impl TypeEvaluator._is_sv_async_call(expr: uni.FuncCall) -> bool {
     if syms is None {
         syms = set();
         for imp in mod.get_all_sub_nodes(uni.Import) {
-            tok = imp._source_context_token();
-            if tok is None or tok.name != Tok.KW_SERVER {
+            if not imp.is_sv_marked {
                 continue;
             }
 

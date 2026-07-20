@@ -34,7 +34,8 @@ import from jaclang.scale.deploy.autoscale.autoscaler {
     AutoscalerSpec,
     Trigger,
     TriggerAuth,
-    DEFAULT_CPU_UTILIZATION_TARGET
+    DEFAULT_CPU_UTILIZATION_TARGET,
+    DEFAULT_MEMORY_UTILIZATION_TARGET
 }
 import from jaclang.scale.deploy.target.kubernetes.monitoring { MonitoringDeployer }
 import from jaclang.scale.config.config_loader { get_scale_config }
@@ -141,14 +142,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     def _scan_for_crash_loop(
         core_v1: any, ns: str, current_hashes: set, fleet_app_names: set
     ) -> dict[str, any] {
-        # current_hashes only covers the fleet's own microservice Deployments
-        # (resolved from `names`); companions (Redis, Prometheus, Grafana, ...)
-        # and observability pods share this namespace but were never part of
-        # that resolution, so the hash filter must not apply to them - doing
-        # so would silently exempt a crash-looping companion from detection.
-        # Image-pull failures are the opposite: only the fleet's own pods may
-        # fast-fail the rollout, so a broken companion image just lets the
-        # wait time out instead of aborting a fleet that is coming up fine.
         imagepull_reasons: set = {
             "ImagePullBackOff",
             "ErrImagePull",
@@ -158,10 +151,14 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         crash = "";
         crash_pod = None;
         pulls: dict[str, any] = {};
+        creating: dict[str, any] = {};
         phases: list[str] = [];
         states: list[str] = [];
         try {
             for p in core_v1.list_namespaced_pod(namespace=ns).items {
+                if p.metadata?.deletion_timestamp is not None {
+                    continue;
+                }
                 pod_name = str(p.metadata.name);
                 labels = p.metadata.labels or {};
                 app = str(labels.get("app", ""));
@@ -189,8 +186,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     if reason and reason not in transient_reasons {
                         pod_reason = reason;
                     }
-                    # A container blocked on the registry never ran, so its
-                    # restart count says nothing about crash-looping.
+
                     crashing = restarts >= 3 and reason not in imagepull_reasons;
                     if crashing and not pod_crash {
                         pod_crash = str(cs.name);
@@ -202,6 +198,27 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 }
                 if pod_pull {
                     pulls[pod_name] = (pod_pull, pod_pull_reason, p);
+                }
+
+                reasons = [
+                    str(
+                        (
+                            cs.state.waiting.reason
+                                if cs.state and cs.state.waiting
+                                else ""
+                        )
+                        or ""
+                    ) for cs in statuses
+                ];
+                stuck_creating = (
+                    bool(statuses)
+                    and not pod_reason
+                    and not pod_pull
+                    and ("ContainerCreating" in reasons)
+                    and ("PodInitializing" not in reasons)
+                );
+                if phase == "Pending" and stuck_creating and in_fleet {
+                    creating[pod_name] = p;
                 }
                 if pod_crash and not crash {
                     crash = (
@@ -225,9 +242,66 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             "crash": crash,
             "crash_pod": crash_pod,
             "pulls": pulls,
+            "creating": creating,
             "phases": phases,
             "states": states
         };
+    }
+
+    def _pod_mount_wedged(core_v1: any, ns: str, pod_name: str) -> bool {
+        import from datetime { datetime, timezone }
+        try {
+            evs = core_v1.list_namespaced_event(
+                namespace=ns, field_selector=f"involvedObject.name={pod_name}"
+            ).items;
+        } except Exception {
+            return False;
+        }
+        now = datetime.now(timezone.utc);
+        for e in evs {
+            if str(e.reason or "") not in {"FailedMount", "FailedAttachVolume"} {
+                continue;
+            }
+
+            ts = e.last_timestamp or e.event_time or e.first_timestamp;
+            if ts is None {
+                continue;
+            }
+            try {
+                age = (now - ts).total_seconds();
+            } except Exception {
+                continue;
+            }
+            if age <= 360 {
+                return True;
+            }
+        }
+        return False;
+    }
+
+    def _try_self_heal(
+        core_v1: any, ns: str, pod: any, why: str, healed_apps: dict[str, int]
+    ) -> bool {
+        app = str((pod.metadata.labels or {}).get("app", "")) or str(pod.metadata.name);
+        if healed_apps.get(app, 0) >= 1 or sum(healed_apps.values()) >= 3 {
+            return False;
+        }
+        pod_name = str(pod.metadata.name);
+        try {
+            core_v1.delete_namespaced_pod(name=pod_name, namespace=ns);
+        } except Exception {
+            return False;
+        }
+        healed_apps[app] = healed_apps.get(app, 0) + 1;
+        if self.logger {
+            self.logger.warn(
+                f"Self-heal: deleted wedged pod '{pod_name}' ({why}); "
+                f"its ReplicaSet schedules a replacement. One retry per "
+                f"service, then the rollout fails as usual.",
+                {"namespace": ns, "app": app}
+            );
+        }
+        return True;
     }
 
     def _wait_for_fleet_rollout(bundle: dict[str, any], timeout: int = 1200) -> None {
@@ -268,6 +342,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             if app_labels
             else None;
         imagepull_streak: dict[str, int] = {};
+        creating_streak: dict[str, int] = {};
+        healed_apps: dict[str, int] = {};
         last_sig = "";
         last_heartbeat = -90;
 
@@ -314,10 +390,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 crash_pod = scan["crash_pod"];
 
                 if crash_failure and pod_selector {
-                    # A hash set captured before the new RS's revision annotation
-                    # was stamped can still point at the old RS; re-verify against
-                    # a freshly resolved set before actually failing the rollout,
-                    # mirroring check_deployment_status's crash re-verification.
                     refreshed = _refresh_rs_hashes(ns, pod_selector, current_hashes);
                     current_hashes = refreshed or set();
                     recheck = self._scan_for_crash_loop(
@@ -333,12 +405,40 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 pull_pod = None;
                 for (pod_name, info) in pulls.items() {
                     if imagepull_streak.get(pod_name, 0) >= 2 {
+                        if self._try_self_heal(
+                            core_v1,
+                            ns,
+                            info[2],
+                            f"container '{info[0]}' cannot pull image ({info[1]})",
+                            healed_apps
+                        ) {
+                            imagepull_streak.pop(pod_name, None);
+                            continue;
+                        }
                         pull_failure = (
                             f"pod '{pod_name}' container '{info[0]}' "
                             f"cannot pull image ({info[1]})"
                         );
                         pull_pod = info[2];
                         break;
+                    }
+                }
+                creating_now = scan.get("creating", {});
+                creating_streak = {
+                    k: creating_streak.get(k, 0) + 1 for k in creating_now
+                };
+                for (pod_name, pod) in creating_now.items() {
+                    if creating_streak.get(pod_name, 0) >= 30
+                    and self._pod_mount_wedged(core_v1, ns, pod_name) {
+                        if self._try_self_heal(
+                            core_v1,
+                            ns,
+                            pod,
+                            "stuck >5min with FailedMount events",
+                            healed_apps
+                        ) {
+                            creating_streak.pop(pod_name, None);
+                        }
                     }
                 }
 
@@ -554,12 +654,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     }
 
     def generate_manifests(app_config: AppConfig) -> dict[str, any] {
-        # Resolve here, not in deploy(): `jac scale plan` calls this directly,
-        # and an unresolved '' python_image would render image-less manifests.
-        # Idempotent - a no-op once python_image is non-empty.
         import from jaclang.scale.injector.binary { resolve_pod_base_image }
         self.k8s_config.python_image = resolve_pod_base_image(
-            app_config.code_folder, self.k8s_config.python_image
+            app_config.code_folder, self.k8s_config.python_image, probe=not self.dry_run
         );
         builder = MicroserviceManifestBuilder(
             k8s_config=self.k8s_config,
@@ -568,7 +665,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             logger=self.logger,
             no_image=True,
             project_dir=app_config.code_folder,
-            microservices_config=self.microservices_config
+            microservices_config=self.microservices_config,
+            dry_run=self.dry_run
         );
         return builder.generate_manifests(app_config, self.k8s_config.python_image);
     }
@@ -723,6 +821,16 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                                 cfg.get("cpu_target", DEFAULT_CPU_UTILIZATION_TARGET)
                             )
                         }
+                    ),
+                    Trigger(
+                        type="memory",
+                        metadata={
+                            "averageUtilization": str(
+                                cfg.get(
+                                    "memory_target", DEFAULT_MEMORY_UTILIZATION_TARGET
+                                )
+                            )
+                        }
                     )
                 ];
             }
@@ -767,6 +875,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     polling_interval=self.k8s_config.autoscaler_polling_interval,
                     cooldown_period=self.k8s_config.autoscaler_cooldown,
                     initial_cooldown_period=self.k8s_config.autoscaler_initial_cooldown,
+                    scale_up_stabilization=self.k8s_config.autoscaler_scale_up_stabilization,
+                    scale_up_max_pods=self.k8s_config.autoscaler_scale_up_max_pods,
                     triggers=triggers
                 )
             );
