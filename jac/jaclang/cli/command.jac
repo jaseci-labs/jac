@@ -19,7 +19,8 @@ obj Arg {
         choices: list[any] | None = None,
         required: bool = False,
         dest: str | None = None,
-        metavar: str | None = None;
+        metavar: str | None = None,
+        config_key: str | None = None;
 
     static def create(
         name: str,
@@ -31,7 +32,8 @@ obj Arg {
         choices: list[any] | None = None,
         required: bool = False,
         metavar: str | None = None,
-        dest: str | None = None
+        dest: str | None = None,
+        config_key: str | None = None
     ) -> Arg;
 }
 
@@ -44,6 +46,7 @@ obj CommandSpec {
         group: str = "general",
         tier: str = "",
         hidden: bool = False,
+        needs: list[str] = [],
         handler: Callable | None = None;
 
     def get_all_args -> list[Arg];

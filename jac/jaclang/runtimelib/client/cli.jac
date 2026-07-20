@@ -24,6 +24,7 @@ with entry {
 @registry.command(
     name="setup",
     help="Setup a build target (one-time initialization)",
+    needs=["providers", "client"],
     args=[
         Arg.create(
             "target", kind=ArgKind.POSITIONAL, help="Target to setup (e.g., desktop)"

@@ -236,7 +236,12 @@ def precommit(
         ),
         Arg.create("directory", default="", help="Test directory", short="d"),
         Arg.create(
-            "verbose", typ=bool, default=False, help="Verbose output", short="v"
+            "verbose",
+            typ=bool,
+            default=False,
+            help="Verbose output",
+            short="v",
+            config_key="test.verbose"
         ),
         Arg.create(
             "ignore",

@@ -26,7 +26,7 @@ import from tests.support { JAC_ROOT }
 
 glob REPO: str = str(Path(JAC_ROOT).parent),
      # The authoritative core registration modules (must match the
-     # _CORE_REGISTRATION_MODULES list in jaclang/cli/registry.jac). Loading any
+     # generator-owned CORE_MODULES list in gen_cli_manifest.jac). Loading any
      # single command must not import registration modules outside this command's
      # owning module.
      REGISTRATION_SHORT: set[str] = {

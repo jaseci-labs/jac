@@ -6,6 +6,7 @@ glob registry = get_registry();
 @registry.command(
     name="build",
     help="Build a sealed .jab artifact (type-checks first)",
+    needs=["providers", "client"],
     args=[
         Arg.create(
             "filename",

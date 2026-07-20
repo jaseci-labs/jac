@@ -8,7 +8,8 @@ impl Arg.create(
     choices: list[any] | None = None,
     required: bool = False,
     metavar: str | None = None,
-    dest: str | None = None
+    dest: str | None = None,
+    config_key: str | None = None
 ) -> Arg {
     auto_short = short;
     if auto_short is None and len(name) > 0 and kind != ArgKind.POSITIONAL {
@@ -28,7 +29,8 @@ impl Arg.create(
         choices=choices,
         required=required,
         metavar=metavar,
-        dest=dest
+        dest=dest,
+        config_key=config_key
     );
 }
 

@@ -1,7 +1,6 @@
 import os;
 import sys;
-import from jaclang.cli.command { ArgKind, CommandSpec }
-import from jaclang.cli.manifest { CommandMeta }
+import from jaclang.cli.manifest { ArgMeta, CommandMeta }
 
 def _discover_project_config {
     import from jaclang.jac0core.helpers { MalformedJacTomlError }
@@ -42,26 +41,14 @@ def _initialize_template_registry {
     } except Exception { }
 }
 
-def _load_command_spec(command_name: str, meta: CommandMeta) -> CommandSpec {
-    import importlib;
-    import from jaclang.cli.registry { get_registry }
-
-    importlib.import_module(meta.handler_module);
-    spec = get_registry().get(command_name);
-    if spec is None {
-        raise KeyError(command_name);
-    }
-    return spec;
-}
-
-def _extract_script_args(spec: CommandSpec) -> list[str] {
+def _extract_script_args(meta: CommandMeta) -> list[str] {
     raw = sys.argv[1:];
     if len(raw) < 2 {
         return [];
     }
 
-    all_args = spec.args;
-    has_remainder = any(a.kind == ArgKind.REMAINDER for a in all_args);
+    all_args = meta.args;
+    has_remainder = any(a.kind == "REMAINDER" for a in all_args);
     if not has_remainder {
         return [];
     }
@@ -69,14 +56,14 @@ def _extract_script_args(spec: CommandSpec) -> list[str] {
     n_positionals = sum(
         1
         for a in all_args
-        if a.kind == ArgKind.POSITIONAL
+        if a.kind == "POSITIONAL"
     );
     value_flags: set = set();
     for arg in all_args {
-        if arg.kind in (ArgKind.POSITIONAL, ArgKind.MULTI, ArgKind.REMAINDER) {
+        if arg.kind in ("POSITIONAL", "MULTI", "REMAINDER") {
             continue;
         }
-        if arg.kind == ArgKind.FLAG or arg.typ == bool {
+        if arg.kind == "FLAG" or arg.typ == "bool" {
             continue;
         }
         value_flags.add(f"--{arg.name}");
@@ -112,7 +99,7 @@ def _extract_script_args(spec: CommandSpec) -> list[str] {
     return [];
 }
 
-def _apply_profile(args_dict: dict) {
+def _apply_profile(meta: CommandMeta, args_dict: dict) {
     import from jaclang.cli.console { console }
     try {
         import from jaclang.project.config { get_config }
@@ -138,29 +125,57 @@ def _apply_profile(args_dict: dict) {
         }
 
         config.apply_profile_overlay(profile or None);
-        _apply_config_defaults(config, args_dict);
+        _apply_config_defaults(config, meta, args_dict);
     } except (KeyError, ValueError, OSError) as exc {
         console.warning(f"Failed to apply profile: {exc}");
     }
 }
 
-def _apply_config_defaults(config: any, args_dict: dict) {
-    bridges: list = [
-        ('port', 8000, config.serve.port, 'serve', 'port'),
-        ('cache', True, config.run.cache, 'run', 'cache'),
-        ('main', True, config.run.main, 'run', 'main'),
-        ('verbose', False, config.test.verbose, 'test', 'verbose')
-    ];
-    for (arg_name, arg_default, config_value, section, key) in bridges {
-        if arg_name not in args_dict {
+def _arg_dict_key(arg: ArgMeta) -> str {
+    if arg.dest {
+        return arg.dest;
+    }
+    return arg.name.replace("-", "_");
+}
+
+def _config_value(config: any, config_key: str) -> tuple[str, str, any] | None {
+    dot = config_key.find(".");
+    if dot < 0 {
+        return None;
+    }
+    section = config_key[:dot];
+    key = config_key[dot + 1:];
+    section_obj = getattr(config, section, None);
+    if section_obj is None {
+        return None;
+    }
+    return (section, key, getattr(section_obj, key, None));
+}
+
+def _apply_config_defaults(config: any, meta: CommandMeta, args_dict: dict) {
+    for arg in meta.args {
+        if not arg.config_key {
             continue;
         }
-        if args_dict[arg_name] != arg_default {
+        resolved = _config_value(config, arg.config_key);
+        if resolved is None {
+            continue;
+        }
+        (section, key, config_value) = resolved;
+        dict_key = _arg_dict_key(arg);
+        if dict_key not in args_dict {
+            continue;
+        }
+        arg_default = arg.default;
+        if arg_default is None and (arg.kind == "FLAG" or arg.typ == "bool") {
+            arg_default = False;
+        }
+        if args_dict[dict_key] != arg_default {
             continue;
         }
         raw = config._raw_data.get(section, {});
         if isinstance(raw, dict) and key in raw {
-            args_dict[arg_name] = config_value;
+            args_dict[dict_key] = config_value;
         }
     }
 }
@@ -186,8 +201,10 @@ def _command_argv(command_name: str) -> list[str] {
 }
 
 impl run_selected_command(command_name: str) -> None {
+    import from jaclang.cli.command { CommandSpec }
+    import from jaclang.cli.loader { load_handler }
     import from jaclang.cli.manifest { get_command_meta }
-    import from jaclang.cli.registry { get_registry }
+    import from jaclang.cli.manifest_parse { build_command_parser }
 
     meta = get_command_meta(command_name);
     if meta is None {
@@ -195,11 +212,12 @@ impl run_selected_command(command_name: str) -> None {
         raise SystemExit(2);
     }
 
-    spec = _load_command_spec(command_name, meta);
-    parser = get_registry().build_command_parser(spec);
+    parser = build_command_parser(meta);
+    cmd_argv = _command_argv(command_name);
 
-    if _requests_help(_command_argv(command_name)) {
-        parser.parse_known_args(_command_argv(command_name));
+    if _requests_help(cmd_argv) {
+        parser.parse_known_args(cmd_argv);
+        return;
     }
 
     import from jaclang.cli.console { console }
@@ -216,9 +234,7 @@ impl run_selected_command(command_name: str) -> None {
         import jaclang.runtimelib.client.cli;
     }
 
-    script_args = _extract_script_args(spec);
-
-    cmd_argv = _command_argv(command_name);
+    script_args = _extract_script_args(meta);
     (args, unknown) = parser.parse_known_args(cmd_argv);
     if unknown {
         if command_name == 'test' and any(not u.startswith('-') for u in unknown) {
@@ -238,8 +254,10 @@ impl run_selected_command(command_name: str) -> None {
     if script_args {
         args_dict['args'] = script_args;
     }
-    _apply_profile(args_dict);
+    _apply_profile(meta, args_dict);
 
+    handler = load_handler(command_name);
+    spec = CommandSpec(name=meta.name, help=meta.help, handler=handler);
     result = get_executor().execute(spec, args_dict);
     if result.error {
         console.error(f"{result.error}");

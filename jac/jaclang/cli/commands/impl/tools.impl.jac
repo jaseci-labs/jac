@@ -352,3 +352,22 @@ impl gen_uni_dispatch(verify: bool = False) -> int {
     }
     return 0;
 }
+
+impl gen_cli_manifest(verify: bool = False) -> int {
+    import from jaclang.cli.gen_cli_manifest { write_routes, verify_drift }
+    if verify {
+        drift = verify_drift();
+        for msg in drift {
+            console.error(f"{msg}");
+        }
+        if drift {
+            console.error("Run `jac gen-cli-manifest` to update.");
+            return 1;
+        }
+        console.print("Manifest route table is up to date.");
+        return 0;
+    }
+    out = write_routes();
+    console.print(f"Generated {out}");
+    return 0;
+}

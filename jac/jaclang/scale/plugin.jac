@@ -307,6 +307,7 @@ def deploy_status(file_path: str, target: str = "kubernetes") -> int {
 @registry.command(
     name="scale",
     help="Manage scale deployments: local microservices (status/stop/restart/logs) and platform deployments (status/destroy on a .jac app)",
+    needs=["providers"],
     args=[
         Arg.create(
             "action",

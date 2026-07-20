@@ -334,7 +334,7 @@ jobs:
               echo "No .jac files changed in this PR; skipping format check."
               exit 0
             fi
-            FILES="$(grep -vE '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
+            FILES="$(grep -vE '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$|manifest\.impl\.jac$)' changed-jac.txt || true)"
             if [ -z "$FILES" ]; then
               echo "No formattable .jac files changed (all excluded); skipping."
               exit 0
@@ -345,7 +345,7 @@ jobs:
             # Sweep only git-tracked files: the build materializes generated
             # trees in-place (e.g. jac/zig-pkg/ zig package fetches with their
             # own sample .jac files), and a bare `find .` walks those too.
-            git ls-files -z '*.jac' | grep -zv -E '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$|_syntax_err\.jac$)' | xargs -0 --no-run-if-empty jac fmt --check --lintfix
+            git ls-files -z '*.jac' | grep -zv -E '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$|_syntax_err\.jac$|manifest\.impl\.jac$)' | xargs -0 --no-run-if-empty jac fmt --check --lintfix
           fi
 
       # When the format check fails on a same-repo PR, run the fixer on the PR
@@ -376,7 +376,7 @@ jobs:
             exit 0
           fi
           git checkout -B "$HEAD_REF" FETCH_HEAD
-          FILES="$(grep -vE '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
+          FILES="$(grep -vE '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$|manifest\.impl\.jac$)' changed-jac.txt || true)"
           if [ -z "$FILES" ]; then
             echo "No formattable .jac files to fix."
             exit 0
@@ -406,6 +406,10 @@ jobs:
       - name: Verify jir_registry.jac is up to date
         run: |
           jac gen-jir-registry --verify
+
+      - name: Verify manifest route table is up to date
+        run: |
+          jac gen-cli-manifest --verify
 
       - name: Run jac check (using .jacignore)
         run: |

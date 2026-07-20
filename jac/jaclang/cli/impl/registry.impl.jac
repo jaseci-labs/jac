@@ -3,7 +3,6 @@ import from jaclang.cli.banners { JAC_GITHUB_URL }
 
 impl CommandRegistry.init -> None {
     self.commands = {};
-    self._pending_extensions = {};
     self._finalized = False;
     self.parser = argparse.ArgumentParser(
         prog='jac',
@@ -40,7 +39,8 @@ impl CommandRegistry.command(
     examples: list[tuple[str, str]] | None = None,
     group: str = "general",
     tier: str = "",
-    hidden: bool = False
+    hidden: bool = False,
+    needs: list[str] = []
 ) -> Callable[[Callable], Callable] {
     import from jaclang.cli.command { Arg, CommandSpec }
     def decorator(func: Callable) -> Callable {
@@ -53,6 +53,7 @@ impl CommandRegistry.command(
             group=group,
             tier=tier,
             hidden=hidden,
+            needs=needs,
             handler=func
         );
         return func;
@@ -241,31 +242,4 @@ impl get_registry -> CommandRegistry {
         _registry = CommandRegistry();
     }
     return _registry;
-}
-
-impl register_core_commands -> None {
-    import importlib;
-    for module_name in _CORE_REGISTRATION_MODULES {
-        importlib.import_module(module_name);
-    }
-}
-
-impl feature_command_modules -> dict[str, str] {
-    import from jaclang.cli.manifest { iter_command_meta }
-
-    core = set(_CORE_REGISTRATION_MODULES);
-    modules: dict[str, str] = {};
-    for meta in iter_command_meta(include_hidden=True) {
-        if meta.handler_module and meta.handler_module not in core {
-            modules[meta.name] = meta.handler_module;
-        }
-    }
-    return modules;
-}
-
-impl register_feature_commands -> None {
-    import importlib;
-    for module_name in feature_command_modules().values() {
-        importlib.import_module(module_name);
-    }
 }

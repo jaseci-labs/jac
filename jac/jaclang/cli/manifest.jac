@@ -48,6 +48,20 @@ glob VERB_BUDGET: int = 28,
      },
      TIER_ORDER: list[str] = ["core", "learn"];
 
+obj ArgMeta {
+    has name: str,
+        kind: str = "OPTION",
+        typ: str = "str",
+        `default: any = None,
+        help: str = "",
+        short: str | None = None,
+        choices: list[any] | None = None,
+        required: bool = False,
+        dest: str | None = None,
+        metavar: str | None = None,
+        config_key: str | None = None;
+}
+
 obj CommandMeta {
     has name: str,
         help: str,
@@ -56,10 +70,12 @@ obj CommandMeta {
         hidden: bool,
         handler_module: str,
         handler_name: str,
-        needs: list[str] = [];
+        needs: list[str] = [],
+        description: str = "",
+        examples: list[tuple[str, str]] = [],
+        args: list[ArgMeta] = [];
 }
 
-def validate_manifest -> list[str];
 def get_command_meta(name: str) -> CommandMeta | None;
 def iter_command_meta(include_hidden: bool = False) -> list[CommandMeta];
 def known_command_names(include_hidden: bool = False) -> set[str];

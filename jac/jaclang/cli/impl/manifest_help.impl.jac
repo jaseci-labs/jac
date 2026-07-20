@@ -18,11 +18,12 @@ glob _RESET: str = "\033[0m",
      _TITLE: str = "\033[1m";
 
 impl _use_color -> bool {
-    if os.environ.get('NO_COLOR') {
+    import from jaclang.cli.console { console }
+    try {
+        return bool(console.use_color);
+    } except Exception {
         return False;
     }
-    out = sys.stdout;
-    return bool(out is not None and out.isatty());
 }
 
 def _color(text: str, code: str) -> str {
