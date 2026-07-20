@@ -4,11 +4,7 @@ import from jaclang.cli.command { ArgKind, CommandSpec }
 import from jaclang.cli.manifest { CommandMeta }
 
 def _discover_project_config {
-    try {
-        import from jaclang.jac0core.helpers { MalformedJacTomlError }
-    } except Exception {
-        return;
-    }
+    import from jaclang.jac0core.helpers { MalformedJacTomlError }
 
     try {
         import from jaclang.project.config { get_config }
