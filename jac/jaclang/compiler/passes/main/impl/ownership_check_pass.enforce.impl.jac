@@ -164,12 +164,14 @@ impl OwnershipCheckPass._nogc_local_shape_expr_heap(expr: uni.Expr | None) -> bo
     if expr is None {
         return False;
     }
-    _root = self._place_of(expr);
-    if _root is not None and _root.sym is not None {
-        if _root.sym.ownership == OwnershipKind.OWN {
-            return True;
+    if isinstance(expr, uni.Name) {
+        _root = self._place_of(expr);
+        if _root is not None and _root.sym is not None {
+            if _root.sym.ownership == OwnershipKind.OWN {
+                return True;
+            }
+            return self._nogc_local_shape(_root) == "heap";
         }
-        return self._nogc_local_shape(_root) == "heap";
     }
     import from jaclang.compiler.passes.main.rc_facts_pass {
         result_ownership,
@@ -203,6 +205,19 @@ impl OwnershipCheckPass._nogc_expr_type_is_heap(expr: uni.Expr | None) -> bool {
         }
     }
     return True;
+}
+
+impl OwnershipCheckPass._expr_scalar_typed(expr: uni.Expr | None) -> bool {
+    if not isinstance(expr, uni.Expr) or expr.type is None {
+        return False;
+    }
+    _m = "";
+    try {
+        _m = expr.type.mangle();
+    } except Exception {
+        return False;
+    }
+    return _m in _NOGC_SCALARS;
 }
 
 impl OwnershipCheckPass._nogc_is_container_expr(expr: uni.Expr | None) -> bool {
@@ -386,7 +401,8 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
     _headerless = getattr(_opts, "na_gc_mode", "cycles") == "none" if _opts else False;
     if _headerless {
         for _lv in self.ir_in.get_all_sub_nodes(uni.ListVal) {
-            if _lv.find_parent_of_type(uni.SubTag) is not None {
+            if _lv.find_parent_of_type(uni.SubTag) is not None
+            or _lv.find_parent_of_type(uni.FuncSignature) is not None {
                 continue;
             }
             for _le in (_lv.values or []) {
@@ -402,7 +418,8 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
             }
         }
         for _sv in self.ir_in.get_all_sub_nodes(uni.SetVal) {
-            if _sv.find_parent_of_type(uni.SubTag) is not None {
+            if _sv.find_parent_of_type(uni.SubTag) is not None
+            or _sv.find_parent_of_type(uni.FuncSignature) is not None {
                 continue;
             }
             for _se in (_sv.values or []) {
@@ -418,7 +435,8 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
             }
         }
         for _dv in self.ir_in.get_all_sub_nodes(uni.DictVal) {
-            if _dv.find_parent_of_type(uni.SubTag) is not None {
+            if _dv.find_parent_of_type(uni.SubTag) is not None
+            or _dv.find_parent_of_type(uni.FuncSignature) is not None {
                 continue;
             }
             for _kv in (_dv.kv_pairs or []) {
@@ -534,8 +552,13 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
                 or (
                     nd.value is not None and self._nogc_local_shape_expr_heap(nd.value)
                 ) {
+                    _val_name = (
+                        _val_root.sym_name
+                            if _val_root is not None and _val_root.sym is not None
+                            else _root.sym_name
+                    );
                     self.emit(
-                        E1402, node_override=_tgt, name=_root.sym_name, provenance=_prov
+                        E1402, node_override=_tgt, name=_val_name, provenance=_prov
                     );
                 }
             } elif _headerless

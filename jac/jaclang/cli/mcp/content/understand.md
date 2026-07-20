@@ -74,7 +74,7 @@ a re-render. NEVER mutate directly (`items.append(x)` won't re-render - use `ite
 **Events**: `onChange={lambda e: ChangeEvent { name = e.target.value; }}` - ambient DOM types, no import.
 **Calling server from client** (critical pattern):
   `sv import from ..main { my_walker }` - import server walker into client code
-  `response = root() spawn my_walker(field=value);` - spawns walker via HTTP automatically
+  `response = root spawn my_walker(field=value);` - spawns walker via HTTP automatically
   `data = response.reports[0][0];` - access walker report results
 **Auth built-ins**: `jacLogin(user, pass)`, `jacSignup(user, pass)`, `jacLogout()`, `jacIsLoggedIn()`
 

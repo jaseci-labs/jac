@@ -1093,16 +1093,31 @@ impl _parse_toml_data(
             session=run_data.get("session", ""),
             main=run_data.get("main", True),
             cache=run_data.get("cache", True),
-            autonative=run_data.get("autonative", False),
             topology_index=run_data.get("topology_index", True),
             diagnostics=run_data.get("diagnostics", "error")
         );
     }
     if "build" in data {
         build_data = data["build"];
+        _codespace_aliases = {"sv": "server", "na": "native"};
+        _builtin_cs = BuildConfig().default_codespace;
+        _default_cs = str(
+            build_data.get("default_codespace", _builtin_cs)
+        ).strip().lower();
+        _default_cs = _codespace_aliases.get(_default_cs, _default_cs);
+        if _default_cs not in ("server", "native") {
+            import from jaclang.cli.console { console }
+            console.warning(
+                f"[build] default_codespace='{build_data.get('default_codespace')}' "
+                f"is not one of 'server'/'sv', 'native'/'na'; "
+                f"defaulting to '{_builtin_cs}'."
+            );
+            _default_cs = _builtin_cs;
+        }
         config.build = BuildConfig(
             typecheck=build_data.get("typecheck", False),
-            dir=build_data.get("dir", ".jac")
+            dir=build_data.get("dir", ".jac"),
+            default_codespace=_default_cs
         );
     }
     if "gc" in data {
@@ -1284,7 +1299,6 @@ impl _interpolate_recursive(`obj: any) -> any {
 impl get_config(
     start_path: Path | None = None, force_discover: bool = False
 ) -> JacConfig | None {
-    global _config,_config_explicit,_config_by_root;
     if _config is None or force_discover {
         _config = JacConfig.discover(start_path=start_path);
 
@@ -1298,7 +1312,6 @@ impl get_config(
 }
 
 impl set_config(config: JacConfig) -> None {
-    global _config,_config_explicit,_config_by_root;
     _config = config;
 
     _config_explicit = config is not None;
@@ -1311,7 +1324,6 @@ impl get_explicit_config -> JacConfig | None {
 }
 
 impl get_config_for_path(start_path: Path) -> JacConfig | None {
-    global _config_by_root;
     explicit = get_explicit_config();
     if explicit is not None {
         return explicit;

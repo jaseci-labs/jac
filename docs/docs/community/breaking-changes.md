@@ -7,6 +7,28 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### Legacy syntax removed in one clean break ([#7514](https://github.com/jaseci-labs/jac/issues/7514))
+
+A set of long-deprecated or redundant forms is removed with no deprecation window -- the old spellings are now hard errors:
+
+| Old | New |
+|---|---|
+| `global x;` / `nonlocal x;` | Removed -- assignment binds to the nearest enclosing binding (see below) |
+| `a && b` / `a \|\| b` | `a and b` / `a or b` |
+| `def area() -> float abs;` | `def area() -> float abst;` (`abs` is now only the builtin function) |
+| `nodes(?:Type, cond)` / `[-->(?:Type)]` | `nodes[?:Type, cond]` / `[-->[?:Type]]` (error **E0048**) |
+| `root()` in `.jac` source | bare `root` (error **E0049**) |
+| `has x: T by postinit;` | `has x: T postinit;` |
+| `for i = 0 to i < 10 by i += 1 { }` | `for i = 0 while i < 10 with i += 1 { }` -- keyword separators (`while` condition, `with` step); the condition may be any expression. `to` is no longer a keyword at all |
+| `can foo() { ... }` (function-style) | `def foo() { ... }` (error **E0034**; `can` is only for abilities with `with entry` / `with exit`) |
+| `` has `class: str; `` (backticked Python reserved word as field/parameter name) | Rejected at compile time (error **E0067**) -- rename the field |
+
+**New scoping semantics** replace the `global`/`nonlocal` directives: a bare assignment (including `+=`) inside a function binds to the **nearest enclosing binding** -- an enclosing function's local or a module-level `glob` -- and creates a new local only when no such binding exists. Only `glob`-declared variables are implicitly rebindable this way (imports, functions, and archetypes are not). To shadow an outer binding, write a typed declaration (`x: int = 5;`) before the name's first use in the scope; declaring it after the name was already bound in that scope is an error (**E0064**). Loop targets, `except ... as`, and `with ... as` always bind fresh locals. Python's `x += 1`-on-a-global `UnboundLocalError` gotcha is gone, and `glob` remains the only globals keyword.
+
+**Impact:** the rewrites are mechanical (see the table). Deprecation warnings **W0061**/**W0062** no longer exist -- they are superseded by errors **E0048**/**E0049**. Functions inside `def` bodies that relied on `global`/`nonlocal` just delete the directive line -- the assignment already binds to the outer variable. Python **library mode** is unaffected: there `root` is a function imported from `jaclang.lib` and must still be called as `root()`. Identifiers named `to` no longer need backtick escaping.
+
+---
+
 ### `region { }` blocks replaced by first-class `Region` handles and `in <handle> { }` opens
 
 Regions are now a complete feature ([#7491](https://github.com/jaseci-labs/jac/issues/7491)): a `Region` is an ownable, sendable, escape-checked allocation extent, opened for allocation with the `in <handle> { ... }` statement. The old `region { ... }` contextual soft keyword is removed; its anonymous replacement is `in Region() { ... }`, and named handles (`r: own Region = Region(); in r { ... }`) add dynamic extent, helper opens through `&Region` parameters, and subgraph transfer across `flow`/`wait`.
@@ -71,7 +93,7 @@ Use the braced block form instead. It compiles to the same node and is now the c
 | `to sv:` <br> `<server stmts>` | `sv { <server stmts> }` (or leave at module top level -- server is the default context) |
 | `to na:` <br> `<native stmts>` | `na { <native stmts> }` |
 
-**Impact:** rewrite any `to cl:` / `to sv:` / `to na:` section into the matching braced block, wrapping exactly the statements that belonged to that section. Single-statement prefixes (`cl def:pub foo() {...}`, `sv ...`, `na ...`) and file-extension contexts (`.cl.jac`, `.na.jac`) are unaffected. The `to` keyword is otherwise unchanged -- it still drives the iter-for loop (`for x = 0 to 10 by 1`).
+**Impact:** rewrite any `to cl:` / `to sv:` / `to na:` section into the matching braced block, wrapping exactly the statements that belonged to that section. Single-statement prefixes (`cl def:pub foo() {...}`, `sv ...`, `na ...`) and file-extension contexts (`.cl.jac`, `.na.jac`) are unaffected. (At the time, `to` still drove the iter-for loop; `to` has since been removed as a keyword entirely -- see [the clean-break entry above](#legacy-syntax-removed-in-one-clean-break-7514).)
 
 ---
 
@@ -431,7 +453,7 @@ with entry {
 2. **Drop the annotation** -- `x = src();` makes `x` inferred-`any` and no check fires.
 3. **Annotate `any` explicitly** -- `x: any = src();` documents the boundary.
 
-See [The `any` Type and Gradual Typing](../reference/language/foundation.md#the-any-type-and-gradual-typing) for the full rule and [Walker Response Patterns](../reference/language/walker-responses.md#typing-your-reports) for typing the walker `reports` channel.
+See [The `any` Type and Gradual Typing](../reference/language/types-and-values.md#the-any-type-and-gradual-typing) for the full rule and [Walker Response Patterns](../reference/language/walker-responses.md#typing-your-reports) for typing the walker `reports` channel.
 
 ---
 
@@ -444,12 +466,12 @@ See [The `any` Type and Gradual Typing](../reference/language/foundation.md#the-
 **Impact:** Bare `root` is the canonical form in `.jac` source and continues to work as before in walkers, graph operations, and edge expressions. However:
 
 - **Backtick escaping is required to shadow it.** Use `` `root `` to declare a parameter, field, or local named `root`.
-- **`root()` is deprecated in `.jac` source.** Bare `root` is canonical; the compiler emits **W0062** when it sees `root()` in a `.jac` file and lowers it to the same `Jac.root()` call so existing code keeps working.
+- **`root()` is deprecated in `.jac` source.** Bare `root` is canonical; at the time the compiler emitted **W0062** for `root()` and lowered it to the same `Jac.root()` call. (`root()` has since been removed outright -- it is now error **E0049**.)
 - **AST introspection sees `SpecialVarRef` with `KW_ROOT` again.** Code that special-cased the post-0.12.3 `Name` shape needs to update.
 - **Bytecode cache must be cleared.** The AST shape for `root` changes from `Name` to `SpecialVarRef`. Run `rm -rf ~/.cache/jac/bytecode/ .jac/cache/` (or your project's configured cache dir) after upgrading.
 
 !!! note "`.jac` source vs library mode"
-    The deprecation applies to `.jac` source only. In **library mode** (Python files using `from jaclang.lib import root, connect, spawn, ...`), `root` is a Python function and **must be called as `root()`** -- it is not a keyword in that context. See [Library Mode](../reference/language/library-mode.md) for the full Python-side surface.
+    The restriction applies to `.jac` source only. In **library mode** (Python files using `from jaclang.lib import root, connect, spawn, ...`), `root` is a Python function and **must be called as `root()`** -- it is not a keyword in that context. See [Library Mode](../reference/language/library-mode.md) for the full Python-side surface.
 
 **Before (0.12.3 `.jac` source):**
 
@@ -476,9 +498,10 @@ obj Settings {
 with entry {
     r = root;                # bare reference, canonical
     root ++> Item();         # works, no warning
-    r2 = root();             # still works but emits W0062
 }
 ```
+
+(In 0.12.4, `root()` in `.jac` source still worked with warning W0062; it has since been removed and is now error **E0049**.)
 
 **In library mode (Python):**
 
@@ -495,7 +518,7 @@ connect(left=root(), right=Item())
 
 #### 1. Filter Comprehension Syntax Changed from `(?:...)` to `[?:...]`
 
-The parenthesized filter comprehension syntax `(?:Type)` and `(?:Type, condition)` is now deprecated in favor of bracket syntax `[?:Type]` and `[?:Type, condition]`. The old syntax still parses but emits deprecation warning **W0061**. The formatter (`jac fmt`) automatically converts old syntax to new.
+The parenthesized filter comprehension syntax `(?:Type)` and `(?:Type, condition)` was deprecated in favor of bracket syntax `[?:Type]` and `[?:Type, condition]`. In 0.12.2 the old syntax still parsed with deprecation warning **W0061**; it has since been removed outright and is now error **E0048**. The formatter (`jac fmt`) automatically converts old syntax to new.
 
 **Before:**
 
@@ -719,8 +742,8 @@ visit [-->][?:MyNode];
 visit [-->][?:Year, year==2025];
 ```
 
-!!! note "Parenthesized syntax `(?:Type)` is deprecated"
-    The intermediate parenthesized syntax `(?:Type)` and `(?:Type, condition)` was introduced in v0.10.0 but has been replaced by the bracket syntax `[?:Type]` and `[?:Type, condition]` for consistency with edge reference brackets. If your code uses the `(?:...)` form, migrate to `[?:...]`.
+!!! note "Parenthesized syntax `(?:Type)` was removed"
+    The intermediate parenthesized syntax `(?:Type)` and `(?:Type, condition)` was introduced in v0.10.0 but has been replaced by the bracket syntax `[?:Type]` and `[?:Type, condition]` for consistency with edge reference brackets. The `(?:...)` form is now a hard error (**E0048**) -- migrate to `[?:...]`.
 
 **Migration Steps:**
 

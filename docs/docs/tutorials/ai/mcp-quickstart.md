@@ -69,6 +69,6 @@ When the assistant hits a compiler error it can't parse, `explain_error` returns
 
 ## Beyond MCP
 
-- **Auto-loaded skills instead of a server**: `jac guide --export ~/.claude/skills` writes the same guides as Agent Skills that Claude Code and Cursor load automatically -- see [Agent Skills and MCP](../../quick-guide/agent-skills-and-mcp.md) for when to use which.
+- **Auto-loaded skills instead of a server**: `jac guide --export ~/.claude/skills` writes the same guides as Agent Skills that Claude Code and Cursor load automatically -- see [Agent Skills and MCP](../../reference/agent-skills-and-mcp.md) for when to use which.
 - **Jac's own agent**: `jac ai` is a built-in coding agent that already knows the guides and runs against local models with no API key -- see the [`jac ai` reference](../../reference/cli/index.md#jac-ai).
 - **Full tool catalog, transports, troubleshooting**: the [MCP Server reference](../../reference/mcp.md).

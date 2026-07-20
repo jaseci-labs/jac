@@ -16,7 +16,7 @@ glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures", "checker"
      ),
      LANG_FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
-     NO_TC = CompileOptions(type_check=False);
+     NO_TC = CompileOptions(type_check=False, default_codespace='server');
 
 def assert_error_pretty_found(needle: str, haystack: str) {
     for line in [
@@ -2176,7 +2176,7 @@ test "postinit_fields_not_required_in_constructor" {
     assert len(program.errors_had) == 0 , f"Expected no type checking errors, but got {len(
         program.errors_had
     )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
-    # `by postinit` must not emit W1051 on the postinit name.
+    # `postinit` must not emit W1051 on the postinit name.
     w1051 = [
         w
         for w in program.warnings_had

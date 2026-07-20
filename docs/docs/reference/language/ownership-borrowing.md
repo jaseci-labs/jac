@@ -162,7 +162,7 @@ with entry {
 }
 ```
 
-## Regions: first-class `Region` handles and `in <handle> { }` opens
+## Regions: first-class `Region` handles and `in` opens
 
 A **`Region`** is an ownable, sendable, escape-checked allocation extent. A
 region is *opened* for allocation with the `in <handle> { ... }` statement:
@@ -277,7 +277,7 @@ Two caveats:
 - Under `cycles`, objects that die as members of a reference cycle are destroyed by the collector; each member's `drop` still runs, but the order within the cycle is unspecified and sibling objects may already be gone -- don't traverse other heap objects from a cyclic `drop`.
 - There is no resurrection: `drop` must not store `self` anywhere; the object is freed as soon as the hook returns.
 
-The Python backend does not invoke `def drop` automatically yet -- rely on it only in native modules.
+Outside regions, the Python backend does not invoke `def drop` automatically yet -- rely on it only in native modules. Values allocated under an [`in <handle> { }` open](#regions-first-class-region-handles-and-in-opens) are the exception: their hooks fire at portable points on both backends -- LIFO at the closing brace for an anonymous open, at the handle's death for a named one. (Named-handle timing on the Python backend rides CPython reference death, which approximates but does not exactly equal the native static drop point; the anonymous case is exactly portable.)
 
 ## Zero-RC native builds
 

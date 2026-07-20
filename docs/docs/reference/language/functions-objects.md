@@ -8,7 +8,7 @@
 
 ---
 
-This part covers Jac's approach to functions and object-oriented programming. Jac uses `def` for standalone functions and `can` for methods (called "abilities") on objects. The key difference from Python: `has` declarations make your data model explicit, and `impl` blocks let you separate interface from implementation.
+This part covers Jac's approach to functions and object-oriented programming. Jac uses `def` for functions and methods, and `can` for event-triggered abilities on archetypes. The key difference from Python: `has` declarations make your data model explicit, and `impl` blocks let you separate interface from implementation.
 
 ## Functions and Abilities
 
@@ -490,7 +490,7 @@ The same tags mean *member encapsulation* on a `has`/`def` declared inside an ar
 
 ## Object-Oriented Programming
 
-Jac uses `obj` instead of `class` to define types (though `class` is also supported for Python compatibility). The key differences from Python: fields are declared with `has` at the top of the definition, methods use `can` instead of `def`, and there's no explicit `__init__` -- the constructor is generated automatically from `has` declarations.
+Jac uses `obj` instead of `class` to define types (though `class` is also supported for Python compatibility). The key differences from Python: fields are declared with `has` at the top of the definition, and there's no explicit `__init__` -- the constructor is generated automatically from `has` declarations.
 
 ### 1 Objects (Classes)
 
@@ -559,15 +559,15 @@ with entry {
 }
 ```
 
-#### Initialization with `by postinit`
+#### Initialization with `postinit`
 
-If an attribute's value depends on other fields or requires complex calculation during setup, use the `by postinit` modifier and define a `postinit` method.
+If an attribute's value depends on other fields or requires complex calculation during setup, use the `postinit` field modifier and define a `postinit` method.
 
 ```jac
 obj Rectangle {
     has width: float,
         height: float;
-    has area: float by postinit;
+    has area: float postinit;
 
     def postinit() {
         self.area = self.width * self.height;
@@ -922,6 +922,8 @@ impl Calculator.multiply {
 
 A single logical module can be split across *variant files* that target different execution contexts. Variant suffixes are `.sv.jac` (server), `.cl.jac` (client), and `.na.jac` (native). All files sharing the same base name are automatically discovered and compiled together.
 
+Variant files are an *explicit* placement mechanism, and for the client side they are optional: the compiler infers client placement from client-only syntax (JSX, npm imports) in plain `.jac` files, so splitting a module into `.cl.jac` variants is a style choice rather than a requirement. Native placement is likewise inferred when code uses an extern C surface: an import whose braces declare C-ABI functions (e.g. `import from raylib { def InitWindow(w: i32, h: i32, title: str) -> None; }`) seeds native placement for itself and the declarations that use it. For pure native-compatible code with no such FFI seed, the `.na.jac` variant (or an `na {}` block) remains how native code is declared.
+
 **Head module precedence:** `.jac` > `.sv.jac` > `.cl.jac` > `.na.jac`. The highest-precedence file that exists on disk becomes the *head module*; all lower-precedence variants are attached as variant annexes. If no plain `.jac` file exists, the next available variant acts as head.
 
 ```
@@ -1063,5 +1065,5 @@ with entry {
 
 **Related Reference:**
 
-- [Part I: Foundation](foundation.md) - Variables, types, control flow
+- [Types and Values](types-and-values.md), [Variables and Scope](variables-and-scope.md), [Control Flow](control-flow.md) - The language core
 - [Part III: OSP](osp.md) - Nodes, edges, walkers

@@ -4,6 +4,7 @@ import from jaclang.jac0core.constant { Tokens as Tok }
 
 impl LayoutPass.postinit -> None {
     self.registry = LayoutRegistry();
+    self.isinstance_targets = set();
     super.postinit();
 }
 
@@ -19,6 +20,7 @@ impl LayoutPass.transform(ir_in: uni.Module) -> uni.Module {
     }
 
     self._build_hierarchy(arch_map);
+    self._collect_isinstance_targets(module);
 
     topo_order = self._topo_sort(arch_map);
     self.registry.topo_order = topo_order;
@@ -61,6 +63,42 @@ impl LayoutPass._collect_archetypes(module: uni.Module) -> dict[str, uni.Archety
         }
     }
     return arch_map;
+}
+
+impl LayoutPass._collect_isinstance_targets(module: uni.Module) -> None {
+    import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
+    import from jaclang.jac0core.constant { CodeContext }
+    calls: list = [];
+    for stmt in ModuleCodegenPass.iter_context_stmts(module, CodeContext.NATIVE) {
+        if isinstance(stmt, uni.FuncCall) {
+            calls.append(stmt);
+        }
+        calls.extend(stmt.get_all_sub_nodes(typ=uni.FuncCall));
+    }
+    for call in calls {
+        tgt = call.target;
+        if not (isinstance(tgt, uni.Name) and tgt.value == "isinstance") {
+            continue;
+        }
+        params = call.params or [];
+        if len(params) < 2 {
+            continue;
+        }
+        type_arg = params[1];
+        cands: list = [];
+        if isinstance(type_arg, uni.TupleVal) {
+            for v in (type_arg.values or []) {
+                cands.append(v);
+            }
+        } else {
+            cands.append(type_arg);
+        }
+        for c in cands {
+            if isinstance(c, uni.Name) {
+                self.isinstance_targets.add(c.value);
+            }
+        }
+    }
 }
 
 impl LayoutPass._build_hierarchy(archetypes: dict[str, uni.Archetype]) -> None {
@@ -208,7 +246,9 @@ impl LayoutPass._build_layout(arch: uni.Archetype) -> ArchetypeLayout {
             parents_set.add(p);
         }
     }
-    needs_vtable = bool(parents) or aname in parents_set;
+    needs_vtable = (
+        bool(parents) or aname in parents_set or aname in self.isinstance_targets
+    );
 
     fields: list[FieldInfo] = [];
     field_index: dict[str, int] = {};

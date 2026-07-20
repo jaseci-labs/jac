@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: jac-http-e2e
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: echo
+  namespace: jac-http-e2e
+  labels:
+    app: echo
+    managed: jac-scale-e2e
+spec:
+  # Starts at zero -- KEDAAutoscaler.apply_http_activation manages replicas
+  # from here on. Never manually scaled up by this fixture or the e2e script.
+  replicas: 0
+  selector:
+    matchLabels:
+      app: echo
+  template:
+    metadata:
+      labels:
+        app: echo
+    spec:
+      containers:
+        - name: echo
+          image: hashicorp/http-echo:1.0
+          args:
+            - "-text=hello from jac-scale HTTP activation e2e"
+            - "-listen=:5678"
+          ports:
+            - containerPort: 5678
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 5678
+            initialDelaySeconds: 1
+            periodSeconds: 2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: echo-svc
+  namespace: jac-http-e2e
+  labels:
+    managed: jac-scale-e2e
+spec:
+  selector:
+    app: echo
+  ports:
+    - port: 80
+      targetPort: 5678

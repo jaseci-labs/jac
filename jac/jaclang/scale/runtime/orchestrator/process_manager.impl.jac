@@ -38,9 +38,6 @@ def _remove_pidfile(name: str) {
     _remove_portfile(name);
 }
 
-# The port is persisted beside the pid so a SIBLING process (e.g. `jac scale
-# status` run in another terminal) can find and health-check services it did
-# not spawn itself.
 def _portfile_path(name: str) -> _Path {
     return _Path(".jac/run") / f"{name}.port";
 }
@@ -139,9 +136,10 @@ impl ServiceProcessManager.start_service(name: str) -> bool {
     port = self._assign_port(entry);
 
     import from jaclang.scale.runtime.context.util { jac_executable }
+    import from jaclang.runtimelib.sv_client { headless_start_args }
     jac_bin: str = jac_executable();
 
-    cmd = [jac_bin, "start", entry.file, "--port", str(port), "--no_client"];
+    cmd = [jac_bin] + headless_start_args(entry.file, port);
     logger.info(f"Starting {name}: {' '.join(cmd)}");
 
     try {

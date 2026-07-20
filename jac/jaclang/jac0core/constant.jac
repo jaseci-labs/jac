@@ -234,7 +234,6 @@ class Tokens(StrEnum) {
         KW_ELIF = 'KW_ELIF';
         KW_ELSE = 'KW_ELSE';
         KW_FOR = 'KW_FOR';
-        KW_TO = 'KW_TO';
         KW_BY = 'KW_BY';
         KW_WHILE = 'KW_WHILE';
         KW_FOREVER = 'KW_FOREVER';
@@ -312,8 +311,6 @@ class Tokens(StrEnum) {
         CARROW_L_P2 = 'CARROW_L_P2';
         CARROW_R_P1 = 'CARROW_R_P1';
         CARROW_R_P2 = 'CARROW_R_P2';
-        GLOBAL_OP = 'GLOBAL_OP';
-        NONLOCAL_OP = 'NONLOCAL_OP';
         KW_HERE = 'KW_HERE';
         KW_VISITOR = 'KW_VISITOR';
         KW_SELF = 'KW_SELF';
@@ -418,7 +415,6 @@ glob TOKEN_MAP: dict[str, str] = {
          'F_TEXT_TSQ': '',
          'F_TSQ_END': "'''",
          'F_TSQ_START': "f'''",
-         'GLOBAL_OP': 'global',
          'GT': '>',
          'GTE': '>=',
          'HEX': '0x',
@@ -432,7 +428,7 @@ glob TOKEN_MAP: dict[str, str] = {
          'JSX_TAG_END': '>',
          'JSX_TEXT': '',
          'KWESC_NAME': '`',
-         'KW_ABSTRACT': 'abs',
+         'KW_ABSTRACT': 'abst',
          'KW_AND': 'and',
          'KW_AS': 'as',
          'KW_ASSERT': 'assert',
@@ -499,7 +495,6 @@ glob TOKEN_MAP: dict[str, str] = {
          'KW_SUPER': 'super',
          'KW_SWITCH': 'switch',
          'KW_TEST': 'test',
-         'KW_TO': 'to',
          'KW_TRY': 'try',
          'KW_VISIT': 'visit',
          'KW_VISITOR': 'visitor',
@@ -522,7 +517,6 @@ glob TOKEN_MAP: dict[str, str] = {
          'MUL_EQ': '*=',
          'NAME': '',
          'NE': '!=',
-         'NONLOCAL_OP': 'nonlocal',
          'NOT': 'not',
          'NULL': 'None',
          'NULL_OK': '?',
@@ -614,3 +608,11 @@ glob TOKEN_MAP: dict[str, str] = {
          '#F8F8FF',
          '#F0FFFF'
      ];
+
+glob NON_ESCAPED_KEYWORDS: set = {'float', 'int', 'str', 'bool', 'self'};
+
+glob RESERVED_IDENT_NAMES: set = {
+         v
+         for v in TOKEN_MAP.values()
+         if v not in NON_ESCAPED_KEYWORDS
+     };

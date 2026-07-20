@@ -114,12 +114,7 @@ impl IdentityStorage.ensure_user_by_id(user_id: str) -> str | None {
     if existing {
         return existing.get('root_id');
     }
-    # JIT provisioning for federated identity: another trusted process (the
-    # microservice gateway or a sibling service sharing the JWT secret) minted
-    # a token for this user_id, but this store has never seen it. Materialize
-    # a local user record with a fresh local root so the user's graph in THIS
-    # service starts empty. No identities/credentials: login stays wherever
-    # the user actually registered.
+
     user_root = Root();
     Jac.save(user_root);
     Jac.commit(user_root);
@@ -140,11 +135,6 @@ impl IdentityStorage.ensure_user_by_id(user_id: str) -> str | None {
             }
         );
     } except Exception {
-        # Lost a concurrent first-access race for this user_id: another
-        # request inserted between our check and our insert. The winner's
-        # record is authoritative (mongo raises IdentityTakenError, sqlite a
-        # raw IntegrityError - both land here); our freshly-minted root
-        # becomes a single orphaned empty node. Anything else re-raises.
         winner = self.get_user_by_id(user_id);
         if winner {
             return winner.get('root_id');

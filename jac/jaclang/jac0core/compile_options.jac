@@ -15,6 +15,7 @@ obj CompileOptions {
         nogc_enforce_modules: list[str] = field(default_factory=`list),
         nogc_grandfathered: list[str] = field(default_factory=`list),
         suppress_codes: list[str] = field(default_factory=`list),
+        default_codespace: str = "",
         project_kind: str = "web",
         project_root: (str | None) = None,
         cancel_token: any = None;

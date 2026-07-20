@@ -403,7 +403,7 @@ def _write_backend_only_project(src: Path, name: str = "be_app") {
         f'[project]\nname = "{name}"\nentry-point = "main.jac"\n'
     );
     (src / "main.jac").write_text(
-        'walker:pub Ping {\n' + '    has reports: list[str] = [];\n' + '    can run with `root entry {\n' + '        report "pong";\n' + '    }\n' + '}\n'
+        'walker:pub Ping {\n' + '    has reports: list[str] = [];\n' + '    can run with Root entry {\n' + '        report "pong";\n' + '    }\n' + '}\n'
     );
 }
 
@@ -450,7 +450,7 @@ test "request model includes fields inherited from a base walker" {
             '[project]\nname = "inh"\nentry-point = "main.jac"\n'
         );
         (src / "main.jac").write_text(
-            'walker:pub Base {\n' + '    has a: int,\n' + '        b: str = "def";\n' + '    has reports: list[int] = [];\n' + '}\n\n' + 'walker:pub Compute(Base) {\n' + '    has c: int;\n' + '    can run with `root entry {\n' + '        report self.a + self.c;\n' + '    }\n' + '}\n'
+            'walker:pub Base {\n' + '    has a: int,\n' + '        b: str = "def";\n' + '    has reports: list[int] = [];\n' + '}\n\n' + 'walker:pub Compute(Base) {\n' + '    has c: int;\n' + '    can run with Root entry {\n' + '        report self.a + self.c;\n' + '    }\n' + '}\n'
         );
         rc = _silent_eject(str(src));
         assert rc == 0;

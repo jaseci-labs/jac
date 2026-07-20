@@ -32,3 +32,18 @@ base_route_app = "app"
 # NO [scale.*] config - deliberately: the zero-config example (#7137/#7140/#7144).
 # Services/routes/database/client entry are all auto-derived; the e2e harness
 # appends its test-only opt-ins (ingress/logs/cors) at run time.
+
+# --- e2e-harness overlay (appended by k8s_microservice_real_e2e.sh) ---
+[scale.microservices.logs]
+enabled = true
+
+[scale.microservices.ingress]
+enabled = true
+host = "jac-shop.local"
+ingress_class_name = "nginx"
+
+[scale.microservices.cors]
+allow_origins = ["http://app.example.com"]
+allow_methods = ["GET", "POST", "OPTIONS"]
+allow_headers = ["Authorization", "Content-Type"]
+allow_credentials = true
