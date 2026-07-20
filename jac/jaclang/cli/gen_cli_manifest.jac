@@ -336,55 +336,25 @@ def generate -> str {
 }
 
 def _format_generated(content: str) -> str {
-    import os;
-    import subprocess;
-    import sys;
     import tempfile;
     import from pathlib { Path }
-    import jaclang;
+    import jaclang.cli.commands.analysis;
 
-    file_path = jaclang.__file__;
-    if file_path is None {
-        raise RuntimeError("jaclang.__file__ is None; cannot locate package");
-    }
-    pkg_root = Path(file_path).parent;
-    manifest_src = pkg_root / "cli" / "manifest.jac";
-    src_root = _resolve_jaclang_root();
-    if src_root is not None {
-        tree_manifest = src_root / "jaclang" / "cli" / "manifest.jac";
-        if tree_manifest.is_file() {
-            manifest_src = tree_manifest;
-        }
-    }
     try {
         with tempfile.TemporaryDirectory() as fmt_dir {
-            cli_root = Path(fmt_dir) / "jaclang" / "cli";
-            impl_path = cli_root / "impl" / "manifest.impl.jac";
-            manifest_path = cli_root / "manifest.jac";
-            impl_path.parent.mkdir(parents=True, exist_ok=True);
+            impl_path = Path(fmt_dir) / "manifest.impl.jac";
             impl_path.write_text(content, encoding="utf-8");
-            manifest_path.write_text(
-                manifest_src.read_text(encoding="utf-8"), encoding="utf-8"
-            );
-            with open(
-                os.path.join(fmt_dir, "jac.toml"), "w", encoding="utf-8"
-            ) as cfg {
-                cfg.write("[check.lint]\nselect = [\"all\"]\n");
+            prev: str = "";
+            for _ in range(4) {
+                jaclang.cli.commands.analysis.format(
+                    [str(impl_path)], False, True, False, False
+                );
+                current = impl_path.read_text(encoding="utf-8");
+                if current == prev {
+                    break;
+                }
+                prev = current;
             }
-            subprocess.run(
-                [
-                    sys.executable,
-                    "-m",
-                    "jaclang",
-                    "fmt",
-                    "--lintfix",
-                    "jaclang/cli/manifest.jac",
-
-                ],
-                capture_output=True,
-                cwd=fmt_dir,
-                check=False,
-            );
             return impl_path.read_text(encoding="utf-8");
         }
     } except Exception {
