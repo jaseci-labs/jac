@@ -207,7 +207,7 @@ impl JacClientCompiler.compile_dependencies_recursively(
         }
     }
     collected_globals.update(non_root_globals);
-    combined_js = self.jac_compiler.add_runtime_imports(module_js);
+    combined_js = module_js;
     try {
         relative_path = module_path.relative_to(source_root);
         rel_str = self._jac_path_to_js(str(relative_path));

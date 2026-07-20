@@ -1,7 +1,3 @@
-impl JacToJSCompiler.add_runtime_imports(js_code: str) -> str {
-    return js_code;
-}
-
 impl JacToJSCompiler.extract_globals(
     manifest: (ClientManifest | None), module: ModuleType
 ) -> dict[str, any] {
