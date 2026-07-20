@@ -249,9 +249,62 @@ def generate_body -> str {
     return "\n".join(lines);
 }
 
+def _resolve_jaclang_root -> Path | None {
+    import os;
+    import tomllib;
+    import from pathlib { Path }
+
+    dev = os.environ.get("JAC_DEV_SOURCE");
+    if dev {
+        src_root = Path(dev);
+        if (src_root / "jaclang").is_dir() {
+            return src_root;
+        }
+    }
+
+    here = Path(os.getcwd());
+    for parent in [here, *here.parents] {
+        toml = parent / "jac.toml";
+        if not toml.is_file() {
+            continue;
+        }
+        try {
+            data = tomllib.loads(toml.read_text(encoding="utf-8"));
+        } except Exception {
+            continue;
+        }
+        section = data.get("dev");
+        if isinstance(section, dict) {
+            src = section.get("jaclang_source");
+            if isinstance(src, str) and src {
+                src_root = (parent / src).resolve();
+                if (src_root / "jaclang").is_dir() {
+                    return src_root;
+                }
+            }
+        }
+        if (parent / "jaclang").is_dir() {
+            return parent;
+        }
+        if (parent / "jac" / "jaclang").is_dir() {
+            return parent / "jac";
+        }
+    }
+    return None;
+}
+
 def _manifest_impl_path -> str {
     import jaclang;
     import from pathlib { Path }
+
+    src_root = _resolve_jaclang_root();
+    if src_root is not None {
+        tree_path = src_root / "jaclang" / MANIFEST_IMPL_REL;
+        if tree_path.is_file() {
+            return str(tree_path);
+        }
+    }
+
     file_path = jaclang.__file__;
     if file_path is None {
         raise RuntimeError("jaclang.__file__ is None; cannot locate package");
@@ -289,12 +342,20 @@ def _format_generated(content: str) -> str {
     import tempfile;
     import from pathlib { Path }
     import jaclang;
+
     file_path = jaclang.__file__;
     if file_path is None {
         raise RuntimeError("jaclang.__file__ is None; cannot locate package");
     }
     pkg_root = Path(file_path).parent;
     manifest_src = pkg_root / "cli" / "manifest.jac";
+    src_root = _resolve_jaclang_root();
+    if src_root is not None {
+        tree_manifest = src_root / "jaclang" / "cli" / "manifest.jac";
+        if tree_manifest.is_file() {
+            manifest_src = tree_manifest;
+        }
+    }
     try {
         with tempfile.TemporaryDirectory() as fmt_dir {
             cli_root = Path(fmt_dir) / "jaclang" / "cli";
@@ -318,6 +379,7 @@ def _format_generated(content: str) -> str {
                     "fmt",
                     "--lintfix",
                     "jaclang/cli/manifest.jac",
+
                 ],
                 capture_output=True,
                 cwd=fmt_dir,
