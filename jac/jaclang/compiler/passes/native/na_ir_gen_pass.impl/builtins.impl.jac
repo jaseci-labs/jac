@@ -67,6 +67,18 @@ impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
                     self._emit_rc_release_typed(val, op="print_obj_src", loc="");
                 }
                 val = obj_s;
+            } else {
+                _pointee = val.type?.pointee;
+                _is_char_ptr = isinstance(_pointee, ir.IntType) and _pointee.width == 8;
+                if not _is_char_ptr {
+                    self.emit(
+                        E5092,
+                        node_override=param,
+                        kind="print argument",
+                        name=type(param).__name__
+                    );
+                    return None;
+                }
             }
             fmt_parts.append("%s");
             args.append(val);

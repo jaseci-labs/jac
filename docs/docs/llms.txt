@@ -9,8 +9,9 @@ Key facts: statements end with `;`, blocks use `{ }`, fields are declared with `
 - [What is Jac](https://docs.jaseci.org/quick-guide/): overview and positioning
 - [Install](https://docs.jaseci.org/quick-guide/install/): the self-contained binary, upgrading, IDE setup
 - [Core concepts](https://docs.jaseci.org/quick-guide/what-makes-jac-different/): what the language abstracts away
+- [The ideas behind Jac](https://docs.jaseci.org/quick-guide/ideas-behind-jac/): the design philosophy -- discontinuities, glue, one checked medium across ecosystems/tiers/toolchains (synechic), computation moving to data
 - [One binary, build anything](https://docs.jaseci.org/quick-guide/one-binary/): the toolchain inside the jac binary
-- [Syntax cheatsheet](https://docs.jaseci.org/quick-guide/syntax-cheatsheet/): the whole language on one page
+- [Syntax cheatsheet](https://docs.jaseci.org/reference/language/syntax-cheatsheet/): the whole language on one page
 - [Jac vs a traditional stack](https://docs.jaseci.org/quick-guide/jac-vs-traditional-stack/): comparison with assembling frameworks
 
 ## Tutorials
@@ -33,6 +34,7 @@ Key facts: statements end with `;`, blocks use `{ }`, fields are declared with `
 
 ## Optional
 
+- [Research & papers](https://docs.jaseci.org/community/research/): the peer-reviewed foundations (OSP, MTP, Jaseci)
 - [GitHub repository](https://github.com/jaseci-labs/jaseci)
 - [Agent setup skill](https://raw.githubusercontent.com/jaseci-labs/jaseci/main/SKILL.md): step-by-step install and MCP setup for AI coding agents
 - [Jac Playground](https://playground.jaseci.org): run Jac in the browser, no install

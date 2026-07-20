@@ -37,6 +37,17 @@ Native compilation is ideal for:
 
 ## Quick Reference
 
+Native placement is **inferred from extern C declarations** -- an import
+whose braces declare C-ABI functions, e.g. `import from raylib {
+def InitWindow(w: i32, h: i32, title: str) -> None; }`, is an FFI surface
+only the native backend can satisfy, so the compiler routes it -- and the
+declarations that use it -- to the native codespace automatically, just as
+JSX and npm imports infer the client codespace. Merely importing *from* a
+native module is not such a signal, and native-compatible pure code still
+defaults to the server: without an FFI seed, whether code *should* be
+compiled natively is a build decision, made with one of the selectors
+below (all of which remain valid as explicit overrides):
+
 | Aspect | Details |
 |--------|---------|
 | **Inline section** | `na { }` block (or `na` prefix) in any `.jac` file |
@@ -600,7 +611,7 @@ non-deterministic, but each reader is congruent with its CPython counterpart.
 | `sys.byteorder` | `"little"` / `"big"` (host arch) |
 | `sys.platform` | e.g. `"linux"` / `"darwin"` |
 
-`sys.argv` works both with `jac run --autonative` and standalone binaries
+`sys.argv` works both with `jac run` under a native default codespace and standalone binaries
 compiled via `jac nacompile`.
 
 #### `os` and `os.path` -- Operating System
@@ -1077,4 +1088,4 @@ with entry {
 
 ### Chess Engine
 
-For a complete walkthrough that covers `--autonative`, `nacompile`, `sys.argv`, declaration/implementation separation, and nearly every other native feature, see the **[Build a Chess Engine](../../tutorials/native/chess.md)** tutorial.
+For a complete walkthrough that covers the native default codespace, `nacompile`, `sys.argv`, declaration/implementation separation, and nearly every other native feature, see the **[Build a Chess Engine](../../tutorials/native/chess.md)** tutorial.

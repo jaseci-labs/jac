@@ -35,18 +35,22 @@
 set -euo pipefail
 
 # ── 0. Parse args ───────────────────────────────────────────────────────────
-MODE="bench"   # bench | jac | zig
+MODE="bench"   # bench | jac | zig | headless
 for arg in "$@"; do
   case "$arg" in
     --jac)        MODE="jac" ;;
     --zig)        MODE="zig" ;;
     --bench)      MODE="bench" ;;
+    --headless)   MODE="headless" ;;
     -h|--help)
-      echo "Usage: ${0##*/} [--jac | --zig | --bench]"
-      echo "  (default)  benchmark both builds for ${BENCH_SECONDS:-8}s each and print avg/max FPS"
-      echo "  --jac      build & run only the Jac-native shooter, interactively"
-      echo "  --zig      build & run only the Zig shooter, interactively"
-      echo "  --bench    explicit form of the default benchmark mode"
+      echo "Usage: ${0##*/} [--jac | --zig | --bench | --headless]"
+      echo "  (default)   benchmark both builds for ${BENCH_SECONDS:-8}s each and print avg/max FPS"
+      echo "  --jac       build & run only the Jac-native shooter, interactively"
+      echo "  --zig       build & run only the Zig shooter, interactively"
+      echo "  --bench     explicit form of the default benchmark mode"
+      echo "  --headless  benchmark the borrow-checked headless sim under all three"
+      echo "              gc modes (no window, no GPU, no raylib download needed);"
+      echo "              HEADLESS_FRAMES overrides the frame count (default 100000)"
       exit 0
       ;;
     *) echo "Unknown argument: $arg (try --help)" >&2; exit 1 ;;
@@ -65,6 +69,75 @@ mkdir -p "$BUILD_DIR"
 
 os="$(uname -s)"
 arch="$(uname -m)"
+
+# Locate the jac CLI (PATH first, then the in-repo virtualenv).
+find_jac() {
+  if command -v jac >/dev/null 2>&1; then
+    echo "jac"
+  elif [ -x "$HERE/../../../.venv/bin/jac" ]; then
+    echo "$HERE/../../../.venv/bin/jac"
+  else
+    echo "Could not find the 'jac' CLI on PATH or in ../../../.venv." >&2
+    echo "Install jaclang (pip install jaclang) or activate the repo venv." >&2
+    exit 1
+  fi
+}
+
+# ── 0.5 Headless mode: no window, no GPU, no raylib - handle it now ─────────
+#
+# shooter_headless.na.jac is the shooter's game loop with the renderer swapped
+# for a deterministic digest and the ownership dial turned all the way up: it
+# passes the enforced borrow checker and compiles headerless with NO collector
+# and machine-checked zero reference counting (--enforce-nogc --gc none
+# --assert-no-rc). The same source also builds under rc and cycles; identical
+# digests across the three prove the borrow-checked build changes nothing.
+HEADLESS_FRAMES="${HEADLESS_FRAMES:-100000}"
+
+if [ "$MODE" = "headless" ]; then
+  JAC="$(find_jac)"
+  echo ">> compiling: shooter_headless.na.jac under three memory modes"
+  echo "   none   : --enforce-nogc --gc none --assert-no-rc  (borrow-checked, zero RC)"
+  echo "   rc     : --gc rc                                  (reference counting)"
+  echo "   cycles : --gc cycles                              (rc + cycle collector)"
+  "$JAC" nacompile shooter_headless.na.jac --enforce-nogc --gc none --assert-no-rc \
+    -o shooter_headless_none >/dev/null
+  "$JAC" nacompile shooter_headless.na.jac --gc rc     -o shooter_headless_rc     >/dev/null
+  "$JAC" nacompile shooter_headless.na.jac --gc cycles -o shooter_headless_cycles >/dev/null
+
+  echo ">> simulating ${HEADLESS_FRAMES} frames per build (240 Hz game tick) ..."
+  headless_digests=""
+  print_headless_row() {
+    local mode="$1" out="$2" digest score ns fps nsf
+    digest="$(printf '%s\n' "$out" | sed -n 's/^shooter://p')"
+    score="$(printf '%s\n' "$out" | sed -n 's/^score:\([0-9]*\).*/\1/p')"
+    ns="$(printf '%s\n' "$out" | sed -n 's/^ns=//p')"
+    fps="$(awk -v f="$HEADLESS_FRAMES" -v n="$ns" 'BEGIN{printf "%.0f", f * 1e9 / n}')"
+    nsf="$(awk -v f="$HEADLESS_FRAMES" -v n="$ns" 'BEGIN{printf "%.0f", n / f}')"
+    printf '  %-9s %11s %11s %8s %12s\n' "$mode" "$fps" "$nsf" "$score" "$digest"
+    headless_digests="$headless_digests $digest"
+  }
+
+  out_none="$(./shooter_headless_none     "$HEADLESS_FRAMES")"
+  out_rc="$(./shooter_headless_rc         "$HEADLESS_FRAMES")"
+  out_cycles="$(./shooter_headless_cycles "$HEADLESS_FRAMES")"
+
+  printf '\n'
+  printf '==== headless shooter benchmark (%s frames, 240 Hz sim tick) ====\n' "$HEADLESS_FRAMES"
+  printf '  %-9s %11s %11s %8s %12s\n' "gc mode" "sim FPS" "ns/frame" "score" "digest"
+  print_headless_row "none"   "$out_none"
+  print_headless_row "rc"     "$out_rc"
+  print_headless_row "cycles" "$out_cycles"
+  uniq_digests="$(printf '%s\n' $headless_digests | sort -u | wc -l | tr -d ' ')"
+  if [ "$uniq_digests" = "1" ]; then
+    echo "  digests identical across gc modes: OK"
+  else
+    echo "  !! DIGEST MISMATCH across gc modes"
+  fi
+  printf '  (none = enforced ownership, headerless, machine-checked zero RC)\n'
+  printf '================================================================\n'
+  [ "$uniq_digests" = "1" ]
+  exit $?
+fi
 
 # ── 1. Map platform -> release asset + library glob ─────────────────────────
 case "$os" in
@@ -133,15 +206,7 @@ echo ">> staged   : raylib shared library set -> ./ (via $stage_name)"
 # Compile shooter.na.jac -> ./shooter with the jac CLI.
 build_jac() {
   local JAC
-  if command -v jac >/dev/null 2>&1; then
-    JAC="jac"
-  elif [ -x "$HERE/../../../.venv/bin/jac" ]; then
-    JAC="$HERE/../../../.venv/bin/jac"   # in-repo virtualenv fallback
-  else
-    echo "Could not find the 'jac' CLI on PATH or in ../../../.venv." >&2
-    echo "Install jaclang (pip install jaclang) or activate the repo venv." >&2
-    exit 1
-  fi
+  JAC="$(find_jac)"
   echo ">> compiling: $JAC nacompile shooter.na.jac"
   "$JAC" nacompile shooter.na.jac
 }

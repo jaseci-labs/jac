@@ -26,6 +26,9 @@ After `jac run --entry create app.jac`, alice and bob live in `.jac/data/<app>.d
 
 **Backends.** Out of the box, `SqliteMemory` writes to `.jac/data/<app>.db`. Configure a Mongo database under `[scale.*]` and set `MONGODB_URI`, then `jac install` pulls in `pymongo` and persistence flips to the [scale](plugins/jac-scale.md) `MongoBackend`. The storage swaps; the developer-facing model (this page) doesn't change.
 
+!!! info "Why reachability? Persistence is a predicate, not an event"
+    In the I/O conception, persistence is something a program *does* at a moment -- open a session, call save -- and forgetting to do it is a bug. Jac makes persistence a *predicate*: a datum is durable exactly while it stands in a reachable position, the same way a value is live under garbage collection exactly while it's reachable from the collector's roots. One rule serves both temporal directions -- reachability decides what survives the past (collection) and what survives into the future (persistence). The idea has a research lineage (it is the identification rule of *orthogonal persistence*, pioneered in PS-algol in the 1980s), with one deliberate restriction that makes it practical: Jac persists the **topology** (nodes and edges), not the whole language heap -- closures, walker-local state, and ordinary objects stay transient, because they are the moving parts, not the remembered world.
+
 ---
 
 ## Concurrent writes: check-then-create and convergence

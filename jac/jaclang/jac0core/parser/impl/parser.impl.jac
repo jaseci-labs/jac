@@ -3271,7 +3271,8 @@ impl Parser.parse_element_stmt{
             stmt = self.parse_element_stmt();
             if stmt is not None {
                 stmt.add_kids_left([sv_tok]);
-                if stmt?.code_context {
+
+                if stmt?.code_context and not isinstance(stmt, Import) {
                     stmt.code_context = CodeContext.SERVER;
                 }
             }
@@ -3529,7 +3530,10 @@ impl Parser.parse_client_block -> ClientBlock {
                 body.append(stmt);
                 kid.append(stmt);
 
-                if stmt?.code_context and stmt._source_context_token() is None {
+                if stmt?.code_context
+                and (
+                    stmt._source_context_token() is None or isinstance(stmt, Import)
+                ) {
                     stmt.code_context = CodeContext.CLIENT;
                 }
             }
