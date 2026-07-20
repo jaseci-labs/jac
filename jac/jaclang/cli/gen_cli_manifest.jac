@@ -470,7 +470,29 @@ def verify_drift -> list[str] {
         } elif name not in fresh {
             errors.append(f"{name}: in manifest but missing from registry");
         } elif committed[name] != fresh[name] {
-            errors.append(f"{name}: manifest and registry disagree on command fields");
+            c = committed[name];
+            f = fresh[name];
+            field_names = [
+                "name",
+                "help",
+                "group",
+                "tier",
+                "hidden",
+                "handler_module",
+                "handler_name",
+                "needs",
+                "description",
+                "examples",
+                "args"
+            ];
+            differing = [
+                field_names[i]
+                for i in range(len(field_names))
+                if c[i] != f[i]
+            ];
+            errors.append(
+                f"{name}: manifest and registry disagree on fields: {differing}"
+            );
         }
     }
     if errors {
