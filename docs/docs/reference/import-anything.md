@@ -32,7 +32,14 @@ A plain whole-module import (`import os;`) takes a trailing semicolon. The `impo
 
 ## Choosing the codespace
 
-Imports do not carry a codespace by themselves -- they inherit it from their surrounding context. There are three ways to set that context:
+Most of the time the codespace is chosen *for* you. An import inherits the codespace of its surrounding context, and that context is usually inferred:
+
+- A **quoted npm path** (`import from "react-dom" { render }`) is client-only by construction, so it lands in the client codespace automatically -- and the declarations that use it become client too.
+- A **bare-name npm import** (`import from react { useState }`) is placed through its consumers: when JSX components use the imported names, the import joins the client bundle with them.
+- **Python / PyPI imports** are server code -- the default for anything unmarked.
+- An **extern-decl C import** -- braces containing C-ABI function declarations (`import from "libm.so" { def sqrt(x: f64) -> f64; }`) -- can only be satisfied by the native backend, so it lands in the native codespace automatically, and the declarations that use it become native too. Merely importing *from* a native module is not a native signal, and pure native-compatible code stays on the server -- without an FFI seed, `na` takes an explicit marker.
+
+Explicit markers override inference. When you want to pin an import's context (or simply make the split visible), there are three ways to set it:
 
 ```jac
 # 1. Default: the top of any .jac file is the SERVER codespace.
@@ -54,7 +61,7 @@ sv import from analytics { track }
 You can also dedicate a whole file to one codespace with a file extension: `.sv.jac` (server), `.cl.jac` (client), `.na.jac` (native). Inside such a file no header or prefix is needed.
 
 !!! tip "Prefer file-based separation, then braced blocks"
-    For clean, scalable codebases, dedicating a whole file to one codespace (`.sv.jac` / `.cl.jac` / `.na.jac`) is best -- each file has a single, unambiguous target, nothing in the body to track, and the split is visible from the directory tree. Within a mixed file, `cl { }` / `sv { }` / `na { }` braced blocks are the idiomatic choice -- the braces bracket exactly the tagged region and keep imports grouped. Reserve the single-statement prefix for one-off cases.
+    Explicit markers are optional -- inference places npm imports and their consumers client-side on its own. When you do split explicitly, dedicating a whole file to one codespace (`.sv.jac` / `.cl.jac` / `.na.jac`) is best -- each file has a single, unambiguous target, nothing in the body to track, and the split is visible from the directory tree. Within a mixed file, `cl { }` / `sv { }` / `na { }` braced blocks are the idiomatic choice -- the braces bracket exactly the tagged region and keep imports grouped. Reserve the single-statement prefix for one-off cases.
 
 ---
 
@@ -127,7 +134,7 @@ include math_helpers;
 
 ## Client imports -- full npm compatibility
 
-Client code compiles to JavaScript, so the import list maps directly onto ECMAScript `import` declarations -- giving you **the entire npm ecosystem**. Client imports must live in the client codespace (a `cl { }` block, a `cl` prefix, or a `.cl.jac` file).
+Client code compiles to JavaScript, so the import list maps directly onto ECMAScript `import` declarations -- giving you **the entire npm ecosystem**. Client imports live in the client codespace, but that rarely needs marking: a quoted npm path is client by construction, and a bare-name npm import is inferred client through the JSX components that use it. The examples below use explicit `cl { }` blocks -- the unambiguous style for a mixed file -- but every form also works markerless.
 
 ```jac
 cl {
@@ -221,7 +228,7 @@ na {
 }
 ```
 
-The headline native feature is **C library interop**. Point `import from` at a shared library path and declare the foreign functions you need right inside the braces -- the compiler generates the C-ABI bridge:
+The headline native feature is **C library interop**. Point `import from` at a shared library path and declare the foreign functions you need right inside the braces -- the compiler generates the C-ABI bridge. An extern-decl import like this is also a *native signal*: in a markerless file it seeds native placement for itself and the declarations that use it, so the `na { }` blocks below are the explicit style, not a requirement:
 
 ```jac
 na {
@@ -257,7 +264,7 @@ na {
 
 ## Crossing codespaces
 
-A single file can mix all three codespaces, and imports can reach *across* the boundary. The most important cross-codespace import is **`sv import` inside client code**: it pulls a server walker or `def:pub` function into the client, and the compiler rewrites the call into an HTTP request automatically.
+A single file can mix all three codespaces, and imports can reach *across* the boundary. The most important cross-codespace import is **`sv import`**: it declares a boundary fact, not a placement -- the imported module's target stays on the server, while the import itself lives with its consumers. Inside client code it pulls in a server walker or `def:pub` function, and the compiler rewrites each call into an HTTP request automatically; used between two server modules, it declares a server-to-server microservice boundary instead.
 
 ```jac
 cl {
@@ -335,8 +342,8 @@ jac check myfile.jac                # full type-check (server / client code)
 
 `--parse-only` is the universally safe check for all three codespaces. For **native (`na`) code that calls C libraries**, the most reliable verification is to compile it -- `jac run myfile.na.jac` or `jac nacompile myfile.na.jac` -- since the native backend, not the general type checker, owns C-ABI coercion.
 
-If you have the [`jac mcp`](../reference/mcp.md) server connected, the `check_syntax` and `validate_jac` tools do the same thing from your AI assistant.
+If you have the [`jac mcp`](mcp.md) server connected, the `check_syntax` and `validate_jac` tools do the same thing from your AI assistant.
 
 ---
 
-**Related:** [Syntax Cheatsheet](syntax-cheatsheet.md) · [Code Organization](../reference/code-organization.md) · [Python Integration](../reference/language/python-integration.md) · [Native Compilation](../reference/language/native-pathway.md)
+**Related:** [Syntax Cheatsheet](language/syntax-cheatsheet.md) · [Code Organization](code-organization.md) · [Python Integration](language/python-integration.md) · [Native Compilation](language/native-pathway.md)

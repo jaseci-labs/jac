@@ -635,6 +635,31 @@ impl NaIRGenPass._make_iter_from_value(
     return None;
 }
 
+impl NaIRGenPass._adapter_callee_fn(fn_expr: uni.UniNode) -> (ir.Function | None) {
+    named = self.func_symtab.get(self._get_name(fn_expr));
+    if named is not None and isinstance(named, ir.Function) {
+        return named;
+    }
+    if isinstance(fn_expr, uni.LambdaExpr) {
+        lv = self._codegen_lambda(fn_expr);
+        if self._pending_lambda_captures is not None {
+            self._pending_lambda_captures = None;
+            self.emit(
+                E5092,
+                node_override=fn_expr,
+                kind="expression",
+                name="capturing lambda as a map/filter callback",
+                help_text="A lambda passed to map/filter must not capture enclosing locals; bind the value through the element or use a named function."
+            );
+            return None;
+        }
+        if isinstance(lv, ir.Function) {
+            return lv;
+        }
+    }
+    return None;
+}
+
 impl NaIRGenPass._build_iter_from_expr(expr: uni.UniNode) -> (tuple | None) {
     self._ensure_iter_types();
     if isinstance(expr, uni.FuncCall) {
@@ -646,7 +671,7 @@ impl NaIRGenPass._build_iter_from_expr(expr: uni.UniNode) -> (tuple | None) {
             cname = None;
         }
         if cname == "map" and len(params) == 2 {
-            fn = self.func_symtab.get(self._get_name(params[0]));
+            fn = self._adapter_callee_fn(params[0]);
             up = self._build_iter_from_expr(params[1]);
             if fn is None or up is None {
                 return None;
@@ -654,7 +679,7 @@ impl NaIRGenPass._build_iter_from_expr(expr: uni.UniNode) -> (tuple | None) {
             return self._make_map_iter(up, fn);
         }
         if cname == "filter" and len(params) == 2 {
-            pred = self.func_symtab.get(self._get_name(params[0]));
+            pred = self._adapter_callee_fn(params[0]);
             up = self._build_iter_from_expr(params[1]);
             if pred is None or up is None {
                 return None;
@@ -1148,6 +1173,13 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     _loc = "iter_for";
     is_tuple_target = isinstance(nd.target, uni.TupleVal);
 
+    _gen_it_spill: (ir.Value | None) = None;
+    if self._gen_ctx is not None
+    and self.builder.function is self._gen_ctx["resume_fn"] {
+        _gen_it_spill = self._entry_alloca(iter_val.type, "iterf.itslot");
+        self.builder.store(iter_val, _gen_it_spill);
+    }
+
     elem_slot = self._entry_alloca(elem_type, "iter.elem");
     a0: (ir.Value | None) = None;
     a1: (ir.Value | None) = None;
@@ -1174,6 +1206,9 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     end_bb = func.append_basic_block(name="iterf.end");
     self.builder.branch(cond_bb);
     self.builder.position_at_end(cond_bb);
+    if _gen_it_spill is not None {
+        iter_val = self.builder.load(_gen_it_spill, name="iterf.it");
+    }
     out_i8 = self.builder.bitcast(elem_slot, i8p, name="iterf.out");
     got = self._emit_iter_advance(self.builder, iter_val, out_i8);
     self.builder.cbranch(got, body_bb, end_bb);
@@ -1205,6 +1240,9 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     self.loop_stack.pop();
     self.builder.position_at_end(end_bb);
 
+    if _gen_it_spill is not None {
+        iter_val = self.builder.load(_gen_it_spill, name="iterf.it.end");
+    }
     if owns_iter {
         self._emit_rc_release_simple(iter_val, op="iter_end", loc=_loc);
     }

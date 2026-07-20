@@ -16,7 +16,7 @@ glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures", "checker"
      ),
      LANG_FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
-     NO_TC = CompileOptions(type_check=False);
+     NO_TC = CompileOptions(type_check=False, default_codespace='server');
 
 def assert_error_pretty_found(needle: str, haystack: str) {
     for line in [

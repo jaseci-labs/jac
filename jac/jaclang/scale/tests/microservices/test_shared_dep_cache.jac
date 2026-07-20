@@ -24,3 +24,18 @@ test "bootstrap points the pip cache at the shared bundle PVC, best-effort" {
     mounts = [m["name"] for m in ctr["volumeMounts"]];
     assert BUNDLE_VOLUME_NAME in mounts;
 }
+
+test "shared pip cache is opened cross-uid, probed, with pod-local fallback" {
+    ctr = build_bootstrap_init_container(KubernetesConfig(), "python:3.12-slim");
+    script = str(ctr["args"][0]);
+    cache = f"{BUNDLE_MOUNT_PATH}/.cache";
+    # The creator opens the dirs so pods running other uids can still write.
+    assert f"chmod 0777 {cache} {cache}/pip" in script;
+    # A pod that cannot write the shared dir must not export it: pip would
+    # silently disable caching and rebuild sdists on every boot. It gets a
+    # pod-local cache instead.
+    assert f"if touch {cache}/pip/.writable" in script;
+    assert "export PIP_CACHE_DIR=/tmp/jac-pip-cache" in script;
+    # The wipe-and-rewarm path re-opens the recreated dir too.
+    assert script.count("chmod 0777") == 2;
+}

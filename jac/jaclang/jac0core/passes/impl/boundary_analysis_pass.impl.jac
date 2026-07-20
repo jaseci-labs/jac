@@ -92,19 +92,12 @@ impl BoundaryAnalysisPass._in_native_module(self: BoundaryAnalysisPass) -> bool 
     if not (self.ir_in and self.ir_in.loc) {
         return False;
     }
+    if self.ir_in.decided_codespace == 'native' {
+        return True;
+    }
     mod_path = self.ir_in.loc.mod_path;
     if mod_path and is_native_module(mod_path) {
         return True;
-    }
-    if (
-        self.prog
-        and self.prog._auto_promote_native
-        and self.prog._auto_promote_target
-        and mod_path
-    ) {
-        return os.path.realpath(mod_path) == os.path.realpath(
-            self.prog._auto_promote_target
-        );
     }
     return False;
 }
@@ -127,23 +120,12 @@ impl BoundaryAnalysisPass.enter_import(
             mod_path_str = self.ir_in.loc.mod_path
                 if (self.ir_in and self.ir_in.loc)
                 else '';
-            in_server_module = is_server_module(mod_path_str);
-
-            in_client_module = (
-                is_client_module(mod_path_str)
-                or (nd?.in_client_context and nd.in_client_context())
-            );
-            sv_token = nd._source_context_token()
-                if nd?._source_context_token
-                else None;
-            has_sv_prefix = sv_token is not None and sv_token.name == Tok.KW_SERVER;
-            if (has_sv_prefix and not native_path and nd.items) {
+            if (nd.is_sv_marked and not native_path and nd.items) {
                 sv_module_name = nd.from_loc.base_module_name;
-                if in_server_module {
-                    self._register_sv_import(nd, sv_module_name, InteropContext.SERVER);
-                } elif in_client_module {
-                    self._register_sv_import(nd, sv_module_name, InteropContext.CLIENT);
-                }
+                caller_ctx = InteropContext.CLIENT
+                    if nd.in_client_context()
+                    else InteropContext.SERVER;
+                self._register_sv_import(nd, sv_module_name, caller_ctx);
             }
             if (native_path and nd.items) {
                 manifest = self.ir_in.gen.interop_manifest;
