@@ -446,16 +446,56 @@ glob NATIVE_DEFAULT_SV_SIGNAL_NODES: tuple = (
          uni.PyInlineCode,
          uni.ClientBlock,
          uni.ServerBlock,
-         uni.JsxElement,
-         uni.Test,
-         uni.MatchSequence,
-         uni.MatchMapping,
-         uni.MatchArch,
-         uni.MatchStar
+         uni.JsxElement
      ),
      _na_default_scan_cache: dict[str, tuple] = {},
      _na_demotion_memo: dict[str, tuple] = {},
-     _NA_DEFAULT_CLOSURE_CAP: int = 256;
+     _na_census: dict[str, dict] = {},
+     _na_census_state: dict[str, bool] = {"enabled": False},
+     _na_cap_noted: dict[str, bool] = {};
+
+def na_census_begin {
+    _na_census.clear();
+    _na_demotion_memo.clear();
+    _na_default_scan_cache.clear();
+    _na_census_state["enabled"] = True;
+}
+
+def na_census_record(path: str, outcome: str, code: str = '', detail: str = '') {
+    if not _na_census_state["enabled"] or not path {
+        return;
+    }
+    key = os.path.realpath(path);
+    prev = _na_census.get(key);
+    if prev is not None and prev['outcome'] == 'demoted' and outcome != 'demoted' {
+        return;
+    }
+    _na_census[key] = {
+        'outcome': outcome,
+        'code': code,
+        'detail': detail,
+        'seams': (prev['seams'] if prev is not None else [])
+    };
+}
+
+def na_census_seam(path: str, reason: str) {
+    if not _na_census_state["enabled"] or not path {
+        return;
+    }
+    key = os.path.realpath(path);
+    rec = _na_census.get(key);
+    if rec is None {
+        rec = {'outcome': 'native', 'code': '', 'detail': '', 'seams': []};
+        _na_census[key] = rec;
+    }
+    rec['seams'].append(reason);
+}
+
+def na_census_end -> dict {
+    snap = dict(_na_census);
+    _na_census_state["enabled"] = False;
+    return snap;
+}
 
 def _default_codespace_for(target_program: JacProgram) -> str {
     import from jaclang.jac0core.codeinfo { effective_default_codespace }
@@ -468,7 +508,7 @@ def _default_codespace_for(target_program: JacProgram) -> str {
 
 def _scan_native_default_signals(
     module: uni.Module, base_dir: str
-) -> tuple[bool, list[str]] {
+) -> tuple[str, list[str]] {
     import from jaclang.jac0core.codeinfo {
         NATIVE_SUPPORTED_STDLIB,
         is_bundled_native_module,
@@ -477,24 +517,24 @@ def _scan_native_default_signals(
     deps: list[str] = [];
     for typ in NATIVE_DEFAULT_SV_SIGNAL_NODES {
         if module.get_all_sub_nodes(typ) {
-            return (True, deps);
+            return (f"contains {typ.__name__}", deps);
         }
     }
     for arch in module.get_all_sub_nodes(uni.Archetype) {
         if arch.arch_type.name in (Tok.KW_NODE, Tok.KW_EDGE, Tok.KW_WALKER) {
-            return (True, deps);
+            return ("osp archetype", deps);
         }
     }
     for ab in module.get_all_sub_nodes(uni.Ability) {
         if ab.is_async or isinstance(ab.signature, uni.EventSignature) {
-            return (True, deps);
+            return ("async/event ability", deps);
         }
     }
     for stmt in module.body {
         if isinstance(stmt, uni.ContextAwareNode) {
             tok = stmt._source_context_token();
             if tok is not None and tok.name in (Tok.KW_SERVER, Tok.KW_CLIENT) {
-                return (True, deps);
+                return ("explicit sv/cl marker", deps);
             }
         }
         if (
@@ -502,7 +542,7 @@ def _scan_native_default_signals(
             and stmt.access is not None
             and stmt.access.tag.name == Tok.KW_PUB
         ) {
-            return (True, deps);
+            return ("pub access", deps);
         }
     }
     for imp in module.get_all_sub_nodes(uni.Import) {
@@ -510,18 +550,23 @@ def _scan_native_default_signals(
             continue;
         }
         if imp.is_virtual_jac or imp.has_string_path {
-            return (True, deps);
+            return ("virtual/string-path import", deps);
         }
-        targets: list[tuple[str, (str | None), bool]] = [];
+        targets: list[tuple[str, (str | None), bool, bool]] = [];
         if imp.from_loc is not None {
             targets.append(
-                (imp.from_loc.dot_path_str, _try_resolve_import(imp.from_loc), False)
+                (
+                    imp.from_loc.dot_path_str,
+                    _try_resolve_import(imp.from_loc),
+                    False,
+                    False
+                )
             );
             for item in imp.items {
                 if isinstance(item, uni.ModuleItem) {
                     item_path = _try_resolve_import(item);
                     if item_path is not None {
-                        targets.append(("", item_path, False));
+                        targets.append(("", item_path, False, False));
                     }
                 }
             }
@@ -529,12 +574,19 @@ def _scan_native_default_signals(
             for item in imp.items {
                 if isinstance(item, uni.ModulePath) {
                     targets.append(
-                        (item.dot_path_str, _try_resolve_import(item), True)
+                        (
+                            item.dot_path_str,
+                            _try_resolve_import(item),
+                            not imp.is_absorb,
+                            not imp.is_absorb
+                            and item.alias is None
+                            and len(item.path) == 1
+                        )
                     );
                 }
             }
         }
-        for (name, path, is_bare) in targets {
+        for (name, path, is_bare, is_plain_bare) in targets {
             clean = name.lstrip('.') if name else '';
             if is_bare {
                 if clean and clean in NATIVE_SUPPORTED_STDLIB {
@@ -543,14 +595,16 @@ def _scan_native_default_signals(
                 if clean and is_bundled_native_module(clean) {
                     continue;
                 }
-                return (True, deps);
+                if not (is_plain_bare and path is not None and path.endswith('.jac')) {
+                    return (f"non-native import '{clean}'", deps);
+                }
             }
             if path is not None and path.endswith('.na.jac') {
                 continue;
             }
             if path is not None
             and (path.endswith('.cl.jac') or path.endswith('.sv.jac')) {
-                return (True, deps);
+                return ("cl/sv module import", deps);
             }
             if path is not None and path.endswith('.jac') {
                 deps.append(os.path.abspath(path));
@@ -568,10 +622,10 @@ def _scan_native_default_signals(
             ] is not None {
                 continue;
             }
-            return (True, deps);
+            return (f"unresolved import '{clean}'", deps);
         }
     }
-    return (False, deps);
+    return ('', deps);
 }
 
 def _try_resolve_import(nd: (uni.ModulePath | uni.ModuleItem)) -> (str | None) {
@@ -612,9 +666,30 @@ def _mark_demoted_native(path: str) {
     }
 }
 
-def _native_default_dep_scan(path: str) -> (tuple[bool, list[str]] | None) {
+def _note_native_closure_cap(root_path: str, cap: int) {
+    rp = os.path.realpath(root_path);
+    if rp in _na_cap_noted {
+        return;
+    }
+    _na_cap_noted[rp] = True;
+    try {
+        import from jaclang.cli.console { console }
+        console.print(
+            f"note: {root_path} preferred native but its import closure "
+            f"exceeded the inference cap ({cap} modules); compiled in the "
+            f"server codespace. Raise [build] native_closure_cap in jac.toml "
+            f"to scan larger closures.",
+            style="dim",
+            file=sys.stderr
+        );
+    } except Exception {
+        ;
+    }
+}
+
+def _native_default_dep_scan(path: str) -> (tuple[str, list[str]] | None) {
     if _is_demoted_native(os.path.realpath(path)) {
-        return (True, []);
+        return ("previously-demoted", []);
     }
     import from jaclang.jac0core.bccache {
         discover_annex_files,
@@ -638,42 +713,45 @@ def _native_default_dep_scan(path: str) -> (tuple[bool, list[str]] | None) {
     if cached is not None and cached[0] == fresh_key {
         return (cached[1], cached[2]);
     }
-    has_sv = bool(discover_variant_files(path));
+    sv_reason = "sv-variant-file" if discover_variant_files(path) else '';
     deps: list[str] = [];
-    if not has_sv {
+    if not sv_reason {
         base_dir = os.path.dirname(os.path.abspath(path)) or '.';
         for f in files {
             try {
                 src = read_file_with_encoding(f);
             } except Exception {
-                has_sv = True;
+                sv_reason = "unreadable annex";
                 break;
             }
             (dep_mod, had_err) = rd_parse(src, f, prog=JacProgram());
             if had_err {
-                has_sv = True;
+                sv_reason = "parse error";
                 break;
             }
             (f_sv, f_deps) = _scan_native_default_signals(dep_mod, base_dir);
             if f_sv {
-                has_sv = True;
+                sv_reason = f_sv;
                 break;
             }
             deps.extend(f_deps);
         }
     }
-    if has_sv {
+    if sv_reason {
         deps = [];
     }
-    _na_default_scan_cache[path] = (fresh_key, has_sv, deps);
-    return (has_sv, deps);
+    _na_default_scan_cache[path] = (fresh_key, sv_reason, deps);
+    return (sv_reason, deps);
 }
 
 def _native_default_deps_ok(root_path: str, root_deps: list[str]) -> bool {
+    import from jaclang.jac0core.codeinfo { effective_native_closure_cap }
+    cap = effective_native_closure_cap();
     edges: dict[str, list[str]] = {root_path: list(root_deps)};
     queue: list[str] = list(root_deps);
     while queue {
-        if len(edges) > _NA_DEFAULT_CLOSURE_CAP {
+        if len(edges) > cap {
+            _note_native_closure_cap(root_path, cap);
             return False;
         }
         dep = queue.pop();
@@ -695,36 +773,6 @@ def _native_default_deps_ok(root_path: str, root_deps: list[str]) -> bool {
             }
         }
     }
-    color: dict[str, int] = {};
-    for start in edges {
-        if color.get(start, 0) != 0 {
-            continue;
-        }
-        stack: list[tuple[str, int]] = [(start, 0)];
-        while stack {
-            (nd, idx) = stack.pop();
-            if idx == 0 {
-                if color.get(nd, 0) != 0 {
-                    continue;
-                }
-                color[nd] = 1;
-            }
-            kids = edges.get(nd, []);
-            if idx < len(kids) {
-                stack.append((nd, idx + 1));
-                kid = kids[idx];
-                kc = color.get(kid, 0);
-                if kc == 1 {
-                    return False;
-                }
-                if kc == 0 {
-                    stack.append((kid, 0));
-                }
-            } else {
-                color[nd] = 2;
-            }
-        }
-    }
     return True;
 }
 
@@ -741,24 +789,31 @@ def _native_default_path_ok(path: str) -> bool {
     return _native_default_deps_ok(ap, deps);
 }
 
-def _native_default_closure_ok(module: uni.Module) -> bool {
+def _native_default_closure_verdict(module: uni.Module) -> tuple[bool, str] {
     import from jaclang.jac0core.bccache { discover_variant_files }
     mod_path = module.loc.mod_path if module.loc is not None else '';
     if not mod_path {
-        return False;
+        return (False, "no module path");
     }
     if _is_demoted_native(os.path.realpath(mod_path)) {
-        return False;
+        return (False, "previously-demoted");
     }
     if discover_variant_files(mod_path) {
-        return False;
+        return (False, "sv-variant-file");
     }
     base_dir = os.path.dirname(os.path.abspath(mod_path)) or '.';
-    (has_sv, deps) = _scan_native_default_signals(module, base_dir);
-    if has_sv {
-        return False;
+    (sv_reason, deps) = _scan_native_default_signals(module, base_dir);
+    if sv_reason {
+        return (False, sv_reason);
     }
-    return _native_default_deps_ok(os.path.abspath(mod_path), deps);
+    if not _native_default_deps_ok(os.path.abspath(mod_path), deps) {
+        return (False, "import-closure (sv dep or cap)");
+    }
+    return (True, '');
+}
+
+def _native_default_closure_ok(module: uni.Module) -> bool {
+    return _native_default_closure_verdict(module)[0];
 }
 
 obj JacCompiler {

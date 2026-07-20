@@ -641,6 +641,23 @@ impl NaIRGenPass._adapter_callee_fn(fn_expr: uni.UniNode) -> (ir.Function | None
         return named;
     }
     if isinstance(fn_expr, uni.LambdaExpr) {
+        _has_local_caps = False;
+        for cap_sym in fn_expr.captures {
+            if cap_sym.sym_name in self.local_vars {
+                _has_local_caps = True;
+                break;
+            }
+        }
+        if _has_local_caps {
+            self.emit(
+                E5092,
+                node_override=fn_expr,
+                kind="expression",
+                name="capturing lambda as a map/filter callback",
+                help_text="A lambda passed to map/filter must not capture enclosing locals; bind the value through the element or use a named function."
+            );
+            return None;
+        }
         lv = self._codegen_lambda(fn_expr);
         if self._pending_lambda_captures is not None {
             self._pending_lambda_captures = None;

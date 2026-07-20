@@ -41,7 +41,71 @@ def closures_py -> dict {
     };
 }
 
+def closures_escape_py -> dict {
+    count = 0;
+    def bump -> int {
+        count = count + 1;
+        return count;
+    }
+    c = bump;
+    c();
+    c();
+    counter = c();
+
+    total = 10;
+    def add3 -> int {
+        total = total + 3;
+        return total;
+    }
+    fns = [add3];
+    f = fns[0];
+    f();
+    passed = f() * 1000 + total;
+
+    n = 0;
+    def inc -> int {
+        n = n + 1;
+        return n;
+    }
+    def dec -> int {
+        n = n - 1;
+        return n;
+    }
+    pair = [inc, dec];
+    g = pair[0];
+    h = pair[1];
+    g();
+    g();
+    h();
+
+    def mk -> Callable[[], int] {
+        k = 0;
+        def b -> int {
+            k = k + 1;
+            return k;
+        }
+        return b;
+    }
+    ca = mk();
+    cb = mk();
+    ca();
+    ca();
+    cb();
+    independent = ca() * 10 + cb();
+    return {
+        "counter": counter,
+        "passed": passed,
+        "shared": n,
+        "independent": independent,
+
+    };
+}
+
 cl def closures_cl -> dict {
+    return {};
+}
+
+cl def closures_escape_cl -> dict {
     return {};
 }
 
@@ -77,6 +141,66 @@ na {
             "late_r2": r2,
             "rebound_total": total,
             "recursive_depth": walked,
+
+        };
+    }
+
+    def closures_escape_na -> dict[str, any] {
+        count = 0;
+        def bump -> int {
+            count = count + 1;
+            return count;
+        }
+        c = bump;
+        c();
+        c();
+        counter = c();
+
+        total = 10;
+        def add3 -> int {
+            total = total + 3;
+            return total;
+        }
+        fns: list[Callable[[], int]] = [add3];
+        f = fns[0];
+        f();
+        passed = f() * 1000 + total;
+
+        n = 0;
+        def inc -> int {
+            n = n + 1;
+            return n;
+        }
+        def dec -> int {
+            n = n - 1;
+            return n;
+        }
+        pair: list[Callable[[], int]] = [inc, dec];
+        g = pair[0];
+        h = pair[1];
+        g();
+        g();
+        h();
+
+        def mk -> Callable[[], int] {
+            k = 0;
+            def b -> int {
+                k = k + 1;
+                return k;
+            }
+            return b;
+        }
+        ca = mk();
+        cb = mk();
+        ca();
+        ca();
+        cb();
+        independent = ca() * 10 + cb();
+        return {
+            "counter": counter,
+            "passed": passed,
+            "shared": n,
+            "independent": independent,
 
         };
     }

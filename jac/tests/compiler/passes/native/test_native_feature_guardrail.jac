@@ -64,29 +64,18 @@ def fmt_errors(prog: JacProgram) -> str {
 # ─────────────────────────────────────────────────────────────────────
 # Statement-level gaps
 # ─────────────────────────────────────────────────────────────────────
-# Value / OR / capture / wildcard / guard match patterns are supported
-# (see test_native_gen_pass.jac). Structural patterns (sequence/mapping/
-# class) are not yet lowered and must still raise E5090.
-test "guardrail: structural match pattern is rejected" {
-    prog = compile_na_inline(
-        "match_seq",
-        "def classify(x: list[int]) -> int {\n"
-        "    match x {\n"
-        "        case [1, 2]: return 1;\n"
-        "        case _: return 0;\n"
-        "    }\n"
-        "}\n"
-    );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for MatchSequence, got: {fmt_errors(
-        prog
-    )}";
-}
+# All match pattern kinds are supported (value / OR / capture / wildcard /
+# guard in test_native_gen_pass.jac; sequence / mapping / star / class in
+# test_native_match_patterns.jac), so the structural-pattern guardrail was
+# deleted per this file's convention.
 
 # Nested functions capturing enclosing locals lower natively (read captures
 # bind by value at each call, rebound captures write through a frame-slot
-# pointer); behavioral coverage lives in test_native_closures.jac. Only the
-# escape shapes (a capturing closure used as a value) remain rejected, with
-# a structured E5092 from codegen.
+# pointer), and escaping capturing closures lower via closure conversion
+# (RC heap cells + {fn, env} pairs); behavioral coverage lives in
+# test_native_closures.jac. Only a capture borrowed from an outer frame, a
+# closure call through an `any`-typed value, and capturing map/filter
+# lambda callbacks remain rejected, with a structured E5092 from codegen.
 
 # NOTE (issue #6146, Phase 4c): the `visit` / `disengage` / `report` guardrails
 # were removed because these statements are now LOWERED to the portable kernel
@@ -728,6 +717,96 @@ test "declared libc open(path, flags) extern resolves without the file-open buil
     )}";
 }
 
+"""Compile a snippet through the sv pipeline (plain .jac path)."""
+def compile_sv_inline(label: str, code: str) -> JacProgram {
+    path = os.path.join(FIXTURES_DIR, f"_guardrail_{label}.jac");
+    prog = JacProgram();
+    prog.compile(file_path=path, use_str=code);
+    return prog;
+}
+
+# Walrus on non-Name targets is a SyntaxError in CPython; Jac rejects it
+# with the general E0020 in ASTValidationPass on every backend. These pin
+# that E0020 stays the single diagnostic: no native-specific E5090
+# duplicate, no E5007 bootstrap cascade, no E9001/E9002 ICE (#7593 item 3).
+test "walrus on a subscript target: one general E0020, no native cascade" {
+    prog = compile_na_inline(
+        "walrus_subscript_lhs", "with entry { xs = [1, 2, 3]; print((xs[0] := 9)); }\n"
+    );
+    assert has_error_code(prog, "E0020") , f"Expected general E0020, got: {fmt_errors(
+        prog
+    )}";
+    assert not has_error_code(prog, "E5090") , f"native E5090 duplicate leaked: {fmt_errors(
+        prog
+    )}";
+    assert not has_error_code(prog, "E5007") , f"bootstrap E5007 cascade leaked: {fmt_errors(
+        prog
+    )}";
+    for alrt in prog.errors_had {
+        if alrt.code is not None {
+            assert alrt.code.code not in ("E9001", "E9002") , f"ICE leaked: {fmt_errors(
+                prog
+            )}";
+        }
+    }
+}
+
+test "walrus on an attribute target: one general E0020, no native cascade" {
+    prog = compile_na_inline(
+        "walrus_attr_lhs",
+        "obj Box { has f: int = 0; }\n" "with entry { b = Box(); print((b.f := 5)); }\n"
+    );
+    assert has_error_code(prog, "E0020") , f"Expected general E0020, got: {fmt_errors(
+        prog
+    )}";
+    assert not has_error_code(prog, "E5090") , f"native E5090 duplicate leaked: {fmt_errors(
+        prog
+    )}";
+    assert not has_error_code(prog, "E5007") , f"bootstrap E5007 cascade leaked: {fmt_errors(
+        prog
+    )}";
+    for alrt in prog.errors_had {
+        if alrt.code is not None {
+            assert alrt.code.code not in ("E9001", "E9002") , f"ICE leaked: {fmt_errors(
+                prog
+            )}";
+        }
+    }
+}
+
+test "walrus on a subscript target is the same single E0020 on sv" {
+    prog = compile_sv_inline(
+        "walrus_subscript_sv", "with entry { xs = [1, 2, 3]; print((xs[0] := 9)); }\n"
+    );
+    assert has_error_code(prog, "E0020") , f"Expected general E0020, got: {fmt_errors(
+        prog
+    )}";
+    assert not has_error_code(prog, "E5007") , f"bootstrap E5007 cascade leaked: {fmt_errors(
+        prog
+    )}";
+    for alrt in prog.errors_had {
+        if alrt.code is not None {
+            assert alrt.code.code not in ("E9001", "E9002") , f"ICE leaked: {fmt_errors(
+                prog
+            )}";
+        }
+    }
+}
+
+# Green pin (already true on main): check-time shape yields exactly E0020.
+test "walrus on a subscript target at check time is E0020 only" {
+    prog = check_na_inline(
+        "walrus_subscript_lhs_chk",
+        "with entry { xs = [1, 2, 3]; print((xs[0] := 9)); }\n"
+    );
+    assert has_error_code(prog, "E0020") , f"Expected general E0020, got: {fmt_errors(
+        prog
+    )}";
+    assert not has_error_code(prog, "E5090") , f"native E5090 duplicate leaked: {fmt_errors(
+        prog
+    )}";
+}
+
 # Negative control: known clib types must compile without E2018/E5090.
 test "clib decl with known types is not rejected" {
     prog = compile_na_inline(
@@ -744,5 +823,66 @@ test "clib decl with known types is not rejected" {
     )}";
     assert not has_error_code(prog, "E5090") , f"Known clib types triggered E5090: {fmt_errors(
         prog
+    )}";
+}
+
+# !r and dynamic format specs now lower natively (#7593 item 6); the !a
+# conversion still requires CPython-exact ascii() escaping and stays gated.
+test "guardrail: f-string !a conversion is rejected" {
+    prog = compile_na_inline(
+        "fstr_ascii", "def f(s: str) -> str { return f\"{s!a}\"; }\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for !a, got: {fmt_errors(
+        prog
+    )}";
+}
+
+# Positional arguments to an archetype WITHOUT an explicit init map onto the
+# implicit field constructor via the declared has-field order (#7593 item 14),
+# so `Vec(1.0, 3.0)` lowers cleanly instead of demoting. The remaining gaps
+# are the new() forms the checker's `*args` stub cannot reject: more
+# positional args than declared fields, and a dynamic (non-static) class
+# value. Both must stay a structured E5092, never a silent wrong-value
+# compile (sv raises TypeError at runtime for the overflow form).
+test "guardrail: implicit-ctor positionals lower; dynamic new() is rejected" {
+    ok = compile_na_inline(
+        "pos_ctor",
+        "obj Vec {\n"
+        "    has x: float = 0.0;\n"
+        "    has z: float = 0.0;\n"
+        "}\n"
+        "def make() -> float {\n"
+        "    return Vec(1.0, 3.0).z;\n"
+        "}\n"
+        "with entry {}\n"
+    );
+    assert not ok.errors_had , f"Implicit-ctor positional args must lower: {fmt_errors(
+        ok
+    )}";
+    over = compile_na_inline(
+        "new_overflow",
+        "obj Vec {\n"
+        "    has x: float = 0.0;\n"
+        "    has z: float = 0.0;\n"
+        "}\n"
+        "def make() -> float {\n"
+        "    v = new(Vec, 1.0, 2.0, 3.0);\n"
+        "    return v.z;\n"
+        "}\n"
+        "with entry {}\n"
+    );
+    assert has_error_code(over, "E5092") , f"Expected E5092 for new() arity overflow, got: {fmt_errors(
+        over
+    )}";
+    dyn = compile_na_inline(
+        "new_dynamic",
+        "def make(c: any) -> int {\n"
+        "    v = new(c, 1);\n"
+        "    return 0;\n"
+        "}\n"
+        "with entry {}\n"
+    );
+    assert has_error_code(dyn, "E5092") , f"Expected E5092 for a dynamic new() class value, got: {fmt_errors(
+        dyn
     )}";
 }

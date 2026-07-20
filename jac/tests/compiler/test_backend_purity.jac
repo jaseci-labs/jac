@@ -105,9 +105,13 @@ glob FORBIDDEN: dict[str, str] = {
              "declaration-surface read during archetype field lowering"
          ),
          ("native/na_ir_gen_pass.impl/stmt.impl.jac", "type_tag.tag"): (
-             4,
+             5,
              "surface-shape dispatch on declared annotation forms "
-             "(assessed train 4: legitimately kept)"
+             "(assessed train 4: legitimately kept); plus the "
+             "escaping-closure value-hint guard (#7593 item 12), a "
+             "presence-only test that fires when NO annotation is "
+             "declared - the declaration surface's absence is the "
+             "consumed fact, not a re-derived type"
          ),
 
      };

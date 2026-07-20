@@ -1,11 +1,13 @@
-"""Nested functions capturing enclosing locals.
+"""Nested functions capturing enclosing locals (direct-call shapes).
 
 Read-only captures are forwarded by value at each call (late binding: the
 callee sees the variable's value at call time, which for single-threaded
 reads is observationally identical to Python's use-time reads). Captures the
 nested function rebinds (Jac's implicit-rebind semantics, the sv backend
 emits `nonlocal` for these) are forwarded as a pointer to the enclosing
-frame's slot, so writes land in the enclosing frame.
+frame's slot, so writes land in the enclosing frame. Escaping shapes
+(closures returned, stored, or passed as values) live in
+closures_escape.na.jac.
 """
 
 def scaled(y: int, v: int) -> int {

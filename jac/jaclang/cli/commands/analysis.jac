@@ -58,10 +58,18 @@ glob registry = get_registry();
             short="",
             help="With --lint: auto-fix violations"
         ),
+        Arg.create(
+            "native-census",
+            typ=bool,
+            default=False,
+            short="",
+            help="Compile with codegen and report per-module native outcome (native / demoted / server) ranked by reason (needs the native toolchain)"
+        ),
 
     ],
     examples=[
         ("jac check myprogram.jac", "Check a single file"),
+        ("jac check . --native-census", "Rank modules by native compile outcome"),
         ("jac check . --lint", "Report lint violations only"),
         ("jac check . --lint --fix", "Auto-fix lint violations"),
         ("jac check file1.jac file2.jac", "Check multiple files"),
@@ -88,7 +96,8 @@ def check(
     parse_only: bool = False,
     nowarn: bool = False,
     lint_only: bool = False,
-    fix: bool = False
+    fix: bool = False,
+    native_census: bool = False
 ) -> int;
 
 def lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int;

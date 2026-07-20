@@ -52,15 +52,33 @@ impl NaIRGenPass._codegen_bound_args(
     raw = nd.params or [];
     positional: list = [];
     kw_map: dict = {};
+    _unpack_names: list = [];
     for param in raw {
         if isinstance(param, uni.KWPair) {
             key = param.key.sym_name if param.key is not None else None;
             if key is not None {
                 kw_map[key] = param.value;
+            } else {
+                _unpack_names.append("**");
             }
+        } elif (
+            isinstance(param, uni.UnaryExpr)
+            and isinstance(param.op, uni.Token)
+            and param.op.name in (Tok.STAR_MUL, Tok.STAR_POW)
+        ) {
+            _unpack_names.append(param.op.value);
         } else {
             positional.append(param);
         }
+    }
+    if _unpack_names {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="call argument unpacking",
+            name=", ".join(_unpack_names),
+            help_text="Unpacking arguments at a native call site is not lowered yet; pass the elements explicitly or move the call to a @sv/Python context."
+        );
     }
 
     callee_sig = self._callee_sig_of(nd);
@@ -82,35 +100,147 @@ impl NaIRGenPass._codegen_bound_args(
     }
 
     sig_params = callee_sig.get_parameters();
-    for (pix, sp) in enumerate(sig_params) {
-        slot = self_offset + pix;
-        expected_type = func.args[slot].type
-            if slot < len(func.args)
-            else ir.IntType(64);
-        chosen: (uni.Expr | None) = None;
-        if pix < len(positional) {
-            chosen = positional[pix];
-        } elif sp.name.sym_name in kw_map {
-            chosen = kw_map[sp.name.sym_name];
-        } elif sp.value is not None {
-            chosen = sp.value;
-            if isinstance(chosen, uni.Null)
-            and str(chosen.loc.mod_path).endswith(".pyi") {
-                chosen = None;
+    _has_pack = (callee_sig.varargs is not None) or (callee_sig.kwargs is not None);
+    if _has_pack and func.function_type.var_arg {
+        _has_pack = False;
+    }
+    if _has_pack {
+        _chk = self_offset + len(callee_sig.posonly_params or []) + len(
+            callee_sig.params or []
+        );
+        if callee_sig.varargs is not None {
+            _vt_ok = False;
+            if _chk < len(func.args)
+            and isinstance(func.args[_chk].type, ir.PointerType) {
+                for (_, _lt) in self.list_types.items() {
+                    if _lt.as_pointer() == func.args[_chk].type {
+                        _vt_ok = True;
+                        break;
+                    }
+                }
+            }
+            if not _vt_ok {
+                _has_pack = False;
+            }
+            _chk += 1;
+        }
+        _chk += len(callee_sig.kwonlyargs or []);
+        if _has_pack and callee_sig.kwargs is not None {
+            _dt_ok = False;
+            if _chk < len(func.args)
+            and isinstance(func.args[_chk].type, ir.PointerType) {
+                for (_dk, _dt) in self.dict_types.items() {
+                    if _dk.startswith("ptr:")
+                    and _dt.as_pointer() == func.args[_chk].type {
+                        _dt_ok = True;
+                        break;
+                    }
+                }
+            }
+            if not _dt_ok {
+                _has_pack = False;
             }
         }
-        val = self._codegen_expr(chosen) if chosen is not None else None;
-        if val is not None {
-            args.append(val);
-        } else {
-            args.append(self._default_arg_fallback(expected_type));
-        }
     }
+    if not _has_pack {
+        for (pix, sp) in enumerate(sig_params) {
+            slot = self_offset + pix;
+            expected_type = func.args[slot].type
+                if slot < len(func.args)
+                else ir.IntType(64);
+            chosen: (uni.Expr | None) = None;
+            if pix < len(positional) {
+                chosen = positional[pix];
+            } elif sp.name.sym_name in kw_map {
+                chosen = kw_map[sp.name.sym_name];
+            } elif sp.value is not None {
+                chosen = sp.value;
+                if isinstance(chosen, uni.Null)
+                and str(chosen.loc.mod_path).endswith(".pyi") {
+                    chosen = None;
+                }
+            }
+            val = self._codegen_expr(chosen) if chosen is not None else None;
+            if val is not None {
+                args.append(val);
+            } else {
+                args.append(self._default_arg_fallback(expected_type));
+            }
+        }
 
-    for pix in range(len(sig_params), len(positional)) {
-        v = self._codegen_expr(positional[pix]);
-        if v is not None {
-            args.append(v);
+        for pix in range(len(sig_params), len(positional)) {
+            v = self._codegen_expr(positional[pix]);
+            if v is not None {
+                args.append(v);
+            }
+        }
+    } else {
+        _fixed = list(callee_sig.posonly_params or []) + list(callee_sig.params or []);
+        for (pix, sp) in enumerate(_fixed) {
+            slot = self_offset + pix;
+            expected_type = func.args[slot].type
+                if slot < len(func.args)
+                else ir.IntType(64);
+            chosen = None;
+            if pix < len(positional) {
+                chosen = positional[pix];
+            } elif sp.name.sym_name in kw_map {
+                chosen = kw_map.pop(sp.name.sym_name);
+            } elif sp.value is not None {
+                chosen = sp.value;
+                if isinstance(chosen, uni.Null)
+                and str(chosen.loc.mod_path).endswith(".pyi") {
+                    chosen = None;
+                }
+            }
+            val = self._codegen_expr(chosen) if chosen is not None else None;
+            if val is not None {
+                args.append(val);
+            } else {
+                args.append(self._default_arg_fallback(expected_type));
+            }
+        }
+        _slot = self_offset + len(_fixed);
+        if callee_sig.varargs is not None {
+            _pack_t = func.args[_slot].type if _slot < len(func.args) else None;
+            _lv = self._codegen_varargs_list(nd, positional[len(_fixed):], _pack_t);
+            if _lv is not None {
+                args.append(_lv);
+            } elif _pack_t is not None {
+                args.append(self._default_arg_fallback(_pack_t));
+            }
+            _slot += 1;
+        }
+        for sp in (callee_sig.kwonlyargs or []) {
+            expected_type = func.args[_slot].type
+                if _slot < len(func.args)
+                else ir.IntType(64);
+            chosen = None;
+            if sp.name.sym_name in kw_map {
+                chosen = kw_map.pop(sp.name.sym_name);
+            } elif sp.value is not None {
+                chosen = sp.value;
+                if isinstance(chosen, uni.Null)
+                and str(chosen.loc.mod_path).endswith(".pyi") {
+                    chosen = None;
+                }
+            }
+            val = self._codegen_expr(chosen) if chosen is not None else None;
+            if val is not None {
+                args.append(val);
+            } else {
+                args.append(self._default_arg_fallback(expected_type));
+            }
+            _slot += 1;
+        }
+        if callee_sig.kwargs is not None {
+            _kw_t = func.args[_slot].type if _slot < len(func.args) else None;
+            _dv = self._codegen_kwargs_dict(nd, kw_map, _kw_t);
+            if _dv is not None {
+                args.append(_dv);
+            } elif _kw_t is not None {
+                args.append(self._default_arg_fallback(_kw_t));
+            }
         }
     }
 
@@ -162,6 +292,114 @@ impl NaIRGenPass._codegen_bound_args(
     return args;
 }
 
+impl NaIRGenPass._codegen_varargs_list(
+    nd: uni.FuncCall, extras: list, expected: (ir.Type | None)
+) -> (ir.Value | None) {
+    spec: (str | None) = None;
+    if expected is not None and isinstance(expected, ir.PointerType) {
+        for (tn, lt) in self.list_types.items() {
+            if lt.as_pointer() == expected {
+                spec = tn;
+                break;
+            }
+        }
+    }
+    helpers = self.list_helpers.get(spec) if spec is not None else None;
+    if helpers is None {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="variadic parameter",
+            name="*",
+            help_text="The callee's *args slot did not resolve to a registered native list type; annotate the variadic parameter with a lowerable element type."
+        );
+        return None;
+    }
+    _loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+        if nd.loc
+        else 0}";
+    lv = self._rc_call_with_ctx(
+        helpers["new"], [], op="new", loc=_loc, name="varargs.new"
+    );
+    for e in extras {
+        v = self._codegen_expr(e);
+        if v is None {
+            self.emit(
+                E5092, node_override=e, kind="expression", name="variadic argument"
+            );
+            continue;
+        }
+        _orig = v;
+        v2 = self._coerce_type(v, helpers["elem_type"]);
+        self._rc_call_with_ctx(helpers["append"], [lv, v2], op="list_init", loc=_loc);
+        if spec == "jacval" and isinstance(_orig.type, ir.PointerType) {
+            self._emit_rc_retain(_orig, op="list_init", loc=_loc);
+        }
+        if isinstance(_orig.type, ir.PointerType) and self._is_owned(_orig) {
+            self._emit_rc_release_simple(_orig, op="list_init", loc=_loc);
+        }
+    }
+    return self._mark_owned(lv);
+}
+
+impl NaIRGenPass._codegen_kwargs_dict(
+    nd: uni.FuncCall, leftover: dict, expected: (ir.Type | None)
+) -> (ir.Value | None) {
+    dict_key: (str | None) = None;
+    if expected is not None and isinstance(expected, ir.PointerType) {
+        for (dk, dt) in self.dict_types.items() {
+            if dt.as_pointer() == expected {
+                dict_key = dk;
+                break;
+            }
+        }
+    }
+    if dict_key is not None and not dict_key.startswith("ptr:") {
+        dict_key = None;
+    }
+    helpers = self.dict_helpers.get(dict_key) if dict_key is not None else None;
+    if helpers is None {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="variadic parameter",
+            name="**",
+            help_text="The callee's **kwargs slot did not resolve to a registered str-keyed native dict type; annotate the variadic parameter with a lowerable value type."
+        );
+        return None;
+    }
+    _vspec = dict_key.split(":")[1];
+    _loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+        if nd.loc
+        else 0}";
+    dv = self._rc_call_with_ctx(
+        helpers["new"], [], op="new", loc=_loc, name="kwargs.new"
+    );
+    for (kname, vexpr) in leftover.items() {
+        v = self._codegen_expr(vexpr);
+        if v is None {
+            self.emit(
+                E5092,
+                node_override=nd,
+                kind="expression",
+                name=f"keyword argument '{kname}'"
+            );
+            continue;
+        }
+        k = self._make_global_string(kname, name_prefix=".kwname");
+        _orig = v;
+        v2 = self._coerce_type(v, helpers["val_type"]);
+        self._rc_call_with_ctx(helpers["set"], [dv, k, v2], op="dict_init", loc=_loc);
+        if _vspec == "jacval" and isinstance(_orig.type, ir.PointerType) {
+            self._emit_rc_retain(_orig, op="dict_init", loc=_loc);
+        }
+        if isinstance(_orig.type, ir.PointerType) and self._is_owned(_orig) {
+            self._emit_rc_release_simple(_orig, op="dict_init", loc=_loc);
+        }
+    }
+    return self._mark_owned(dv);
+}
+
 impl NaIRGenPass._codegen_call_args(nd: uni.FuncCall) -> list {
     arg_vals: list[ir.Value] = [];
     for param in (nd.params or []) {
@@ -207,6 +445,37 @@ impl NaIRGenPass._emit_unsupported_builtin_call(
         kind="builtin call",
         name=func_name,
         help_text="This builtin is implemented for some argument types but could not be lowered for the argument(s) at this call site (for example `sum`/`min`/`max` over a `range` rather than a list). Restructure to a supported form, or move the code to a @sv/Python context."
+    );
+}
+
+impl NaIRGenPass._emit_new(nd: uni.FuncCall) -> (ir.Value | None) {
+    params_l = nd.params or [];
+    if not params_l or any([isinstance(p, uni.KWPair) for p in params_l]) {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="builtin call",
+            name="new",
+            help_text="new() takes a class followed by positional constructor arguments only."
+        );
+        return None;
+    }
+    cls_name = self._get_name(params_l[0]);
+    if cls_name is None or cls_name not in self.struct_types {
+        cls_name = self._struct_name_of(nd);
+    }
+    if cls_name is None or cls_name not in self.struct_types {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="builtin call",
+            name="new",
+            help_text="new() lowers natively only when the first argument statically names an archetype whose native layout is visible to this module; dynamic class values are not supported in native code."
+        );
+        return None;
+    }
+    return self._codegen_instantiation(
+        nd, type_name_override=cls_name, ctor_params=list(params_l[1:])
     );
 }
 
@@ -281,6 +550,10 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 return self._codegen_expr(params_l[0]);
             }
             return None;
+        }
+
+        if func_name == "new" {
+            return self._emit_new(nd);
         }
 
         if func_name == "Region" {
@@ -625,7 +898,8 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                         func_name,
                         [arg_val],
                         kwargs=self._split_call_kwargs(nd),
-                        kw_node=nd
+                        kw_node=nd,
+                        type_key=(self._type_key_of(params_l[0]) or "")
                     );
 
                     if isinstance(arg_val.type, ir.PointerType)
@@ -830,6 +1104,16 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 );
                 return None;
             }
+            if sig.varargs is not None or sig.kwargs is not None {
+                self.emit(
+                    E5092,
+                    node_override=nd,
+                    kind="function",
+                    name=func_name,
+                    help_text="A variadic function cannot be called across the native interop boundary yet; wrap it in a fixed-arity function on the defining side."
+                );
+                return None;
+            }
             param_ir_types: list = [];
             for p in sig.get_parameters() {
                 param_ir_types.append(
@@ -846,6 +1130,10 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         if func_name in self.local_vars {
             _alloca = self.local_vars[func_name];
             _loaded = self.builder.load(_alloca, name=f"fptr.{func_name}");
+            _clos_name = self._closure_struct_of(_loaded.type);
+            if _clos_name is not None {
+                return self._codegen_closure_call(nd, _loaded, _clos_name);
+            }
             if (
                 isinstance(_loaded.type, ir.PointerType)
                 and isinstance(_loaded.type.pointee, ir.FunctionType)

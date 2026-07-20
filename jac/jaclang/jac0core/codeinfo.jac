@@ -80,7 +80,8 @@ obj NativeFuncLayout {
         ret_type: str = "i64",
         ret_struct_name: (str | None) = None,
         ret_tuple_layout: (NativeTupleLayout | None) = None,
-        ret_enum_type: (str | None) = None;
+        ret_enum_type: (str | None) = None,
+        ret_elem_keys: (list | None) = None;
 }
 
 obj NativeTestLayout {
@@ -95,8 +96,8 @@ def native_test_symbol(name: str, line: int) -> str {
 }
 
 def native_safe_sym(src: str) -> str {
-    if src == "osp_kernel" {
-        return "osp_kernel";
+    if src in ("osp_kernel", "fmt_kernel") {
+        return src;
     }
     safe = re.sub(r'[^a-zA-Z0-9_]', '_', src);
     return f"{safe}_{hashlib.sha1(src.encode()).hexdigest()[:8]}";
@@ -112,6 +113,9 @@ glob NATIVE_SUPPORTED_STDLIB: set[str] = {
      },
      _effective_codespace_ctx: ContextVar[str] = ContextVar(
          "jac_effective_default_codespace", default=""
+     ),
+     _closure_cap_ctx: ContextVar[int] = ContextVar(
+         "jac_native_closure_cap", default=0
      );
 
 def set_effective_default_codespace(value: str) {
@@ -136,6 +140,31 @@ def effective_default_codespace -> str {
         return BuildConfig().default_codespace;
     } except Exception {
         return "server";
+    }
+}
+
+def set_native_closure_cap(value: int) {
+    _closure_cap_ctx.set(value);
+}
+
+def get_native_closure_cap_override -> int {
+    return _closure_cap_ctx.get();
+}
+
+def effective_native_closure_cap -> int {
+    cur = _closure_cap_ctx.get();
+    if cur > 0 {
+        return cur;
+    }
+    try {
+        import from jaclang.project.config { get_config, BuildConfig }
+        cfg = get_config();
+        if cfg is not None {
+            return cfg.build.native_closure_cap;
+        }
+        return BuildConfig().native_closure_cap;
+    } except Exception {
+        return 256;
     }
 }
 
