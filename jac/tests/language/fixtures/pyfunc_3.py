@@ -218,7 +218,7 @@ except ValueError as e:
 try:
     with open("test.txt") as file:
         print(file.read())
-except:
+except Exception:
     print("File not found")
 
 try:
