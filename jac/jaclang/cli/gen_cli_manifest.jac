@@ -1,5 +1,11 @@
 import from jaclang.cli.command { Arg, ArgKind, CommandSpec }
-import from jaclang.cli.manifest { TIER_SECTIONS, TOMBSTONED_VERBS, VERB_BUDGET }
+import from jaclang.cli.manifest {
+    ArgMeta,
+    CommandMeta,
+    TIER_SECTIONS,
+    TOMBSTONED_VERBS,
+    VERB_BUDGET
+}
 
 glob CORE_MODULES: list[str] = [
          "jaclang.cli.commands.execution",
@@ -371,10 +377,106 @@ def write_routes -> str {
     return out;
 }
 
+def _arg_signature(arg: Arg) -> tuple {
+    return (
+        arg.name,
+        arg.kind.name,
+        _typ_name(arg.typ),
+        arg.default,
+        arg.help,
+        arg.short,
+        arg.choices,
+        arg.required,
+        arg.dest,
+        arg.metavar,
+        arg.config_key,
+
+    );
+}
+
+def _meta_arg_signature(arg: ArgMeta) -> tuple {
+    return (
+        arg.name,
+        arg.kind,
+        arg.typ,
+        arg.default,
+        arg.help,
+        arg.short,
+        arg.choices,
+        arg.required,
+        arg.dest,
+        arg.metavar,
+        arg.config_key,
+
+    );
+}
+
+def _spec_signature(cmd: CommandSpec) -> tuple {
+    h = cmd.handler;
+    handler_module = h.__module__ if h is not None else "";
+    handler_name = h.__name__ if h is not None else "";
+    return (
+        cmd.name,
+        cmd.help,
+        cmd.group,
+        cmd.tier,
+        cmd.hidden,
+        handler_module,
+        handler_name,
+        list(cmd.needs),
+        cmd.description,
+        list(cmd.examples),
+        [_arg_signature(a) for a in cmd.args],
+
+    );
+}
+
+def _meta_signature(cmd: CommandMeta) -> tuple {
+    return (
+        cmd.name,
+        cmd.help,
+        cmd.group,
+        cmd.tier,
+        cmd.hidden,
+        cmd.handler_module,
+        cmd.handler_name,
+        list(cmd.needs),
+        cmd.description,
+        list(cmd.examples),
+        [_meta_arg_signature(a) for a in cmd.args],
+
+    );
+}
+
 def verify_drift -> list[str] {
-    fresh = _format_generated(generate());
-    if _read_current() == fresh {
-        return [];
+    import from jaclang.cli.manifest { _command_routes }
+
+    specs = collect();
+    fresh: dict[str, tuple] = {cmd.name: _spec_signature(cmd) for cmd in specs};
+
+    committed: dict[str, tuple] = {};
+    try {
+        for cmd in _command_routes() {
+            committed[cmd.name] = _meta_signature(cmd);
+        }
+    } except Exception as e {
+        return [f"manifest.impl.jac could not be loaded: {e}"];
     }
-    return ["manifest.impl.jac route table is out of date with the command registry"];
+
+    errors = validate_specs(specs);
+    for name in sorted(set(committed) | set(fresh)) {
+        if name not in committed {
+            errors.append(f"{name}: in registry but missing from manifest");
+        } elif name not in fresh {
+            errors.append(f"{name}: in manifest but missing from registry");
+        } elif committed[name] != fresh[name] {
+            errors.append(f"{name}: manifest and registry disagree on command fields");
+        }
+    }
+    if errors {
+        errors.append(
+            "manifest.impl.jac route table is out of date with the command registry"
+        );
+    }
+    return errors;
 }
