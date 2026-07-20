@@ -1698,6 +1698,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                 if expr.op.name == Tok.BW_AND {
                     return self.get_type_of_expression(expr.operand);
                 }
+                if expr.ownership == OwnershipKind.OWN {
+                    return self.get_type_of_expression(expr.operand);
+                }
                 if expr.op.name == Tok.NOT {
                     operand_type = self.get_type_of_expression(expr.operand);
                     if (
@@ -3270,8 +3273,7 @@ impl TypeEvaluator._is_sv_async_call(expr: uni.FuncCall) -> bool {
     if syms is None {
         syms = set();
         for imp in mod.get_all_sub_nodes(uni.Import) {
-            tok = imp._source_context_token();
-            if tok is None or tok.name != Tok.KW_SERVER {
+            if not imp.is_sv_marked {
                 continue;
             }
 

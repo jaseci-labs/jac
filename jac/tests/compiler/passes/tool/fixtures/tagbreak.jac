@@ -257,7 +257,7 @@ def x3() {
 
 class HH {
     def `test() -> Optional[str] {
-        a = """!
+        a: str = """!
 hello
 hru
 """;
@@ -451,13 +451,13 @@ def x(
 }
 
 def gg() {
-#1234
+    #1234
 }
 
 obj A {
     # 123
     def x() {
-    # 123
+        # 123
     }
 }
 

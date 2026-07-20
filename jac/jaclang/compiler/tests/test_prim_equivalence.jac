@@ -188,6 +188,18 @@ test "os.path bundled" {
     );
 }
 
+test "closures nested capture" {
+    run_with_both(
+        "prim_closures.jac", "closures_py", "closures_cl", "closures_na", require=["na"]
+    );
+}
+
+test "generators yield" {
+    run_with_both(
+        "prim_generators.jac", "gens_py", "gens_cl", "gens_na", require=["na"]
+    );
+}
+
 test "zlib bundled" {
     run_with_both("prim_zlib.jac", "zlib_py", "zlib_cl", "zlib_na", require=["na"]);
 }
@@ -210,6 +222,12 @@ test "fractions bundled" {
     );
 }
 
+# Besides digest congruence, this test pins the native call-arity contract:
+# module-qualified bundled calls (hmac.new binds an arity-2 name-keyed extern
+# over the three-parameter native kernel) rely on signature-sanctioned extra
+# arguments passing through _codegen_bound_args UNTRUNCATED to reach the real
+# linked symbol via the call ABI. Truncating to the extern's declared arity
+# starves the symbol and segfaults this test at runtime.
 test "hashlib + hmac bundled" {
     run_with_both(
         "prim_hashlib.jac", "hashlib_py", "hashlib_cl", "hashlib_na", require=["na"]

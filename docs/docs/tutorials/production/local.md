@@ -116,7 +116,7 @@ Changes to your `.jac` files will automatically reload.
 Skip client bundling and only serve the API:
 
 ```bash
-jac start --dev --no_client
+jac start --dev --no-client
 ```
 
 ---
@@ -374,7 +374,7 @@ walker:pub ready {
 |--------|-------------|---------|
 | `--port`, `-p` | Server port | 8000 |
 | `--dev`, `-d` | Enable Hot Module Replacement | false |
-| `--no_client`, `-n` | Skip client bundling (API only) | false |
+| `--no-client`, `-n` | Skip client bundling (API only) | false |
 | `--faux`, `-f` | Print API docs only (no server) | false |
 | `--scale` | Deploy to Kubernetes (built-in scale subsystem) | false |
 

@@ -393,6 +393,28 @@ test "release compile closure honors no unit eviction" {
     }
 }
 
+test "release compile closure keeps synthesized type identity stable" {
+    # `jac check`/`jac lint` release each file's compile closure between files,
+    # which drops and recreates the type evaluator. LiteralString is synthesized
+    # (not a real stub class), so re-minting it per evaluator gave it a fresh
+    # identity every file while the stub AST it derives from (str) survives with
+    # the prior instance cached on it -- breaking `Literal[...] <: LiteralString`
+    # and surfacing spurious E1001s on every checked file after the first. The
+    # synthesized type must be memoized on the (stable) str class so it survives
+    # evaluator churn.
+    prog = JacProgram();
+    ev1 = prog.get_type_evaluator();
+    ls1 = ev1.prefetch.literal_string_class;
+    assert ls1 is not None , "LiteralString was not prefetched";
+    prog.release_compile_closure();
+    assert prog.type_evaluator is None;
+    ev2 = prog.get_type_evaluator();
+    ls2 = ev2.prefetch.literal_string_class;
+    assert ls2 is not None;
+    assert ev1 is not ev2 , "evaluator was not recreated";
+    assert ls1.shared is ls2.shared , "LiteralString identity changed across evaluator recreation";
+}
+
 test "internal get_bytecode evicts unit AST after compile" {
     # Cold bootstrap used to retain every jaclang module AST in
     # internal_program.mod.hub. After the outermost successful compile+cache

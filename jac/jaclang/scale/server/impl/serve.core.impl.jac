@@ -667,8 +667,7 @@ impl JacAPIServerCore._setup_scheduler -> None {
             JacScaleScheduler.instance().stop(drain=False);
         }
     }
-    # Starlette removed the `add_event_handler` method; append to the underlying
-    # on_shutdown list directly (present across old and new Starlette).
+
     self.server.app.router.on_shutdown.append(_shutdown_scheduler);
 }
 

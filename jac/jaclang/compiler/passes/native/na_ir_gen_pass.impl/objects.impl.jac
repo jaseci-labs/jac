@@ -540,12 +540,7 @@ impl NaIRGenPass._demote_method_if_unlowerable(
     import os;
     _warn = bool(os.environ.get("JAC_NATIVE_DEBUG", ""));
 
-    _accel_quiet = False;
-    try {
-        import from jaclang.jac0core.native_accel { native_accel_warnings_suppressed }
-        _accel_quiet = native_accel_warnings_suppressed();
-    } except Exception { }
-    if not _warn and not _accel_quiet {
+    if not _warn {
         _warn = True;
         try {
             import from jaclang.project.config { get_config }
@@ -839,6 +834,7 @@ impl NaIRGenPass._codegen_instantiation(
         and self._arch_is_acyclic(type_name)
         and not self._struct_has_ref_fields(type_name)
         and not self._arch_has_vtable(type_name)
+        and not self._arch_is_osp_name(type_name)
         and f"{type_name}.drop" not in self.func_symtab
     );
     _headerless = self._nogc_headerless() and not self._arch_is_osp_name(type_name);
@@ -899,6 +895,51 @@ impl NaIRGenPass._codegen_instantiation(
         raw_ptr = self.builder.call(_malloc_fn, [size], name="raw.ptr");
         obj_ptr = self.builder.bitcast(raw_ptr, struct_ptr_type, name="obj.ptr");
         self._emit_struct_drop_fn(type_name);
+    } elif self.region_stack and not self._arch_is_walker_name(type_name) {
+        null_ptr = ir.Constant(struct_ptr_type, None);
+        size_gep = self.builder.gep(
+            null_ptr, [ir.Constant(ir.IntType(32), 1)], name="sizeof.gep"
+        );
+        size = self.builder.ptrtoint(size_gep, ir.IntType(64), name="sizeof");
+        raw_ptr = self._region_alloc(size, name="region.obj");
+        obj_ptr = self.builder.bitcast(raw_ptr, struct_ptr_type, name="obj.ptr");
+        if self.rc_set_type_fn is not None {
+            _obj_i8_r = self.builder.bitcast(
+                obj_ptr, ir.IntType(8).as_pointer(), name="obj.i8.rtag"
+            );
+            self._emit_set_type_tag(self.builder, _obj_i8_r, type_name);
+        }
+        self._region_log_dtor_if_needed(raw_ptr, type_name);
+    } elif (
+        self._arch_is_osp_name(type_name)
+        and not self._arch_is_walker_name(type_name)
+        and "here" in self.local_vars
+    ) {
+        self._emit_arena_helpers();
+        null_ptr = ir.Constant(struct_ptr_type, None);
+        size_gep = self.builder.gep(
+            null_ptr, [ir.Constant(ir.IntType(32), 1)], name="sizeof.gep"
+        );
+        size = self.builder.ptrtoint(size_gep, ir.IntType(64), name="sizeof");
+        _i8p_g = ir.IntType(8).as_pointer();
+        _here_val = self.builder.load(self.local_vars["here"], name="growth.here");
+        _here_i8 = self.builder.bitcast(_here_val, _i8p_g, name="growth.here.i8");
+        _gdtor = self._emit_struct_drop_fields_fn(type_name);
+        _gdtor_i8 = (
+            self.builder.bitcast(_gdtor, _i8p_g, name="growth.dtor")
+                if _gdtor is not None
+                else ir.Constant(_i8p_g, None)
+        );
+        raw_ptr = self.builder.call(
+            self.osp_anchor_alloc_fn, [_here_i8, size, _gdtor_i8], name="growth.obj"
+        );
+        obj_ptr = self.builder.bitcast(raw_ptr, struct_ptr_type, name="obj.ptr");
+        if self.rc_set_type_fn is not None {
+            _obj_i8_g = self.builder.bitcast(
+                obj_ptr, ir.IntType(8).as_pointer(), name="obj.i8.gtag"
+            );
+            self._emit_set_type_tag(self.builder, _obj_i8_g, type_name);
+        }
     } else {
         null_ptr = ir.Constant(struct_ptr_type, None);
         size_gep = self.builder.gep(
@@ -974,7 +1015,9 @@ impl NaIRGenPass._codegen_instantiation(
         _tt_val = stable_osp_tag(type_name);
         self.builder.store(ir.Constant(ir.IntType(64), _tt_val), _tt_slot);
 
-        self._osp_make_immortal(obj_ptr);
+        if not self._arch_is_walker_name(type_name) {
+            self._osp_make_immortal(obj_ptr);
+        }
     }
 
     _rep_idx = self.osp_reports_field.get(type_name);
@@ -1885,57 +1928,16 @@ impl NaIRGenPass._codegen_field_aug_assign(
         return None;
     }
 
+    scalar = self._apply_scalar_aug_op(current, rhs, aug_op);
+    if scalar is not None {
+        return scalar;
+    }
+
     coerced = self._coerce_type(rhs, current.type);
 
-    if aug_op == "+=" {
-        if isinstance(current.type, ir.IntType) {
-            return self.builder.add(current, coerced, name="field.add");
-        } elif isinstance(current.type, ir.DoubleType) {
-            return self.builder.fadd(current, coerced, name="field.fadd");
-        } elif isinstance(current.type, ir.PointerType) {
-            result = self._emit_binary_op(Tok.PLUS, current, coerced);
-            return result if result is not None else current;
-        }
-    } elif aug_op == "-=" {
-        if isinstance(current.type, ir.IntType) {
-            return self.builder.sub(current, coerced, name="field.sub");
-        } elif isinstance(current.type, ir.DoubleType) {
-            return self.builder.fsub(current, coerced, name="field.fsub");
-        }
-    } elif aug_op == "*=" {
-        if isinstance(current.type, ir.IntType) {
-            return self.builder.mul(current, coerced, name="field.mul");
-        } elif isinstance(current.type, ir.DoubleType) {
-            return self.builder.fmul(current, coerced, name="field.fmul");
-        }
-    } elif aug_op == "//=" {
-        if isinstance(current.type, ir.IntType) {
-            return self.builder.sdiv(current, coerced, name="field.sdiv");
-        }
-    } elif aug_op == "%=" {
-        if isinstance(current.type, ir.IntType) {
-            return self.builder.srem(current, coerced, name="field.srem");
-        }
-    } elif aug_op == "&=" {
-        if isinstance(current.type, ir.IntType) {
-            return self.builder.and_(current, coerced, name="field.and");
-        }
-    } elif aug_op == "|=" {
-        if isinstance(current.type, ir.IntType) {
-            return self.builder.or_(current, coerced, name="field.or");
-        }
-    } elif aug_op == "^=" {
-        if isinstance(current.type, ir.IntType) {
-            return self.builder.xor(current, coerced, name="field.xor");
-        }
-    } elif aug_op == "<<=" {
-        if isinstance(current.type, ir.IntType) {
-            return self.builder.shl(current, coerced, name="field.shl");
-        }
-    } elif aug_op == ">>=" {
-        if isinstance(current.type, ir.IntType) {
-            return self.builder.ashr(current, coerced, name="field.ashr");
-        }
+    if aug_op == "+=" and isinstance(current.type, ir.PointerType) {
+        result = self._emit_binary_op(Tok.PLUS, current, coerced);
+        return result if result is not None else current;
     }
 
     return coerced;

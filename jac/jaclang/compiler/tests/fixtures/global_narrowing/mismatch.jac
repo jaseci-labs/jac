@@ -12,7 +12,6 @@ obj Bar {}
 glob _inst: (Foo | None) = None;
 
 def get_foo -> Foo {
-    global _inst;
     if _inst is None {
         _inst = Bar();
     }

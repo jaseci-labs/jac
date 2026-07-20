@@ -18,13 +18,13 @@ import from .ui.dialog {
 }
 import from .TweetCard { TweetCard }
 import from .Composer { Composer }
-sv import from ..social_graph { ChannelView, TweetView }
+sv import from ..social_graph { ChannelBundle, Tweet }
 
 def:pub ChannelsTab(
-    channels: list[ChannelView],
+    channels: list[ChannelBundle],
     channelsLoading: bool,
-    selectedChannel: ChannelView | None,
-    channelPosts: list[TweetView],
+    selectedChannel: ChannelBundle | None,
+    channelPosts: list[Tweet],
     profileAvatar: str,
     profileUsername: str,
     onCreateChannel: Callable[[str, str], None],
@@ -140,8 +140,8 @@ def:pub ChannelsTab(
                 for ch in channels {
                     <div
                         className="lx-fade-up mx-4 mb-3 flex cursor-pointer items-center gap-3 rounded-xl border border-border bg-card p-4 transition-colors hover:bg-muted/40"
-                        key={ch.id}
-                        onClick={lambda { onSelectChannel(ch.id); }}
+                        key={jid(ch.channel)}
+                        onClick={lambda { onSelectChannel(jid(ch.channel)); }}
                     >
                         <div
                             className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary"
@@ -152,11 +152,11 @@ def:pub ChannelsTab(
                             <div
                                 className="font-display font-bold text-foreground truncate"
                             >
-                                {ch.name}
+                                {ch.channel.name}
                             </div>
-                            {if ch.description {
+                            {if ch.channel.description {
                                 <div className="text-sm text-muted-foreground truncate">
-                                    {ch.description}
+                                    {ch.channel.description}
                                 </div>
                             }}
                             <div
@@ -200,7 +200,7 @@ def:pub ChannelsTab(
                             <div
                                 className="font-display text-lg font-extrabold text-foreground truncate"
                             >
-                                {selectedChannel.name}
+                                {selectedChannel.channel.name}
                             </div>
                             <div
                                 className="flex items-center gap-1 text-xs text-muted-foreground"
@@ -221,7 +221,7 @@ def:pub ChannelsTab(
                                 size="sm"
                                 className="shrink-0"
                                 onClick={lambda { if selectedChannel {
-                                    onLeaveChannel(selectedChannel.id);
+                                    onLeaveChannel(jid(selectedChannel.channel));
                                 }}}
                             >
                                 Leave
@@ -231,16 +231,16 @@ def:pub ChannelsTab(
                                 size="sm"
                                 className="shrink-0 font-semibold"
                                 onClick={lambda { if selectedChannel {
-                                    onJoinChannel(selectedChannel.id);
+                                    onJoinChannel(jid(selectedChannel.channel));
                                 }}}
                             >
                                 Join
                             </Button>
                         } }
                     </div>
-                    {if selectedChannel.description {
+                    {if selectedChannel.channel.description {
                         <p className="mt-2 text-sm text-foreground/80">
-                            {selectedChannel.description}
+                            {selectedChannel.channel.description}
                         </p>
                     }}
                 </div>
@@ -248,7 +248,7 @@ def:pub ChannelsTab(
                     <Composer
                         avatar={profileAvatar}
                         avatarAlt={profileUsername}
-                        placeholder={"Post in #" + selectedChannel.name}
+                        placeholder={"Post in #" + selectedChannel.channel.name}
                         value={channelComposerText}
                         onChange={lambda (v: str) { channelComposerText = v; }}
                         onPost={lambda {
@@ -280,7 +280,7 @@ def:pub ChannelsTab(
                 }
                 for tweet in channelPosts {
                     <TweetCard
-                        key={tweet.id}
+                        key={jid(tweet)}
                         {tweet}
                         myUsername={profileUsername}
                         {onLike}

@@ -40,7 +40,7 @@ impl run_lang_server -> None {
     );
     server.feature(
         lspt.TEXT_DOCUMENT_COMPLETION,
-        lspt.CompletionOptions(trigger_characters=['.', ':', 'a-zA-Z0-9'])
+        lspt.CompletionOptions(trigger_characters=['.', ':'])
     )(
         completion
     );

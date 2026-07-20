@@ -190,6 +190,15 @@ test "disconnect" {
     assert "['GenericEdge', 'GenericEdge', 'GenericEdge']" in lines[5];
 }
 
+test "typed disconnect" {
+    output = run_jac(os.path.join(FIXTURES, "disconn_typed.jac"));
+    lines = output.split("\n");
+    assert "edges: 2" in lines[0];
+    assert "after E disconnect: 0" in lines[1];
+    assert "F survives: 1" in lines[2];
+    assert "after F disconnect: 0" in lines[3];
+}
+
 test "simple archs" {
     output = run_jac(os.path.join(FIXTURES, "simple_archs.jac"));
     assert output.split("\n")[0] == "1 2 0";

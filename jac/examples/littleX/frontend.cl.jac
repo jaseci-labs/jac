@@ -26,11 +26,11 @@ sv import from .social_graph {
     create_channel_tweet
 }
 sv import from .social_graph {
-    UserView,
-    TweetView,
-    ChannelView,
+    Profile,
+    Tweet,
     TrendingTag,
-    ProfileView
+    ProfileBundle,
+    ChannelBundle
 }
 import from "lucide-react" { Feather, Sun, Moon, Pencil }
 import from .components.ui.button { Button }
@@ -54,21 +54,21 @@ def:pub app -> JsxElement {
         authLoading: bool = False,
         activeTab: str = "feed",
         darkMode: bool = True,
-        myProfile: ProfileView | None = None,
-        tweets: list[TweetView] = [],
+        myProfile: ProfileBundle | None = None,
+        tweets: list[Tweet] = [],
         feedLoading: bool = True,
         composerText: str = "",
         searchQuery: str = "",
-        allProfiles: list[UserView] = [],
+        allProfiles: list[Profile] = [],
         editingBio: bool = False,
         bioText: str = "",
         trendingTags: list[TrendingTag] = [],
         notifCount: int = 0,
         showWelcome: bool = False,
-        channels: list[ChannelView] = [],
+        channels: list[ChannelBundle] = [],
         channelsLoading: bool = False,
-        selectedChannel: ChannelView | None = None,
-        channelPosts: list[TweetView] = [];
+        selectedChannel: ChannelBundle | None = None,
+        channelPosts: list[Tweet] = [];
 
     can with entry {
         isLoggedIn = jacIsLoggedIn();
@@ -160,19 +160,20 @@ def:pub app -> JsxElement {
             />;
     }
 
-    profileUsername = myProfile.username if myProfile else "";
+    profileUsername = myProfile.profile.username if myProfile else "";
     displayUsername = profileUsername.split("@")[0]
         if "@" in profileUsername
         else profileUsername;
     profileAvatar = "https://i.pravatar.cc/150?u=fake@" + profileUsername;
-    myProfileId = myProfile.id if myProfile else "";
+    myProfileId = jid(myProfile.profile) if myProfile else "";
     followingIds = [
-        f.id for f in (myProfile.following if myProfile and myProfile.following else [])
+        jid(f)
+        for f in (myProfile.following if myProfile and myProfile.following else [])
     ];
     toFollow = [
         u
         for u in allProfiles
-        if u.id not in followingIds and u.id != myProfileId
+        if jid(u) not in followingIds and jid(u) != myProfileId
     ];
 
     return
@@ -206,8 +207,8 @@ def:pub app -> JsxElement {
                                 onClick={lambda {
                                     editingBio = not editingBio;
                                     bioText = (
-                                        myProfile.bio
-                                            if myProfile and myProfile.bio
+                                        myProfile.profile.bio
+                                            if myProfile and myProfile.profile.bio
                                             else ""
                                     );
                                 }}

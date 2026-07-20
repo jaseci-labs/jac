@@ -697,6 +697,12 @@ impl NaIRGenPass._arch_is_osp_name(arch_name: str) -> bool {
     return lay is not None and lay.is_osp;
 }
 
+impl NaIRGenPass._arch_is_walker_name(arch_name: str) -> bool {
+    import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
+    lay = get_layout_registry(self.ir_in, self.prog).get_layout(arch_name);
+    return lay is not None and lay.arch_type == "walker";
+}
+
 impl NaIRGenPass._nogc_headerless -> bool {
     return getattr(self.ir_in.gen, "nogc_enforced", False)
     and self._gc_mode() == "none";
@@ -895,6 +901,7 @@ impl NaIRGenPass._emit_scope_cleanup(
     if self._builder is None {
         return;
     }
+    _region_handles: list = [];
     for (var_name, alloca) in self.local_vars.items() {
         if var_name == "self" {
             continue;
@@ -909,6 +916,12 @@ impl NaIRGenPass._emit_scope_cleanup(
 
         if isinstance(alloca.type, ir.PointerType)
         and isinstance(alloca.type.pointee, ir.PointerType) {
+            if var_name in self.region_handle_vars {
+                if var_name != skip_var {
+                    _region_handles.append((var_name, alloca));
+                }
+                continue;
+            }
             val = self.builder.load(alloca, name=f"cleanup.{var_name}");
             if var_name == skip_var {
                 self.builder.store(ir.Constant(alloca.type.pointee, None), alloca);
@@ -918,12 +931,16 @@ impl NaIRGenPass._emit_scope_cleanup(
             }
         }
     }
+    for (var_name, alloca) in _region_handles {
+        self._emit_region_handle_drop(alloca, var_name);
+    }
 }
 
 impl NaIRGenPass._emit_loop_iter_cleanup(body_locals: list, loc: str = "") -> None {
     if self._builder is None or self._builder.block.is_terminated {
         return;
     }
+    _region_handles: list = [];
     for var_name in body_locals {
         if var_name == "self" or var_name in self.param_vars {
             continue;
@@ -939,10 +956,17 @@ impl NaIRGenPass._emit_loop_iter_cleanup(body_locals: list, loc: str = "") -> No
             isinstance(alloca.type, ir.PointerType)
             and isinstance(alloca.type.pointee, ir.PointerType)
         ) {
+            if var_name in self.region_handle_vars {
+                _region_handles.append((var_name, alloca));
+                continue;
+            }
             val = self.builder.load(alloca, name=f"iter.cleanup.{var_name}");
             self._emit_rc_release_typed(val, op="iter_end", loc=loc);
             self.builder.store(ir.Constant(alloca.type.pointee, None), alloca);
         }
+    }
+    for (var_name, alloca) in _region_handles {
+        self._emit_region_handle_drop(alloca, var_name);
     }
 }
 

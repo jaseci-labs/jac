@@ -2493,7 +2493,11 @@ test "jir reload preserves FuncCall callee_decl and call_kind" {
                 "def caller(x: int) -> int { return helper(x) + helper(x); }\n"
             );
         }
-        mod = JacProgram().compile(file_path=src);
+        import from jaclang.jac0core.compile_options { CompileOptions }
+        mod = JacProgram().compile(
+            file_path=src,
+            options=CompileOptions(type_check=False, default_codespace='server')
+        );
         fresh = mod.get_all_sub_nodes(uni.FuncCall);
         assert len(fresh) >= 2 , f"expected FuncCalls in fresh AST, got {len(fresh)}";
         for fc in fresh {

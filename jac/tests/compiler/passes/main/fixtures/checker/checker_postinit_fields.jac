@@ -1,7 +1,7 @@
 obj SomeObj {
     has a: int = 5,
-        b: int by postinit,
-        c: int by postinit;
+        b: int postinit,
+        c: int postinit;
 
     def postinit -> None;
 }

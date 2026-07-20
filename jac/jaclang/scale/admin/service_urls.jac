@@ -1,12 +1,8 @@
-"""Shared observability-service URL resolution for the admin endpoints."""
-
 import os;
 
 import from jaclang.scale.config.config_loader { get_scale_config }
 
 
-"""Resolve a service base URL: explicit env var, else the k8s app-name
-service DNS, else localhost."""
 def service_base_url(env_var: str, svc_suffix: str, port: int) -> str {
     env = os.getenv(env_var, "").strip();
     if env {

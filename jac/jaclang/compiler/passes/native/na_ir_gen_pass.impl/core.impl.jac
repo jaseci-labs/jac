@@ -70,6 +70,7 @@ impl NaIRGenPass.postinit -> None {
     }
 
     self.type_map["LiteralString"] = self.type_map.get("str", _spec_map["i8*"]);
+    self.type_map["Region"] = _spec_map["i8*"];
 
     self.complex_struct_type = self.llvm_module.context.get_identified_type(
         "JacComplex"
@@ -89,20 +90,6 @@ impl NaIRGenPass.postinit -> None {
 }
 
 impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
-    if (self.prog._auto_promote_native and self.ir_in.gen.native_compat) {
-        mod_path = self.ir_in.loc.mod_path if self.ir_in.loc else "";
-        main_target = self.prog._auto_promote_target;
-        import from jaclang.jac0core.ext_registry { is_native_module, is_annex }
-        if (
-            mod_path == main_target
-            and not is_native_module(mod_path)
-            and not is_annex(mod_path)
-        ) {
-            import from jaclang.jac0core.compiler { _coerce_native_module }
-            _coerce_native_module(self.ir_in);
-        }
-    }
-
     import from jaclang.compiler.passes.main.capability_check_pass {
         native_capability_violations
     }
@@ -168,11 +155,15 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
             _rc_pct = (100.0 * self.rc_ops_elided / _rc_known) if _rc_known else 0.0;
             _rc_free = " rc-free" if _rc_total == 0 else "";
             import sys;
+            _rc_arena = (
+                f" arena={self.rc_region_allocs}" if self.rc_region_allocs else ""
+            );
             sys.stderr.write(
                 f"rc-stats [{os.path.basename(self.ir_in.loc.mod_path)}] "
                 f"gc={self._gc_mode()} retains={self.rc_retains_emitted} "
                 f"releases={self.rc_releases_emitted} "
-                f"elided={self.rc_ops_elided} coverage={_rc_pct:.1f}%{_rc_free}\n"
+                f"elided={self.rc_ops_elided} coverage={_rc_pct:.1f}%"
+                f"{_rc_arena}{_rc_free}\n"
             );
         }
         _ir_dump_path = os.environ.get("JAC_DUMP_IR", "");
@@ -555,7 +546,7 @@ impl NaIRGenPass._extract_import_module_name(imp: uni.Import) -> (str | None) {
     if imp.clib_decls {
         return None;
     }
-    if imp.from_loc.path and isinstance(imp.from_loc.path[0], uni.String) {
+    if imp.from_loc.string_path_value is not None {
         return None;
     }
     mod_name = imp.from_loc?.dot_path_str;
