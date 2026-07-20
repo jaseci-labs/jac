@@ -732,7 +732,8 @@ def _emit_main_py(
 ) {
     uses_upload = _uses_upload(walkers, functions);
     fastapi_import = (
-        "from fastapi import FastAPI, Header, HTTPException, Query, "
+        "from fastapi import FastAPI, Header, HTTPException, "
+        "Path as _PathParam, Query, "
         "Request, WebSocket, WebSocketDisconnect"
     );
     if uses_upload {
@@ -748,6 +749,7 @@ def _emit_main_py(
         'import inspect',
         'import json',
         'import os',
+        'import re',
         'import secrets',
         'import sqlite3',
         'import time',
@@ -1227,15 +1229,23 @@ def _emit_main_py(
         '    app.add_api_websocket_route("/ws/" + name, _ws_handler)',
         '',
         '',
-        'def _query_route(handler, model):',
-        '    """Bind a body model\'s fields as individual query parameters (parity',
-        '    with `jac start`, which classifies every field of a GET symbol as a',
-        '    query param). Instantiating the model bare would 500 on any required',
-        '    field and would drop caller input even when all fields are optional."""',
+        'def _query_route(handler, model, path):',
+        '    """Bind a body model\'s fields as individual query parameters, except',
+        '    those named by a `{placeholder}` in the route, which bind as path',
+        '    params. Mirrors how `jac start` classifies a GET symbol\'s fields',
+        '    (path before query). Instantiating the model bare would 500 on any',
+        '    required field and would drop caller input even when all fields',
+        '    had defaults."""',
+        '    in_path = set(re.findall(r"{([^}:]+)", path))',
         '    params = []',
         '    for (fname, finfo) in model.model_fields.items():',
         '        ann = finfo.annotation if finfo.annotation is not None else str',
-        '        default = Query(...) if finfo.is_required() else Query(finfo.default)',
+        '        if fname in in_path:',
+        '            default = _PathParam(...)',
+        '        elif finfo.is_required():',
+        '            default = Query(...)',
+        '        else:',
+        '            default = Query(finfo.default)',
         '        params.append(',
         '            inspect.Parameter(',
         '                fname,',
@@ -1288,7 +1298,9 @@ def _emit_main_py(
         '        raw_method = getattr(spec, "method", None)',
         '        method = str(getattr(raw_method, "value", raw_method) or "POST").upper()',
         '        if method in ("GET", "HEAD") and model is not None:',
-        '            app.add_api_route(path, _query_route(handler, model), methods=[method])',
+        '            app.add_api_route(',
+        '                path, _query_route(handler, model, path), methods=[method]',
+        '            )',
         '        else:',
         '            app.add_api_route(path, handler, methods=[method])',
         '        return',

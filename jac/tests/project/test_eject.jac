@@ -808,9 +808,14 @@ test "a GET @restspec symbol binds its fields as query params, not a bare model"
         # `jac start` classifies every field of a GET symbol as a query param.
         # Calling the model with no arguments would 500 on `query` (required)
         # and would discard caller input even where every field had a default.
-        assert "_query_route(handler, model)" in main_py;
+        assert "_query_route(handler, model, path)" in main_py;
         assert "_bodyless" not in main_py;
-        assert "Query(...) if finfo.is_required() else Query(finfo.default)" in main_py;
+        assert "default = Query(...)" in main_py;
+        # A field named by a `{placeholder}` in the declared path binds as a
+        # path param; binding it as a query param makes FastAPI reject the
+        # route at import, taking down the whole app rather than one endpoint.
+        assert 're.findall(r"{([^}:]+)", path)' in main_py;
+        assert "default = _PathParam(...)" in main_py;
         # The required field must stay required rather than gain a default to
         # make the bare-model call survive.
         assert "    query: str" in main_py;
