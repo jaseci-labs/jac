@@ -32,7 +32,7 @@ walker:pub read_todos {
         visit [-->[?:Todo]];
     }
 
-    can report_todos with exit {
+    can report_todos with Todo exit {
         report here;
     }
 }
@@ -53,14 +53,14 @@ cl {
                 return;
             }
             response = root spawn create_todo(text=inputValue.strip());
-            newTodo = response.reports[0][0];
+            newTodo = response.reports[0];
             todos = todos + [newTodo];
             inputValue = "";
         }
 
         async def toggleTodo(id: any) {
             result = id spawn toggle_todo();
-            updated = result.reports[0][0];
+            updated = result.reports[0];
             todos = [updated if todo._jac_id == id else todo for todo in todos];
         }
 

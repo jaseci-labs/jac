@@ -423,6 +423,40 @@ test "walker-only project ejects a backend-only app with no frontend" {
 }
 
 
+# ==================== protocol / schedule filtering ====================
+"""A project mixing a plain HTTP walker and function with a webhook walker, a
+websocket walker, a scheduled walker, and a scheduled function."""
+def _write_protocol_project(src: Path, name: str = "proto_app") {
+    src.mkdir(parents=True, exist_ok=True);
+    (src / "jac.toml").write_text(
+        f'[project]\nname = "{name}"\nentry-point = "main.jac"\n'
+    );
+    (src / "main.jac").write_text('import from server { Greet }\n');
+    (src / "server.sv.jac").write_text(
+        'import from jaclang.runtimelib.builtin { restspec, schedule, APIProtocol }\n\n' + 'walker:pub Greet {\n' + '    has reports: list[str] = [];\n' + '    can g with `root entry {\n' + '        report "hi";\n' + '    }\n' + '}\n\n' + '@restspec(protocol=APIProtocol.WEBHOOK)\n' + 'walker:pub Hooky {\n' + '    has reports: list[str] = [];\n' + '    can g with `root entry {\n' + '        report "hooked";\n' + '    }\n' + '}\n\n' + '@restspec(protocol=APIProtocol.WEBSOCKET)\n' + 'walker:pub Socky {\n' + '    has reports: list[str] = [];\n' + '    can g with `root entry {\n' + '        report "socked";\n' + '    }\n' + '}\n\n' + '@schedule(interval=1)\n' + 'walker:pub Cronny {\n' + '    has reports: list[str] = [];\n' + '    can g with `root entry {\n' + '        report "cronned";\n' + '    }\n' + '}\n\n' + 'def:pub ping(word: str) -> str {\n' + '    return f"pong:{word}";\n' + '}\n\n' + '@schedule(interval=1)\n' + 'def:pub tick() -> str {\n' + '    return "tock";\n' + '}\n'
+    );
+}
+
+
+test "webhook, websocket, and scheduled targets are not mounted as HTTP endpoints" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "proto";
+        _write_protocol_project(src, "proto");
+        rc = _silent_eject(str(src));
+        assert rc == 0;
+        main_py = _backend(src, "main.py").read_text();
+        assert '@app.post("/walker/Greet")' in main_py;
+        assert '@app.post("/function/ping")' in main_py;
+        assert "/walker/Hooky" not in main_py;
+        assert "/walker/Socky" not in main_py;
+        assert "/walker/Cronny" not in main_py;
+        assert "/function/tick" not in main_py;
+        assert "_W_Hooky" not in main_py;
+        assert "_F_tick" not in main_py;
+    }
+}
+
+
 # ==================== inherited walker fields ====================
 """Field names of a Pydantic model class in the emitted main.py."""
 def _model_fields(main_py: str, model: str) -> set {

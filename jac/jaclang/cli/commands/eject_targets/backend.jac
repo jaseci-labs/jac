@@ -28,6 +28,7 @@ def emit_backend(
 
     walker_fields: dict = {};
     func_params: dict = {};
+    http_map: dict = {};
     emitted_codes: list = [];
     written = 0;
     for unit in compiled {
@@ -52,6 +53,7 @@ def emit_backend(
         written += 1;
         walker_fields.update(_extract_walker_fields(code, walker_names));
         func_params.update(_extract_func_params(code, func_names));
+        http_map.update(_extract_http_exposure(code, walker_names | func_names));
     }
     if written == 0 {
         console.error("  backend: no server-side Python to emit.");
@@ -83,6 +85,7 @@ def emit_backend(
                 "name": wn,
                 "module": str(w["module"]),
                 "pub": bool(w["pub"]),
+                "http": bool(http_map.get(wn, True)),
                 "fields": walker_fields.get(wn, [])
             }
         );
@@ -95,6 +98,7 @@ def emit_backend(
                 "name": fn,
                 "module": str(f["module"]),
                 "pub": bool(f["pub"]),
+                "http": bool(http_map.get(fn, True)),
                 "params": func_params.get(fn, [])
             }
         );
@@ -386,6 +390,76 @@ def _extract_func_params(py_code: str, func_names: set) -> dict {
 }
 
 
+glob _NON_HTTP_PROTOCOLS: set = {"webhook", "websocket", "ws", "wss"};
+
+
+def _decorator_name(dec: any) -> str {
+    target = dec.func if isinstance(dec, ast.Call) else dec;
+    if isinstance(target, ast.Name) {
+        return str(target.id);
+    }
+    if isinstance(target, ast.Attribute) {
+        return str(target.attr);
+    }
+    return "";
+}
+
+
+def _restspec_protocol(dec: any) -> str {
+    if not isinstance(dec, ast.Call) {
+        return "";
+    }
+    for kw in dec.keywords {
+        if kw.arg != "protocol" {
+            continue;
+        }
+        if isinstance(kw.value, ast.Attribute) {
+            return str(kw.value.attr).lower();
+        }
+        if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str) {
+            return str(kw.value.value).lower();
+        }
+    }
+    return "";
+}
+
+
+def _decorators_expose_http(decorators: list) -> bool {
+    for dec in decorators {
+        name = _decorator_name(dec);
+        if name == "schedule" {
+            return False;
+        }
+        if (name == "restspec") and (_restspec_protocol(dec) in _NON_HTTP_PROTOCOLS) {
+            return False;
+        }
+    }
+    return True;
+}
+
+
+def _extract_http_exposure(py_code: str, names: set) -> dict {
+    result: dict = {};
+    try {
+        tree = ast.parse(py_code);
+    } except Exception {
+        console.warning(
+            "  backend: could not parse a compiled module to read walker/function "
+            "protocols; any webhook, websocket, or scheduled targets it declares may "
+            "be exposed as plain HTTP endpoints."
+        );
+        return result;
+    }
+    for node in tree.body {
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+        and (node.name in names) {
+            result[node.name] = _decorators_expose_http(node.decorator_list);
+        }
+    }
+    return result;
+}
+
+
 def _model_class_name(name: str, suffix: str) -> str {
     return name[:1].upper() + name[1:] + suffix;
 }
@@ -481,6 +555,16 @@ def _emit_main_py(
     has_env: bool,
     entry_module: str
 ) {
+    walkers = [
+        w
+        for w in walkers
+        if w.get("http", True)
+    ];
+    functions = [
+        f
+        for f in functions
+        if f.get("http", True)
+    ];
     uses_upload = False;
     for f in functions {
         for p in f["params"] {
