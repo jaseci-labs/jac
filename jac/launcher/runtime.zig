@@ -549,6 +549,13 @@ pub fn materialize(
     return rt;
 }
 
+/// mode_mode for payload extraction: `.executable_bit_only` (not `.ignore`!)
+/// so bundled scripts like build_libwebview.sh keep their exec bit -- payload.zig
+/// writes the real on-disk mode into the tar, and `.ignore` would flatten every
+/// file to 0o644 and make the runtime spawn fail EACCES. `pub const` so the
+/// payload.zig round-trip test exercises the exact value production uses.
+pub const payload_extract_mode_mode: std.tar.ExtractOptions.ModeMode = .executable_bit_only;
+
 /// zstd-decompress + untar `zbuf` into `<rt>` via a per-pid temp dir and an
 /// atomic rename. Streams decompression straight into the tar reader -- the
 /// full uncompressed tar is never held in memory.
@@ -582,7 +589,7 @@ fn extractPayload(
         var dec = PayloadDecoder.init(dctx, zbuf, buf);
         dec.progress = &prog;
         std.tar.extract(io, dest, &dec.reader, .{
-            .mode_mode = .ignore,
+            .mode_mode = payload_extract_mode_mode,
             .strip_components = 0,
         }) catch |e| {
             prog.abort();
