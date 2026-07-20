@@ -245,6 +245,34 @@ test "byLLM projects vendor jaclang.byllm and pin the llm capability deps" {
 }
 
 
+test "meaning-typed metadata ships as readable source, never a pickle" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "mtirapp";
+        src.mkdir(parents=True, exist_ok=True);
+        (src / "jac.toml").write_text(
+            '[project]\nname = "mtirapp"\nentry-point = "main.jac"\n'
+        );
+        (src / "main.jac").write_text(
+            'import from jaclang.byllm.lib { Model }\n\n' + 'glob llm = Model(model_name="mockllm", config={"outputs": ["ok"]});\n\n' + 'sem summarize = "Condense the text to one line.";\n' + 'def:pub summarize(text: str) -> str by llm();\n'
+        );
+        rc = _silent_eject(str(src));
+        assert rc == 0;
+        backend = src / "ejected" / "backend";
+        assert not (backend / "mtir.pkl").exists();
+        for stray in backend.rglob("*.pkl") {
+            raise AssertionError(f"ejected output must ship no pickles, found {stray}");
+        }
+        mod = backend / "mtir_data.py";
+        assert mod.exists();
+        body = mod.read_text();
+        ast.parse(body);
+        assert "MTIR_DATA" in body;
+        assert "Condense the text to one line." in body;
+        assert "pickle" not in (backend / "main.py").read_text();
+    }
+}
+
+
 test "plain projects do not vendor byllm or pin llm deps" {
     with TemporaryDirectory() as td {
         src = Path(td) / "myapp";

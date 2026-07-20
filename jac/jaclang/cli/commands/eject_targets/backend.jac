@@ -141,12 +141,11 @@ def emit_backend(
     needs_kv = _emit_scale_adapters(backend_dir, emitted_codes);
 
     if mtir_map {
-        import pickle;
-        (backend_dir / "mtir.pkl").write_bytes(
-            pickle.dumps(mtir_map, pickle.HIGHEST_PROTOCOL)
+        (backend_dir / "mtir_data.py").write_text(
+            _mtir_module_source(mtir_map), encoding="utf-8"
         );
         console.print(
-            f"  ✔ meaning-typed metadata ({len(mtir_map)} scopes -> mtir.pkl)",
+            f"  ✔ meaning-typed metadata ({len(mtir_map)} scopes -> mtir_data.py)",
             style="success"
         );
     }
@@ -187,6 +186,83 @@ def emit_backend(
     reqs.extend(_capability_requirements(detected_caps));
     _emit_requirements(backend_dir, reqs);
     return 0;
+}
+
+
+def _mtir_literal(val: object, indent: int, classes: set) -> str {
+    pad = "    " * indent;
+    if val is None {
+        return "None";
+    }
+    if isinstance(val, bool) {
+        return "True" if val else "False";
+    }
+    if isinstance(val, (str, int, float)) {
+        return repr(val);
+    }
+    if isinstance(val, `tuple) {
+        if not val {
+            return "()";
+        }
+        inner = ", ".join([_mtir_literal(x, indent, classes) for x in val]);
+        if len(val) == 1 {
+            return "(" + inner + ",)";
+        }
+        return "(" + inner + ")";
+    }
+    if isinstance(val, list) {
+        if not val {
+            return "[]";
+        }
+        items = [pad + "    " + _mtir_literal(x, indent + 1, classes) for x in val];
+        return "[\n" + ",\n".join(items) + "\n" + pad + "]";
+    }
+    cls = type(val).__name__;
+    fields = val?.__dict__;
+    if fields is None {
+        raise ValueError(f"eject: cannot lower MTIR value of type {cls} to source");
+    }
+    classes.add(cls);
+    parts = [];
+    for key in sorted(fields.keys()) {
+        parts.append(
+            pad + "    " + str(key) + "=" + _mtir_literal(
+                fields[key], indent + 1, classes
+            )
+        );
+    }
+    if not parts {
+        return cls + "()";
+    }
+    return cls + "(\n" + ",\n".join(parts) + "\n" + pad + ")";
+}
+
+
+def _mtir_module_source(mtir_map: dict) -> str {
+    classes: set = set();
+    entries = [];
+    for scope in sorted(mtir_map.keys()) {
+        entries.append(
+            "    " + repr(str(scope)) + ": " + _mtir_literal(
+                mtir_map[scope], 1, classes
+            )
+        );
+    }
+    header = [
+        '"""Meaning-typed metadata captured at build time.',
+        "",
+        "The compiler records the semstrings, parameter and return-type structure",
+        "behind every `by llm()` call. That pass does not exist in a converted app,",
+        "so the map is emitted here as plain source and hydrated at boot.",
+        '"""',
+        ""
+    ];
+    if classes {
+        header.append("from jaclang.jac0core.mtp import " + ", ".join(sorted(classes)));
+        header.append("");
+    }
+    body = "MTIR_DATA = {\n" + ",\n".join(entries) + "\n}\n";
+    return "\n".join(header) + "\n" + body;
 }
 
 
@@ -726,11 +802,11 @@ def _emit_main_py(
         '# Meaning-typed metadata: prompts/schemas for `by llm()` calls are',
         '# synthesized from this compiler-captured map; without it the runtime',
         '# falls back to bare introspection and prompts silently drift.',
-        '_MTIR_PKL = os.path.join(_BASE, "mtir.pkl")',
-        'if os.path.isfile(_MTIR_PKL):',
-        '    import pickle',
-        '    with open(_MTIR_PKL, "rb") as _f:',
-        '        _MTIR_OVERLAY.update(pickle.load(_f))'
+        'try:',
+        '    from mtir_data import MTIR_DATA as _MTIR_DATA',
+        'except ImportError:',
+        '    _MTIR_DATA = {}',
+        '_MTIR_OVERLAY.update(_MTIR_DATA)'
     ];
 
     if entry_module {
