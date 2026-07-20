@@ -15,12 +15,12 @@ impl primitive_type_name_of(ty: (types.TypeBase | None)) -> (str | None) {
     return None;
 }
 
-impl expr_primitive_name(prog: object, expr_node: uni.UniNode) -> str {
+impl expr_primitive_name(prog: any, expr_node: uni.UniNode) -> str {
     _ty = expr_node?.type;
     if _ty is None {
         try {
             _te = prog.get_type_evaluator();
-            if _te {
+            if _te and isinstance(expr_node, uni.Expr) {
                 _ty = _te.get_type_of_expression(expr_node);
             }
         } except Exception {
@@ -256,11 +256,13 @@ impl doc_of_sym(sym: Symbol) -> (str | None) {
     }
     decl = sym.decl.name_of;
     if isinstance(decl, uni.AstDocNode) and decl.doc {
-        return decl.doc.lit_value;
+        _d = decl.doc.lit_value;
+        return _d if isinstance(_d, str) else None;
     }
     if isinstance(decl, uni.HasVar) {
         if (arch_has := decl.find_parent_of_type(uni.ArchHas)) and arch_has.doc {
-            return arch_has.doc.lit_value;
+            _d2 = arch_has.doc.lit_value;
+            return _d2 if isinstance(_d2, str) else None;
         }
     }
     return None;
@@ -277,7 +279,7 @@ impl get_completion_items(
     ret = [];
     if isinstance(ty, uni.UniScopeNode) {
         scope: (uni.UniScopeNode | None) = ty;
-        while scope {
+        while scope is not None {
             for (name, sym) in scope.names_in_scope.items() {
                 ret.append(completion_item_from_sym(name, sym));
             }
@@ -292,7 +294,7 @@ impl get_completion_items(
                 ret.append(completion_item_from_sym(name, sym));
             }
         }
-    } elif isinstance(ty, types.ModuleType) {
+    } elif isinstance(ty, types.ModuleType) and ty.symbol_table is not None {
         for (name, sym) in ty.symbol_table.names_in_scope.items() {
             ret.append(completion_item_from_sym(name, sym));
         }
@@ -303,22 +305,22 @@ impl get_completion_items(
 impl completion_kind_from_sym(sym: Symbol) -> int {
     match sym.decl.name_of {
         case uni.ModulePath():
-            return CompletionItemKind.Module;
+            return CompletionItemKind.Module.value;
 
         case uni.Ability():
-            return CompletionItemKind.Function;
+            return CompletionItemKind.Function.value;
 
         case uni.Archetype():
-            return CompletionItemKind.Class;
+            return CompletionItemKind.Class.value;
 
         case uni.Enum():
-            return CompletionItemKind.Enum;
+            return CompletionItemKind.Enum.value;
 
         case uni.HasVar():
-            return CompletionItemKind.Variable;
+            return CompletionItemKind.Variable.value;
 
     }
-    return CompletionItemKind.Text;
+    return CompletionItemKind.Text.value;
 }
 
 impl ParamAssignmentTracker.get_unmatched_required_params -> list[types.Parameter] {
@@ -626,9 +628,9 @@ impl apply_solved_type_vars(
         }
 
         if class_type is not None and ty.name {
-            for (idx, tp) in enumerate(class_type.shared.type_params) {
+            for (idx, tp) in enumerate(class_type.shared.type_params or []) {
                 if tp.name == ty.name {
-                    if idx < len(class_type.private.type_args) {
+                    if idx < len(class_type.private.type_args or []) {
                         resolved = class_type.private.type_args[idx];
                         return convert_to_instance(resolved);
                     } else {
@@ -711,7 +713,7 @@ impl build_type_var_solution(class_type: types.ClassType) -> dict[str, types.Typ
         }
         specialized = specialize_for_base_class(class_type, mro_cls);
         if specialized.private.type_args {
-            for (idx, tp) in enumerate(specialized.shared.type_params) {
+            for (idx, tp) in enumerate(specialized.shared.type_params or []) {
                 if tp.name and idx < len(specialized.private.type_args) {
                     arg = specialized.private.type_args[idx];
                     if not isinstance(arg, types.TypeVarType) {

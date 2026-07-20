@@ -5,6 +5,7 @@ import pdb;
 import re;
 import from functools { lru_cache }
 import from traceback { TracebackException }
+import type from jaclang.jac0core.unitree { UniNode }
 
 @lru_cache(maxsize=256)
 def pascal_to_snake(pascal_string: str) -> str {
@@ -356,7 +357,7 @@ def path_matches_exclude(
 }
 
 
-def _is_version_info_access(expr: 'uni.Expr') -> bool {
+def _is_version_info_access(expr: UniNode) -> bool {
     import jaclang.jac0core.unitree as uni;
 
     if not isinstance(expr, uni.AtomTrailer) {
@@ -373,7 +374,7 @@ def _is_version_info_access(expr: 'uni.Expr') -> bool {
     );
 }
 
-def _is_type_checking_ref(expr: 'uni.Expr') -> bool {
+def _is_type_checking_ref(expr: UniNode) -> bool {
     import jaclang.jac0core.unitree as uni;
 
     if isinstance(expr, uni.AtomUnit) {
@@ -390,7 +391,7 @@ def _is_type_checking_ref(expr: 'uni.Expr') -> bool {
     return False;
 }
 
-def _extract_version_tuple(expr: 'uni.Expr') -> tuple[int, int] | None {
+def _extract_version_tuple(expr: UniNode) -> tuple[int, int] | None {
     import jaclang.jac0core.unitree as uni;
 
     if not isinstance(expr, uni.TupleVal) {
@@ -406,7 +407,7 @@ def _extract_version_tuple(expr: 'uni.Expr') -> tuple[int, int] | None {
     return (major.lit_value, minor.lit_value);
 }
 
-def evaluate_version_condition(condition: 'uni.Expr') -> bool | None {
+def evaluate_version_condition(condition: UniNode) -> bool | None {
     import sys;
     import operator;
     import jaclang.jac0core.unitree as uni;
