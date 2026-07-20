@@ -282,10 +282,11 @@ def generate -> str {
     return routes + _handwritten_tail(_read_current());
 }
 
-def _format_generated(content: str, *, restore_original: bool = False) -> str {
+def _format_generated(content: str) -> str {
     import os;
     import subprocess;
     import sys;
+    import tempfile;
     import from pathlib { Path }
     import jaclang;
     file_path = jaclang.__file__;
@@ -293,28 +294,40 @@ def _format_generated(content: str, *, restore_original: bool = False) -> str {
         raise RuntimeError("jaclang.__file__ is None; cannot locate package");
     }
     pkg_root = Path(file_path).parent;
-    impl_path = Path(_manifest_impl_path());
-    manifest_path = pkg_root / "cli" / "manifest.jac";
-    original = impl_path.read_text(encoding="utf-8") if restore_original else "";
-    impl_path.write_text(content, encoding="utf-8");
-    env = os.environ.copy();
-    env["PYTHONPATH"] = str(pkg_root.parent);
+    manifest_src = pkg_root / "cli" / "manifest.jac";
     try {
-        subprocess.run(
-            [sys.executable, "-m", "jaclang", "fmt", "--lintfix", str(manifest_path), ],
-            capture_output=True,
-            cwd=str(pkg_root.parent),
-            env=env,
-            check=False,
-        );
-        formatted = impl_path.read_text(encoding="utf-8");
+        with tempfile.TemporaryDirectory() as fmt_dir {
+            cli_root = Path(fmt_dir) / "jaclang" / "cli";
+            impl_path = cli_root / "impl" / "manifest.impl.jac";
+            manifest_path = cli_root / "manifest.jac";
+            impl_path.parent.mkdir(parents=True, exist_ok=True);
+            impl_path.write_text(content, encoding="utf-8");
+            manifest_path.write_text(
+                manifest_src.read_text(encoding="utf-8"), encoding="utf-8"
+            );
+            with open(
+                os.path.join(fmt_dir, "jac.toml"), "w", encoding="utf-8"
+            ) as cfg {
+                cfg.write("[check.lint]\nselect = [\"all\"]\n");
+            }
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "jaclang",
+                    "fmt",
+                    "--lintfix",
+                    "jaclang/cli/manifest.jac",
+                ],
+                capture_output=True,
+                cwd=fmt_dir,
+                check=False,
+            );
+            return impl_path.read_text(encoding="utf-8");
+        }
     } except Exception {
-        formatted = content;
+        return content;
     }
-    if restore_original {
-        impl_path.write_text(original, encoding="utf-8");
-    }
-    return formatted;
 }
 
 def write_routes -> str {
@@ -327,7 +340,7 @@ def write_routes -> str {
 }
 
 def verify_drift -> list[str] {
-    fresh = _format_generated(generate(), restore_original=True);
+    fresh = _format_generated(generate());
     if _read_current() == fresh {
         return [];
     }
