@@ -357,6 +357,10 @@ def _command_routes -> list[CommandMeta] {
             description="",
             examples=[
                 ('jac check myprogram.jac', 'Check a single file'),
+                (
+                    'jac check . --native-census',
+                    'Rank modules by native compile outcome'
+                ),
                 ('jac check . --lint', 'Report lint violations only'),
                 ('jac check . --lint --fix', 'Auto-fix lint violations'),
                 ('jac check file1.jac file2.jac', 'Check multiple files'),
@@ -470,6 +474,19 @@ def _command_routes -> list[CommandMeta] {
                     typ='bool',
                     default=False,
                     help='With --lint: auto-fix violations',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='native-census',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Compile with codegen and report per-module native outcome (native / demoted / server) ranked by reason (needs the native toolchain)',
                     short='',
                     choices=None,
                     required=False,
