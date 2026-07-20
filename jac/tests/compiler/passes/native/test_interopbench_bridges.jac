@@ -23,9 +23,30 @@ glob INTEROPBENCH = str(
      SMALL_CHURN = ["200", "20"];
 
 
+"""Subprocess env; view_driver needs checkout dev source under JAC_NO_DEV_SOURCE."""
+def _subprocess_env(dev_source: bool = False) -> dict[str, str] {
+    env = dict(os.environ);
+    if dev_source {
+        env.pop("JAC_NO_DEV_SOURCE", None);
+    }
+    return env;
+}
+
+
 """Run one jac run invocation and return its validated canonical digest."""
-def _run_command(command: list[str], label: str, expected_metrics: set[str]) -> str {
-    proc = subprocess.run(command, capture_output=True, text=True, timeout=120,);
+def _run_command(
+    command: list[str],
+    label: str,
+    expected_metrics: set[str],
+    dev_source: bool = False,
+) -> str {
+    proc = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        env=_subprocess_env(dev_source),
+    );
     assert proc.returncode == 0 , (
         f"{label} exited {proc.returncode}\n"
         f"stdout: {proc.stdout[-600:] if proc.stdout else '(empty)'}\n"
@@ -78,7 +99,10 @@ def _run_view(variant: str, count: str) -> str {
     source = os.path.join(INTEROPBENCH, "harness", "view_driver.jac");
     command = [sys.executable, "-m", "jaclang", "run", source, variant, count, ];
     return _run_command(
-        command, f"iop_view/{variant}/{count}", {"view_ns", "materialise_ns"},
+        command,
+        f"iop_view/{variant}/{count}",
+        {"view_ns", "materialise_ns"},
+        dev_source=True,
     );
 }
 
