@@ -12,7 +12,7 @@ import from jaclang.jac0core.program { JacProgram }
 
 
 glob BENCH = Path(str(__file__)).resolve().parent.parent,
-     CATALOG: dict[str, dict] = {
+     CATALOG: dict[str, dict[str, object]] = {
          "iop_call": {
              "audit_kind": "native_manifest",
              "source": "kernels/iop_call.jac",
@@ -212,12 +212,12 @@ def main(opts: dict[str, str]) {
     if len(kernels) != len(set(kernels)) {
         raise ValueError("--kernels contains duplicate names");
     }
-    cells: dict[str, dict] = {};
+    cells: dict[str, dict[str, object]] = {};
     for kernel in kernels {
         if kernel not in CATALOG {
             raise ValueError(f"unknown kernel: {kernel}");
         }
-        spec = CATALOG[kernel] as dict;
+        spec = CATALOG[kernel];
         audit_kind = spec.get("audit_kind", "native_manifest") as str;
         if audit_kind == "native_manifest" {
             cells[kernel] = audit_native_manifest(spec);
@@ -242,9 +242,8 @@ def main(opts: dict[str, str]) {
 
 
 """Audit a Python↔native manifest cell (iop_call, iop_cb)."""
-def audit_native_manifest(spec: dict) -> dict {
+def audit_native_manifest(spec: dict[str, object]) -> dict[str, object] {
     source = spec["source"] as str;
-    kernel = spec.get("scenario", source) as str;
     source_path = BENCH / source;
     program = JacProgram();
     ir = program.compile(str(source_path));
@@ -275,8 +274,8 @@ def audit_native_manifest(spec: dict) -> dict {
         );
     }
     py_source = ir.gen.py;
-    marker_results: dict[str, dict] = {};
-    markers = spec["markers"] as dict[str, dict];
+    marker_results: dict[str, dict[str, object]] = {};
+    markers = spec["markers"] as dict[str, dict[str, object]];
     for (marker_name, marker_spec) in markers.items() {
         marker_text = marker_spec["text"] as str;
         expected_count = marker_spec["occurrences"] as int;
@@ -316,7 +315,7 @@ def audit_native_manifest(spec: dict) -> dict {
 
 
 """Audit a clib IR cell (iop_ffi_*): extern declares, ABI markers, trampoline."""
-def audit_clib_ir(spec: dict) -> dict {
+def audit_clib_ir(spec: dict[str, object]) -> dict[str, object] {
     source = spec["source"] as str;
     source_path = BENCH / source;
     program = JacProgram();
@@ -332,11 +331,10 @@ def audit_clib_ir(spec: dict) -> dict {
             f"{source}: clib paths {actual_clib_paths} != {expected_clib_paths}"
         );
     }
-    extern_results: dict[str, dict] = {};
+    extern_results: dict[str, dict[str, object]] = {};
     for sym in spec["extern_declares"] as list[str] {
-        has_declare = f'declare %' in ir_text and f'@"{sym}"' in ir_text;
         declare_present = (
-            f'declare ' in ir_text
+            'declare ' in ir_text
             and any(
                 line.strip().startswith("declare") and f'@"{sym}"' in line
                 for line in ir_text.splitlines()
@@ -354,8 +352,8 @@ def audit_clib_ir(spec: dict) -> dict {
         }
         extern_results[sym] = {"declare": True, "define": False};
     }
-    marker_results: dict[str, dict] = {};
-    markers = spec["ir_markers"] as dict[str, dict];
+    marker_results: dict[str, dict[str, object]] = {};
+    markers = spec["ir_markers"] as dict[str, dict[str, object]];
     for (marker_name, marker_spec) in markers.items() {
         text = marker_spec["text"] as str;
         actual = ir_text.count(text);

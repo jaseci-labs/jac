@@ -13,12 +13,11 @@ glob DEFAULT_INVOCATIONS: int = 30,
      SIZE_DEFAULT_CHURN: list[str] = ["5000", "500"],
      SIZE_VIEW_DEFAULT: list[str] = ["5000"],
      DEFAULT_WORK: int = 5000,
-     DEFAULT_CALLS: int = 500,
-     DEFAULT_VIEW_COUNT: int = 5000;
+     DEFAULT_CALLS: int = 500;
 
 
 """Parse one kernel invocation and enforce the canonical output contract."""
-def parse_output(stdout: str) -> dict {
+def parse_output(stdout: str) -> dict[str, object] {
     timing: int | None = None;
     metrics: dict[str, int] = {};
     digest_lines: list[str] = [];
@@ -81,7 +80,7 @@ def run_command(
     timeout_s: int,
     cwd: str | None = None,
     env: dict[str, str] | None = None,
-) -> dict {
+) -> dict[str, object] {
     run_env = None;
     if env is not None {
         import os;
@@ -113,25 +112,25 @@ def run_command(
 
 
 """Aggregate repeated invocations and reject unstable output."""
-def aggregate_runs(runs: list[dict]) -> dict {
+def aggregate_runs(runs: list[dict[str, object]]) -> dict[str, object] {
     if not runs {
         raise ValueError("cannot aggregate zero invocations");
     }
-    canonical = runs[0]["canonical_digest"];
-    metric_keys = set(runs[0]["metrics"].keys());
+    canonical = runs[0]["canonical_digest"] as str;
+    metric_keys = set((runs[0]["metrics"] as dict[str, int]).keys());
     for run in runs[1:] {
-        if run["canonical_digest"] != canonical {
+        if (run["canonical_digest"] as str) != canonical {
             raise ValueError("nondeterministic canonical digest across invocations");
         }
-        if set(run["metrics"].keys()) != metric_keys {
+        if set((run["metrics"] as dict[str, int]).keys()) != metric_keys {
             raise ValueError("metric-key set changed across invocations");
         }
     }
-    times = [run["ns"] for run in runs];
+    times: list[int] = [run["ns"] as int for run in runs];
     metric_medians: dict[str, int] = {};
     for key in metric_keys {
         metric_medians[key] = int(
-            statistics.median([run["metrics"][key] for run in runs])
+            statistics.median([(run["metrics"] as dict[str, int])[key] for run in runs])
         );
     }
     return {
@@ -140,7 +139,7 @@ def aggregate_runs(runs: list[dict]) -> dict {
         "max_ns": max(times),
         "stdev_ns": int(statistics.stdev(times)) if len(times) > 1 else 0,
         "canonical_digest": canonical,
-        "digest": runs[0]["digest"],
+        "digest": runs[0]["digest"] as str,
         "metrics": metric_medians,
 
     };
@@ -148,7 +147,7 @@ def aggregate_runs(runs: list[dict]) -> dict {
 
 
 """Assert that every named variant has the same canonical digest."""
-def compare_oracle(scenario: str, variants: dict[str, dict]) -> str {
+def compare_oracle(scenario: str, variants: dict[str, dict[str, object]]) -> str {
     if len(variants) < 2 {
         raise ValueError(f"{scenario}: oracle requires at least two variants");
     }
@@ -166,7 +165,7 @@ def compare_oracle(scenario: str, variants: dict[str, dict]) -> str {
 
 
 """Write schema-versioned family results."""
-def write_results(out: Path, family: str, cells: dict) {
+def write_results(out: Path, family: str, cells: dict[str, object]) {
     document = {
         "schema_version": 1,
         "suite": "interopbench",

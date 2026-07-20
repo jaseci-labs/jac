@@ -19,9 +19,9 @@ cost) has no number behind it and no regression guard. This suite is that
 coverage.
 
 > **Status:** Phases 0–3 are runnable: the scalar call, inverse callback, and
-> full-native view cells have passed their acceptance gates. Phases 4–7 remain
-> reviewed implementation design. A command or kernel enters the runnable
-> contract only when its phase acceptance criteria pass.
+> full-native view cells have passed their acceptance gates. Phase 4–7 source
+> cells are retained for explicit `--experimental` runs, but remain outside
+> the default runnable contract until their phase acceptance criteria pass.
 
 ## Two families, two harnesses
 
@@ -118,9 +118,10 @@ native/C. Each cell has its own exact reference twin.
 - `iop_view`  -  full-native-module marshalling, not an inline-`na {}` scalar
   bridge. A dedicated driver obtains `NativeListView` / `NativeStructView`,
   checksums it while native storage is alive, then explicitly materialises
-  it (for example list/field extraction) and checksums the copy. `m:view_ns`
-  and `m:materialise_ns` measure the two consumers; the suite does not claim
-  a selectable deep-copy marshaller that does not currently exist.
+  it (for example list/field extraction) and checksums the copy. Each variant
+  measures only its selected consumer; the non-selected `m:view_ns` or
+  `m:materialise_ns` metric is zero. The suite does not claim a selectable
+  deep-copy marshaller that does not currently exist.
 - `iop_ffi_scalar`  -  `sqrt` churn via `import from "libm.so" { def sqrt(x:
   f64) -> f64; }`. Pure call+return overhead; the ABI floor.
 - `iop_ffi_struct`  -  a deterministic `support/interopbench.c` fixture exports
@@ -179,8 +180,9 @@ After the corresponding phases are implemented, run from
 compiler anywhere inside the repo; do not add a nested `jac.toml`):
 
     ./run_bridges.sh             # family 1: identity gate + measurements (+ enabled audits)
-    ./run_xruntime.sh [--quick]  # family 2: server/wasm host lifecycle + measurements
-    ./run_all.sh                 # both families
+    ./run_xruntime.sh --experimental [--quick] # opt-in family 2
+    ./run_all.sh                 # family 1 only
+    ./run_all.sh --experimental  # both families
     ./ci_bridges.sh              # fast differential-identity gate (small sizes)
 
 Outputs land in `results/` (gitignored): `bridges_results.json`,
@@ -366,8 +368,8 @@ aggregation, identity comparison, versioned JSON. `measure.jac` supplies the
 cell catalog and mixed-JIT command adapter. `ci_bridges.sh` delegates to it with
 small args and one invocation; shell does not duplicate parsing or kernel
 arguments. `run_bridges.sh` runs the gate then writes default measurements.
-`run_all.sh` calls only implemented families and must not report an empty
-family-2 success.
+`run_all.sh` runs the Phase 0–3 family by default. Pass `--experimental` to
+include the cross-runtime family; it must not report an empty family-2 success.
 
 **Commands:**
 
@@ -474,7 +476,10 @@ harness labels its wall-clock timing source.
 
 ### Explicitly out of Phases 0–3
 
-All C FFI cells, NumPy, all live hosts, generated-client RPC, SSE, wasm,
+The source tree contains C FFI cells and cross-runtime host cells for
+experimentation, but they are gated behind `--experimental` and excluded from
+normal scripts and CI. All C FFI cells, NumPy, all live hosts, generated-client
+RPC, SSE, wasm,
 game/PolyBench ports, arm64 runtime execution, macOS RSS, concurrency/RPS,
 network egress, cold start, bundle size, timing thresholds, chess/perft, and
 compiler fixes not surfaced by the mixed-JIT scalar, callback, and view slices.

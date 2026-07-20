@@ -12,14 +12,6 @@
 
 #include <stdint.h>
 
-/* ─── Scalar ──────────────────────────────────────────────────────────── */
-
-/* One LCG step over the same modulus and multiplier the iop_call kernel
- * uses, so the Jac reference (na { def lcg_step ... }) reproduces it. */
-long ib_lcg_step(long seed) {
-    return (seed * 1103515245L + 12345L) % 2147483648L;
-}
-
 /* ─── Struct-by-value: 4 sizes spanning the System V classes ─────────── */
 
 /* 4-byte struct: one int. INTEGER class, single eightbyte. */

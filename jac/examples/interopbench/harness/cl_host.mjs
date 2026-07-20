@@ -2,7 +2,7 @@
 /**
  * Node adapter for generated cl->sv feed benchmarks.
  *
- * Compiles client_driver.cl.jac via `jac js`, wires a minimal
+ * Compiles client_driver.cl.jac via `jac tool jac2js`, wires a minimal
  * @jac/runtime shim, and times `run_feed(work, calls)`.
  *
  * Usage:
@@ -32,7 +32,7 @@ if (!apiBase) {
   process.exit(2);
 }
 
-const compile = spawnSync("jac", ["js", "client_driver.cl.jac"], {
+const compile = spawnSync("jac", ["tool", "jac2js", "client_driver.cl.jac"], {
   cwd: kernelDir,
   encoding: "utf8",
 });

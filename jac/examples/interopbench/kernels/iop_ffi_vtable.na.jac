@@ -54,18 +54,29 @@ with entry {
     if variant == "ffi" {
         h = ib_handler_vt(size=16, on_event=jac_callback);
         _ = ib_invoke_event(h, 0, 0);
+        for _ in range(WARMUP_CALLS) {
+            _ = ffi_path(n);
+        }
         started = time.perf_counter_ns();
-        checksum = ffi_path(n);
+        checksum = 0;
+        for _ in range(calls) {
+            checksum = (checksum + ffi_path(n)) % 2147483648;
+        }
     } elif variant == "ref" {
-        _ = ref_path(1);
+        for _ in range(WARMUP_CALLS) {
+            _ = ref_path(n);
+        }
         started = time.perf_counter_ns();
-        checksum = ref_path(n);
+        checksum = 0;
+        for _ in range(calls) {
+            checksum = (checksum + ref_path(n)) % 2147483648;
+        }
     } else {
         print(f"unknown variant: {variant}");
         sys.exit(2);
     }
     elapsed = time.perf_counter_ns() - started;
     print(f"vtable:{checksum}");
-    print(f"m:trampoline_call_ns={elapsed // n}");
+    print(f"m:trampoline_call_ns={elapsed // (n * calls)}");
     print(f"ns={elapsed}");
 }

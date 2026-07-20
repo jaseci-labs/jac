@@ -35,13 +35,23 @@ with entry {
         sys.exit(2);
     }
     if variant == "ffi" {
-        _ = ffi_path(1);
+        for _ in range(WARMUP_CALLS) {
+            _ = ffi_path(n);
+        }
         started = time.perf_counter_ns();
-        checksum = ffi_path(n);
+        checksum = 0;
+        for _ in range(calls) {
+            checksum = (checksum + ffi_path(n)) % 2147483648;
+        }
     } elif variant == "ref" {
-        _ = ref_path(1);
+        for _ in range(WARMUP_CALLS) {
+            _ = ref_path(n);
+        }
         started = time.perf_counter_ns();
-        checksum = ref_path(n);
+        checksum = 0;
+        for _ in range(calls) {
+            checksum = (checksum + ref_path(n)) % 2147483648;
+        }
     } else {
         print(f"unknown variant: {variant}");
         sys.exit(2);

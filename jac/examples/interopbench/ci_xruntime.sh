@@ -5,7 +5,14 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+if [[ "${1:-}" != "--experimental" ]]; then
+  echo "cross-runtime cells are experimental; rerun as ./ci_xruntime.sh --experimental" >&2
+  exit 2
+fi
+shift
+
 jac run harness/xbench.jac \
+    --experimental \
   --kernels xop_svc_split,xop_feed,xop_wasm_call \
   --sizes small \
   --invocations 1 \

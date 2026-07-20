@@ -63,7 +63,7 @@ def checksum_materialised(values: list[int], samples: list[tuple[int, int]]) -> 
 
 
 """Load the producer so its native wrappers are installed before timing."""
-def load_producer -> any {
+def load_producer -> object {
     if REPO_ROOT not in sys.path {
         sys.path.insert(0, REPO_ROOT);
     }
@@ -87,7 +87,7 @@ def main(argv: list[str]) {
         raise ValueError("count must be non-negative");
     }
 
-    producer = load_producer();
+    producer = load_producer() as any;
     _ = producer.produce_views(1);
     raw = producer.produce_views(count);
     values = raw[0] as NativeListView;
@@ -99,24 +99,21 @@ def main(argv: list[str]) {
         );
     }
 
-    started = time.perf_counter_ns();
-    view_started = time.perf_counter_ns();
-    view_checksum = checksum_views(values, samples);
-    view_ns = time.perf_counter_ns() - view_started;
-
-    materialise_started = time.perf_counter_ns();
-    (value_copy, sample_copy) = materialise(values, samples);
-    materialised_checksum = checksum_materialised(value_copy, sample_copy);
-    materialise_ns = time.perf_counter_ns() - materialise_started;
+    view_ns = 0;
+    materialise_ns = 0;
+    if variant == "view" {
+        started = time.perf_counter_ns();
+        view_checksum = checksum_views(values, samples);
+        view_ns = time.perf_counter_ns() - started;
+        selected = view_checksum;
+    } else {
+        started = time.perf_counter_ns();
+        (value_copy, sample_copy) = materialise(values, samples);
+        selected = checksum_materialised(value_copy, sample_copy);
+        materialise_ns = time.perf_counter_ns() - started;
+    }
     elapsed = time.perf_counter_ns() - started;
 
-    if view_checksum != materialised_checksum {
-        raise ValueError(
-            "view/materialised checksum mismatch: "
-            f"{view_checksum} != {materialised_checksum}"
-        );
-    }
-    selected = materialised_checksum if variant == "materialised" else view_checksum;
     print(f"view:{selected}");
     print(f"m:view_ns={view_ns}");
     print(f"m:materialise_ns={materialise_ns}");

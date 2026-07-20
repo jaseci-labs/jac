@@ -6,6 +6,7 @@ Usage:
       [--invocations N] [--out results/xruntime_results.json] [--quick]
 
 Omit --variants to use each selected cell's catalogued oracle group.
+All cross-runtime cells require the explicit --experimental flag.
 """
 
 import os;
@@ -30,7 +31,8 @@ import from common {
 
 glob BENCH = Path(str(__file__)).resolve().parent.parent,
      HARNESS = BENCH / "harness",
-     CATALOG: dict[str, dict] = {
+     EXPERIMENTAL_KERNELS: set[str] = {"xop_svc_split", "xop_feed", "xop_wasm_call", },
+     CATALOG: dict[str, dict[str, object]] = {
          "xop_svc_split": {
              "scenario": "sv-to-sv microservice RPC vs in-process dispatch",
              "kernel_dir": "kernels/xop_svc_split",
@@ -79,7 +81,8 @@ glob BENCH = Path(str(__file__)).resolve().parent.parent,
 """Parse the cross-runtime benchmark CLI."""
 def parse_opts(argv: list[str]) -> dict[str, str | int | bool] {
     opts: dict[str, str | int | bool] = {
-        "kernels": "xop_svc_split,xop_feed,xop_wasm_call",
+        "kernels": "",
+        "experimental": False,
         "variants": "",
         "sizes": "default",
         "invocations": DEFAULT_INVOCATIONS,
@@ -92,6 +95,9 @@ def parse_opts(argv: list[str]) -> dict[str, str | int | bool] {
         flag = argv[i];
         if flag == "--quick" {
             opts["quick"] = True;
+            i += 1;
+        } elif flag == "--experimental" {
+            opts["experimental"] = True;
             i += 1;
         } elif flag in (
             "--kernels",
@@ -162,7 +168,7 @@ def wait_healthz(base_url: str, timeout_s: int, log_path: Path | None = None) ->
 """Start jac start for a kernel-local provider module."""
 def start_provider(
     kernel_dir: Path, provider: str, port: int, log_path: Path
-) -> subprocess.Popen {
+) -> subprocess.Popen[str] {
     log_fh = log_path.open("w", encoding="utf-8");
     proc = subprocess.Popen(
         [sys.executable, "-m", "jaclang", "start", provider, "--port", str(port)],
@@ -177,7 +183,7 @@ def start_provider(
 
 
 """Terminate a provider process, escalating to kill when needed."""
-def stop_provider(proc: subprocess.Popen | None) -> None {
+def stop_provider(proc: subprocess.Popen[str] | None) -> None {
     if proc is None {
         return;
     }
@@ -361,7 +367,7 @@ def measure_variant(
     spec: dict[str, object], variant: str, args: list[str], count: int
 ) -> dict[str, object] {
     timeout_s = 300;
-    runs: list[dict] = [];
+    runs: list[dict[str, object]] = [];
     adapter = spec["command_adapter"] as str;
     for _ in range(count) {
         if adapter in ("sv_microservice_driver", "cl_sv_node_driver") {
@@ -394,11 +400,24 @@ def measure_variant(
 def main(opts: dict[str, str | int | bool]) {
     kernels_csv = opts["kernels"] as str;
     variants_csv = opts["variants"] as str;
-    kernels = [
+    kernels: list[str] = [
         name
         for name in kernels_csv.split(",")
         if name
     ];
+    if not kernels and (opts["experimental"] as bool) {
+        kernels = sorted(EXPERIMENTAL_KERNELS) as list[str];
+    }
+    if not kernels {
+        raise ValueError(
+            "no kernels selected; pass --experimental to enable cross-runtime cells"
+        );
+    }
+    if not (opts["experimental"] as bool) {
+        raise ValueError(
+            "cross-runtime cells are experimental; rerun with --experimental"
+        );
+    }
     explicit_variants = [
         name
         for name in variants_csv.split(",")
@@ -411,12 +430,12 @@ def main(opts: dict[str, str | int | bool]) {
         raise ValueError("--kernels must select at least one kernel");
     }
     invocations = opts["invocations"] as int;
-    cells: dict[str, dict] = {};
+    cells: dict[str, dict[str, object]] = {};
     for kernel in kernels {
         if kernel not in CATALOG {
             raise ValueError(f"unknown kernel: {kernel}");
         }
-        spec = CATALOG[kernel] as dict[str, object];
+        spec = CATALOG[kernel];
         size_name = opts["sizes"] as str;
         sizes = spec["sizes"] as dict[str, list[str]];
         if size_name not in sizes {
@@ -431,7 +450,7 @@ def main(opts: dict[str, str | int | bool]) {
                 f"{','.join(enabled_variants)}"
             );
         }
-        variants: dict[str, dict] = {};
+        variants: dict[str, dict[str, object]] = {};
         for variant in selected_variants {
             variants[variant] = measure_variant(spec, variant, args, invocations);
             cell = variants[variant];

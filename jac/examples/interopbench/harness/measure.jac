@@ -6,6 +6,7 @@ Usage:
       [--invocations N] [--out results/bridges_results.json]
 
 Omit --variants to use each selected cell's catalogued oracle group.
+Phase 4 cells require the explicit --experimental flag.
 """
 
 import shutil;
@@ -28,7 +29,6 @@ glob BENCH = Path(str(__file__)).resolve().parent.parent,
      CLIB_SOURCE = BENCH / "kernels" / "support" / "interopbench.c",
      CLIB_BINARY = BENCH / "bin" / "libinteropbench.so",
      CLIB_EXPORTED_SYMBOLS = [
-         "ib_lcg_step",
          "ib_vec4_make",
          "ib_vec4_sum",
          "ib_vec12_make",
@@ -42,7 +42,13 @@ glob BENCH = Path(str(__file__)).resolve().parent.parent,
          "ib_invoke_event",
 
      ],
-     CATALOG: dict[str, dict] = {
+     EXPERIMENTAL_KERNELS: set[str] = {
+         "iop_ffi_scalar",
+         "iop_ffi_struct",
+         "iop_ffi_vtable",
+
+     },
+     CATALOG: dict[str, dict[str, object]] = {
          "iop_call": {
              "scenario": "scalar checksum call churn",
              "source": "kernels/iop_call.jac",
@@ -157,9 +163,10 @@ glob BENCH = Path(str(__file__)).resolve().parent.parent,
 
 
 """Parse the benchmark CLI."""
-def parse_opts(argv: list[str]) -> dict[str, str | int] {
-    opts: dict[str, str | int] = {
-        "kernels": "iop_call,iop_cb,iop_symmetric,iop_view,iop_ffi_scalar,iop_ffi_struct,iop_ffi_vtable",
+def parse_opts(argv: list[str]) -> dict[str, str | int | bool] {
+    opts: dict[str, str | int | bool] = {
+        "kernels": "iop_call,iop_cb,iop_symmetric,iop_view",
+        "experimental": False,
         "variants": "",
         "sizes": "default",
         "invocations": DEFAULT_INVOCATIONS,
@@ -169,7 +176,17 @@ def parse_opts(argv: list[str]) -> dict[str, str | int] {
     i = 1;
     while i < len(argv) {
         flag = argv[i];
-        if flag in ("--kernels", "--variants", "--sizes", "--invocations", "--out", )
+        if flag == "--experimental" {
+            opts["experimental"] = True;
+            i += 1;
+        } elif flag in (
+            "--kernels",
+            "--variants",
+            "--sizes",
+            "--invocations",
+            "--out",
+
+        )
         and i + 1 < len(argv) {
             key = flag[2:];
             opts[key] = int(argv[i + 1]) if flag == "--invocations" else argv[i + 1];
@@ -299,7 +316,7 @@ def measure_variant(
 
 
 """Run every selected catalog cell and write schema-versioned JSON."""
-def main(opts: dict[str, str | int]) {
+def main(opts: dict[str, str | int | bool]) {
     kernels_csv = opts["kernels"] as str;
     variants_csv = opts["variants"] as str;
     kernels = [
@@ -319,16 +336,21 @@ def main(opts: dict[str, str | int]) {
         raise ValueError("--kernels must select at least one kernel");
     }
     invocations = opts["invocations"] as int;
-    needs_clib = any((CATALOG[k].get("requires_clib", False) is True) for k in kernels);
-    if needs_clib {
-        ensure_clib();
-    }
-    cells: dict[str, dict] = {};
     for kernel in kernels {
         if kernel not in CATALOG {
             raise ValueError(f"unknown kernel: {kernel}");
         }
-        spec = CATALOG[kernel] as dict[str, object];
+        if kernel in EXPERIMENTAL_KERNELS and not (opts["experimental"] as bool) {
+            raise ValueError(f"{kernel} is experimental; rerun with --experimental");
+        }
+    }
+    needs_clib = any(CATALOG[k].get("requires_clib", False) as bool for k in kernels);
+    if needs_clib {
+        ensure_clib();
+    }
+    cells: dict[str, dict[str, object]] = {};
+    for kernel in kernels {
+        spec = CATALOG[kernel];
         size_name = opts["sizes"] as str;
         sizes = spec["sizes"] as dict[str, list[str]];
         if size_name not in sizes {
@@ -343,7 +365,7 @@ def main(opts: dict[str, str | int]) {
                 f"{','.join(enabled_variants)}"
             );
         }
-        variants: dict[str, dict] = {};
+        variants: dict[str, dict[str, object]] = {};
         for variant in selected_variants {
             variants[variant] = measure_variant(spec, variant, args, invocations);
             cell = variants[variant];

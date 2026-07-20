@@ -21,7 +21,7 @@ commands on the in-tree compiler.
 
 Mixed-JIT scalar cells (`iop_call`, `iop_cb`, `iop_symmetric`), the
 full-native view consumer (`iop_view` via `harness/view_driver.jac`), and
-optional C-ABI fixtures (`iop_ffi_*`, requires `cc` for struct/vtable cells).
+experimental C-ABI fixtures (`iop_ffi_*`, requires `cc` for struct/vtable cells).
 
 Read paired variants for boundary cost:
 
@@ -46,10 +46,11 @@ From this directory (`jac/examples/interopbench`; the dev-mode `jac` reroutes
 to the in-repo compiler anywhere inside the repo):
 
     ./run_bridges.sh            # family 1: identity gate + measurements + audit
-    ./run_xruntime.sh [--quick] # family 2: identity gate + measurements
-    ./run_all.sh                # both families
+    ./run_xruntime.sh --experimental [--quick] # opt-in family 2
+    ./run_all.sh                # family 1 only
+    ./run_all.sh --experimental # both families
     ./ci_bridges.sh             # fast native-bridge gate only (small sizes)
-    ./ci_xruntime.sh            # fast cross-runtime gate only (small sizes)
+    ./ci_xruntime.sh --experimental # opt-in cross-runtime gate (small sizes)
 
 Outputs land in `results/` (gitignored): `bridges_results.json`,
 `interop_audit.json`, and `xruntime_results.json`.
@@ -58,8 +59,10 @@ The native-bridge kernels double as compiler regression tests:
 `tests/compiler/passes/native/test_interopbench_bridges.jac` compiles and
 runs every dependency-light cell at small sizes and asserts digest identity.
 
-Later cells remain design-only in the repository-level `INTEROP_BENCH.md`
-until their phase acceptance gates pass.
+Phase 4–7 source cells remain available for explicit experiments, but are
+not part of the default runnable contract. Use `--experimental` with the
+harness/scripts to opt in; the repository-level `INTEROP_BENCH.md` remains the
+source of phase acceptance criteria.
 
 ## Enabled-cell catalog
 
@@ -154,11 +157,11 @@ not enabled merely because it appears in the design document.
 | prerequisites | In-repository Jac runtime, native JIT support, and the existing `jaclang.jac0core.native_accel` / `native_marshal` wrapper path only |
 | reference twin | `materialised`, checksumming ordinary `list[int]` and `list[tuple[int, int]]` copied from the same native result |
 | measured path | `view`, checksumming `NativeListView` values and `NativeStructView` fields directly while producer-owned native globals retain both lists |
-| canonical digest | Exactly one `view:<checksum>` line; both consumers use the same ordered integer/field reduction modulo 2^31−1 |
-| timing output | Exactly one `ns=<integer>` line covering both consumers, excluding import/JIT/wrapper setup |
-| metric keys | Exactly `m:view_ns=<integer>` and `m:materialise_ns=<integer>` |
+| canonical digest | Exactly one `view:<checksum>` line; both variants use the same ordered integer/field reduction modulo 2^31−1 |
+| timing output | Exactly one `ns=<integer>` line covering only the selected consumer, excluding import/JIT/wrapper setup |
+| metric keys | Exactly `m:view_ns=<integer>` and `m:materialise_ns=<integer>`; the non-selected metric is zero |
 | reset rule | Each `produce_views(count)` call replaces both retained native globals; every command runs in a fresh process and warms with a separate one-element batch before creating the measured batch |
-| oracle | Require both top-level results to be `NativeListView`, every struct element to be `NativeStructView`, require the in-process view/copy checksums to match, then require canonical digest identity between variants |
+| oracle | Require each selected consumer to receive `NativeListView`/`NativeStructView` values, then require canonical digest identity between variants |
 | wrapper seam | The driver calls the existing `accelerate_module` entry before timing because a cached plain import may otherwise retain Python implementations; no compiler-test fixture or manual `JacProgram`/ctypes setup is copied into the suite |
 | RSS | Not recorded in Phase 3; result cells explicitly use `rss_scope: "not_recorded"` |
 
