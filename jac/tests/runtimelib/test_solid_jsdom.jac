@@ -806,9 +806,8 @@ def _wire_jac_runtime(js: str) -> str {
     return js;
 }
 
-"""Compile a page/layout `.cl.jac`, prepend its `@jac/runtime` globals (the bare
-`__jacJsx`/`Link`/`Outlet` the compiler emits), and wire the runtime specifier."""
-def _compile_page(path: str, backend: any) -> str {
+"""Compile a page/layout `.cl.jac` and wire the runtime specifier."""
+def _compile_page(path: str) -> str {
     return _wire_jac_runtime(_compile_solid(path));
 }
 
@@ -959,12 +958,11 @@ test "solid file-based routing mounts, navigates, and guards in jsdom" {
         pytest.skip("bun is required but could not be located/installed");
     }
 
-    backend = SolidBackend();
     rdir = os.path.join(FIXTURES, "solid_routing");
-    home_js = _compile_page(os.path.join(rdir, "home_page.cl.jac"), backend);
-    about_js = _compile_page(os.path.join(rdir, "about_page.cl.jac"), backend);
-    dash_js = _compile_page(os.path.join(rdir, "dashboard_page.cl.jac"), backend);
-    layout_js = _compile_page(os.path.join(rdir, "root_layout.cl.jac"), backend);
+    home_js = _compile_page(os.path.join(rdir, "home_page.cl.jac"));
+    about_js = _compile_page(os.path.join(rdir, "about_page.cl.jac"));
+    dash_js = _compile_page(os.path.join(rdir, "dashboard_page.cl.jac"));
+    layout_js = _compile_page(os.path.join(rdir, "root_layout.cl.jac"));
 
     runtime_path = resolve_client_runtime_cl_path("solid");
     runtime_js = _rewrite_core_specifier(_compile_solid(runtime_path));
