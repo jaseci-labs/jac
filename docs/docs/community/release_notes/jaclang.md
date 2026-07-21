@@ -2,7 +2,22 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.34.0 (Latest Release)
+## jaclang 0.34.1 (Latest Release)
+
+### New Features
+
+- **Feature: KEDA HTTP Add-on activation resources**: jac-scale's KEDA autoscaler engine gains a callable `apply_http_activation`/`destroy_http_activation` abstraction that reconciles an `InterceptorRoute` and an `external-push` `ScaledObject`, enabling true HTTP scale-to-zero for workloads such as JacHammer IDE previews: a stable URL wakes a zero-replica Deployment on request. Callers configure routing, cold-start behavior, and concurrency/request-rate scaling through a typed `HTTPActivationSpec` instead of hand-built KEDA manifests. Invoked programmatically at runtime; not yet wired into `jac.toml`.
+- **Native lowering coverage wave 2 (#7593 items 6-12, 14, 17, 19)**: f-string `!r` conversions and dynamic format specs, sequence/mapping/star/class match patterns, the import cluster (star re-exports, bare imports, circular and transitive chains), variadic params (`*args`/`**kwargs`), test blocks under inference, escaping closures with Python cell semantics, `new(T, ...)` plus positional implicit ctors, and sv<->na marshal identity/cycle safety with dict/set decode all lower natively.
+- **Native lowering completes the roadmap**: generators, closures, generic functions, census-ranked stdlib modules (statistics, shutil, keyword), chained node filters, and local-graph programs now compile natively under inference.
+
+### Bug Fixes
+
+- **Fix: scale discovery registers `.sv.jac` services under their logical module stem**: `_scan_project` derived service names with `Path(...).stem`, so `foo.sv.jac` registered as `foo.sv` instead of `foo` and service file resolution fell back to the wrong `foo.jac` path. Discovery now uses `ext_registry.base_stem()`, matching the inprocess runtime and pytest collector.
+- **Launcher payload extract preserves executable bits**: bundled shell scripts (e.g. `build_libwebview.sh`) no longer lose `IXUSR` through the pack/extract pipeline; the packer archives on-disk modes and extraction uses `.executable_bit_only` instead of `.ignore`, preventing `EACCES` when `jac start` spawns desktop build helpers.
+- **Fix: vite dev polling watcher no longer reloads on runtime state changes**: The generated `vite.dev.config.js` now ignores `.jac/data/**` and `*.sqlite`/`*.db` (including `-wal`/`-shm` sidecars), so a `--client desktop --dev` app that touches its SQLite anchor store no longer loops HMR full reloads on every DB write. Vite concatenates `server.watch.ignored` with its built-in defaults, so the change is purely additive.
+- **Fat bundle: sdist-only dependencies no longer forfeit vendoring**: native wheel vendoring falls back to `pip wheel` when the wheels-only resolution fails, building universal wheels for packages that publish none (e.g. `http-ece`, which dragged `pywebpush` and the whole closure down to a thin bundle); cross-target vendoring keeps the strict refusal since it cannot build from source.
+
+## jaclang 0.34.0
 
 ### New Features
 
