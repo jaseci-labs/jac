@@ -1,7 +1,7 @@
 ci:
   # These hooks shell out to the `jac` binary, which the hosted pre-commit.ci
   # runner does not have; they run locally and in the Contribution Checks CI.
-  skip: [jac-format, validate-fragments]
+  skip: [jac-format, validate-fragments, scale-test-hygiene]
 
 exclude: |
     (?x)(
