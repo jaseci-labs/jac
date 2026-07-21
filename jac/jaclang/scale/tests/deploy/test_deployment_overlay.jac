@@ -217,3 +217,28 @@ test "without JAC_PROFILE the base config is unchanged" {
         }
     }
 }
+
+test "embedder-supplied config gets schema defaults (client entry included)" {
+    b = _builder({"svc_a": {}});
+    cfg = b._ms_cfg();
+    assert cfg["client"]["entry"] == "main.jac";
+    assert cfg["gateway_port"] == 8000;
+    assert cfg["services"] == {"svc_a": {}};
+}
+
+
+test "embedder overrides survive normalization" {
+    b = MicroserviceManifestBuilder(
+        k8s_config=KubernetesConfig(app_name="t", namespace="t-ns"),
+        microservices_config={
+            "gateway_port": 9001,
+            "client": {"entry": False},
+            "services": {"svc_a": {}}
+        },
+        dry_run=True
+    );
+    cfg = b._ms_cfg();
+    assert cfg["gateway_port"] == 9001;
+    assert cfg["client"]["entry"] == "";
+    assert cfg["drain_timeout_seconds"] == 10.0;
+}
