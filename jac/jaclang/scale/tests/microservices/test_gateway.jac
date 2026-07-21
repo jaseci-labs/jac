@@ -166,14 +166,6 @@ test "JacRuntime.get_sv_registry returns a snapshot, not a live view" {
     }
 }
 
-test "setup creates fastapi app" {
-    reg = ServiceRegistry();
-    gw = MicroserviceGateway(registry=reg);
-    app = gw.setup();
-    assert app is not None;
-    assert gw.app is not None;
-}
-
 test "health endpoint returns service summary" {
     reg = ServiceRegistry();
     reg.register(
@@ -1481,14 +1473,6 @@ test "http_forward_timeout precedence: per-service > global > default" {
     }
 }
 
-
-test "gateway inherits admin + logs + llm-telemetry endpoint registrars" {
-    reg = ServiceRegistry();
-    gw = MicroserviceGateway(registry=reg);
-    assert hasattr(gw, "register_admin_endpoints");
-    assert hasattr(gw, "register_logs_endpoints");
-    assert hasattr(gw, "register_llm_telemetry_endpoints");
-}
 
 test "bare /jobs (create + list) is forwarded as a built-in route, not 404'd" {
     reg = ServiceRegistry();

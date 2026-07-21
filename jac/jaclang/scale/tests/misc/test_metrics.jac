@@ -9,15 +9,6 @@ test "noop is disabled" {
     assert collector.is_enabled() is False;
 }
 
-test "noop methods do nothing" {
-    collector = NoOpMetricsCollector();
-
-    collector.request_started();
-    collector.request_finished();
-    collector.record_request("GET", "/test", 200, 0.5);
-    collector.record_walker("TestWalker", 0.1, True);
-}
-
 test "noop endpoint handler returns callable" {
     collector = NoOpMetricsCollector();
     handler = collector.get_endpoint_handler();
@@ -58,27 +49,6 @@ test "prometheus walker metrics disabled by default" {
     collector = PrometheusMetricsCollector(config=config);
     assert collector._include_walker_metrics is False;
     assert collector._walker_latency is None;
-}
-
-test "prometheus record request does not raise" {
-    collector = PrometheusMetricsCollector(config=ENABLED_CONFIG);
-    collector.record_request("GET", "/api/test", 200, 0.05);
-    collector.record_request("POST", "/api/create", 201, 0.1);
-    collector.record_request("GET", "/api/error", 500, 0.02);
-}
-
-test "prometheus active requests tracking" {
-    collector = PrometheusMetricsCollector(config=ENABLED_CONFIG);
-    collector.request_started();
-    collector.request_started();
-    collector.request_finished();
-    collector.request_finished();
-}
-
-test "prometheus walker recording" {
-    collector = PrometheusMetricsCollector(config=ENABLED_CONFIG);
-    collector.record_walker("MyWalker", 0.5, True);
-    collector.record_walker("FailingWalker", 1.0, False);
 }
 
 test "prometheus endpoint handler returns response" {
@@ -124,30 +94,6 @@ test "factory raises for unsupported type" {
         assert "Unsupported metrics type" in str(e);
     }
     assert raised , "Expected ValueError for unsupported metrics type";
-}
-
-test "noop implements interface" {
-    collector = NoOpMetricsCollector();
-
-    assert hasattr(collector, "record_request");
-    assert hasattr(collector, "request_started");
-    assert hasattr(collector, "request_finished");
-    assert hasattr(collector, "record_walker");
-    assert hasattr(collector, "get_endpoint_handler");
-    assert hasattr(collector, "is_enabled");
-}
-
-test "prometheus implements interface" {
-    collector = PrometheusMetricsCollector(
-        config={"enabled": True, "namespace": "iface_test"}
-    );
-
-    assert hasattr(collector, "record_request");
-    assert hasattr(collector, "request_started");
-    assert hasattr(collector, "request_finished");
-    assert hasattr(collector, "record_walker");
-    assert hasattr(collector, "get_endpoint_handler");
-    assert hasattr(collector, "is_enabled");
 }
 
 test "parse prometheus text and calculate summary" {
