@@ -168,8 +168,8 @@ import from "@jac/mobui" {
     createAnimatedValue,
     useWindowDimensions
 }
-# Real Lucide icons. The compiler resolves icon.cl.jac on web (lucide-react)
-# and icon.native.cl.jac on native (lucide-react-native) — same <Icon/> API.
+# Real Lucide icons. The compiler resolves icon.jac on web (lucide-react) and
+# icon.native.jac on native (lucide-react-native) — same <Icon/> API.
 import from .icon { Icon }
 import from .theme { C, S, R, F, styles }
 
@@ -180,7 +180,7 @@ def avatarFor(seed: str) -> str {
 }
 
 # ── Reusable presentational components (no state) ─────────────────────────
-# (Icon is imported from ./icon.cl.jac — Lucide on web, lucide-react-native
+# (Icon is imported from ./icon.jac — Lucide on web, lucide-react-native
 #  on native — see the import at the top of this cl block.)
 def Avatar(seed: str, size: int) -> JsxElement {
     return

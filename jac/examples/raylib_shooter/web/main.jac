@@ -4,7 +4,7 @@
 # same module. Run: jac start (open localhost).
 
 # ─── Client: the page + HUD. The WebGL shim (rlgl/input/libc -> wasm imports) is
-# the reusable raylib_shim.cl.jac library; here we mount the canvas, style the
+# the reusable raylib_shim.jac library; here we mount the canvas, style the
 # page like the standalone web build, and drive a live score/fps HUD. ──────────
 import from .raylib_shim { run_game }
 

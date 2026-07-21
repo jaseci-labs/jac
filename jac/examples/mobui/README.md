@@ -8,7 +8,7 @@ One source tree, two platforms: these apps are written in the portable
 | Example | What it shows |
 |---------|---------------|
 | [`hello/`](hello) | The starter: every `@jac/mobui` primitive once, the styling model, and the E1105 compile-time guard. Start here. |
-| [`littlex/`](littlex) | The full-stack showcase: graph persistence + walker RPC from a native client, `.native.cl.jac` platform-split modules (web vs native icon backends), and a token-based theme. |
+| [`littlex/`](littlex) | The full-stack showcase: graph persistence + walker RPC from a native client, `.native` platform-split modules (web vs native icon backends), and a token-based theme. |
 
 Run either from its own directory:
 

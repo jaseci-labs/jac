@@ -273,6 +273,7 @@ obj BoundaryTypeInfo {
     has name: str,
         kind: str,
         fields: list[tuple[(str, str)]] = field(default_factory=`list),
+        field_defaults: dict[(str, Any)] = field(default_factory=`dict),
         enum_members: list[tuple[(str, Any)]] = field(default_factory=`list),
         nested_types: list[str] = field(default_factory=`list);
 }

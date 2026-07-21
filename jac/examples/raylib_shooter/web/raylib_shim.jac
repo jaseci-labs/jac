@@ -3,8 +3,8 @@
 A reusable client library (the moral equivalent of raylib for the browser):
 it emulates the scalar rlgl immediate-mode API + input on WebGL/DOM,
 instantiates /static/<name>.wasm, and drives init()/frame() per
-requestAnimationFrame. Lives in a .cl.jac so it is compiled (not strictly
-type-checked) like other client deps.
+requestAnimationFrame. The `@jac/wasm_host` npm import marks the whole
+module client - no marker or extension needed.
 
 libc is no longer stubbed here: the native floor links it into the wasm
 module itself, and the remaining host surface (console write, os, time) is

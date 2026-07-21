@@ -117,6 +117,18 @@ test "inferred client triggers server archetype auto-share with wire codecs" {
     assert 'class Particle' not in js , "native-pulled obj stays out of the client bundle";
 }
 
+test "pull policy: tagged globs and one-sided objs relocate, stubs keep defaults" {
+    mod = compile_fixture("infer_pull_policy.jac", cgen=True);
+    assert stamp_of(mod, "TOKENS") == 'client' , "access tags are visibility, not placement, for globs";
+    assert stamp_of(mod, "Panel") == 'client' , "obj referenced only by client code relocates";
+    assert stamp_of(mod, "Task") == 'server' , "node archetype is never pulled";
+    js = mod.gen.js;
+    assert 'TOKENS' in js , "pulled glob lands in the client bundle";
+    assert 'class Panel' in js , "pulled obj is a real client class";
+    assert 'class Task' in js , "two-sided node still auto-shares a stub";
+    assert '"untitled"' in js , "stub ctor materializes literal has-defaults";
+}
+
 test "sv import placement is inferred while boundary fact stays" {
     mod = compile_fixture("infer_sv_client.jac", cgen=True);
     assert stamp_of(mod, "fetch_items") == 'client' , "client-consumed sv import is placed client";

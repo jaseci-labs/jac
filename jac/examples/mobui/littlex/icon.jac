@@ -1,12 +1,12 @@
-"""Icon set — NATIVE variant (Lucide via `lucide-react-native`, real RN SVG).
+"""Icon set — WEB variant (Lucide via `lucide-react`, real DOM SVG).
 
-The compiler picks this file over `icon.cl.jac` for the react-native target.
-`lucide-react-native` peer-depends on `react-native-svg`, which Metro bundles
-correctly on native (the incompatibility is only with the web/Vite pipeline —
-which never sees this file, since web uses `icon.cl.jac`). Same `<Icon/>` API.
+The compiler picks `icon.native.jac` (which uses `lucide-react-native`) for
+the react-native target instead of this file, so the same `<Icon name=.../>`
+call renders crisp Lucide vector icons on both platforms. `lucide-react` renders
+plain `<svg>` and needs no `react-native-svg`, so the web bundle stays clean.
 """
 
-import from "lucide-react-native" {
+import from "lucide-react" {
     House,
     Search,
     Bell,
@@ -25,7 +25,7 @@ import from "lucide-react-native" {
     Image as ImageIcon
 }
 
-# name → Lucide component. Same keys exist in icon.cl.jac.
+# name → Lucide component. Same keys exist in icon.native.jac.
 glob LUCIDE = {
          home: House,
          search: Search,
