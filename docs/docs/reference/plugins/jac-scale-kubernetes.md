@@ -411,6 +411,8 @@ The `"keda"` engine creates a `ScaledObject` custom resource instead of an HPA. 
     helm upgrade http-add-on kedacore/keda-add-ons-http -n keda --wait
     ```
 
+    Chart names, flags, and required values can change over time, so every install/upgrade command surfaced by `discover_capabilities()` also links to the current getting-started guide as the authoritative fallback: [https://keda.sh/http-add-on/0.15/getting-started/](https://keda.sh/http-add-on/0.15/getting-started/).
+
 **Switching between engines is safe.** Each engine removes the other engine's resource (`ScaledObject` or `HPA`) on apply, so two autoscalers never compete for `spec.replicas` on the same Deployment.
 
 !!! warning "CPU/memory triggers: scale-down always takes ~5 minutes"

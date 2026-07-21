@@ -380,14 +380,9 @@ impl KEDAAutoscaler.apply_http_activation{
     }
     if not caps.core_available or not caps.http_addon_available {
         if self.logger {
-            message = caps.warnings[0]
-                if caps.warnings
-                else (
-                    "KEDA HTTP Add-on CRDs not found on cluster. Install the HTTP "
-                    "Add-on from the official docs, then redeploy: "
-                    "https://keda.sh/docs/latest/deploy/#http-add-on"
-                );
-            self.logger.warn(message);
+            for warning in caps.warnings {
+                self.logger.warn(warning);
+            }
         }
         return False;
     }
@@ -786,13 +781,21 @@ impl KEDAAutoscaler.discover_capabilities{
     core_api = self._core_api or client.CoreV1Api();
     caps = KEDACapabilities();
 
+    keda_docs_url = "https://keda.sh/http-add-on/0.15/getting-started/";
+    http_addon_docs_url = "https://keda.sh/http-add-on/0.15/getting-started/";
     install_core_cmd = (
         "helm repo add kedacore https://kedacore.github.io/charts && "
         "helm repo update && helm install keda kedacore/keda -n keda "
-        "--create-namespace --wait"
+        f"--create-namespace --wait (see {keda_docs_url} for current instructions)"
     );
-    install_addon_cmd = "helm install http-add-on kedacore/keda-add-ons-http -n keda --wait";
-    upgrade_addon_cmd = "helm upgrade http-add-on kedacore/keda-add-ons-http -n keda --wait";
+    install_addon_cmd = (
+        "helm install http-add-on kedacore/keda-add-ons-http -n keda --wait "
+        f"(see {http_addon_docs_url} for current instructions)"
+    );
+    upgrade_addon_cmd = (
+        "helm upgrade http-add-on kedacore/keda-add-ons-http -n keda --wait "
+        f"(see {http_addon_docs_url} for current instructions)"
+    );
 
     try {
         api.list_cluster_custom_object(
