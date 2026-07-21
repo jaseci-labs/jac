@@ -35,8 +35,11 @@ impl MongoIdentityStorage.identity_taken(value: str) -> bool {
 }
 
 impl MongoIdentityStorage.delete_user(user_id: str) -> bool {
-    result = self.users_col.delete_one({'user_id': user_id});
-    return result.deleted_count > 0;
+    result = self.users_col.update_one(
+        {'user_id': user_id},
+        {'$set': {'status': 'deleted', 'identities': [], 'credentials': []}}
+    );
+    return result.matched_count > 0;
 }
 
 impl MongoIdentityStorage._update_fields(user_id: str, fields: dict[str, any]) -> bool {

@@ -231,7 +231,14 @@ glob _BUILTIN_PREFIXES: tuple = (
          "/jobs/",
          "/graph/"
      ),
-     _BUILTIN_EXACT: set[str] = {"/user", "/graph", "/jobs"};
+     _BUILTIN_EXACT: set[str] = {"/user", "/graph", "/jobs"},
+     _GATEWAY_OWNED_PATHS: set[str] = {
+         "/user/register",
+         "/user/login",
+         "/user/refresh-token",
+         "/user/password",
+         "/user/me"
+     };
 
 impl MicroserviceGateway.build_forward_headers(request: Request) -> dict[str, str] {
     import from jaclang.scale.runtime.context.trace_ctx {
@@ -356,7 +363,7 @@ impl MicroserviceGateway.handle_builtin_passthrough(
     request: Request, path: str
 ) -> Response | None {
     is_builtin = path.startswith(_BUILTIN_PREFIXES) or path in _BUILTIN_EXACT;
-    if not is_builtin {
+    if not is_builtin or path in _GATEWAY_OWNED_PATHS {
         return None;
     }
 

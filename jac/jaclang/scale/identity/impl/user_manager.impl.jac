@@ -272,6 +272,14 @@ impl JacScaleUserManager.validate_jwt_token_detail(
         };
     }
     if check_existence and not self.user_exists(user_id) {
+        if self.jit_provision and self.ensure_user_root(user_id) {
+            return {
+                'status': 'ok',
+                'user_id': user_id,
+                'exp': decoded.get('exp'),
+                'reason': None
+            };
+        }
         return {
             'status': 'unknown_user',
             'user_id': None,
@@ -633,6 +641,7 @@ impl JacScaleUserManager.delete_user(user_id: str) -> dict[str, str] {
         }
     }
     self._identity_storage.delete_user(user_id);
+
     return {'message': 'User deleted successfully', 'user_id': user_id};
 }
 

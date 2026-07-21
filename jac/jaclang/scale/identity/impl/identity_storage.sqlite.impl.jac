@@ -147,7 +147,11 @@ impl SqliteIdentityStorage.delete_user(user_id: str) -> bool {
         conn.execute(
             delete(self._sso_lookups).where(self._sso_lookups.c.user_id == user_id)
         );
-        result = conn.execute(delete(t).where(t.c.user_id == user_id));
+        result = conn.execute(
+            update(t).where(t.c.user_id == user_id).values(
+                status='deleted', identities='[]', credentials='[]'
+            )
+        );
         return result.rowcount > 0;
     }
 }
