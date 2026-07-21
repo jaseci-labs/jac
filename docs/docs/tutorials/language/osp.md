@@ -34,6 +34,16 @@ graph TD
     end
 ```
 
+This inversion is older than it looks: every mainstream language inherits the convention that the site of computation is fixed and data is streamed to it -- from the database to the app server, from the store to the prompt. OSP flips the question from "how do I bring the data here?" to "how does the computation get there?"
+
+Three habits shift as you learn to think this way, and this tutorial builds each one:
+
+1. **Relationships stop being encodings** -- no foreign keys or join tables; you draw a typed edge, and the whiteboard diagram *is* the data model.
+2. **Queries become paths** -- "friends of friends" is not a join to compose but a route to name.
+3. **Algorithms become itineraries** -- a walker's abilities say what to do at each *kind of place*, and arrival does the dispatch.
+
+Control flow doesn't disappear (inside an ability, Jac is a full imperative language); it relocates -- code lives *within* an encounter, and shape lives *between* encounters. The program counter becomes a place.
+
 ---
 
 ## Nodes: Objects in Space
@@ -249,6 +259,9 @@ Hello, Bob!
 Hello, Carol!
 ```
 
+!!! info "`visit` is a promise, not a jump"
+    `visit` does **not** move the walker. It *enqueues* destinations: when the current ability finishes, the walker proceeds to the next node in its queue. That's why the default traversal is breadth-first (each node appends its neighbors to the back of the queue), why `visit` at the top of an ability doesn't run other nodes "in the middle of" your code, and why a walker's schedule is fully deterministic -- given the same graph, the same walker visits the same nodes in the same order, every run. You can also steer the queue: `visit : 0 : [-->];` inserts at the *front*, turning the traversal depth-first (see [traversal control](../../reference/language/osp.md#object-spatial-queries) in the reference).
+
 ---
 
 ## Walker Context Variables
@@ -407,6 +420,38 @@ For the complete event-clause forms (typed entries, `exit` abilities, walker-typ
 
 ---
 
+## Accumulate, Then Deliver: Exit Abilities
+
+Entry abilities run the moment a walker lands. **Exit** abilities are deferred: they run only after everything the walker queued from that node has been fully visited, unwinding like a call stack. This gives OSP its most common idiom -- *accumulate then deliver*: gather state at each node during entry, then report the aggregate once, in an exit ability at the spawn point.
+
+```jac
+node Tweet {
+    has content: str;
+    has likes: int = 0;
+}
+
+walker trending {
+    has found: list = [];
+
+    can scan with Root entry {
+        visit [-->[?:Tweet]];
+    }
+
+    can gather with Tweet entry {
+        self.found.append((here.likes, here.content));
+    }
+
+    can deliver with Root exit {
+        self.found.sort(reverse=True);
+        report [content for (likes, content) in self.found[:3]];
+    }
+}
+```
+
+The `deliver` ability fires exactly once, after every queued `Tweet` has been visited -- so the walker reports one sorted result instead of a stream of fragments. This is precisely how [littleX](https://github.com/jaseci-labs/jaseci/tree/main/jac/examples/littleX)'s feed works: two `visit` statements define *what* the feed is (my tweets, plus tweets of everyone I follow), entry abilities gather it, and a `with Root exit` ability sorts and delivers it.
+
+---
+
 ## Practical Example: Social Network
 
 ```jac
@@ -533,6 +578,9 @@ Jac gives you two ways to expose server logic: `def:pub` functions and `walker` 
 !!! tip "Rule of thumb"
     Start with `def:pub` to prototype quickly. Switch to walkers when you need authentication, per-user data isolation, or multi-step graph traversal.
 
+!!! note "When OSP is the wrong tool"
+    OSP complements Jac's functional and object-oriented core; it doesn't replace it. If the data at hand isn't relational -- a numerical kernel, a string transformer, a stateless utility -- plain functions and `obj` values are the right call, and littleX itself uses them wherever the data has no shape. Whole-graph bulk analytics (PageRank over millions of nodes) is also better served by a batch engine than by a walker. The paradigm earns its keep where entities, their relationships, and computations ranging over both are the substance of the problem: social graphs, workflows, knowledge bases, and agent memory.
+
 The [AI Day Planner Tutorial](../first-app/build-ai-day-planner.md) uses `def:pub` in the early parts, then refactors to walkers in [Part 6](../first-app/build-ai-day-planner.md#part-6-authentication-and-multi-file-organization) -- showing exactly when and why to make the switch.
 
 ---
@@ -546,7 +594,8 @@ The [AI Day Planner Tutorial](../first-app/build-ai-day-planner.md) uses `def:pu
 | `walker` | Mobile computation that traverses the graph |
 | `++>` | Connect nodes |
 | `[-->]` | Query connections |
-| `visit` | Continue walker traversal |
+| `visit` | Queue destinations for the walker (movement happens between abilities) |
+| `with ... exit` | Deferred ability -- runs after everything queued from that node is visited |
 | `report` | Collect results from walker |
 | `disengage` | Stop walker traversal immediately |
 | `here` | Current node in walker |

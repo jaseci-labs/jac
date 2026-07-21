@@ -7,3 +7,5 @@ def print_failures(failed_results: list, nowarn: bool = False) -> None;
 def print_failed_summary(failed_results: list) -> None;
 
 def print_final_summary(passed_count: int, failed_count: int, elapsed: float) -> None;
+
+def print_native_census(census: dict) -> None;

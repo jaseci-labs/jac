@@ -17,9 +17,6 @@ impl JacProgram.init(
 
     self._track_dependencies: bool = False;
 
-    self._auto_promote_native: bool = False;
-    self._auto_promote_target: str = "";
-
     self._inferred_mods: set = set();
 
     self._analyses_run: dict = {};

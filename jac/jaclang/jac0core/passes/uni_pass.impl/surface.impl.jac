@@ -166,10 +166,6 @@ impl UniPass.enter_gen_compr(nd: uni.GenCompr) -> None {
     self.default_enter(nd);
 }
 
-impl UniPass.enter_global_stmt(nd: uni.GlobalStmt) -> None {
-    self.default_enter(nd);
-}
-
 impl UniPass.enter_global_vars(nd: uni.GlobalVars) -> None {
     self.default_enter(nd);
 }
@@ -343,10 +339,6 @@ impl UniPass.enter_name(nd: uni.Name) -> None {
 }
 
 impl UniPass.enter_native_block(nd: uni.NativeBlock) -> None {
-    self.default_enter(nd);
-}
-
-impl UniPass.enter_non_local_stmt(nd: uni.NonLocalStmt) -> None {
     self.default_enter(nd);
 }
 
@@ -646,10 +638,6 @@ impl UniPass.exit_gen_compr(nd: uni.GenCompr) -> None {
     self.default_exit(nd);
 }
 
-impl UniPass.exit_global_stmt(nd: uni.GlobalStmt) -> None {
-    self.default_exit(nd);
-}
-
 impl UniPass.exit_global_vars(nd: uni.GlobalVars) -> None {
     self.default_exit(nd);
 }
@@ -827,10 +815,6 @@ impl UniPass.exit_name(nd: uni.Name) -> None {
 }
 
 impl UniPass.exit_native_block(nd: uni.NativeBlock) -> None {
-    self.default_exit(nd);
-}
-
-impl UniPass.exit_non_local_stmt(nd: uni.NonLocalStmt) -> None {
     self.default_exit(nd);
 }
 

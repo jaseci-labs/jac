@@ -10,7 +10,7 @@ automatically. No further wiring needed.
 """
 
 walker ping {
-    can pong with `root entry {
+    can pong with Root entry {
         report {"status": "ok"};
     }
 }

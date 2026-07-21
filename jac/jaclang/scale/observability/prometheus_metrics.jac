@@ -28,9 +28,9 @@ glob DEFAULT_BUCKETS: tuple = (
 
 obj PrometheusMetricsCollector(MetricsCollector) {
     has config: dict[str, any] = {},
-        _enabled: bool by postinit,
-        _namespace: str by postinit,
-        _include_walker_metrics: bool by postinit,
+        _enabled: bool postinit,
+        _namespace: str postinit,
+        _include_walker_metrics: bool postinit,
         _registry: CollectorRegistry | None = None,
         _request_count: Counter | None = None,
         _request_latency: Histogram | None = None,

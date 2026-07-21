@@ -1,6 +1,6 @@
 ---
 name: jac-native-memory
-description: Memory management on the native pathway - the emit-time `--gc` modes (cycles/rc/none), the opt-in ownership & borrow checker (`own`, `&`/`&mut`, `imm`, `region`, `def drop`), zero-RC enforced builds (`--enforce-nogc`, E1401-E1406, `managed()`), and verification (`--assert-no-rc`, `JAC_RC_STATS`). Load when any E13xx/E14xx diagnostic appears, when a native binary leaks or churns refcounts, or when building an RC-free binary. For the native subset itself see `jac-native`.
+description: Memory management on the native pathway - the emit-time `--gc` modes (cycles/rc/none), the opt-in ownership & borrow checker (`own`, `&`/`&mut`, `imm`, `def drop`), first-class `Region` arenas (`in <handle> { }` opens, growth rule, sendable handles), zero-RC enforced builds (`--enforce-nogc`, E1401-E1406, `managed()`), and verification (`--assert-no-rc`, `JAC_RC_STATS`). Load when any E13xx/E14xx diagnostic or W1310 appears, when a native binary leaks or churns refcounts, or when building an RC-free binary. For the native subset itself see `jac-native`.
 ---
 
 Native Jac heap values (objects, strings, lists, dicts, sets) are reference-counted by default. Ownership annotations are **opt-in**: they let the compiler move/borrow-check tagged bindings, and - taken to full coverage - compile memory management the way Rust would emit it: alloc at construction, free at a statically determined drop point, **no RC or collector in the binary**, checkable with `--assert-no-rc`.
@@ -19,7 +19,7 @@ jac nacompile app.na.jac --gc none     # zero retain/release call sites emitted
 
 ## Ownership surface (opt-in - unannotated code is untouched)
 
-The checker only tracks bindings tagged `own`/`imm`/`&`/`&mut` plus allocations inside `region { }`. Annotations are compile-time-only on every backend (`&x` compiles to exactly `x`).
+The checker only tracks bindings tagged `own`/`imm`/`&`/`&mut` plus allocations under an `in <handle> { }` region open. Annotations are compile-time-only on every backend (`&x` compiles to exactly `x`).
 
 ```jac
 obj Buffer { has n: int = 0; }
@@ -41,8 +41,30 @@ with entry {
 - `own` is **affine**: dropping without consuming is fine, not an error. Passing an owned local to a call, `return`, or field store consumes it.
 - Storing an owned value into a field/subscript/graph object seals it into managed storage (**the membrane**): the source binding dies, and reading it back yields a plain managed value. `node`/`edge`/`walker` stay fully managed - no `own`/`&` of graph state.
 - Borrows are second-class: returning or storing one is E1306 (single passthrough of a borrow *parameter* is allowed); a borrow outliving its owner is E1304.
-- `region { }` = arena; references rooted in it must not escape (E1307). Only `imm`, moved `own`, or scalars cross `flow`/`thread_run` boundaries (E1308).
-- `def drop` (reserved ability, like `postinit`) runs exactly once at destruction, **at the owner's last use, not scope end** (NLL-style eager drop) - same observable point under every gc mode. No resurrection; under `cycles`, intra-cycle drop order is unspecified. The Python backend does not call it yet.
+- Sendability (E1308): only `imm`, moved `own` (including an `own Region` handle), or scalars cross `flow`/`thread_run` boundaries; live borrows never do.
+- `def drop` (reserved ability, like `postinit`) runs exactly once at destruction, **at the owner's last use, not scope end** (NLL-style eager drop) - same observable point under every gc mode. No resurrection; under `cycles`, intra-cycle drop order is unspecified. The Python backend calls it only for region-allocated values (below); rely on it elsewhere only in native modules.
+
+## Regions - first-class arenas
+
+The old `region { }` block **no longer parses** (clean break). A `Region` is a first-class, ownable, sendable handle; the `in <handle> { }` statement opens it for allocation. Everything constructed under an open lives in the region and is reclaimed wholesale when the handle drops - on the native backend a bump arena torn down with one LIFO dtor-log walk plus a single bulk free.
+
+```jac
+obj Buffer { has n: int = 0; }
+
+with entry {
+    in Region() { tmp = Buffer(); }   # anonymous: extent is exactly the block
+    r: own Region = Region();
+    in r { keep = Buffer(); }         # reclaimed when `r` drops (scope exit, reassignment, early return)
+}
+```
+
+- Inside an open there is **no ownership discipline** - alias and build cycles freely. The checker polices the boundary: a region-rooted reference may not be returned, stored to outlive the handle, handed to an opaque callee, or sent across `flow` (E1307).
+- Escape hatches: scalars copy out freely; `own <expr>` **reboxes** a scalar/string copy out; helpers taking `&Region` legally carry region-rooted values, and a function with exactly ONE `&Region` param may return region-rooted results (single-region elision - two region params stay rejected).
+- Handles have dynamic extent: return one from a helper, grow it through a `Region`-typed param, drop it remotely. `Region` lowers to a pointer in native signatures.
+- Graph-native: nodes/edges created under an open allocate in the arena; a walker ability grows the region automatically - its allocations anchor to the region of the visited node (`here`), no `&Region` field needed. Wiring region topology to managed topology (either direction) is E1307. Walkers themselves are now RC-managed and reclaimed (`def drop` fires once per instance), not immortal.
+- Moving an `own Region` across `flow` transfers the whole subgraph zero-copy; legal only while no borrows of the handle are live.
+- Python backend: memory stays GC-managed, but `drop` hooks fire at portable points - LIFO at the closing brace for an anonymous open, at handle death for a named one.
+- `W1310` lints an open with an empty body. Region opens are rejected (E1406) inside nogc-enforced modules for now.
 
 ## Zero-RC enforced builds - the workflow
 
@@ -67,7 +89,7 @@ jac nacompile service.na.jac --gc none --enforce-nogc --assert-no-rc
    | E1403 | Heap value crosses out of the module implicitly | Wrap the argument in `managed(x)`; scalars and `imm` cross freely |
    | E1404 | `any`-typed value could be heap | Give it a concrete type, or confine `any` to scalars |
    | E1405 | Escaping closure capture | Pass the value as an explicit parameter or keep the closure local |
-   | E1406 | Retaining/aliasing construct (`iter`/`globals`/`locals`, or `managed()` of a heap value under `--gc none`) | Use an owned-compatible alternative or move the code out of the enforced module |
+   | E1406 | Retaining/aliasing construct (`iter`/`globals`/`locals`, `managed()` of a heap value under `--gc none`, or an `in { }` region open) | Use an owned-compatible alternative or move the code out of the enforced module |
 
 3. **Verify**: `--assert-no-rc` fails the build if the emitted IR contains any `__rc_*` helper, trace function, roots-buffer global, or entry-point GC env probe; on success it prints `assert-no-rc ok`.
 

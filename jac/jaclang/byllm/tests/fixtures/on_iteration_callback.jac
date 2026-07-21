@@ -5,7 +5,6 @@ import from jaclang.byllm.types { IterationAction, IterationContext }
 glob tool_calls: int = 0;
 
 def get_data(key: str) -> str {
-    global tool_calls;
     tool_calls += 1;
     print(f"get_data called: {key}");
     return f"value_for_{key}";

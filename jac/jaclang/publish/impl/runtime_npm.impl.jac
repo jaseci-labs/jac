@@ -25,7 +25,6 @@ impl runtime_pkg_name(framework: str = "") -> str {
 }
 
 impl runtime_api_names(framework: str = "") -> set {
-    global _api_names_cache;
     src = _runtime_source_path(framework);
     key = str(src);
     cached = _api_names_cache.get(key);
@@ -62,7 +61,6 @@ def _compile_cl_to_js(src: Path) -> str {
 }
 
 impl compile_runtime_js(framework: str = "") -> str {
-    global _runtime_js_cache;
     src = _runtime_source_path(framework);
     key = str(src);
     cached = _runtime_js_cache.get(key);

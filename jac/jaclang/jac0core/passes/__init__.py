@@ -15,6 +15,7 @@ This module contains the bootstrap-critical compiler passes:
 from jaclang.jac0core.passes.annex_pass import JacAnnexPass
 from jaclang.jac0core.passes.ast_validation_pass import ASTValidationPass
 from jaclang.jac0core.passes.boundary_analysis_pass import BoundaryAnalysisPass
+from jaclang.jac0core.passes.codespace_pull_pass import CodespacePullPass
 from jaclang.jac0core.passes.decl_impl_match_pass import DeclImplMatchPass
 from jaclang.jac0core.passes.module_codegen_pass import ModuleCodegenPass
 from jaclang.jac0core.passes.pyast_gen_pass import PyastGenPass
@@ -37,5 +38,6 @@ __all__ = [
     "DeclImplMatchPass",
     "SemanticAnalysisPass",
     "BoundaryAnalysisPass",
+    "CodespacePullPass",
     "ModuleCodegenPass",
 ]

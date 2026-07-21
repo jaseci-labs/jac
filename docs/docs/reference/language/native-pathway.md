@@ -37,6 +37,17 @@ Native compilation is ideal for:
 
 ## Quick Reference
 
+Native placement is **inferred from extern C declarations** -- an import
+whose braces declare C-ABI functions, e.g. `import from raylib {
+def InitWindow(w: i32, h: i32, title: str) -> None; }`, is an FFI surface
+only the native backend can satisfy, so the compiler routes it -- and the
+declarations that use it -- to the native codespace automatically, just as
+JSX and npm imports infer the client codespace. Merely importing *from* a
+native module is not such a signal, and native-compatible pure code still
+defaults to the server: without an FFI seed, whether code *should* be
+compiled natively is a build decision, made with one of the selectors
+below (all of which remain valid as explicit overrides):
+
 | Aspect | Details |
 |--------|---------|
 | **Inline section** | `na { }` block (or `na` prefix) in any `.jac` file |
@@ -600,7 +611,7 @@ non-deterministic, but each reader is congruent with its CPython counterpart.
 | `sys.byteorder` | `"little"` / `"big"` (host arch) |
 | `sys.platform` | e.g. `"linux"` / `"darwin"` |
 
-`sys.argv` works both with `jac run --autonative` and standalone binaries
+`sys.argv` works both with `jac run` under a native default codespace and standalone binaries
 compiled via `jac nacompile`.
 
 #### `os` and `os.path` -- Operating System
@@ -781,6 +792,8 @@ Native Jac manages heap values (objects, strings, lists, dicts, sets) with **aut
 
 Under the managed modes (`cycles`, `rc`) a heap value carries a reference count that is incremented on copy and decremented when a reference goes out of scope; the value is freed when its count reaches zero, and its destructor releases field and element references in turn. A [`def drop` hook](ownership-borrowing.md#the-drop-hook) is invoked from the reference-count destructor -- for a uniquely-owned value at the same last-use point a zero-RC build drops at, so program output is identical across gc modes. Setting `JAC_NO_GC` in the environment disables reclamation in a managed-mode binary at runtime (memory is then never freed; useful for isolating memory-management bugs).
 
+There is a third allocation lane alongside reference counting and headerless owned codegen: objects, nodes, and edges constructed under an [`in <handle> { }` region open](ownership-borrowing.md#regions-first-class-region-handles-and-in-opens) bump-allocate into the handle's arena and are reclaimed wholesale -- one LIFO dtor-log walk plus a single bulk free -- at the handle's drop point. Arena-allocated values carry sentinel-stamped headers that make the managed modes' retain/release call sites inert on them, so regions and reference counting compose safely in the same module.
+
 ### Zero-RC ownership compilation
 
 For a module written against the [ownership and borrow-checking surface](ownership-borrowing.md), memory management compiles to what Rust would emit: an allocation at construction, a free at a statically determined drop point, and **no reference counting or collector in the binary at all** -- and the absence of that machinery is checkable in the artifact. Three pieces turn this into a compile-time contract rather than a best-effort optimization:
@@ -796,6 +809,7 @@ jac nacompile service.na.jac --gc none --enforce-nogc --assert-no-rc
 Notes on the enforced world:
 
 - **The `managed()` membrane.** In an enforced module compiled under a managed gc mode, a heap value may cross out to unenforced (reference-counted) code only through the explicit `managed(x)` builtin at the boundary -- an implicit crossing is `E1403`, and sealing an owned value into managed storage is `E1402`. Under `--gc none` the artifact has no reference-counted side to cross into, so `managed()` of a heap value is itself rejected (`E1406`). Scalars and `imm` values cross freely everywhere, and on the Python backend `managed()` is the identity function.
+- **Region opens are rejected (`E1406`).** An [`in <handle> { }` region open](ownership-borrowing.md#regions-first-class-region-handles-and-in-opens) is not yet legal inside a nogc-enforced module: arena interiors currently rely on the sentinel-header scheme that presumes retain/release call sites exist to be inert against. Making opens legal there (headerless arena interiors that stay `--assert-no-rc`-clean) is the planned follow-up; until then, keep region-using code outside enforced modules.
 - **Unhandled exceptions abort.** In a nogc-enforced module, a `raise` with no local handler prints a diagnostic line and calls `abort()` rather than unwinding -- unwinding would require the managed runtime.
 - **Grandfathering.** `[gc.enforce] grandfathered` patterns exempt matching modules from enforcement so a codebase can adopt the contract incrementally.
 
@@ -1074,4 +1088,4 @@ with entry {
 
 ### Chess Engine
 
-For a complete walkthrough that covers `--autonative`, `nacompile`, `sys.argv`, declaration/implementation separation, and nearly every other native feature, see the **[Build a Chess Engine](../../tutorials/native/chess.md)** tutorial.
+For a complete walkthrough that covers the native default codespace, `nacompile`, `sys.argv`, declaration/implementation separation, and nearly every other native feature, see the **[Build a Chess Engine](../../tutorials/native/chess.md)** tutorial.

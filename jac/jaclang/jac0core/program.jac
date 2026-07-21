@@ -21,8 +21,6 @@ class JacProgram {
         _hub_cache_times: dict[str, float],
         _dependents: dict[str, set[str]],
         _track_dependencies: bool,
-        _auto_promote_native: bool,
-        _auto_promote_target: str,
         _inferred_mods: set,
         _analyses_run: dict;
 

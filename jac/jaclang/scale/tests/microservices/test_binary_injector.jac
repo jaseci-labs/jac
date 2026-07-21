@@ -1,3 +1,4 @@
+import json;
 import os;
 import io;
 import functools;
@@ -181,8 +182,16 @@ test "[dependencies.system] in jac.toml installs into the service container" {
         assert "apt-get install -y" in prefix;
         assert "git" in prefix;
         assert "ffmpeg" in prefix;
+        # Packages baked into the pod image skip apt entirely: apt-get update
+        # is a network fetch that can stall the pod behind flaky NAT egress.
+        assert prefix.startswith("if dpkg-query -W");
+        # Removed-but-not-purged packages pass a bare dpkg -s; only the full
+        # installed status may skip apt.
+        assert prefix.count("grep -q 'install ok installed'") == 2;
+        assert prefix.index("ffmpeg") < prefix.index("git");
+        assert "else export DEBIAN_FRONTEND=noninteractive && apt-get update" in prefix;
         # Chains into app-start so a failed apt aborts the boot (no silent start).
-        assert prefix.endswith("&& ");
+        assert prefix.endswith("fi && ");
     }
 }
 
@@ -564,4 +573,65 @@ test "pod dep installs are routed to the shared-volume venv" {
     # exported before jac install: the image's cache site is container-local
     assert 'export PIP_PREFIX="/app/.jac/venv"' in script;
     assert script.index("PIP_PREFIX") < script.index("jac install");
+}
+
+
+def _payload_response(payload: bytes, url: str) -> bytes {
+    return payload;
+}
+
+
+test "channel tags are pinned to the registry digest at deploy time" {
+    d = _write_toml("[dev]\ntest_jobs = \"auto\"\n");
+    payload = json.dumps({"digest": "sha256:" + ("ab" * 32)}).encode();
+    saved = binary_mod._http_get_bytes;
+    binary_mod._http_get_bytes = functools.partial(_payload_response, payload);
+    try {
+        image = binary_mod.resolve_pod_base_image(d, "");
+        assert image == "jaseci/jaclang@sha256:" + ("ab" * 32);
+    } finally {
+        binary_mod._http_get_bytes = saved;
+    }
+}
+
+
+test "a hub response without a digest keeps the tag form" {
+    d = _write_toml("[dev]\ntest_jobs = \"auto\"\n");
+    saved = binary_mod._http_get_bytes;
+    binary_mod._http_get_bytes = functools.partial(
+        _payload_response, json.dumps({"name": "dev"}).encode()
+    );
+    try {
+        assert binary_mod.resolve_pod_base_image(d, "") == "jaseci/jaclang:dev";
+    } finally {
+        binary_mod._http_get_bytes = saved;
+    }
+}
+
+
+test "experimental images stay in tag form (downstream keys on the tag)" {
+    d = _write_toml("[experimental]\npr = 7494\n");
+    payload = json.dumps({"digest": "sha256:" + ("cd" * 32)}).encode();
+    saved = binary_mod._http_get_bytes;
+    binary_mod._http_get_bytes = functools.partial(_payload_response, payload);
+    try {
+        image = binary_mod.resolve_pod_base_image(d, "");
+        assert image == "jaseci/jaclang:experimental-7494";
+    } finally {
+        binary_mod._http_get_bytes = saved;
+    }
+}
+
+
+test "explicit python_image is never rewritten" {
+    d = _write_toml("[dev]\ntest_jobs = \"auto\"\n");
+    payload = json.dumps({"digest": "sha256:" + ("ef" * 32)}).encode();
+    saved = binary_mod._http_get_bytes;
+    binary_mod._http_get_bytes = functools.partial(_payload_response, payload);
+    try {
+        image = binary_mod.resolve_pod_base_image(d, "my.registry/app:v1");
+        assert image == "my.registry/app:v1";
+    } finally {
+        binary_mod._http_get_bytes = saved;
+    }
 }

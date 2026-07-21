@@ -610,7 +610,6 @@ obj ProviderRegistry {
 glob _registry: ProviderRegistry | None = None;
 
 def get_provider_registry -> ProviderRegistry {
-    global _registry;
     if _registry is None {
         _registry = ProviderRegistry();
         _registry.register(PythonProvider());
@@ -627,7 +626,6 @@ def get_python_provider -> PythonProvider {
 }
 
 def reset_provider_registry {
-    global _registry;
     _registry = None;
 }
 

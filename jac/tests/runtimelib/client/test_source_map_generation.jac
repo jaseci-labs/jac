@@ -57,7 +57,6 @@ def _make_compiler(proj: Path) -> tuple[any, Path] {
     compiler = builder._get_compiler().jac_client_compiler;
     out_dir = proj / "out";
     compiler.compiled_dir = out_dir;
-    global _orig_compile_module;
     _orig_compile_module = compiler.jac_compiler.compile_module;
     compiler.jac_compiler.compile_module = _compile_then_clear_hub;
     return (compiler, out_dir);
