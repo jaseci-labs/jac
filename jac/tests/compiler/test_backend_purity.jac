@@ -67,8 +67,27 @@ glob FORBIDDEN: dict[str, str] = {
              "for interop payloads and Ref[...] head detection - the "
              "declared NAME is the consumed fact, not a resolved type"
          ),
-         ("native/na_ir_gen_pass.impl/calls.impl.jac", "symbol_utils"): (
+         ("native/na_ir_gen_pass.impl/stmt.impl.jac", "symbol_utils"): (
              1,
+             "is_builtin_region_name as the shadowing-aware test for the "
+             "anonymous `in Region() {}` open (#7491) - consuming the "
+             "central classification instead of re-implementing name "
+             "resolution"
+         ),
+         ("native/na_ir_gen_pass.impl/generics.impl.jac", "type_tag.tag"): (
+             1,
+             "generic-template declared-annotation fallback in "
+             "_solve_generic_call: the primary fact is the ability symbol's "
+             "central FunctionType (name_ref.type), but a bundled/imported "
+             "template compiled symtab_ir_only has no stamped FunctionType, "
+             "and for an uninstantiated template the declared annotation IS "
+             "the fact - there is no per-callsite resolved type to consume"
+         ),
+         ("native/na_ir_gen_pass.impl/calls.impl.jac", "symbol_utils"): (
+             2,
+             "is_builtin_region_name as the shadowing-aware test for the "
+             "builtin Region constructor (#7491) - consuming the central "
+             "classification instead of re-implementing name resolution; and "
              "classify_call as the shadowing-aware builtin test for the "
              "`type(None)` isinstance argument form (#6957) - consuming the "
              "central classification instead of re-implementing name "
@@ -95,9 +114,13 @@ glob FORBIDDEN: dict[str, str] = {
              "declaration-surface read during archetype field lowering"
          ),
          ("native/na_ir_gen_pass.impl/stmt.impl.jac", "type_tag.tag"): (
-             4,
+             5,
              "surface-shape dispatch on declared annotation forms "
-             "(assessed train 4: legitimately kept)"
+             "(assessed train 4: legitimately kept); plus the "
+             "escaping-closure value-hint guard (#7593 item 12), a "
+             "presence-only test that fires when NO annotation is "
+             "declared - the declaration surface's absence is the "
+             "consumed fact, not a re-derived type"
          ),
 
      };

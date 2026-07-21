@@ -93,7 +93,7 @@ def generate -> str {
         ContextAwareNode as _CtxNode
     }
 
-    all_classes: list = [];
+    all_classes: list[tuple[str, type]] = [];
     for name in sorted(dir(ut_mod)) {
         attr = getattr(ut_mod, name);
         if isinstance(attr, type)

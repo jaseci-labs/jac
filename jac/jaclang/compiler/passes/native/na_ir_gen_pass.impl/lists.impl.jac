@@ -6,6 +6,9 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
     if elem_type_name == "ptr" {
         elem_type = ir.IntType(8).as_pointer();
     }
+    if elem_type_name == "i64" and isinstance(elem_type, ir.IntType) {
+        elem_type = ir.IntType(64);
+    }
 
     list_struct = self.llvm_module.context.get_identified_type(
         f"List.{elem_type_name}"
@@ -178,6 +181,11 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
         return None;
     }
 
+    _decl_elem = self._list_elem_llvm_of(nd);
+    _clos_elem = self._closure_struct_of(_decl_elem)
+        if _decl_elem is not None
+        else None;
+
     first_val = self._codegen_expr(nd.values[0]);
     if first_val is None {
         return None;
@@ -189,6 +197,9 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             if nd.loc
             else 0}"
     );
+    if _clos_elem is not None and first_val.type != _decl_elem {
+        first_val = self._coerce_type(first_val, _decl_elem);
+    }
     elem_type = first_val.type;
     elem_type_name = "i64";
     if isinstance(elem_type, ir.DoubleType) {
@@ -218,6 +229,8 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
     append_val = first_val;
     if elem_type_name == "ptr" and isinstance(first_val.type, ir.PointerType) {
         append_val = self.builder.bitcast(first_val, i8p, name="elem.cast");
+    } else {
+        append_val = self._coerce_type(append_val, helpers["elem_type"]);
     }
     _linit_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
@@ -244,11 +257,14 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             }
             _orig_val = val;
             val = self._box_value_tuple(val, loc=_linit_loc);
+            if _clos_elem is not None and val.type != _decl_elem {
+                val = self._coerce_type(val, _decl_elem);
+            }
             _boxed_val = val;
             if elem_type_name == "ptr" and isinstance(val.type, ir.PointerType) {
                 val = self.builder.bitcast(val, i8p, name="elem.cast");
             } else {
-                val = self._coerce_type(val, elem_type);
+                val = self._coerce_type(val, helpers["elem_type"]);
             }
             self._rc_call_with_ctx(
                 helpers["append"], [list_val, val], op="list_init", loc=_linit_loc

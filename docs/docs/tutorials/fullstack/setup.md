@@ -13,6 +13,9 @@ In this tutorial, you'll set up a full-stack project, understand the file struct
 > - Install: `curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash` (installs the self-contained `jac` binary -- no Python, pip, or uv required)
 > - Time: ~15 minutes
 
+!!! note "Explicit markers are optional"
+    This tutorial uses the explicit `cl { }` / `.cl.jac` style throughout so the client/server split is visible at a glance. The markers are optional: the compiler infers client placement from JSX and npm imports (and from what that client code uses), so everything shown here also works markerless. See [Core Concepts](../../quick-guide/what-makes-jac-different.md) for how inference works.
+
 ---
 
 ## Create a Project

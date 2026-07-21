@@ -79,6 +79,8 @@ obj RcFactsPass(Transform[uni.Module, uni.Module]) {
     def transform(ir_in: uni.Module) -> uni.Module;
     def _stamp_param_rebound(ir_in: uni.Module) -> None;
     def _stamp_escapes(ir_in: uni.Module) -> None;
+    def _stamp_region_handles(ir_in: uni.Module) -> None;
+    def _asn_makes_region_handle(nd: uni.Assignment) -> bool;
     def _use_ok_for_stack(nm: uni.NameAtom) -> bool;
     def _enclosing_fn_scope(nd: uni.UniNode) -> (uni.UniNode | None);
     def _is_param_sym(sym: uni.Symbol) -> bool;

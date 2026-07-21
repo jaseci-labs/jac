@@ -35,8 +35,6 @@ obj KubernetesConfig(BaseConfig) {
         autoscaler_initial_cooldown: int = 0,
         extra_triggers: list[dict] = [],
         health_check_path: str = '/docs',
-        # Empty = auto: the official channel image when published, else
-        # python:3.12-slim (resolve_pod_base_image decides at deploy time).
         python_image: str = '',
         busybox_image: str = 'busybox:1.36',
         wait_image: str = 'busybox',

@@ -6,7 +6,7 @@ import from .ui.empty { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescrip
 import from .TweetCard { TweetCard }
 import from .Composer { Composer }
 import from .WelcomeBanner { WelcomeBanner }
-sv import from ..social_graph { TweetView }
+sv import from ..social_graph { Tweet }
 
 def:pub FeedTab(
     showWelcome: bool,
@@ -17,7 +17,7 @@ def:pub FeedTab(
     onComposerChange: Callable[[str], None],
     onPost: Callable[[], None],
     feedLoading: bool,
-    tweets: list[TweetView],
+    tweets: list[Tweet],
     onLike: Callable[[str], None],
     onComment: Callable[[str, str], None],
     onDelete: Callable[[str], None],
@@ -68,7 +68,7 @@ def:pub FeedTab(
                 skip;
             }for tweet in tweets {
                 <TweetCard
-                    key={tweet.id}
+                    key={jid(tweet)}
                     {tweet}
                     myUsername={profileUsername}
                     {onLike}

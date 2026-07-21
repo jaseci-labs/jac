@@ -3,6 +3,8 @@ name: jac-cl-styling
 description: Styling patterns in Jac - Tailwind v4 setup from scratch, conditional classes, cn() utility with clsx+tailwind-merge, semantic color tokens, and auto-scoped .style.css annex files. Load when adding Tailwind to a project or writing dynamic, theme-aware, or component-scoped styles.
 ---
 
+Everything here applies to any client code - `.cl.jac` files or plain `.jac` components inferred client from their JSX/npm imports (markers like `cl { }` are optional overrides; see `jac-codespaces`).
+
 ## Tailwind v4 setup (non-shadcn projects)
 
 jac-shadcn projects ship Tailwind pre-wired - skip this section. For any other client project, three steps:

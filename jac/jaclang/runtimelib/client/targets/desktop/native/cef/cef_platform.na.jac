@@ -24,7 +24,6 @@ def _write_uint(n: int) {
 }
 
 def _assert_cef_abi {
-    global g_abi_checked;
     if g_abi_checked != 0 {
         return;
     }
@@ -64,7 +63,6 @@ def cef_stub_has_at_least_one_ref(self: int) -> int {
 }
 
 def cef_main_args_create -> int {
-    global g_cmdline_buf,g_argv_arr;
     pw: cef_ptr_wrap_t = cef_ptr_wrap_t();
     argv_wrap: cef_ptr_wrap_t = cef_ptr_wrap_t();
     fd: i32 = open("/proc/self/cmdline", 0);
@@ -78,7 +76,7 @@ def cef_main_args_create -> int {
             argc: int = 0;
             pos: int = 0;
             done: int = 0;
-            while pos < n && done == 0 {
+            while pos < n and done == 0 {
                 arg_len: int = strlen(buf + pos);
                 if arg_len == 0 {
                     done = 1;

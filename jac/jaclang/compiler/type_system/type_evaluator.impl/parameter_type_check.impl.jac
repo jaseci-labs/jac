@@ -152,7 +152,7 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
     if isinstance(expr.target, uni.SpecialVarRef)
     and expr.target.name == Tok.KW_ROOT
     and (not expr.params or len(expr.params) == 0) {
-        self.emit_diag(W0062, expr);
+        self.emit_diag(E0049, expr);
         return caller_type;
     }
 

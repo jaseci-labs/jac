@@ -21,6 +21,58 @@ def k8s_safe_name(svc_name: str) -> str {
 }
 
 
+def _is_named_list(items: list) -> bool {
+    if not items {
+        return False;
+    }
+    for item in items {
+        if not isinstance(item, dict) or "name" not in item {
+            return False;
+        }
+    }
+    return True;
+}
+
+
+def merge_manifest_overlay(base: any, overlay: any) -> any {
+    if isinstance(base, dict) and isinstance(overlay, dict) {
+        merged = dict(base);
+        for (key, value) in overlay.items() {
+            merged[key] = merge_manifest_overlay(base.get(key), value)
+                if key in base
+                else value;
+        }
+        return merged;
+    }
+    if (
+        isinstance(base, list)
+        and isinstance(overlay, list)
+        and _is_named_list(base)
+        and _is_named_list(overlay)
+    ) {
+        overlay_by_name = {item["name"]: item for item in overlay};
+        merged_list: list = [];
+        for item in base {
+            item_name = item["name"];
+            if item_name in overlay_by_name {
+                merged_list.append(
+                    merge_manifest_overlay(item, overlay_by_name.pop(item_name))
+                );
+            } else {
+                merged_list.append(item);
+            }
+        }
+        for item in overlay {
+            if item["name"] in overlay_by_name {
+                merged_list.append(item);
+            }
+        }
+        return merged_list;
+    }
+    return overlay;
+}
+
+
 obj MicroserviceManifestBuilder {
     has k8s_config: KubernetesConfig,
         secrets: dict[str, str] = {},
@@ -31,16 +83,17 @@ obj MicroserviceManifestBuilder {
         _bundle_object_key: str = "",
         _toolchain_object_key: str = "",
         microservices_config: dict[str, any] = {},
-        # --dry-run: render manifests from config alone -- no client build, no
-        # binary/console download, no cluster reads (issue #7431).
         dry_run: bool = False;
 
     def _ms_cfg -> dict[str, any] {
+        import from jaclang.scale.config.config_loader {
+            get_scale_config,
+            normalize_microservices_config
+        }
         if self.microservices_config {
-            return self.microservices_config;
+            return normalize_microservices_config(self.microservices_config);
         }
         try {
-            import from jaclang.scale.config.config_loader { get_scale_config }
             return get_scale_config().get_microservices_config();
         } except Exception {
             return {};
@@ -83,8 +136,6 @@ obj MicroserviceManifestBuilder {
             return;
         }
         if self.dry_run {
-            # The bundle only affects what ships to the gateway pod, never the
-            # manifests, so a dry run can skip the build outright (issue #7431).
             console.print(
                 f"dry-run: skipped the host client bundle build ({client_entry})."
             );
@@ -201,10 +252,6 @@ obj MicroserviceManifestBuilder {
     ) -> dict[str, dict[str, any]] {
         app_name = app_config.app_name or self.k8s_config.app_name;
 
-        # Auto-discover services from `sv import` so a microservice app deploys
-        # with no [scale.microservices.routes] section (explicit routes
-        # still win). Mirrors the local-serve path; cache the result so the
-        # gateway's JAC_SV_ROUTES env and the ingress rules see the same routes.
         import from jaclang.scale.runtime.discovery.discovery { resolve_routes }
         ms_cfg = dict(self._ms_cfg());
         proj = self.project_dir or app_config.code_folder;
@@ -603,7 +650,7 @@ obj MicroserviceManifestBuilder {
         };
         svc_cfg = self._service_config(svc_name);
         replicas: int = int(svc_cfg.get("replicas", 1));
-        return {
+        manifest: dict[str, any] = {
             "apiVersion": "apps/v1",
             "kind": "Deployment",
             "metadata": {
@@ -621,6 +668,21 @@ obj MicroserviceManifestBuilder {
                 "template": {"metadata": {"labels": labels}, "spec": pod_spec}
             }
         };
+        overlay = svc_cfg.get("deployment_overlay");
+        if isinstance(overlay, dict) and overlay {
+            manifest = merge_manifest_overlay(manifest, overlay);
+
+            manifest["metadata"]["name"] = f"{k8s_name}-deployment";
+            manifest["metadata"]["namespace"] = self.k8s_config.namespace;
+            meta_labels = manifest["metadata"].get("labels", {});
+            meta_labels.update(labels);
+            manifest["metadata"]["labels"] = meta_labels;
+            manifest["spec"]["selector"] = {"matchLabels": {"app": k8s_name}};
+            tmpl_labels = manifest["spec"]["template"]["metadata"].get("labels", {});
+            tmpl_labels.update({"app": k8s_name, "managed": "jac-scale"});
+            manifest["spec"]["template"]["metadata"]["labels"] = tmpl_labels;
+        }
+        return manifest;
     }
 
     def _build_service_manifest(svc_name: str) -> dict[str, any] {

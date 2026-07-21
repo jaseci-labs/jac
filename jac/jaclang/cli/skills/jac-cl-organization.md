@@ -5,6 +5,8 @@ description: Structuring a multi-component client app - the stateful-shell archi
 
 **First-choice architecture for small/medium apps: the stateful shell.** One page-level component owns ALL of that page's reactive `has` fields and async handlers, and prop-drills data + `Callable` callbacks into stateless section components. Handler bodies live in the paired `.impl.jac` annex (see `jac-impl-files`). Real Jac apps with a dozen sections run entirely on this - zero hooks, zero contexts. Escalate only when it stops fitting: a **hook** when the same fetch+state unit must be reused by several components, a **context** when distant components must see the same live values.
 
+Components need no marker: a `def:pub` returning JSX in a plain `.jac` file is placed client by inference, and the helpers/`glob`s it references follow it into the bundle (see `jac-codespaces`). The `.cl.jac` extension used in the layouts below is the optional explicit convention - good for making the boundary visible in a large tree - not a requirement.
+
 ## The stateful shell
 
 The shell declares the state in one `has` block (14 fields is normal, not a smell), handler stubs, and a render that wires the sections:
@@ -60,7 +62,7 @@ my-app/
     └── utils.cl.jac            # pure helper fns (cn, formatDate)
 ```
 
-Service modules separate transport logic from UI: `.sv.jac` files under `services/` hold server endpoints; a `.cl.jac` service module (e.g. `wsService.cl.jac`) holds client-side WebSocket/API plumbing with `glob` module state (see `jac-cl-js-interop`). Components and hooks import from services - never the reverse.
+The extensions in this tree are the explicit style - every one of these files also works as plain `.jac` with placement inferred; keep whichever convention the project already uses. Service modules separate transport logic from UI: server endpoint modules live under `services/` (plain `.jac` is equally idiomatic - server is the default; `.sv.jac` is the explicit pin); a client service module (e.g. `wsService.cl.jac`) holds client-side WebSocket/API plumbing with `glob` module state (see `jac-cl-js-interop`). Components and hooks import from services - never the reverse.
 
 ## Hook pattern - reusable fetch+state units
 
@@ -132,11 +134,11 @@ When the project has `components/ui/` (jac-shadcn primitives are pre-installed):
 ## Rules
 
 - **Default to the shell.** Page state and handlers live in ONE stateful component per page; sections receive props + callbacks. Don't pre-extract hooks/contexts for state only one page uses.
-- **One file per page/section, basename matches the main export** (`Button.cl.jac` → `Button`). File-local `def:pub` helpers are fine - a section file exporting both `MicroservicesSection` and its small `ProcBox` building block is good practice; move a helper to `components/` only when a second file needs it.
+- **One file per page/section, basename matches the main export** (`Button.jac` or `Button.cl.jac` → `Button`). File-local `def:pub` helpers are fine - a section file exporting both `MicroservicesSection` and its small `ProcBox` building block is good practice; move a helper to `components/` only when a second file needs it.
 - **In jac-shadcn projects, scan `components/ui/` before building any UI element.** If a primitive exists (Button, Card, Input, Badge, Dialog, Table, ...), import it - do not re-implement it. Never edit files in `components/ui/` (registry-managed); compose with them in your own files.
 - **Reuse before creating.** Scan `components/` and `pages/` before writing a new file. Duplicate UI = default mistake.
-- **Scoped styles share the basename.** `Button.style.css` beside `Button.cl.jac` auto-scopes, no import. See `jac-cl-styling`.
-- **PascalCase** for components + files: `UserCard.cl.jac`. `snake_case` for variables and handlers.
+- **Scoped styles share the basename.** `Button.style.css` beside the component file (`Button.cl.jac` or `Button.jac`) auto-scopes, no import. See `jac-cl-styling`.
+- **PascalCase** for components + files: `UserCard.jac` / `UserCard.cl.jac`. `snake_case` for variables and handlers.
 - **Pages are thin orchestrators of sections.** JSX > ~80 lines in a shell's return = extract blocks into section components (props down, callbacks up); handler bodies > a screenful = move to the `.impl.jac`.
 - **Domain-meaningful names, not structural.** `CalculatorApp`, not `App`. `recipes_data`, not `data`. `services/recipes.sv.jac`, not `services/api.sv.jac`. Generic `Layout`/`App` only for the single top-level wrapper.
 - **Hook name = `use<DomainNoun>`** (`useRecipes`, NOT `useData`); hooks live under `hooks/`, return dicts consumed with `[key]`. Don't call a hook from a non-component `def` - `has` fields only wire up inside `def:pub` that renders JSX or inside another `useXxx()`.
