@@ -679,6 +679,11 @@ impl TypeCheckPass._check_event_trigger_archetype(
     for arg in targets {
         ty = self.evaluator.get_type_of_expression(arg);
         resolved.append(ty);
+
+        if isinstance(arg, uni.Name) and arg.value == "root" {
+            self.emit(err, node_override=arg, type="root");
+            continue;
+        }
         if isinstance(ty, types.ClassType) and ty.is_instance() {
             label = arg.value if isinstance(arg, uni.Name) else str(ty);
             self.emit(err, node_override=arg, type=label);
@@ -813,7 +818,7 @@ impl TypeCheckPass._insert_builtin_symbols(self: TypeCheckPass) -> None {
         return;
     }
     if (self.ir_in.parent_scope is not None) {
-        self.log_info('Builtins module is already bound, skipping.');
+        self.logger.debug('Builtins module is already bound, skipping.');
         return;
     }
     self.ir_in.parent_scope = self.evaluator.builtins_module;
@@ -845,12 +850,7 @@ impl TypeCheckPass.before_pass(self: TypeCheckPass) -> None {
                 }
             }
         }
-        if (
-            not is_native_mod
-            and self.prog._auto_promote_native
-            and mod?.gen
-            and mod.gen.native_compat
-        ) {
+        if not is_native_mod and mod?.decided_codespace == 'native' {
             is_native_mod = True;
         }
         emit_full = is_native_mod;

@@ -179,19 +179,24 @@ impl NaIRGenPass._emit_container_release_fn(
     (b, done_bb) = self._emit_rc_destructor_preamble(release_fn, container_ptr_type);
     for (field_idx, elem_type) in data_fields {
         if isinstance(elem_type, ir.PointerType) {
-            if self.rc_collecting_gv is None {
+            _cycles_on = self._gc_mode() == "cycles";
+            if _cycles_on and self.rc_collecting_gv is None {
                 self._emit_rc_helpers();
             }
             rel_elems_bb = release_fn.append_basic_block("release_elems");
             post_elems_bb = release_fn.append_basic_block("post_elems");
-            _cont_coll = b.load(self.rc_collecting_gv, name="cont.collecting");
-            b.cbranch(
-                b.icmp_unsigned(
-                    "!=", _cont_coll, ir.Constant(i8, 0), name="cont.mid.coll"
-                ),
-                post_elems_bb,
-                rel_elems_bb
-            );
+            if _cycles_on {
+                _cont_coll = b.load(self.rc_collecting_gv, name="cont.collecting");
+                b.cbranch(
+                    b.icmp_unsigned(
+                        "!=", _cont_coll, ir.Constant(i8, 0), name="cont.mid.coll"
+                    ),
+                    post_elems_bb,
+                    rel_elems_bb
+                );
+            } else {
+                b.branch(rel_elems_bb);
+            }
             b = ir.IRBuilder(rel_elems_bb);
             b = self._emit_rc_release_elem_loop(
                 b, release_fn, release_fn.args[0], field_idx
@@ -500,6 +505,9 @@ impl NaIRGenPass._emit_rc_release_elem_loop(
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     i8_ptr = ir.IntType(8).as_pointer();
+    if self.rc_release_simple_fn is None {
+        self._emit_rc_helpers();
+    }
 
     len_p = b.gep(
         container_arg, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.ptr.rel"

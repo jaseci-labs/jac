@@ -215,12 +215,14 @@ test "fleet rollout ignores crash-looping pod from a stale replica set" {
     healthy_pod = unittest.mock.MagicMock();
     healthy_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": current_hash};
     healthy_pod.metadata.name = "svc-a-healthy";
+    healthy_pod.metadata.deletion_timestamp = None;
     healthy_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=0)];
     healthy_pod.status.phase = "Running";
 
     stale_pod = unittest.mock.MagicMock();
     stale_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": stale_hash};
     stale_pod.metadata.name = "svc-a-stale-crash";
+    stale_pod.metadata.deletion_timestamp = None;
     stale_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=5)];
     stale_pod.status.phase = "Running";
 
@@ -255,6 +257,7 @@ test "fleet rollout still fails when a current replica set pod is crash-looping"
     crash_pod = unittest.mock.MagicMock();
     crash_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": current_hash};
     crash_pod.metadata.name = "svc-a-crash";
+    crash_pod.metadata.deletion_timestamp = None;
     crash_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=5)];
     crash_pod.status.phase = "Running";
 
@@ -285,6 +288,7 @@ test "fleet rollout still fails when a companion Deployment pod outside the flee
     healthy_pod = unittest.mock.MagicMock();
     healthy_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": current_hash};
     healthy_pod.metadata.name = "svc-a-healthy";
+    healthy_pod.metadata.deletion_timestamp = None;
     healthy_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=0)];
     healthy_pod.status.phase = "Running";
 
@@ -300,6 +304,7 @@ test "fleet rollout still fails when a companion Deployment pod outside the flee
         "pod-template-hash": "redis-hash-not-in-current-hashes"
     };
     redis_pod.metadata.name = "svc-a-redis-789";
+    redis_pod.metadata.deletion_timestamp = None;
     redis_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=5)];
     redis_pod.status.phase = "Running";
 
@@ -329,6 +334,7 @@ test "fleet rollout falls back to broad pod scan when RS lookup fails" {
     crash_pod = unittest.mock.MagicMock();
     crash_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": "whatever-hash"};
     crash_pod.metadata.name = "svc-a-crash";
+    crash_pod.metadata.deletion_timestamp = None;
     crash_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=5)];
     crash_pod.status.phase = "Running";
 

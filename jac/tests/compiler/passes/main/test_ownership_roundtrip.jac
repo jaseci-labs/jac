@@ -2,7 +2,7 @@
 
 These pin the two things the single-enum refactor fixed or must not regress:
   1. `jac format` / unparse preserves every qualifier — `own`, `&`, `&mut`,
-     `val`. The `val` prefix was previously dropped.
+     `imm`. The `imm` prefix was previously dropped.
   2. JIR serialize -> deserialize preserves `ownership` as a real OwnershipKind
      on both SubTag (annotation) and UnaryExpr (borrow expression).
 """
@@ -33,10 +33,10 @@ def unary_kinds(mod: uni.Module) -> list {
     return [nd.ownership for nd in mod.get_all_sub_nodes(uni.UnaryExpr)];
 }
 
-test "format preserves every ownership qualifier (own/&/&mut/val)" {
+test "format preserves every ownership qualifier (own/&/&mut/imm)" {
     prog = JacProgram.jac_file_formatter(FIXTURE);
     formatted = prog.mod.main.gen.jac;
-    for qualifier in ["own Buffer", "&Buffer", "&mut Buffer", "val Buffer"] {
+    for qualifier in ["own Buffer", "&Buffer", "&mut Buffer", "imm Buffer"] {
         assert qualifier in formatted , f"'{qualifier}' dropped by format:\n{formatted}";
     }
 }
@@ -63,7 +63,7 @@ test "JIR round-trip preserves OwnershipKind on SubTag and UnaryExpr" {
         OwnershipKind.OWN,
         OwnershipKind.BORROW,
         OwnershipKind.MUT_BORROW,
-        OwnershipKind.VAL,
+        OwnershipKind.IMM,
 
     ] {
         assert kind in after_sub , f"{kind} missing after JIR round-trip: {after_sub}";

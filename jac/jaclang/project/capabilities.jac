@@ -149,7 +149,6 @@ obj CapabilityClosure {
 glob _registry: dict[str, Capability] | None = None;
 
 def get_capability_registry -> dict[str, Capability] {
-    global _registry;
     if _registry is None {
         built: dict[str, Capability] = {};
         for (name, spec) in CAPABILITY_SPECS.items() {

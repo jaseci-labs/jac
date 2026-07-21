@@ -25,7 +25,6 @@ obj FakeEmailer(Emailer) {
         body_html: (str | None) = None,
         from_addr: (str | None) = None
     ) -> bool {
-        global SENT;
         SENT.append(
             {
                 "to": to_addr,

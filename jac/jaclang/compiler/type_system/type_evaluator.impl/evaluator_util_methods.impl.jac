@@ -1314,9 +1314,8 @@ impl TypeEvaluator._resolve_from_path(from_mod: uni.ModulePath) -> Path {
 }
 
 impl TypeEvaluator._resolve_client_npm_module(node_: uni.ModulePath) -> (str | None) {
-    if not (
-        node_.path and len(node_.path) == 1 and isinstance(node_.path[0], uni.String)
-    ) {
+    spv = node_.string_path_value;
+    if spv is None {
         return None;
     }
     if not node_.in_client_context() {
@@ -1327,7 +1326,7 @@ impl TypeEvaluator._resolve_client_npm_module(node_: uni.ModulePath) -> (str | N
         return None;
     }
     import from jaclang.jac0core.modresolver { resolve_client_npm_package }
-    return resolve_client_npm_package(node_.path[0].lit_value, mod_path);
+    return resolve_client_npm_package(spv, mod_path);
 }
 
 impl TypeEvaluator._is_fstring_all_literal(fstring: uni.FString) -> bool {
@@ -1361,6 +1360,12 @@ impl TypeEvaluator._is_fstring_all_literal(fstring: uni.FString) -> bool {
 impl TypeEvaluator._create_special_builtin_type(
     name: str, base_class: types.ClassType
 ) -> types.ClassType {
+    if base_class.shared._derived_special_types is not None {
+        cached = base_class.shared._derived_special_types.get(name);
+        if cached is not None {
+            return cached;
+        }
+    }
     shared = types.ClassType.ClassDetailsShared(
         class_name=name,
         symbol_table=base_class.shared.symbol_table,
@@ -1371,6 +1376,10 @@ impl TypeEvaluator._create_special_builtin_type(
     special_type = types.ClassType(_shared=shared, flags=base_class.flags);
 
     special_type.shared.mro = [special_type] + base_class.shared.mro;
+    if base_class.shared._derived_special_types is None {
+        base_class.shared._derived_special_types = {};
+    }
+    base_class.shared._derived_special_types[name] = special_type;
     return special_type;
 }
 
@@ -1782,6 +1791,13 @@ impl TypeEvaluator._collect_return_types(
         }
 
         if isinstance(stmt, uni.WithStmt) {
+            if self._collect_return_types(list(stmt.body), out) {
+                return True;
+            }
+            continue;
+        }
+
+        if isinstance(stmt, uni.OpenStmt) {
             if self._collect_return_types(list(stmt.body), out) {
                 return True;
             }

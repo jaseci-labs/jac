@@ -2,9 +2,10 @@ import from pathlib { Path }
 import json;
 import from urllib.request { urlopen, Request }
 import from urllib.error { URLError }
+import from functools { lru_cache }
 
 glob GITHUB_API_BASE: str = "https://api.github.com/repos/jaseci-labs/jaseci",
-     _github_cache: dict[str, str] = {};
+     GITHUB_CACHE_MAXSIZE: int = 64;
 
 impl find_repo_root -> str | None {
     starts: list[Path] = [Path.cwd(), Path(__file__).parent];
@@ -20,7 +21,25 @@ impl find_repo_root -> str | None {
     return None;
 }
 
+impl ResourceProvider._ensure_indexed -> None {
+    if not self._indexed {
+        self.index_resources();
+    }
+}
+
+glob _provider_cache: dict = {};
+
+impl get_resource_provider -> ResourceProvider {
+    if "instance" not in _provider_cache {
+        _provider_cache["instance"] = ResourceProvider();
+    }
+    return _provider_cache["instance"];
+}
+
 impl ResourceProvider.index_resources -> None {
+    if self._indexed {
+        return;
+    }
     self._package_dir = str(Path(__file__).parent);
     self._repo_root = find_repo_root();
     self._resources = {};
@@ -43,6 +62,7 @@ impl ResourceProvider.index_resources -> None {
             "_is_lazy_github": True
         };
     }
+    self._indexed = True;
 }
 
 impl ResourceProvider._index_grammar -> None {
@@ -124,6 +144,7 @@ impl ResourceProvider._index_shared_guides -> None {
 }
 
 impl ResourceProvider.list_resources -> list[dict[str, str]] {
+    self._ensure_indexed();
     result: list[dict[str, str]] = [];
     for uri in sorted(self._resources) {
         info = self._resources[uri];
@@ -140,6 +161,7 @@ impl ResourceProvider.list_resources -> list[dict[str, str]] {
 }
 
 impl ResourceProvider.read_resource(uri: str) -> str {
+    self._ensure_indexed();
     if uri.startswith("jac://examples/") {
         return self._read_example(uri);
     }
@@ -275,10 +297,8 @@ impl ResourceProvider._fetch_github_categories -> list[str] {
     return categories;
 }
 
+@lru_cache(maxsize=GITHUB_CACHE_MAXSIZE)
 def _fetch_example_github(github_path: str) -> str {
-    if github_path in _github_cache {
-        return _github_cache[github_path];
-    }
     jac_files = _list_jac_files_recursive(github_path);
     if not jac_files {
         return "No .jac files found or GitHub API unavailable.";
@@ -296,7 +316,6 @@ def _fetch_example_github(github_path: str) -> str {
         }
     }
     result = "\n\n".join(result_parts) if result_parts else "No .jac files found.";
-    _github_cache[github_path] = result;
     return result;
 }
 

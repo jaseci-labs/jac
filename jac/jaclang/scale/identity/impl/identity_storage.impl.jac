@@ -106,6 +106,44 @@ impl IdentityStorage.user_exists_by_id(user_id: str) -> bool {
     return self.get_user_by_id(user_id) is not None;
 }
 
+impl IdentityStorage.ensure_user_by_id(user_id: str) -> str | None {
+    import from jaclang.jac0core.constructs { Root }
+    import from jaclang { JacRuntime as Jac }
+
+    existing = self.get_user_by_id(user_id);
+    if existing {
+        return existing.get('root_id');
+    }
+
+    user_root = Root();
+    Jac.save(user_root);
+    Jac.commit(user_root);
+    root_id = user_root.__jac__.id.hex;
+    now = datetime.now(UTC).isoformat();
+    try {
+        self._store_user(
+            {
+                'user_id': user_id,
+                'status': 'active',
+                'identities': [],
+                'credentials': [],
+                'root_id': root_id,
+                'role': 'user',
+                'profile': {},
+                'created_at': now,
+                'updated_at': now
+            }
+        );
+    } except Exception {
+        winner = self.get_user_by_id(user_id);
+        if winner {
+            return winner.get('root_id');
+        }
+        raise;
+    }
+    return root_id;
+}
+
 impl IdentityStorage.authenticate(
     identifier: str, password: str
 ) -> dict[str, any] | None {

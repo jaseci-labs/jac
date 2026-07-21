@@ -8,6 +8,10 @@ import from 'react-native' {
     StyleSheet as RNStyleSheet,
     Animated as RNAnimated,
     Easing as RNEasing,
+    KeyboardAvoidingView as RNKeyboardAvoidingView,
+    Keyboard as RNKeyboard,
+    Platform as RNPlatform,
+    ActivityIndicator as RNActivityIndicator,
     useWindowDimensions as RNuseWindowDimensions
 }
 
@@ -21,4 +25,8 @@ glob:pub View = RNView,
      StyleSheet = RNStyleSheet,
      Animated = RNAnimated,
      Easing = RNEasing,
+     KeyboardAvoidingView = RNKeyboardAvoidingView,
+     Keyboard = RNKeyboard,
+     Platform = RNPlatform,
+     ActivityIndicator = RNActivityIndicator,
      useWindowDimensions = RNuseWindowDimensions;

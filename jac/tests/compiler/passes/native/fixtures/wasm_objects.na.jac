@@ -18,7 +18,6 @@ def make(n: int) -> list[Pt] {
 }
 
 def sum_x(pts: list[Pt]) -> float {
-    global calls;
     calls = calls + 1;
     total = 0.0;
     i = 0;

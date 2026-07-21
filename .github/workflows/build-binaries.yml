@@ -336,7 +336,10 @@ jobs:
           fi
           BIN="$PWD/$(ls jacbin/jac-*linux-x86_64)"
           chmod +x "$BIN"
-          ( cd jac/jaclang/scale/admin/ui && "$BIN" build main.jac )
+          # The admin console is a pure client app; its client bundle is
+          # type-checked by the client toolchain during `build`. Skip the
+          # whole-program gate, which applies native rules to `.cl.jac` code.
+          ( cd jac/jaclang/scale/admin/ui && "$BIN" build main.jac --no_typecheck )
           DIST=jac/jaclang/scale/admin/ui/.jac/client/dist
           test -f "$DIST/index.html"
           mkdir -p dist

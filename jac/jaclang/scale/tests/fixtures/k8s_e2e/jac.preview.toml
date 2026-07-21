@@ -1,0 +1,12 @@
+# Profile overlay exercised by k8s_microservice_real_e2e.sh (JAC_PROFILE=preview).
+# Proves two things end-to-end: profile files reach the deployer's plugin
+# config, and deployment_overlay fragments land on the FIRST rollout.
+[scale.microservices.services.products_app.deployment_overlay.spec]
+progressDeadlineSeconds = 900
+
+[[scale.microservices.services.products_app.deployment_overlay.spec.template.spec.containers]]
+name = "products-app"
+
+[[scale.microservices.services.products_app.deployment_overlay.spec.template.spec.containers.env]]
+name = "E2E_OVERLAY_MARKER"
+value = "1"

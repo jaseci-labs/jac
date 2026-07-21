@@ -76,12 +76,6 @@ impl WebSocketConnectionManager.register(ctx: ConnectionContext) -> (str | None)
     return rejection;
 }
 
-"""Drop the connection's slot and its per-user / per-anonymous counters.
-
-Used both by `unregister` and by the `register` rollback path, which must undo
-the counters of a never-opened connection without emitting the `closed` metric
-or the disconnect log that a real disconnect produces.
-"""
 impl WebSocketConnectionManager._release_slot(ctx: ConnectionContext) -> None {
     lock = self._get_lock();
     await lock.acquire();
@@ -148,14 +142,6 @@ impl WebSocketConnectionManager.shutdown -> None {
     self._backplane_started = False;
 }
 
-"""Subscribe the target's broadcast channel once, idempotently.
-
-Every registering connection calls this, not just the first one on a target. A
-connection that registers while the first connection's subscribe is still in
-flight would otherwise inherit that subscribe's outcome: if it fails and rolls
-back, the survivor would sit on an unsubscribed target forever, silently
-missing every broadcast.
-"""
 impl WebSocketConnectionManager.ensure_subscribed(target_key: str) -> None {
     sub_lock = self._get_sub_lock();
     await sub_lock.acquire();
@@ -259,7 +245,6 @@ impl WebSocketConnectionManager.send_to(ctx: ConnectionContext, message: dict) -
     }
 }
 
-"""Token-bucket consumer. Returns True if a message is allowed to proceed."""
 impl consume_rate_token(
     ctx: ConnectionContext, capacity: float, refill_per_sec: float
 ) -> bool {
@@ -274,9 +259,6 @@ impl consume_rate_token(
     return False;
 }
 
-"""Advance a synchronous generator one step off the event-loop thread, returning
-the `_WS_STREAM_STOP` sentinel on exhaustion (StopIteration cannot cross an
-executor boundary, so it is converted to a sentinel)."""
 impl _ws_stream_next(gen: any) -> any {
     try {
         return gen.__next__();
@@ -285,12 +267,6 @@ impl _ws_stream_next(gen: any) -> any {
     }
 }
 
-"""Stream a generator target result as `chunk` frames through `send_result`,
-followed by a terminating `done` frame. Synchronous generators are advanced in a
-worker thread so a slow step does not block the event loop, and the `done` frame
-is always sent (carrying the error on failure) so a client that reads until
-`done` never hangs. A client disconnect propagates rather than being reported as
-a stream error, since the terminating frame can no longer be delivered."""
 impl _ws_stream_result(send_result: any, result: any) {
     stream_error: (str | None) = None;
     try {

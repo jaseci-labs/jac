@@ -198,6 +198,10 @@ if [ "${CLUSTER_TYPE}" = "kind" ]; then
 fi
 
 cd "${PROJECT_DIR}"
+# The fixture ships jac.preview.toml with a deployment_overlay marker;
+# selecting it here makes the deploy exercise profile resolution AND
+# build-time overlays, asserted after the HPA phase below.
+export JAC_PROFILE=preview
 jac - <<PYEOF
 import logging, os, sys, jaclang  # noqa: F401
 from jaclang.scale.deploy.target.kubernetes.microservice.target import KubernetesMicroserviceTarget
@@ -286,6 +290,25 @@ done
 
 _t "pods Ready"
 
+echo "=== gateway npm closure skipped when the dist shipped ==="
+GW_POD=$(kubectl get pods -n "${NAMESPACE}" -l app=gateway -o name | head -1)
+if kubectl exec -n "${NAMESPACE}" "${GW_POD#pod/}" -c gateway -- \
+        test -f /app/.jac/client/dist/index.html 2>/dev/null; then
+    # the "Installing npm dependencies" banner prints even under --no-npm;
+    # a "bun install" invocation only appears when the closure really installs
+    if kubectl logs -n "${NAMESPACE}" "${GW_POD}" -c jac-bootstrap 2>/dev/null \
+            | grep -q "bun install v"; then
+        echo "FAIL: bundle shipped a prebuilt dist but the gateway still installed the npm closure"
+        echo "--- debug: dist dir + bootstrap branch marker ---"
+        kubectl exec -n "${NAMESPACE}" "${GW_POD#pod/}" -c gateway -- ls -la /app/.jac/client/dist/ 2>&1 | head -6
+        kubectl logs -n "${NAMESPACE}" "${GW_POD}" -c jac-bootstrap 2>/dev/null | grep -E "jac-scale|bun install" | head -4
+        exit 1
+    fi
+    echo "  dist shipped and npm skipped OK"
+else
+    echo "  (no prebuilt dist in this run; the npm fallback path is in effect)"
+fi
+
 echo "=== first-boot compile stats (per pod) ==="
 for pod in $(kubectl get pods -n "${NAMESPACE}" -l managed=jac-scale -o name 2>/dev/null); do
     # `|| true` throughout: pods without a jac-bootstrap container (mongo,
@@ -305,6 +328,17 @@ if ! curl -fsS "http://localhost:${GATEWAY_LOCAL_PORT}/health" >/dev/null; then
     exit 1
 fi
 echo "  /health OK"
+
+echo "=== client bundle served at / ==="
+# A fleet that silently skips the client build still passes every pod and
+# health check while / serves a JSON 404 - assert the gateway serves HTML.
+ROOT_BODY=$(curl -fsS --max-time 10 "http://localhost:${GATEWAY_LOCAL_PORT}/" || true)
+if ! echo "${ROOT_BODY}" | grep -qi "<script"; then
+    echo "FAIL: / did not serve the client bundle (headless fleet). Body head:" >&2
+    echo "${ROOT_BODY}" | head -c 300 >&2
+    exit 1
+fi
+echo "  / serves the client"
 
 _t "health OK"
 echo "=== verify per-service routing ==="
@@ -370,6 +404,31 @@ PYEOF
 rm -f "${HPA_JSON}"
 
 _t "HPA guardrails OK"
+echo "=== verify profile + deployment_overlay landed on the first rollout ==="
+OVL_JSON="$(mktemp)"
+kubectl get deployment products-app-deployment -n "${NAMESPACE}" -o json > "${OVL_JSON}"
+RS_COUNT=$(kubectl get rs -n "${NAMESPACE}" -o json | python3 -c "import json,sys; print(sum(1 for r in json.load(sys.stdin)['items'] if r['metadata']['ownerReferences'][0]['name']=='products-app-deployment'))")
+python3 - "${OVL_JSON}" "${RS_COUNT}" <<'PYEOF'
+import json
+import sys
+
+with open(sys.argv[1]) as f:
+    dep = json.load(f)
+spec = dep["spec"]
+if spec.get("progressDeadlineSeconds") != 900:
+    sys.exit(f"FAIL: overlay progressDeadlineSeconds missing (got {spec.get('progressDeadlineSeconds')})")
+env = spec["template"]["spec"]["containers"][0].get("env", [])
+if not any(e.get("name") == "E2E_OVERLAY_MARKER" for e in env):
+    sys.exit("FAIL: overlay env marker missing; jac.preview.toml did not reach the manifest")
+if dep["metadata"]["labels"].get("managed") != "jac-scale":
+    sys.exit("FAIL: managed label lost after overlay merge")
+if int(sys.argv[2]) != 1:
+    sys.exit(f"FAIL: expected a single ReplicaSet (one rollout), found {sys.argv[2]}")
+print(f"  overlay OK: progressDeadline=900, marker env present, labels intact, ReplicaSets=1")
+PYEOF
+rm -f "${OVL_JSON}"
+
+_t "profile+overlay OK"
 echo "=== M-14.a: verify observability stack (logs.enabled) ==="
 # When [scale.microservices.logs].enabled = true (the fixture
 # default) the microservice target also calls MonitoringDeployer, which

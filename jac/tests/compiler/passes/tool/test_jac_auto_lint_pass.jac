@@ -31,8 +31,10 @@ test "auto lint full extraction" {
     formatted = prog.mod.main.gen.jac;
 
     # Should contain glob declarations for all extracted values
-    # Note: consecutive globs with same modifiers are now combined
-    assert "glob x = 5,\n     y = " in formatted;
+    # Note: consecutive globs with same modifiers are now combined; leading
+    # comments stay attached to their assignment inside the combined glob
+    assert ("glob x = 5,\n     y = " in formatted)
+    or ("x = 5,\n     y = " in formatted);
     assert "y = " in formatted;
     assert "z = " in formatted;
     assert "int_val" in formatted;
@@ -55,6 +57,9 @@ test "auto lint full extraction" {
     # Globs should come after imports
     import_pos = formatted.find("import from os");
     glob_pos = formatted.find("glob x = ");
+    if (glob_pos < 0) {
+        glob_pos = formatted.find("x = 5");
+    }
     def_pos = formatted.find("def main");
     assert import_pos < glob_pos < def_pos;
 }
@@ -148,10 +153,13 @@ test "auto lint class entry not extracted" {
     assert "glob another_var" not in formatted;
     assert "glob list_var" not in formatted;
 
-    # Module-level with entry SHOULD be fully extracted (all assignments)
-    # Note: consecutive globs with same modifiers are now combined
-    # Format is now multiline with all assignments indented
-    assert "glob module_var = 100,\n     cls_obj = MyClass();" in formatted;
+    # Module-level literal assignments SHOULD be extracted; call-bearing
+    # initializers must stay in with entry (glob initializers run before all
+    # entry blocks on the native backend, so hoisting a call reorders its
+    # side effects relative to the surrounding entry statements)
+    assert "glob module_var = 100;" in formatted;
+    assert "glob cls_obj" not in formatted;
+    assert "cls_obj = MyClass();" in formatted;
 
     # Module-level with entry containing TYPE_CHECKING blocks should extract
     # assignments to glob while keeping if blocks in with entry (since if

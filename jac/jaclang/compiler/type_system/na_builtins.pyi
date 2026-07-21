@@ -24,11 +24,16 @@ __all__ = [
     "iter",
     "next",
     "managed",
+    "Region",
 ]
 
 _T = TypeVar("_T")
 
 def managed(__x: _T) -> _T: ...
+
+# First-class region handle: an ownable, sendable, escape-checked allocation
+# extent opened by `in <handle> { ... }`. Native codegen lowers it to an arena.
+class Region: ...
 
 class Iterable(Protocol[_T]):
     def __iter__(self) -> Iterator[_T]: ...
