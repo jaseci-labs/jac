@@ -14,21 +14,33 @@ impl Scheduler.register(
     if next_run is None {
         return;
     }
-    task = ScheduledTask(
-        name=name,
-        target=target,
-        spec=spec,
-        is_walker=is_walker,
-        next_run=next_run,
-        last_run=None
-    );
-    for (i, existing) in enumerate(self._tasks) {
+    for existing in self._tasks {
         if existing.name == name {
-            self._tasks[i] = task;
+            existing.target = target;
+            existing.spec = spec;
+            existing.is_walker = is_walker;
+            existing.next_run = next_run;
+            self._wake();
             return;
         }
     }
-    self._tasks.append(task);
+    self._tasks.append(
+        ScheduledTask(
+            name=name,
+            target=target,
+            spec=spec,
+            is_walker=is_walker,
+            next_run=next_run,
+            last_run=None
+        )
+    );
+    self._wake();
+}
+
+impl Scheduler._wake -> None {
+    if self._running and self._stop_event is not None {
+        self._stop_event.set();
+    }
 }
 
 impl Scheduler.remove(name: str) -> None {
@@ -85,28 +97,37 @@ impl Scheduler.has_pending -> bool {
 
 impl Scheduler._run_loop -> None {
     heap: list = [];
-    for (i, task) in enumerate(self._tasks) {
-        if task.next_run is None {
-            continue;
-        }
-        heapq.heappush(heap, (task.next_run.timestamp(), i, task));
-    }
     while self._running {
         self._pick_up_new_tasks(heap);
         if not heap {
             self._stop_event.wait(timeout=1.0);
+            if not self._running {
+                break;
+            }
+            self._stop_event.clear();
+            if not self._running {
+                break;
+            }
             continue;
         }
-        (next_ts, idx, task) = heap[0];
+        (next_ts, seq, task) = heap[0];
         delay = next_ts - datetime.datetime.now(datetime.timezone.utc).timestamp();
         if delay > 0 {
             self._stop_event.wait(timeout=delay);
-        }
-        if not self._running {
-            break;
+            if not self._running {
+                break;
+            }
+            self._stop_event.clear();
+            if not self._running {
+                break;
+            }
+            continue;
         }
         heapq.heappop(heap);
         if not any((t is task) for t in self._tasks) {
+            continue;
+        }
+        if task.next_run is None or task.next_run.timestamp() != next_ts {
             continue;
         }
         now = datetime.datetime.now(datetime.timezone.utc);
@@ -128,15 +149,19 @@ impl Scheduler._run_loop -> None {
 }
 
 impl Scheduler._pick_up_new_tasks(heap: list) -> None {
-    heap_tasks = {id(t) for (_, _, t) in heap};
-    for (i, task) in enumerate(self._tasks) {
+    entry_ts: dict = {};
+    for (ts, _, t) in heap {
+        entry_ts.setdefault(id(t), set()).add(ts);
+    }
+    for task in self._tasks {
         if task.next_run is None {
             continue;
         }
-        if id(task) in heap_tasks {
+        ts = task.next_run.timestamp();
+        if ts in entry_ts.get(id(task), set()) {
             continue;
         }
-        heapq.heappush(heap, (task.next_run.timestamp(), i, task));
+        heapq.heappush(heap, (ts, id(task), task));
     }
 }
 

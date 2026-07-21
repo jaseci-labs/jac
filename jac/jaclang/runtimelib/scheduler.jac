@@ -40,6 +40,7 @@ obj Scheduler {
     ) -> None;
 
     def remove(name: str) -> None;
+    def _wake -> None;
     def start -> None;
     def stop -> None;
     def wait -> None;
