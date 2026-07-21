@@ -366,7 +366,7 @@ test "match case empty wildcard body compiles" {
 with entry {
     x = 42;
     match x {
-        case 1: print("one");
+        case 1: _ = "one";
         case _:;
     }
 }
