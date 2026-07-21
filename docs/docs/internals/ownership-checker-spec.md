@@ -11,9 +11,9 @@ error-severity findings gate codegen, and a clean check is precisely what makes
 the facts trustworthy inputs for lowering.
 
 Reference-doc companion pieces: the user-facing feature guide is
-[Ownership & Borrowing](ownership-borrowing.md); the
+[Ownership & Borrowing](../reference/language/ownership-borrowing.md); the
 code table is in
-[Errors and Warnings](../diagnostics.md#ownership-borrow-errors).
+[Errors and Warnings](../reference/diagnostics.md#ownership-borrow-errors).
 
 ## The three ground rules
 

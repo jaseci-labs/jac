@@ -176,7 +176,7 @@ Handles `jac.toml` configuration parsing, dependency resolution, capability conf
 
 ## Built-in Subsystems
 
-Features that once shipped as separate plugin packages now live inside `jaclang` core and are called directly. There is no plugin system, no entry-point discovery, and no external plugin support -- see [Plugins (Removed)](../reference/plugin-authoring.md) for the removal details. What each subsystem adds, and where it lives:
+Features that once shipped as separate plugin packages now live inside `jaclang` core and are called directly. There is no plugin system, no entry-point discovery, and no external plugin support. What each subsystem adds, and where it lives:
 
 | Subsystem | What it adds |
 |--------|-------------|

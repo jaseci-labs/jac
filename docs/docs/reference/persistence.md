@@ -420,7 +420,7 @@ That means the same set of guarantees holds regardless of where your data lives:
 
 (Backend-specific extras layer on top: the Mongo backend adds read-repair write-back, quarantine reason codes, and startup auto-retry.)
 
-To supply a custom backend, see [Plugins → Custom persistence backends](plugin-authoring.md#custom-persistence-backends), which uses `JacRuntime.set_persistent_memory_provider`.
+**Custom persistence backends.** `TieredMemory` resolves its L3 store through `JacRuntime.get_persistent_memory(config)`, which returns `None` by default (so core falls back to `SqliteMemory`). To supply a custom backend, for example in an ejected standalone backend, call `JacRuntime.set_persistent_memory_provider(fn)` with a callable that takes the config dict and returns a `PersistentMemory` implementation.
 
 ---
 

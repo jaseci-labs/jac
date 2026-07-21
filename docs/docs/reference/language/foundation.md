@@ -268,6 +268,121 @@ with entry:__main__ {
 
 ---
 
+## Common Gotchas
+
+### 1. Semicolons Required
+
+```jac
+# Wrong - missing semicolons
+# x = 5
+# print(x)
+
+# Correct
+with entry {
+    x = 5;
+    print(x);
+}
+```
+
+### 2. Braces Required for Blocks
+
+```jac
+# Wrong (Python style) - won't parse
+# if condition:
+#     do_something()
+
+# Correct
+def do_something() -> None {
+    print("done");
+}
+
+with entry {
+    condition = True;
+    if condition {
+        do_something();
+    }
+}
+```
+
+### 3. Type Annotations Required
+
+```jac
+# Wrong - missing type annotations
+# def add(a, b) {
+#     return a + b;
+# }
+
+# Correct
+def add(a: int, b: int) -> int {
+    return a + b;
+}
+```
+
+### 4. `has` vs Local Variables
+
+```jac
+obj Example {
+    has field: int = 0;  # Instance variable (with 'has')
+
+    def method() {
+        local = 5;  # Local variable (no 'has')
+        self.field = local;
+    }
+}
+```
+
+### 5. Walker `visit` is Queued
+
+```jac
+node Item { has name: str = ""; }
+
+walker Example {
+    can traverse with Item entry {
+        print("Visiting");
+        visit [-->];  # Nodes queued, visited AFTER this method
+        print("This prints before visiting children");
+    }
+}
+```
+
+To match every node regardless of type, use the anonymous form `can traverse with entry { ... }` -- there is no built-in `Node` catch-all trigger.
+
+### 6. `report` vs `return`
+
+```jac
+node Item { has value: int = 0; }
+
+walker Example {
+    can collect with Item entry {
+        report here.value;  # Continues execution
+        visit [-->];        # Still runs
+
+        return;             # Would stop the walker here
+    }
+}
+```
+
+Walker abilities don't carry an arrow-return type annotation -- `report` accumulates results on the walker's `reports` list, and `return` (with no value) ends the current ability.
+
+### 7. Assignment to a `glob` Rebinds It
+
+There is no `global`/`nonlocal` statement -- a bare assignment (including `+=`) inside a function binds to the nearest enclosing binding, so it modifies a module-level `glob` directly. Shadow with a typed declaration when you want a fresh local instead:
+
+```jac
+glob counter: int = 0;
+
+def increment -> None {
+    counter += 1;  # Rebinds the glob -- no declaration needed
+}
+
+def local_count -> None {
+    counter: int = 100;  # Typed declaration = new local; the glob is untouched
+    counter += 1;
+}
+```
+
+---
+
 ## Learn More
 
 **Tutorials:**
