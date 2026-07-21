@@ -17,9 +17,11 @@ nav:
   - Start Here:
       - What & Why:
           - What is Jac: "quick-guide/index.md"
-          - Why Jac vs a Traditional Stack: "quick-guide/jac-vs-traditional-stack.md"
+          - Why Jac: "quick-guide/why-jac.md"
+          - The Two Ideas: "quick-guide/ideas-behind-jac.md"
           - Core Concepts: "quick-guide/what-makes-jac-different.md"
-          - The Ideas Behind Jac: "quick-guide/ideas-behind-jac.md"
+          - One App, Two Stacks: "quick-guide/jac-vs-traditional-stack.md"
+          - Vocabulary: "quick-guide/vocabulary.md"
           - Install: "quick-guide/install.md"
           - One Binary, Build Anything: "quick-guide/one-binary.md"
       - Build Anything: "quick-guide/project-kinds.md"
