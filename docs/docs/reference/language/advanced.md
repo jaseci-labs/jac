@@ -18,8 +18,8 @@ These operators are especially useful during graph traversal, where you often ne
 
 > **Related:**
 >
-> - [Error Handling](foundation.md#8-exception-handling) - Try/except/finally, raising exceptions
-> - [Pipe Operators](foundation.md#8-pipe-operators) - Forward/backward pipes
+> - [Error Handling](control-flow.md#8-exception-handling) - Try/except/finally, raising exceptions
+> - [Pipe Operators](operators.md#8-pipe-operators) - Forward/backward pipes
 > - [Testing](../testing.md) - Test blocks, assertions, CLI commands
 
 ## Standard Comprehensions

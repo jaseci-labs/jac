@@ -2,7 +2,7 @@ import threading;
 import from contextlib { contextmanager }
 
 obj ReadWriteLock {
-    has _cond: threading.Condition by postinit,
+    has _cond: threading.Condition postinit,
         _readers: int = 0,
         _writer: bool = False,
         _writers_waiting: int = 0;

@@ -16,6 +16,8 @@ Two routing systems, both client-side (URL changes, no full reload). **File-base
 
 Keeping the template's `app()` while adding `pages/` is the classic mix: it compiles, it serves, and every route is silently discarded.
 
+Marker note: the `cl import` / `cl { }` wrappers in the page and layout examples below are the explicit style. Client placement is inferred - a `pages/*.jac` file whose `def:pub page` returns JSX is placed client without any wrapper (see `jac-codespaces`); both forms are valid.
+
 ## File-based routing (recommended)
 
 ```

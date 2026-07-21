@@ -33,7 +33,44 @@ graph TD
 
 ## Codespace Model
 
-A **codespace** determines *where* your code runs. You select a codespace with a file extension or, within a file, one of two forms -- a **braced block** or a **single-statement prefix**:
+A **codespace** determines *where* your code runs. By default you do not have to say where: the compiler **infers** each declaration's codespace from the code itself. Explicit markers (blocks, statement prefixes, file extensions) exist as overrides for when you want to pin placement by hand.
+
+The rules are:
+
+- **Server is the default.** Unmarked code compiles to the Python backend, exactly as before.
+- **Client is inferred.** Declarations whose syntax is structurally client-only -- JSX, or a string-path import from the npm ecosystem (`import from "react" { ... }`) -- are placed in the client codespace automatically. From those seeds, placement propagates through symbol references: a helper, `glob`, or import that client code uses joins the client bundle too. Propagation is scope-aware (a local variable that shadows a module-level name does not count) and never relocates things the compiler already bridges across the boundary -- `def:pub` endpoints and walkers stay on the server behind auto-generated RPC calls, and top-level objects referenced from both sides are shared into the bundle.
+- **Native is inferred from FFI surfaces.** An import whose braces contain C-ABI function *declarations* (`import from raylib { def InitWindow(w: i32, h: i32, title: str) -> None; }`) declares an extern surface only the native backend can satisfy, so it seeds native placement, and code using those extern names follows. Consuming a native *module* (`import from mymod { fast_fn }` where `mymod` is native) is NOT a native signal -- that is the server-to-native interop crossing. Native-*compatible* pure code still defaults to server: compatibility is not intent, and the build decision stays with `na` markers or `nacompile` targeting.
+- **Explicit markers always win.** Inference never overrides an `sv`/`cl`/`na` block, prefix, or file extension.
+
+### Inferred placement (the default)
+
+A full-stack module needs no markers at all:
+
+```jac
+import from "clsx" { clsx }             # npm import: seeds client
+
+def:pub fetch_items() -> list[dict] {   # unmarked: server endpoint
+    return [{"id": 1, "name": "Item A"}];
+}
+
+def row_class(i: int) -> str {          # used by client code: pulled client
+    return clsx(["row", "even" if i % 2 == 0 else "odd"]);
+}
+
+def:pub app() -> JsxElement {           # JSX: seeds client
+    has items: list = [];
+    async def load() -> None {
+        items = await fetch_items();    # compiler generates the HTTP call
+    }
+    return <ul>{[<li class={row_class(i)}>{it}</li> for (i, it) in enumerate(items)]}</ul>;
+}
+```
+
+Here `app` and the `clsx` import are client (JSX and npm are client-only syntax), `row_class` is pulled into the client bundle because client code calls it, and `fetch_items` remains a server endpoint -- the client call site compiles to an authenticated HTTP request, not a relocation.
+
+### Explicit markers (when you want them)
+
+You can pin a codespace with a file extension or, within a file, a **braced block** or a **single-statement prefix**:
 
 | Codespace | Braced Block | Statement Prefix | File Extension | Compiles To | Ecosystem |
 |-----------|--------------|-----------------|----------------|-------------|-----------|
@@ -41,55 +78,45 @@ A **codespace** determines *where* your code runs. You select a codespace with a
 | Client    | `cl { }` | `cl stmt` | `.cl.jac` | JavaScript / TypeScript | npm |
 | Native    | `na { }` | `na stmt` | `.na.jac` | LLVM IR → machine code | C ABI |
 
-Code outside any tagged region defaults to the server codespace.
-
-### Braced blocks (recommended)
-
-A `cl { ... }` / `sv { ... }` / `na { ... }` block tags every element inside it for that codespace. The braces make the boundary explicit -- the opening keyword and closing brace bracket exactly the tagged region -- which is the clearest way to mix codespaces in one file:
+A `cl { ... }` / `sv { ... }` / `na { ... }` block tags every element inside it for that codespace:
 
 ```jac
 cl {
     def:pub Greeting(props: dict) -> JsxElement {
         return <h1>Hello, {props.name}!</h1>;
     }
-
-    def:pub Counter() -> JsxElement {
-        has count: int = 0;
-        return <button onClick={lambda { count = count + 1; }}>{count}</button>;
-    }
 }
 ```
 
-Blocks also work inside a class or function body to locally override the active codespace.
-
-### Statement prefix
-
-The single-statement prefix is ideal for a one-off override:
+The single-statement prefix is ideal for a one-off pin -- most usefully `sv`, to keep something on the server that inference would otherwise pull client:
 
 ```jac
-# Default server codespace
-def add(a: int, b: int) -> int { return a + b; }
+def add(a: int, b: int) -> int { return a + b; }   # server (default)
 
-cl def greet(name: str) -> str { return "Hello, " + name; }
+sv def audit_log(msg: str) -> None {                # pinned server, even if
+    print("audit:", msg);                           # client code references it
+}
 ```
+
+Reach for explicit markers when you want a declaration somewhere inference would not put it, when a file with no client-only syntax should still ship to the browser, or simply when you prefer the boundary to be visible in the source.
 
 ### Cross-Codespace Interop
 
-When code in one codespace calls a function in another, the compiler generates the interop layer automatically -- HTTP calls between server and client, FFI bridges between Python and native, serialization and deserialization at boundaries:
+When code in one codespace calls a function in another, the compiler generates the interop layer automatically -- HTTP calls between server and client, FFI bridges between Python and native, serialization and deserialization at boundaries. The one boundary you declare yourself is a **server import across files**: `sv import` marks that the imported module stays on the server and calls to it should become RPC:
 
 ```jac
-sv {
-    def fetch_items() -> list[dict] {
-        return [{"id": 1, "name": "Item A"}];
-    }
-}
+sv import from .backend { fetch_items }   # target stays server-side
 
-cl {
+def:pub app() -> JsxElement {
+    has items: list = [];
     async def load() -> None {
-        items = await fetch_items();   # compiler generates the HTTP call
+        items = await fetch_items();      # compiler generates the HTTP call
     }
+    return <ul>{items}</ul>;
 }
 ```
+
+The `sv` on an import is a *boundary fact*, not a placement pin: the import itself lives wherever its consumers live (here, the client bundle, as an RPC stub), while its target remains on the server. The same marker used from server code declares a server-to-server microservice boundary.
 
 ### What Is Shared
 
@@ -633,7 +660,7 @@ This is what makes Jac's multi-target compilation practical: you learn one set o
 
 **Related Reference:**
 
-- [Part I: Foundation](foundation.md) - Type system, operators, control flow
+- [Types and Values](types-and-values.md) and [Operators](operators.md) - Type system and operator reference
 - [Core Concepts](../../quick-guide/what-makes-jac-different.md) - Conceptual overview of codespaces
 - [jac-client Reference](../plugins/jac-client.md) - Client codespace plugin details
 - [Appendices](appendices.md) - Operator quick reference, keyword reference

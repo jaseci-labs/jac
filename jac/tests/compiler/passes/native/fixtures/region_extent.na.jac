@@ -8,7 +8,6 @@ obj Res {
     has id: int = 0;
 
     def drop {
-        global drop_log;
         drop_log = drop_log * 10 + self.id;
     }
 }
@@ -32,7 +31,6 @@ def grow(r: Region, id: int) {
 }
 
 def scenario -> int {
-    global drop_log;
     drop_log = 0;
     r = make();
     grow(r, 2);

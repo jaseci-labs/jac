@@ -37,8 +37,8 @@ import from .rwlock { ReadWriteLock }
 
 obj Task {
     has file_uri: str,
-        task_id: int by postinit,
-        cancel_token: threading.Event | None by postinit;
+        task_id: int postinit,
+        cancel_token: threading.Event | None postinit;
 
     static has _task_id: int = 0;
 
@@ -47,14 +47,14 @@ obj Task {
 
 obj JacLangServer(JacProgram, LanguageServer) {
     has sem_managers: dict = {},
-        module_manager: ModuleManager | None by postinit,
+        module_manager: ModuleManager | None postinit,
         pipe: deque = deque(maxlen=1),
         dirty_files: dict[str, bool] = {},
         last_task: Task | None = None,
-        worker_future: Future | None by postinit,
-        _state_lock: ReadWriteLock by postinit,
+        worker_future: Future | None postinit,
+        _state_lock: ReadWriteLock postinit,
         _work_event: threading.Event = threading.Event(),
-        _idle_event: threading.Event by postinit,
+        _idle_event: threading.Event postinit,
         _shutdown_called: bool = False,
         _debounce_timer: threading.Timer | None = None;
 

@@ -85,7 +85,6 @@ obj UniPass(ModuleCodegenPass) {
     def enter_func_call(nd: uni.FuncCall) -> None;
     def enter_func_signature(nd: uni.FuncSignature) -> None;
     def enter_gen_compr(nd: uni.GenCompr) -> None;
-    def enter_global_stmt(nd: uni.GlobalStmt) -> None;
     def enter_global_vars(nd: uni.GlobalVars) -> None;
     def enter_has_var(nd: uni.HasVar) -> None;
     def enter_if_else_expr(nd: uni.IfElseExpr) -> None;
@@ -130,7 +129,6 @@ obj UniPass(ModuleCodegenPass) {
     def enter_multi_string(nd: uni.MultiString) -> None;
     def enter_name(nd: uni.Name) -> None;
     def enter_native_block(nd: uni.NativeBlock) -> None;
-    def enter_non_local_stmt(nd: uni.NonLocalStmt) -> None;
     def enter_param_var(nd: uni.ParamVar) -> None;
     def enter_py_inline_code(nd: uni.PyInlineCode) -> None;
     def enter_raise_stmt(nd: uni.RaiseStmt) -> None;
@@ -204,7 +202,6 @@ obj UniPass(ModuleCodegenPass) {
     def exit_func_call(nd: uni.FuncCall) -> None;
     def exit_func_signature(nd: uni.FuncSignature) -> None;
     def exit_gen_compr(nd: uni.GenCompr) -> None;
-    def exit_global_stmt(nd: uni.GlobalStmt) -> None;
     def exit_global_vars(nd: uni.GlobalVars) -> None;
     def exit_has_var(nd: uni.HasVar) -> None;
     def exit_if_else_expr(nd: uni.IfElseExpr) -> None;
@@ -250,7 +247,6 @@ obj UniPass(ModuleCodegenPass) {
     def exit_multi_string(nd: uni.MultiString) -> None;
     def exit_name(nd: uni.Name) -> None;
     def exit_native_block(nd: uni.NativeBlock) -> None;
-    def exit_non_local_stmt(nd: uni.NonLocalStmt) -> None;
     def exit_null(nd: uni.Null) -> None;
     def exit_param_var(nd: uni.ParamVar) -> None;
     def exit_py_inline_code(nd: uni.PyInlineCode) -> None;
@@ -324,7 +320,6 @@ obj UniPass(ModuleCodegenPass) {
     def enter_func_call(nd: uni.FuncCall) -> None;
     def enter_func_signature(nd: uni.FuncSignature) -> None;
     def enter_gen_compr(nd: uni.GenCompr) -> None;
-    def enter_global_stmt(nd: uni.GlobalStmt) -> None;
     def enter_global_vars(nd: uni.GlobalVars) -> None;
     def enter_has_var(nd: uni.HasVar) -> None;
     def enter_if_else_expr(nd: uni.IfElseExpr) -> None;
@@ -369,7 +364,6 @@ obj UniPass(ModuleCodegenPass) {
     def enter_multi_string(nd: uni.MultiString) -> None;
     def enter_name(nd: uni.Name) -> None;
     def enter_native_block(nd: uni.NativeBlock) -> None;
-    def enter_non_local_stmt(nd: uni.NonLocalStmt) -> None;
     def enter_open_stmt(nd: uni.OpenStmt) -> None;
     def enter_param_var(nd: uni.ParamVar) -> None;
     def enter_py_inline_code(nd: uni.PyInlineCode) -> None;
@@ -444,7 +438,6 @@ obj UniPass(ModuleCodegenPass) {
     def exit_func_call(nd: uni.FuncCall) -> None;
     def exit_func_signature(nd: uni.FuncSignature) -> None;
     def exit_gen_compr(nd: uni.GenCompr) -> None;
-    def exit_global_stmt(nd: uni.GlobalStmt) -> None;
     def exit_global_vars(nd: uni.GlobalVars) -> None;
     def exit_has_var(nd: uni.HasVar) -> None;
     def exit_if_else_expr(nd: uni.IfElseExpr) -> None;
@@ -490,7 +483,6 @@ obj UniPass(ModuleCodegenPass) {
     def exit_multi_string(nd: uni.MultiString) -> None;
     def exit_name(nd: uni.Name) -> None;
     def exit_native_block(nd: uni.NativeBlock) -> None;
-    def exit_non_local_stmt(nd: uni.NonLocalStmt) -> None;
     def exit_null(nd: uni.Null) -> None;
     def exit_open_stmt(nd: uni.OpenStmt) -> None;
     def exit_param_var(nd: uni.ParamVar) -> None;

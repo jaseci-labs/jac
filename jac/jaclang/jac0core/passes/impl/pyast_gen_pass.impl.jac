@@ -87,6 +87,33 @@ impl PyastGenPass.enter_node(nd: uni.UniNode) -> None {
         return;
     }
     if (
+        isinstance(nd, uni.ContextAwareNode)
+        and (nd.code_context == CodeContext.NATIVE)
+        and ((nd.parent is None) or isinstance(nd.parent, uni.Module))
+        and not isinstance(nd, (uni.Import, uni.Test))
+        and not self._is_native_ext_module()
+    ) {
+        first_native = True;
+        for sib in self.ir_in.body {
+            if sib is nd {
+                break;
+            }
+            if (
+                isinstance(sib, uni.ContextAwareNode)
+                and sib.code_context == CodeContext.NATIVE
+                and not isinstance(sib, uni.Import)
+            ) {
+                first_native = False;
+                break;
+            }
+        }
+        if first_native {
+            self._gen_native_interop_stubs(nd);
+        }
+        self.prune();
+        return;
+    }
+    if (
         isinstance(nd, uni.ClientBlock)
         or (
             isinstance(nd, uni.ContextAwareNode)
@@ -113,6 +140,15 @@ impl PyastGenPass.enter_node(nd: uni.UniNode) -> None {
     super.enter_node(nd);
 }
 
+impl PyastGenPass._is_native_ext_module -> bool {
+    import from jaclang.jac0core.ext_registry { is_native_module }
+    if self.ir_in is not None and self.ir_in.decided_codespace == 'native' {
+        return True;
+    }
+    mod_path = self.ir_in.loc.mod_path if (self.ir_in and self.ir_in.loc) else '';
+    return bool(mod_path) and is_native_module(mod_path);
+}
+
 impl PyastGenPass.exit_node(nd: uni.UniNode) -> None {
     if isinstance(nd, (uni.ClientBlock, uni.NativeBlock)) {
         return;
@@ -121,6 +157,15 @@ impl PyastGenPass.exit_node(nd: uni.UniNode) -> None {
         isinstance(nd, uni.ContextAwareNode)
         and (nd.code_context == CodeContext.CLIENT)
         and ((nd.parent is None) or isinstance(nd.parent, uni.Module))
+    ) {
+        return;
+    }
+    if (
+        isinstance(nd, uni.ContextAwareNode)
+        and (nd.code_context == CodeContext.NATIVE)
+        and ((nd.parent is None) or isinstance(nd.parent, uni.Module))
+        and not isinstance(nd, (uni.Import, uni.Test))
+        and not self._is_native_ext_module()
     ) {
         return;
     }
@@ -135,7 +180,7 @@ impl PyastGenPass.exit_node(nd: uni.UniNode) -> None {
     super.exit_node(nd);
 }
 
-impl PyastGenPass._gen_native_interop_stubs(nd: uni.NativeBlock) -> None {
+impl PyastGenPass._gen_native_interop_stubs(nd: uni.UniNode) -> None {
     manifest = self.ir_in.gen.interop_manifest;
     parts: list[str] = [];
     if (manifest and manifest.bindings) {
@@ -161,13 +206,18 @@ impl PyastGenPass._gen_native_interop_stubs(nd: uni.NativeBlock) -> None {
     if parts {
         src = '\n'.join(parts);
         parsed = ast3.parse(src);
+        for stub_node in ast3.walk(parsed) {
+            stub_node.jac_link = [];
+        }
         out.extend(parsed.body);
     }
 
-    for stmt in nd.body {
-        if isinstance(stmt, uni.Test) {
-            self.exit_test(stmt);
-            out.extend(stmt.gen.py_ast);
+    if isinstance(nd, uni.NativeBlock) {
+        for stmt in nd.body {
+            if isinstance(stmt, uni.Test) {
+                self.exit_test(stmt);
+                out.extend(stmt.gen.py_ast);
+            }
         }
     }
     if out {
@@ -855,6 +905,22 @@ impl PyastGenPass.exit_test(nd: uni.Test) -> None {
             for stmt in self.resolve_stmt_block(nd.body, doc=nd.doc)
         ];
     }
+    test_directives = self.scope_directive_stmts([nd]);
+    if test_directives {
+        insert_at = 1
+            if (
+                len(body_stmts) > 0
+                and isinstance(body_stmts[0], ast3.Expr)
+                and isinstance(body_stmts[0].value, ast3.Constant)
+                and isinstance(body_stmts[0].value.value, str)
+            )
+            else 0;
+        body_stmts = [
+            *body_stmts[:insert_at],
+            *[cast(ast3.stmt, s) for s in test_directives],
+            *body_stmts[insert_at:]
+        ];
+    }
     func = self.sync(
         ast3.FunctionDef(
             name=test_name,
@@ -919,21 +985,26 @@ impl PyastGenPass.exit_test(nd: uni.Test) -> None {
 }
 
 impl PyastGenPass._native_test_shim_stmts(nd: uni.Test) -> list {
-    import from jaclang.jac0core.codeinfo { native_test_symbol }
+    import from jaclang.jac0core.codeinfo { native_test_symbol, native_safe_sym }
     test_name = nd.name.sym_name;
     line = nd.loc.first_line if nd.loc else 0;
     symbol = native_test_symbol(test_name, line);
+    manifest = self.ir_in.gen.interop_manifest if self.ir_in?.gen else None;
+    dep_sources = manifest.native_transitive_sources if manifest else [];
+    init_syms: list[str] = [];
+    for dep_src in (dep_sources or []) {
+        if dep_src {
+            dep_init = f"__jac_glob_init_{native_safe_sym(dep_src)}";
+            if dep_init not in init_syms {
+                init_syms.append(dep_init);
+            }
+        }
+    }
+    init_syms.append("__jac_glob_init");
+    init_list = "[" + ", ".join(f"'{s}'" for s in init_syms) + "]";
     src_lines = [
-        "import ctypes as _jac_ctypes",
-        "_jac_engine = globals().get('__jac_native_engine__')",
-        "if _jac_engine is None:",
-        "    raise RuntimeError('native engine unavailable for " + test_name + "')",
-        "_jac_addr = _jac_engine.get_function_address('" + symbol + "')",
-        "if _jac_addr == 0:",
-        "    raise RuntimeError('native test symbol missing: " + symbol + "')",
-        "_jac_msg = _jac_ctypes.CFUNCTYPE(_jac_ctypes.c_char_p)(_jac_addr)()",
-        "if _jac_msg is not None:",
-        "    raise AssertionError(_jac_msg.decode('utf-8', 'replace'))"
+        "from jaclang.runtimelib.test import invoke_native_test as _jac_invoke",
+        "_jac_invoke(globals().get('__jac_native_engine__'), '" + symbol + "', '" + test_name + "', " + init_list + ")"
     ];
     parsed = ast3.parse('\n'.join(src_lines));
     return `list(parsed.body);
@@ -1065,12 +1136,11 @@ impl PyastGenPass.exit_import(nd: uni.Import) -> None {
         }
     }
 
-    src_token = nd._source_context_token();
     if (
         nd.from_loc
         and nd.items
-        and src_token is not None
-        and src_token.name == Tok.KW_SERVER
+        and nd.is_sv_marked
+        and nd.code_context != CodeContext.CLIENT
         and self._generate_sv_to_sv_stubs(nd)
     ) {
         return;
@@ -1151,10 +1221,10 @@ impl PyastGenPass.exit_import(nd: uni.Import) -> None {
 }
 
 impl PyastGenPass.exit_module_path(nd: uni.ModulePath) -> None {
-    if (nd.path and (len(nd.path) == 1) and isinstance(nd.path[0], uni.String)) {
+    if nd.string_path_value is not None {
         import_node = nd.parent_of_type(uni.Import);
         if (import_node and (import_node.code_context != CodeContext.CLIENT)) {
-            self.emit(E5001, node_override=nd, path=str(nd.path[0].lit_value));
+            self.emit(E5001, node_override=nd, path=str(nd.string_path_value));
         }
     }
     nd.gen.py_ast = [
@@ -1583,6 +1653,20 @@ impl PyastGenPass.exit_ability(nd: uni.Ability) -> None {
     if (not body and not isinstance(nd.body, uni.Expr)) {
         self.emit(E5005, node_override=nd);
         body = [self.sync(ast3.Pass(), nd)];
+    }
+    directive_stmts = self.scope_directive_stmts(
+        [nd, nd.body if isinstance(nd.body, uni.ImplDef) else None]
+    );
+    if directive_stmts {
+        insert_at = 1
+            if (
+                len(body) > 0
+                and isinstance(body[0], ast3.Expr)
+                and isinstance(body[0].value, ast3.Constant)
+                and isinstance(body[0].value.value, str)
+            )
+            else 0;
+        body = [*body[:insert_at], *directive_stmts, *body[insert_at:]];
     }
     ast_returns: ast3.expr = self.sync(ast3.Constant(value=None));
     if (isinstance(nd.signature, uni.FuncSignature) and nd.signature.return_type) {
@@ -2378,20 +2462,35 @@ impl PyastGenPass.exit_cast_expr(nd: uni.CastExpr) -> None {
     nd.gen.py_ast = nd.value.gen.py_ast;
 }
 
-impl PyastGenPass.exit_global_stmt(nd: uni.GlobalStmt) -> None {
-    py_nodes = [];
-    for x in nd.target {
-        py_nodes.append(self.sync(ast3.Global(names=[x.sym_name]), jac_node=x));
+impl PyastGenPass.scope_directive_stmts(scopes: list) -> list[ast3.AST] {
+    global_names: list = [];
+    nonlocal_names: list = [];
+    seen: set = set();
+    for scope in scopes {
+        if scope is None {
+            continue;
+        }
+        for name in scope.implicit_rebinds {
+            if name in seen {
+                continue;
+            }
+            seen.add(name);
+            sym = scope.implicit_rebinds[name];
+            if isinstance(sym.parent_tab, uni.Module) {
+                global_names.append(name);
+            } else {
+                nonlocal_names.append(name);
+            }
+        }
     }
-    nd.gen.py_ast = [*py_nodes];
-}
-
-impl PyastGenPass.exit_non_local_stmt(nd: uni.NonLocalStmt) -> None {
-    py_nodes = [];
-    for x in nd.target {
-        py_nodes.append(self.sync(ast3.Nonlocal(names=[x.sym_name]), jac_node=x));
+    stmts: list = [];
+    if global_names {
+        stmts.append(self.sync(ast3.Global(names=sorted(global_names))));
     }
-    nd.gen.py_ast = [*py_nodes];
+    if nonlocal_names {
+        stmts.append(self.sync(ast3.Nonlocal(names=sorted(nonlocal_names))));
+    }
+    return stmts;
 }
 
 impl PyastGenPass.exit_assignment(nd: uni.Assignment) -> None {
@@ -2560,6 +2659,8 @@ impl PyastGenPass.exit_binary_expr(nd: uni.BinaryExpr) -> None {
                 )
             )
         ];
+    } elif (nd.op.name in [Tok.WALRUS_EQ]) and not isinstance(nd.left, uni.Name) {
+        nd.gen.py_ast = [self.sync(cast(ast3.expr, self.py_ast_val(nd.right)))];
     } elif (nd.op.gen.py_ast and isinstance(self.py_ast_val(nd.op), ast3.AST)) {
         nd.gen.py_ast = [
             self.sync(

@@ -211,5 +211,5 @@ In practice, many applications use both: `async/await` for the I/O layer served 
 
 **Related Reference:**
 
-- [Part I: Foundation](foundation.md) - Control flow basics
+- [Control Flow](control-flow.md) - Conditionals, loops, pattern matching
 - [Part V: AI Integration](../plugins/byllm.md) - Async LLM calls

@@ -60,10 +60,6 @@ impl LocalDeployer.status -> dict[str, dict] {
     }
     pm = self._ensure_pm();
 
-    # Services may have been spawned by a SIBLING process (a live `jac start`
-    # in another terminal); they are absent from this process's Popen table.
-    # Recover their pid/port from .jac/run/ so the health probe below hits
-    # the real port instead of reporting them "(not running)".
     for (name, svc_entry) in self.registry.entries.items() {
         if name not in pm.processes {
             pidfile_pid = _read_pidfile(name);
@@ -83,9 +79,6 @@ impl LocalDeployer.status -> dict[str, dict] {
     for (name, svc_entry) in self.registry.entries.items() {
         is_running = name in pm.processes;
         if not is_running {
-            # Pidfile-recovered services also need the health probe on the
-            # recovered port to have answered: a crashed run's stale pidfile
-            # whose pid the OS recycled would otherwise read as running.
             pidfile_pid = _read_pidfile(name);
             is_running = (
                 pidfile_pid is not None

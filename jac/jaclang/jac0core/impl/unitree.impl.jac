@@ -179,6 +179,14 @@ impl UniNode.parent_of_type(typ: type[T]) -> T {
 
 impl UniNode.codespace -> CodeContext {
     import from jaclang.jac0core.ext_registry { is_client_module, is_native_module }
+    if isinstance(self, ContextAwareNode) {
+        if (self.code_context == CodeContext.CLIENT) {
+            return CodeContext.CLIENT;
+        }
+        if (self.code_context == CodeContext.NATIVE) {
+            return CodeContext.NATIVE;
+        }
+    }
     nd: (UniNode | None) = self.parent;
     while (nd is not None) {
         if isinstance(nd, ServerBlock) {
@@ -190,7 +198,10 @@ impl UniNode.codespace -> CodeContext {
         if isinstance(nd, NativeBlock) {
             return CodeContext.NATIVE;
         }
-        if isinstance(nd, Ability) {
+        if isinstance(nd, ContextAwareNode) {
+            if nd._source_context_token() is not None {
+                return nd.code_context;
+            }
             context = nd.code_context;
             if (context == CodeContext.CLIENT) {
                 return CodeContext.CLIENT;
@@ -200,6 +211,12 @@ impl UniNode.codespace -> CodeContext {
             }
         }
         if isinstance(nd, Module) {
+            if nd.decided_codespace == CodeContext.NATIVE.value {
+                return CodeContext.NATIVE;
+            }
+            if nd.decided_codespace == CodeContext.CLIENT.value {
+                return CodeContext.CLIENT;
+            }
             mp = nd.loc.mod_path if nd.loc is not None else '';
             if mp and is_native_module(mp) {
                 return CodeContext.NATIVE;
@@ -224,6 +241,9 @@ impl UniNode.in_native_context -> bool {
 
 impl Module.declares_codespace(ctx: CodeContext, path_hint: str = '') -> bool {
     import from jaclang.jac0core.ext_registry { is_client_module, is_native_module }
+    if ctx != CodeContext.SERVER and self.decided_codespace == ctx.value {
+        return True;
+    }
     mp = self.loc.mod_path
         if (self.loc is not None and self.loc.mod_path)
         else path_hint;
@@ -415,6 +435,7 @@ impl UniScopeNode._init_scope(
     self.kid_scope: list[UniScopeNode] = [];
     self.names_in_scope: dict[(str, Symbol)] = {};
     self.names_in_scope_overload: dict[(str, list[Symbol])] = {};
+    self.implicit_rebinds: dict[(str, Symbol)] = {};
 }
 
 impl UniScopeNode.lookup(
@@ -718,7 +739,10 @@ impl ContextAwareNode.postinit -> None {
 
 impl ContextAwareNode._source_context_token -> (Token | None) {
     for kid in self.kid {
-        if (isinstance(kid, Token) and (kid.name in (Tok.KW_CLIENT, Tok.KW_SERVER))) {
+        if (
+            isinstance(kid, Token)
+            and (kid.name in (Tok.KW_CLIENT, Tok.KW_SERVER, Tok.KW_NATIVE))
+        ) {
             return kid;
         }
     }
@@ -1141,6 +1165,63 @@ impl Import.__jac_detected.getter -> bool {
     );
 }
 
+impl Import.has_string_path.getter -> bool {
+    if (self.from_loc is not None and self.from_loc.string_path_value is not None) {
+        return True;
+    }
+    for item in self.items {
+        if (isinstance(item, ModulePath) and item.string_path_value is not None) {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl Import.is_sv_marked.getter -> bool {
+    tok = self._source_context_token();
+    return (tok is not None and tok.name == Tok.KW_SERVER);
+}
+
+impl Import.is_cl_marked.getter -> bool {
+    tok = self._source_context_token();
+    return (tok is not None and tok.name == Tok.KW_CLIENT);
+}
+
+impl Import.is_virtual_jac.getter -> bool {
+    if self.from_loc is not None {
+        return self.from_loc.dot_path_str.startswith('@jac/');
+    }
+    for item in self.items {
+        if isinstance(item, ModulePath) {
+            spv = item.string_path_value;
+            if (spv is not None and spv.startswith('@jac/')) {
+                return True;
+            }
+        }
+    }
+    return False;
+}
+
+impl Import.has_clib_decls.getter -> bool {
+    return bool(self.clib_decls);
+}
+
+impl Import.ecosystem.getter -> str {
+    if self.has_clib_decls {
+        return 'clib';
+    }
+    if self.is_virtual_jac {
+        return 'virtual';
+    }
+    if self.has_string_path {
+        return 'string';
+    }
+    if self.is_jac {
+        return 'jac';
+    }
+    return 'py';
+}
+
 impl ModulePath.postinit -> None {
     self.abs_path = None;
     UniNode.postinit(self);
@@ -1154,9 +1235,17 @@ impl ModulePath.is_import_from.getter -> bool {
     return False;
 }
 
-impl ModulePath.dot_path_str.getter -> str {
+impl ModulePath.string_path_value.getter -> (str | None) {
     if (self.path and (len(self.path) == 1) and isinstance(self.path[0], String)) {
-        return (('.' * self.level) + self.path[0].lit_value);
+        return self.path[0].lit_value;
+    }
+    return None;
+}
+
+impl ModulePath.dot_path_str.getter -> str {
+    spv = self.string_path_value;
+    if spv is not None {
+        return (('.' * self.level) + spv);
     }
     return (
         ('.' * self.level) + '.'.join([p.value for p in self.path] if self.path else [])
@@ -1164,8 +1253,9 @@ impl ModulePath.dot_path_str.getter -> str {
 }
 
 impl ModulePath.base_module_name.getter -> str {
-    if (self.path and (len(self.path) == 1) and isinstance(self.path[0], String)) {
-        return self.path[0].lit_value;
+    spv = self.string_path_value;
+    if spv is not None {
+        return spv;
     }
     return '.'.join([p.value for p in self.path] if self.path else []);
 }
@@ -1815,13 +1905,6 @@ impl AwaitExpr.postinit -> None {
 impl CastExpr.postinit -> None {
     UniNode.postinit(self);
     Expr.postinit(self);
-}
-
-
-impl GlobalStmt.postinit -> None {
-    self.target = `list(self.target);
-    UniNode.postinit(self);
-    CodeBlockStmt.postinit(self);
 }
 
 
@@ -2603,10 +2686,8 @@ impl CommentToken.init(
     col_end: int,
     pos_start: int,
     pos_end: int,
-    kid: Sequence[UniNode],
-    is_inline: bool = False
+    kid: Sequence[UniNode]
 ) -> None {
-    self.is_inline = is_inline;
     Token.init(
         self,
         orig_src=orig_src,

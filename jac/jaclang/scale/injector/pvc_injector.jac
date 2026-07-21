@@ -65,17 +65,6 @@ def build_bundle_pvc(
 
 
 def build_loader_perms_init_container(loader_image: str) -> dict[str, any] {
-    # The pod's fsGroup is only honored on volumes whose plugin manages
-    # ownership: hostPath and NFS never do, and CSI drivers with the default
-    # fsGroupPolicy (ReadWriteOnceWithFSType) skip ReadWriteMany volumes --
-    # exactly what the bundle PVC must be. On such storage the volume root
-    # arrives root-owned 0755 and the non-root loader dies at its first mkdir
-    # with "Permission denied" (#7432). This init container runs as root just
-    # long enough to hand the mount to the loader identity; the hardened
-    # non-root loader then takes over. It is best-effort: storage that squashes
-    # root (EFS access points, root-squash NFS) rejects the chown, but there
-    # the backend's own identity mapping decides writability and the loader's
-    # mkdir still surfaces a clear error if the volume is truly unwritable.
     script = (
         f"chown -R {LOADER_UID}:{LOADER_GID} {BUNDLE_MOUNT_PATH} "
         f"&& chmod 0775 {BUNDLE_MOUNT_PATH} "
@@ -200,7 +189,6 @@ obj PvcInjector(Injector) {
     }
 
     def prepare(app_name: str, namespace: str, project_dir: str) {
-        # BinaryInjector sets _pod_binary_bytes; pack_jab needs it to seal the .jab.
         raw = pack_jab(
             project_dir,
             self.provisioned_database,
@@ -250,10 +238,7 @@ obj PvcInjector(Injector) {
             for (object_key, raw) in self._seed_artifacts() {
                 bundle_path = bundle_pvc_path(object_key);
                 parent_dir = str(Path(bundle_path).parent);
-                # Object keys are content-addressed (sha256 of the bytes), so a
-                # file already on the PVC IS this payload - skip the upload.
-                # This is what makes warm redeploys cheap: the ~170MB toolchain
-                # and unchanged bundles never cross the wire twice (#7179).
+
                 try {
                     run_kubectl_command(
                         [
@@ -273,23 +258,14 @@ obj PvcInjector(Injector) {
                     );
                     continue;
                 } except RuntimeError as probe_err {
-                    # Expected when the object is absent (test -f exits 1); any
-                    # real infra problem resurfaces loudly on the upload below.
                     logger.debug(f"pvc-injector: presence probe: {probe_err}");
                 }
-                # Local scratch file only: kubectl cp needs a path to copy FROM.
-                # The suffix is irrelevant (nothing reads it); the real PVC
-                # filename comes from object_key (.jab app bundle / .tar.gz
-                # toolchain). Deleted right after the copy.
+
                 with tempfile.NamedTemporaryFile(delete=False) as tmp {
                     tmp.write(raw);
                     tmp_path = Path(tmp.name);
                 }
-                # Copy to a unique staging path first, then atomically `mv` it
-                # into the content-addressed slot. `kubectl cp` is not atomic, so
-                # an interruption mid-transfer would otherwise leave a truncated
-                # file that `test -f` accepts forever (poisoning the cache); the
-                # mv only names the object once its bytes are complete.
+
                 staging_path = f"{bundle_path}.{os.getpid()}.part";
                 try {
                     run_kubectl_command(
@@ -314,10 +290,7 @@ obj PvcInjector(Injector) {
                         ],
                         cwd=tmp_path.parent
                     );
-                    # Concatenated, not an f-string: a jac f-string with two
-                    # quoted interpolations collapses them into ONE quoted
-                    # operand ("mv -f 'src dst'"), so mv sees a single argument
-                    # and the seed fails with a usage error.
+
                     run_kubectl_command(
                         [
                             "exec",

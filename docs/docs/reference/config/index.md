@@ -226,9 +226,12 @@ Build configuration:
 
 ```toml
 [build]
-typecheck = false   # Enable type checking
-dir = ".jac"        # Build artifacts directory
+typecheck = false           # Enable type checking
+dir = ".jac"                # Build artifacts directory
+default_codespace = "native"  # Codespace for markerless .jac modules: "native"/"na" or "server"/"sv"
 ```
+
+`default_codespace` controls how a plain `.jac` module with no explicit codespace marker (no `.sv.jac`/`.cl.jac`/`.na.jac` suffix and no top-level `sv`/`cl`/`na` markers) is treated. With `"native"` (the default) the compiler infers: a markerless module with no server-requiring constructs, and whose imported plain `.jac` modules are likewise native-clean, is compiled whole-module in the native codespace and executed through the native engine; `sv { }` blocks remain the per-block escape hatch. Modules with server-requiring constructs (OSP archetypes, python imports, serve endpoints, test blocks, JSX, and similar) compile in the server codespace exactly as before, and an inferred-native module that does not lower yet is transparently recompiled server-side with a dim `note:` -- the preference is always safe. Set `"server"` to opt a project out of native inference entirely; explicit `.na.jac` files and `na` markers remain strict mandates.
 
 The `dir` setting controls where all build artifacts are stored:
 
@@ -412,6 +415,19 @@ enabled = true   # Enable caching
 dir = "cache"    # Cache subdirectory under the build dir (i.e. .jac/cache).
                  # An absolute path relocates the cache wholesale.
 ```
+
+The format cache (`jac fmt --cache` / `jac precommit`) also lives here, under
+`<cache dir>/fmt-v1/`. It stores one marker per file proven clean, keyed on the
+file's content digest, the `lintfix` mode, the effective `[format]` and
+`[check]` settings (including `suppress` / `suppress_categories` / nested
+`lint`), the logical path when `lintfix` is on, and a formatter-pipeline
+fingerprint -- so a content, config, path, or pipeline change automatically
+invalidates the relevant entries. Entries are written only for fully
+successful, unchanged (or just-rewritten) results; syntax errors, lint
+failures, and annex failures are never cached as clean. `--cache` / precommit
+enable this format cache explicitly and do **not** consult `[cache].enabled`
+(that flag gates the bytecode cache). The directory is git-ignored, so it is
+safe to delete at any time. See [`jac fmt --cache`](../cli/index.md#jac-fmt).
 
 ---
 

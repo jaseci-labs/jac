@@ -1,4 +1,3 @@
-"""Implementation of Google Cloud Storage / Firebase Storage."""
 import from datetime { timedelta }
 import from jaclang.scale._optdeps.gcs {
     StorageClient,
@@ -56,8 +55,7 @@ impl GcsStorage.download(
 ) -> (bytes | None) {
     key = self._resolve_key(source);
     blob = self._bucket.blob(key);
-    # Match LocalStorage: a missing object surfaces as a predictable, standard
-    # FileNotFoundError rather than leaking the vendor's NotFound exception.
+
     try {
         if destination is None {
             return blob.download_as_bytes();
@@ -113,9 +111,7 @@ impl GcsStorage.list_files(
 impl GcsStorage.get_metadata(self: GcsStorage, path: str) -> dict[str, Any] {
     key = self._resolve_key(path);
     blob = self._bucket.blob(key);
-    # blob.reload() hits the GCS metadata API and raises NotFound when the object
-    # is absent; translate it to the standard FileNotFoundError so callers get a
-    # predictable signal instead of a vendor exception (parity with LocalStorage).
+
     try {
         blob.reload();
     } except NotFound {
@@ -139,8 +135,6 @@ impl GcsStorage.copy(self: GcsStorage, source: str, destination: str) -> bool {
         return False;
     }
 
-    # copy_blob raises NotFound if the source is deleted between the exists()
-    # check above and now (TOCTOU); treat that the same as a pre-check miss.
     try {
         new_blob = self._bucket.copy_blob(src_blob, self._bucket, new_name=dest_key);
     } except NotFound {
@@ -163,10 +157,7 @@ impl GcsStorage.get_url(
     }
 
     expiration = timedelta(seconds=expires_in if expires_in is not None else 3600);
-    # Service-account JSON credentials sign V4 URLs locally. Application
-    # Default Credentials in serverless runtimes (Cloud Run/GKE/Cloud
-    # Functions) have no local private key, so blob-side signing raises
-    # AttributeError — fall back to the IAM SignBlob API in that case.
+
     try {
         return blob.generate_signed_url(
             version="v4", expiration=expiration, method="GET"
@@ -176,21 +167,12 @@ impl GcsStorage.get_url(
     }
 }
 
-"""Sign a V4 GET URL via the IAM SignBlob API for ADC without a private key.
-
-Delegates signing to the runtime service account's identity. Requires the
-'Service Account Token Creator' role (iam.serviceAccounts.signBlob) on that
-service account.
-"""
 def _gcs_signed_url_via_iam(blob: any, expiration: any) -> str {
     import google.auth;
     import from google.auth.transport.requests { Request as GoogleAuthRequest }
     (credentials, _) = google.auth.default();
     credentials.refresh(GoogleAuthRequest());
-    # IAM SignBlob needs the runtime service account's email. User-account ADC
-    # (e.g. `gcloud auth application-default login` in development) has no
-    # service_account_email, so raise an actionable error instead of leaking a
-    # bare AttributeError from the missing attribute.
+
     service_account_email = credentials?.service_account_email;
     if not service_account_email {
         raise RuntimeError(
