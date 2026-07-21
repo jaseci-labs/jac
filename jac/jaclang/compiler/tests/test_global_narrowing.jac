@@ -79,6 +79,7 @@ def check_src(src: str, search_dir: str) -> JacProgram {
             sys.path.remove(search_dir);
         }
         importlib.invalidate_caches();
+        sys.modules.pop("untyped_client", None);
     }
 }
 
