@@ -104,7 +104,7 @@ repos:
       - id: scale-test-hygiene
         name: scale test-hygiene gate
         description: Block new anti-patterns in jac-scale tests (fakes, assert True, silent skips, broad status)
-        entry: python3 jac/jaclang/scale/scripts/lint_test_hygiene.py
+        entry: jac run jac/jaclang/scale/scripts/lint_test_hygiene.jac
         language: system
         pass_filenames: false
         files: ^jac/jaclang/scale/tests/.*\.jac$
