@@ -367,21 +367,21 @@ impl KEDAAutoscaler.apply_http_activation{
 
     cluster_key = self._get_cluster_key();
     api = self._custom_api or client.CustomObjectsApi();
-    if cluster_key not in KEDAAutoscaler._http_preflight_cache {
+    if cluster_key not in KEDAAutoscaler._capabilities_cache {
         try {
             api.list_cluster_custom_object(
                 group="http.keda.sh", version="v1beta1", plural="interceptorroutes"
             );
-            KEDAAutoscaler._http_preflight_cache[cluster_key] = True;
+            KEDAAutoscaler._capabilities_cache[cluster_key] = True;
         } except ApiException as e {
             if e.status in [404, 422] {
-                KEDAAutoscaler._http_preflight_cache[cluster_key] = False;
+                KEDAAutoscaler._capabilities_cache[cluster_key] = False;
             } else {
                 raise;
             }
         }
     }
-    if not KEDAAutoscaler._http_preflight_cache[cluster_key] {
+    if not KEDAAutoscaler._capabilities_cache[cluster_key] {
         if self.logger {
             self.logger.warn(
                 "KEDA HTTP Add-on CRDs not found on cluster. Install the HTTP "
@@ -740,4 +740,20 @@ impl KEDAAutoscaler._validate_http_activation_spec{
             "HTTPActivationSpec requires at least one of concurrency or request_rate."
         );
     }
+}
+
+impl KEDAAutoscaler._check_service_address{
+    return None;
+}
+
+impl KEDAAutoscaler.discover_capabilities{
+    return KEDACapabilities();
+}
+
+impl KEDAAutoscaler.invalidate_capabilities{
+    KEDAAutoscaler._capabilities_cache.pop(self._get_cluster_key(), None);
+}
+
+impl KEDAAutoscaler.format_capabilities{
+    return "not yet implemented";
 }

@@ -44,7 +44,7 @@ def _mocked_keda(
     apps_api: any = None,
     core_api: any = None
 ) -> tuple[KEDAAutoscaler, any, any, any] {
-    KEDAAutoscaler._http_preflight_cache.clear();
+    KEDAAutoscaler._capabilities_cache.clear();
     custom_api = custom_api or unittest.mock.MagicMock();
     if http_addon_installed {
         custom_api.list_cluster_custom_object.return_value = {};
@@ -497,12 +497,17 @@ test "destroy_collection sweeps InterceptorRoutes alongside ScaledObjects and Tr
 # Cache key is constant ("default") for every test in this process since there
 # is no real kube config loaded (see _get_cluster_key), so each test clears
 # _capabilities_cache itself before discovering — same reason _mocked_keda
-# clears _http_preflight_cache above.
-def _keda_for(custom_api: any = None, core_api: any = None) -> KEDAAutoscaler {
+# clears it above. apps_api is mocked too (even though discovery itself never
+# touches it) so that apply_http_activation's target-existence check doesn't
+# fall through to a real, unconfigured AppsV1Api.
+def _keda_for(
+    custom_api: any = None, core_api: any = None, apps_api: any = None
+) -> KEDAAutoscaler {
     KEDAAutoscaler._capabilities_cache.clear();
     return KEDAAutoscaler(
         _custom_api=custom_api or unittest.mock.MagicMock(),
-        _core_api=core_api or unittest.mock.MagicMock()
+        _core_api=core_api or unittest.mock.MagicMock(),
+        _apps_api=apps_api or unittest.mock.MagicMock()
     );
 }
 
