@@ -1,7 +1,8 @@
 import asyncio;
 import from jaclang.scale.runtime.middleware.ws_forward {
     _to_ws_scheme,
-    _select_handshake_headers
+    _select_handshake_headers,
+    websocket_forward
 }
 import from jaclang.scale.runtime.transport.http_forward {
     ForwardResult,
@@ -308,4 +309,134 @@ test "ws route rejects with 1012 during drain" {
     } finally {
         reset_drain();
     }
+}
+
+
+# A real, in-process stand-in for the Starlette/ASGI client websocket that
+# websocket_forward drives. It is NOT a mock of the SUT: the duplex proxy and
+# both of its pumps run their real logic against this endpoint, which speaks the
+# same receive()/send_text/send_bytes/close surface the gateway hands them.
+obj FakeClientWS {
+    has inbound: object,
+        sent: list,
+        closed: bool = False,
+        close_code: int = 0;
+
+    async def receive -> dict {
+        return await self.inbound.get();
+    }
+
+    async def send_text(data: str) {
+        self.sent.append(("text", data));
+    }
+
+    async def send_bytes(data: bytes) {
+        self.sent.append(("bytes", data));
+    }
+
+    async def close(code: int = 1000) {
+        self.closed = True;
+        self.close_code = code;
+    }
+}
+
+
+async def _spawn_ws_upstream -> tuple[object, object, str] {
+    import aiohttp;
+    import from aiohttp { web }
+
+    async def ws_echo(request: object) -> object {
+        ws = web.WebSocketResponse();
+        await ws.prepare(request);
+        async for msg in ws {
+            if msg.type == aiohttp.WSMsgType.TEXT {
+                await ws.send_str(msg.data);
+                if msg.data == "bye" {
+                    break;
+                }
+            } elif msg.type == aiohttp.WSMsgType.BINARY {
+                await ws.send_bytes(msg.data);
+            } elif msg.type == aiohttp.WSMsgType.ERROR {
+                break;
+            }
+        }
+        await ws.close();
+        return ws;
+    }
+
+    app = web.Application();
+    app.router.add_get("/ws", ws_echo);
+    runner = web.AppRunner(app);
+    await runner.setup();
+    site = web.TCPSite(runner, "127.0.0.1", 0);
+    await site.start();
+    actual_port: int = 0;
+    for s in runner.sites {
+        for srv in s._server.sockets if s._server else [] {
+            actual_port = srv.getsockname()[1];
+            break;
+        }
+        if actual_port {
+            break;
+        }
+    }
+    base = f"http://127.0.0.1:{actual_port}/ws";
+    return (site, runner, base);
+}
+
+
+test "websocket_forward round-trips text and binary through a real upstream ws" {
+    async def body -> dict {
+        (site, runner, base) = await _spawn_ws_upstream();
+        try {
+            client = FakeClientWS(inbound=asyncio.Queue(), sent=[]);
+            client.inbound.put_nowait({"type": "websocket.receive", "text": "hello"});
+            client.inbound.put_nowait(
+                {"type": "websocket.receive", "bytes": b"\x00\x01\x02"}
+            );
+            client.inbound.put_nowait({"type": "websocket.receive", "text": "bye"});
+            client.inbound.put_nowait({"type": "websocket.disconnect"});
+
+            # real duplex proxy over a real ws connection; base is http:// so the
+            # scheme-rewrite + handshake-header selection also run for real.
+            await websocket_forward(
+                client, base, {"Authorization": "Bearer t", "Cookie": "drop=me"}
+            );
+            return {"sent": client.sent, "closed": client.closed};
+        } finally {
+            await runner.cleanup();
+        }
+    }
+    result = _run(body());
+    sent = result["sent"];
+    texts = [
+        v
+        for (t, v) in sent
+        if t == "text"
+    ];
+    byte_msgs = [
+        v
+        for (t, v) in sent
+        if t == "bytes"
+    ];
+
+    # every frame the client sent came back through the upstream echo
+    assert "hello" in texts;
+    assert "bye" in texts;
+    assert b"\x00\x01\x02" in byte_msgs;
+    # the proxy closed the client side on clean teardown
+    assert result["closed"] == True;
+}
+
+
+test "websocket_forward closes the client with 1011 when the upstream handshake fails" {
+    async def body -> dict {
+        client = FakeClientWS(inbound=asyncio.Queue(), sent=[]);
+        # nothing is listening on port 1 -> ws_connect raises before any pump runs
+        await websocket_forward(client, "http://127.0.0.1:1/ws", {});
+        return {"closed": client.closed, "code": client.close_code};
+    }
+    result = _run(body());
+    assert result["closed"] == True;
+    assert result["code"] == 1011;
 }
