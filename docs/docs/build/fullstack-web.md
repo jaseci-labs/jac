@@ -39,16 +39,95 @@ cl def:pub app -> JsxElement {
 
 With a `jac.toml` declaring your npm deps and `[client]`:
 
+```toml
+# jac.toml
+[project]
+name = "mini-todo"
+
+[dependencies.npm]
+react = "^18.2.0"
+react-dom = "^18.2.0"
+
+[dependencies.npm.dev]
+vite = "^6.4.1"
+"@vitejs/plugin-react" = "^4.2.1"
+typescript = "^5.3.3"
+"@types/react" = "^18.2.0"
+"@types/react-dom" = "^18.2.0"
+
+[serve]
+base_route_app = "app"
+
+[client]
+```
+
 ```bash
 jac start          # production server
 jac start --dev    # hot-module reload while you edit
 ```
 
-Open [http://localhost:8000](http://localhost:8000). No database, no separate frontend project, no glue code. See the [Build Anything recipe](../quick-guide/project-kinds.md#full-stack-app) for the full `jac.toml`.
+Open [http://localhost:8000](http://localhost:8000). No database, no separate frontend project, no glue code.
 
 ## Client-only & in-browser native {#web-static}
 
-Set `kind = "web-static"` for an app with **no backend** -- a pure `cl` page that `jac build` emits as a portable, self-contained `dist/`. This is also the home of *in-browser native compute*: an `na {}` block compiles to **WebAssembly** and runs client-side at native speed (a game loop, a simulation, a hot inner loop), driven by the `cl` page with no server round-trip -- Jac's own WebAssembly linker turns it into an instantiable module.
+Set `kind = "web-static"` for an app with **no backend** -- a pure `cl` page that `jac build` emits as a portable, self-contained `dist/`. This is also the home of *in-browser native compute*: an `na {}` block compiles to **WebAssembly** and runs client-side at native speed (a game loop, a simulation, a hot inner loop), driven by the `cl` page with no server round-trip. One module holds both halves:
+
+```jac
+# main.jac
+na {
+    """Count primes below n -- a tight integer loop, compiled to WebAssembly."""
+    def count_primes(n: int) -> int {
+        count = 0;
+        i = 2;
+        while i < n {
+            is_prime = True;
+            j = 2;
+            while j < i {
+                if i % j == 0 { is_prime = False; break; }
+                j += 1;
+            }
+            if is_prime { count += 1; }
+            i += 1;
+        }
+        return count;
+    }
+}
+
+cl {
+    def:pub app -> JsxElement {
+        has answer: str = "computing...";
+        async can with entry {
+            res: any = await WebAssembly.instantiateStreaming(
+                fetch("/static/main.wasm"), {"env": {"puts": lambda { return 0; }}}
+            );
+            wasm: any = res.instance.exports;
+            wasm.__jac_glob_init();
+            # an i64 crosses the JS boundary as a BigInt; format it straight to text
+            answer = f"{wasm.count_primes(BigInt(20000))}";
+        }
+        return <div>
+            <h1>Native compute in the browser</h1>
+            <p>{"primes below 20000 (computed in wasm): "}<b>{answer}</b></p>
+        </div>;
+    }
+}
+```
+
+It uses the same `jac.toml` as the full-stack quick win above (React deps + `[client]`), with `kind = "web-static"` under `[project]`.
+
+```bash
+jac start          # builds the cl bundle + na->wasm, serves on http://localhost:8000
+jac start --dev    # same, with hot reload
+jac build          # portable, self-contained dist in .jac/client/dist/
+```
+
+Because a `web-static` project has no server, `jac start` serves the build with a **minimal static server** (no API server, auth, or database) and `jac build` emits a **portable `index.html`** with its JS/CSS inlined, so a pure `cl` page opens directly from disk (`file://`). An app that fetches `/static/main.wasm` at runtime, like this one, must be *served* (the browser can't fetch the module over `file://`). See [Client-only apps](../reference/plugins/jac-client.md#client-only-apps).
+
+`jac start` compiles the `na` block to `/static/main.wasm` as part of the client build -- no emscripten and no `wasm-ld`; Jac's own WebAssembly linker turns the object into an instantiable module -- and the page fetches it on mount:
+
+```text
+primes below 20000 (computed in wasm): 2262
+```
 
 ## Your learning path
 

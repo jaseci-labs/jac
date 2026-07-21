@@ -2,7 +2,7 @@
 
 > **Related:** [Primitives & Codespace Semantics](primitives.md) | [Functions & Objects](functions-objects.md) | [CLI Commands](../cli/index.md)
 
-**In this part:**
+**On this page:**
 
 - [Overview](#overview) - What native compilation is and when to use it
 - [Quick Reference](#quick-reference) - At-a-glance summary of capabilities

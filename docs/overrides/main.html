@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{#
+  The interactive runnable-code stack (Pyodide, Monaco, viz.js, run-code.js)
+  is heavy, and only pages that declare `runnable_blocks: true` in their
+  front matter use it. Everything else ships without these downloads.
+#}
+{% block scripts %}
+  {{ super() }}
+  {% if page and page.meta and page.meta.runnable_blocks %}
+    <script src="https://unpkg.com/viz.js@2.1.2/viz.js"></script>
+    <script src="https://unpkg.com/viz.js@2.1.2/full.render.js"></script>
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pyodide.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs/loader.min.js"></script>
+    <script src="{{ 'js/jac.monarch.js' | url }}"></script>
+    <script src="{{ 'js/run-code.js' | url }}"></script>
+  {% endif %}
+{% endblock %}

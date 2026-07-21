@@ -1,8 +1,8 @@
 # Jac Library Mode
 
-> **Part of:** [Part IX: Deployment](../plugins/jac-scale.md)
+> **Part of:** [Scale Reference](../plugins/jac-scale.md)
 >
-> **Related:** [Python Integration](python-integration.md) | [Part III: OSP](osp.md)
+> **Related:** [Python Integration](python-integration.md) | [Object-Spatial Programming](osp.md)
 
 ---
 
@@ -20,7 +20,7 @@ Library mode is designed for:
 - **Enterprise and corporate environments** where introducing standard Python libraries is more acceptable than adopting new language syntax
 
 !!! note "`root` is a function in library mode"
-    In `.jac` source, `root` is a reserved keyword and writing `root()` is an error (**E0049**; use bare `root`). In **library mode**, `root` is a Python function imported from `jaclang.lib`, so it **must** be called as `root()` -- the bare reference is just the function object. The same applies to other graph builtins (`spawn`, `connect`, `get_all_root`). The restriction in [breaking-changes.md](../../community/breaking-changes.md#1-root-is-a-reserved-keyword-again-specialvarref) only governs `.jac` source.
+    In `.jac` source, `root` is a reserved keyword and writing `root()` is an error (**E0049**; use bare `root`). In **library mode**, `root` is a Python function imported from `jaclang.lib`, so it **must** be called as `root()` -- the bare reference is just the function object. The same applies to other graph builtins (`spawn`, `connect`, `get_all_root`). The reserved-keyword restriction only governs `.jac` source.
 
 ### **Converting Jac Code to Pure Python**
 
