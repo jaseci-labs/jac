@@ -17,6 +17,7 @@ import from jaclang.scale.runtime.context.util {
 }
 
 import from jaclang.scale.admin.admin_portal { JacAPIServerAdmin }
+import from jaclang.scale.server.serve { JacAPIServerAuth }
 import from jaclang.scale.admin.logs { JacAPIServerLogs }
 import from jaclang.scale.admin.traces { JacAPIServerTraces }
 import from jaclang.scale.admin.ops { JacAPIServerOps }
@@ -33,7 +34,7 @@ glob logger = logging.getLogger(__name__),
          "keep-alive"
      };
 
-obj MicroserviceGateway(JacAPIServerAdmin, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerOps, JacAPIServerDeployHealth, JacAPIServerNetwork, JacAPIServerPodEnv, JacAPIServerLLMTelemetry) {
+obj MicroserviceGateway(JacAPIServerAdmin, JacAPIServerAuth, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerOps, JacAPIServerDeployHealth, JacAPIServerNetwork, JacAPIServerPodEnv, JacAPIServerLLMTelemetry) {
     has registry: ServiceRegistry,
         app: FastAPI | None = None,
         port: int = DEFAULT_GATEWAY_PORT,

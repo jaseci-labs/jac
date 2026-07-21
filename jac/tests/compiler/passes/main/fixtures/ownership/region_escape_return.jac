@@ -1,7 +1,9 @@
-obj Buffer { has n: int = 0; }
+obj Buffer {
+    has n: int = 0;
+}
 
-def make() -> Buffer {
-    region {
+def make -> Buffer {
+    in Region() {
         x = Buffer();
         return x;
     }

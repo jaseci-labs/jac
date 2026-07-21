@@ -9,6 +9,7 @@ import from jaclang.jac0core.constant {
     Tokens as Tok,
     EdgeDir,
     SymbolAccess,
+    OwnershipKind,
 }
 import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
 import from jaclang.jac0core.passes.sym_tab_build_pass { SymTabBuildPass }
@@ -74,7 +75,7 @@ import from jaclang.jac0core.diagnostics {
     E1110,
     E1111,
     E1120,
-    W0062,
+    E0049,
     W1050,
     W1051,
     W1100,
@@ -164,23 +165,23 @@ obj ConditionInfo {
 
 obj TypeEvaluator {
     has program: "JacProgram",
-        _BUILTINS_STUB_FILE_PATH: str by postinit,
-        _TYPING_STUB_FILE_PATH: str by postinit,
-        _TYPES_STUB_FILE_PATH: str by postinit,
-        _JAC_BUILTINS_STUB_FILE_PATH: str by postinit,
-        _DOM_TYPES_STUB_FILE_PATH: str by postinit,
-        _NA_BUILTINS_STUB_FILE_PATH: str by postinit,
-        _JS_GLOBALS_STUB_FILE_PATH: str by postinit,
-        _TYPING_AMBIENT_STUB_FILE_PATH: str by postinit,
+        _BUILTINS_STUB_FILE_PATH: str postinit,
+        _TYPING_STUB_FILE_PATH: str postinit,
+        _TYPES_STUB_FILE_PATH: str postinit,
+        _JAC_BUILTINS_STUB_FILE_PATH: str postinit,
+        _DOM_TYPES_STUB_FILE_PATH: str postinit,
+        _NA_BUILTINS_STUB_FILE_PATH: str postinit,
+        _JS_GLOBALS_STUB_FILE_PATH: str postinit,
+        _TYPING_AMBIENT_STUB_FILE_PATH: str postinit,
         ambient_typing_names_by_module: dict[str, set[str]] = {},
-        _ENUM_STUB_FILE_PATH: str by postinit,
+        _ENUM_STUB_FILE_PATH: str postinit,
         symbol_resolution_stack: list[SymbolResolutionStackEntry] = [],
-        prefetch: PrefetchedTypes by postinit,
+        prefetch: PrefetchedTypes postinit,
         _pass: object | None = None,
         builtins_module: uni.Module | None = None,
         _flow_node_type_cache: dict[tuple, types.TypeBase | None] = {},
-        _flow_pending_symbols: set[int] by postinit,
-        _flow_pending_keys: set[str] by postinit,
+        _flow_pending_symbols: set[int] postinit,
+        _flow_pending_keys: set[str] postinit,
         _module_type_cache: dict[str, types.ModuleType] = {},
         _mobui_module_cache: dict[str, bool] = {},
         _strict_site_cache: dict[int, bool] = {},
@@ -190,13 +191,13 @@ obj TypeEvaluator {
         _ts_decl_path_cache: dict[str, (str | None)] = {},
         _ts_synth_class_cache: dict[int, (dict[str, types.ClassType] | None)] = {},
         _untyped_external_cfg_cache: dict[str, bool] = {},
-        typing_module: uni.Module by postinit,
-        types_module: uni.Module by postinit,
-        enum_module: uni.Module by postinit,
-        jac_builtins_module: uni.Module by postinit,
-        dom_types_module: uni.Module by postinit,
-        na_builtins_module: uni.Module by postinit,
-        js_globals_module: uni.Module by postinit;
+        typing_module: uni.Module postinit,
+        types_module: uni.Module postinit,
+        enum_module: uni.Module postinit,
+        jac_builtins_module: uni.Module postinit,
+        dom_types_module: uni.Module postinit,
+        na_builtins_module: uni.Module postinit,
+        js_globals_module: uni.Module postinit;
 
     def postinit -> None;
     def _load_stub_module(path: str) -> uni.Module;

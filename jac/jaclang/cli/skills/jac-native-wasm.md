@@ -1,9 +1,9 @@
 ---
 name: jac-native-wasm
-description: Running native-compiled Jac in the browser as WebAssembly - an `na {}` block compiled to /static/main.wasm by `jac start`, instantiated from a `cl {}` page; `__jac_glob_init()`, BigInt i64 marshalling, externs-as-wasm-imports, the JS-side libc surface (malloc bump allocator, __multi3, WebAssembly.Module.imports introspection), and standalone `jac nacompile --target wasm32`. Load when building in-browser native compute: a game loop, simulation, or client-side hot loop. Pair with `jac-cl-components` (the page side) and `jac-native` (the na subset).
+description: Running native-compiled Jac in the browser as WebAssembly - native code (inferred from extern-decl imports, or an explicit `na {}` block) compiled to /static/main.wasm by `jac start`, instantiated from a client page; `__jac_glob_init()`, BigInt i64 marshalling, externs-as-wasm-imports, the JS-side libc surface (malloc bump allocator, __multi3, WebAssembly.Module.imports introspection), and standalone `jac nacompile --target wasm32`. Load when building in-browser native compute: a game loop, simulation, or client-side hot loop. Pair with `jac-cl-components` (the page side) and `jac-native` (the na subset).
 ---
 
-The native codespace's second target: instead of a host binary, an `na {}` block compiles to **WebAssembly** and runs in the browser, driven by a `cl` page - native-speed compute with no server round-trip. Jac's own wasm linker produces the module; no emscripten, no `wasm-ld`.
+The native codespace's second target: instead of a host binary, your module's native code compiles to **WebAssembly** and runs in the browser, driven by a client page - native-speed compute with no server round-trip. Jac's own wasm linker produces the module; no emscripten, no `wasm-ld`. Native placement is inferred from extern-decl imports (`import from raylib { def ... ; }`) and the code that uses them, so no marker is needed; the explicit `na {}` block shown below remains valid and is required when the native code has no FFI surface (pure compute).
 
 ## One module, both halves
 
@@ -44,7 +44,7 @@ cl {
 ```
 
 ```bash
-jac start          # builds the cl bundle AND compiles the na block to /static/main.wasm, serves :8000
+jac start          # builds the cl bundle AND compiles the native code to /static/main.wasm, serves :8000
 jac start --dev    # same, with hot reload   (jac build emits the artifacts without serving)
 ```
 

@@ -341,7 +341,7 @@ Scalars pass by value; Jac objects and strings cross as opaque handles (a `void*
 
 ### Full-stack app
 
-The headline case: backend, frontend, and data model in **one file**. Code in a `cl` block (or `.cl.jac` file) compiles to a React/JSX bundle for the browser; everything else compiles to Python for the server. The compiler generates the HTTP calls between them -- `await add_todo(...)` in the client is a real RPC to the server function, with types shared across the boundary.
+The headline case: backend, frontend, and data model in **one file**. The compiler infers the split: declarations carrying JSX or npm imports (plus whatever they use) compile to a React/JSX bundle for the browser; everything else compiles to Python for the server. A `cl` block, prefix, or `.cl.jac` file pins the split explicitly, as the example below does. The compiler generates the HTTP calls between the two -- `await add_todo(...)` in the client is a real RPC to the server function, with types shared across the boundary.
 
 ```jac
 # main.jac

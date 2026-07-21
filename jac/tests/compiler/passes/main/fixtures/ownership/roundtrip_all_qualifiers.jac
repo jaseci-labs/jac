@@ -13,5 +13,5 @@ with entry {
     b: own Buffer = Buffer();
     m: &mut Buffer = &mut b;
     use_mut(m);
-    w: val Buffer = Buffer();
+    w: imm Buffer = Buffer();
 }

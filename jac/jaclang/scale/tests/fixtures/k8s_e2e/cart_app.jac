@@ -10,11 +10,11 @@ import from shared.models { Cart, Product, Products, Order }
 import humanize;
 
 def _get_or_create_cart -> Cart {
-    carts = [root()-->][?:Cart];
+    carts = [root-->][?:Cart];
     if carts {
         return carts[0];
     }
-    return root() ++> Cart();
+    return root ++> Cart();
 }
 
 sv {
@@ -46,7 +46,7 @@ sv {
     }
 
     def:pub view_cart -> dict {
-        carts = [root()-->][?:Cart];
+        carts = [root-->][?:Cart];
         if not carts {
             return {"items": [], "total": 0, "item_count": 0};
         }
@@ -74,7 +74,7 @@ sv {
     }
 
     def:pub remove_from_cart(product_id: str) -> dict {
-        carts = [root()-->][?:Cart];
+        carts = [root-->][?:Cart];
         if not carts {
             return {"error": "Cart not found"};
         }
@@ -90,7 +90,7 @@ sv {
     }
 
     def:pub clear_cart -> dict {
-        carts = [root()-->][?:Cart];
+        carts = [root-->][?:Cart];
         if not carts {
             return {"action": "cleared", "items_removed": 0};
         }

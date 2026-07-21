@@ -231,7 +231,7 @@ class JacAccessValidation {
     ) -> tuple[Anchor, ExecutionContext];
 
     static def _check_access(
-        `to: Anchor, min_level: AccessLevel, operation: str
+        to: Anchor, min_level: AccessLevel, operation: str
     ) -> bool;
 
     static def allow_root(
@@ -251,10 +251,10 @@ class JacAccessValidation {
     ) -> None;
 
     static def perm_revoke(archetype: Archetype) -> None;
-    static def check_read_access(`to: Anchor) -> bool;
-    static def check_connect_access(`to: Anchor, op_hint: str = "connect") -> bool;
-    static def check_write_access(`to: Anchor, op_hint: str = "write") -> bool;
-    static def check_access_level(`to: Anchor, no_custom: bool = False) -> AccessLevel;
+    static def check_read_access(to: Anchor) -> bool;
+    static def check_connect_access(to: Anchor, op_hint: str = "connect") -> bool;
+    static def check_write_access(to: Anchor, op_hint: str = "write") -> bool;
+    static def check_access_level(to: Anchor, no_custom: bool = False) -> AccessLevel;
 }
 
 class JacGraph {

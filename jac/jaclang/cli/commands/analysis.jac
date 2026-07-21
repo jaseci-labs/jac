@@ -58,10 +58,18 @@ glob registry = get_registry();
             short="",
             help="With --lint: auto-fix violations"
         ),
+        Arg.create(
+            "native-census",
+            typ=bool,
+            default=False,
+            short="",
+            help="Compile with codegen and report per-module native outcome (native / demoted / server) ranked by reason (needs the native toolchain)"
+        ),
 
     ],
     examples=[
         ("jac check myprogram.jac", "Check a single file"),
+        ("jac check . --native-census", "Rank modules by native compile outcome"),
         ("jac check . --lint", "Report lint violations only"),
         ("jac check . --lint --fix", "Auto-fix lint violations"),
         ("jac check file1.jac file2.jac", "Check multiple files"),
@@ -88,7 +96,8 @@ def check(
     parse_only: bool = False,
     nowarn: bool = False,
     lint_only: bool = False,
-    fix: bool = False
+    fix: bool = False,
+    native_census: bool = False
 ) -> int;
 
 def lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int;
@@ -122,6 +131,13 @@ def lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int;
             help="Check if files are formatted without modifying them (exit 1 if unformatted)",
             short="c"
         ),
+        Arg.create(
+            "cache",
+            typ=bool,
+            default=False,
+            help="Skip files already known to be formatted (content + config + version keyed)",
+            short="C"
+        ),
 
     ],
     examples=[
@@ -135,7 +151,14 @@ def lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int;
     group="analysis"
 )
 def format(
-    paths: list, to_screen: bool = False, lintfix: bool = False, check: bool = False
+    paths: list,
+    to_screen: bool = False,
+    lintfix: bool = False,
+    check: bool = False,
+    cache: bool = False,
+    cache_anchor: str = "",
+    path_map: dict | None = None,
+    cache_stats: dict | None = None
 ) -> int;
 
 @registry.command(
@@ -190,7 +213,8 @@ def precommit(
     staged: bool = False,
     verify: bool = False,
     install: bool = False,
-    force: bool = False
+    force: bool = False,
+    cache_stats: dict | None = None
 ) -> int;
 
 @registry.command(
@@ -267,4 +291,4 @@ def `test(
 )
 def gen_parser -> int;
 
-def grammar(output: str = "") -> int;
+def grammar(output: str = "", strict: bool = False) -> int;

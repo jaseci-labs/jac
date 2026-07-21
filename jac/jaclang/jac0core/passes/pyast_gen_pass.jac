@@ -4,7 +4,12 @@ import textwrap;
 import from collections.abc { Sequence }
 import from typing { ClassVar, TypeVar, cast }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.constant { CodeContext, EdgeDir, is_borrow_kind }
+import from jaclang.jac0core.constant {
+    CodeContext,
+    EdgeDir,
+    is_borrow_kind,
+    OwnershipKind
+}
 import from jaclang.jac0core.constant { Constants as Con }
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.codeinfo { BoundaryTypeInfo, InteropBinding }
@@ -73,16 +78,16 @@ glob T = TypeVar('T', bound=ast3.AST),
      };
 
 obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
-    has debuginfo: dict[str, list[str]] by postinit,
+    has debuginfo: dict[str, list[str]] postinit,
         already_added: list[str] = [],
-        jaclib_imports: set[str] by postinit,
-        builtin_imports: set[str] by postinit,
-        typing_imports: set[str] by postinit,
+        jaclib_imports: set[str] postinit,
+        builtin_imports: set[str] postinit,
+        typing_imports: set[str] postinit,
         _temp_name_counter: int = 0,
         _hoisted_funcs: list[ast3.FunctionDef | ast3.AsyncFunctionDef] = [],
-        child_passes: list[PyastGenPass] by postinit,
-        preamble: list[ast3.AST] by postinit,
-        jsx_processor: PyJsxProcessor by postinit;
+        child_passes: list[PyastGenPass] postinit,
+        preamble: list[ast3.AST] postinit,
+        jsx_processor: PyJsxProcessor postinit;
 
     with entry {
         _builtin_names: ClassVar[(set[str] | None)] = None;
@@ -98,7 +103,8 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
     def postinit -> None;
     def enter_node(nd: uni.UniNode) -> None;
     def exit_node(nd: uni.UniNode) -> None;
-    def _gen_native_interop_stubs(nd: uni.NativeBlock) -> None;
+    def _gen_native_interop_stubs(nd: uni.UniNode) -> None;
+    def _is_native_ext_module -> bool;
     def _native_test_shim_stmts(nd: uni.Test) -> list;
     def _generate_sv_to_sv_stubs(nd: uni.Import) -> bool;
     def _gen_py_sv_func_stub(
@@ -185,7 +191,7 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
     def exit_arch_has(nd: uni.ArchHas) -> None;
     def exit_has_var(nd: uni.HasVar) -> None;
     def exit_typed_ctx_block(nd: uni.TypedCtxBlock) -> None;
-    def exit_region_stmt(nd: uni.RegionStmt) -> None;
+    def exit_open_stmt(nd: uni.OpenStmt) -> None;
     def exit_if_stmt(nd: uni.IfStmt) -> None;
     def exit_else_if(nd: uni.ElseIf) -> None;
     def exit_else_stmt(nd: uni.ElseStmt) -> None;
@@ -211,8 +217,7 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
     def exit_disengage_stmt(nd: uni.DisengageStmt) -> None;
     def exit_await_expr(nd: uni.AwaitExpr) -> None;
     def exit_cast_expr(nd: uni.CastExpr) -> None;
-    def exit_global_stmt(nd: uni.GlobalStmt) -> None;
-    def exit_non_local_stmt(nd: uni.NonLocalStmt) -> None;
+    def scope_directive_stmts(scopes: list) -> list[ast3.AST];
     def exit_assignment(nd: uni.Assignment) -> None;
     def exit_binary_expr(nd: uni.BinaryExpr) -> None;
     def translate_jac_bin_op(nd: uni.BinaryExpr) -> list[ast3.AST];

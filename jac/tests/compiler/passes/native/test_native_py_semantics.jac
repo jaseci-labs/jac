@@ -63,6 +63,31 @@ test "chained comparison: three-link chain with mixed directions" {
     assert result == 1 , f"Expected 1 (1<2<3>2), got {result}";
 }
 
+# --- #7593 item 2: membership/identity links in chains ---
+test "chained comparison: membership links lower like single 'in'" {
+    (eng, _) = compile_native("py_chain_cmp_mixed.na.jac");
+    get_func(eng, "jac_entry", None)();
+    cases = get_func(eng, "chain_in_cases", ctypes.c_int64);
+    result = cases();
+    assert result == 10111 , f"Expected 10111, got {result}";
+}
+
+test "chained comparison: identity links lower like single 'is'" {
+    (eng, _) = compile_native("py_chain_cmp_mixed.na.jac");
+    get_func(eng, "jac_entry", None)();
+    cases = get_func(eng, "chain_is_cases", ctypes.c_int64);
+    result = cases();
+    assert result == 1001 , f"Expected 1001, got {result}";
+}
+
+test "chained comparison: membership middle operand evaluated once" {
+    (eng, _) = compile_native("py_chain_cmp_mixed.na.jac");
+    get_func(eng, "jac_entry", None)();
+    once = get_func(eng, "chain_middle_once", ctypes.c_int64);
+    result = once();
+    assert result == 11 , f"Expected 11 (true, one bump), got {result}";
+}
+
 # --- 2b: or/and yield the deciding operand value, not a truth bit ---
 test "bool ops: int or/and return the operand value" {
     (eng, _) = compile_native("py_bool_ops.na.jac");
@@ -189,6 +214,32 @@ test "fstring: numeric and string format specs render like CPython" {
     assert result == 1111 , f"Expected 1111, got {result}";
 }
 
+test "fstring: !r conversion matches CPython repr" {
+    (eng, _) = compile_native("py_fstring.na.jac");
+    get_func(eng, "jac_entry", None)();
+    fn = get_func(eng, "fstring_repr", ctypes.c_int64);
+    result = fn();
+    # int, float, bool, quote-switching str repr, and repr-then-pad ordering
+    assert result == 11111 , f"Expected 11111, got {result}";
+}
+
+test "fstring: dynamic format specs render like CPython" {
+    (eng, _) = compile_native("py_fstring.na.jac");
+    get_func(eng, "jac_entry", None)();
+    fn = get_func(eng, "fstring_dynspec", ctypes.c_int64);
+    result = fn();
+    # {w}.{p}f, {w}x, 0{w}d, and *^{w} all correct
+    assert result == 1111 , f"Expected 1111, got {result}";
+}
+
+test "fstring: invalid dynamic spec raises ValueError" {
+    (eng, _) = compile_native("py_fstring.na.jac");
+    get_func(eng, "jac_entry", None)();
+    fn = get_func(eng, "fstring_dynspec_invalid", ctypes.c_int64);
+    result = fn();
+    assert result == 1 , f"Expected 1 (ValueError raised), got {result}";
+}
+
 test "range with zero step raises ValueError instead of looping" {
     (eng, _) = compile_native("py_dropped_args.na.jac");
     get_func(eng, "jac_entry", None)();
@@ -203,4 +254,59 @@ test "pow with zero modulus raises ValueError instead of trapping" {
     fn = get_func(eng, "pow_zero_mod_raises", ctypes.c_int64);
     result = fn();
     assert result == 1 , f"Expected 1 (caught ValueError), got {result}";
+}
+
+# --- subscript aug-assign lowers read-modify-write, not an RHS store ---
+test "subscript aug: list int arithmetic ops read-modify-write" {
+    (eng, _) = compile_native("py_subscript_aug.na.jac");
+    get_func(eng, "jac_entry", None)();
+    fn = get_func(eng, "list_int_ops", ctypes.c_int64);
+    result = fn();
+    # 7 +=3 ->10, -=2 ->8, *=3 ->24, //=5 ->4, %=3 ->1
+    assert result == 100824041 , f"Expected 100824041, got {result}";
+}
+
+test "subscript aug: list int bitwise/shift/pow ops apply" {
+    (eng, _) = compile_native("py_subscript_aug.na.jac");
+    get_func(eng, "jac_entry", None)();
+    fn = get_func(eng, "list_int_bitops", ctypes.c_int64);
+    result = fn();
+    # 17 <<=3 ->136, >>=1 ->68, |=3 ->71, ^=5 ->66, &=31 ->2, **=5 ->32
+    assert result == 136068071066002032 , f"Expected 136068071066002032, got {result}";
+}
+
+test "subscript aug: list float ops apply incl. floored //=" {
+    (eng, _) = compile_native("py_subscript_aug.na.jac");
+    get_func(eng, "jac_entry", None)();
+    fn = get_func(eng, "list_float_ops", ctypes.c_int64);
+    result = fn();
+    # 8.0 +=1.5 ->9.5, -=0.25 ->9.25, *=2 ->18.5, //=4 ->4.0 (floored), /=5 ->0.8
+    assert result == 95092501850408 , f"Expected 95092501850408, got {result}";
+}
+
+test "subscript aug: dict int and float values read-modify-write" {
+    (eng, _) = compile_native("py_subscript_aug.na.jac");
+    get_func(eng, "jac_entry", None)();
+    fn = get_func(eng, "dict_ops", ctypes.c_int64);
+    result = fn();
+    # d[3]: 10 +=5 ->15, -=7 ->8, *=4 ->32; s["k"]: 1.5 *=4 ->6.0
+    assert result == 15083206 , f"Expected 15083206, got {result}";
+}
+
+test "field aug: float //= floors and int %= applies" {
+    (eng, _) = compile_native("py_subscript_aug.na.jac");
+    get_func(eng, "jac_entry", None)();
+    fn = get_func(eng, "field_scalar_ops", ctypes.c_int64);
+    result = fn();
+    # h.f: 7.0 //=2 ->3.0, *=2.5 ->7.5; h.n: 20 %=6 ->2
+    assert result == 307502 , f"Expected 307502, got {result}";
+}
+
+test "subscript aug: index expression evaluated exactly once" {
+    (eng, _) = compile_native("py_subscript_aug.na.jac");
+    get_func(eng, "jac_entry", None)();
+    fn = get_func(eng, "index_evaluated_once", ctypes.c_int64);
+    result = fn();
+    # m[bump_idx(1)] += 7 -> m[1]==27 with one bump
+    assert result == 271 , f"Expected 271, got {result}";
 }

@@ -44,6 +44,22 @@ test "console.error honors sys.stderr redirection" {
     assert "CONFORM-ERROR-MARKER" in text , f"console.error did not honor sys.stderr redirection; captured={text!r}";
 }
 
+test "console.error does not double an already-prefixed Error: message" {
+    captured = io.StringIO();
+    saved = sys.stderr;
+    sys.stderr = captured;
+    try {
+        # Runtime tracebacks arrive pre-prefixed with "Error: "; the console
+        # must not print the doubled "Error: Error:" banner.
+        console.error("Error: something broke");
+    } finally {
+        sys.stderr = saved;
+    }
+    text = captured.getvalue();
+    assert "Error: Error:" not in text , f"doubled Error: prefix leaked; captured={text!r}";
+    assert "something broke" in text;
+}
+
 
 test "console.warning honors sys.stderr redirection" {
     captured = io.StringIO();
