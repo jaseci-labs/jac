@@ -2,7 +2,7 @@
 
 byLLM lets you delegate function implementations to large language models. You declare a function signature -- its name, parameter names, and types -- append `by llm`, and the LLM infers the behavior at runtime. byLLM handles prompt construction, model communication, response parsing, and type validation, so your Jac type annotations act as an enforced output schema.
 
-This approach is called **Meaning-Typed Programming (MTP)**: well-named function signatures already describe what a function should do, and byLLM makes that intent executable. This reference covers MTP concepts, configuration, structured outputs, tool calling, and provider setup.
+The constructs behind this are *meaning types*: semantic annotations from which prompts are automatically synthesized, making delegation of program logic to large language models (`by llm()`) a typed language feature rather than string engineering. **Meaning-Typed Programming (MTP)** is the paradigm built on them: meaning types are the construct, MTP is the practice of programming with them. A hand-written prompt is glue ([Why Jac Exists](../../quick-guide/why-jac.md)), and byLLM exists so you never write one. This reference covers MTP concepts, configuration, structured outputs, tool calling, and provider setup.
 
 ---
 

@@ -14,11 +14,11 @@ jac create myapp
 cd myapp
 
 # Full-stack web app (recommended for web development)
-jac create myapp --use web-static
+jac create myapp --kind web-static
 cd myapp
 ```
 
-This creates a `jac.toml` with default settings. When using `--use web-static`, the scaffolded project includes:
+This creates a `jac.toml` with default settings. When using `--kind web-static`, the scaffolded project includes:
 
 ```
 myapp/
@@ -32,7 +32,7 @@ myapp/
 └── .gitignore
 ```
 
-The auto-generated `jac.toml` for a `--use web-static` project looks like:
+The auto-generated `jac.toml` for a `--kind web-static` project looks like:
 
 ```toml
 [project]
@@ -226,9 +226,12 @@ Build configuration:
 
 ```toml
 [build]
-typecheck = false   # Enable type checking
-dir = ".jac"        # Build artifacts directory
+typecheck = false           # Enable type checking
+dir = ".jac"                # Build artifacts directory
+default_codespace = "native"  # Codespace for markerless .jac modules: "native"/"na" or "server"/"sv"
 ```
+
+`default_codespace` controls how a plain `.jac` module with no explicit codespace marker (no `.sv.jac`/`.cl.jac`/`.na.jac` suffix and no top-level `sv`/`cl`/`na` markers) is treated. With `"native"` (the default) the compiler infers: a markerless module with no server-requiring constructs, and whose imported plain `.jac` modules are likewise native-clean, is compiled whole-module in the native codespace and executed through the native engine; `sv { }` blocks remain the per-block escape hatch. Modules with server-requiring constructs (OSP archetypes, python imports, serve endpoints, test blocks, JSX, and similar) compile in the server codespace exactly as before, and an inferred-native module that does not lower yet is transparently recompiled server-side with a dim `note:` -- the preference is always safe. Set `"server"` to opt a project out of native inference entirely; explicit `.na.jac` files and `na` markers remain strict mandates.
 
 The `dir` setting controls where all build artifacts are stored:
 
@@ -552,7 +555,7 @@ Controls which JavaScript framework the `cl` compiler target emits. The default 
 Switching frameworks automatically adjusts the installed npm packages and the generated Vite config; no other changes are needed. Delete your `.jac/client/` build cache after switching so the previous framework's output is not mixed in.
 
 !!! warning "Solid support is experimental"
-    The `solid` framework target is under active development. Some jac-client features (error boundaries, suspense slots, advanced routing) may not yet be fully supported. Check the [release notes](../../community/release_notes/jac-client.md) before upgrading.
+    The `solid` framework target is under active development. Some jac-client features (error boundaries, suspense slots, advanced routing) may not yet be fully supported. Check the [release notes](../../community/release_notes/jaclang.md) before upgrading.
 
 **Import Path Aliases (jac-client):**
 
@@ -674,8 +677,6 @@ base_url = "${BASE_URL:?Base URL is required}"      # Required with error
 ### [project.include]
 
 Controls which files and directories `jac build --as wheel` collects into the wheel.
-
-> **Note:** Earlier releases used a separate `[package]` / `[package.include]` section for publishing metadata. As of jaclang 0.15, `[package]` has been merged into `[project]` -- all publishing fields now live under `[project]` (see above), and file-inclusion rules live under `[project.include]`. Plain `[package]` tables are no longer read.
 
 ```toml
 [project.include]

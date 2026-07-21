@@ -63,6 +63,31 @@ test "chained comparison: three-link chain with mixed directions" {
     assert result == 1 , f"Expected 1 (1<2<3>2), got {result}";
 }
 
+# --- #7593 item 2: membership/identity links in chains ---
+test "chained comparison: membership links lower like single 'in'" {
+    (eng, _) = compile_native("py_chain_cmp_mixed.na.jac");
+    get_func(eng, "jac_entry", None)();
+    cases = get_func(eng, "chain_in_cases", ctypes.c_int64);
+    result = cases();
+    assert result == 10111 , f"Expected 10111, got {result}";
+}
+
+test "chained comparison: identity links lower like single 'is'" {
+    (eng, _) = compile_native("py_chain_cmp_mixed.na.jac");
+    get_func(eng, "jac_entry", None)();
+    cases = get_func(eng, "chain_is_cases", ctypes.c_int64);
+    result = cases();
+    assert result == 1001 , f"Expected 1001, got {result}";
+}
+
+test "chained comparison: membership middle operand evaluated once" {
+    (eng, _) = compile_native("py_chain_cmp_mixed.na.jac");
+    get_func(eng, "jac_entry", None)();
+    once = get_func(eng, "chain_middle_once", ctypes.c_int64);
+    result = once();
+    assert result == 11 , f"Expected 11 (true, one bump), got {result}";
+}
+
 # --- 2b: or/and yield the deciding operand value, not a truth bit ---
 test "bool ops: int or/and return the operand value" {
     (eng, _) = compile_native("py_bool_ops.na.jac");
@@ -187,6 +212,32 @@ test "fstring: numeric and string format specs render like CPython" {
     result = fn();
     # .2f, 04d, x, and >4/<4 alignment all correct
     assert result == 1111 , f"Expected 1111, got {result}";
+}
+
+test "fstring: !r conversion matches CPython repr" {
+    (eng, _) = compile_native("py_fstring.na.jac");
+    get_func(eng, "jac_entry", None)();
+    fn = get_func(eng, "fstring_repr", ctypes.c_int64);
+    result = fn();
+    # int, float, bool, quote-switching str repr, and repr-then-pad ordering
+    assert result == 11111 , f"Expected 11111, got {result}";
+}
+
+test "fstring: dynamic format specs render like CPython" {
+    (eng, _) = compile_native("py_fstring.na.jac");
+    get_func(eng, "jac_entry", None)();
+    fn = get_func(eng, "fstring_dynspec", ctypes.c_int64);
+    result = fn();
+    # {w}.{p}f, {w}x, 0{w}d, and *^{w} all correct
+    assert result == 1111 , f"Expected 1111, got {result}";
+}
+
+test "fstring: invalid dynamic spec raises ValueError" {
+    (eng, _) = compile_native("py_fstring.na.jac");
+    get_func(eng, "jac_entry", None)();
+    fn = get_func(eng, "fstring_dynspec_invalid", ctypes.c_int64);
+    result = fn();
+    assert result == 1 , f"Expected 1 (ValueError raised), got {result}";
 }
 
 test "range with zero step raises ValueError instead of looping" {

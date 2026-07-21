@@ -160,6 +160,14 @@ def build_bootstrap_init_container(
             'prebuilt client dist; full install"; fi'
         );
     }
+
+    vendor_wheels = f"{APP_MOUNT_PATH}/_vendor/wheels";
+    commands.append(
+        f'if ls {vendor_wheels}/*.whl >/dev/null 2>&1; then '
+        f'export PIP_NO_INDEX=1 PIP_FIND_LINKS="{vendor_wheels}"; '
+        'echo "[jac-scale] vendored wheels found; python deps install '
+        'offline"; fi'
+    );
     commands.append("jac install");
     script = ' && '.join(commands);
     container: dict[str, any] = {

@@ -1093,16 +1093,47 @@ impl _parse_toml_data(
             session=run_data.get("session", ""),
             main=run_data.get("main", True),
             cache=run_data.get("cache", True),
-            autonative=run_data.get("autonative", False),
             topology_index=run_data.get("topology_index", True),
             diagnostics=run_data.get("diagnostics", "error")
         );
     }
     if "build" in data {
         build_data = data["build"];
+        _codespace_aliases = {"sv": "server", "na": "native"};
+        _builtin_cs = BuildConfig().default_codespace;
+        _default_cs = str(
+            build_data.get("default_codespace", _builtin_cs)
+        ).strip().lower();
+        _default_cs = _codespace_aliases.get(_default_cs, _default_cs);
+        if _default_cs not in ("server", "native") {
+            import from jaclang.cli.console { console }
+            console.warning(
+                f"[build] default_codespace='{build_data.get('default_codespace')}' "
+                f"is not one of 'server'/'sv', 'native'/'na'; "
+                f"defaulting to '{_builtin_cs}'."
+            );
+            _default_cs = _builtin_cs;
+        }
+        _builtin_cap = BuildConfig().native_closure_cap;
+        try {
+            _cap = int(build_data.get("native_closure_cap", _builtin_cap));
+        } except (TypeError, ValueError) {
+            _cap = 0;
+        }
+        if _cap < 1 {
+            import from jaclang.cli.console { console }
+            console.warning(
+                f"[build] native_closure_cap="
+                f"'{build_data.get('native_closure_cap')}' must be a positive "
+                f"integer; defaulting to {_builtin_cap}."
+            );
+            _cap = _builtin_cap;
+        }
         config.build = BuildConfig(
             typecheck=build_data.get("typecheck", False),
-            dir=build_data.get("dir", ".jac")
+            dir=build_data.get("dir", ".jac"),
+            default_codespace=_default_cs,
+            native_closure_cap=_cap
         );
     }
     if "gc" in data {

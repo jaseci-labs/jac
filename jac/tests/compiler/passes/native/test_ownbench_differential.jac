@@ -83,7 +83,7 @@ def _digest(out_bin: str, args: list[str]) -> str {
 
 """Compile+run `kernel` under all three modes; assert identical digests."""
 def _assert_differential_identity(kernel: str) {
-    src = os.path.join(OWNBENCH, "kernels", f"{kernel}.na.jac");
+    src = os.path.join(OWNBENCH, "kernels", f"{kernel}.jac");
     assert os.path.exists(src) , f"kernel missing: {src}";
     args = SMALL_ARGS[kernel];
     with tempfile.TemporaryDirectory() as tmp {
@@ -130,7 +130,7 @@ test "ownbench differential identity: deriv (own-param transfer stress)" {
 }
 
 test "ownbench erasure round-trip: deriv reproduces annotated digest" {
-    src = os.path.join(OWNBENCH, "kernels", "own_deriv.na.jac");
+    src = os.path.join(OWNBENCH, "kernels", "own_deriv.jac");
     eraser = os.path.join(OWNBENCH, "harness", "erase.jac");
     args = SMALL_ARGS["own_deriv"];
     with tempfile.TemporaryDirectory() as tmp {
@@ -146,7 +146,7 @@ test "ownbench erasure round-trip: deriv reproduces annotated digest" {
                 f"erase.jac left annotation pattern '{leftover}' behind"
             );
         }
-        bare_src = os.path.join(tmp, "own_deriv_bare.na.jac");
+        bare_src = os.path.join(tmp, "own_deriv_bare.jac");
         with open(bare_src, "w") as f {
             f.write(erased.stdout);
         }

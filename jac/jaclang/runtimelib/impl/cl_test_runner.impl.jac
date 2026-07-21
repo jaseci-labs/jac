@@ -418,19 +418,44 @@ impl _parse_results(stdout: str, tests: list) -> (list[ClTestResult] | None) {
     return None;
 }
 
+impl module_is_client(filepath: str) -> bool {
+    import from jaclang.jac0core.ext_registry { codespace_of }
+    path = os.path.abspath(str(filepath));
+    explicit = codespace_of(os.path.basename(path));
+    if explicit is not None {
+        return explicit == "client";
+    }
+    if path in _COLOR_CACHE {
+        return _COLOR_CACHE[path];
+    }
+    import from jaclang.jac0core.compile_options { CompileOptions }
+    import from jaclang.jac0core.constant { CodeContext }
+    import from jaclang.jac0core.program { JacProgram }
+    result = False;
+    try {
+        mod = JacProgram().compile(
+            path, options=CompileOptions(symtab_ir_only=True, type_check=False)
+        );
+        result = mod is not None
+        and mod.declares_codespace(CodeContext.CLIENT, path_hint=path);
+    } except Exception {
+        result = False;
+    }
+    _COLOR_CACHE[path] = result;
+    return result;
+}
+
 impl is_cl_test_file(filepath: str) -> bool {
-    import from jaclang.jac0core.ext_registry { is_client_module }
-    name = os.path.basename(str(filepath));
-    return is_client_module(name);
+    return module_is_client(filepath);
 }
 
 impl is_cl_test_file_for_discovery(filepath: str) -> bool {
-    import from jaclang.jac0core.ext_registry { is_client_module, is_client_test }
+    import from jaclang.jac0core.ext_registry { is_client_test }
     name = os.path.basename(str(filepath));
-    if not is_client_module(name) {
+    if not (name.startswith("test_") or is_client_test(name)) {
         return False;
     }
-    return name.startswith("test_") or is_client_test(name);
+    return module_is_client(filepath);
 }
 
 impl register_results_into_jactestcheck(filepath: str, results: list) -> None {

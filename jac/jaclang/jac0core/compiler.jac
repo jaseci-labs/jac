@@ -31,6 +31,7 @@ import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
 import from jaclang.jac0core.passes {
     ASTValidationPass,
     BoundaryAnalysisPass,
+    CodespacePullPass,
     DeclImplMatchPass,
     JacAnnexPass,
     PyastGenPass,
@@ -42,7 +43,7 @@ import from jaclang.jac0core.passes {
 import from jaclang.jac0core.program { JacProgram }
 
 def get_symtab_ir_sched -> list[type[Transform[uni.Module, uni.Module]]] {
-    return [ASTValidationPass, SymTabBuildPass, DeclImplMatchPass];
+    return [ASTValidationPass, SymTabBuildPass, DeclImplMatchPass, CodespacePullPass];
 }
 
 glob _ir_sched_loading = ContextVar('jac_ir_sched_loading', default=False),
@@ -93,9 +94,6 @@ def get_ir_gen_sched(
     try {
         import from jaclang.compiler.passes.main.cfg_build_pass { CFGBuildPass }
         import from jaclang.compiler.passes.main.sem_def_match_pass { SemDefMatchPass }
-        import from jaclang.compiler.passes.main.capability_check_pass {
-            CapabilityCheckPass
-        }
         import from jaclang.compiler.passes.main.jsx_intrinsic_guard_pass {
             JsxIntrinsicGuardPass
         }
@@ -116,8 +114,8 @@ def get_ir_gen_sched(
             import from jaclang.compiler.passes.main.mtir_gen_pass { MTIRGenPass }
             passes.append(MTIRGenPass);
         }
-        passes.append(CapabilityCheckPass);
         passes.append(JsxIntrinsicGuardPass);
+        passes.append(CodespacePullPass);
         return passes;
     } except ImportError {
         if is_internal {
@@ -256,8 +254,8 @@ def get_format_sched(
 }
 
 def get_lint_sched -> list[type[Transform[uni.Module, uni.Module]]] {
-    import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacAutoLintPass }
-    return [JacAutoLintPass];
+    import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacLintCheckPass }
+    return [JacLintCheckPass];
 }
 
 def patch_co_filenames_bytes(raw_bc: bytes, find: str, replace: str) -> bytes {
@@ -300,6 +298,7 @@ def _coerce_module(
     context: CodeContext,
     skip_token: (Tok | None) = None
 ) {
+    module.decided_codespace = context.value;
     elements: list[uni.ElementStmt] = [];
     for stmt in module.body {
         if isinstance(stmt, unfold_type) {
@@ -315,7 +314,7 @@ def _coerce_module(
             continue;
         }
         if isinstance(elem, uni.ContextAwareNode) {
-            if skip_token is not None {
+            if (skip_token is not None and not isinstance(elem, uni.Import)) {
                 context_token = elem._source_context_token();
                 if (context_token is not None and context_token.name == skip_token) {
                     continue;
@@ -366,6 +365,462 @@ def _coerce_native_module(module: uni.Module) {
         skip_types=(uni.ServerBlock, uni.ClientBlock),
         context=CodeContext.NATIVE
     );
+}
+
+def _module_top_element(module: uni.Module, nd: uni.UniNode) -> (uni.UniNode | None) {
+    cur: (uni.UniNode | None) = nd;
+    while (cur is not None and cur.parent is not module) {
+        cur = cur.parent;
+    }
+    return cur;
+}
+
+def _stamp_context_element(elem: uni.UniNode, context: CodeContext) {
+    if not isinstance(elem, uni.ContextAwareNode) {
+        return;
+    }
+    elem.code_context = context;
+    if (isinstance(elem, uni.ModuleCode) and elem.body) {
+        for inner in elem.body {
+            if isinstance(inner, uni.ContextAwareNode) {
+                inner.code_context = context;
+            }
+        }
+    }
+}
+
+def _stamp_client_element(elem: uni.UniNode) {
+    _stamp_context_element(elem, CodeContext.CLIENT);
+}
+
+def _seed_module_codespace(module: uni.Module) {
+    client_top_ids: set[int] = set();
+    native_top_ids: set[int] = set();
+    for jsx in module.get_all_sub_nodes(uni.JsxElement) {
+        top = _module_top_element(module, jsx);
+        if top is not None {
+            client_top_ids.add(id(top));
+        }
+    }
+    for imp in module.get_all_sub_nodes(uni.Import) {
+        top = _module_top_element(module, imp);
+        if top is None {
+            continue;
+        }
+        if imp.has_clib_decls {
+            native_top_ids.add(id(top));
+        } elif imp.has_string_path {
+            client_top_ids.add(id(top));
+        }
+    }
+    if (not client_top_ids and not native_top_ids) {
+        return;
+    }
+    for stmt in module.body {
+        if not isinstance(stmt, uni.ContextAwareNode) {
+            continue;
+        }
+        if (
+            stmt._source_context_token() is not None
+            or stmt.code_context != CodeContext.SERVER
+        ) {
+            continue;
+        }
+        if id(stmt) in native_top_ids {
+            _stamp_context_element(stmt, CodeContext.NATIVE);
+        } elif id(stmt) in client_top_ids {
+            _stamp_context_element(stmt, CodeContext.CLIENT);
+        }
+    }
+}
+
+glob NATIVE_DEFAULT_SV_SIGNAL_NODES: tuple = (
+         uni.TypedCtxBlock,
+         uni.PyInlineCode,
+         uni.ClientBlock,
+         uni.ServerBlock,
+         uni.JsxElement
+     ),
+     _na_default_scan_cache: dict[str, tuple] = {},
+     _na_demotion_memo: dict[str, tuple] = {},
+     _na_census: dict[str, dict] = {},
+     _na_census_state: dict[str, bool] = {"enabled": False},
+     _na_cap_noted: dict[str, bool] = {};
+
+def na_census_begin {
+    _na_census.clear();
+    _na_demotion_memo.clear();
+    _na_default_scan_cache.clear();
+    _na_census_state["enabled"] = True;
+}
+
+def na_census_record(path: str, outcome: str, code: str = '', detail: str = '') {
+    if not _na_census_state["enabled"] or not path {
+        return;
+    }
+    key = os.path.realpath(path);
+    prev = _na_census.get(key);
+    if prev is not None and prev['outcome'] == 'demoted' and outcome != 'demoted' {
+        return;
+    }
+    _na_census[key] = {
+        'outcome': outcome,
+        'code': code,
+        'detail': detail,
+        'seams': (prev['seams'] if prev is not None else [])
+    };
+}
+
+def na_census_seam(path: str, reason: str) {
+    if not _na_census_state["enabled"] or not path {
+        return;
+    }
+    key = os.path.realpath(path);
+    rec = _na_census.get(key);
+    if rec is None {
+        rec = {'outcome': 'native', 'code': '', 'detail': '', 'seams': []};
+        _na_census[key] = rec;
+    }
+    rec['seams'].append(reason);
+}
+
+def na_census_end -> dict {
+    snap = dict(_na_census);
+    _na_census_state["enabled"] = False;
+    return snap;
+}
+
+def _default_codespace_for(target_program: JacProgram) -> str {
+    import from jaclang.jac0core.codeinfo { effective_default_codespace }
+    opts = target_program._compile_options;
+    if opts is not None and opts.default_codespace {
+        return opts.default_codespace;
+    }
+    return effective_default_codespace();
+}
+
+def _scan_native_default_signals(
+    module: uni.Module, base_dir: str
+) -> tuple[str, list[str]] {
+    import from jaclang.jac0core.codeinfo {
+        NATIVE_SUPPORTED_STDLIB,
+        is_bundled_native_module,
+        resolve_native_module
+    }
+    deps: list[str] = [];
+    for typ in NATIVE_DEFAULT_SV_SIGNAL_NODES {
+        if module.get_all_sub_nodes(typ) {
+            return (f"contains {typ.__name__}", deps);
+        }
+    }
+    for svr in module.get_all_sub_nodes(uni.SpecialVarRef) {
+        if svr.orig.name == Tok.KW_ROOT {
+            return ("root access (persistent graph)", deps);
+        }
+    }
+    for ab in module.get_all_sub_nodes(uni.Ability) {
+        if ab.is_async {
+            return ("async ability", deps);
+        }
+        if isinstance(ab.signature, uni.EventSignature) {
+            if ab.find_parent_of_type(uni.Archetype) is None {
+                return ("event ability outside an archetype", deps);
+            }
+            _ti = ab.signature.arch_tag_info;
+            _ti_names = [_ti]
+                if isinstance(_ti, uni.Name)
+                else (_ti.get_all_sub_nodes(uni.Name) if _ti is not None else []);
+            for _tn in _ti_names {
+                if _tn.value in ("Root", "root") {
+                    return ("root access (persistent graph)", deps);
+                }
+            }
+        }
+    }
+    for stmt in module.body {
+        if isinstance(stmt, uni.ContextAwareNode) {
+            tok = stmt._source_context_token();
+            if tok is not None and tok.name in (Tok.KW_SERVER, Tok.KW_CLIENT) {
+                return ("explicit sv/cl marker", deps);
+            }
+        }
+        if (
+            isinstance(stmt, (uni.Ability, uni.GlobalVars, uni.Archetype, uni.Enum))
+            and stmt.access is not None
+            and stmt.access.tag.name == Tok.KW_PUB
+        ) {
+            return ("pub access", deps);
+        }
+    }
+    for imp in module.get_all_sub_nodes(uni.Import) {
+        if imp.has_clib_decls {
+            continue;
+        }
+        if imp.is_virtual_jac or imp.has_string_path {
+            return ("virtual/string-path import", deps);
+        }
+        targets: list[tuple[str, (str | None), bool, bool]] = [];
+        if imp.from_loc is not None {
+            targets.append(
+                (
+                    imp.from_loc.dot_path_str,
+                    _try_resolve_import(imp.from_loc),
+                    False,
+                    False
+                )
+            );
+            for item in imp.items {
+                if isinstance(item, uni.ModuleItem) {
+                    item_path = _try_resolve_import(item);
+                    if item_path is not None {
+                        targets.append(("", item_path, False, False));
+                    }
+                }
+            }
+        } else {
+            for item in imp.items {
+                if isinstance(item, uni.ModulePath) {
+                    targets.append(
+                        (
+                            item.dot_path_str,
+                            _try_resolve_import(item),
+                            not imp.is_absorb,
+                            not imp.is_absorb
+                            and item.alias is None
+                            and len(item.path) == 1
+                        )
+                    );
+                }
+            }
+        }
+        for (name, path, is_bare, is_plain_bare) in targets {
+            clean = name.lstrip('.') if name else '';
+            if is_bare {
+                if clean and clean in NATIVE_SUPPORTED_STDLIB {
+                    continue;
+                }
+                if clean and is_bundled_native_module(clean) {
+                    continue;
+                }
+                if not (is_plain_bare and path is not None and path.endswith('.jac')) {
+                    return (f"non-native import '{clean}'", deps);
+                }
+            }
+            if path is not None and path.endswith('.na.jac') {
+                continue;
+            }
+            if path is not None
+            and (path.endswith('.cl.jac') or path.endswith('.sv.jac')) {
+                return ("cl/sv module import", deps);
+            }
+            if path is not None and path.endswith('.jac') {
+                deps.append(os.path.abspath(path));
+                continue;
+            }
+            if clean and clean in NATIVE_SUPPORTED_STDLIB {
+                continue;
+            }
+            if clean and is_bundled_native_module(clean) {
+                continue;
+            }
+            if clean
+            and resolve_native_module(clean, base_dir, allow_inferred=False)[
+                1
+            ] is not None {
+                continue;
+            }
+            return (f"unresolved import '{clean}'", deps);
+        }
+    }
+    return ('', deps);
+}
+
+def _try_resolve_import(nd: (uni.ModulePath | uni.ModuleItem)) -> (str | None) {
+    try {
+        path = nd.resolve_relative_path();
+    } except Exception {
+        return None;
+    }
+    if path and os.path.exists(path) {
+        return path;
+    }
+    return None;
+}
+
+def _is_demoted_native(path: str) -> bool {
+    key = _na_demotion_memo.get(path);
+    if key is None {
+        return False;
+    }
+    try {
+        st = os.stat(path);
+        if key == (st.st_mtime_ns, st.st_size) {
+            return True;
+        }
+    } except OSError {
+        ;
+    }
+    del _na_demotion_memo[path];
+    return False;
+}
+
+def _mark_demoted_native(path: str) {
+    try {
+        st = os.stat(path);
+        _na_demotion_memo[path] = (st.st_mtime_ns, st.st_size);
+    } except OSError {
+        ;
+    }
+}
+
+def _note_native_closure_cap(root_path: str, cap: int) {
+    rp = os.path.realpath(root_path);
+    if rp in _na_cap_noted {
+        return;
+    }
+    _na_cap_noted[rp] = True;
+    try {
+        import from jaclang.cli.console { console }
+        console.print(
+            f"note: {root_path} preferred native but its import closure "
+            f"exceeded the inference cap ({cap} modules); compiled in the "
+            f"server codespace. Raise [build] native_closure_cap in jac.toml "
+            f"to scan larger closures.",
+            style="dim",
+            file=sys.stderr
+        );
+    } except Exception {
+        ;
+    }
+}
+
+def _native_default_dep_scan(path: str) -> (tuple[str, list[str]] | None) {
+    if _is_demoted_native(os.path.realpath(path)) {
+        return ("previously-demoted", []);
+    }
+    import from jaclang.jac0core.bccache {
+        discover_annex_files,
+        discover_variant_files
+    }
+    import from jaclang.jac0core.parser { parse as rd_parse }
+    files = [path] + discover_annex_files(path, '.impl.jac') + discover_annex_files(
+        path, '.test.jac'
+    );
+    fresh_parts: list[tuple] = [];
+    for f in files {
+        try {
+            st = os.stat(f);
+            fresh_parts.append((f, st.st_mtime_ns, st.st_size));
+        } except OSError {
+            return None;
+        }
+    }
+    fresh_key = tuple(fresh_parts);
+    cached = _na_default_scan_cache.get(path);
+    if cached is not None and cached[0] == fresh_key {
+        return (cached[1], cached[2]);
+    }
+    sv_reason = "sv-variant-file" if discover_variant_files(path) else '';
+    deps: list[str] = [];
+    if not sv_reason {
+        base_dir = os.path.dirname(os.path.abspath(path)) or '.';
+        for f in files {
+            try {
+                src = read_file_with_encoding(f);
+            } except Exception {
+                sv_reason = "unreadable annex";
+                break;
+            }
+            (dep_mod, had_err) = rd_parse(src, f, prog=JacProgram());
+            if had_err {
+                sv_reason = "parse error";
+                break;
+            }
+            (f_sv, f_deps) = _scan_native_default_signals(dep_mod, base_dir);
+            if f_sv {
+                sv_reason = f_sv;
+                break;
+            }
+            deps.extend(f_deps);
+        }
+    }
+    if sv_reason {
+        deps = [];
+    }
+    _na_default_scan_cache[path] = (fresh_key, sv_reason, deps);
+    return (sv_reason, deps);
+}
+
+def _native_default_deps_ok(root_path: str, root_deps: list[str]) -> bool {
+    import from jaclang.jac0core.codeinfo { effective_native_closure_cap }
+    cap = effective_native_closure_cap();
+    edges: dict[str, list[str]] = {root_path: list(root_deps)};
+    queue: list[str] = list(root_deps);
+    while queue {
+        if len(edges) > cap {
+            _note_native_closure_cap(root_path, cap);
+            return False;
+        }
+        dep = queue.pop();
+        if dep in edges {
+            continue;
+        }
+        info = _native_default_dep_scan(dep);
+        if info is None {
+            return False;
+        }
+        (dep_sv, dep_deps) = info;
+        if dep_sv {
+            return False;
+        }
+        edges[dep] = list(dep_deps);
+        for d in dep_deps {
+            if d not in edges {
+                queue.append(d);
+            }
+        }
+    }
+    return True;
+}
+
+def _native_default_path_ok(path: str) -> bool {
+    ap = os.path.abspath(path);
+    info = _native_default_dep_scan(ap);
+    if info is None {
+        return False;
+    }
+    (has_sv, deps) = info;
+    if has_sv {
+        return False;
+    }
+    return _native_default_deps_ok(ap, deps);
+}
+
+def _native_default_closure_verdict(module: uni.Module) -> tuple[bool, str] {
+    import from jaclang.jac0core.bccache { discover_variant_files }
+    mod_path = module.loc.mod_path if module.loc is not None else '';
+    if not mod_path {
+        return (False, "no module path");
+    }
+    if _is_demoted_native(os.path.realpath(mod_path)) {
+        return (False, "previously-demoted");
+    }
+    if discover_variant_files(mod_path) {
+        return (False, "sv-variant-file");
+    }
+    base_dir = os.path.dirname(os.path.abspath(mod_path)) or '.';
+    (sv_reason, deps) = _scan_native_default_signals(module, base_dir);
+    if sv_reason {
+        return (False, sv_reason);
+    }
+    if not _native_default_deps_ok(os.path.abspath(mod_path), deps) {
+        return (False, "import-closure (sv dep or cap)");
+    }
+    return (True, '');
+}
+
+def _native_default_closure_ok(module: uni.Module) -> bool {
+    return _native_default_closure_verdict(module)[0];
 }
 
 obj JacCompiler {
@@ -432,6 +887,13 @@ obj JacCompiler {
     ) -> uni.Module;
 
     def compile(
+        file_path: str,
+        target_program: JacProgram,
+        use_str: (str | None) = None,
+        options: CompileOptions = CompileOptions()
+    ) -> uni.Module;
+
+    def _compile_once(
         file_path: str,
         target_program: JacProgram,
         use_str: (str | None) = None,

@@ -29,13 +29,6 @@ glob registry = get_registry();
             "cache", typ=bool, default=True, help="Enable compilation cache", short="c"
         ),
         Arg.create(
-            "autonative",
-            typ=bool,
-            default=False,
-            help="Auto-promote compatible modules to native execution (experimental)",
-            short="N"
-        ),
-        Arg.create(
             "profile",
             default="",
             short="",
@@ -92,7 +85,6 @@ glob registry = get_registry();
         ("jac run --debug app.jac", "Run under the Python debugger"),
         ("jac run --show", "Print what the project would run/build, without doing it"),
         ("jac run --no-cache app.jac", "Run without caching"),
-        ("jac run --autonative app.jac", "Run with native auto-promotion"),
         ("jac run --profile prod app.jac", "Run with production profile"),
         ("jac run -e all app.jac", "Run and show all diagnostics (errors+warnings)"),
         ("jac run -e none app.jac", "Run silently, suppress all diagnostics"),
@@ -106,7 +98,6 @@ def run(
     show: bool = False,
     main: bool = True,
     cache: bool = True,
-    autonative: bool = False,
     diagnostics: str = "",
     entry_name: str = "",
     nd: str = "",
@@ -319,7 +310,7 @@ def run_jab_image(
             "global",
             typ=bool,
             default=False,
-            help="Resolve from the jac-owned global site only, ignoring the project venv",
+            help="Resolve from jac-owned global tools only (global python site + global npm), ignoring the project",
             short="g",
             dest="use_global"
         ),
@@ -349,6 +340,10 @@ def run_jab_image(
         ("jac x black .", "Run an installed formatter on the current directory"),
         ("jac x eslint .", "Run a project npm tool (node_modules/.bin) via bun"),
         ("jac x --global hf whoami", "Force the global-site copy of a tool"),
+        (
+            "jac x --global eslint .",
+            "Run a globally-installed npm tool (jac install --npm --global eslint)"
+        ),
         ("jac x --node vite build", "Force the project's npm tool"),
         ("jac x --list", "List the CLI tools available here"),
 

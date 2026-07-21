@@ -1,11 +1,7 @@
 impl TypeEvaluator._get_ts_declared_item_type(
     from_loc: uni.ModulePath, item_name: str
 ) -> (TypeBase | None) {
-    if not (
-        from_loc.path
-        and len(from_loc.path) == 1
-        and isinstance(from_loc.path[0], uni.String)
-    ) {
+    if from_loc.string_path_value is None {
         return None;
     }
     if not from_loc.in_client_context() {
