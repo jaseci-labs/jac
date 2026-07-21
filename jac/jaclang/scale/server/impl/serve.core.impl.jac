@@ -620,6 +620,10 @@ impl JacAPIServerCore._refresh_dev_endpoints -> None {
     self._register_endpoints();
     self.server.execute();
     self.server.app.openapi_schema = None;
+
+    JacScaleScheduler.instance().register_static_tasks(
+        self.introspector._walkers or {}, self.introspector._functions or {}, self
+    );
 }
 
 impl JacAPIServerCore._setup_scheduler -> None {
