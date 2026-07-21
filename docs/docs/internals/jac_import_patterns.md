@@ -249,4 +249,3 @@ function MyComponent() {
 - **Path Aliases**: Full support via `[client.paths]` in jac.toml (Vite, TypeScript, and module resolver)
 - **String Literal Imports**: Full support for hyphenated package names (react-dom, styled-components, etc.)
 - ️ **Named + Namespace Mix**: Generates but produces invalid JavaScript
-

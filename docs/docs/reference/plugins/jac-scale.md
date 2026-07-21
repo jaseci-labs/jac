@@ -26,7 +26,6 @@ jac start main.jac --scale   # N users, M machines, Kubernetes
 
 This reference is split across three focused pages, hubbed here. Use the quick reference below to jump to the area you need.
 
-
 ---
 
 ## Optional dependencies

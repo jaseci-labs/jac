@@ -586,7 +586,6 @@ jac fmt . --cache
 
 ---
 
-
 ### jac precommit
 
 *Hidden from `jac --help` (still functional).*
@@ -623,7 +622,6 @@ jac precommit --install
 > **Git hook**: `jac precommit --install` writes an executable `.git/hooks/pre-commit` that runs `jac precommit --staged --verify`. The hook blocks a commit when staged `.jac` files are unformatted or fail `jac check`; run `jac precommit` (without `--verify`) to apply the fixes, then re-stage. If a hook already exists, the installer leaves it untouched and reports the conflict.
 
 ---
-
 
 ## Visualization & Debug
 
@@ -713,7 +711,6 @@ jac dot main.jac -s my_session -d 3
 ```
 
 ---
-
 
 ## Browser Automation
 
@@ -1758,7 +1755,6 @@ jac build --client mobile -p android
 
 ## Template Management
 
-
 ## Utility Commands
 
 ### jac guide
@@ -1798,7 +1794,6 @@ jac guide --export ~/.claude/skills
 See [Agent Skills and MCP](../agent-skills-and-mcp.md) for using the guides with AI assistants.
 
 ---
-
 
 ### jac tool
 
