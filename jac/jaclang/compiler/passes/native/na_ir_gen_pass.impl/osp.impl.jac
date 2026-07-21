@@ -719,6 +719,22 @@ impl NaIRGenPass._osp_generic_edge -> (ir.Value | None) {
         return None;
     }
     i64 = ir.IntType(64);
+    if self.region_stack {
+        return self._region_alloc(ir.Constant(i64, 8), name="osp.gedge.rgn");
+    }
+    if "here" in self.local_vars {
+        self._emit_arena_helpers();
+        _i8p_ge = ir.IntType(8).as_pointer();
+        _here_v = self.builder.load(self.local_vars["here"], name="gedge.here");
+        _here_i8 = self.builder.bitcast(_here_v, _i8p_ge, name="gedge.here.i8");
+        _gedge = self.builder.call(
+            self.osp_anchor_alloc_fn,
+            [_here_i8, ir.Constant(i64, 8), ir.Constant(_i8p_ge, None)],
+            name="osp.gedge.anch"
+        );
+        self._osp_make_immortal(_gedge);
+        return _gedge;
+    }
     _raw = self._rc_call_with_ctx(
         self.rc_alloc_fn, [ir.Constant(i64, 8)], op="osp", loc="", name="osp.gedge"
     );
@@ -909,6 +925,49 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
 
         self._emit_rc_release_simple(_unfiltered, op="osp_refs_filtered", loc="");
     }
+    return _result;
+}
+
+impl NaIRGenPass._codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | None) {
+    i64 = ir.IntType(64);
+    _f = nd.right;
+    _fname = self._get_name(_f.f_type) if _f.f_type is not None else None;
+    if _f.compares or _fname is None {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="expression",
+            name="FilterCompr",
+            help_text="Only plain `[?:NodeType]` type filters lower natively; field-predicate filters are not supported yet - filter with an explicit loop."
+        );
+        return None;
+    }
+    target_val = self._codegen_expr(nd.target);
+    if target_val is None {
+        return None;
+    }
+    _model = self.ir_in.gen.osp_model;
+    _tags = _model.tags if _model is not None else {};
+    _ntag = _tags.get(_fname, -1);
+    if _ntag < 0 or self._osp_filter_fn is None {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="expression",
+            name="FilterCompr",
+            help_text=self._xmod_osp_help([_fname])
+        );
+        return None;
+    }
+    _result = self.builder.call(
+        self._osp_filter_fn,
+        [target_val, ir.Constant(i64, _ntag)],
+        name="osp.chain.filt"
+    );
+    if isinstance(target_val.type, ir.PointerType) and self._is_owned(target_val) {
+        self._emit_rc_release_simple(target_val, op="chain_filter", loc="");
+    }
+    self._mark_owned(_result);
     return _result;
 }
 

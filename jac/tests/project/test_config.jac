@@ -463,6 +463,34 @@ test "dev section parsing" {
     assert as_int.dev.test_jobs == "0";
 }
 
+test "parse build native_closure_cap" {
+    config_mod._config = None;
+    cfg = JacConfig.from_toml_str("\n[build]\nnative_closure_cap = 8\n");
+    assert cfg.build.native_closure_cap == 8;
+
+    config_mod._config = None;
+    base = JacConfig.from_toml_str("\n[build]\ntypecheck = true\n");
+    assert base.build.native_closure_cap == 256;
+
+    config_mod._config = None;
+    bad = JacConfig.from_toml_str("\n[build]\nnative_closure_cap = 0\n");
+    assert bad.build.native_closure_cap == 256 , "invalid cap falls back to default";
+}
+
+test "closure cap override resolves through effective_native_closure_cap" {
+    import from jaclang.jac0core.codeinfo {
+        set_native_closure_cap,
+        effective_native_closure_cap
+    }
+    set_native_closure_cap(3);
+    try {
+        assert effective_native_closure_cap() == 3;
+    } finally {
+        set_native_closure_cap(0);
+    }
+    assert effective_native_closure_cap() == 256;
+}
+
 test "parse full config" {
     config_mod._config = None;
     toml_str = "\n[project]\nname = \"full-project\"\nversion = \"1.2.3\"\ndescription = \"A full project\"\nauthors = [\"Jane Doe <jane@example.com>\"]\nlicense = \"MIT\"\nentry-point = \"app.jac\"\n\n[dependencies]\nnumpy = \">=1.24.0\"\npandas = \">=2.0.0\"\n\n[run]\nsession = \"my_session\"\nmain = false\ncache = false\n\n[build]\ntypecheck = true\n\n[test]\ndirectory = \"tests\"\nverbose = true\nfail_fast = true\nmax_failures = 5\n\n[serve]\nport = 9000\n\n[cache]\nenabled = false\ndir = \".cache\"\n\n[scripts]\nstart = \"jac run app.jac\"\nlint = \"jac lint . --fix\"\n\n[byllm]\ndefault_model = \"gpt-4\"\ntemperature = 0.7\n\n[environments.development]\n[environments.development.serve]\nport = 3000\n\n[environments.production]\n[environments.production.serve]\nport = 8000\n";

@@ -518,10 +518,11 @@ test "destroy collection removes all labeled ScaledObjects and TriggerAuthentica
     keda = KEDAAutoscaler(_custom_api=mock_api, _v2_api=unittest.mock.MagicMock());
     keda.destroy_collection("staging", "managed=jac-scale");
     delete_calls = mock_api.delete_namespaced_custom_object.call_args_list;
-    assert len(delete_calls) == 2;
+    assert len(delete_calls) == 3;
     plurals = [c[1]["plural"] for c in delete_calls];
     assert "scaledobjects" in plurals;
     assert "triggerauthentications" in plurals;
+    assert "interceptorroutes" in plurals;
 }
 
 test "destroy collection is silent when KEDA CRDs are not installed (404)" {

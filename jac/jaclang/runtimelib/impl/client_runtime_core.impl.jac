@@ -18,7 +18,7 @@ impl __createJacSchema(zodLib: any) -> any {
 }
 
 impl __getApiBaseUrl -> str {
-    return globalThis.__JAC_API_BASE_URL__ || "";
+    return globalThis.__JAC_API_BASE_URL__ or "";
 }
 
 impl __getEndpointEffects -> dict {

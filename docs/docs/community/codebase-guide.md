@@ -20,7 +20,7 @@ Before you open any files, these five ideas will save you a lot of confusion:
 
 **Capabilities are built in.** AI (byLLM), serving and deployment (scale), the full-stack client framework, and the MCP server are all part of `jaclang` core, not separate packages. There is no plugin system or entry-point discovery -- features are wired by direct imports, and only their optional third-party dependencies are resolved per-project via `jac install`.
 
-If you're new to Jac syntax, skim the [Syntax Cheatsheet](../quick-guide/syntax-cheatsheet.md) or work through [Jac Fundamentals](../tutorials/language/basics.md) before diving into compiler code. Jac reads like Python in most places, but the declaration/implementation split and some other features will look unfamiliar without that primer.
+If you're new to Jac syntax, skim the [Syntax Cheatsheet](../reference/language/syntax-cheatsheet.md) or work through [Jac Fundamentals](../tutorials/language/basics.md) before diving into compiler code. Jac reads like Python in most places, but the declaration/implementation split and some other features will look unfamiliar without that primer.
 
 ---
 

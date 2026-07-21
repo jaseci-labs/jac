@@ -49,13 +49,13 @@ class ClientTarget {
         required_dependencies: list[str] = [],
         output_dir: Optional[Path] = None;
 
-    def setup(self: ClientTarget, project_dir: Path) -> None abs;
+    def setup(self: ClientTarget, project_dir: Path) -> None abst;
     def build(
         self: ClientTarget,
         entry_file: Path,
         project_dir: Path,
         platform: Optional[str] = None
-    ) -> Path abs;
+    ) -> Path abst;
 
     def dev(
         self: ClientTarget,
@@ -63,11 +63,11 @@ class ClientTarget {
         project_dir: Path,
         port: int = 8000,
         api_port: int = 0
-    ) -> None abs;
+    ) -> None abst;
 
     def start(
         self: ClientTarget, entry_file: Path, project_dir: Path, api_port: int = 8000
-    ) -> None abs;
+    ) -> None abst;
 }
 
 obj TargetRegistry {
@@ -90,7 +90,6 @@ glob _registry: TargetRegistry | None = None,
 
 def get_target_registry -> TargetRegistry {
     import from jaclang.runtimelib.client.targets.registry { TargetRegistry }
-    global _registry;
     if _registry is None {
         _registry = TargetRegistry();
     }
@@ -99,7 +98,6 @@ def get_target_registry -> TargetRegistry {
 
 def get_target_factory -> TargetFactory {
     import from jaclang.runtimelib.client.targets.registry { TargetFactory }
-    global _factory;
     if _factory is None {
         _factory = TargetFactory();
     }

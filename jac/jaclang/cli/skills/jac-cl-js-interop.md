@@ -3,7 +3,7 @@ name: jac-cl-js-interop
 description: JavaScript interop in client Jac - the `new()` builtin for browser constructors (WebSocket, URL, Date, CustomEvent), `.call(None, ...)` for callbacks, `glob` module state, browser globals (localStorage, window, document), polling/debounce/RAF recipes, jac2js gotchas (chr(10) newlines, let-scoping/TDZ), and debugging compiled output. Load when client code needs a browser API that isn't a React pattern.
 ---
 
-Client Jac compiles to JavaScript, so the whole browser API surface is reachable - but a few idioms differ from both Python and JS. The three you cannot guess: `new(Cls, ...)`, `.call(None, ...)`, and `glob` module state.
+Client Jac compiles to JavaScript, so the whole browser API surface is reachable - but a few idioms differ from both Python and JS. The three you cannot guess: `new(Cls, ...)`, `.call(None, ...)`, and `glob` module state. (All of it applies to any client code - `.cl.jac` files or plain `.jac` inferred client from JSX/npm imports; markers are optional overrides. See `jac-codespaces`.)
 
 > **`jac check` vs runtime:** isolated `jac check` has no typed stubs for browser globals yet, so it flags these patterns - `W2001` ("Name 'WebSocket' may be undefined"), `E1053`/`E1030`/`E1031` on `new()` args, `window.*`, `JSON.parse` - plus `W6002` portability nags. **They are correct at runtime and `jac build` succeeds.** Don't "fix" them into broken shapes; suppress per line with `# jac:ignore[CODE]` if you need a clean check.
 

@@ -1,6 +1,6 @@
 # jac-client Reference
 
-jac-client adds client-side compilation to Jac so you can write React-style UI components using `cl { }` blocks (or `.cl.jac` files). The compiler separates your code automatically -- server-side logic compiles to Python, while client-side components compile to JavaScript with React as the rendering engine.
+jac-client adds client-side compilation to Jac so you can write React-style UI components in ordinary `.jac` files. The compiler separates your code automatically: declarations with client-only syntax (JSX, npm imports) -- plus anything client code references -- compile to JavaScript with React as the rendering engine, while the rest compiles to Python on the server. You never have to mark the split, though explicit `cl { }` blocks and `.cl.jac` files remain available when you want the boundary pinned in source.
 
 You also get project scaffolding (`jac create --use web-static`), npm dependency management, a Vite-powered dev server with HMR, and automatic HTTP bridge generation so your client components can call server walkers without manual API wiring. This reference covers installation, project structure, the module system, component authoring, and build configuration.
 
@@ -34,25 +34,32 @@ myapp/
 ├── README.md          # Project readme
 ├── AGENTS.md          # Agent guide for the project
 ├── components/        # Reusable components
-│   └── Button.cl.jac  # Example component (.cl.jac = client-side)
+│   └── Button.jac     # Example component (client-side by inference)
 └── assets/            # Static assets (images, fonts)
 ```
 
 TypeScript/TSX and CSS files are also supported -- drop a `.tsx` component or
 a `.css` file anywhere in the project and import it from your Jac code.
 
-### The `.cl.jac` Convention
+### Client Code Is Inferred
 
-Files ending in `.cl.jac` are automatically treated as client-side code -- no `cl { }` block needed:
+A component file needs no marker at all -- JSX and npm imports are client-only syntax, so the compiler places these declarations (and any helpers they use) in the client bundle automatically:
 
 ```jac
-# components/Header.cl.jac -- automatically client-side
+# components/Header.jac -- client-side by inference
 def:pub Header() -> JsxElement {
     return <header>My App</header>;
 }
 ```
 
-This is equivalent to wrapping a regular `.jac` file's contents in a `cl { }` block.
+If you prefer the placement to be visible in the filename, the `.cl.jac` extension still works and pins the whole file client-side:
+
+```jac
+# components/Header.cl.jac -- explicitly client-side
+def:pub Header() -> JsxElement {
+    return <header>My App</header>;
+}
+```
 
 ---
 
@@ -260,7 +267,21 @@ with entry {
 
 ## Client Sections
 
-Wrap client-side (React) code in a `cl { ... }` block -- the braces bracket exactly the tagged region, which is the clearest way to mix client and server code in one file:
+Client placement is inferred, so mixing client and server code in one file needs no wrapper -- a component sits next to server logic and each lands on its own side:
+
+```jac
+def:pub app() -> JsxElement {           # JSX -> client
+    return <div>
+        <h1>Hello, World!</h1>
+    </div>;
+}
+
+def:pub get_greeting() -> str {         # unmarked -> server endpoint
+    return "Hello from the server";
+}
+```
+
+When you want the boundary explicit, wrap client code in a `cl { ... }` block -- the braces bracket exactly the tagged region:
 
 ```jac
 cl {
@@ -272,7 +293,7 @@ cl {
 }
 ```
 
-A `cl { ... }` block also works inside a function or class body to locally override the active codespace. In `.cl.jac` files, the whole file is already client-side, so no wrapper is needed.
+A `cl { ... }` block also works inside a function or class body to locally override the active codespace. In `.cl.jac` files, the whole file is already client-side, so no wrapper is needed. Inference never overrides an explicit marker.
 
 ### Single-Statement Forms
 

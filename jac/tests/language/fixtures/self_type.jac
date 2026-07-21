@@ -388,7 +388,7 @@ with entry:__main__ {
 
 """Self as return type in abstract method declarations."""
 obj Cloneable {
-    def clone() -> Self abs;
+    def clone() -> Self abst;
 }
 
 obj Point(Cloneable) {

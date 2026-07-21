@@ -10,7 +10,8 @@ impl build(
     no_typecheck: bool = False,
     check_only: bool = False,
     client: str = "",
-    platform: str | None = None
+    platform: str | None = None,
+    fat: bool = False
 ) -> int {
     import from jaclang.project.config { get_config }
     import from jaclang.project.kinds { resolve_entry }
@@ -18,6 +19,13 @@ impl build(
     if client {
         import from jaclang.runtimelib.client.cli { run_client_build }
         return run_client_build(filename, client, platform);
+    }
+    if fat and projection not in ["jab", "binary"] {
+        console.error(
+            f"--fat is not supported for the '{projection}' projection.",
+            hint="Vendoring applies to 'jab' and 'binary' bundles only."
+        );
+        return 1;
     }
 
     cfg = get_config(start_path=Path.cwd(), force_discover=True);
@@ -57,7 +65,7 @@ impl build(
 
     if projection in ["jab", "sealed", "binary", "wheel", "npm"] {
         import from jaclang.cli.commands.project { bundle }
-        return bundle(output=output, target=projection);
+        return bundle(output=output, target=projection, fat=fat);
     }
     if projection == "source" {
         import from jaclang.cli.commands.eject { eject }

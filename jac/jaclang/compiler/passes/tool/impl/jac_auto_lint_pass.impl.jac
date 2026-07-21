@@ -470,6 +470,10 @@ impl JacAutoLintPass.can_convert_to_glob(assignment: uni.Assignment) -> bool {
             return False;
         }
     }
+    if isinstance(assignment.value, uni.FuncCall)
+    or len(assignment.value.get_all_sub_nodes(uni.FuncCall)) > 0 {
+        return False;
+    }
     return True;
 }
 
@@ -483,8 +487,10 @@ impl JacAutoLintPass.names_unsafe_to_globalize(module: uni.Module) -> set[str] {
             }
         } elif isinstance(stmt, uni.ModuleCode) and stmt.name is None {
             for inner_stmt in stmt.body {
-                if isinstance(inner_stmt, uni.Assignment)
-                and self.can_convert_to_glob(inner_stmt) {
+                for assign in inner_stmt.get_all_sub_nodes(uni.Assignment) {
+                    target_lists.append(assign.target);
+                }
+                if isinstance(inner_stmt, uni.Assignment) {
                     target_lists.append(inner_stmt.target);
                 }
             }
@@ -504,6 +510,22 @@ impl JacAutoLintPass.names_unsafe_to_globalize(module: uni.Module) -> set[str] {
     };
 }
 
+impl JacAutoLintPass.entry_written_names(module: uni.Module) -> set[str] {
+    written: set[str] = set();
+    for stmt in module.body {
+        if isinstance(stmt, uni.ModuleCode) and stmt.name is None {
+            for assign in stmt.get_all_sub_nodes(uni.Assignment) {
+                for target in assign.target {
+                    if isinstance(target, uni.Name) {
+                        written.add(target.value);
+                    }
+                }
+            }
+        }
+    }
+    return written;
+}
+
 impl JacAutoLintPass.enter_module(nd: uni.Module) -> None {
     if not self.lint_enabled or self.report_only {
         return;
@@ -513,6 +535,7 @@ impl JacAutoLintPass.enter_module(nd: uni.Module) -> None {
         self.main_module = module;
     }
     unsafe_globalize = self.names_unsafe_to_globalize(module);
+    entry_written = self.entry_written_names(module);
     new_body: list[uni.UniNode] = [];
     for stmt in module.body {
         if self._is_future_annotations_import(stmt)
@@ -529,6 +552,14 @@ impl JacAutoLintPass.enter_module(nd: uni.Module) -> None {
                 and self.can_convert_to_glob(inner_stmt)
                 and not any(
                     target.value in unsafe_globalize for target in inner_stmt.target
+                )
+                and not (
+                    isinstance(inner_stmt.value, uni.Name)
+                    and inner_stmt.value.value in entry_written
+                )
+                and not any(
+                    nm.value in entry_written
+                    for nm in inner_stmt.value.get_all_sub_nodes(uni.Name)
                 ) {
                     extracted_stmt = self.create_glob_from_assignment(inner_stmt);
                 } elif self.is_module_level_construct(inner_stmt) {
@@ -1023,9 +1054,6 @@ impl JacAutoLintPass._exprs_are_identical(expr1: uni.Expr, expr2: uni.Expr) -> b
     if type(expr1) != type(expr2) {
         return False;
     }
-    if isinstance(expr1, uni.Name) and isinstance(expr2, uni.Name) {
-        return expr1.value == expr2.value;
-    }
     if isinstance(expr1, uni.AtomTrailer) and isinstance(expr2, uni.AtomTrailer) {
         if expr1.is_attr != expr2.is_attr {
             return False;
@@ -1040,12 +1068,6 @@ impl JacAutoLintPass._exprs_are_identical(expr1: uni.Expr, expr2: uni.Expr) -> b
             return expr1.right.value == expr2.right.value;
         }
         return self._exprs_are_identical(expr1.right, expr2.right);
-    }
-    if isinstance(expr1, uni.SpecialVarRef) and isinstance(expr2, uni.SpecialVarRef) {
-        if expr1.name and expr2.name {
-            return expr1.name.value == expr2.name.value;
-        }
-        return expr1.name is None and expr2.name is None;
     }
     key1 = self._expr_to_key(expr1);
     key2 = self._expr_to_key(expr2);
