@@ -386,6 +386,7 @@ impl JacScaleScheduler.register_static_tasks(
         return target;
     }
 
+    static_names: set = set();
     for (registry, is_walker) in [(walkers, True), (functions, False)] {
         label = 'walker' if is_walker else 'function';
         for item_name in registry {
@@ -401,6 +402,7 @@ impl JacScaleScheduler.register_static_tasks(
                 continue;
             }
             logger.debug(f"Registered static {label}: {item_name}");
+            static_names.add(item_name);
             base_scheduler.register(
                 name=item_name,
                 target=_make_target(item_name, is_walker),
@@ -408,6 +410,15 @@ impl JacScaleScheduler.register_static_tasks(
                 is_walker=False
             );
         }
+    }
+
+    for stale in [
+        t.name
+        for t in base_scheduler._tasks
+        if t.name not in static_names
+    ] {
+        logger.debug(f"Removing stale static task: {stale}");
+        base_scheduler.remove(stale);
     }
 
     if base_scheduler._tasks {

@@ -68,6 +68,26 @@ def _populate_native_argv(engine: object, argv: list[str]) -> None {
     engine._jac_argv_refs = (c_strings, c_argv);
 }
 
+def _warn_ignored_schedules(mod_key: str) -> None {
+    import inspect;
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
+    module = Jac.loaded_modules.get(mod_key);
+    if module is None {
+        return;
+    }
+    names = [
+        name
+        for (name, member) in inspect.getmembers(module)
+        if member?.schedule_spec is not None
+    ];
+    if names {
+        console.warning(
+            f"@schedule tasks ({', '.join(names)}) are ignored by 'jac run'; "
+            "use 'jac start' to execute them"
+        );
+    }
+}
+
 def _print_plan(plan: RunPlan) {
     console.print(f"project kind : {plan.kind}");
     console.print(f"action       : {plan.action}");
@@ -412,6 +432,7 @@ impl run(
         mach.close();
         return 1 if diagnostics != "none" else 0;
     }
+    _warn_ignored_schedules('__main__' if main else mod);
     n_errors = len(Jac.program.errors_had);
     n_warnings = len(Jac.program.warnings_had);
     if diagnostics != "none" {
@@ -1164,8 +1185,9 @@ impl x(
     use_global: bool = False,
     use_node: bool = False,
     list_tools: bool = False,
-    args: list = []
+    args: (list | None) = None
 ) -> int {
+    args = args if args is not None else [];
     tiers = _tool_tiers(use_global, use_node);
 
     if list_tools or not name {
