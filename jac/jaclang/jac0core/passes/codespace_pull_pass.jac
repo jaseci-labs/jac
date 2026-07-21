@@ -10,11 +10,32 @@ def _top_element(module: uni.Module, nd: uni.UniNode) -> (uni.UniNode | None) {
     return cur;
 }
 
-def _pullable_by_client_reference(elem: uni.UniNode) -> bool {
-    if isinstance(elem, (uni.Archetype, uni.TypeAlias)) {
+def _is_client_top(elem: uni.UniNode) -> bool {
+    if isinstance(elem, uni.ClientBlock) {
+        return True;
+    }
+    return isinstance(elem, uni.ContextAwareNode)
+    and elem.code_context == CodeContext.CLIENT;
+}
+
+def _pullable_by_client_reference(
+    elem: uni.UniNode, module: uni.Module, body_refs: dict[int, set[int]]
+) -> bool {
+    if isinstance(elem, uni.Archetype) and elem.arch_kind is not None {
         return False;
     }
-    if isinstance(elem, (uni.Ability, uni.GlobalVars)) {
+    if isinstance(elem, (uni.Archetype, uni.TypeAlias)) {
+        for top in module.body {
+            if top is elem {
+                continue;
+            }
+            if (id(elem) in body_refs[id(top)] and not _is_client_top(top)) {
+                return False;
+            }
+        }
+        return True;
+    }
+    if isinstance(elem, uni.Ability) {
         return elem.access is None;
     }
     return True;
@@ -107,6 +128,10 @@ impl CodespacePullPass.transform(ir_in: uni.Module) -> uni.Module {
     na_sources: set[int] = set();
     na_ref_ids: set[int] = set();
     uses_map: dict[int, set[int]] = {};
+    body_refs: dict[int, set[int]] = {};
+    for top in module.body {
+        body_refs[id(top)] = _ref_top_ids(module, top);
+    }
 
     def _is_sv_import(elem: uni.UniNode) -> bool {
         return isinstance(elem, uni.Import) and elem.is_sv_marked;
@@ -181,7 +206,10 @@ impl CodespacePullPass.transform(ir_in: uni.Module) -> uni.Module {
             refs = uses_map[id(elem)];
             want_cl = (
                 not cl_sources.isdisjoint(refs)
-                or (id(elem) in cl_ref_ids and _pullable_by_client_reference(elem))
+                or (
+                    id(elem) in cl_ref_ids
+                    and _pullable_by_client_reference(elem, module, body_refs)
+                )
             );
             want_na = (
                 not na_sources.isdisjoint(refs)
