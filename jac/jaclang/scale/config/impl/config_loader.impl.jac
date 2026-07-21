@@ -532,7 +532,11 @@ impl JacScaleConfig.get_auth_config(self: JacScaleConfig) -> dict[str, Any] {
 
 impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
-    ms_config = config.get('microservices', {});
+    return normalize_microservices_config(config.get('microservices', {}));
+}
+
+
+impl normalize_microservices_config(ms_config: dict[str, any]) -> dict[str, any] {
     client_config = ms_config.get('client', {});
     cors_config = ms_config.get('cors', {});
     rl_config = ms_config.get('rate_limit', {});
