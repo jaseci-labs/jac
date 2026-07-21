@@ -229,9 +229,10 @@ impl Scheduler._execute(task: ScheduledTask) -> None {
             import from jaclang { JacRuntimeInterface as Jac }
             import from jaclang.jac0core.constructs { WalkerArchetype }
             walker_instance = task.target();
-            if isinstance(walker_instance, WalkerArchetype) {
-                Jac.spawn(walker_instance, Jac.root());
+            if not isinstance(walker_instance, WalkerArchetype) {
+                raise TypeError("Invalid walker object");
             }
+            Jac.spawn(walker_instance, Jac.root());
         } else {
             task.target();
         }
