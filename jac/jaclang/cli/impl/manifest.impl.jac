@@ -2693,7 +2693,7 @@ def _command_routes -> list[CommandMeta] {
             hidden=False,
             handler_module='jaclang.scale.plugin',
             handler_name='scale_cmd',
-            needs=['providers'],
+            needs=[],
             description="",
             examples=[
                 ('jac scale status', 'Show status of all microservices'),
