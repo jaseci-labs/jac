@@ -1054,9 +1054,6 @@ impl JacAutoLintPass._exprs_are_identical(expr1: uni.Expr, expr2: uni.Expr) -> b
     if type(expr1) != type(expr2) {
         return False;
     }
-    if isinstance(expr1, uni.Name) and isinstance(expr2, uni.Name) {
-        return expr1.value == expr2.value;
-    }
     if isinstance(expr1, uni.AtomTrailer) and isinstance(expr2, uni.AtomTrailer) {
         if expr1.is_attr != expr2.is_attr {
             return False;
@@ -1071,12 +1068,6 @@ impl JacAutoLintPass._exprs_are_identical(expr1: uni.Expr, expr2: uni.Expr) -> b
             return expr1.right.value == expr2.right.value;
         }
         return self._exprs_are_identical(expr1.right, expr2.right);
-    }
-    if isinstance(expr1, uni.SpecialVarRef) and isinstance(expr2, uni.SpecialVarRef) {
-        if expr1.name and expr2.name {
-            return expr1.name.value == expr2.name.value;
-        }
-        return expr1.name is None and expr2.name is None;
     }
     key1 = self._expr_to_key(expr1);
     key2 = self._expr_to_key(expr2);

@@ -985,21 +985,26 @@ impl PyastGenPass.exit_test(nd: uni.Test) -> None {
 }
 
 impl PyastGenPass._native_test_shim_stmts(nd: uni.Test) -> list {
-    import from jaclang.jac0core.codeinfo { native_test_symbol }
+    import from jaclang.jac0core.codeinfo { native_test_symbol, native_safe_sym }
     test_name = nd.name.sym_name;
     line = nd.loc.first_line if nd.loc else 0;
     symbol = native_test_symbol(test_name, line);
+    manifest = self.ir_in.gen.interop_manifest if self.ir_in?.gen else None;
+    dep_sources = manifest.native_transitive_sources if manifest else [];
+    init_syms: list[str] = [];
+    for dep_src in (dep_sources or []) {
+        if dep_src {
+            dep_init = f"__jac_glob_init_{native_safe_sym(dep_src)}";
+            if dep_init not in init_syms {
+                init_syms.append(dep_init);
+            }
+        }
+    }
+    init_syms.append("__jac_glob_init");
+    init_list = "[" + ", ".join(f"'{s}'" for s in init_syms) + "]";
     src_lines = [
-        "import ctypes as _jac_ctypes",
-        "_jac_engine = globals().get('__jac_native_engine__')",
-        "if _jac_engine is None:",
-        "    raise RuntimeError('native engine unavailable for " + test_name + "')",
-        "_jac_addr = _jac_engine.get_function_address('" + symbol + "')",
-        "if _jac_addr == 0:",
-        "    raise RuntimeError('native test symbol missing: " + symbol + "')",
-        "_jac_msg = _jac_ctypes.CFUNCTYPE(_jac_ctypes.c_char_p)(_jac_addr)()",
-        "if _jac_msg is not None:",
-        "    raise AssertionError(_jac_msg.decode('utf-8', 'replace'))"
+        "from jaclang.runtimelib.test import invoke_native_test as _jac_invoke",
+        "_jac_invoke(globals().get('__jac_native_engine__'), '" + symbol + "', '" + test_name + "', " + init_list + ")"
     ];
     parsed = ast3.parse('\n'.join(src_lines));
     return `list(parsed.body);
@@ -2654,6 +2659,8 @@ impl PyastGenPass.exit_binary_expr(nd: uni.BinaryExpr) -> None {
                 )
             )
         ];
+    } elif (nd.op.name in [Tok.WALRUS_EQ]) and not isinstance(nd.left, uni.Name) {
+        nd.gen.py_ast = [self.sync(cast(ast3.expr, self.py_ast_val(nd.right)))];
     } elif (nd.op.gen.py_ast and isinstance(self.py_ast_val(nd.op), ast3.AST)) {
         nd.gen.py_ast = [
             self.sync(

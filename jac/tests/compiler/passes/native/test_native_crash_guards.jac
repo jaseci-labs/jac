@@ -91,15 +91,6 @@ test "exception subclass fields survive raise and catch" {
     assert result == 421 , f"Expected 421, got {result}";
 }
 
-# --- Variadic defs are a loud compile error, not a SIGTRAP ---
-test "star-args def is rejected loudly instead of miscompiling" {
-    prog = JacProgram();
-    ir = prog.compile(file_path=str(os.path.join(FIXTURES, "py_varargs_err.na.jac")));
-    errs = " ".join([str(e) for e in (prog.errors_had or [])]);
-    assert prog.errors_had , "Expected an E5090 for *args, got a clean compile";
-    assert "E5090" in errs or "variadic" in errs , f"Unexpected errors: {errs}";
-}
-
 test "base except handler still sees a readable message for struct raises" {
     (eng, _) = compile_native("py_exc_subclass.na.jac");
     get_func(eng, "jac_entry", None)();

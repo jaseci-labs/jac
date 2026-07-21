@@ -195,6 +195,7 @@ glob GAP_FILES = [
          "walrus_complex_lhs": "with entry { (a + b) := 5; }",
          "walrus_call_lhs": "with entry { foo() := 5; }",
          "walrus_subscript_lhs": "with entry { a[0] := 5; }",
+         "walrus_attr_lhs": "with entry { a.b := 5; }",
          "assign_to_root": 'with entry { root = "s"; }',
          "assign_to_super": "with entry { super = 1; }",
          "for_in_target_root": "with entry { for root in [1, 2] { } }",
