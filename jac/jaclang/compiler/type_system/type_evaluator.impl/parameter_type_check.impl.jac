@@ -1,5 +1,7 @@
 impl TypeEvaluator.validate_arg_types(
-    args: MatchArgsToParamsResult, checking_overload: bool = False
+    args: MatchArgsToParamsResult,
+    checking_overload: bool = False,
+    mismatches: list[ArgTypeMismatch] | None = None
 ) -> bool {
     has_errors: bool = False;
 
@@ -30,6 +32,16 @@ impl TypeEvaluator.validate_arg_types(
 
         if not self.assign_type(arg_type, expected, strict=self._is_strict_site(arg)) {
             has_errors = True;
+            if mismatches is not None {
+                mismatches.append(
+                    ArgTypeMismatch(
+                        param_name=param.name,
+                        actual=str(arg_type),
+                        expected=str(expected),
+                        callable_reason=self._callable_reason(arg_type, expected)
+                    )
+                );
+            }
             if not checking_overload {
                 self.emit_diag(
                     E1053,
@@ -42,6 +54,92 @@ impl TypeEvaluator.validate_arg_types(
         }
     }
     return not has_errors;
+}
+
+def _q(value: object) -> str {
+    return "'" + str(value) + "'";
+}
+
+impl TypeEvaluator._callable_reason(
+    arg_type: TypeBase, expected: TypeBase
+) -> str | None {
+    if not isinstance(arg_type, types.FunctionType)
+    or not isinstance(expected, types.FunctionType)
+    or expected.is_gradual_callable_form() {
+        return None;
+    }
+
+    def visible(fn: types.FunctionType) -> list[types.Parameter] {
+        return [
+            p
+            for p in (fn.parameters or [])
+            if not p.is_self and not p.is_cls
+        ];
+    }
+
+    (src_params, dest_params) = (visible(arg_type), visible(expected));
+    want = len(dest_params);
+
+    if len(src_params) < want or any(not p.is_optional for p in src_params[want:]) {
+        return f"takes {len(src_params)} parameter(s), but a callable taking {want} is expected";
+    }
+
+    src_ret = arg_type.return_type;
+    dest_ret = expected.return_type;
+    if src_ret is None or dest_ret is None or isinstance(src_ret, types.UnknownType) {
+        return None;
+    }
+    got_ret = self._convert_to_instance(src_ret);
+    want_ret = self._convert_to_instance(dest_ret);
+    if self.assign_type(got_ret, want_ret) {
+        return None;
+    }
+    return f"returns {_q(got_ret)}, but must return {_q(want_ret)}";
+}
+
+impl TypeEvaluator._describe_overload_rejections(
+    rejections: list[tuple[int, ArgTypeMismatch]]
+) -> str | None {
+    if not rejections {
+        return None;
+    }
+
+    if len({m.param_name for (_, m) in rejections}) > 1 {
+        lines = ["no overload accepts these arguments:"];
+        for (no, m) in rejections[:MAX_LISTED_OVERLOADS] {
+            lines.append(
+                f"  overload {no}: cannot assign {_q(m.actual)} to parameter {_q(
+                    m.param_name
+                )} of type {_q(m.expected)}"
+            );
+        }
+        return "\n".join(lines);
+    }
+
+    for (no, m) in rejections {
+        if m.callable_reason {
+            return f"the callable passed for parameter {_q(m.param_name)} {m.callable_reason} (overload {no}). Annotate the callable so it matches.";
+        }
+    }
+
+    first = rejections[0][1];
+    head = f"the argument for parameter {_q(first.param_name)} has type {_q(
+        first.actual
+    )}, which no overload accepts.";
+    wanted: list[str] = [];
+    for (_, m) in rejections {
+        if m.expected not in wanted {
+            wanted.append(m.expected);
+        }
+    }
+    if len(wanted) == 1 {
+        return f"{head} Every overload expects {_q(wanted[0])}.";
+    }
+    lines = [f"{head} The candidates expect:"];
+    for (no, m) in rejections[:MAX_LISTED_OVERLOADS] {
+        lines.append(f"  overload {no}: {_q(m.expected)}");
+    }
+    return "\n".join(lines);
 }
 
 impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
@@ -198,7 +296,11 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
             return False;
         }
 
+        rejections: list[tuple[int, ArgTypeMismatch]] = [];
+        overload_no = 0;
+
         for overload in caller_type.overloads {
+            overload_no += 1;
             arg_param_match = self.match_args_to_params(
                 expr.params,
                 expr,
@@ -208,7 +310,10 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
             );
 
             if not arg_param_match.argument_errors {
-                if self.validate_arg_types(arg_param_match, checking_overload=True) {
+                mismatches: list[ArgTypeMismatch] = [];
+                if self.validate_arg_types(
+                    arg_param_match, checking_overload=True, mismatches=mismatches
+                ) {
                     ret_type = overload.return_type;
 
                     if ret_type and _contains_unknown(ret_type) {
@@ -226,21 +331,26 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
                     if _fallback_result is None {
                         _fallback_result = ret_type;
                     }
+                } elif mismatches {
+                    rejections.append((overload_no, mismatches[0]));
                 }
             }
         }
         if _fallback_result is not None {
             return _fallback_result;
         }
-        lambda_param = self._unannotated_lambda_arg_name(expr);
-        if lambda_param is not None {
-            self.emit_diag(
-                E1054,
-                expr,
-                help_text=(
-                    "Unannotated lambda parameter '" + lambda_param + "' could not be inferred from the call context, so it stays Unknown and no overload matches. Annotate it, e.g. `lambda " + lambda_param + ": <type> : ...`, or pass a typed `def` as the callback."
-                )
-            );
+
+        help_text = self._describe_overload_rejections(rejections);
+        if help_text is None {
+            lambda_param = self._unannotated_lambda_arg_name(expr);
+            if lambda_param is not None {
+                help_text = (
+                    "Unannotated lambda parameter '" + lambda_param + "' could not be inferred from the call context, so it stays Unknown and no overload matches. Annotate it, e.g. `lambda (" + lambda_param + ": <type>) { ... }`, or pass a typed `def` as the callback."
+                );
+            }
+        }
+        if help_text is not None {
+            self.emit_diag(E1054, expr, help_text=help_text);
         } else {
             self.emit_diag(E1054, expr);
         }

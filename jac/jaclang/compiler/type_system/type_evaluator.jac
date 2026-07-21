@@ -130,6 +130,15 @@ obj MatchArgsToParamsResult {
         argument_errors: bool = False;
 }
 
+glob MAX_LISTED_OVERLOADS: int = 4;
+
+obj ArgTypeMismatch {
+    has param_name: str,
+        actual: str,
+        expected: str,
+        callable_reason: str | None = None;
+}
+
 obj NarrowingTarget {
     has key: str,
         declared_type: TypeBase,
@@ -448,8 +457,15 @@ obj TypeEvaluator {
     def _unwrap_awaitable_type(t: TypeBase, node_: uni.UniNode) -> TypeBase;
     def _is_sv_async_call(expr: uni.FuncCall) -> bool;
     def validate_arg_types(
-        args: MatchArgsToParamsResult, checking_overload: bool = False
+        args: MatchArgsToParamsResult,
+        checking_overload: bool = False,
+        mismatches: list[ArgTypeMismatch] | None = None
     ) -> None;
+
+    def _callable_reason(arg_type: TypeBase, expected: TypeBase) -> str | None;
+    def _describe_overload_rejections(
+        rejections: list[tuple[int, ArgTypeMismatch]]
+    ) -> str | None;
 
     def _build_field_params(
         class_type: types.ClassType, skip_deferred: bool = True
