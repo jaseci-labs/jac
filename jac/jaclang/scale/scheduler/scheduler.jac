@@ -101,7 +101,10 @@ obj JacScaleScheduler {
     def stop(drain: bool = False) -> None;
     def register_static_tasks(walkers: dict, functions: dict, server: Any) -> None;
     def register_dynamic_tasks_from_db -> None;
-    def create_job(name: str, spec: TriggerSpec, created_by: str) -> dict;
+    def create_job(
+        name: str, spec: TriggerSpec, created_by: str, args: dict | None = None
+    ) -> dict;
+
     def list_jobs(
         limit: int | None = None,
         offset: int = 0,
@@ -111,19 +114,32 @@ obj JacScaleScheduler {
 
     def get_job(job_id: str) -> (dict | None);
     def update_job(
-        job_id: str, spec: TriggerSpec, acting_as: str | None = None
+        job_id: str,
+        spec: TriggerSpec,
+        acting_as: str | None = None,
+        args: dict | None = None
     ) -> (dict | None);
 
     def delete_job(job_id: str, acting_as: str | None = None) -> bool;
     def _execute_task(
-        name: str, user_id: str, is_walker: bool, job_id: str | None = None
+        name: str,
+        user_id: str,
+        is_walker: bool,
+        job_id: str | None = None,
+        args: dict | None = None
     ) -> None;
 
     def _schedule_apscheduler_job(
-        job_id: str, name: str, spec: TriggerSpec, user_id: str, is_walker: bool = True
+        job_id: str,
+        name: str,
+        spec: TriggerSpec,
+        user_id: str,
+        is_walker: bool = True,
+        args: dict | None = None
     ) -> None;
 
     def _record_run(job_id: str, status: str, error: str | None = None) -> None;
+    def _date_has_passed(date_str: Any) -> bool;
     def _mark_failed(job_id: str | None, reason: str) -> None;
     def _user_is_live(user_id: str) -> bool;
     def _require_store -> JobStore;
