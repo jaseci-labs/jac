@@ -61,7 +61,7 @@ def mode_flags(mode: str) -> list[str] {
 
 """Compile one kernel under one mode; exit loudly on failure."""
 def compile_kernel(kernel: str, mode: str) -> Path {
-    src = BENCH / "kernels" / f"{kernel}.na.jac";
+    src = BENCH / "kernels" / f"{kernel}.jac";
     out = BENCH / "bin" / f"{kernel}_{mode}";
     out.parent.mkdir(exist_ok=True);
     cmd = ["jac", "nacompile", str(src)] + mode_flags(mode) + ["-o", str(out)];

@@ -998,7 +998,7 @@ impl BoundaryAnalysisPass.after_pass(self: BoundaryAnalysisPass) -> None {
     has_client = False;
     if self.ir_in and self.ir_in.body {
         for item in self.ir_in.body {
-            if isinstance(item, uni.ClientBlock) {
+            if isinstance(item, uni.ClientBlock) or item.in_client_context() {
                 has_client = True;
                 break;
             }
@@ -1006,9 +1006,11 @@ impl BoundaryAnalysisPass.after_pass(self: BoundaryAnalysisPass) -> None {
     }
     if has_client and self.ir_in and self.ir_in.body {
         for item in self.ir_in.body {
-            if isinstance(item, uni.Archetype) and not item.in_client_context() {
-                self._collect_boundary_type(item.sym_name, None);
-            } elif isinstance(item, uni.Enum) and not item.in_client_context() {
+            if (
+                isinstance(item, (uni.Archetype, uni.Enum))
+                and not item.in_client_context()
+                and not item.in_native_context()
+            ) {
                 self._collect_boundary_type(item.sym_name, None);
             }
         }

@@ -107,6 +107,16 @@ test "mixed module generates rpc bridges in js" {
     assert 'fast_add' not in js , "native block must not leak into JS";
 }
 
+test "inferred client triggers server archetype auto-share with wire codecs" {
+    mod = compile_fixture("infer_wire_share.jac", cgen=True);
+    assert stamp_of(mod, "Todo") == 'server' , "node stays server (auto-shared)";
+    assert stamp_of(mod, "Particle") == 'native' , "extern-seed pull wins";
+    js = mod.gen.js;
+    assert 'class Todo' in js , "server node auto-shared into the client bundle";
+    assert '__from_wire' in js , "auto-shared archetype carries wire codecs";
+    assert 'class Particle' not in js , "native-pulled obj stays out of the client bundle";
+}
+
 test "sv import placement is inferred while boundary fact stays" {
     mod = compile_fixture("infer_sv_client.jac", cgen=True);
     assert stamp_of(mod, "fetch_items") == 'client' , "client-consumed sv import is placed client";

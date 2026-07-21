@@ -27,7 +27,7 @@ for k in own_binarytrees own_vecdot own_histogram own_vm own_rbtree own_deriv; d
     else
       flags=(--gc "$mode")
     fi
-    jac nacompile "kernels/$k.na.jac" "${flags[@]}" -o "bin/${k}_${mode}" \
+    jac nacompile "kernels/$k.jac" "${flags[@]}" -o "bin/${k}_${mode}" \
       > "$TMP/${k}_${mode}.log" 2>&1 || {
         echo "FAIL compile $k/$mode"; tail -3 "$TMP/${k}_${mode}.log"; fail=1; continue;
       }
@@ -41,8 +41,8 @@ for k in own_binarytrees own_vecdot own_histogram own_vm own_rbtree own_deriv; d
   else
     echo "IDENTITY FAIL: $k"; fail=1
   fi
-  jac run harness/erase.jac "kernels/$k.na.jac" > "$TMP/${k}_bare.na.jac"
-  jac nacompile "$TMP/${k}_bare.na.jac" --gc rc -o "$TMP/${k}_bare" \
+  jac run harness/erase.jac "kernels/$k.jac" > "$TMP/${k}_bare.jac"
+  jac nacompile "$TMP/${k}_bare.jac" --gc rc -o "$TMP/${k}_bare" \
     > "$TMP/${k}_bare.log" 2>&1 || {
       echo "FAIL erased compile $k"; tail -3 "$TMP/${k}_bare.log"; fail=1; continue;
     }
