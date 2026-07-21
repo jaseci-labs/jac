@@ -74,6 +74,23 @@ A task-first index into the commands below. The full alphabetical list follows i
 
 ---
 
+## Renamed and removed commands
+
+The CLI cleanup in #7255 folded these former top-level commands into their homes. The old names now print a pointer and exit:
+
+| Old command | Use instead |
+|---|---|
+| `jac lint` | [`jac check --lint`](#jac-check) (add `--fix` to auto-fix) |
+| `jac enter` | [`jac run --entry <name>`](#jac-run) |
+| `jac debug` | [`jac run --debug`](#jac-run) |
+| `jac jacpack` | [`jac create --pack`](#jac-create) |
+| `jac eject` | [`jac build --as source`](#jac-build) |
+| `jac script` | [`jac x <name>`](#jac-x) |
+| `jac grammar` | [`jac tool grammar`](#jac-tool) |
+| `jac jac2js` | [`jac tool jac2js`](#jac-tool) |
+| `jac py2jac` | [`jac tool py2jac`](#jac-tool) |
+| `jac jac2py` | [`jac tool jac2py`](#jac-tool) |
+
 ## Version Info
 
 ```bash
@@ -373,6 +390,35 @@ jac create --list
 
 # Force overwrite existing
 jac create myapp --force
+```
+
+---
+
+### jac retheme
+
+Re-theme a jac-shadcn project: regenerates `global.css` from the `[jac-shadcn]` section of `jac.toml`.
+
+```bash
+jac retheme [--style STYLE] [--baseColor BASECOLOR] [--theme THEME]
+            [--font FONT] [--radius RADIUS] [--menuAccent MENUACCENT]
+            [--menuColor MENUCOLOR]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--style` | Component style preset (switching styles re-resolves installed components) |
+| `--baseColor` | Base neutral palette |
+| `--theme` | Accent color theme |
+| `--font` | Font family |
+| `--radius` | Corner radius |
+| `--menuAccent` / `--menuColor` | Menu accent and color |
+
+```bash
+# Regenerate global.css from the current [jac-shadcn] config
+jac retheme
+
+# Switch accent + font in place
+jac retheme --theme rose --font inter
 
 # Create in current directory
 jac create
@@ -540,12 +586,6 @@ jac fmt . --cache
 
 ---
 
-### jac lint
-
-Linting has folded into `jac check`. Run **`jac check --lint`** to report violations and **`jac check --lint --fix`** to auto-fix them. See [`jac check`](#jac-check) above for options and examples.
-
----
-
 ### jac precommit
 
 *Hidden from `jac --help` (still functional).*
@@ -583,57 +623,9 @@ jac precommit --install
 
 ---
 
-### jac enter
-
-Running a specific entrypoint has folded into `jac run`. Use **`jac run --entry <walker> <file>`** (with optional `-n/--node` and `-r/--root`). See [`jac run`](#jac-run) above.
-
----
-
 ## Visualization & Debug
 
-### jac dot
-
-*Hidden from `jac --help` (still functional).*
-
-Generate DOT graph visualization.
-
-```bash
-jac dot [-h] [-s SESSION] [-i INITIAL] [-d DEPTH] [-t] [-b] [-e EDGE_LIMIT] [-n NODE_LIMIT] [-o SAVETO] [-p] [-f FORMAT] filename [connection ...]
-```
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `filename` | Jac file | Required |
-| `-s, --session` | Session identifier | None |
-| `-i, --initial` | Initial node ID | None |
-| `-d, --depth` | Max traversal depth | `-1` (unlimited) |
-| `-t, --traverse` | Enable traversal mode | `False` |
-| `-c, --connection` | Connection filters | None |
-| `-b, --bfs` | Use BFS traversal | `False` |
-| `-e, --edge_limit` | Max edges | `512` |
-| `-n, --node_limit` | Max nodes | `512` |
-| `-o, --saveto` | Output file path | None |
-| `-p, --to_screen` | Print to stdout | `False` |
-| `-f, --format` | Output format | `dot` |
-
-**Examples:**
-
-```bash
-# Generate DOT output
-jac dot main.jac -s my_session --to_screen
-
-# Save to file
-jac dot main.jac -s my_session --saveto graph.dot
-
-# Limit depth
-jac dot main.jac -s my_session -d 3
-```
-
----
-
-### jac debug
-
-Interactive debugging has folded into `jac run`. Use **`jac run --debug <file>`** to launch the debugger on a file. See [`jac run`](#jac-run) above.
+### Interactive debugging (`jac run --debug`)
 
 ```bash
 # Start the debugger
@@ -677,6 +669,46 @@ The Jac extension includes live graph visualization:
 Set breakpoints and step through code -- nodes and edges appear in real time as your program builds the graph. Open `jacvis` **before** starting the debugger for best results.
 
 For a complete walkthrough, see the [Debugging in VS Code Tutorial](../../tutorials/language/debugging.md).
+
+---
+
+### jac dot
+
+*Hidden from `jac --help` (still functional).*
+
+Generate DOT graph visualization.
+
+```bash
+jac dot [-h] [-s SESSION] [-i INITIAL] [-d DEPTH] [-t] [-b] [-e EDGE_LIMIT] [-n NODE_LIMIT] [-o SAVETO] [-p] [-f FORMAT] filename [connection ...]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `filename` | Jac file | Required |
+| `-s, --session` | Session identifier | None |
+| `-i, --initial` | Initial node ID | None |
+| `-d, --depth` | Max traversal depth | `-1` (unlimited) |
+| `-t, --traverse` | Enable traversal mode | `False` |
+| `-c, --connection` | Connection filters | None |
+| `-b, --bfs` | Use BFS traversal | `False` |
+| `-e, --edge_limit` | Max edges | `512` |
+| `-n, --node_limit` | Max nodes | `512` |
+| `-o, --saveto` | Output file path | None |
+| `-p, --to_screen` | Print to stdout | `False` |
+| `-f, --format` | Output format | `dot` |
+
+**Examples:**
+
+```bash
+# Generate DOT output
+jac dot main.jac -s my_session --to_screen
+
+# Save to file
+jac dot main.jac -s my_session --saveto graph.dot
+
+# Limit depth
+jac dot main.jac -s my_session -d 3
+```
 
 ---
 
@@ -1723,106 +1755,6 @@ jac build --client mobile -p android
 
 ## Template Management
 
-### jac jacpack
-
-Template packing has folded into [`jac create`](#jac-create). Bundle a template directory into a distributable `.jacpack` with **`jac create --pack <dir>`** (`--pack_output F` for a custom path), and list available kinds/named variants with **`jac create --list`**. The `.jacpack` concept below is unchanged.
-
-```bash
-# Bundle a template directory into a .jacpack (formerly `jac jacpack pack`)
-jac create --pack <dir> [--pack_output out.jacpack]
-
-# List available project kinds and named variants (formerly `jac jacpack list`)
-jac create --list
-```
-
-**Template Directory Structure:**
-
-A template directory should contain:
-
-- `jac.toml` - Project config with a `[jacpack]` section for metadata
-- Template files (`.jac`, `.md`, etc.) with `{{name}}` placeholders
-
-To make any Jac project packable as a template, simply add a `[jacpack]` section to your `jac.toml`. All other sections become the config for created projects.
-
-**Example `jac.toml` for a template:**
-
-```toml
-# Standard project config (becomes the created project's jac.toml)
-[project]
-name = "{{name}}"
-version = "0.1.0"
-entry-point = "main.jac"
-
-[dependencies]
-
-# Jacpac metadata - used when packing, stripped from created projects
-[jacpack]
-name = "mytemplate"
-description = "My custom project template"
-jaclang = "0.9.0"        # minimum compatible jac binary (host) runtime, not a PyPI dependency
-
-[[jacpack.plugins]]
-name = "jac-client"
-version = "0.1.0"
-
-[jacpack.options]
-directories = [".jac"]
-root_gitignore_entries = [".jac/"]
-```
-
-**Examples:**
-
-```bash
-# List available project kinds and named variants
-jac create --list
-
-# Bundle a template directory
-jac create --pack ./my-template
-
-# Bundle with custom output path
-jac create --pack ./my-template --pack_output custom-name.jacpack
-```
-
-**Using Templates with `jac create`:**
-
-Once a template is registered, use it with the `--use` flag:
-
-```bash
-jac create myproject --use mytemplate
-```
-
----
-
-### jac eject
-
-Ejecting has folded into [`jac build`](#jac-build). Use **`jac build --as source`** to compile a Jac project into a runnable FastAPI + JavaScript source tree with **zero `.jac` files** -- each walker becomes a Python FastAPI route and the `.cl.jac` UI compiles to JavaScript on Vite. Use it when you want an editable FastAPI/JS codebase you can extend and deploy without writing Jac.
-
-```bash
-# Eject the current project (formerly `jac eject`)
-jac build --as source
-
-# Eject to a chosen output directory
-jac build --as source -o /tmp/myapp-out
-```
-
-**What gets emitted**
-
-- Server-side `.sv.jac` (and the server scope of plain `.jac`) modules become Python, keeping their real `jaclang.jac0core.jaclib` imports; client-side `.cl.jac` modules become JavaScript. A generated `backend/main.py` FastAPI app exposes one `POST /walker/<Name>` per walker, `POST /function/<name>` per function, plus `/user/register` and `/user/login` (`:pub` walkers/functions are open; the rest require a bearer token).
-- A project with no client `app` component ejects **backend-only** (the `frontend/` scaffold is skipped). `.impl.jac` / `.test.jac` files are skipped.
-
-**Persistence.** By default the object graph persists to a local SQLite file via the jaclang runtime. To persist through SQLAlchemy instead (so the same backend can target Postgres/MySQL), set `driver = "sqlalchemy"` under `[eject.db]` in `jac.toml`; the connection URL is overridable at runtime with `JAC_DB_URL`.
-
-!!! warning "Runtime provisioning is being migrated"
-    `jaclang` is no longer published to PyPI -- it ships as the `jac` binary. The generated `requirements.txt` still lists a `jaclang` entry, which no longer resolves via a plain `pip install`. Until source ejection is updated to package the binary's runtime, run the ejected backend in an environment that already provides the jaclang runtime (for example, a checkout where the `jac` binary is on PATH).
-
----
-
-### jac jac2js
-
-Generating JavaScript from Jac has moved under [`jac tool`](#jac-tool). Use **`jac tool jac2js <file>`** (used for client frontend compilation). See [`jac tool`](#jac-tool) below.
-
----
-
 ## Utility Commands
 
 ### jac guide
@@ -1860,30 +1792,6 @@ jac guide --export ~/.claude/skills
 ```
 
 See [Agent Skills and MCP](../agent-skills-and-mcp.md) for using the guides with AI assistants.
-
----
-
-### jac grammar
-
-Extracting the grammar has moved under [`jac tool`](#jac-tool). Use **`jac tool grammar`** (add `--lark` for Lark format, `-o OUT` to write to a file). See [`jac tool`](#jac-tool) below.
-
----
-
-### jac script
-
-Running custom scripts has folded into [`jac x`](#jac-x). Use **`jac x <name>`** to run a script defined in the `[scripts]` section of `jac.toml` (a bare `jac x`, or `jac x --list`, lists the available tools and scripts). See [Configuration: Scripts](../config/index.md#scripts) for defining scripts.
-
----
-
-### jac py2jac
-
-Converting Python to Jac has moved under [`jac tool`](#jac-tool). Use **`jac tool py2jac <file>`**. See [`jac tool`](#jac-tool) below.
-
----
-
-### jac jac2py
-
-Converting Jac to Python has moved under [`jac tool`](#jac-tool). Use **`jac tool jac2py <file>`**. See [`jac tool`](#jac-tool) below.
 
 ---
 

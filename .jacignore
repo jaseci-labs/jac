@@ -280,9 +280,6 @@ theme_handler.jac
 # error in test_prim_equivalence.jac); #7166 fixed formatting, exposing
 # this accumulated debt. Path-qualified so fixes can be shaved off
 # file-by-file.
-docs/docs/assets/examples/object_spatial/finding_common_interests.jac
-docs/docs/assets/examples/object_spatial/object_spatial_references.jac
-docs/docs/examples/chapter_10_school.jac
 jac/examples/mobui/hello/main.jac
 jac/examples/mobui/littlex/main.jac
 jac/examples/mobui/littlex/theme.cl.jac

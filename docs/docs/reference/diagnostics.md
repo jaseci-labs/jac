@@ -275,7 +275,7 @@ Emitted by `JsxIntrinsicGuardPass` when a `mobui` project (see [React Native tar
 
 ### Ownership / Borrow Errors
 
-Emitted by `OwnershipCheckPass` for `own`/`imm`/`borrow`/`&`/`&mut` bindings and `in <handle> { }` region opens. See [Ownership & Borrowing](language/ownership-borrowing.md). On the native pathway the checker is one of the required analyses: it always runs there, and error-severity findings block native codegen -- a clean check is what makes the annotations trustworthy facts for lowering (see the [Ownership Fact Schema](language/ownership-checker-spec.md)). Whether diagnostics are *displayed* never changes generated code; builds with and without display are bit-identical.
+Emitted by `OwnershipCheckPass` for `own`/`imm`/`borrow`/`&`/`&mut` bindings and `in <handle> { }` region opens. See [Ownership & Borrowing](language/ownership-borrowing.md). On the native pathway the checker is one of the required analyses: it always runs there, and error-severity findings block native codegen -- a clean check is what makes the annotations trustworthy facts for lowering (see the [Ownership Fact Schema](../internals/ownership-checker-spec.md)). Whether diagnostics are *displayed* never changes generated code; builds with and without display are bit-identical.
 
 | Code | Message |
 |------|---------|
