@@ -378,7 +378,7 @@ impl KEDAAutoscaler.apply_http_activation{
             "KEDA HTTP Add-on capability check failed:\n" + "\n".join(caps.errors)
         );
     }
-    if not caps.http_addon_available {
+    if not caps.core_available or not caps.http_addon_available {
         if self.logger {
             message = caps.warnings[0]
                 if caps.warnings
@@ -769,8 +769,15 @@ impl KEDAAutoscaler._check_service_address{
     }
 }
 
+impl KEDAAutoscaler._capabilities_cache_key{
+    return (
+        f"{self._get_cluster_key()}::{self.http_scaler_address}"
+        f"::{self.interceptor_service_address}"
+    );
+}
+
 impl KEDAAutoscaler.discover_capabilities{
-    cluster_key = self._get_cluster_key();
+    cluster_key = self._capabilities_cache_key();
     if not refresh and cluster_key in KEDAAutoscaler._capabilities_cache {
         return KEDAAutoscaler._capabilities_cache[cluster_key];
     }
@@ -839,11 +846,19 @@ impl KEDAAutoscaler.discover_capabilities{
                 f"InterceptorRoute. Upgrade with: {upgrade_addon_cmd}"
             );
         } except ApiException as e {
-            if e.status in [404, 422] {
+            if e.status == 403 {
+                caps.errors.append(
+                    "Permission denied (403) probing the legacy KEDA HTTP "
+                    "Add-on API (http.keda.sh/v1alpha1 HTTPScaledObject) "
+                    "while checking for an outdated install. Grant RBAC "
+                    "list/get on this resource to the jac-scale service "
+                    "account."
+                );
+            } elif e.status in [404, 422] {
                 caps.warnings.append(
                     f"KEDA HTTP Add-on not found on cluster. Install it with: {install_addon_cmd}"
                 );
-            } elif e.status != 403 {
+            } else {
                 raise;
             }
         }
@@ -869,7 +884,7 @@ impl KEDAAutoscaler.discover_capabilities{
 }
 
 impl KEDAAutoscaler.invalidate_capabilities{
-    KEDAAutoscaler._capabilities_cache.pop(self._get_cluster_key(), None);
+    KEDAAutoscaler._capabilities_cache.pop(self._capabilities_cache_key(), None);
 }
 
 impl KEDAAutoscaler.format_capabilities{

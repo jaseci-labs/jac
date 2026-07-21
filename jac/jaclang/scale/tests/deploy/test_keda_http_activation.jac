@@ -580,6 +580,11 @@ test "discover_capabilities produces a distinct diagnostic for every failure mod
             "rbac-denied-on-http-addon",
             _custom_api_for(http_v1beta1=403),
             _core_api_for()
+        ),
+        (
+            "rbac-denied-on-legacy-probe",
+            _custom_api_for(http_v1beta1=404, legacy_v1alpha1=403),
+            _core_api_for()
         )
     ];
     for (label, custom_api, core_api) in scenarios {
@@ -626,6 +631,16 @@ test "discover_capabilities produces a distinct diagnostic for every failure mod
                 f"{label}: RBAC-denied v1beta1 must not fall through to the "
                 "legacy-version probe (that's only for a genuinely absent API)"
             );
+        } elif label == "rbac-denied-on-legacy-probe" {
+            assert any(
+                [
+                    ("permission" in e.lower() or "rbac" in e.lower())
+                    for e in caps.errors
+                ]
+            ) , (
+                f"{label}: an RBAC-denied legacy probe must be reported as a "
+                "permission error, not silently treated as 'not installed'"
+            );
         }
     }
 }
@@ -661,6 +676,36 @@ test "apply_http_activation raises when capabilities are discovered but broken" 
     }
     assert raised , "Expected ValueError when the HTTP Add-on is installed but its scaler Service is missing";
     assert "scaler" in error_msg.lower();
+}
+
+test "apply_http_activation skips activation when core KEDA is missing, even if the HTTP Add-on and its services are healthy" {
+    custom_api = _custom_api_for(core=404);
+    keda = _keda_for(custom_api=custom_api, core_api=_core_api_for());
+    result = keda.apply_http_activation(_spec());
+    assert result == False , "A partial install (Add-on healthy, core missing) must not proceed to create resources";
+    custom_api.create_namespaced_custom_object.assert_not_called();
+}
+
+test "discover_capabilities cache key accounts for instance-specific service addresses" {
+    keda_a = _keda_for(custom_api=_custom_api_for(), core_api=_core_api_for());
+    caps_a = keda_a.discover_capabilities();
+    assert caps_a.errors == [] , "Sanity check: instance A's own services should resolve cleanly";
+
+    # Built directly (not via _keda_for) so instance A's cache entry from
+    # above is not cleared -- the point is to prove two instances targeting
+    # the same cluster host, but with different service addresses, don't
+    # reuse each other's cached result.
+    keda_b = KEDAAutoscaler(
+        _custom_api=_custom_api_for(),
+        _core_api=_core_api_for(scaler=404),
+        http_scaler_address="custom-scaler.other-ns:9090"
+    );
+    caps_b = keda_b.discover_capabilities();
+    assert any([("scaler" in e.lower()) for e in caps_b.errors]) , (
+        "Instance B has a different http_scaler_address than instance A and "
+        "its scaler Service is missing -- it must not reuse instance A's "
+        "healthy cached result just because they share a cluster host"
+    );
 }
 
 test "format_capabilities gives a concise message for both ready and not-ready cases" {

@@ -55,6 +55,7 @@ obj KEDAAutoscaler(Autoscaler) {
     def destroy_http_activation(target: str, namespace: str) -> None;
     def discover_capabilities(refresh: bool = False) -> KEDACapabilities;
     def invalidate_capabilities -> None;
+    def _capabilities_cache_key -> str;
     def _check_service_address(core_api: any, address: str) -> (str | None);
     def format_capabilities(caps: KEDACapabilities) -> str;
 }
