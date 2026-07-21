@@ -4422,6 +4422,36 @@ test "hasattr_narrowing" {
     );
 }
 
+test "membership_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_membership_narrowing.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 2 , "Expected exactly 2 type errors, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+
+    all_errors = "\n---\n".join(err.pretty_print() for err in program.errors_had);
+
+    assert_error_pretty_found(
+        """
+        if ak in (other, "walker")
+        else "obj";  # <-- Error: tuple has a non-literal element, no narrowing possible
+    """,
+        all_errors
+    );
+
+    assert_error_pretty_found(
+        """
+        return ak;  # <-- Error: `in` only narrows the true branch, ak is still str | None here
+    """,
+        all_errors
+    );
+}
+
 """Test type narrowing through TypeAlias definitions - isinstance, callable, and None checks."""
 test "type_alias_narrowing" {
     program = JacProgram();

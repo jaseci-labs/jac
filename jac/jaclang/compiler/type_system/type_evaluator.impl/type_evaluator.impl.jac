@@ -4030,7 +4030,9 @@ impl TypeEvaluator.classify_condition(condition: uni.Expr) -> ConditionInfo | No
         left_key = self.create_key_for_reference(condition.left);
         right_expr = condition.rights[0];
         if left_key is not None
-        and isinstance(right_expr, (uni.String, uni.Int, uni.Float, uni.Bool)) {
+        and isinstance(
+            right_expr, (uni.String, uni.Int, uni.Float, uni.Bool, uni.MultiString)
+        ) {
             literal_type = self.get_type_of_expression(right_expr);
             op_name = condition.ops[0].name;
             if op_name == Tok.EE {
@@ -4045,6 +4047,44 @@ impl TypeEvaluator.classify_condition(condition: uni.Expr) -> ConditionInfo | No
                     key=left_key,
                     narrow_type=literal_type
                 );
+            }
+        }
+
+        if left_key is not None
+        and isinstance(right_expr, (uni.TupleVal, uni.ListVal))
+        and right_expr.values {
+            elem_types: list[types.TypeBase] = [];
+            all_literal = True;
+            for elem in right_expr.values {
+                if isinstance(
+                    elem, (uni.String, uni.Int, uni.Float, uni.Bool, uni.MultiString)
+                ) {
+                    elem_types.append(self.get_type_of_expression(elem));
+                } else {
+                    all_literal = False;
+                    break;
+                }
+            }
+            if all_literal and elem_types {
+                op_name = condition.ops[0].name;
+                narrow_type = (
+                    elem_types[0]
+                        if len(elem_types) == 1
+                        else types.UnionType(types=elem_types)
+                );
+                if op_name == Tok.KW_IN {
+                    return ConditionInfo(
+                        kind=NarrowingKind.MEMBERSHIP_IN,
+                        key=left_key,
+                        narrow_type=narrow_type
+                    );
+                } elif op_name == Tok.KW_NIN {
+                    return ConditionInfo(
+                        kind=NarrowingKind.MEMBERSHIP_NOT_IN,
+                        key=left_key,
+                        narrow_type=narrow_type
+                    );
+                }
             }
         }
     }
@@ -4231,6 +4271,16 @@ impl TypeEvaluator._find_predicate_for(
                 );
 
             case NarrowingKind.LITERAL_NE:
+                return NarrowingPredicate(
+                    key=key, narrow_type=info.narrow_type, is_inverted=True
+                );
+
+            case NarrowingKind.MEMBERSHIP_IN:
+                return NarrowingPredicate(
+                    key=key, narrow_type=info.narrow_type, is_inverted=False
+                );
+
+            case NarrowingKind.MEMBERSHIP_NOT_IN:
                 return NarrowingPredicate(
                     key=key, narrow_type=info.narrow_type, is_inverted=True
                 );
