@@ -58,6 +58,6 @@ with entry {
     }
     elapsed = time.perf_counter_ns() - started;
     print(f"sqrt:{checksum}");
-    print(f"m:per_call_ns={elapsed // calls}");
+    print(f"m:per_ffi_call_ns={elapsed // (n * calls)}");
     print(f"ns={elapsed}");
 }

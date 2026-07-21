@@ -115,7 +115,7 @@ glob BENCH = Path(str(__file__)).resolve().parent.parent,
                  "default": SIZE_DEFAULT_CHURN,
 
              },
-             "metrics": ["per_call_ns"],
+             "metrics": ["per_ffi_call_ns"],
              "command_adapter": "clib_jit_jac_run",
              "requires_clib": False,
              "timing_source": "kernel_perf_counter_ns",
@@ -133,7 +133,7 @@ glob BENCH = Path(str(__file__)).resolve().parent.parent,
                  "default": SIZE_DEFAULT_CHURN,
 
              },
-             "metrics": ["per_call_ns"],
+             "metrics": ["per_ffi_call_ns"],
              "command_adapter": "clib_jit_jac_run",
              "requires_clib": True,
              "timing_source": "kernel_perf_counter_ns",
@@ -290,12 +290,14 @@ def build_command(spec: dict[str, object], variant: str, args: list[str]) -> lis
 }
 
 
-"""Measure one variant and attach adapter metadata."""
-def measure_variant(
-    spec: dict[str, object], variant: str, args: list[str], count: int
+"""Aggregate one variant's collected runs and attach adapter metadata."""
+def finalize_variant(
+    spec: dict[str, object],
+    variant: str,
+    args: list[str],
+    command: list[str],
+    runs: list[dict[str, object]],
 ) -> dict[str, object] {
-    command = build_command(spec, variant, args);
-    runs = [run_command(command, 300, cwd=str(BENCH)) for _ in range(count)];
     cell = aggregate_runs(runs) as dict[str, object];
     actual_metrics = set((cell["metrics"] as dict[str, int]).keys());
     expected_metrics = set(spec["metrics"] as list[str]);
@@ -306,12 +308,40 @@ def measure_variant(
         );
     }
     cell["args"] = args;
-    cell["invocations"] = count;
+    cell["invocations"] = len(runs);
     cell["command"] = command;
     cell["command_adapter"] = spec["command_adapter"] as str;
     cell["timing_source"] = spec["timing_source"] as str;
     cell["rss_scope"] = spec["rss_scope"] as str;
     return cell;
+}
+
+
+"""Measure an oracle group with paired, interleaved invocation ordering.
+
+Each round runs one invocation of every variant before the next round,
+so machine drift (frequency scaling, scheduler noise) hits both sides of
+the differential comparison symmetrically rather than piling onto whichever
+variant happened to run last."""
+def measure_variants(
+    spec: dict[str, object], selected_variants: list[str], args: list[str], count: int,
+) -> dict[str, dict[str, object]] {
+    commands = {
+        variant: build_command(spec, variant, args) for variant in selected_variants
+    };
+    runs: dict[str, list[dict[str, object]]] = {
+        variant: [] for variant in selected_variants
+    };
+    for _round in range(count) {
+        for variant in selected_variants {
+            runs[variant].append(run_command(commands[variant], 300, cwd=str(BENCH)));
+        }
+    }
+    return {
+        variant: finalize_variant(
+            spec, variant, args, commands[variant], runs[variant]
+        ) for variant in selected_variants
+    };
 }
 
 
@@ -365,9 +395,8 @@ def main(opts: dict[str, str | int | bool]) {
                 f"{','.join(enabled_variants)}"
             );
         }
-        variants: dict[str, dict[str, object]] = {};
+        variants = measure_variants(spec, selected_variants, args, invocations);
         for variant in selected_variants {
-            variants[variant] = measure_variant(spec, variant, args, invocations);
             cell = variants[variant];
             print(
                 f"{kernel:12s} {variant:7s} median={cell['median_ns']}ns "

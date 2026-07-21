@@ -25,11 +25,17 @@ experimental C-ABI fixtures (`iop_ffi_*`, requires `cc` for struct/vtable cells)
 
 Read paired variants for boundary cost:
 
-- `iop_call`: `free` vs `bridge` (`sv → na`, work in native)
-- `iop_cb`: `free` vs `bridge` (`sv → na → sv` callback)
+- `iop_call`: `free` vs `bridge` (`sv → na`, work in native). Execution-placement
+  benchmark, not isolated boundary cost - the ratio blends the crossing with
+  native-vs-server execution speed. `iop_cb` isolates the crossing.
+- `iop_cb`: `free` vs `bridge` (`sv → na → sv` callback). Cleanest boundary cell:
+  both variants run the work in `sv`; only `bridge` adds the round trip.
 - `iop_symmetric`: `sv_local` vs `sv_to_na` and `na_local` vs `na_to_sv`
-  (matched caller/callee roles, work always on the callee)
-- `iop_view`: `materialised` vs `view` (explicit copy vs zero-copy views)
+  (matched caller/callee roles, work always on the callee). Also
+  execution-placement, not pure boundary overhead - moving compute into native
+  changes both the crossing and which runtime does the work.
+- `iop_view`: `materialised` vs `view` (explicit copy vs zero-copy views).
+  Full-traversal consumer latency only; memory savings are not measured (no RSS).
 
 ## Part 2: cross-runtime kernels (`xop_*`)
 
@@ -37,8 +43,14 @@ Live loopback hosts only (no NIC egress). Each cell compares in-process
 dispatch against a generated client, RPC, or wasm adapter:
 
 - `xop_svc_split`: direct billing dispatch vs `jac start` microservice RPC
-- `xop_feed`: in-process provider vs generated Node client
-- `xop_wasm_call`: native driver vs wasm32 export under Node
+  (serial loopback RPC floor)
+- `xop_feed`: in-process provider vs generated Node client. **Scalar RPC floor,
+  not a typed feed:** the provider returns one integer per call, the client makes
+  sequential scalar RPCs over a minimal `fetch` shim (not production
+  `@jac/runtime`), and there is no payload/serialisation sweep.
+- `xop_wasm_call`: native driver vs wasm32 export under Node. Asymmetric host
+  loops (Python loop → native bridge vs JS loop → wasm export), not the same
+  source built native-vs-wasm; timing source is labelled per variant.
 
 ## Running
 
@@ -131,7 +143,7 @@ not enabled merely because it appears in the design document.
 | default args | `work=5000`, `calls=500` |
 | timing owner | Kernel, using `time.perf_counter_ns()` after five same-variant warm-up calls |
 | prerequisites | In-repository Jac runtime and native JIT support only |
-| reference twins | Compare `sv_local` vs `sv_to_na` for sv→na overhead and `na_local` vs `na_to_sv` for na→sv overhead |
+| reference twins | Compare `sv_local` vs `sv_to_na`, and `na_local` vs `na_to_sv`. These ratios are **execution-placement** deltas (they change both the crossing and which runtime runs the callee work), not isolated boundary overhead |
 | measured paths | `sv_to_na` crosses once per call with work in na; `na_to_sv` crosses once per call with work in sv |
 | canonical digest | Exactly one `symmetric:<checksum>` line |
 | timing output | Exactly one `ns=<integer>` line |
@@ -170,15 +182,27 @@ a valid adapter for them. `iop_view` also uses `jac run`, but its dedicated
 driver activates the full-native producer through the existing native
 acceleration and wrapper/layout seam before measurement.
 
-## Result schema version 1
+## Result schema version 2
 
-`harness/common.jac` writes one document with this stable top-level shape:
+`harness/common.jac` writes one document with this stable top-level shape.
+Version 2 adds a `provenance` block (so a timing is never quoted without its
+machine) and per-variant `samples` / `iqr_ns`:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "suite": "interopbench",
   "family": "native_bridges",
+  "provenance": {
+    "captured_utc": "<iso-8601>",
+    "host": "<hostname>",
+    "platform": "<os-release>",
+    "machine": "<arch>",
+    "processor": "<cpu>",
+    "cpu_count": 0,
+    "python": "<impl version>",
+    "executable": "<path>"
+  },
   "cells": {
     "iop_call": {
       "scenario": "scalar checksum call churn",
@@ -197,10 +221,12 @@ acceleration and wrapper/layout seam before measurement.
           "command_adapter": "mixed_jit_jac_run",
           "timing_source": "kernel_perf_counter_ns",
           "rss_scope": "not_recorded",
+          "samples": 1,
           "median_ns": 0,
           "min_ns": 0,
           "max_ns": 0,
           "stdev_ns": 0,
+          "iqr_ns": 0,
           "canonical_digest": "call:<checksum>",
           "digest": "<sha256-prefix>",
           "metrics": {"per_call_ns": 0}
@@ -210,6 +236,12 @@ acceleration and wrapper/layout seam before measurement.
   }
 }
 ```
+
+Invocations are interleaved per variant (paired sampling). `timing_source` is
+per variant, so cross-runtime cells that do not share a clock label the Python
+and Node sides distinctly. Reported spread (`stdev_ns`, `iqr_ns`) is descriptive
+only; confidence intervals and ratio uncertainty are not computed and no timing
+gates CI.
 
 The strict parser rejects a missing or repeated `ns=` line, malformed or
 duplicate metrics, anything other than one non-empty digest line, changing

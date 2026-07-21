@@ -34,7 +34,7 @@ glob BENCH = Path(str(__file__)).resolve().parent.parent,
      EXPERIMENTAL_KERNELS: set[str] = {"xop_svc_split", "xop_feed", "xop_wasm_call", },
      CATALOG: dict[str, dict[str, object]] = {
          "xop_svc_split": {
-             "scenario": "sv-to-sv microservice RPC vs in-process dispatch",
+             "scenario": "serial loopback sv-to-sv RPC floor vs in-process dispatch",
              "kernel_dir": "kernels/xop_svc_split",
              "provider": "billing.jac",
              "provider_module": "billing",
@@ -44,11 +44,16 @@ glob BENCH = Path(str(__file__)).resolve().parent.parent,
              "metrics": ["per_call_ns"],
              "command_adapter": "sv_microservice_driver",
              "timing_source": "kernel_perf_counter_ns",
+             "variant_timing_source": {
+                 "direct": "kernel_perf_counter_ns",
+                 "rpc": "kernel_perf_counter_ns",
+
+             },
              "rss_scope": "not_recorded",
 
          },
          "xop_feed": {
-             "scenario": "generated cl client feed checksum vs direct provider dispatch",
+             "scenario": "serial scalar generated-client RPC floor vs direct provider dispatch (not a typed-feed or serialisation-scaling workload)",
              "kernel_dir": "kernels/xop_feed",
              "provider": "feed_provider.jac",
              "provider_module": "feed_provider",
@@ -57,12 +62,17 @@ glob BENCH = Path(str(__file__)).resolve().parent.parent,
              "sizes": {"small": SIZE_SMALL_CHURN, "default": SIZE_DEFAULT_CHURN,},
              "metrics": ["per_call_ns"],
              "command_adapter": "cl_sv_node_driver",
-             "timing_source": "driver_perf_counter_ns",
+             "timing_source": "mixed_per_variant",
+             "variant_timing_source": {
+                 "direct": "kernel_perf_counter_ns",
+                 "client": "host_node_performance_now",
+
+             },
              "rss_scope": "not_recorded",
 
          },
          "xop_wasm_call": {
-             "scenario": "native vs wasm32 export for the same deterministic kernel",
+             "scenario": "wasm32 export under a JS host loop vs native sv→na bridge under a Python host loop (asymmetric host loops, not same-source native-vs-wasm)",
              "kernel_dir": "kernels/xop_wasm_call",
              "source": "kernels/xop_wasm_call/bench_compute.na.jac",
              "variants": ["native", "wasm"],
@@ -70,7 +80,12 @@ glob BENCH = Path(str(__file__)).resolve().parent.parent,
              "sizes": {"small": SIZE_SMALL_CHURN, "default": SIZE_DEFAULT_CHURN,},
              "metrics": ["per_call_ns"],
              "command_adapter": "wasm_node_driver",
-             "timing_source": "kernel_perf_counter_ns",
+             "timing_source": "mixed_per_variant",
+             "variant_timing_source": {
+                 "native": "kernel_perf_counter_ns",
+                 "wasm": "host_node_performance_now",
+
+             },
              "rss_scope": "not_recorded",
 
          },
@@ -362,22 +377,43 @@ def run_wasm_variant(
 }
 
 
-"""Measure one catalogued variant."""
-def measure_variant(
-    spec: dict[str, object], variant: str, args: list[str], count: int
+"""Run one invocation of a catalogued variant through its host adapter."""
+def run_once(
+    spec: dict[str, object], variant: str, args: list[str], timeout_s: int
 ) -> dict[str, object] {
-    timeout_s = 300;
-    runs: list[dict[str, object]] = [];
     adapter = spec["command_adapter"] as str;
-    for _ in range(count) {
-        if adapter in ("sv_microservice_driver", "cl_sv_node_driver") {
-            runs.append(run_hosted_variant(spec, variant, args, timeout_s));
-        } elif adapter == "wasm_node_driver" {
-            runs.append(run_wasm_variant(spec, variant, args, timeout_s));
-        } else {
-            raise ValueError(f"unknown command adapter: {adapter}");
-        }
+    if adapter in ("sv_microservice_driver", "cl_sv_node_driver") {
+        return run_hosted_variant(spec, variant, args, timeout_s);
     }
+    if adapter == "wasm_node_driver" {
+        return run_wasm_variant(spec, variant, args, timeout_s);
+    }
+    raise ValueError(f"unknown command adapter: {adapter}");
+}
+
+
+"""Resolve the timing source for one variant, honouring per-variant labels.
+
+Cross-runtime cells do not share a clock: a Python-side driver stamps
+perf_counter_ns while a Node host stamps performance.now(). The catalog
+records the true owner per variant so a wasm/client wall time is never
+mislabelled as a kernel perf_counter reading."""
+def variant_timing_source(spec: dict[str, object], variant: str) -> str {
+    per_variant = spec.get("variant_timing_source") as dict[str, str] | None;
+    if per_variant is not None and variant in per_variant {
+        return per_variant[variant];
+    }
+    return spec["timing_source"] as str;
+}
+
+
+"""Aggregate one variant's collected runs and attach adapter metadata."""
+def finalize_variant(
+    spec: dict[str, object],
+    variant: str,
+    args: list[str],
+    runs: list[dict[str, object]],
+) -> dict[str, object] {
     cell = aggregate_runs(runs) as dict[str, object];
     actual_metrics = set((cell["metrics"] as dict[str, int]).keys());
     expected_metrics = set(spec["metrics"] as list[str]);
@@ -388,11 +424,31 @@ def measure_variant(
         );
     }
     cell["args"] = args;
-    cell["invocations"] = count;
-    cell["command_adapter"] = adapter;
-    cell["timing_source"] = spec["timing_source"] as str;
+    cell["invocations"] = len(runs);
+    cell["command_adapter"] = spec["command_adapter"] as str;
+    cell["timing_source"] = variant_timing_source(spec, variant);
     cell["rss_scope"] = spec["rss_scope"] as str;
     return cell;
+}
+
+
+"""Measure an oracle group with paired, interleaved invocation ordering."""
+def measure_variants(
+    spec: dict[str, object], selected_variants: list[str], args: list[str], count: int,
+) -> dict[str, dict[str, object]] {
+    timeout_s = 300;
+    runs: dict[str, list[dict[str, object]]] = {
+        variant: [] for variant in selected_variants
+    };
+    for _round in range(count) {
+        for variant in selected_variants {
+            runs[variant].append(run_once(spec, variant, args, timeout_s));
+        }
+    }
+    return {
+        variant: finalize_variant(spec, variant, args, runs[variant])
+        for variant in selected_variants
+    };
 }
 
 
@@ -450,9 +506,8 @@ def main(opts: dict[str, str | int | bool]) {
                 f"{','.join(enabled_variants)}"
             );
         }
-        variants: dict[str, dict[str, object]] = {};
+        variants = measure_variants(spec, selected_variants, args, invocations);
         for variant in selected_variants {
-            variants[variant] = measure_variant(spec, variant, args, invocations);
             cell = variants[variant];
             print(
                 f"{kernel:16s} {variant:7s} median={cell['median_ns']}ns "

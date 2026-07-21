@@ -112,6 +112,6 @@ with entry {
     }
     elapsed = time.perf_counter_ns() - started;
     print(f"struct:{checksum}");
-    print(f"m:per_call_ns={elapsed // calls}");
+    print(f"m:per_ffi_call_ns={elapsed // (10 * n * calls)}");
     print(f"ns={elapsed}");
 }

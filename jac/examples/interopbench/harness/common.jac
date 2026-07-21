@@ -2,8 +2,12 @@
 
 import hashlib;
 import json;
+import os;
+import platform;
 import statistics;
 import subprocess;
+import sys;
+import from datetime { datetime, timezone }
 import from pathlib { Path }
 
 
@@ -134,13 +138,45 @@ def aggregate_runs(runs: list[dict[str, object]]) -> dict[str, object] {
         );
     }
     return {
+        "samples": len(times),
         "median_ns": int(statistics.median(times)),
         "min_ns": min(times),
         "max_ns": max(times),
         "stdev_ns": int(statistics.stdev(times)) if len(times) > 1 else 0,
+        "iqr_ns": _iqr(times),
         "canonical_digest": canonical,
         "digest": runs[0]["digest"] as str,
         "metrics": metric_medians,
+
+    };
+}
+
+
+"""Interquartile range in ns; a robust spread that ignores tail outliers."""
+def _iqr(values: list[int]) -> int {
+    if len(values) < 4 {
+        return max(values) - min(values);
+    }
+    (q1, _median, q3) = statistics.quantiles(values, n=4);
+    return int(q3 - q1);
+}
+
+
+"""Machine and environment provenance for a results document.
+
+Timings are only comparable within one such block: they carry no
+machine-independent threshold and must never be quoted across hosts or
+compiler revisions without re-running here."""
+def provenance -> dict[str, object] {
+    return {
+        "captured_utc": datetime.now(timezone.utc).isoformat(),
+        "host": platform.node(),
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "processor": platform.processor(),
+        "cpu_count": os.cpu_count(),
+        "python": f"{platform.python_implementation()} {platform.python_version()}",
+        "executable": sys.executable,
 
     };
 }
@@ -167,9 +203,10 @@ def compare_oracle(scenario: str, variants: dict[str, dict[str, object]]) -> str
 """Write schema-versioned family results."""
 def write_results(out: Path, family: str, cells: dict[str, object]) {
     document = {
-        "schema_version": 1,
+        "schema_version": 2,
         "suite": "interopbench",
         "family": family,
+        "provenance": provenance(),
         "cells": cells,
 
     };

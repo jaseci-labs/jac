@@ -33,12 +33,17 @@ def _subprocess_env(dev_source: bool = False) -> dict[str, str] {
 }
 
 
-"""Run one jac run invocation and return its validated canonical digest."""
+"""Run one jac run invocation and return its validated canonical digest.
+
+`zero_metrics` names metrics that MUST be exactly zero for this variant (the
+non-selected view path), guarding against a shared bug that reports both
+scopes nonzero. Every parsed metric is asserted non-negative."""
 def _run_command(
     command: list[str],
     label: str,
     expected_metrics: set[str],
     dev_source: bool = False,
+    zero_metrics: set[str] | None = None,
 ) -> str {
     proc = subprocess.run(
         command,
@@ -66,7 +71,9 @@ def _run_command(
             (key, separator, value) = line[2:].partition("=");
             assert separator and key and value , f"malformed metric: {line}";
             assert key not in metrics , f"duplicate metric: {key}";
-            metrics[key] = int(value);
+            parsed = int(value);
+            assert parsed >= 0 , f"{label}: negative metric {line}";
+            metrics[key] = parsed;
         } else {
             digest_lines.append(line);
         }
@@ -77,6 +84,11 @@ def _run_command(
     assert set(metrics.keys()) == expected_metrics , (
         f"{label}: unexpected metrics {sorted(metrics.keys())}"
     );
+    for zero_key in (zero_metrics or set()) {
+        assert metrics[zero_key] == 0 , (
+            f"{label}: non-selected metric {zero_key}={metrics[zero_key]} must be zero"
+        );
+    }
     assert len(digest_lines) == 1 , (
         f"{label}: expected one digest line, found {digest_lines}"
     );
@@ -94,15 +106,22 @@ def _run_kernel(kernel: str, variant: str, expected_metrics: set[str]) -> str {
 }
 
 
-"""Run one view-driver variant."""
+"""Run one view-driver variant.
+
+The non-selected timing scope must be exactly zero: the `view` variant never
+materialises (materialise_ns==0) and the `materialised` variant never times the
+zero-copy scan (view_ns==0). A shared bug reporting both would pass a pure
+metric-key check, so assert the zero explicitly."""
 def _run_view(variant: str, count: str) -> str {
     source = os.path.join(INTEROPBENCH, "harness", "view_driver.jac");
     command = [sys.executable, "-m", "jaclang", "run", source, variant, count, ];
+    non_selected = {"materialise_ns"} if variant == "view" else {"view_ns"};
     return _run_command(
         command,
         f"iop_view/{variant}/{count}",
         {"view_ns", "materialise_ns"},
         dev_source=True,
+        zero_metrics=non_selected,
     );
 }
 
@@ -112,6 +131,9 @@ test "interopbench differential identity: sv to native scalar call" {
     bridge = _run_kernel("iop_call", "bridge", {"per_call_ns"});
     assert free == bridge , (
         f"iop_call output diverged:\n--- free ---\n{free}\n--- bridge ---\n{bridge}"
+    );
+    assert free == "call:263997602" , (
+        f"iop_call checksum changed from independently computed value: {free}"
     );
 }
 

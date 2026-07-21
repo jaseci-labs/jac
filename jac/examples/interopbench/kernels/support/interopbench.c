@@ -16,11 +16,13 @@
 
 /* 4-byte struct: one int. INTEGER class, single eightbyte. */
 typedef struct { int32_t a; } ib_vec4;
+_Static_assert(sizeof(ib_vec4) == 4, "ib_vec4 must be exactly 4 bytes");
 ib_vec4 ib_vec4_make(int32_t a) { ib_vec4 v; v.a = a; return v; }
 int32_t ib_vec4_sum(ib_vec4 v) { return v.a; }
 
 /* 12-byte struct: three ints. INTEGER class, two eightbytes (one partial). */
 typedef struct { int32_t a; int32_t b; int32_t c; } ib_vec12;
+_Static_assert(sizeof(ib_vec12) == 12, "ib_vec12 must be exactly 12 bytes");
 ib_vec12 ib_vec12_make(int32_t a, int32_t b, int32_t c) {
     ib_vec12 v; v.a = a; v.b = b; v.c = c; return v;
 }
@@ -28,6 +30,7 @@ int32_t ib_vec12_sum(ib_vec12 v) { return v.a + v.b + v.c; }
 
 /* 16-byte struct: four ints. INTEGER class, two full eightbytes. */
 typedef struct { int32_t a; int32_t b; int32_t c; int32_t d; } ib_vec16;
+_Static_assert(sizeof(ib_vec16) == 16, "ib_vec16 must be exactly 16 bytes");
 ib_vec16 ib_vec16_make(int32_t a, int32_t b, int32_t c, int32_t d) {
     ib_vec16 v; v.a = a; v.b = b; v.c = c; v.d = d; return v;
 }
@@ -35,6 +38,7 @@ int32_t ib_vec16_sum(ib_vec16 v) { return v.a + v.b + v.c + v.d; }
 
 /* 24-byte struct: three int64s. MEMORY class (>16B) → byval param, sret return. */
 typedef struct { int64_t a; int64_t b; int64_t c; } ib_vec24;
+_Static_assert(sizeof(ib_vec24) == 24, "ib_vec24 must be exactly 24 bytes");
 ib_vec24 ib_vec24_make(int64_t a, int64_t b, int64_t c) {
     ib_vec24 v; v.a = a; v.b = b; v.c = c; return v;
 }
@@ -48,6 +52,7 @@ typedef struct {
     int32_t v4;  int32_t v5;  int32_t v6;  int32_t v7;
     int32_t v8;  int32_t v9;  int32_t v10;
 } ib_vec44;
+_Static_assert(sizeof(ib_vec44) == 44, "ib_vec44 must be exactly 44 bytes");
 ib_vec44 ib_vec44_make(int32_t seed) {
     ib_vec44 s;
     s.v0  = (seed * 1)  % 1009;

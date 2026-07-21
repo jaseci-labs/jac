@@ -23,6 +23,25 @@ coverage.
 > cells are retained for explicit `--experimental` runs, but remain outside
 > the default runnable contract until their phase acceptance criteria pass.
 
+### How to read the numbers (scope of valid conclusions)
+
+The differential-identity / regression layer is the load-bearing part:
+byte-identical digests across each oracle group are a real correctness and
+compiler-regression witness, and the manifest/IR/ABI audits are structural facts.
+The **performance** layer is narrower than a casual reading of the kernel names
+suggests. The only defensible timing conclusions are about *these exact
+microprograms at the chosen size on the measured machine*. In particular:
+`iop_call` and `iop_symmetric` measure **execution placement** (which runtime
+runs the work), not isolated boundary overhead - `iop_cb` is the cleanest
+boundary cell; the `iop_ffi_*` cells report per-foreign-call time
+(`m:per_ffi_call_ns`) but the scalar floor includes numeric conversions and the
+struct floor averages five shapes; `xop_feed` is a sequential scalar RPC floor,
+not a typed feed or serialisation curve; and `xop_wasm_call` compares asymmetric
+host loops, not the same source built native-vs-wasm. No size-sweep slope,
+confidence interval, or ratio uncertainty is computed. Do not publish these as
+general Jac interop overhead, realistic feeds, production microservices, or
+native-vs-wasm results.
+
 ## Two families, two harnesses
 
 Parallel to ownbench's ownership + regions split (which carries two
@@ -81,9 +100,13 @@ Inherited from ownbench, extended for the boundary crossings:
   owns `ns=` when both paths share a clock. A JS/browser driver that cannot
   share that clock returns only the canonical digest and metrics; the host
   adapter injects the single `ns=` wall-clock line.
-- Per-call and per-byte cost are derived by the harness from a size sweep;
-  a kernel does not claim a per-byte slope from one sample. Tail metrics are
-  computed over a declared request loop after warm-up.
+- Each run selects exactly one named work size (`--sizes`), so a single run
+  reports per-batch or per-call time at that size only. The harness does **not**
+  currently fit a fixed-cost intercept or a per-byte slope, and no kernel claims
+  one from a single sample. Separating boundary overhead from callee work needs a
+  multi-size sweep that is not yet implemented; until then, treat every number as
+  "this exact microprogram at this size on this machine." Invocations within a run
+  are interleaved per variant (paired sampling) so drift hits both sides evenly.
 - No comments / docstrings in kernel bodies (repo fmt strips them). Boundary
   declarations stay minimal and mechanical so a named manifest/IR audit can
   inspect them.
@@ -108,8 +131,13 @@ native/C. Each cell has its own exact reference twin.
   scalar workload in ordinary `sv` and inside `na { ... }`; a variant arg
   selects the exact reference or bridge path. Both run under in-process
   `jac run`, because standalone `nacompile` rejects mixed modules with
-  Python/server `native_imports`. Warm up once, sweep work size and call count,
-  emit `m:per_call_ns`; derive fixed cost and slope in the harness.
+  Python/server `native_imports`. Warm up once, then emit `m:per_call_ns` =
+  wall / outer-calls at one size. **This is an execution-placement benchmark,
+  not an isolated boundary cost:** `free` runs the LCG in `sv` and `bridge` runs
+  the same LCG inside `na {}`, so the ratio blends the `sv → na` crossing with
+  native-vs-server execution speed. For the crossing in isolation see `iop_cb`,
+  where both variants run the work in `sv` and only the callback path adds a
+  round trip. No fixed cost or slope is fitted (see the sweep note above).
 - `iop_cb`  -  second mixed-JIT cell. A `na {}` function calls a Python-side
   scalar `def`; the same source has a direct-`sv` reference variant and emits
   `m:invoke_ns`. Callback registration occurs before kernel entry, so compile/
@@ -120,15 +148,27 @@ native/C. Each cell has its own exact reference twin.
   checksums it while native storage is alive, then explicitly materialises
   it (for example list/field extraction) and checksums the copy. Each variant
   measures only its selected consumer; the non-selected `m:view_ns` or
-  `m:materialise_ns` metric is zero. The suite does not claim a selectable
-  deep-copy marshaller that does not currently exist.
+  `m:materialise_ns` metric is zero (asserted by the regression test). The suite
+  does not claim a selectable deep-copy marshaller that does not currently exist.
+  This cell measures **full-traversal consumer latency only**; it does not
+  measure the memory savings of zero-copy because RSS/allocation is not sampled,
+  so a near-equal view/materialise latency on a full scan says nothing about the
+  memory dimension.
 - `iop_ffi_scalar`  -  `sqrt` churn via `import from "libm.so" { def sqrt(x:
-  f64) -> f64; }`. Pure call+return overhead; the ABI floor.
+  f64) -> f64; }`. The kernel makes `n` foreign calls per outer call, so the
+  metric is `m:per_ffi_call_ns` = wall / (`n` × outer-calls), i.e. per foreign
+  call, not per batch. It is an FFI-plus-`float`/`int`-conversion floor, not a
+  pure ABI floor: `ffi` computes `int(sqrt(float(i*i)))` while `ref` returns `i`,
+  so the delta includes the two numeric conversions on each iteration.
 - `iop_ffi_struct`  -  a deterministic `support/interopbench.c` fixture exports
-  take/return functions for `_Static_assert`ed 4/12/16/24/44-byte structs;
-  Jac calls them through public `obj`-in-`import-from` syntax. Linux x86_64
-  runtime covers System V register vs `byval`/`sret`; arm64 starts as
-  cross-target classifier/IR assertions unless an arm64 runner exists.
+  take/return functions for `_Static_assert`ed 4/12/16/24/44-byte structs (the
+  asserts are compiled into the fixture); Jac calls them through public
+  `obj`-in-`import-from` syntax. Each outer call makes 10 C calls across 5 struct
+  shapes, so `m:per_ffi_call_ns` = wall / (10 × `n` × outer-calls) is an
+  **average across heterogeneous struct shapes**, not a per-shape cost; split by
+  shape before quoting a single ABI-class number. Linux x86_64 runtime covers
+  System V register vs `byval`/`sret`; arm64 starts as cross-target
+  classifier/IR assertions unless an arm64 runner exists.
 - `iop_ffi_vtable`  -  the same C fixture accepts a struct with a function-
   pointer field and invokes the Jac callback. Runtime prints only steady-state
   `m:trampoline_call_ns`; `__clibcb.{n}` creation/caching is a compile/IR
@@ -146,11 +186,18 @@ drives the kernel, tears down. Same `ns=` + digest + `m:` convention.
   the chosen Node/browser adapter; a Python/Jac raw HTTP caller does not
   exercise client `_to_wire`/`__from_wire`, localStorage auth, or endpoint
   cache logic. Add plain RPC first, then auth, then cache reset/invalidation.
-- `xop_feed`  -  generated-client typed feed at N = 10/100/1000. The semantic
-  pair compares canonical counts/checksums with direct provider dispatch.
-  A raw endpoint returning pre-serialised bytes is a separate decomposition
-  experiment, not the differential twin. `m:serialise_ns` / `m:http_ns` are
-  reported only when their timing scopes are independently defined.
+- `xop_feed`  -  **as implemented this is not a typed-feed or
+  serialisation-scaling benchmark.** The provider (`feed_provider.jac`) is a
+  scalar `def feed_checksum(seed, work) -> int`; the client makes sequential
+  scalar RPCs and checksums the returned integers. There are no typed feed
+  records, no N = 10/100/1000 payload lists, no payload-byte sweep, and no
+  serialisation-scaling measurement. It is therefore a **sequential scalar
+  generated-client/HTTP floor**, useful only as such - do not read it as a
+  HyperProtoBench-style serialisation curve. It also does not measure the
+  production `@jac/runtime`: `harness/cl_host.mjs` substitutes a minimal custom
+  `fetch` shim for `__jacCallFunction`, so it measures the generated-client shape
+  over that shim, not the shipped runtime. A real typed feed with a payload sweep
+  is future work.
 - `xop_stream`  -  SSE generator endpoint driven by an explicit streaming
   client. The normal generated client RPC helper calls `response.json()` and
   is not an SSE consumer. Keep SSE as a separate protocol adapter (or move it
@@ -167,7 +214,15 @@ drives the kernel, tears down. Same `ns=` + digest + `m:` convention.
 - `xop_wasm_call`  -  after the scalar wasm slice, optional PolyBench-C
   kernels (`deriche`, `floyd-warshall`, `nbody`) via
   `jac nacompile --target wasm32`, called from JS through `WasmLinker`
-  exports. The exact same kernel's native build is the reference.
+  exports. **Caveat on the current implementation:** the `native` reference is
+  `native_driver.jac`, a Python/server outer loop that crosses one `sv → na`
+  bridge per call; the `wasm` variant is a JavaScript loop with BigInt
+  conversions calling a wasm export. So the comparison is `Python loop → native
+  bridge` vs `JavaScript loop → wasm export`, **not** the same source compiled
+  native and wasm under equal host loops. Read it as a rough wasm-export vs
+  native-bridge floor, not an isolated wasm-vs-native codegen result; the timing
+  source is labelled per variant (`kernel_perf_counter_ns` for native,
+  `host_node_performance_now` for wasm) because the two do not share a clock.
 - `xop_wasm_cb`  -  native calling one deliberately declared application
   import under `env`; the Node adapter separately supplies the versioned
   `jac_host1` runtime host. This stable import-table hop is the inverse of
@@ -238,7 +293,21 @@ logs, reset hooks, timeouts, and terminate-then-kill cleanup in every exit
 path. Browser/Node/wasm details stay behind their host adapter rather than
 leaking into the common parser.
 
-Results label `command_adapter`, `timing_source`, and `rss_scope`. Family-1
+Results are schema version 2. Every document carries a `provenance` block
+(host, platform, machine, processor, cpu_count, python, UTC capture time) so a
+number is never quoted without the machine it came from; each cell records
+`samples`, `median_ns`, `min_ns`, `max_ns`, `stdev_ns`, and `iqr_ns` (a robust
+spread). What is **not** yet computed: confidence intervals, ratio uncertainty,
+or an explicit outlier policy - spread is reported, not gated. Invocations are
+interleaved per variant (paired sampling), but node/wasm hosts still get only a
+single warm-up call, which is not enough to guarantee stable V8 tiering; treat
+first-run cross-runtime numbers as provisional.
+
+Results label `command_adapter`, `timing_source`, and `rss_scope`; cross-runtime
+cells that do not share a clock label `timing_source` **per variant** (e.g.
+`xop_feed`/`xop_wasm_call` record `kernel_perf_counter_ns` for the Python-driven
+variant and `host_node_performance_now` for the Node-driven one) rather than
+stamping one catalog-level label over a mixed pair. Family-1
 mixed-JIT process RSS and standalone-native RSS are not directly comparable.
 For a warm persistent family-2 host, the request-loop wall time belongs to
 the driver; client RSS is recorded separately, while server RSS is either
@@ -292,7 +361,12 @@ their existing owning suites.
 
 ## Real-world workload selection
 
-Cross-checked against the polyglot/FFI benchmark community so the kernels
+These are the **design targets and analogues**, not claims about what the
+current cells implement. The billing/feed/HyperProtoBench/TechEmpower/PolyBench
+references below describe the intended direction; as implemented the enabled
+cells are synthetic scalar microprograms and the "Real-world stand-in" column of
+the boundary map is aspirational until the corresponding payload/workload sweeps
+land. Cross-checked against the polyglot/FFI benchmark community so the kernels
 are comparable to something outside Jac:
 
 - **CLBG**  -  `binarytrees`/`nbody`/`fannkuch`. ownbench already uses
