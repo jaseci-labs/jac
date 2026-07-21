@@ -1,6 +1,6 @@
 """Region eraser: produce the managed baseline of a region kernel.
 
-Usage: jac run harness/rerase.jac kernels/rgraph.na.jac > bare.na.jac
+Usage: jac run harness/rerase.jac kernels/rgraph.jac > bare.jac
 
 Deletes region annotations so the same workload runs entirely on the
 managed heap -- the mechanical open/close-lines-only diff the regions
@@ -57,7 +57,7 @@ def rerase(text: str) -> str {
 
 with entry {
     if len(sys.argv) != 2 {
-        sys.stderr.write("usage: jac run rerase.jac <kernel.na.jac>\n");
+        sys.stderr.write("usage: jac run rerase.jac <kernel.jac>\n");
         sys.exit(2);
     }
     sys.stdout.write(rerase(Path(sys.argv[1]).read_text()));

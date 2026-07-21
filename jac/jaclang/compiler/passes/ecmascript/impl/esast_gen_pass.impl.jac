@@ -4488,7 +4488,17 @@ impl EsastGenPass.exit_archetype(nd: uni.Archetype) -> None {
         and (nd.name.sym_name in self._osp_arch_set())
         and (nd.arch_kind is not None)
     );
-    if (((nd.arch_type.name == Tok.KW_OBJECT) or is_local_osp_arch) and has_members) {
+    is_shared_boundary_arch = (
+        (nd.name is not None) and (nd.name.sym_name in self.shared_arch_names)
+    );
+    if (
+        (
+            (nd.arch_type.name == Tok.KW_OBJECT)
+            or is_local_osp_arch
+            or is_shared_boundary_arch
+        )
+        and has_members
+    ) {
         constructor_stmts: list[es.Statement] = [];
         props_param = self.sync_loc(
             es.AssignmentPattern(
@@ -4880,13 +4890,28 @@ impl EsastGenPass.populate_client_manifest(nd: uni.Module) -> None {
     }
 }
 
+impl EsastGenPass._es_json_literal(value: any) -> any {
+    if isinstance(value, list) {
+        return es.ArrayExpression(elements=[self._es_json_literal(v) for v in value]);
+    }
+    if isinstance(value, dict) {
+        return es.ObjectExpression(
+            properties=[
+                es.Property(
+                    key=es.Literal(value=k), value=self._es_json_literal(v), kind='init'
+                ) for (k, v) in value.items()
+            ]
+        );
+    }
+    return es.Literal(value=value);
+}
+
 impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement] {
     manifest = nd.gen.interop_manifest;
     if not manifest.boundary_types {
         return [];
     }
     stubs: list[es.Statement] = [];
-    osp_archs = self._osp_arch_set();
 
     osp_class_map: dict[str, es.ClassDeclaration] = {};
     for item in self._merge_module_bodies(nd) {
@@ -4899,7 +4924,6 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
         }
     }
     for (type_name, info) in manifest.boundary_types.items() {
-        is_osp = type_name in osp_archs;
         if info.kind == "enum" {
             enum_props: list[es.Property] = [];
             for (member_name, member_val) in info.enum_members {
@@ -4940,6 +4964,9 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
             field_types = {f[0]: f[1] for f in info.fields};
             ctor_stmts: list[es.Statement] = [];
             for fname in field_names {
+                fallback = self._es_json_literal(info.field_defaults[fname])
+                    if fname in info.field_defaults
+                    else es.Literal(value=None);
                 assign = es.ExpressionStatement(
                     expression=es.AssignmentExpression(
                         operator='=',
@@ -4962,7 +4989,7 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
                                 property=es.Identifier(name=fname),
                                 computed=False
                             ),
-                            alternate=es.Literal(value=None)
+                            alternate=fallback
                         )
                     )
                 );
@@ -5457,55 +5484,49 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
                 static=False,
                 computed=False
             );
-            if is_osp {
-                osp_class = osp_class_map.get(type_name);
-                if osp_class is not None {
-                    if info.kind == "node" {
-                        for member in osp_class.body.body {
-                            if (
-                                isinstance(member, es.MethodDefinition)
-                                and (member.kind == "constructor")
-                            ) {
-                                member.value.body.body.append(
-                                    es.IfStatement(
-                                        test=es.CallExpression(
-                                            callee=es.MemberExpression(
-                                                object=es.Identifier(name='props'),
-                                                property=es.Identifier(
-                                                    name='hasOwnProperty'
-                                                ),
+            osp_class = osp_class_map.get(type_name);
+            if osp_class is not None {
+                if info.kind == "node" {
+                    for member in osp_class.body.body {
+                        if (
+                            isinstance(member, es.MethodDefinition)
+                            and (member.kind == "constructor")
+                        ) {
+                            member.value.body.body.append(
+                                es.IfStatement(
+                                    test=es.CallExpression(
+                                        callee=es.MemberExpression(
+                                            object=es.Identifier(name='props'),
+                                            property=es.Identifier(
+                                                name='hasOwnProperty'
+                                            ),
+                                            computed=False
+                                        ),
+                                        arguments=[es.Literal(value='_jac_id')]
+                                    ),
+                                    consequent=es.ExpressionStatement(
+                                        expression=es.AssignmentExpression(
+                                            operator='=',
+                                            left=es.MemberExpression(
+                                                object=es.ThisExpression(),
+                                                property=es.Identifier(name='_jac_id'),
                                                 computed=False
                                             ),
-                                            arguments=[es.Literal(value='_jac_id')]
-                                        ),
-                                        consequent=es.ExpressionStatement(
-                                            expression=es.AssignmentExpression(
-                                                operator='=',
-                                                left=es.MemberExpression(
-                                                    object=es.ThisExpression(),
-                                                    property=es.Identifier(
-                                                        name='_jac_id'
-                                                    ),
-                                                    computed=False
-                                                ),
-                                                right=es.MemberExpression(
-                                                    object=es.Identifier(name='props'),
-                                                    property=es.Identifier(
-                                                        name='_jac_id'
-                                                    ),
-                                                    computed=False
-                                                )
+                                            right=es.MemberExpression(
+                                                object=es.Identifier(name='props'),
+                                                property=es.Identifier(name='_jac_id'),
+                                                computed=False
                                             )
-                                        ),
-                                        alternate=None
-                                    )
-                                );
-                            }
+                                        )
+                                    ),
+                                    alternate=None
+                                )
+                            );
                         }
                     }
-                    osp_class.body.body.append(from_wire_def);
-                    osp_class.body.body.append(to_wire_def);
                 }
+                osp_class.body.body.append(from_wire_def);
+                osp_class.body.body.append(to_wire_def);
             } else {
                 class_body = es.ClassBody(body=[ctor_def, from_wire_def, to_wire_def]);
                 class_decl = es.ClassDeclaration(

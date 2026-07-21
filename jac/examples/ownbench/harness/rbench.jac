@@ -160,14 +160,14 @@ def main(opts: dict) {
 
     rgraph_args = ["50", "20"] if opts["quick"] else ["200", "500"];
     bare_src = make_bare(
-        BENCH / "kernels" / "reg_graph.na.jac", BENCH / "bin" / "reg_graph_bare.na.jac"
+        BENCH / "kernels" / "reg_graph.jac", BENCH / "bin" / "reg_graph_bare.jac"
     );
     results["reg_graph"] = {};
     for cfg in ["acyclic", "cyclic"] {
         back = "0" if cfg == "acyclic" else "10";
         cells: dict = {};
         for (variant, src) in [
-            ("region", BENCH / "kernels" / "reg_graph.na.jac"),
+            ("region", BENCH / "kernels" / "reg_graph.jac"),
             ("bare", bare_src),
 
         ] {
@@ -199,7 +199,7 @@ def main(opts: dict) {
     wdigs: set = set();
     for mode in MODES {
         out = BENCH / "bin" / f"reg_wspawn_{mode}";
-        compile_src(BENCH / "kernels" / "reg_wspawn.na.jac", mode, out);
+        compile_src(BENCH / "kernels" / "reg_wspawn.jac", mode, out);
         cell = measure(out, wspawn_args, inv);
         results["reg_wspawn"][mode] = cell;
         wdigs.add(cell["digest"]);
@@ -218,7 +218,7 @@ def main(opts: dict) {
     sizes = TRANSFER_SIZES_QUICK if opts["quick"] else TRANSFER_SIZES;
     treps = "5" if opts["quick"] else "20";
     out = BENCH / "bin" / "reg_transfer_cycles";
-    compile_src(BENCH / "kernels" / "reg_transfer.na.jac", "cycles", out);
+    compile_src(BENCH / "kernels" / "reg_transfer.jac", "cycles", out);
     results["reg_transfer"] = {};
     for size in sizes {
         row: dict = {};
@@ -241,7 +241,7 @@ def main(opts: dict) {
     }
 
     out = BENCH / "bin" / "reg_overhead_cycles";
-    compile_src(BENCH / "kernels" / "reg_overhead.na.jac", "cycles", out);
+    compile_src(BENCH / "kernels" / "reg_overhead.jac", "cycles", out);
     ok_args = ["200000"] if opts["quick"] else ["2000000"];
     cell = measure(out, ok_args, max(3, inv // 3));
     results["reg_overhead"] = cell;
