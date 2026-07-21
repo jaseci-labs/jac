@@ -194,6 +194,7 @@ type_evaluator.impl.jac
 type_checker_pass.impl.jac
 enums.impl.jac
 func.impl.jac
+generics.impl.jac
 stmt.impl.jac
 utils.impl.jac
 client_bundle.impl.jac

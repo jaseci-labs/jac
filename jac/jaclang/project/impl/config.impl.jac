@@ -1114,10 +1114,26 @@ impl _parse_toml_data(
             );
             _default_cs = _builtin_cs;
         }
+        _builtin_cap = BuildConfig().native_closure_cap;
+        try {
+            _cap = int(build_data.get("native_closure_cap", _builtin_cap));
+        } except (TypeError, ValueError) {
+            _cap = 0;
+        }
+        if _cap < 1 {
+            import from jaclang.cli.console { console }
+            console.warning(
+                f"[build] native_closure_cap="
+                f"'{build_data.get('native_closure_cap')}' must be a positive "
+                f"integer; defaulting to {_builtin_cap}."
+            );
+            _cap = _builtin_cap;
+        }
         config.build = BuildConfig(
             typecheck=build_data.get("typecheck", False),
             dir=build_data.get("dir", ".jac"),
-            default_codespace=_default_cs
+            default_codespace=_default_cs,
+            native_closure_cap=_cap
         );
     }
     if "gc" in data {

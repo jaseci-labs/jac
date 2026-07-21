@@ -86,11 +86,14 @@ obj MicroserviceManifestBuilder {
         dry_run: bool = False;
 
     def _ms_cfg -> dict[str, any] {
+        import from jaclang.scale.config.config_loader {
+            get_scale_config,
+            normalize_microservices_config
+        }
         if self.microservices_config {
-            return self.microservices_config;
+            return normalize_microservices_config(self.microservices_config);
         }
         try {
-            import from jaclang.scale.config.config_loader { get_scale_config }
             return get_scale_config().get_microservices_config();
         } except Exception {
             return {};
