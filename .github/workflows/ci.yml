@@ -780,6 +780,16 @@ jobs:
           exit 1
         fi
 
+    - name: Run root-level scale tests (identity password, firebase env)
+      if: matrix.group == 'data'
+      # Root-level test_*.jac files the matrix globs don't reach. Base scale
+      # deps only (bcrypt, config) - no firebase-admin needed here.
+      env:
+        JAC_TEST_JOBS: "0"
+      run: |
+        jac test jac/jaclang/scale/tests/test_identity_password.jac -x
+        jac test jac/jaclang/scale/tests/test_firebase_env.jac -x
+
     - name: Install scale firebase deps
       if: matrix.group == 'data'
       run: jac install "google-cloud-firestore>=2.21.0,<3.0.0" "google-cloud-storage>=2.19.0,<3.0.0" "firebase-admin>=6.0.0,<8.0.0" --global
@@ -1082,7 +1092,7 @@ jobs:
     needs: [changes, build-jac]
     if: >-
       github.event_name != 'push' &&
-      (github.event_name != 'pull_request' || needs.changes.outputs.core == 'true') &&
+      (github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true') &&
       !contains(github.event.pull_request.labels.*.name, 'skip-k8s')
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 40

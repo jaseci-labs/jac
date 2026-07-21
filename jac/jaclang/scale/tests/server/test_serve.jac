@@ -1257,28 +1257,38 @@ test "websocket functionality" {
         );
 
         async def test_nonexistent {
+            got_message = False;
             try {
                 async with websockets.connect(
                     f"{sv_ws_url}/ws/NonExistentWalker"
                 ) as ws {
                     await ws.recv();
-                    pytest.fail("Expected connection to be rejected");
+                    got_message = True;
                 }
-            } except (websockets.exceptions.ConnectionClosed, Exception) {
-                0;
+            } except Exception {
+                got_message = False;
             }
+            assert not got_message , (
+                "Expected WS connection to NonExistentWalker to be rejected, "
+                "but a message was received"
+            );
         }
         asyncio.run(test_nonexistent());
 
         async def test_http_via_ws {
+            got_message = False;
             try {
                 async with websockets.connect(f"{sv_ws_url}/ws/CreateTask") as ws {
                     await ws.recv();
-                    pytest.fail("Expected connection to be rejected for HTTP walker");
+                    got_message = True;
                 }
-            } except (websockets.exceptions.ConnectionClosed, Exception) {
-                0;
+            } except Exception {
+                got_message = False;
             }
+            assert not got_message , (
+                "Expected WS connection to HTTP-only walker CreateTask to be "
+                "rejected, but a message was received"
+            );
         }
         asyncio.run(test_http_via_ws());
 

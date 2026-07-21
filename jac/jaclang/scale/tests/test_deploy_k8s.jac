@@ -1,6 +1,5 @@
 import os;
 import time;
-import requests;
 import importlib.resources;
 import from pathlib { Path }
 import from typing { Any }
@@ -13,6 +12,7 @@ import from types { SimpleNamespace }
 
 import from jaclang.scale.config.app_config { AppConfig }
 import from jaclang.scale.models.deployment_result { DeploymentResult }
+import from jaclang.scale.models.resource_status { ResourceStatus }
 import from jaclang.scale.config.config_loader {
     JacScaleConfig,
     get_scale_config,
@@ -30,33 +30,6 @@ import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
 import from jaclang.scale.deploy.target.kubernetes.ingress { IngressDeployer }
 import from jaclang.scale.deploy.autoscale.factory { AutoscalerFactory }
 import from jaclang.scale.deploy.autoscale.autoscaler { AutoscalerSpec, Trigger }
-
-def _request_with_retry(
-    method: str,
-    url: str,
-    json: dict[str, any] | None = None,
-    timeout: int = 10,
-    max_retries: int = 60,
-    retry_interval: float = 2.0
-) -> requests.Response {
-    response = None;
-    for attempt in range(max_retries) {
-        response = requests.request(method=method, url=url, json=json, timeout=timeout);
-
-        if response.status_code == 503 {
-            print(
-                f"[DEBUG] {url} returned 503, retrying ({attempt + 1}/{max_retries})..."
-            );
-            time.sleep(retry_interval);
-            continue;
-        }
-
-        return response;
-    }
-
-    assert response is not None , "No response received";
-    return response;
-}
 
 test "early exit" {
     config.load_kube_config();
@@ -117,12 +90,14 @@ test "deployment target methods" {
     service_url = deployment_target.get_service_url(app_name);
     assert service_url is None or isinstance(service_url, str);
 
-    try {
-        status = deployment_target.get_status(app_name);
-        assert status is not None;
-    } except Exception {
-        0;
-    }
+    # get_status swallows k8s errors internally and returns UNKNOWN rather than
+    # raising, so an app that was never deployed must report UNKNOWN - not crash,
+    # and not spuriously report RUNNING.
+    status = deployment_target.get_status(app_name);
+    assert status is not None;
+    assert status.status == ResourceStatus.UNKNOWN , (
+        f"Expected UNKNOWN status for undeployed app '{app_name}', got {status.status}"
+    );
 }
 
 def _make_fleet_target(app_name: str = "svc-a", namespace: str = "fleet-ns") -> any {

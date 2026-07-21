@@ -1,0 +1,7 @@
+# Pre-existing test-hygiene violations, grandfathered (ratchet: no NEW ones).
+# Fix each and delete its line. Format: <relpath>:<rule>
+# broad-status: assertion accepts both a 2xx and an error code, so it cannot
+# distinguish a working path from a broken one. All flagged by the audit.
+tests/server/test_admin.jac:broad-status
+tests/server/test_file_upload.jac:broad-status
+tests/server/test_serve.jac:broad-status

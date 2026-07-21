@@ -1,4 +1,5 @@
 import asyncio;
+import unittest;
 import from uuid { UUID }
 import from jaclang.runtimelib.serializer { Serializer }
 import from jaclang.runtimelib.changeset { ChangeSet }
@@ -36,8 +37,7 @@ with entry {
 
 test "MongoBackend.aget retrieves stored anchor via AsyncMongoClient" {
     if _mongo_uri is None {
-        print("[skip] MongoDB unavailable");
-        return;
+        raise unittest.SkipTest("MongoDB container unavailable");
     }
     counter = CounterNode(value=42);
     anchor = counter.__jac__;
@@ -61,8 +61,7 @@ test "MongoBackend.aget retrieves stored anchor via AsyncMongoClient" {
 
 test "MongoBackend.apply persists anchors (async commits route via to_thread(commit))" {
     if _mongo_uri is None {
-        print("[skip] MongoDB unavailable");
-        return;
+        raise unittest.SkipTest("MongoDB container unavailable");
     }
     counter = CounterNode(value=99);
     anchor = counter.__jac__;
@@ -84,8 +83,7 @@ test "MongoBackend.apply persists anchors (async commits route via to_thread(com
 
 test "RedisBackend.aput and aget round-trip via redis.asyncio" {
     if _redis_url is None {
-        print("[skip] Redis unavailable");
-        return;
+        raise unittest.SkipTest("Redis container unavailable");
     }
     counter = CounterNode(value=7);
     anchor = counter.__jac__;

@@ -364,6 +364,53 @@ for prefix in ${ROUTES}; do
 done
 
 _t "routing OK"
+echo "=== journey: gateway identity + an order that survives an orders-app pod restart ==="
+# Register + login on the gateway for a token (the service functions are auth-gated),
+# add a cart item, create an order (persists an Order under the user root in Mongo),
+# then kill the orders-app pod. A fresh pod must serve the same order back from Mongo.
+# Proves two things at once: the gateway-issued token is accepted by a downstream
+# service, and application state is durable across a pod restart (not held in a
+# single pod's memory).
+GW_URL="http://localhost:${GATEWAY_LOCAL_PORT}"
+E2E_EMAIL="persist-e2e@example.com"
+REG_BODY="{\"identities\":[{\"type\":\"email\",\"value\":\"${E2E_EMAIL}\"}],\"credential\":{\"type\":\"password\",\"password\":\"pw12345678\"}}"
+LOGIN_BODY="{\"identity\":{\"type\":\"email\",\"value\":\"${E2E_EMAIL}\"},\"credential\":{\"type\":\"password\",\"password\":\"pw12345678\"}}"
+REG_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${GW_URL}/user/register" \
+    -H 'content-type: application/json' -d "${REG_BODY}")
+case "${REG_CODE}" in
+    200 | 201 | 409) : ;;
+    *) echo "FAIL: /user/register returned ${REG_CODE}" >&2; exit 1 ;;
+esac
+TOKEN=$(curl -fsS -X POST "${GW_URL}/user/login" -H 'content-type: application/json' \
+    -d "${LOGIN_BODY}" \
+    | jac -c "import json, sys; print((json.load(sys.stdin).get('data') or {}).get('token', ''))")
+if [ -z "${TOKEN}" ]; then echo "FAIL: /user/login returned no token" >&2; exit 1; fi
+AUTH="Authorization: Bearer ${TOKEN}"
+curl -fsS -X POST "${GW_URL}/cart/function/add_to_cart" -H "${AUTH}" \
+    -H 'content-type: application/json' \
+    -d '{"product_id": "p-e2e", "product_name": "E2E Widget", "price": 4.5, "qty": 2}' \
+    >/dev/null || { echo "FAIL: add_to_cart (gateway token not accepted by cart?)" >&2; exit 1; }
+ORDER_ID=$(curl -fsS -X POST "${GW_URL}/orders/function/create_order" -H "${AUTH}" \
+    -H 'content-type: application/json' -d '{}' \
+    | jac -c "import json, sys; d = json.load(sys.stdin); print(((d.get('data') or {}).get('result') or {}).get('id', ''))")
+if [ -z "${ORDER_ID}" ]; then echo "FAIL: create_order returned no id" >&2; exit 1; fi
+echo "  created ${ORDER_ID}; restarting orders-app..."
+kubectl delete pod -n "${NAMESPACE}" -l app=orders-app --wait=true >/dev/null 2>&1 || true
+if ! kubectl rollout status -n "${NAMESPACE}" deploy/orders-app-deployment --timeout=300s >/dev/null 2>&1; then
+    echo "FAIL: orders-app did not roll back out after restart" >&2
+    exit 1
+fi
+AFTER=$(curl -fsS --max-time 20 --retry 6 --retry-delay 3 --retry-all-errors -X POST \
+    "${GW_URL}/orders/function/list_orders" -H "${AUTH}" \
+    -H 'content-type: application/json' -d '{}' || true)
+if ! printf '%s' "${AFTER}" | grep -q "${ORDER_ID}"; then
+    echo "FAIL: order ${ORDER_ID} did not survive the orders-app pod restart" >&2
+    printf '%s' "${AFTER}" | head -c 300 >&2
+    exit 1
+fi
+echo "  order ${ORDER_ID} survived the restart (served from Mongo by a fresh pod)"
+
+_t "identity + pod-restart persistence OK"
 echo "=== verify HPA OOM guardrails (cpu+memory metrics, behavior rate limits) ==="
 # The heredoc feeds python's stdin, so the HPA JSON must travel via a file.
 HPA_JSON="$(mktemp)"
