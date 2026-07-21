@@ -1817,7 +1817,7 @@ def _command_routes -> list[CommandMeta] {
                     kind='OPTION',
                     typ='bool',
                     default=False,
-                    help='Install npm (client-side) package(s); with no names, install all npm deps from jac.toml',
+                    help="Install npm package(s); with no names, install all npm deps from jac.toml. With --global, install standalone npm CLI tools runnable via 'jac x --global'",
                     short='n',
                     choices=None,
                     required=False,
@@ -1947,7 +1947,7 @@ def _command_routes -> list[CommandMeta] {
                     kind='OPTION',
                     typ='bool',
                     default=False,
-                    help='Install into the jac-owned global site (importable from any project), not the project venv',
+                    help='Install into the jac-owned global store shared by every project, not the project venv (Python: the global site; with --npm: global npm CLI tools)',
                     short='',
                     choices=None,
                     required=False,
@@ -3339,6 +3339,10 @@ def _command_routes -> list[CommandMeta] {
                     'Run a project npm tool (node_modules/.bin) via bun'
                 ),
                 ('jac x --global hf whoami', 'Force the global-site copy of a tool'),
+                (
+                    'jac x --global eslint .',
+                    'Run a globally-installed npm tool (jac install --npm --global eslint)'
+                ),
                 ('jac x --node vite build', "Force the project's npm tool"),
                 ('jac x --list', 'List the CLI tools available here')
             ],
@@ -3361,7 +3365,7 @@ def _command_routes -> list[CommandMeta] {
                     kind='OPTION',
                     typ='bool',
                     default=False,
-                    help='Resolve from the jac-owned global site only, ignoring the project venv',
+                    help='Resolve from jac-owned global tools only (global python site + global npm), ignoring the project',
                     short='g',
                     choices=None,
                     required=False,
