@@ -113,7 +113,8 @@ obj JacScaleScheduler {
         _server: Any | None = None,
         _user_exists_cache: dict[str, float] | None = None,
         _user_exists_ttl: float = 30.0,
-        _lease: SchedulerLeaderLease | None = None;
+        _lease: SchedulerLeaderLease | None = None,
+        _scheduled_sigs: dict[str, str] | None = None;
 
     def postinit -> None;
     static def instance -> JacScaleScheduler;
@@ -125,6 +126,7 @@ obj JacScaleScheduler {
     def register_dynamic_tasks_from_db(quiet: bool = False) -> None;
     def _is_effectively_leader -> bool;
     def _reconcile_dynamic_jobs -> None;
+    def _job_signature(spec: TriggerSpec, args: dict | None) -> str;
     def create_job(
         name: str, spec: TriggerSpec, created_by: str, args: dict | None = None
     ) -> dict;

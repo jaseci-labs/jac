@@ -360,14 +360,13 @@ impl SchedulerLeaderLease._run_loop -> None {
 }
 
 impl SchedulerLeaderLease._tick -> None {
-    import time;
-    now = time.time();
-    expires = now + self._ttl;
+    ttl_ms = int(self._ttl * 1000);
+    server_expiry = [{'$set': {'expires_at': {'$add': ['$$NOW', ttl_ms]}}}];
     if self.is_leader {
         renewed = self._db.update_one(
             self._collection,
             {'lease_key': self._lease_key, 'holder': self._holder_id},
-            {'$set': {'expires_at': expires}}
+            server_expiry
         );
         if renewed.modified_count > 0 {
             if self.on_tick {
@@ -383,8 +382,15 @@ impl SchedulerLeaderLease._tick -> None {
     }
     took = self._db.update_one(
         self._collection,
-        {'lease_key': self._lease_key, 'expires_at': {'$lt': now}},
-        {'$set': {'holder': self._holder_id, 'expires_at': expires}}
+        {'lease_key': self._lease_key, '$expr': {'$lt': ['$expires_at', '$$NOW']}},
+        [
+            {
+                '$set': {
+                    'holder': self._holder_id,
+                    'expires_at': {'$add': ['$$NOW', ttl_ms]}
+                }
+            }
+        ]
     );
     if took.modified_count > 0 {
         self.is_leader = True;
@@ -401,7 +407,9 @@ impl SchedulerLeaderLease._tick -> None {
                 {
                     'lease_key': self._lease_key,
                     'holder': self._holder_id,
-                    'expires_at': expires
+                    'expires_at': datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
+                        seconds=self._ttl
+                    )
                 }
             );
             self.is_leader = True;
@@ -415,6 +423,14 @@ impl SchedulerLeaderLease._tick -> None {
 impl JacScaleScheduler.postinit -> None {
     logging.getLogger('apscheduler').setLevel(logging.ERROR);
     self._user_exists_cache = {};
+    self._scheduled_sigs = {};
+}
+
+impl JacScaleScheduler._job_signature(spec: TriggerSpec, args: dict | None) -> str {
+    return (
+        f"{spec.trigger}|{spec.interval}|{spec.cron}|{spec.date}"
+        f"|{sorted((args or {}).items())}"
+    );
 }
 
 impl JacScaleScheduler._user_is_live(user_id: str) -> bool {
@@ -544,13 +560,6 @@ impl JacScaleScheduler.start -> None {
 }
 
 impl JacScaleScheduler.stop(drain: bool = False) -> None {
-    if self._lease is not None {
-        try {
-            self._lease.stop();
-        } except Exception as e {
-            logger.debug(f"Error releasing scheduler lease: {e}");
-        }
-    }
     if self._apscheduler is not None and self._apscheduler.running {
         try {
             self._apscheduler.shutdown(wait=drain);
@@ -563,6 +572,13 @@ impl JacScaleScheduler.stop(drain: bool = False) -> None {
         Scheduler.instance().stop();
     } except Exception as e {
         logger.debug(f"Error stopping base Scheduler: {e}");
+    }
+    if self._lease is not None {
+        try {
+            self._lease.stop();
+        } except Exception as e {
+            logger.debug(f"Error releasing scheduler lease: {e}");
+        }
     }
 }
 
@@ -600,6 +616,7 @@ impl JacScaleScheduler.start_coordinated(
                 logger.debug(f"Error pausing APScheduler on demotion: {e}");
             }
         }
+        self._scheduled_sigs = {};
     }
 
     if self._lease is None {
@@ -629,6 +646,7 @@ impl JacScaleScheduler._reconcile_dynamic_jobs -> None {
                 } except Exception as e {
                     logger.debug(f"Could not prune job {ap_job.id}: {e}");
                 }
+                (self._scheduled_sigs or {}).pop(ap_job.id, None);
             }
         }
         self.register_dynamic_tasks_from_db(quiet=True);
@@ -747,13 +765,21 @@ impl JacScaleScheduler.register_dynamic_tasks_from_db(quiet: bool = False) -> No
         }
         try {
             spec = TriggerSpec.from_dict(job_data);
+            job_args = job_data.get('args') or {};
+            sig = self._job_signature(spec, job_args);
+            if (
+                self._apscheduler.get_job(job_id) is not None
+                and (self._scheduled_sigs or {}).get(job_id) == sig
+            ) {
+                continue;
+            }
             self._schedule_apscheduler_job(
                 job_id=job_id,
                 name=name,
                 spec=spec,
                 user_id=user_id,
                 is_walker=is_walker,
-                args=job_data.get('args') or {}
+                args=job_args
             );
             logger.debug(f"Restored dynamic job: {name} (id={job_id})");
             restored += 1;
@@ -937,6 +963,9 @@ impl JacScaleScheduler.delete_job(job_id: str, acting_as: str | None = None) -> 
     where = {'created_by': acting_as} if acting_as is not None else None;
 
     result = self._require_store().delete(job_id, where=where);
+    if result {
+        (self._scheduled_sigs or {}).pop(job_id, None);
+    }
     if result and self._apscheduler is not None and self._is_effectively_leader() {
         try {
             self._apscheduler.remove_job(job_id);
@@ -1089,4 +1118,8 @@ impl JacScaleScheduler._schedule_apscheduler_job(
         replace_existing=True,
         **spec.apscheduler_kwargs()
     );
+    if self._scheduled_sigs is None {
+        self._scheduled_sigs = {};
+    }
+    self._scheduled_sigs[job_id] = self._job_signature(spec, args);
 }
