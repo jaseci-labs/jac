@@ -74,6 +74,15 @@ glob FORBIDDEN: dict[str, str] = {
              "central classification instead of re-implementing name "
              "resolution"
          ),
+         ("native/na_ir_gen_pass.impl/generics.impl.jac", "type_tag.tag"): (
+             1,
+             "generic-template declared-annotation fallback in "
+             "_solve_generic_call: the primary fact is the ability symbol's "
+             "central FunctionType (name_ref.type), but a bundled/imported "
+             "template compiled symtab_ir_only has no stamped FunctionType, "
+             "and for an uninstantiated template the declared annotation IS "
+             "the fact - there is no per-callsite resolved type to consume"
+         ),
          ("native/na_ir_gen_pass.impl/calls.impl.jac", "symbol_utils"): (
              2,
              "is_builtin_region_name as the shadowing-aware test for the "
