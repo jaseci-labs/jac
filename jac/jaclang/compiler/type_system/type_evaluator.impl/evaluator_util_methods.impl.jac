@@ -1408,6 +1408,14 @@ impl TypeEvaluator._get_function_type_params(
     func: uni.Ability
 ) -> list[types.TypeVarType] {
     type_params: list[types.TypeVarType] = [];
+
+    for tp_node in func.type_params or [] {
+        declared = self.get_type_of_expression(tp_node.name);
+        if isinstance(declared, types.TypeVarType) {
+            type_params.append(declared);
+        }
+    }
+
     if not isinstance(func.signature, uni.FuncSignature) {
         return type_params;
     }
@@ -1576,6 +1584,7 @@ impl TypeEvaluator.validate_typevar_scope(
 
     enclosing_class: uni.Archetype | None = None;
     enclosing_func: uni.Ability | None = None;
+    enclosing_impl: uni.ImplDef | None = None;
     current: uni.UniNode | None = expr.parent;
 
     while current {
@@ -1584,6 +1593,9 @@ impl TypeEvaluator.validate_typevar_scope(
         }
         if isinstance(current, uni.Ability) and enclosing_func is None {
             enclosing_func = current;
+        }
+        if isinstance(current, uni.ImplDef) and enclosing_impl is None {
+            enclosing_impl = current;
         }
         current = current.parent;
     }
@@ -1596,6 +1608,15 @@ impl TypeEvaluator.validate_typevar_scope(
             }
         }
 
+        owner = enclosing_func.method_owner;
+        if isinstance(owner, uni.Archetype) {
+            for tp in self._get_enclosing_class_type_params(owner) {
+                if tp.name == type_var.name {
+                    return;
+                }
+            }
+        }
+
         self.emit_diag(E1065, expr, name=type_var.name);
         return;
     }
@@ -1605,6 +1626,36 @@ impl TypeEvaluator.validate_typevar_scope(
         for tp in class_type_params {
             if tp.name == type_var.name {
                 return;
+            }
+        }
+
+        self.emit_diag(E1065, expr, name=type_var.name);
+        return;
+    }
+
+    if enclosing_impl {
+        decl = enclosing_impl.decl_link;
+        impl_owner: uni.Archetype | None = None;
+
+        if isinstance(decl, uni.Ability) {
+            for tp in self._get_function_type_params(decl) {
+                if tp.name == type_var.name {
+                    return;
+                }
+            }
+            decl_owner = decl.method_owner;
+            if isinstance(decl_owner, uni.Archetype) {
+                impl_owner = decl_owner;
+            }
+        } elif isinstance(decl, uni.Archetype) {
+            impl_owner = decl;
+        }
+
+        if impl_owner {
+            for tp in self._get_enclosing_class_type_params(impl_owner) {
+                if tp.name == type_var.name {
+                    return;
+                }
             }
         }
 
