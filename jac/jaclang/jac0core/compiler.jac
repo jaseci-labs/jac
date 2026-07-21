@@ -435,14 +435,7 @@ def _seed_module_codespace(module: uni.Module) {
 }
 
 glob NATIVE_DEFAULT_SV_SIGNAL_NODES: tuple = (
-         uni.VisitStmt,
-         uni.DisengageStmt,
-         uni.ReportStmt,
-         uni.YieldExpr,
-         uni.EdgeOpRef,
-         uni.DisconnectOp,
          uni.TypedCtxBlock,
-         uni.LambdaExpr,
          uni.PyInlineCode,
          uni.ClientBlock,
          uni.ServerBlock,
@@ -520,14 +513,28 @@ def _scan_native_default_signals(
             return (f"contains {typ.__name__}", deps);
         }
     }
-    for arch in module.get_all_sub_nodes(uni.Archetype) {
-        if arch.arch_type.name in (Tok.KW_NODE, Tok.KW_EDGE, Tok.KW_WALKER) {
-            return ("osp archetype", deps);
+    for svr in module.get_all_sub_nodes(uni.SpecialVarRef) {
+        if svr.orig.name == Tok.KW_ROOT {
+            return ("root access (persistent graph)", deps);
         }
     }
     for ab in module.get_all_sub_nodes(uni.Ability) {
-        if ab.is_async or isinstance(ab.signature, uni.EventSignature) {
-            return ("async/event ability", deps);
+        if ab.is_async {
+            return ("async ability", deps);
+        }
+        if isinstance(ab.signature, uni.EventSignature) {
+            if ab.find_parent_of_type(uni.Archetype) is None {
+                return ("event ability outside an archetype", deps);
+            }
+            _ti = ab.signature.arch_tag_info;
+            _ti_names = [_ti]
+                if isinstance(_ti, uni.Name)
+                else (_ti.get_all_sub_nodes(uni.Name) if _ti is not None else []);
+            for _tn in _ti_names {
+                if _tn.value in ("Root", "root") {
+                    return ("root access (persistent graph)", deps);
+                }
+            }
         }
     }
     for stmt in module.body {
@@ -538,7 +545,7 @@ def _scan_native_default_signals(
             }
         }
         if (
-            isinstance(stmt, (uni.Ability, uni.GlobalVars))
+            isinstance(stmt, (uni.Ability, uni.GlobalVars, uni.Archetype, uni.Enum))
             and stmt.access is not None
             and stmt.access.tag.name == Tok.KW_PUB
         ) {

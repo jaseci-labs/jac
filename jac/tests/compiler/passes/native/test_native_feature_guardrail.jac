@@ -886,3 +886,23 @@ test "guardrail: implicit-ctor positionals lower; dynamic new() is rejected" {
         dyn
     )}";
 }
+
+# A component-style event ability (`can with entry`) reaching the native
+# nested-ability path must fail structurally, never with an AttributeError
+# ICE (EventSignature has no get_parameters); surfaced by the corpus probe
+# over mini_todo.
+test "guardrail: nested event ability is a structured error, not an ICE" {
+    prog = compile_na_inline(
+        "nested_event_ability",
+        "def widget -> int {\n"
+        "    can with entry {\n"
+        "        x = 1;\n"
+        "    }\n"
+        "    return 1;\n"
+        "}\n"
+    );
+    assert has_error_code(prog, "E5092") or has_error_code(prog, "E5090") , (
+        f"expected a structured error for a nested event ability, got: "
+        f"{[str(e) for e in prog.errors_had]}"
+    );
+}

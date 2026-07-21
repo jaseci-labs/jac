@@ -145,6 +145,13 @@ impl NaIRGenPass._codegen_bound_args(
     if not _has_pack {
         for (pix, sp) in enumerate(sig_params) {
             slot = self_offset + pix;
+            if (
+                slot >= len(func.args)
+                and not func.function_type.var_arg
+                and pix >= len(positional)
+            ) {
+                break;
+            }
             expected_type = func.args[slot].type
                 if slot < len(func.args)
                 else ir.IntType(64);
@@ -155,7 +162,7 @@ impl NaIRGenPass._codegen_bound_args(
                 chosen = kw_map[sp.name.sym_name];
             } elif sp.value is not None {
                 chosen = sp.value;
-                if isinstance(chosen, uni.Null)
+                if isinstance(chosen, (uni.Null, uni.Ellipsis))
                 and str(chosen.loc.mod_path).endswith(".pyi") {
                     chosen = None;
                 }
@@ -188,7 +195,7 @@ impl NaIRGenPass._codegen_bound_args(
                 chosen = kw_map.pop(sp.name.sym_name);
             } elif sp.value is not None {
                 chosen = sp.value;
-                if isinstance(chosen, uni.Null)
+                if isinstance(chosen, (uni.Null, uni.Ellipsis))
                 and str(chosen.loc.mod_path).endswith(".pyi") {
                     chosen = None;
                 }
@@ -220,7 +227,7 @@ impl NaIRGenPass._codegen_bound_args(
                 chosen = kw_map.pop(sp.name.sym_name);
             } elif sp.value is not None {
                 chosen = sp.value;
-                if isinstance(chosen, uni.Null)
+                if isinstance(chosen, (uni.Null, uni.Ellipsis))
                 and str(chosen.loc.mod_path).endswith(".pyi") {
                     chosen = None;
                 }
@@ -1084,7 +1091,17 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     if func is None {
         manifest = self.ir_in.gen.interop_manifest;
         binding = manifest.bindings.get(func_name);
+        _src_ab: (uni.Ability | None) = None;
         if binding is not None
+        and binding.source_module is not None
+        and func_name not in self.generic_fns {
+            _src_ab = self._find_source_ability(binding.source_module, func_name);
+            if _src_ab is not None and _src_ab.type_params {
+                self.generic_fns[func_name] = _src_ab;
+            }
+        }
+        if binding is not None
+        and func_name not in self.generic_fns
         and (
             binding.source_context.value == "server"
             or (
@@ -1092,7 +1109,13 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 and binding.source_module is not None
             )
         ) {
-            sig = self._callee_sig_of(nd);
+            sig = _src_ab.signature
+                if _src_ab is not None
+                and isinstance(_src_ab.signature, uni.FuncSignature)
+                else None;
+            if sig is None {
+                sig = self._callee_sig_of(nd);
+            }
             if sig is None
             and isinstance(binding.ast_node, uni.Ability)
             and isinstance(binding.ast_node.signature, uni.FuncSignature) {
@@ -1124,6 +1147,12 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
             ret_ir_type = self._resolve_jac_type(sig.return_type);
             func = self._get_or_declare_extern(func_name, ret_ir_type, param_ir_types);
+        }
+    }
+    if func is None and func_name in self.generic_fns {
+        func = self._instantiate_generic(nd, func_name);
+        if func is None {
+            return None;
         }
     }
     if func is None {

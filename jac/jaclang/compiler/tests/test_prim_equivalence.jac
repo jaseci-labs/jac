@@ -232,6 +232,44 @@ test "closures escaping" {
     );
 }
 
+test "bundled statistics" {
+    run_with_both(
+        "prim_statistics.jac",
+        "statistics_py",
+        "statistics_cl",
+        "statistics_na",
+        require=["na"]
+    );
+}
+
+test "bundled keyword" {
+    run_with_both(
+        "prim_keyword.jac", "keyword_py", "keyword_cl", "keyword_na", require=["na"]
+    );
+}
+
+test "bundled shutil" {
+    run_with_both(
+        "prim_shutil.jac", "shutil_py", "shutil_cl", "shutil_na", require=["na"]
+    );
+}
+
+test "generic functions monomorphize" {
+    run_with_both(
+        "prim_generics.jac", "generics_py", "generics_cl", "generics_na", require=["na"]
+    );
+}
+
+test "closures as adapter callbacks" {
+    run_with_both(
+        "prim_closures.jac",
+        "closures_adapters_py",
+        "closures_adapters_cl",
+        "closures_adapters_na",
+        require=["na"]
+    );
+}
+
 test "generators yield" {
     run_with_both(
         "prim_generators.jac", "gens_py", "gens_cl", "gens_na", require=["na"]

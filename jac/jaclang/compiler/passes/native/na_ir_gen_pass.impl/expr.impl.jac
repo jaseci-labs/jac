@@ -125,7 +125,6 @@ impl NaIRGenPass._codegen_required(nd: (uni.UniNode | None)) -> (ir.Value | None
 
 impl NaIRGenPass._codegen_yield(nd: uni.YieldExpr) -> (ir.Value | None) {
     gc = self._gen_ctx;
-    i1 = ir.IntType(1);
     i64 = ir.IntType(64);
     if gc is None or self.builder.function is not gc["resume_fn"] {
         self.emit(
@@ -137,25 +136,49 @@ impl NaIRGenPass._codegen_yield(nd: uni.YieldExpr) -> (ir.Value | None) {
         );
         return None;
     }
-    if nd.with_from or nd.expr is None {
-        self.emit(
-            E5092,
-            node_override=nd,
-            kind="expression",
-            name="yield from" if nd.with_from else "bare yield",
-            help_text="Native generators support `yield <expr>` only; loop over the inner iterable instead of `yield from`, and yield an explicit value."
-        );
-        return None;
+    if nd.with_from {
+        return self._codegen_yield_from(nd);
+    }
+    if nd.expr is None {
+        elem_t = gc["elem_type"];
+        if isinstance(elem_t, ir.PointerType) {
+            v = ir.Constant(elem_t, None);
+        } elif isinstance(elem_t, (ir.IntType, ir.DoubleType, ir.FloatType)) {
+            v = ir.Constant(elem_t, 0);
+        } else {
+            self.emit(
+                E5092,
+                node_override=nd,
+                kind="expression",
+                name="bare yield",
+                help_text="A bare `yield` suspends with the element type's unit value; this element type has no native unit carrier."
+            );
+            return None;
+        }
+        self._emit_yield_suspend(v);
+        return ir.Constant(i64, 0);
     }
     v = self._codegen_expr(nd.expr);
     if v is None {
         return None;
     }
-    v = self._coerce_type(v, gc["elem_type"]);
+    self._emit_yield_suspend(self._coerce_type(v, gc["elem_type"]));
+    return ir.Constant(i64, 0);
+}
+
+impl NaIRGenPass._emit_yield_suspend(v: ir.Value) -> None {
+    gc = self._gen_ctx;
+    i1 = ir.IntType(1);
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    i8p = ir.IntType(8).as_pointer();
     out_typed = self.builder.bitcast(
         gc["out_i8"], gc["elem_type"].as_pointer(), name="yield.out"
     );
     self.builder.store(v, out_typed);
+    for _entry in self._gen_try_stack {
+        self.builder.call(self._exc_pop_fn, []);
+    }
     k = len(gc["resume_blocks"]) + 1;
     ip_slot = self.builder.bitcast(gc["frame_i8"], i64.as_pointer(), name="yield.ip");
     self.builder.store(ir.Constant(i64, k), ip_slot);
@@ -164,6 +187,74 @@ impl NaIRGenPass._codegen_yield(nd: uni.YieldExpr) -> (ir.Value | None) {
     rbb = gc["resume_fn"].append_basic_block(f"resume{k}");
     gc["resume_blocks"].append(rbb);
     self.builder.position_at_end(rbb);
+    for _entry in self._gen_try_stack {
+        exc_state = _entry["state"];
+        self.builder.call(self._exc_push_fn, [exc_state]);
+        env_ptr = self.builder.gep(
+            exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name=f"rearm.env.{k}"
+        );
+        env_i8p = self.builder.bitcast(env_ptr, i8p, name=f"rearm.envp.{k}");
+        sj = self.builder.call(
+            self.extern_funcs["setjmp"], [env_i8p], name=f"rearm.sj.{k}"
+        );
+        is_exc = self.builder.icmp_signed(
+            "!=", sj, ir.Constant(i32, 0), name=f"rearm.isexc.{k}"
+        );
+        cont_bb = gc["resume_fn"].append_basic_block(f"resume{k}.armed");
+        self.builder.cbranch(is_exc, _entry["dispatch"], cont_bb);
+        self.builder.position_at_end(cont_bb);
+    }
+}
+
+impl NaIRGenPass._codegen_yield_from(nd: uni.YieldExpr) -> (ir.Value | None) {
+    gc = self._gen_ctx;
+    i64 = ir.IntType(64);
+    i8p = ir.IntType(8).as_pointer();
+    _errs0 = len(self.errors_had);
+    built = self._build_iter_from_expr(nd.expr) if nd.expr is not None else None;
+    if built is None {
+        if len(self.errors_had) == _errs0 {
+            self.emit(
+                E5092,
+                node_override=nd,
+                kind="expression",
+                name="yield from",
+                help_text="The inner iterable of `yield from` could not lower natively; supported sources are generators, iterator values, lists, dicts, sets, strings, ranges, and the lazy adapters."
+            );
+        }
+        return None;
+    }
+    (iter_val, _elem_name, elem_type) = built;
+
+    it_spill = self._entry_alloca(iter_val.type, "yf.it");
+    self.builder.store(iter_val, it_spill);
+    _elem_is_ptr = isinstance(elem_type, ir.PointerType);
+    elem_slot = self._entry_alloca(i64 if _elem_is_ptr else elem_type, "yf.elem");
+
+    func = gc["resume_fn"];
+    cond_bb = func.append_basic_block("yf.cond");
+    body_bb = func.append_basic_block("yf.body");
+    end_bb = func.append_basic_block("yf.end");
+    self.builder.branch(cond_bb);
+
+    self.builder.position_at_end(cond_bb);
+    it_cur = self.builder.load(it_spill, name="yf.it.cur");
+    out_i8 = self.builder.bitcast(elem_slot, i8p, name="yf.out");
+    got = self._emit_iter_advance(self.builder, it_cur, out_i8);
+    self.builder.cbranch(got, body_bb, end_bb);
+
+    self.builder.position_at_end(body_bb);
+    v = self.builder.load(elem_slot, name="yf.v");
+    if _elem_is_ptr {
+        v = self.builder.inttoptr(v, elem_type, name="yf.v.ptr");
+    }
+    self._emit_yield_suspend(self._coerce_type(v, gc["elem_type"]));
+    self.builder.branch(cond_bb);
+
+    self.builder.position_at_end(end_bb);
+    it_end = self.builder.load(it_spill, name="yf.it.end");
+    self._emit_rc_release_simple(it_end, op="yf_end", loc="yield_from");
+    self.builder.store(ir.Constant(it_end.type, None), it_spill);
     return ir.Constant(i64, 0);
 }
 
@@ -240,6 +331,7 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
     }
 
     body = nd.body;
+    _lam_errs0 = len(self.errors_had);
     if isinstance(body, list) {
         tail = nd.tail_return_expr();
         if tail is not None {
@@ -247,6 +339,15 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
             if val is not None {
                 self.builder.ret(self._coerce_type(val, ret_type));
             } else {
+                if len(self.errors_had) == _lam_errs0 {
+                    self.emit(
+                        E5092,
+                        node_override=nd,
+                        kind="expression",
+                        name="lambda body",
+                        help_text="An expression in this lambda body could not lower natively; an unresolvable name here usually means the lambda reads a variable its enclosing frame cannot expose (e.g. a module-entry local)."
+                    );
+                }
                 self.builder.ret(ir.Constant(ret_type, 0));
             }
         } else {
@@ -257,6 +358,15 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
         if val is not None {
             self.builder.ret(self._coerce_type(val, ret_type));
         } else {
+            if len(self.errors_had) == _lam_errs0 {
+                self.emit(
+                    E5092,
+                    node_override=nd,
+                    kind="expression",
+                    name="lambda body",
+                    help_text="An expression in this lambda body could not lower natively; an unresolvable name here usually means the lambda reads a variable its enclosing frame cannot expose (e.g. a module-entry local)."
+                );
+            }
             self.builder.ret(ir.Constant(ret_type, 0));
         }
     }
@@ -1238,6 +1348,9 @@ impl NaIRGenPass._codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None) 
 }
 
 impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None) {
+    if isinstance(nd.right, uni.FilterCompr) {
+        return self._codegen_chained_filter(nd);
+    }
     if nd.is_attr {
         target_name = self._get_name(nd.target);
         right_name = self._get_name(nd.right);

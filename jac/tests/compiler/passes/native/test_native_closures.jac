@@ -177,3 +177,85 @@ test "closure escape: calling a closure through an any-typed value stays rejecte
         f"{[str(e) for e in prog.errors_had]}"
     );
 }
+
+test "adapter: map with a capturing lambda callback" {
+    (eng, _) = compile_native("closures_adapters.na.jac");
+    f = get_func(eng, "scale_all", ctypes.c_int64, ctypes.c_int64);
+    assert f(3) == 18 , "3+6+9";
+    assert f(0) == 0;
+}
+
+test "adapter: filter with a capturing lambda predicate" {
+    (eng, _) = compile_native("closures_adapters.na.jac");
+    f = get_func(eng, "keep_over", ctypes.c_int64, ctypes.c_int64);
+    assert f(4) == 14 , "5+9";
+    assert f(0) == 18 , "1+5+9+3";
+}
+
+test "adapter: stored closure value drives map" {
+    (eng, _) = compile_native("closures_adapters.na.jac");
+    f = get_func(eng, "map_stored_closure", ctypes.c_int64, ctypes.c_int64);
+    assert f(7) == 44 , "(10+7)+(20+7)";
+}
+
+test "adapter: named nested closure passed to map by name" {
+    (eng, _) = compile_native("closures_adapters.na.jac");
+    f = get_func(eng, "map_named_capture", ctypes.c_int64, ctypes.c_int64);
+    assert f(10) == 50 , "20+30";
+}
+
+test "adapter: capturing filter chained into capturing map" {
+    (eng, _) = compile_native("closures_adapters.na.jac");
+    f = get_func(
+        eng, "filter_then_map", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
+    );
+    assert f(3, 2) == 14 , "(3+4)*2";
+}
+
+test "frame scan: closure escaping an event-method frame" {
+    (eng, _) = compile_native("closures_frames.na.jac");
+    f = get_func(eng, "event_frame_escape", ctypes.c_int64, ctypes.c_int64);
+    assert f(3) == 30 , "here.val captured, f(10) = 10*3";
+}
+
+test "frame scan: closure escaping a no-signature method frame" {
+    (eng, _) = compile_native("closures_frames.na.jac");
+    f = get_func(eng, "nosig_frame_escape", ctypes.c_int64, ctypes.c_int64);
+    assert f(9) == 109 , "base captured, f(100) = 100+9";
+}
+
+test "frame scan: lambda escaping a global initializer" {
+    (eng, _) = compile_native("closures_frames.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "globinit_lambda", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == 15;
+}
+
+test "frame scan: lambda escaping the module entry frame" {
+    (eng, _) = compile_native("closures_frames.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    f = get_func(eng, "entry_frame_escape", ctypes.c_int64);
+    assert f() == 8 , "entry-frame lambda called through the list, f(1) = 1+7";
+}
+
+test "frame guardrail: entry lambda reading an entry local is a loud error" {
+    # Python treats `with entry` assignments as module globals, so a lambda
+    # there reads them dynamically; natively they are frame locals the lambda
+    # cannot see. This must be a structured demotion, never a silent 0.
+    prog = compile_na_inline(
+        "entry_local_lambda",
+        "glob acc: list[int] = [];\n"
+        "with entry {\n"
+        "    k = 7;\n"
+        "    fns: list[Callable[[int], int]] = [lambda (x: int) -> int { x + k; }];\n"
+        "    f = fns[0];\n"
+        "    acc.append(f(1));\n"
+        "}\n"
+    );
+    assert has_error_code(prog, "E5092") , (
+        f"expected E5092 for an entry lambda reading an entry local, got: "
+        f"{[str(e) for e in prog.errors_had]}"
+    );
+}

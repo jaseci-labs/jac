@@ -2,7 +2,17 @@ impl NaIRGenPass._scan_closure_escapes(nd: uni.UniNode, body: (list | tuple)) ->
     def nearest_scope(n: uni.UniNode) -> (uni.UniNode | None) {
         p = n.parent;
         while p is not None {
-            if isinstance(p, (uni.Ability, uni.ImplDef, uni.LambdaExpr, uni.Test)) {
+            if isinstance(
+                p,
+                (
+                    uni.Ability,
+                    uni.ImplDef,
+                    uni.LambdaExpr,
+                    uni.Test,
+                    uni.ModuleCode,
+                    uni.Module
+                )
+            ) {
                 return p;
             }
             p = p.parent;
