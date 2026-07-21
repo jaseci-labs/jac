@@ -44,7 +44,6 @@ def _mocked_keda(
     apps_api: any = None,
     core_api: any = None
 ) -> tuple[KEDAAutoscaler, any, any, any] {
-    KEDAAutoscaler._http_preflight_cache.clear();
     custom_api = custom_api or unittest.mock.MagicMock();
     if http_addon_installed {
         custom_api.list_cluster_custom_object.return_value = {};
@@ -490,4 +489,269 @@ test "destroy_collection sweeps InterceptorRoutes alongside ScaledObjects and Tr
     delete_calls = mock_api.delete_namespaced_custom_object.call_args_list;
     plurals = [c[1]["plural"] for c in delete_calls];
     assert "interceptorroutes" in plurals;
+}
+
+
+# --- Section I: capability discovery -----------------------------------------
+# _capabilities_cache is per-instance (not static), so a freshly constructed
+# KEDAAutoscaler always starts with an empty cache -- no explicit clearing
+# needed. apps_api is mocked too (even though discovery itself never touches
+# it) so that apply_http_activation's target-existence check doesn't fall
+# through to a real, unconfigured AppsV1Api.
+def _keda_for(
+    custom_api: any = None, core_api: any = None, apps_api: any = None
+) -> KEDAAutoscaler {
+    return KEDAAutoscaler(
+        _custom_api=custom_api or unittest.mock.MagicMock(),
+        _core_api=core_api or unittest.mock.MagicMock(),
+        _apps_api=apps_api or unittest.mock.MagicMock()
+    );
+}
+
+# Fails list_cluster_custom_object per API group/version so one mock can stand
+# in for "core missing", "HTTP Add-on missing", "legacy Add-on present", or any
+# RBAC-denied combination of the three. None for a given kwarg means that
+# discovery call succeeds.
+def _custom_api_for(
+    core: (int | None) = None,
+    http_v1beta1: (int | None) = None,
+    legacy_v1alpha1: (int | None) = None
+) -> any {
+    api = unittest.mock.MagicMock();
+    def side_effect(*args: any, **kwargs: any) -> any {
+        status = None;
+        if kwargs.get("group") == "keda.sh" {
+            status = core;
+        } elif kwargs.get("version") == "v1beta1" {
+            status = http_v1beta1;
+        } elif kwargs.get("version") == "v1alpha1" {
+            status = legacy_v1alpha1;
+        }
+        if status is not None {
+            raise ApiException(status=status);
+        }
+        return {};
+    }
+    api.list_cluster_custom_object.side_effect = side_effect;
+    return api;
+}
+
+# Fails read_namespaced_service for the scaler and/or interceptor Service by
+# matching on which name jac-scale looks up.
+def _core_api_for(
+    scaler: (int | None) = None, interceptor: (int | None) = None
+) -> any {
+    api = unittest.mock.MagicMock();
+    def side_effect(name: str, *args: any, **kwargs: any) -> any {
+        status = interceptor if "interceptor" in name else scaler;
+        if status is not None {
+            raise ApiException(status=status);
+        }
+        return {};
+    }
+    api.read_namespaced_service.side_effect = side_effect;
+    return api;
+}
+
+test "discover_capabilities produces a distinct diagnostic for every failure mode" {
+    scenarios = [
+        (
+            "core-only",
+            _custom_api_for(http_v1beta1=404, legacy_v1alpha1=404),
+            _core_api_for()
+        ),
+        ("full-install", _custom_api_for(), _core_api_for()),
+        ("missing-external-scaler", _custom_api_for(), _core_api_for(scaler=404)),
+        (
+            "missing-interceptor-service",
+            _custom_api_for(),
+            _core_api_for(interceptor=404)
+        ),
+        (
+            "legacy-addon-needs-upgrade",
+            _custom_api_for(http_v1beta1=404),
+            _core_api_for()
+        ),
+        ("rbac-denied-on-core", _custom_api_for(core=403), _core_api_for()),
+        (
+            "rbac-denied-on-http-addon",
+            _custom_api_for(http_v1beta1=403),
+            _core_api_for()
+        ),
+        (
+            "rbac-denied-on-legacy-probe",
+            _custom_api_for(http_v1beta1=404, legacy_v1alpha1=403),
+            _core_api_for()
+        )
+    ];
+    for (label, custom_api, core_api) in scenarios {
+        keda = _keda_for(custom_api=custom_api, core_api=core_api);
+        caps = keda.discover_capabilities();
+        msg = f"scenario '{label}' produced: warnings={caps.warnings} errors={caps.errors}";
+
+        if label == "core-only" {
+            assert caps.core_available == True , msg;
+            assert caps.http_addon_available == False , msg;
+        } elif label == "full-install" {
+            assert caps.core_available == True , msg;
+            assert caps.http_addon_available == True , msg;
+            assert caps.errors == [] , msg;
+            assert caps.interceptor_route_api_version == "v1beta1" , msg;
+        } elif label == "missing-external-scaler" {
+            assert any([("scaler" in e.lower()) for e in caps.errors]) , msg;
+        } elif label == "missing-interceptor-service" {
+            assert any([("interceptor" in e.lower()) for e in caps.errors]) , msg;
+        } elif label == "legacy-addon-needs-upgrade" {
+            assert any([("upgrade" in w.lower()) for w in caps.warnings]) , msg;
+            assert caps.http_addon_available == False , msg;
+        } elif label == "rbac-denied-on-core" {
+            assert caps.core_available == False , msg;
+            assert any(
+                [
+                    ("permission" in e.lower() or "rbac" in e.lower())
+                    for e in caps.errors
+                ]
+            ) , msg;
+        } elif label == "rbac-denied-on-http-addon" {
+            assert any(
+                [
+                    ("permission" in e.lower() or "rbac" in e.lower())
+                    for e in caps.errors
+                ]
+            ) , msg;
+            legacy_calls = [
+                c
+                for c in custom_api.list_cluster_custom_object.call_args_list
+                if c[1].get("plural") == "httpscaledobjects"
+            ];
+            assert legacy_calls == [] , (
+                f"{label}: RBAC-denied v1beta1 must not fall through to the "
+                "legacy-version probe (that's only for a genuinely absent API)"
+            );
+        } elif label == "rbac-denied-on-legacy-probe" {
+            assert any(
+                [
+                    ("permission" in e.lower() or "rbac" in e.lower())
+                    for e in caps.errors
+                ]
+            ) , (
+                f"{label}: an RBAC-denied legacy probe must be reported as a "
+                "permission error, not silently treated as 'not installed'"
+            );
+        }
+    }
+}
+
+test "discover_capabilities caches per cluster and only re-queries when refresh=True" {
+    custom_api = _custom_api_for();
+    keda = _keda_for(custom_api=custom_api, core_api=_core_api_for());
+    keda.discover_capabilities();
+    keda.discover_capabilities();
+    assert custom_api.list_cluster_custom_object.call_count == 2 , "second call should hit cache, not requery (core + http checks = 2 calls total)";
+    keda.discover_capabilities(refresh=True);
+    assert custom_api.list_cluster_custom_object.call_count == 4 , "refresh=True should bypass the cache and requery";
+}
+
+test "invalidate_capabilities clears the cached result for the current cluster" {
+    custom_api = _custom_api_for();
+    keda = _keda_for(custom_api=custom_api, core_api=_core_api_for());
+    keda.discover_capabilities();
+    keda.invalidate_capabilities();
+    keda.discover_capabilities();
+    assert custom_api.list_cluster_custom_object.call_count == 4 , "invalidate_capabilities should force the next call to requery";
+}
+
+test "apply_http_activation raises when capabilities are discovered but broken" {
+    keda = _keda_for(custom_api=_custom_api_for(), core_api=_core_api_for(scaler=404));
+    raised = False;
+    error_msg = "";
+    try {
+        keda.apply_http_activation(_spec());
+    } except ValueError as e {
+        raised = True;
+        error_msg = str(e);
+    }
+    assert raised , "Expected ValueError when the HTTP Add-on is installed but its scaler Service is missing";
+    assert "scaler" in error_msg.lower();
+}
+
+test "apply_http_activation skips activation when core KEDA is missing, even if the HTTP Add-on and its services are healthy" {
+    custom_api = _custom_api_for(core=404);
+    keda = _keda_for(custom_api=custom_api, core_api=_core_api_for());
+    result = keda.apply_http_activation(_spec());
+    assert result == False , "A partial install (Add-on healthy, core missing) must not proceed to create resources";
+    custom_api.create_namespaced_custom_object.assert_not_called();
+}
+
+test "discover_capabilities cache key accounts for instance-specific service addresses" {
+    keda_a = _keda_for(custom_api=_custom_api_for(), core_api=_core_api_for());
+    caps_a = keda_a.discover_capabilities();
+    assert caps_a.errors == [] , "Sanity check: instance A's own services should resolve cleanly";
+
+    # Instance B targets the same cluster host as instance A but with a
+    # different http_scaler_address -- proves the two don't get conflated
+    # even when both resolve to a cache entry keyed off the same host.
+    keda_b = KEDAAutoscaler(
+        _custom_api=_custom_api_for(),
+        _core_api=_core_api_for(scaler=404),
+        http_scaler_address="custom-scaler.other-ns:9090"
+    );
+    caps_b = keda_b.discover_capabilities();
+    assert any([("scaler" in e.lower()) for e in caps_b.errors]) , (
+        "Instance B has a different http_scaler_address than instance A and "
+        "its scaler Service is missing -- it must not reuse instance A's "
+        "healthy cached result just because they share a cluster host"
+    );
+}
+
+test "discover_capabilities cache key accounts for distinct Kubernetes client identities" {
+    keda_a = _keda_for(custom_api=_custom_api_for(), core_api=_core_api_for());
+    caps_a = keda_a.discover_capabilities();
+    assert caps_a.errors == [] , "Sanity check: instance A's own client resolves cleanly";
+
+    # Same cluster key and same default service addresses as instance A --
+    # only the injected custom_api differs, representing a distinct
+    # Kubernetes client/service account with RBAC denied on core discovery.
+    # _capabilities_cache is per-instance, so there is no shared cache for
+    # this to leak through even before checking the assertion below; this
+    # proves instance B's own result reflects its own (restricted) client
+    # rather than accidentally matching instance A's.
+    keda_b = KEDAAutoscaler(
+        _custom_api=_custom_api_for(core=403), _core_api=_core_api_for()
+    );
+    caps_b = keda_b.discover_capabilities();
+    assert any(
+        [("permission" in e.lower() or "rbac" in e.lower()) for e in caps_b.errors]
+    ) , (
+        "Instance B has a different (RBAC-restricted) Kubernetes client than "
+        "instance A even though cluster key and service addresses match -- "
+        "it must not reuse instance A's healthy cached result"
+    );
+}
+
+test "format_capabilities gives a concise message for both ready and not-ready cases" {
+    keda = _keda_for(custom_api=_custom_api_for(), core_api=_core_api_for());
+    ready = keda.discover_capabilities();
+    assert "ready" in keda.format_capabilities(ready).lower();
+
+    keda2 = _keda_for(
+        custom_api=_custom_api_for(http_v1beta1=404, legacy_v1alpha1=404),
+        core_api=_core_api_for()
+    );
+    not_ready = keda2.discover_capabilities();
+    assert "helm" in keda2.format_capabilities(not_ready).lower();
+}
+
+test "preflight treats a 403 as a distinct error instead of an unhandled exception" {
+    KEDAAutoscaler._preflight_cache.clear();
+    custom_api = unittest.mock.MagicMock();
+    custom_api.list_cluster_custom_object.side_effect = ApiException(status=403);
+    keda = KEDAAutoscaler(_custom_api=custom_api);
+    raised = False;
+    try {
+        keda.preflight();
+    } except ApiException as e {
+        raised = True;
+    }
+    assert not raised , "A 403 must be caught and reported, not propagated as an unhandled ApiException";
 }
