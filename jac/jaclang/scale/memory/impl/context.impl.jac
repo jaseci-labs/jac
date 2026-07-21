@@ -23,9 +23,7 @@ impl JScaleExecutionContext.init(self: JScaleExecutionContext) -> None {
     self.read_versions = {};
     self.custom: any = MISSING;
 
-    # Hand each request context its own super root anchor. Sharing one mutable
-    # anchor across concurrent contexts corrupts per-request change tracking and
-    # CAS versioning, duplicating singletons on the shared root (issue #7605).
+    # Per-request super root copy; a shared mutable anchor corrupts CAS tracking.
     system_root_anchor = _independent_super_root(_process_cache.get('system_root'));
     if system_root_anchor is not None {
         self.mem.__mem__[system_root_anchor.id] = system_root_anchor;
@@ -38,8 +36,7 @@ impl JScaleExecutionContext.init(self: JScaleExecutionContext) -> None {
             system_root_anchor.id = UUID(Con.SUPER_ROOT_UUID);
             self.mem.put(system_root_anchor);
         }
-        # Warm the process template with a detached snapshot so later contexts
-        # skip the L3 fetch without sharing this request's live anchor.
+        # Warm template is a detached snapshot, never this request's live anchor.
         if (snapshot := _independent_super_root(system_root_anchor)) is not None {
             _process_cache['system_root'] = snapshot;
         }

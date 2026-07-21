@@ -1,11 +1,4 @@
-"""Regression test: concurrent find-or-create on the shared system_root.
-
-Reproduces issue #7605. Concurrent requests that find-or-create a singleton
-anchored to system_root used to each materialize their own copy and link it to
-the shared super root, leaving N duplicates and surfacing WriteConflict as 500s.
-After the fix, concurrent passes converge on exactly one linked node and no
-request fails.
-"""
+"""Regression test for #7605: concurrent find-or-create on system_root must converge on one node."""
 
 import contextlib;
 import gc;

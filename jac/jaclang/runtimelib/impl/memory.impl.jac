@@ -1909,9 +1909,8 @@ impl TieredMemory.abort -> None {
         if self.l2 {
             self.l2.invalidate(id);
         }
-        # Only anchors created in this aborted transaction may be dropped from
-        # the store. A pre-existing anchor was only modified locally; deleting
-        # it would destroy a committed copy owned by another writer (#7605).
+        # Only drop anchors created in this aborted transaction, never a
+        # pre-existing one owned by another writer.
         if brand_new and self.l3 {
             self.l3.delete(id);
         }

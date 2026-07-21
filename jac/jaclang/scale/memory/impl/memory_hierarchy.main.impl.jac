@@ -8,9 +8,7 @@ impl ScaleTieredMemory._refresh_super_root_template(applied: list) -> None {
     if not isinstance(anchor, NodeAnchor) {
         return;
     }
-    # A concurrent committer may have already published a newer version; never
-    # overwrite it with an older snapshot or new contexts would miss committed
-    # edges and race a stale root (#7605).
+    # Never regress a newer snapshot published by a concurrent committer.
     current = _process_cache.get('system_root');
     if isinstance(current, NodeAnchor) and current.version > anchor.version {
         return;
@@ -172,8 +170,7 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
     if (conflict := apply_report.primary_conflict()) {
         raise conflict;
     }
-    # Only a clean commit publishes the warm template; a partially applied but
-    # conflicted changeset must not expose its local topology (#7605).
+    # Publish the warm template only from a clean commit, never a conflicted one.
     self._refresh_super_root_template(apply_report.applied);
     self._mark_committed(anchor);
 }
