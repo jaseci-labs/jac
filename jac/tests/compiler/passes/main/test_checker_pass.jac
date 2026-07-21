@@ -2363,6 +2363,36 @@ test "enum_type_checking" {
     }
 }
 
+"""Enum metaclass data-attributes resolve to real types, not Unknown.
+
+`__members__`, `_member_names_`, `_member_map_` live on the enum metaclass
+(EnumType), not in the enum's MRO. The checker synthesizes their types so
+valid usage type-checks (iterating `__members__` yields `str`) while misuse is
+still caught. The fixture has exactly one deliberate type error.
+"""
+test "enum_metaclass_attr_type_checking" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_enum_metaclass_attrs.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    expected_errors = ["bad: int = Tokens.__members__"];
+
+    assert len(program.errors_had) == len(expected_errors) , f"Expected {len(
+        expected_errors
+    )} errors, got {len(program.errors_had)}: " + "\n".join(
+        [err.pretty_print() for err in program.errors_had]
+    );
+
+    for i in range(len(expected_errors)) {
+        assert_error_pretty_found(
+            expected_errors[i], program.errors_had[i].pretty_print()
+        );
+    }
+}
+
 """Enum member declaration sites should resolve to EnumMemberType.
 
 A Name node declared inside an enum body (e.g. `PERSONAL` in

@@ -115,6 +115,7 @@ obj PrefetchedTypes {
         html_common_props_class: types.ClassType | None = None,
         jsx_intrinsic_elements_class: types.ClassType | None = None,
         enum_class: types.ClassType | None = None,
+        mappingproxy_class: types.ClassType | None = None,
         set_class: types.ClassType | None = None;
 }
 
@@ -432,6 +433,11 @@ obj TypeEvaluator {
     def _is_type_subscript(class_type: types.ClassType) -> bool;
     def _get_type_for_member_lookup(object_type: types.ClassType) -> types.ClassType;
     def _get_getattr_return_type(base_type: types.ClassType) -> TypeBase | None;
+    def _resolve_enum_value_type(enum_type: types.ClassType) -> TypeBase | None;
+    def _synthesize_enum_metaclass_attr(
+        enum_type: types.ClassType, attr_name: str
+    ) -> TypeBase | None;
+
     def match_args_to_params(
         arg_nodes: list[uni.Expr | uni.KWPair],
         node_for_error: uni.Expr | None,
