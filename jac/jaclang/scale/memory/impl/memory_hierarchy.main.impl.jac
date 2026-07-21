@@ -1,11 +1,10 @@
-"""Publish the committed super root snapshot as the warm template, never regressing its version."""
-def _refresh_super_root_template(mem: ScaleTieredMemory, applied: list) -> None {
+impl ScaleTieredMemory._refresh_super_root_template(applied: list) -> None {
     import from jaclang.jac0core.constant { Constants as Con }
     sr_id = UUID(Con.SUPER_ROOT_UUID);
     if sr_id not in applied {
         return;
     }
-    anchor = mem.__mem__.get(sr_id);
+    anchor = self.__mem__.get(sr_id);
     if not isinstance(anchor, NodeAnchor) {
         return;
     }
@@ -175,7 +174,7 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
     }
     # Only a clean commit publishes the warm template; a partially applied but
     # conflicted changeset must not expose its local topology (#7605).
-    _refresh_super_root_template(self, apply_report.applied);
+    self._refresh_super_root_template(apply_report.applied);
     self._mark_committed(anchor);
 }
 

@@ -164,4 +164,5 @@ obj ScaleTieredMemory(TieredMemory) {
     ) -> Generator[Anchor, None, None];
 
     def _refresh_if_stale(id: UUID) -> None;
+    def _refresh_super_root_template(applied: list) -> None;
 }
