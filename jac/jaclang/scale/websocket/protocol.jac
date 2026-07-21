@@ -1,10 +1,3 @@
-"""WebSocket protocol helpers: auth handshake, heartbeat, framing, rate control.
-
-These are transport-level building blocks shared by the walker and function
-WebSocket handlers. They keep the handlers small and uniform: authenticate,
-enforce caps and limits, run a heartbeat, and translate failures into the
-`{ok: false, error: {...}}` frame shape clients expect.
-"""
 import asyncio;
 import json;
 import logging;

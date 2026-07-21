@@ -408,7 +408,7 @@ test "typed-edge filter compares against edge attributes apply at runtime" {
     # Weighted-connected nodes regardless of weight.
     #
     # Reproduces the docs example
-    # `[root()->:Scheduled:priority>=3:->]` from the AI day planner
+    # `[root->:Scheduled:priority>=3:->]` from the AI day planner
     # tutorial Part 2 ("Advanced: Custom Edges"). The parser fix in
     # PR #5799 made the syntax legal; this test pins the runtime
     # semantics so the fast path can't silently regress them.

@@ -496,7 +496,7 @@ def _serve_script(srv: socket.socket, handler: any) {
             }
         }
     } except Exception {
-    # client closed the socket / sent a CLOSE frame
+        # client closed the socket / sent a CLOSE frame
     }
 }
 

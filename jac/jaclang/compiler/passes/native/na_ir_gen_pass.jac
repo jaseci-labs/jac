@@ -80,12 +80,12 @@ glob HDR_MAGIC: int = 44061,
      HDR_MAGIC_SHIFT_BASE: int = 44061 * 4294967296;
 
 obj NaIRGenPass(ModuleCodegenPass) {
-    has llvm_module: ir.Module by postinit,
-        type_map: dict[str, ir.Type] by postinit,
-        complex_struct_type: object by postinit,
-        range_struct_type: object by postinit,
-        slice_struct_type: object by postinit,
-        jacval_type: object by postinit,
+    has llvm_module: ir.Module postinit,
+        type_map: dict[str, ir.Type] postinit,
+        complex_struct_type: object postinit,
+        range_struct_type: object postinit,
+        slice_struct_type: object postinit,
+        jacval_type: object postinit,
         _builder: (ir.IRBuilder | None) = None,
         func_symtab: dict[str, ir.Function] = {},
         local_vars: dict[str, ir.AllocaInstr] = {},
@@ -117,6 +117,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         _str_count: int = 0,
         struct_types: dict[str, object] = {},
         struct_field_indices: dict[str, dict] = {},
+        struct_field_order: dict[str, list] = {},
         struct_field_types: dict[str, dict] = {},
         struct_field_defaults: dict[str, object] = {},
         struct_field_opaque: dict[str, set] = {},
@@ -145,6 +146,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         _osp_thunk_uid: int = 0,
         imported_osp_archs: dict[str, tuple] = {},
         _osp_kernel_mod: (object | None) = None,
+        _fmt_kernel_mod: (object | None) = None,
         _osp_desc_global: (object | None) = None,
         _osp_rt_global: (object | None) = None,
         _osp_setup_fn: (object | None) = None,
@@ -176,6 +178,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         _bytes_struct_type: (object | None) = None,
         _bytes_repr_function: (object | None) = None,
         _float_repr_function: (object | None) = None,
+        _repr_fns: dict[str, ir.Function] = {},
         _jac_iter_type: (object | None) = None,
         _iter_structs_registered: bool = False,
         _iter_next_fns: dict[str, ir.Function] = {},
@@ -219,6 +222,17 @@ obj NaIRGenPass(ModuleCodegenPass) {
         struct_drop_fns: dict[str, ir.Function] = {},
         container_drop_fns: dict[str, ir.Function] = {},
         struct_drop_hooks: dict[str, ir.Function] = {},
+        struct_drop_fields_fns: dict[str, ir.Function] = {},
+        arena_helpers_emitted: bool = False,
+        region_new_fn: (ir.Function | None) = None,
+        region_alloc_fn: (ir.Function | None) = None,
+        region_log_dtor_fn: (ir.Function | None) = None,
+        region_drop_fn: (ir.Function | None) = None,
+        osp_anchor_alloc_fn: (ir.Function | None) = None,
+        region_stack: list = [],
+        region_handle_vars: set[str] = set(),
+        region_anon_count: int = 0,
+        rc_region_allocs: int = 0,
         nogc_stack_vars: set[str] = set(),
         list_release_fns: dict[str, ir.Function] = {},
         dict_release_fns: dict[str, ir.Function] = {},
@@ -261,7 +275,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_if(nd: uni.IfStmt) -> None;
     def _codegen_switch(nd: uni.SwitchStmt) -> None;
     def _codegen_while(nd: uni.WhileStmt) -> None;
-    def _codegen_region(nd: uni.RegionStmt) -> None;
+    def _codegen_open_stmt(nd: uni.OpenStmt) -> None;
     def _codegen_forever(nd: uni.ForeverStmt) -> None;
     def _codegen_assignment(nd: uni.Assignment) -> None;
     def _codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None);
@@ -275,15 +289,83 @@ obj NaIRGenPass(ModuleCodegenPass) {
         nd: uni.CompareExpr, left: ir.Value
     ) -> (ir.Value | None);
 
+    def _codegen_compare_link(
+        op: str,
+        left: ir.Value,
+        right: ir.Value,
+        left_node: uni.UniNode,
+        right_node: uni.UniNode,
+        release_operands: bool = True
+    ) -> (ir.Value | None);
+
     def _codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None);
     def _codegen_call(nd: uni.FuncCall) -> (ir.Value | None);
     def _codegen_rc_intrinsic(func_name: str) -> bool;
     def _native_module_call_target(nd: uni.FuncCall) -> (str | None);
     def _emit_unsupported_builtin_call(nd: uni.FuncCall, func_name: str) -> None;
+    def _emit_new(nd: uni.FuncCall) -> (ir.Value | None);
 
     has lambda_captures: dict[str, list[tuple]] = {},
-        _pending_lambda_captures: (list[tuple] | None) = None;
+        _pending_lambda_captures: (list[tuple] | None) = None,
+        nested_captures: dict[str, tuple] = {},
+        generator_fns: dict[str, uni.Ability] = {},
+        generic_fns: dict[str, uni.Ability] = {},
+        _mono_fns: dict[str, ir.Function] = {},
+        _mono_solution: (dict | None) = None,
+        _mono_mangle_map: (dict | None) = None,
+        _gen_ctx: (dict | None) = None,
+        _gen_try_stack: list = [],
+        decorated_fns: dict[str, tuple] = {},
+        closure_cell_vars: set[str] = set(),
+        closure_cell_handles: dict[str, ir.Value] = {},
+        closure_sig_registry: dict[str, tuple] = {},
+        _closure_sig_keys: dict[str, str] = {},
+        _closure_cell_structs: dict[str, str] = {},
+        closure_thunks: dict[str, ir.Function] = {},
+        _closure_uid: int = 0;
 
+    def _scan_closure_escapes(nd: uni.UniNode, body: (list | tuple)) -> None;
+    def _closure_sig_struct(fnty: ir.FunctionType) -> tuple;
+    def _closure_struct_of(val_type: ir.Type) -> (str | None);
+    def _closure_cell_struct(slot_type: ir.Type) -> str;
+    def _emit_closure_cell(var_name: str, slot_type: ir.Type) -> ir.Value;
+    def _emit_closure_thunk(
+        target_fn: ir.Function, declared_count: int, cap_info: list
+    ) -> ir.Function;
+
+    def _emit_closure_pair(
+        target_fn: ir.Function, declared_fnty: ir.FunctionType, cap_info: list
+    ) -> (ir.Value | None);
+
+    def _emit_closure_value(var_name: str, nd: uni.UniNode) -> (ir.Value | None);
+    def _emit_closure_escape_error(var_name: str, nd: uni.UniNode) -> None;
+    def _codegen_closure_call(
+        nd: uni.FuncCall, clos_val: ir.Value, struct_name: str
+    ) -> (ir.Value | None);
+
+    def _lower_function_type_raw(t: any) -> ir.Type;
+    def _apply_static_decorators -> None;
+    def _codegen_decorated_call(nd: uni.FuncCall, func_name: str) -> (ir.Value | None);
+    def _ability_is_generator(nd: uni.Ability) -> bool;
+    def _codegen_yield(nd: uni.YieldExpr) -> (ir.Value | None);
+    def _codegen_yield_from(nd: uni.YieldExpr) -> (ir.Value | None);
+    def _emit_yield_suspend(v: ir.Value) -> None;
+    def _stack_entry_alloca(var_type: ir.Type, name: str) -> ir.Value;
+    def _mangled_of(t: any) -> (str | None);
+    def _solve_generic_call(ability: uni.Ability, nd: uni.FuncCall) -> (dict | None);
+    def _instantiate_generic(nd: uni.FuncCall, func_name: str) -> (ir.Function | None);
+    def _stamp_mono_fn(
+        ability: uni.Ability, spec_name: str, memo_key: str
+    ) -> (ir.Function | None);
+
+    def _find_source_ability(mod_name: str, func_name: str) -> (uni.Ability | None);
+    def _codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | None);
+    def _adapter_callee(fn_expr: uni.UniNode) -> (tuple | None);
+    def _adapter_clos_parts(clos: ir.Value) -> (tuple | None);
+    def _generator_elem_type(nd: uni.Ability) -> (ir.Type | None);
+    def _codegen_generator(nd: uni.Ability, func: ir.Function) -> None;
+    def _emit_generator_drop_fn(name: str, slots: list[tuple]) -> ir.Function;
+    def _abi_sizeof(t: ir.Type) -> int;
     def _codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None);
     def _get_or_declare_extern(
         name: str, ret_type: ir.Type, arg_types: list[ir.Type], var_arg: bool = False
@@ -295,6 +377,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _isinstance_type_name(nd: uni.UniNode) -> (str | None);
     def _emit_isinstance_user(
         nd: uni.FuncCall, operand: ir.Value, names: list[str]
+    ) -> (ir.Value | None);
+
+    def _emit_isinstance_mixed(
+        nd: uni.FuncCall, operand: ir.Value, tags: list[int], names: list[str]
     ) -> (ir.Value | None);
 
     def _jacval_tags_for_type(name: str) -> list[int];
@@ -334,6 +420,14 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_bound_args(
         nd: uni.FuncCall, func: ir.Function, self_offset: int = 0
     ) -> list;
+
+    def _codegen_varargs_list(
+        nd: uni.FuncCall, extras: list, expected: (ir.Type | None)
+    ) -> (ir.Value | None);
+
+    def _codegen_kwargs_dict(
+        nd: uni.FuncCall, leftover: dict, expected: (ir.Type | None)
+    ) -> (ir.Value | None);
 
     def _default_arg_fallback(t: ir.Type) -> ir.Value;
     def _get_name(nd: (uni.UniNode | None)) -> (str | None);
@@ -385,21 +479,70 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_iter_for(nd: uni.IterForStmt) -> None;
     def _codegen_match(nd: uni.MatchStmt) -> None;
     def _match_pattern_cond(
-        pat: uni.MatchPattern, subj: ir.Value
+        pat: uni.MatchPattern, subj: ir.Value, subj_ty: (object | None) = None
     ) -> (ir.Value | None);
 
+    def _match_seq_cond(
+        pat: uni.MatchSequence, subj: ir.Value, subj_ty: (object | None) = None
+    ) -> (ir.Value | None);
+
+    def _match_tuple_seq_cond(
+        pat: uni.MatchSequence, subj: ir.Value, subj_ty: (object | None) = None
+    ) -> (ir.Value | None);
+
+    def _match_map_cond(
+        pat: uni.MatchMapping, subj: ir.Value, subj_ty: (object | None) = None
+    ) -> (ir.Value | None);
+
+    def _match_arch_cond(
+        pat: uni.MatchArch, subj: ir.Value, subj_ty: (object | None) = None
+    ) -> (ir.Value | None);
+
+    def _match_seq_parts(pat: uni.MatchSequence) -> tuple;
+    def _match_subj_ty(expr: (uni.UniNode | None)) -> (object | None);
+    def _match_elem_ty_of(
+        subj_ty: (object | None), prefix: str, idx: int
+    ) -> (object | None);
+
+    def _match_cast_elem(elem: ir.Value, elem_ty: (object | None)) -> ir.Value;
+    def _match_map_key(kv: uni.MatchKVPair, helpers: dict) -> (ir.Value | None);
+    def _match_arch_fields(pat: uni.MatchArch, arch_name: str) -> (list | None);
     def _match_value_eq(subj: ir.Value, value_node: uni.UniNode) -> (ir.Value | None);
-    def _bind_match_pattern(pat: uni.MatchPattern, subj: ir.Value) -> None;
+    def _bind_match_pattern(
+        pat: uni.MatchPattern, subj: ir.Value, subj_ty: (object | None) = None
+    ) -> None;
+
+    def _bind_match_capture(cap_name: str, val: ir.Value, owned: bool = False) -> None;
+    def _bind_match_seq(
+        pat: uni.MatchSequence, subj: ir.Value, subj_ty: (object | None) = None
+    ) -> None;
+
+    def _bind_match_map(
+        pat: uni.MatchMapping, subj: ir.Value, subj_ty: (object | None) = None
+    ) -> None;
+
+    def _bind_match_arch(
+        pat: uni.MatchArch, subj: ir.Value, subj_ty: (object | None) = None
+    ) -> None;
+
     def _codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None);
     def _codegen_multistring(nd: uni.MultiString) -> (ir.Value | None);
     def _codegen_string(nd: uni.String) -> (ir.Value | None);
     def _codegen_fstring(nd: uni.FString) -> (ir.Value | None);
     def _fstring_spec_text(spec: uni.Expr) -> (str | None);
     def _fstring_spec_to_printf(spec: str, kind: str) -> (tuple | None);
+    def _ensure_fmt_kernel -> bool;
+    def _get_fmt_kernel_fn(name: str) -> (ir.Function | None);
+    def _emit_fstr_repr(val: ir.Value, part: uni.FormattedValue) -> (ir.Value | None);
+    def _emit_dyn_spec_format(
+        val: ir.Value, spec_val: ir.Value, part: uni.FormattedValue
+    ) -> (ir.Value | None);
+
     def _make_global_string(text: str, name_prefix: str = ".str") -> ir.Value;
     def _forward_declare_archetype_names(module: uni.Module) -> None;
     def _native_archetypes(module: uni.Module) -> list[uni.Archetype];
     def _register_imported_struct_types -> None;
+    def _ensure_imported_module_inferred(imported_mod: uni.Module) -> None;
     def _extract_import_module_name(imp: uni.Import) -> (str | None);
     def _walk_imported_module_types(imported_mod: uni.Module) -> None;
     def _walk_imported_module_type_names(imported_mod: uni.Module) -> None;
@@ -461,16 +604,56 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _osp_generic_edge -> (ir.Value | None);
     def _spawn_operand_name(nd: uni.UniNode) -> (str | None);
     def _is_walker_arch(name: str) -> bool;
-    def _codegen_instantiation(nd: (uni.FuncCall | uni.Name)) -> (ir.Value | None);
+    def _codegen_instantiation(
+        nd: (uni.FuncCall | uni.Name),
+        type_name_override: (str | None) = None,
+        ctor_params: (list | None) = None
+    ) -> (ir.Value | None);
+
     def _codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None);
     def _emit_obj_str(val: ir.Value) -> (ir.Value | None);
     def _emit_default_obj_repr(val: ir.Value, type_name: str) -> ir.Value;
+    def _emit_container_repr(
+        val: ir.Value, type_key: (str | None)
+    ) -> (ir.Value | None);
+
+    def _repr_fn_for_type_key(type_key: str) -> (ir.Function | None);
+    def _repr_str_fn -> ir.Function;
+    def _repr_leaf_fn(kind: str) -> (ir.Function | None);
+    def _repr_obj_fn(arch_name: str) -> ir.Function;
+    def _repr_list_fn(type_key: str) -> (ir.Function | None);
+    def _repr_dict_fn(type_key: str) -> (ir.Function | None);
+    def _repr_set_fn(type_key: str) -> (ir.Function | None);
+    def _repr_tuple_fn(type_key: str) -> (ir.Function | None);
+    def _repr_seq_fn(
+        fn_name: str,
+        cont_ptr_ty: ir.Type,
+        elem_fn: ir.Function,
+        open_text: str,
+        close_text: str,
+        empty_text: (str | None)
+    ) -> ir.Function;
+
+    def _repr_elem_spec_of_key(elem_key: str) -> (tuple | None);
+    def _repr_field_llvm_of_key(field_key: str) -> (ir.Type | None);
+    def _split_type_args(s: str, sep: str = ",") -> list[str];
+    def _repr_const_str(text: str) -> ir.Value;
+    def _repr_acc_concat(acc_slot: ir.Value, piece: ir.Value, own_piece: bool) -> None;
+    def _repr_maybe_sep(
+        fn: ir.Function, i_val: ir.Value, acc_slot: ir.Value, sep_g: ir.Value
+    ) -> None;
+
+    def _repr_call_elem_fn(elem_fn: ir.Function, elem: ir.Value) -> ir.Value;
     def _codegen_field_access(
         obj_val: ir.Value, field_name: str, type_name: str
     ) -> (ir.Value | None);
 
     def _codegen_field_aug_assign(
         target: uni.AtomTrailer, rhs: ir.Value, aug_op: str
+    ) -> (ir.Value | None);
+
+    def _apply_scalar_aug_op(
+        current: ir.Value, rhs: ir.Value, aug_op: str
     ) -> (ir.Value | None);
 
     def _codegen_field_assign(target: uni.AtomTrailer, value: ir.Value) -> None;
@@ -595,6 +778,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> (ir.Value | None);
 
     def _emit_sys_argv -> (ir.Value | None);
+    def _emit_sys_stream(stream: str) -> (ir.Value | None);
     def _emit_sys_exit(args: list[ir.Value]) -> (ir.Value | None);
     def _emit_math_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
     def _emit_math_const(name: str) -> (ir.Value | None);
@@ -769,8 +953,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _make_iter_from_value(val: ir.Value, expr: uni.UniNode) -> (tuple | None);
     def _build_iter_from_expr(expr: uni.UniNode) -> (tuple | None);
     def _codegen_next(nd: uni.FuncCall) -> (ir.Value | None);
-    def _make_map_iter(up: tuple, fn: ir.Function) -> (tuple | None);
-    def _make_filter_iter(up: tuple, pred: ir.Function) -> (tuple | None);
+    def _make_map_iter(up: tuple, callee: tuple) -> (tuple | None);
+    def _make_filter_iter(up: tuple, callee: tuple) -> (tuple | None);
     def _make_enumerate_iter(up: tuple) -> (tuple | None);
     def _make_zip_iter(up_a: tuple, up_b: tuple) -> (tuple | None);
     def _resolve_method_owner(arch_name: str, method_name: str) -> (str | None);
@@ -834,7 +1018,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
         func_name: str,
         args: list[ir.Value],
         kwargs: (dict | None) = None,
-        kw_node: (uni.UniNode | None) = None
+        kw_node: (uni.UniNode | None) = None,
+        type_key: str = ""
     ) -> (ir.Value | None);
 
     def _split_call_kwargs(nd: uni.FuncCall) -> dict;
@@ -903,8 +1088,15 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _nogc_osp_skip(val: ir.Value) -> bool;
     def _nogc_headerless -> bool;
     def _arch_is_osp_name(arch_name: str) -> bool;
+    def _arch_is_walker_name(arch_name: str) -> bool;
     def _emit_struct_drop_fn(type_name: str) -> (ir.Function | None);
+    def _emit_struct_drop_fields_fn(type_name: str) -> (ir.Function | None);
     def _emit_container_drop_fn(cont_name: str) -> (ir.Function | None);
+    def _emit_arena_helpers -> None;
+    def _register_region_handle_var(nd: uni.Assignment, var_name: str) -> None;
+    def _region_alloc(size: ir.Value, name: str = "region.alloc") -> ir.Value;
+    def _region_log_dtor_if_needed(obj_i8: ir.Value, type_name: str) -> None;
+    def _emit_region_handle_drop(alloca: object, var_name: str) -> None;
     def _nogc_emit_drop(val: ir.Value, op: str = "", loc: str = "") -> bool;
     def _nogc_free_scratch(val: ir.Value, op: str) -> None;
     def _emit_last_use_releases(stmt: uni.UniNode) -> None;

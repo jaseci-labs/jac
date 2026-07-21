@@ -78,13 +78,14 @@ There is also a C-style `switch value { case 1: ... default: ... }` - it **falls
 glob counter: int = 0;          # module-level variable - `glob`, not bare assignment
 
 def increment {
-    global counter;             # declare intent to modify a glob (Python-style)
-    counter += 1;
-}                               # inside nested defs, use `nonlocal x;`
+    counter += 1;               # assigns the glob directly - no `global` statement
+}
 
 with entry { print("runs on EVERY import of this module"); }
 with entry:__main__ { increment(); }   # only when run directly (= Python __main__)
 ```
+
+**Scoping - there is no `global` or `nonlocal` statement.** A bare assignment (including `+=`) inside a function assigns to the nearest *enclosing* binding - an enclosing function's local, or a `glob`-declared module variable; a new local is created only when no such binding exists. (Python's classic gotcha - `x += 1` on a global raising `UnboundLocalError` - doesn't exist.) To *shadow* an outer binding instead, write a typed declaration (`x: int = 5;`) before any use or assignment of that name in the scope; a typed declaration after the name has already been rebound there is an error (E0064). Loop targets, `except ... as`, and `with ... as` targets always bind fresh locals. Only `glob`-declared module variables are implicitly rebindable - assigning the name of an import, function, or class creates a local.
 
 **Pitfall for importable libraries:** plain `with entry` executes every time the module is imported. Put demo/CLI code in `with entry:__main__` or importing your module will run it.
 
@@ -100,18 +101,20 @@ import type from billing { Invoice }    # annotation-only - breaks circular impo
 import ".styles/global.css";            # file - takes `;`
 ```
 
-**Client imports (inside `.cl.jac` files, or inside a `cl { }` block in `main.jac`):**
+**Client imports (in client code - a `.cl.jac` file, a `cl { }` block, or plain `.jac` code inferred client):**
 
 ```
 import from .button { Button }                        # relative (dots)
 import from "@jac/runtime" { Router, Routes, Route }  # npm (quoted)
 ```
 
-**`main.jac` is the one mixed-context file.** Server imports go at the top (server is the default context - no block needed). Then a `cl { ... }` block holds the client section: CSS import, top-level component, `def:pub app` (no-arg for manual routing; `app(children)` that renders `children` for file-based routing - see `jac-cl-routing`).
+**Codespaces are inferred - markers are optional overrides.** JSX and string-path npm imports mark a declaration client, and the helpers/`glob`s/imports client code references join the client bundle (scope-aware propagation); unmarked code defaults to server; `def:pub` endpoints and walkers always stay server (client calls become auto-RPC); extern C-decl imports (`import from lib { def f(x: f64) -> f64; }`) mark a declaration native and its users follow (consuming a native module is not a signal; pure code stays server). Explicit `cl`/`sv`/`na` blocks, statement prefixes, and `.cl.jac`/`.sv.jac`/`.na.jac` extensions always win over inference - the useful one is `sv` to pin a declaration server-side. See `jac-codespaces`.
+
+**`main.jac` mixes contexts.** Server imports go at the top (server is the default context - no block needed). The client section - CSS import, top-level component, `def:pub app` (no-arg for manual routing; `app(children)` that renders `children` for file-based routing - see `jac-cl-routing`) - is inferred client from its JSX and string-path imports; a `cl { ... }` block around it is the optional explicit wrapper.
 
 **No-dot imports are project-root absolute.** In server/native code (`.jac`, `.na.jac`, `.sv.jac`), `import from engine.math.vec3 { Vec3 }` resolves against the **project root** (the nearest `jac.toml` dir) from *anywhere* in the project - the importing file may sit at the root, under `tests/`, or any depth, and the import is identical. This is the idiomatic form; prefer it over dot-counting. A test in `tests/` imports the modules it exercises with the same no-dot path it would use at the root.
 
-**Relative (dotted) imports** walk up from the importing file's own directory - each leading `.` is one folder. They are mainly needed in **client** code (`.cl.jac` files / `cl { }` blocks), where the bundler resolves them. `sv import` carries the same dot semantics.
+**Relative (dotted) imports** walk up from the importing file's own directory - each leading `.` is one folder. They are mainly needed in **client** code (`.cl.jac` files, `cl { }` blocks, or inferred-client `.jac` code), where the bundler resolves them. `sv import` carries the same dot semantics.
 
 | Dots | Meaning | Use when |
 |---|---|---|
@@ -124,12 +127,12 @@ A no-dot import is depth-independent: moving a file between directories never ch
 
 ## Also available (Python semantics, brace bodies)
 
-Generators (`yield` / `yield from`), decorators (`@deco` above `def`), walrus `(n := len(items))`, context managers (`with open(f) as fh { ... }`), C-style loops `for i = 0 to i < 10 by i += 1 { }`, null-safe access `user?.profile?.name`, `cfg?["key"]` (returns `None` instead of raising - even for missing keys/out-of-range indices), and the default idiom `name = user?.name or "Anonymous";`.
+Generators (`yield` / `yield from`), decorators (`@deco` above `def`), walrus `(n := len(items))`, context managers (`with open(f) as fh { ... }`), C-style loops `for i = 0 while i < 10 with i += 1 { }`, null-safe access `user?.profile?.name`, `cfg?["key"]` (returns `None` instead of raising - even for missing keys/out-of-range indices), and the default idiom `name = user?.name or "Anonymous";`.
 
 ## Pitfalls
 
 - **Reserved keywords cannot be used as variable or parameter names** - declaration words (`node`, `edge`, `walker`, `obj`, `def`, `impl`), OSP / control words (`visit`, `disengage`, `report`, `spawn`, `flow`, `wait`, `skip`, `del`), and `with`, `can`, `has`. (`entry` and `exit` are *not* reserved - fine as identifiers.) Escape with a single **leading** backtick: `` `visit `` (no closing backtick; `` `visit` `` is a lexer error).
-- **Backtick escape does NOT work in `has` declarations.** A backtick-escaped keyword as a field name (e.g. a field named `class`) passes `jac check` but raises `SyntaxError` at runtime inside Python's dataclass machinery. Pick a non-keyword field name (`kind`, `cls`) instead.
+- **Python reserved words can't name `has` fields or parameters - even backtick-escaped.** `` has `class: str; `` fails `jac check` with **E0067**: the generated Python uses the name as a real identifier, so escaping can't help. Pick a non-reserved name (`kind`, `cls`). Jac-only keywords that aren't Python keywords (`visit`, `node`, ...) escape fine everywhere.
 - **`` `any `` vs `any`:** bare `any` is the gradual *type*; backticked `` `any(...) `` calls the builtin truthiness *function*.
 - `import from X { Y };` fails with E0030. **Brace imports take NO trailing semicolon.** Plain module form `import X;` does.
 - **There is no `pass` statement** (`E0010`). For an intentionally empty block write empty braces: `{}`.
@@ -138,6 +141,7 @@ Generators (`yield` / `yield from`), decorators (`@deco` above `def`), walrus `(
 - **Docstrings go immediately before a declaration, never inside its body** (`W0060`, often + `E0002`).
 - **Lambdas have ONE form: `lambda (params) { body }`.** Params always parenthesized and annotated - zero-arg `lambda { onSign(); }`, single param `lambda (v: str) { gbName = v; }` (in client code also `lambda (e: ChangeEvent) { ... }`), multi-param `lambda (exports: any, fps: int) { ... }` - with an optional return type: `lambda (x: int) -> int { return x * x; }`. A body that is exactly one expression statement IS the implicit return (`lambda (x: int) { x + 1; }` returns `x + 1`); multi-statement bodies need an explicit `return ...;` or the lambda returns `None` (fine for event handlers). A param annotation may be omitted only where the type is inferable from context; otherwise it's E1119. The Python colon forms (`lambda x: x`, `lambda x: int : x + 1`) and any paren-less form that carries a parameter (`lambda x { ... }`, `lambda v: str { ... }`) are parse errors - only a zero-parameter lambda may drop the parens (`lambda { ... }`).
 - Ternary is **Python-style**: `A if cond else B`. NOT `cond ? A : B` - parse error.
+- Boolean operators are **`and`/`or`/`not`** - C-style `&&`/`||` do not exist (parse error).
 - **Python stdlib needs explicit import - Jac auto-imports nothing.** `datetime.now()` without `import from datetime { datetime }` = runtime `NameError`.
 - **`sv import` calls are `async` - always `await` them.** `items = fetch_items()` assigns a `Promise`, not the data.
 - **`import:py` does not exist** - LLMs hallucinate it; use `import json;` / `import from datetime { datetime }`.
@@ -146,4 +150,4 @@ Generators (`yield` / `yield from`), decorators (`@deco` above `def`), walrus `(
 
 ## See also
 
-`jac-types` (type system, `as` casts, `any` boundaries) · `jac-has-fields` (fields) · `jac-impl-files` (file layout) · `jac-python-interop` (PyPI, `::py::`, calling Jac from Python) · `jac-concurrency` (`flow`/`wait`, async)
+`jac-types` (type system, `as` casts, `any` boundaries) · `jac-has-fields` (fields) · `jac-impl-files` (file layout) · `jac-codespaces` (inferred client/server/native placement) · `jac-python-interop` (PyPI, `::py::`, calling Jac from Python) · `jac-concurrency` (`flow`/`wait`, async)

@@ -38,6 +38,15 @@ glob registry = get_registry();
             help="Skip the whole-program type-check gate (escape hatch)"
         ),
         Arg.create(
+            "fat",
+            typ=bool,
+            default=False,
+            help=(
+                "Vendor the Python dependency closure as wheels into the bundle "
+                "(jab/binary only) so it materializes offline, with no PyPI"
+            )
+        ),
+        Arg.create(
             "check_only", typ=bool, default=False, help="Run the gate and emit nothing"
         ),
         Arg.create(
@@ -65,6 +74,7 @@ glob registry = get_registry();
     examples=[
         ("jac build", "Gate + build a single .jab into dist/"),
         ("jac build --as binary", "Gate + build a self-contained executable"),
+        ("jac build --fat", "Gate + build a fat jab (Python deps vendored)"),
         ("jac build --as wheel", "Gate + build a PyPI wheel"),
         ("jac build --check_only", "Run the whole-program gate only"),
         ("jac build --no_typecheck", "Build without the gate (escape hatch)"),
@@ -80,5 +90,6 @@ def build(
     no_typecheck: bool = False,
     check_only: bool = False,
     client: str = "",
-    platform: str | None = None
+    platform: str | None = None,
+    fat: bool = False
 ) -> int;

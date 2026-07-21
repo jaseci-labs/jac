@@ -216,11 +216,9 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
         return kind_at() == 'id' and (v is None or val_at() == v);
     }
     def advance {
-        nonlocal pos;
         pos += 1;
     }
     def eat_p(v: str) -> bool {
-        nonlocal pos;
         if is_p(v) {
             pos += 1;
             return True;
@@ -228,7 +226,6 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
         return False;
     }
     def eat_id(v: str) -> bool {
-        nonlocal pos;
         if is_id(v) {
             pos += 1;
             return True;
@@ -242,7 +239,6 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
     }
 
     def skip_balanced(open_p: str, close_p: str) {
-        nonlocal pos;
         expect_p(open_p);
         depth = 1;
         while (pos < n and depth > 0) {
@@ -259,7 +255,6 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
     }
 
     def skip_to_semi -> None {
-        nonlocal pos;
         depth = 0;
         while pos < n {
             if kind_at() == 'punct' {
@@ -287,7 +282,6 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
     }
 
     def collect_generics -> set {
-        nonlocal pos;
         names: set = set();
         if not is_p('<') {
             return names;
@@ -315,7 +309,6 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
     }
 
     def parse_qualified_name -> str {
-        nonlocal pos;
         name = val_at();
         advance();
         while (is_p('.') and kind_at(1) == 'id') {
@@ -360,7 +353,6 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
     }
 
     def parse_params -> list[TsParam] {
-        nonlocal pos;
         params: list[TsParam] = [];
         expect_p('(');
         while (pos < n and not is_p(')')) {
@@ -422,7 +414,6 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
     }
 
     def parse_primary -> TsType {
-        nonlocal pos;
         if is_p('(') {
             if looks_like_fn_type() {
                 return parse_fn_type();
@@ -569,7 +560,6 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
     }
 
     def parse_postfix -> TsType {
-        nonlocal pos;
         t = parse_primary();
         while pos < n {
             if is_p('[') {
@@ -632,7 +622,6 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
     }
 
     def parse_function_decl -> TsDecl {
-        nonlocal pos;
         fname = '';
         if kind_at() == 'id' {
             fname = val_at();
@@ -658,7 +647,6 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
     }
 
     def parse_heritage -> list[str] {
-        nonlocal pos;
         bases: list[str] = [];
         while (pos < n and not is_p('{')) {
             if (is_id('extends') or is_id('implements')) {
@@ -679,7 +667,6 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
     }
 
     def parse_members -> tuple[(list[TsMember], (TsType | None))] {
-        nonlocal pos;
         members: list[TsMember] = [];
         call_sig: (TsType | None) = None;
         expect_p('{');
@@ -827,7 +814,6 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
     }
 
     def parse_statements(stop_at_brace: bool) -> None {
-        nonlocal pos , export_eq , saw_export;
         while pos < n {
             if (stop_at_brace and is_p('}')) {
                 return;
@@ -960,7 +946,6 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
     }
 
     def _parse_namespace_body(ns_decls: dict[str, TsDecl]) {
-        nonlocal pos;
         while (pos < n and not is_p('}')) {
             if eat_p(';') {
                 continue;
@@ -993,7 +978,6 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
     }
 
     def _parse_common_decl -> (list[TsDecl] | None) {
-        nonlocal pos;
         if eat_id('function') {
             return [parse_function_decl()];
         }
@@ -1055,7 +1039,6 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
     }
 
     def _parse_enum_body -> (TsDecl | None) {
-        nonlocal pos;
         ename = val_at() if kind_at() == 'id' else '';
         if ename {
             advance();
@@ -1070,7 +1053,6 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
     }
 
     def _parse_export_list {
-        nonlocal pos , saw_export;
         saw_export = True;
         expect_p('{');
         entries: list[tuple[(str, str)]] = [];
@@ -1113,7 +1095,6 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
     }
 
     def _parse_export_default -> None {
-        nonlocal pos;
         eat_id('abstract');
         eat_id('async');
         if eat_id('function') {
