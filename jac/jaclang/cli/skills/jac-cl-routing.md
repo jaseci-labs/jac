@@ -38,21 +38,21 @@ myapp/
     └── [...notFound].jac    # * catch-all (404)
 ```
 
-**Which files become routes:** Only plain `.jac` files in `pages/` are treated as routes. The scanner skips files whose name contains `.cl.`, `.impl.`, or `.test.` : these are never turned into routes regardless of location.
+**Which files become routes:** A `pages/` file becomes a route only if it defines a top-level `page` (a layout only if it defines `layout`). Route membership is read from the symbols the module defines, not its filename : a co-located component beside its route defines its own name (e.g. `BudgetUI`), so it is never registered as a route and needs no marker. The `page` / `layout` def can be `:pub` or plain (inside `cl {}`); either way the router imports it by name. `.impl.` and `.test.` sidecars are skipped structurally (they are module roles, not standalone route modules).
 
-| File | Becomes a route? | Purpose |
-|---|---|---|
-| `pages/about.jac` | yes | page |
-| `pages/about.cl.jac` | **no** | co-located component |
-| `pages/about.impl.jac` | **no** | jac impl-separation file |
-| `pages/about.test.jac` | **no** | test file |
+| File | defines | Becomes a route? | Purpose |
+|---|---|---|---|
+| `pages/about.jac` | `page` | yes | page |
+| `pages/about_ui.jac` | `AboutUI` | **no** | co-located component (markerless) |
+| `pages/about.impl.jac` | - | **no** | jac impl-separation sidecar |
+| `pages/about.test.jac` | - | **no** | test sidecar |
 
-**Co-location pattern** - split into a thin `.jac` route (exports `def:pub page`) and a component the scanner skips. The component's JSX already infers it client; give it a `.cl.jac` name so the route scanner skips it - here `.cl.` is the scanner-skip signal, not a placement marker (placement is inferred either way). Both live in `pages/`, only the plain `.jac` becomes a route. Import the sibling using the stem without `.cl`: `budget_ui.cl.jac` → `import from .budget_ui { BudgetUI }`.
+**Co-location pattern** - split into a thin `.jac` route (defines `page`) and a plain `.jac` component (defines its own name). Both live in `pages/`; only the one defining `page` becomes a route. Import the sibling by stem: `budget_ui.jac` → `import from .budget_ui { BudgetUI }`.
 
 ```
 pages/
-├── budget.jac               # /budget  - thin route, exports page
-└── budget_ui.cl.jac         # skipped  - complex UI component, exported as BudgetUI
+├── budget.jac               # /budget  - thin route, defines page
+└── budget_ui.jac            # not a route - defines BudgetUI, imported by budget.jac
 ```
 
 Each page file exports a **`def:pub page`**; each layout file a **`def:pub layout`** containing `<Outlet />` where child routes render:
