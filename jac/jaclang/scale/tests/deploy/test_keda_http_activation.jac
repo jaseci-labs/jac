@@ -708,6 +708,31 @@ test "discover_capabilities cache key accounts for instance-specific service add
     );
 }
 
+test "discover_capabilities cache key accounts for distinct Kubernetes client identities" {
+    keda_a = _keda_for(custom_api=_custom_api_for(), core_api=_core_api_for());
+    caps_a = keda_a.discover_capabilities();
+    assert caps_a.errors == [] , "Sanity check: instance A's own client resolves cleanly";
+
+    # Same cluster key and same default service addresses as instance A --
+    # only the injected custom_api differs, representing a distinct
+    # Kubernetes client/service account with RBAC denied on core discovery.
+    # Built directly (not via _keda_for) so instance A's cache entry from
+    # above is not cleared -- the point is to prove that identical
+    # cluster/address identity does not let two different clients share a
+    # cached result across what may be an authorization boundary.
+    keda_b = KEDAAutoscaler(
+        _custom_api=_custom_api_for(core=403), _core_api=_core_api_for()
+    );
+    caps_b = keda_b.discover_capabilities();
+    assert any(
+        [("permission" in e.lower() or "rbac" in e.lower()) for e in caps_b.errors]
+    ) , (
+        "Instance B has a different (RBAC-restricted) Kubernetes client than "
+        "instance A even though cluster key and service addresses match -- "
+        "it must not reuse instance A's healthy cached result"
+    );
+}
+
 test "format_capabilities gives a concise message for both ready and not-ready cases" {
     keda = _keda_for(custom_api=_custom_api_for(), core_api=_core_api_for());
     ready = keda.discover_capabilities();

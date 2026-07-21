@@ -767,7 +767,8 @@ impl KEDAAutoscaler._check_service_address{
 impl KEDAAutoscaler._capabilities_cache_key{
     return (
         f"{self._get_cluster_key()}::{self.http_scaler_address}"
-        f"::{self.interceptor_service_address}"
+        f"::{self.interceptor_service_address}::{id(self._custom_api)}"
+        f"::{id(self._core_api)}"
     );
 }
 
