@@ -3754,6 +3754,19 @@ impl TypeEvaluator._get_type_from_flow_node(
             }
         }
 
+        # Loop header read from after the loop: merge entry and body types.
+        if isinstance(pred, (uni.InForStmt, uni.IterForStmt, uni.WhileStmt))
+        and not self._is_within(flow_node, pred) {
+            exit_type = self._loop_exit_narrowed_type(pred, target, pred_narrowed);
+            if exit_type is not None {
+                incoming_types.append(exit_type);
+            } else {
+                has_unnarrowed_pred = True;
+            }
+            continue;
+        }
+
+        # AssertStmt predecessor: a passed assert narrows along the true branch.
         if isinstance(pred, uni.AssertStmt) {
             predicate = self._find_predicate_for(target, pred.condition);
             if predicate is not None {
@@ -3895,6 +3908,90 @@ impl TypeEvaluator._get_type_from_flow_node(
     return result;
 }
 
+"""Type of a variable after a loop: union of the entry type and body assignments."""
+impl TypeEvaluator._loop_exit_narrowed_type(
+    loop_node: uni.UniNode, target: NarrowingTarget, entry_type: TypeBase | None
+) -> TypeBase | None {
+    import from ast { Store as _Store }
+    if target.symbol is None {
+        # Attribute/subscript target: no symbol to trust, widen.
+        return None;
+    }
+    body_types: list[TypeBase] = [];
+    # Store-context name nodes inside the loop are the body's writes. Reads
+    # (Load) and writes outside the loop are skipped.
+    for name_atom in target.symbol.defn + target.symbol.uses {
+        if name_atom.py_ctx_func is not _Store {
+            continue;
+        }
+        if not self._is_within(name_atom, loop_node) {
+            continue;
+        }
+        # Only a plain `name = value` write yields a usable RHS type. Aug-assign,
+        # walrus, destructuring, and for-targets fall through to widen.
+        assign = name_atom.find_parent_of_type(uni.Assignment);
+        narrowed: TypeBase | None = None;
+        if assign is not None and assign.value and assign.aug_op is None {
+            for t in assign.target {
+                if isinstance(t, uni.Name) and self._is_within(name_atom, t) {
+                    narrowed = self._assignment_narrowed_type(
+                        self.get_type_of_expression(assign.value), target.declared_type
+                    );
+                    break;
+                }
+            }
+        }
+        if narrowed is None {
+            return None;
+        }
+        body_types.append(narrowed);
+    }
+    if len(body_types) == 0 {
+        # Body never writes the variable: keep the entry type.
+        return entry_type;
+    }
+    # The loop may run zero times, so the entry type stays in the union.
+    if entry_type is None {
+        return None;
+    }
+    body_types.append(entry_type);
+    return body_types[0]
+        if len(body_types) == 1
+        else self._union_narrowed_types(body_types);
+}
+
+"""True if child is the same as or nested inside ancestor."""
+impl TypeEvaluator._is_within(child: uni.UniNode, ancestor: uni.UniNode) -> bool {
+    cur: uni.UniNode | None = child;
+    while cur is not None {
+        if cur is ancestor {
+            return True;
+        }
+        cur = cur.parent;
+    }
+    return False;
+}
+
+"""Narrowed type from an assignment value, or None to keep the declared type."""
+impl TypeEvaluator._assignment_narrowed_type(
+    value_type: TypeBase | None, declared_type: TypeBase
+) -> TypeBase | None {
+    if value_type is None or isinstance(value_type, types.UnknownType) {
+        return None;
+    }
+    if self.is_none_type(declared_type) {
+        return value_type;
+    }
+    if (
+        self.assign_type(value_type, declared_type)
+        and not self.assign_type(declared_type, value_type)
+    ) {
+        return value_type;
+    }
+    return None;
+}
+
+"""Classify a CFG edge from an IfStmt predecessor to a successor as true/false."""
 impl TypeEvaluator._classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str {
     if pred.body and succ is pred.body[0] {
         return "true";

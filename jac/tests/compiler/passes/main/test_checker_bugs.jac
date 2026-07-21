@@ -682,6 +682,16 @@ test "bug_while_loop_narrowing" {
     );
 }
 
+test "bug_loop_exit_widen" {
+    program = compile_and_check("checker_bug_loop_exit_widen.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "A var reassigned in a loop body must widen to (entry | assigned) after "
+        "the loop, so `is not None` narrows it at the return. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
 test "bug_subscript_index_narrowing" {
     program = compile_and_check("checker_bug_subscript_key_narrowing.jac");
 
