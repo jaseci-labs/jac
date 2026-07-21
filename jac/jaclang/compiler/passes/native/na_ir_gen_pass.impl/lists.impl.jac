@@ -181,6 +181,11 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
         return None;
     }
 
+    _decl_elem = self._list_elem_llvm_of(nd);
+    _clos_elem = self._closure_struct_of(_decl_elem)
+        if _decl_elem is not None
+        else None;
+
     first_val = self._codegen_expr(nd.values[0]);
     if first_val is None {
         return None;
@@ -192,6 +197,9 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             if nd.loc
             else 0}"
     );
+    if _clos_elem is not None and first_val.type != _decl_elem {
+        first_val = self._coerce_type(first_val, _decl_elem);
+    }
     elem_type = first_val.type;
     elem_type_name = "i64";
     if isinstance(elem_type, ir.DoubleType) {
@@ -249,6 +257,9 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             }
             _orig_val = val;
             val = self._box_value_tuple(val, loc=_linit_loc);
+            if _clos_elem is not None and val.type != _decl_elem {
+                val = self._coerce_type(val, _decl_elem);
+            }
             _boxed_val = val;
             if elem_type_name == "ptr" and isinstance(val.type, ir.PointerType) {
                 val = self.builder.bitcast(val, i8p, name="elem.cast");

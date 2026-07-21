@@ -24,6 +24,11 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
         return;
     }
     name = nd.name_ref.sym_name if nd.name_ref else "unnamed";
+    if nd.type_params {
+        self.generic_fns[name] = nd;
+        self.has_native_code = True;
+        return;
+    }
     sig = nd.signature;
 
     param_types: list[ir.Type] = [];
@@ -111,7 +116,9 @@ impl NaIRGenPass._record_ret_facts(name: str, sig: uni.FuncSignature) -> None {
     _rtb = _rt?.type;
     if _rtb is not None {
         try {
-            self.func_ret_type_key[name] = self._normalize_type_key(_rtb.mangle());
+            self.func_ret_type_key[name] = self._normalize_type_key(
+                self._mangled_of(_rtb)
+            );
         } except Exception { }
     }
     elems: list = [];
@@ -134,7 +141,7 @@ impl NaIRGenPass._record_ret_facts(name: str, sig: uni.FuncSignature) -> None {
             _etb = e?.type if isinstance(e, uni.Expr) else None;
             if _etb is not None {
                 try {
-                    _ek = self._normalize_type_key(_etb.mangle());
+                    _ek = self._normalize_type_key(self._mangled_of(_etb));
                 } except Exception { }
             }
             keys.append(_ek);
@@ -296,6 +303,9 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
 
 impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     name = (nd).name_ref.sym_name if (nd).name_ref else "unnamed";
+    if nd.type_params and self._mono_solution is None {
+        return;
+    }
     func = self.func_symtab.get(name);
     if func is None {
         return;
@@ -475,6 +485,16 @@ impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
 impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
     name = nd.name_ref.sym_name if nd.name_ref else "unnamed";
     sig = nd.signature;
+    if sig is not None and not isinstance(sig, uni.FuncSignature) {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="function",
+            name=name,
+            help_text="An event ability (`can ... with entry/exit`) cannot lower as a nested native function; it belongs on an archetype in a server context."
+        );
+        return;
+    }
 
     param_types: list = [];
     param_names: list = [];
@@ -624,7 +644,7 @@ impl NaIRGenPass._generator_elem_type(nd: uni.Ability) -> (ir.Type | None) {
     if not isinstance(rt, uni.Expr) or rt.type is None {
         return None;
     }
-    mangled = rt.type.mangle();
+    mangled = self._mangled_of(rt.type);
     if mangled.startswith("type[") {
         mangled = mangled[5:];
     }
@@ -632,7 +652,11 @@ impl NaIRGenPass._generator_elem_type(nd: uni.Ability) -> (ir.Type | None) {
         if mangled.startswith(prefix) {
             targs = rt.type.private.type_args or [];
             if targs {
-                return self._lower_type(targs[0]);
+                _low = self._lower_type(targs[0]);
+                if _low is not None and isinstance(_low, ir.VoidType) {
+                    return ir.IntType(64);
+                }
+                return _low;
             }
         }
     }
@@ -660,14 +684,16 @@ impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None 
         return;
     }
     for y in nd.get_all_sub_nodes(typ=uni.YieldExpr) {
+        _fin = y.find_parent_of_type(uni.FinallyStmt);
         if y.find_parent_of_type(uni.Ability) is nd
-        and y.find_parent_of_type(uni.TryStmt) is not None {
+        and _fin is not None
+        and _fin.find_parent_of_type(uni.Ability) is nd {
             self.emit(
                 E5092,
                 node_override=y,
                 kind="expression",
-                name="yield inside try",
-                help_text="Suspending inside a try block is not supported on native yet; move the yield outside the try or the try into the consumer."
+                name="yield inside finally",
+                help_text="A native finally block runs exactly once and cannot suspend; move the yield outside the finally."
             );
             return;
         }
@@ -688,6 +714,7 @@ impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None 
     saved_region = self.region_handle_vars;
     saved_cell_vars = self.closure_cell_vars;
     saved_cell_handles = self.closure_cell_handles;
+    saved_try_stack = self._gen_try_stack;
 
     entry_bb = resume_fn.append_basic_block("entry");
     self._builder = ir.IRBuilder(entry_bb);
@@ -697,6 +724,7 @@ impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None 
     self.region_handle_vars = set();
     self.closure_cell_vars = set();
     self.closure_cell_handles = {};
+    self._gen_try_stack = [];
 
     gc: dict = {
         "resume_fn": resume_fn,
@@ -773,6 +801,7 @@ impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None 
     self.region_handle_vars = saved_region;
     self.closure_cell_vars = saved_cell_vars;
     self.closure_cell_handles = saved_cell_handles;
+    self._gen_try_stack = saved_try_stack;
 
     drop_fn = self._emit_generator_drop_fn(name, frame_slots);
 
@@ -887,6 +916,9 @@ impl NaIRGenPass._emit_glob_init_func -> None {
     self.region_handle_vars = set();
     self.closure_cell_vars = set();
     self.closure_cell_handles = {};
+    if self?._global_init_nodes and self._global_init_nodes {
+        self._scan_closure_escapes(self.ir_in, [t[1] for t in self._global_init_nodes]);
+    }
 
     self._attach_di_subprogram(func, "__jac_glob_init", 0);
     _i8 = ir.IntType(8);
@@ -1062,6 +1094,11 @@ impl NaIRGenPass._codegen_entry(nodes: list[uni.ModuleCode]) -> None {
     self.region_handle_vars = set();
     self.closure_cell_vars = set();
     self.closure_cell_handles = {};
+    for _ent_scan in nodes {
+        if (_ent_scan).body {
+            self._scan_closure_escapes(_ent_scan, (_ent_scan).body);
+        }
+    }
 
     _first = nodes[0];
     entry_line = _first.loc.first_line if _first.loc else 0;

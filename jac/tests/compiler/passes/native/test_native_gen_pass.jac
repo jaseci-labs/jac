@@ -123,6 +123,16 @@ test "native osp: spawn dispatches entry ability and mutates walker state" {
     assert collect_two(5, 5) == 10;
 }
 
+test "native osp: chained [?:Type] filter narrows adjacency" {
+    (eng, _) = compile_native("osp_chained_filter.na.jac");
+    count_tasks = get_func(eng, "count_tasks", ctypes.c_int64);
+    assert count_tasks() == 2 , "the Note neighbour is filtered out";
+    count_all = get_func(eng, "count_all", ctypes.c_int64);
+    assert count_all() == 3;
+    title_len = get_func(eng, "title_len_total", ctypes.c_int64);
+    assert title_len() == 7 , "len('alpha') + len('be') via typed field access";
+}
+
 test "native osp: spawn returns the walker" {
     (eng, _) = compile_native("osp_spawn.na.jac");
     collect_one = get_func(eng, "collect_one", ctypes.c_int64, ctypes.c_int64);

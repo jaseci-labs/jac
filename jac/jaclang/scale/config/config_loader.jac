@@ -29,6 +29,8 @@ class JacScaleConfig(PluginConfigBase) {
     def microservices_declared(self: JacScaleConfig) -> bool;
 }
 
+def normalize_microservices_config(ms_config: dict[str, any]) -> dict[str, any];
+
 glob _scale_config_instance: JacScaleConfig | None = None;
 
 def _ws_positive(ws_config: dict, key: str, fallback: (int | float)) -> float;

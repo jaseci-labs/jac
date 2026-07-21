@@ -309,7 +309,12 @@ obj NaIRGenPass(ModuleCodegenPass) {
         _pending_lambda_captures: (list[tuple] | None) = None,
         nested_captures: dict[str, tuple] = {},
         generator_fns: dict[str, uni.Ability] = {},
+        generic_fns: dict[str, uni.Ability] = {},
+        _mono_fns: dict[str, ir.Function] = {},
+        _mono_solution: (dict | None) = None,
+        _mono_mangle_map: (dict | None) = None,
         _gen_ctx: (dict | None) = None,
+        _gen_try_stack: list = [],
         decorated_fns: dict[str, tuple] = {},
         closure_cell_vars: set[str] = set(),
         closure_cell_handles: dict[str, ir.Value] = {},
@@ -343,7 +348,20 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_decorated_call(nd: uni.FuncCall, func_name: str) -> (ir.Value | None);
     def _ability_is_generator(nd: uni.Ability) -> bool;
     def _codegen_yield(nd: uni.YieldExpr) -> (ir.Value | None);
-    def _adapter_callee_fn(fn_expr: uni.UniNode) -> (ir.Function | None);
+    def _codegen_yield_from(nd: uni.YieldExpr) -> (ir.Value | None);
+    def _emit_yield_suspend(v: ir.Value) -> None;
+    def _stack_entry_alloca(var_type: ir.Type, name: str) -> ir.Value;
+    def _mangled_of(t: any) -> (str | None);
+    def _solve_generic_call(ability: uni.Ability, nd: uni.FuncCall) -> (dict | None);
+    def _instantiate_generic(nd: uni.FuncCall, func_name: str) -> (ir.Function | None);
+    def _stamp_mono_fn(
+        ability: uni.Ability, spec_name: str, memo_key: str
+    ) -> (ir.Function | None);
+
+    def _find_source_ability(mod_name: str, func_name: str) -> (uni.Ability | None);
+    def _codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | None);
+    def _adapter_callee(fn_expr: uni.UniNode) -> (tuple | None);
+    def _adapter_clos_parts(clos: ir.Value) -> (tuple | None);
     def _generator_elem_type(nd: uni.Ability) -> (ir.Type | None);
     def _codegen_generator(nd: uni.Ability, func: ir.Function) -> None;
     def _emit_generator_drop_fn(name: str, slots: list[tuple]) -> ir.Function;
@@ -935,8 +953,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _make_iter_from_value(val: ir.Value, expr: uni.UniNode) -> (tuple | None);
     def _build_iter_from_expr(expr: uni.UniNode) -> (tuple | None);
     def _codegen_next(nd: uni.FuncCall) -> (ir.Value | None);
-    def _make_map_iter(up: tuple, fn: ir.Function) -> (tuple | None);
-    def _make_filter_iter(up: tuple, pred: ir.Function) -> (tuple | None);
+    def _make_map_iter(up: tuple, callee: tuple) -> (tuple | None);
+    def _make_filter_iter(up: tuple, callee: tuple) -> (tuple | None);
     def _make_enumerate_iter(up: tuple) -> (tuple | None);
     def _make_zip_iter(up_a: tuple, up_b: tuple) -> (tuple | None);
     def _resolve_method_owner(arch_name: str, method_name: str) -> (str | None);

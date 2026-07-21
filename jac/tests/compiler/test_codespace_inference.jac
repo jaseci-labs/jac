@@ -212,6 +212,39 @@ test "pure markerless module infers native under native default" {
     assert stamp_of(mod, "add") == 'native';
 }
 
+test "generator module infers native under native default" {
+    mod = compile_with_default("nadefault_generator.jac", "native", cgen=True);
+    assert mod.decided_codespace == 'native' , (
+        "generators lower natively (state machines incl. yield from) and are not server signals"
+    );
+    assert stamp_of(mod, "evens") == 'native';
+}
+
+test "local-graph OSP module infers native under native default" {
+    mod = compile_with_default("nadefault_local_osp.jac", "native", cgen=True);
+    assert mod.decided_codespace == 'native' , (
+        "walkers/nodes/spawn over a local graph lower natively; OSP is a server"
+        " signal only with a persistence surface"
+    );
+    assert stamp_of(mod, "collect") == 'native';
+}
+
+test "root access keeps a module server under native default" {
+    mod = compile_with_default("nadefault_root_osp.jac", "native");
+    assert mod.decided_codespace == '' , (
+        "root is the persistent graph; touching it implies a server surface"
+    );
+    assert stamp_of(mod, "add_task") == 'server';
+}
+
+test "lambda module infers native under native default" {
+    mod = compile_with_default("nadefault_lambda.jac", "native", cgen=True);
+    assert mod.decided_codespace == 'native' , (
+        "closures lower natively (escaping pairs, adapter callbacks) and are not server signals"
+    );
+    assert stamp_of(mod, "scale_all") == 'native';
+}
+
 test "structural match no longer forces server under native default" {
     mod = compile_with_default("nadefault_match.jac", "native", cgen=True);
     assert mod.decided_codespace == 'native' , (
@@ -251,10 +284,12 @@ test "import cycles infer native under native default" {
     );
 }
 
-test "osp constructs keep module server under native default" {
-    mod = compile_with_default("nadefault_walker.jac", "native");
-    assert mod.decided_codespace == '' , "walker/node archetypes are server signals";
-    assert stamp_of(mod, "Visitor") == 'server';
+test "osp with root access keeps module server under native default" {
+    mod = compile_with_default("nadefault_root_osp.jac", "native", cgen=True);
+    assert mod.decided_codespace == '' , (
+        "root is the persistent graph; OSP with a persistence surface stays server"
+    );
+    assert stamp_of(mod, "Task") == 'server';
 }
 
 test "native default produces a native engine for pure modules" {
@@ -346,7 +381,7 @@ test "census records native and server outcomes" {
     na_census_begin();
     try {
         compile_with_default("nadefault_pure.jac", "native", cgen=True);
-        compile_with_default("nadefault_walker.jac", "native", cgen=True);
+        compile_with_default("nadefault_root_osp.jac", "native", cgen=True);
     } finally {
         census = na_census_end();
     }
@@ -354,7 +389,7 @@ test "census records native and server outcomes" {
         os.path.realpath(os.path.join(FIXTURE_DIR, "nadefault_pure.jac"))
     );
     blocked = census.get(
-        os.path.realpath(os.path.join(FIXTURE_DIR, "nadefault_walker.jac"))
+        os.path.realpath(os.path.join(FIXTURE_DIR, "nadefault_root_osp.jac"))
     );
     assert pure is not None and pure['outcome'] == 'native' , f"got {pure}";
     assert blocked is not None and blocked['outcome'] == 'server' , f"got {blocked}";

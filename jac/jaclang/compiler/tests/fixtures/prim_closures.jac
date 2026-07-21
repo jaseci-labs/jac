@@ -101,11 +101,37 @@ def closures_escape_py -> dict {
     };
 }
 
+
+def closures_adapters_py -> dict {
+    k = 3;
+    scaled = 0;
+    for v in map(lambda (x: int) -> int { x * k; }, [1, 2, 3]) {
+        scaled = scaled + v;
+    }
+    cut = 4;
+    kept = 0;
+    for v in filter(lambda (x: int) -> bool { x >= cut; }, [1, 5, 9, 3]) {
+        kept = kept + v;
+    }
+    chained = 0;
+    for v in map(
+        lambda (x: int) -> int { x * k; },
+        filter(lambda (x: int) -> bool { x >= cut; }, [1, 4, 6])
+    ) {
+        chained = chained + v;
+    }
+    return {"scaled": scaled, "kept": kept, "chained": chained,};
+}
+
 cl def closures_cl -> dict {
     return {};
 }
 
 cl def closures_escape_cl -> dict {
+    return {};
+}
+
+cl def closures_adapters_cl -> dict {
     return {};
 }
 
@@ -203,5 +229,26 @@ na {
             "independent": independent,
 
         };
+    }
+
+    def closures_adapters_na -> dict[str, any] {
+        k = 3;
+        scaled = 0;
+        for v in map(lambda (x: int) -> int { x * k; }, [1, 2, 3]) {
+            scaled = scaled + v;
+        }
+        cut = 4;
+        kept = 0;
+        for v in filter(lambda (x: int) -> bool { x >= cut; }, [1, 5, 9, 3]) {
+            kept = kept + v;
+        }
+        chained = 0;
+        for v in map(
+            lambda (x: int) -> int { x * k; },
+            filter(lambda (x: int) -> bool { x >= cut; }, [1, 4, 6])
+        ) {
+            chained = chained + v;
+        }
+        return {"scaled": scaled, "kept": kept, "chained": chained,};
     }
 }
