@@ -2,7 +2,7 @@
 
 jac-client adds client-side compilation to Jac so you can write React-style UI components in ordinary `.jac` files. The compiler separates your code automatically: declarations with client-only syntax (JSX, npm imports) -- plus anything client code references -- compile to JavaScript with React as the rendering engine, while the rest compiles to Python on the server. You never have to mark the split, though explicit `cl { }` blocks and `.cl.jac` files remain available when you want the boundary pinned in source.
 
-You also get project scaffolding (`jac create --use web-static`), npm dependency management, a Vite-powered dev server with HMR, and automatic HTTP bridge generation so your client components can call server walkers without manual API wiring. This reference covers installation, project structure, the module system, component authoring, and build configuration.
+You also get project scaffolding (`jac create --kind web-static`), npm dependency management, a Vite-powered dev server with HMR, and automatic HTTP bridge generation so your client components can call server walkers without manual API wiring. This reference covers installation, project structure, the module system, component authoring, and build configuration.
 
 ---
 
@@ -21,7 +21,7 @@ curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/ins
 ### Create New Project
 
 ```bash
-jac create myapp --use web-static
+jac create myapp --kind web-static
 cd myapp
 ```
 
@@ -1654,7 +1654,7 @@ Defaults to `"/"`. Can also be set to `"./"` for relative path resolution if nee
 
 | Command | Description |
 |---------|-------------|
-| `jac create myapp --use web-static` | Create new full-stack project |
+| `jac create myapp --kind web-static` | Create new full-stack project |
 | `jac start` | Start dev server |
 | `jac start --dev` | Dev server with HMR |
 | `jac start --client pwa` | Start PWA (builds then serves) |
@@ -1825,7 +1825,7 @@ jac-client extends several core commands:
 
 | Command | Added Option | Description |
 |---------|-------------|-------------|
-| `jac create` | `--use web-static` | Create full-stack project template |
+| `jac create` | `--kind web-static` | Create full-stack project template |
 | `jac create` | `--skip` | Skip npm package installation |
 | `jac start` | `--client <target>` | Client build target for dev server |
 | `jac install` | `--npm` | Add npm (client-side) dependency |

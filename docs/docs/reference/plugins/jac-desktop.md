@@ -220,8 +220,8 @@ The CEF binding, pinned CEF fetch tooling, and QA checklist live under
 
 ## Status
 
-`jac build --client desktop` produces a working, self-contained native desktop
-binary that renders your `cl` UI. In progress: wiring the `sv` codespace and
-walkers onto the embedded interpreter, HMR dev mode, and per-OS
-packaging/signing. See
+Beta 🧪. `jac build --client desktop` produces a working, self-contained native
+desktop binary that renders your `cl` UI and runs `sv` walkers/functions
+in-process on the embedded interpreter, with HMR dev mode via
+`jac start --client desktop --dev`. Per-OS packaging/signing remains open. See
 [issue #6436](https://github.com/jaseci-labs/jaseci/issues/6436).

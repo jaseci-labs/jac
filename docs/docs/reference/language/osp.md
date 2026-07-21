@@ -1,6 +1,6 @@
-# Part III: Object-Spatial Programming (OSP)
+# Object-Spatial Programming (OSP)
 
-**In this part:**
+**On this page:**
 
 - [Introduction to OSP](#introduction-to-osp) - Concepts, motivation, core example
 - [Nodes](#nodes) - Node declaration, entry/exit abilities
@@ -597,7 +597,7 @@ curl -X POST http://localhost:8000/walker/add_todo \
   -d '{"title": "Learn OSP"}'
 ```
 
-Walker `has` properties become the request body. The `report` values become the response. See [Part IV: Full-Stack](../plugins/jac-client.md) and the [Scale Reference](../plugins/jac-scale.md) for full API documentation.
+Walker `has` properties become the request body. The `report` values become the response. See [jac-client Reference](../plugins/jac-client.md) and the [Scale Reference](../plugins/jac-scale.md) for full API documentation.
 
 ### 7 Walker Inheritance
 
@@ -623,14 +623,14 @@ These keywords have special meaning in specific contexts:
 
 | Reference | Valid Context | Description | See Also |
 |-----------|---------------|-------------|----------|
-| `self` | Any method/ability | Current instance (walker, node, object) | [Part II: Functions](functions-objects.md#object-oriented-programming) |
+| `self` | Any method/ability | Current instance (walker, node, object) | [Functions & Objects](functions-objects.md#object-oriented-programming) |
 | `here` | Walker ability | Current node the walker is visiting | [Walkers](#walkers) |
 | `visitor` | Node ability | The walker that triggered this ability | [Nodes](#nodes) |
 | `root` | Anywhere | Root node of the current graph | [Graph Construction](#graph-construction) |
 | `super` | Subclass method | Parent class reference | [Part II](functions-objects.md#3-inheritance) |
 | `init` | Object body | Constructor method name | [Part II](functions-objects.md#1-objects-classes) |
 | `postinit` | Object body | Post-constructor hook | [Variables and Scope](variables-and-scope.md#2-instance-variables-has) |
-| `props` | JSX context | Component props reference | [Part IV: Full-Stack](../plugins/jac-client.md#client-sections) |
+| `props` | JSX context | Component props reference | [jac-client Reference](../plugins/jac-client.md#client-sections) |
 
 **Usage examples:**
 

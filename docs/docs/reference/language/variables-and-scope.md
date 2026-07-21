@@ -1,6 +1,6 @@
 # Variables and Scope
 
-**In this part:**
+**On this page:**
 
 - [Local Variables](#1-local-variables) - Function-local bindings
 - [Instance Variables (has)](#2-instance-variables-has) - Declarative object state

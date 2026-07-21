@@ -1,8 +1,8 @@
 # Jac Library Mode
 
-> **Part of:** [Part IX: Deployment](../plugins/jac-scale.md)
+> **Part of:** [Scale Reference](../plugins/jac-scale.md)
 >
-> **Related:** [Python Integration](python-integration.md) | [Part III: OSP](osp.md)
+> **Related:** [Python Integration](python-integration.md) | [Object-Spatial Programming](osp.md)
 
 ---
 

@@ -487,7 +487,7 @@ kubectl get events --sort-by='.lastTimestamp'
 
 ```bash
 # Create a new full-stack project
-jac create todo --use web-static
+jac create todo --kind web-static
 cd todo
 
 # Deploy to Kubernetes

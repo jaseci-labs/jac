@@ -33,7 +33,7 @@ Every interop edge is one of two fundamentally different things:
   `sv↔na`, `na↔C`, `na↔cl`, and the opt-in `sv→sv` microservice split are
   marshalled.
 
-The compiler decides which is which automatically. Two analysis passes do
+The compiler decides which is which automatically. One analysis pass does
 the discovery:
 
 - **`BoundaryAnalysisPass`** detects a cross-runtime import (`sv import`
@@ -43,12 +43,12 @@ the discovery:
   walker `has`-fields, `def` signatures, struct layouts -- into an
   `InteropBinding`. On an import, the `sv` marker is a boundary fact (the
   target stays server-side); the import's own `code_context` is its
-  placement, which determines the caller side of the binding.
-- **`InteropAnalysisPass`** walks call sites, records the caller's and
-  callee's `CodeContext` plus the boundary types, and accumulates them into
-  an `InteropManifest`.
+  placement, which determines the caller side of the binding. The same pass
+  walks call sites, records the caller's and callee's `CodeContext` plus
+  the boundary types, and accumulates every binding into an
+  `InteropManifest`.
 
-Both write their results into the schemas in
+The results land in the schemas in
 [`jac0core/codeinfo.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/codeinfo.jac).
 Each backend codegen pass then reads that manifest and emits *its half* of
 every bridge it participates in. No global "target" flag exists -- selection
@@ -644,7 +644,7 @@ RPC to the backend). It is the matrix in miniature.
 
 | Concern | Files |
 |---------|-------|
-| Boundary discovery | `jac0core/passes/impl/boundary_analysis_pass.impl.jac`; `InteropAnalysisPass`; [`codeinfo.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/codeinfo.jac) (`InteropBinding`, `InteropManifest`) |
+| Boundary discovery | `jac0core/passes/impl/boundary_analysis_pass.impl.jac`; `BoundaryAnalysisPass`; [`codeinfo.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/codeinfo.jac) (`InteropBinding`, `InteropManifest`) |
 | Context split / coercion | [`compiler.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/compiler.jac) (`_coerce_module`); `constant.jac` (`CodeContext`) |
 | `cl → sv` | `compiler/passes/ecmascript/impl/esast_gen_pass.impl.jac` (`__jacSpawn`/`__jacCallFunction`); `runtimelib/impl/client_runtime.impl.jac`; `jac/jaclang/scale/server/impl/serve.endpoints.impl.jac` |
 | `sv → cl` | `runtimelib/client/impl/{compiler,vite_bundler}.impl.jac`; `runtimelib/impl/server.impl.jac`; `passes/ast_gen/impl/jsx_processor.impl.jac` |

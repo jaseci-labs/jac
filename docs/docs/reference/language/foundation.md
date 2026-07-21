@@ -1,6 +1,6 @@
 # Foundation
 
-**In this part:**
+**On this page:**
 
 - [Introduction](#introduction) - What is Jac, principles, comparison to Python
 - [Getting Started](#getting-started) - Installation, first program, CLI basics
@@ -396,5 +396,5 @@ def local_count -> None {
 - [Variables and Scope](variables-and-scope.md) - Scoping, rebinding, and shadowing rules
 - [Operators](operators.md) - Full operator reference and precedence
 - [Control Flow](control-flow.md) - Conditionals, loops, pattern matching
-- [Part II: Functions & Objects](functions-objects.md) - Classes, methods, inheritance
+- [Functions & Objects](functions-objects.md) - Classes, methods, inheritance
 - [Native Compilation](native-pathway.md) - Compile Jac to native machine code via LLVM

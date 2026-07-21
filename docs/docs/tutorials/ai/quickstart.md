@@ -176,7 +176,7 @@ byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) under the hood, giv
 === "Anthropic"
     ```toml
     [byllm.model]
-    default_model = "claude-sonnet-4-6"
+    default_model = "anthropic/claude-sonnet-4-6"
     ```
     ```bash
     export ANTHROPIC_API_KEY="sk-ant-..."
@@ -211,7 +211,7 @@ You can also override the model per-file when needed:
 
 ```jac
 import from jaclang.byllm.lib { Model }
-glob llm = Model(model_name="gpt-4o");  # overrides the builtin for this file
+glob llm = Model(model_name="anthropic/claude-sonnet-4-6");  # overrides the builtin for this file
 ```
 
 For model name formats, configuration options, and 100+ additional providers (Azure, AWS Bedrock, Vertex AI, Groq, etc.), see the [byLLM Reference](../../reference/plugins/byllm.md#supported-providers) and [LiteLLM documentation](https://docs.litellm.ai/docs/providers).

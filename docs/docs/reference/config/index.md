@@ -14,11 +14,11 @@ jac create myapp
 cd myapp
 
 # Full-stack web app (recommended for web development)
-jac create myapp --use web-static
+jac create myapp --kind web-static
 cd myapp
 ```
 
-This creates a `jac.toml` with default settings. When using `--use web-static`, the scaffolded project includes:
+This creates a `jac.toml` with default settings. When using `--kind web-static`, the scaffolded project includes:
 
 ```
 myapp/
@@ -32,7 +32,7 @@ myapp/
 └── .gitignore
 ```
 
-The auto-generated `jac.toml` for a `--use web-static` project looks like:
+The auto-generated `jac.toml` for a `--kind web-static` project looks like:
 
 ```toml
 [project]

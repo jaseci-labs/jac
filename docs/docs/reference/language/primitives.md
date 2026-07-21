@@ -1,6 +1,6 @@
 # Primitives and Codespace Semantics
 
-**In this part:**
+**On this page:**
 
 - [Overview](#overview) - What are primitives and why they matter across codespaces
 - [Codespace Model](#codespace-model) - Server, Client, and Native compilation targets
