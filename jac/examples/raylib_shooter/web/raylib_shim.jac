@@ -65,7 +65,7 @@ def _m_ident -> list {
     ];
 }
 
-def _m_mul(a: list, b: list) -> list {
+def _m_mul(a: list[float], b: list[float]) -> list[float] {
     c = [
         0.0,
         0.0,
@@ -371,8 +371,8 @@ def _install_input(sh: any) {
     document.addEventListener(
         "mousemove",
         lambda (e: any) { if sh.locked {
-            sh.mouseX = sh.mouseX + e.movementX;
-            sh.mouseY = sh.mouseY + e.movementY;
+            sh.mouseX = sh.mouseX + float(e.movementX);
+            sh.mouseY = sh.mouseY + float(e.movementY);
         } else {
             sh.mouseX = e.offsetX;
             sh.mouseY = e.offsetY;
