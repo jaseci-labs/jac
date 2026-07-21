@@ -707,7 +707,12 @@ test "register_dynamic_tasks_from_db marks jobs orphaned when creator gone" {
     scheduled_ids: list[str] = [];
 
     def _capture_schedule(
-        job_id: str, name: str, spec: any, user_id: str, is_walker: bool = True
+        job_id: str,
+        name: str,
+        spec: any,
+        user_id: str,
+        is_walker: bool = True,
+        args: dict | None = None
     ) {
         scheduled_ids.append(job_id);
     }
@@ -755,7 +760,12 @@ test "register_dynamic_tasks_from_db restores system-owned jobs without user_exi
     scheduled_ids: list[str] = [];
 
     def _capture(
-        job_id: str, name: str, spec: any, user_id: str, is_walker: bool = True
+        job_id: str,
+        name: str,
+        spec: any,
+        user_id: str,
+        is_walker: bool = True,
+        args: dict | None = None
     ) {
         scheduled_ids.append(job_id);
     }

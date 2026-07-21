@@ -231,7 +231,10 @@ impl JacAPIServerScheduler.create_job_callback -> Callable[..., TransportRespons
         try {
             scheduler = JacScaleScheduler.instance();
             job = scheduler.create_job(
-                name=walker_or_function, spec=spec, created_by=user_id
+                name=walker_or_function,
+                spec=spec,
+                created_by=user_id,
+                args=body.get('args')
             );
             return TransportResponse.success(
                 data=job, meta=Meta(extra={'http_status': 201})
@@ -325,7 +328,8 @@ impl JacAPIServerScheduler.update_job_callback -> Callable[..., TransportRespons
             return auth_err;
         }
 
-        (spec, spec_err) = _build_spec(body_data.model_dump(mode='python'));
+        update_body = body_data.model_dump(mode='python');
+        (spec, spec_err) = _build_spec(update_body);
         if spec_err or spec is None {
             return spec_err;
         }
@@ -335,7 +339,10 @@ impl JacAPIServerScheduler.update_job_callback -> Callable[..., TransportRespons
             acting_as = None if is_admin else user_id;
             scheduler = JacScaleScheduler.instance();
             updated = scheduler.update_job(
-                job_id=job_id, spec=spec, acting_as=acting_as
+                job_id=job_id,
+                spec=spec,
+                acting_as=acting_as,
+                args=update_body.get('args')
             );
             if updated is None {
                 return TransportResponse.fail(

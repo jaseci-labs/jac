@@ -30,6 +30,10 @@ class CreateJobRequest(BaseModel) {
             description='ISO-8601 datetime (UTC) to fire once. '
             'Required when trigger="date".'
         ),
+        args: dict | None = Field(
+            None,
+            description='Keyword arguments passed to the walker/function on each run.'
+        ),
         model_config: ConfigDict = ConfigDict(
             extra='forbid',
             json_schema_extra={
@@ -71,6 +75,10 @@ class UpdateJobRequest(BaseModel) {
         ),
         date: str | None = Field(
             None, description='ISO-8601 datetime (UTC). Required when trigger="date".'
+        ),
+        args: dict | None = Field(
+            None,
+            description='Keyword arguments passed to the walker/function on each run.'
         ),
         model_config: ConfigDict = ConfigDict(
             extra='forbid',

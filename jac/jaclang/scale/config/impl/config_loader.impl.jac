@@ -476,7 +476,10 @@ impl JacScaleConfig.get_scheduler_config(self: JacScaleConfig) -> dict[str, any]
         'system_user_password': scheduler_config.get(
             'system_user_password', '__no_login__'
         ),
-        'user_exists_ttl': float(scheduler_config.get('user_exists_ttl', 30.0))
+        'user_exists_ttl': float(scheduler_config.get('user_exists_ttl', 30.0)),
+        'coordination': scheduler_config.get('coordination', 'leader'),
+        'leader_ttl': float(scheduler_config.get('leader_ttl', 30.0)),
+        'require_persistence': bool(scheduler_config.get('require_persistence', False))
     };
 }
 

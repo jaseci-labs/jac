@@ -60,6 +60,54 @@ impl TriggerSpec.to_dict -> dict {
     };
 }
 
+def _cron_weekday_field(field: str) -> str {
+    field = field.strip();
+    if field == '*' {
+        return '*';
+    }
+    names = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+    try {
+        parts: list = [];
+        for raw in field.split(',') {
+            part = raw.strip();
+            if any(c.isalpha() for c in part) {
+                parts.append(part);
+                continue;
+            }
+            step = 1;
+            body = part;
+            if '/' in part {
+                (body, step_s) = part.split('/', 1);
+                step = int(step_s);
+            }
+            if body == '*' {
+                (lo, hi) = (0, 6);
+            } elif '-' in body {
+                (lo_s, hi_s) = body.split('-', 1);
+                (lo, hi) = (int(lo_s), int(hi_s));
+            } else {
+                (lo, hi) = (int(body), int(body));
+            }
+            i = lo;
+            while i <= hi {
+                if (i - lo) % step == 0 {
+                    parts.append(names[i % 7]);
+                }
+                i += 1;
+            }
+        }
+        deduped: list = [];
+        for p in parts {
+            if p not in deduped {
+                deduped.append(p);
+            }
+        }
+        return ','.join(deduped);
+    } except (ValueError, ZeroDivisionError, IndexError) {
+        return field;
+    }
+}
+
 impl TriggerSpec.apscheduler_kwargs -> dict {
     if self.trigger == 'interval' {
         return {'seconds': float(self.interval)};
@@ -72,7 +120,7 @@ impl TriggerSpec.apscheduler_kwargs -> dict {
             'hour': f_hour,
             'day': f_day,
             'month': f_month,
-            'day_of_week': f_weekday
+            'day_of_week': _cron_weekday_field(f_weekday)
         };
     }
     return {'run_date': self.date};
@@ -252,9 +300,144 @@ impl MemoryJobStore.record_run(
     job['run_count'] = int(job.get('run_count', 0)) + 1;
 }
 
+impl SchedulerLeaderLease.postinit -> None {
+    import threading;
+    self._holder_id = str(uuid4());
+    self._stop_event = threading.Event();
+    try {
+        self._db.create_index(
+            self._collection, {'lease_key': 1}, unique=True, name='lease_key_unique'
+        );
+    } except Exception as e {
+        logger.warning(f"Could not ensure lease index: {e}");
+    }
+}
+
+impl SchedulerLeaderLease.start -> None {
+    import threading;
+    if self._thread is not None {
+        return;
+    }
+    self._tick();
+    self._thread = threading.Thread(target=self._run_loop, daemon=True);
+    self._thread.start();
+}
+
+impl SchedulerLeaderLease.stop(release: bool = True) -> None {
+    self._stop_event.set();
+    if self._thread is not None {
+        self._thread.join(timeout=5);
+        self._thread = None;
+    }
+    if self.is_leader {
+        if release {
+            try {
+                self._db.delete_one(
+                    self._collection,
+                    {'lease_key': self._lease_key, 'holder': self._holder_id}
+                );
+            } except Exception as e {
+                logger.debug(f"Could not release scheduler lease: {e}");
+            }
+        } else {
+            logger.info(
+                "Leaving scheduler lease to expire so in-flight work cannot "
+                "overlap with the next leader"
+            );
+        }
+        self.is_leader = False;
+    }
+}
+
+impl SchedulerLeaderLease._run_loop -> None {
+    interval = max(self._ttl / 3.0, 1.0);
+    while not self._stop_event.wait(timeout=interval) {
+        try {
+            self._tick();
+        } except Exception as e {
+            logger.warning(f"Scheduler lease heartbeat failed: {e}");
+            if self.is_leader {
+                self.is_leader = False;
+                if self.on_lose {
+                    self.on_lose();
+                }
+            }
+        }
+    }
+}
+
+impl SchedulerLeaderLease._tick -> None {
+    ttl_ms = int(self._ttl * 1000);
+    server_expiry = [{'$set': {'expires_at': {'$add': ['$$NOW', ttl_ms]}}}];
+    if self.is_leader {
+        renewed = self._db.update_one(
+            self._collection,
+            {'lease_key': self._lease_key, 'holder': self._holder_id},
+            server_expiry
+        );
+        if renewed.modified_count > 0 {
+            if self.on_tick {
+                self.on_tick();
+            }
+            return;
+        }
+        self.is_leader = False;
+        if self.on_lose {
+            self.on_lose();
+        }
+        return;
+    }
+    took = self._db.update_one(
+        self._collection,
+        {'lease_key': self._lease_key, '$expr': {'$lt': ['$expires_at', '$$NOW']}},
+        [
+            {
+                '$set': {
+                    'holder': self._holder_id,
+                    'expires_at': {'$add': ['$$NOW', ttl_ms]}
+                }
+            }
+        ]
+    );
+    if took.modified_count > 0 {
+        self.is_leader = True;
+        if self.on_gain {
+            self.on_gain();
+        }
+        return;
+    }
+    existing = self._db.find_one(self._collection, {'lease_key': self._lease_key});
+    if existing is None {
+        try {
+            self._db.insert_one(
+                self._collection,
+                {
+                    'lease_key': self._lease_key,
+                    'holder': self._holder_id,
+                    'expires_at': datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
+                        seconds=self._ttl
+                    )
+                }
+            );
+            self.is_leader = True;
+            if self.on_gain {
+                self.on_gain();
+            }
+        } except Exception { }
+    }
+}
+
 impl JacScaleScheduler.postinit -> None {
     logging.getLogger('apscheduler').setLevel(logging.ERROR);
     self._user_exists_cache = {};
+    self._scheduled_sigs = {};
+}
+
+impl JacScaleScheduler._job_signature(spec: TriggerSpec, args: dict | None) -> str {
+    return (
+        f"{spec.trigger}|{spec.interval}|{spec.cron}|{spec.date}"
+        f"|{sorted((args or {}).items())}"
+    );
 }
 
 impl JacScaleScheduler._user_is_live(user_id: str) -> bool {
@@ -310,8 +493,26 @@ impl JacScaleScheduler.setup(system_user_id: str, server: Any | None = None) -> 
             mongo_db = MongoDb(client=get_mongo_client());
             self._store = MongoJobStore(_db=mongo_db, _collection=collection);
             logger.debug("MongoDB configured — jobs will be persisted");
+            if scheduler_cfg.get('coordination', 'leader') != 'none' {
+                app_name = getattr(server, 'module_name', '') or 'default';
+                self._lease = SchedulerLeaderLease(
+                    _db=mongo_db,
+                    _lease_key=f"scheduler:{app_name}",
+                    _ttl=float(scheduler_cfg.get('leader_ttl', 30.0))
+                );
+            }
         } except Exception as e {
-            logger.warning(f"MongoDB connection failed, using in-memory: {e}");
+            if scheduler_cfg.get('require_persistence', False) {
+                raise RuntimeError(
+                    f"MongoDB is configured but unreachable and "
+                    f"[scale.scheduler] require_persistence is set: {e}"
+                );
+            }
+            logger.error(
+                f"MongoDB connection failed, falling back to in-memory job store: "
+                f"{e}. Jobs will NOT be shared across replicas or survive restarts. "
+                f"Set [scale.scheduler] require_persistence = true to fail instead."
+            );
             self._store = MemoryJobStore();
         }
     } else {
@@ -348,9 +549,17 @@ impl JacScaleScheduler.setup(system_user_id: str, server: Any | None = None) -> 
 
 impl JacScaleScheduler.start -> None {
     if self._apscheduler is not None {
+        state_stopped = 0;
+        state_paused = 2;
+        state = getattr(self._apscheduler, 'state', state_stopped);
         try {
-            self._apscheduler.start();
-            logger.info("APScheduler started (timezone=UTC)");
+            if state == state_stopped {
+                self._apscheduler.start();
+                logger.info("APScheduler started (timezone=UTC)");
+            } elif state == state_paused {
+                self._apscheduler.resume();
+                logger.info("APScheduler resumed");
+            }
         } except Exception as e {
             logger.error(f"Failed to start APScheduler: {e}");
         }
@@ -371,6 +580,86 @@ impl JacScaleScheduler.stop(drain: bool = False) -> None {
     } except Exception as e {
         logger.debug(f"Error stopping base Scheduler: {e}");
     }
+    if self._lease is not None {
+        try {
+            self._lease.stop(release=drain);
+        } except Exception as e {
+            logger.debug(f"Error releasing scheduler lease: {e}");
+        }
+    }
+}
+
+impl JacScaleScheduler._is_effectively_leader -> bool {
+    return self._lease is None or self._lease.is_leader;
+}
+
+impl JacScaleScheduler.start_coordinated(
+    walkers: dict, functions: dict, server: Any
+) -> None {
+    self._server = server;
+
+    def _gain {
+        logger.info("Scheduler leadership acquired — starting scheduled jobs");
+        introspector = server.introspector if server?.introspector else None;
+        live_walkers = (introspector._walkers or {}) if introspector else walkers;
+        live_functions = (introspector._functions or {}) if introspector else functions;
+        self.register_static_tasks(live_walkers, live_functions, server);
+        self.register_dynamic_tasks_from_db();
+        self.start();
+    }
+
+    def _lose {
+        logger.warning("Scheduler leadership lost — pausing scheduled jobs");
+        try {
+            Scheduler.instance().stop();
+        } except Exception as e {
+            logger.debug(f"Error stopping base Scheduler on demotion: {e}");
+        }
+        if self._apscheduler is not None and self._apscheduler.running {
+            try {
+                self._apscheduler.remove_all_jobs();
+                self._apscheduler.pause();
+            } except Exception as e {
+                logger.debug(f"Error pausing APScheduler on demotion: {e}");
+            }
+        }
+        self._scheduled_sigs = {};
+    }
+
+    if self._lease is None {
+        _gain();
+        return;
+    }
+    self._lease.on_gain = _gain;
+    self._lease.on_lose = _lose;
+    self._lease.on_tick = self._reconcile_dynamic_jobs;
+    self._lease.start();
+    if not self._lease.is_leader {
+        logger.info("Scheduler running as follower — another replica holds the lease");
+    }
+}
+
+impl JacScaleScheduler._reconcile_dynamic_jobs -> None {
+    if self._apscheduler is None {
+        return;
+    }
+    try {
+        (jobs, _total) = self._require_store().find_active();
+        active_ids = {str(j.get('job_id')) for j in jobs};
+        for ap_job in self._apscheduler.get_jobs() {
+            if ap_job.id not in active_ids {
+                try {
+                    self._apscheduler.remove_job(ap_job.id);
+                } except Exception as e {
+                    logger.debug(f"Could not prune job {ap_job.id}: {e}");
+                }
+                (self._scheduled_sigs or {}).pop(ap_job.id, None);
+            }
+        }
+        self.register_dynamic_tasks_from_db(quiet=True);
+    } except Exception as e {
+        logger.warning(f"Dynamic job reconcile failed: {e}");
+    }
 }
 
 impl JacScaleScheduler.register_static_tasks(
@@ -386,6 +675,7 @@ impl JacScaleScheduler.register_static_tasks(
         return target;
     }
 
+    static_names: set = set();
     for (registry, is_walker) in [(walkers, True), (functions, False)] {
         label = 'walker' if is_walker else 'function';
         for item_name in registry {
@@ -401,13 +691,23 @@ impl JacScaleScheduler.register_static_tasks(
                 continue;
             }
             logger.debug(f"Registered static {label}: {item_name}");
+            static_names.add(item_name);
             base_scheduler.register(
                 name=item_name,
                 target=_make_target(item_name, is_walker),
                 spec=spec,
-                is_walker=is_walker
+                is_walker=False
             );
         }
+    }
+
+    for stale in [
+        t.name
+        for t in base_scheduler._tasks
+        if t.name not in static_names
+    ] {
+        logger.debug(f"Removing stale static task: {stale}");
+        base_scheduler.remove(stale);
     }
 
     if base_scheduler._tasks {
@@ -420,7 +720,7 @@ impl JacScaleScheduler.register_static_tasks(
     }
 }
 
-impl JacScaleScheduler.register_dynamic_tasks_from_db -> None {
+impl JacScaleScheduler.register_dynamic_tasks_from_db(quiet: bool = False) -> None {
     if self._apscheduler is None {
         return;
     }
@@ -428,12 +728,30 @@ impl JacScaleScheduler.register_dynamic_tasks_from_db -> None {
     restored = 0;
     orphaned = 0;
     failed = 0;
+    expired = 0;
     for job_data in jobs {
         job_id = str(job_data.get('job_id', str(uuid4())));
         name = job_data.get('name', '');
         user_id = job_data.get('created_by', self._system_user_id);
         is_walker = job_data.get('is_walker', True);
         if not name {
+            continue;
+        }
+        if job_data.get('trigger') == 'date'
+        and self._date_has_passed(job_data.get('date')) {
+            try {
+                self._require_store().update(
+                    job_id,
+                    {'status': 'completed', 'completed_at': _utc_now_iso()},
+                    where={'status': 'active'}
+                );
+            } except Exception as e {
+                logger.debug(f"Could not mark date job {job_id} completed: {e}");
+            }
+            logger.debug(
+                f"Skipping restore of expired date job '{name}' (id={job_id})"
+            );
+            expired += 1;
             continue;
         }
         if user_id != self._system_user_id and not self._user_is_live(user_id) {
@@ -454,12 +772,21 @@ impl JacScaleScheduler.register_dynamic_tasks_from_db -> None {
         }
         try {
             spec = TriggerSpec.from_dict(job_data);
+            job_args = job_data.get('args') or {};
+            sig = self._job_signature(spec, job_args);
+            if (
+                self._apscheduler.get_job(job_id) is not None
+                and (self._scheduled_sigs or {}).get(job_id) == sig
+            ) {
+                continue;
+            }
             self._schedule_apscheduler_job(
                 job_id=job_id,
                 name=name,
                 spec=spec,
                 user_id=user_id,
-                is_walker=is_walker
+                is_walker=is_walker,
+                args=job_args
             );
             logger.debug(f"Restored dynamic job: {name} (id={job_id})");
             restored += 1;
@@ -468,18 +795,33 @@ impl JacScaleScheduler.register_dynamic_tasks_from_db -> None {
             failed += 1;
         }
     }
-    if restored or failed or orphaned {
+    if quiet {
+        return;
+    }
+    if restored or failed or orphaned or expired {
         logger.info(
             f"Dynamic job restoration complete: {restored} restored, "
-            f"{orphaned} orphaned, {failed} failed"
+            f"{orphaned} orphaned, {expired} expired, {failed} failed"
         );
     } else {
         logger.info("No persisted dynamic jobs to restore");
     }
 }
 
+impl JacScaleScheduler._date_has_passed(date_str: Any) -> bool {
+    try {
+        run_at = datetime.datetime.fromisoformat(str(date_str));
+    } except (ValueError, TypeError) {
+        return True;
+    }
+    if run_at.tzinfo is None {
+        run_at = run_at.replace(tzinfo=datetime.timezone.utc);
+    }
+    return run_at <= datetime.datetime.now(datetime.timezone.utc);
+}
+
 impl JacScaleScheduler.create_job(
-    name: str, spec: TriggerSpec, created_by: str
+    name: str, spec: TriggerSpec, created_by: str, args: dict | None = None
 ) -> dict {
     if self._apscheduler is None {
         raise RuntimeError(
@@ -499,7 +841,8 @@ impl JacScaleScheduler.create_job(
         'created_by': created_by,
         'is_walker': is_walker,
         'created_at': now_str,
-        'status': 'active'
+        'status': 'active',
+        'args': dict(args) if args else {}
     };
     job_data.update(spec.to_dict());
 
@@ -508,13 +851,16 @@ impl JacScaleScheduler.create_job(
     job_data['job_id'] = persisted_id;
 
     try {
-        self._schedule_apscheduler_job(
-            job_id=persisted_id,
-            name=name,
-            spec=spec,
-            user_id=created_by,
-            is_walker=is_walker
-        );
+        if self._is_effectively_leader() {
+            self._schedule_apscheduler_job(
+                job_id=persisted_id,
+                name=name,
+                spec=spec,
+                user_id=created_by,
+                is_walker=is_walker,
+                args=job_data['args']
+            );
+        }
     } except Exception {
         try {
             store.delete(persisted_id);
@@ -547,8 +893,16 @@ impl JacScaleScheduler.get_job(job_id: str) -> (dict | None) {
 }
 
 impl JacScaleScheduler.update_job(
-    job_id: str, spec: TriggerSpec, acting_as: str | None = None
+    job_id: str,
+    spec: TriggerSpec,
+    acting_as: str | None = None,
+    args: dict | None = None
 ) -> (dict | None) {
+    if self._apscheduler is None {
+        raise RuntimeError(
+            "APScheduler is not available — enable the 'scheduler' capability and run 'jac install'."
+        );
+    }
     existing = self.get_job(job_id);
     if existing is None {
         return None;
@@ -559,16 +913,51 @@ impl JacScaleScheduler.update_job(
     is_walker = existing.get('is_walker', True);
     updates: dict[str, Any] = {'updated_at': _utc_now_iso()};
     updates.update(spec.to_dict());
+    if args is not None {
+        updates['args'] = dict(args);
+    }
 
     where = {'created_by': acting_as} if acting_as is not None else None;
 
     if not self._require_store().update(job_id, updates, where=where) {
         return None;
     }
-    if self._apscheduler is not None {
-        self._schedule_apscheduler_job(
-            job_id=job_id, name=name, spec=spec, user_id=user_id, is_walker=is_walker
-        );
+    effective_args = updates.get('args', existing.get('args') or {});
+    if self._is_effectively_leader() {
+        try {
+            self._schedule_apscheduler_job(
+                job_id=job_id,
+                name=name,
+                spec=spec,
+                user_id=user_id,
+                is_walker=is_walker,
+                args=effective_args
+            );
+        } except Exception {
+            previous: dict[str, Any] = {
+                k: existing.get(k) for k in ('trigger', 'interval', 'cron', 'date')
+            };
+            previous['args'] = existing.get('args') or {};
+            previous['updated_at'] = existing.get('updated_at');
+            try {
+                rolled_back = self._require_store().update(
+                    job_id, previous, where={'updated_at': updates['updated_at']}
+                );
+                if not rolled_back {
+                    logger.warning(
+                        f"Skipped rollback of job {job_id}: a newer update landed "
+                        f"after the failed reschedule"
+                    );
+                }
+            } except Exception as rollback_err {
+                logger.error(
+                    f"Failed to roll back job {job_id} after reschedule failure; "
+                    f"stored spec no longer matches the live scheduler: "
+                    f"{type(rollback_err).__name__}: {rollback_err}"
+                );
+            }
+            raise;
+        }
     }
 
     updated = dict(existing);
@@ -581,7 +970,10 @@ impl JacScaleScheduler.delete_job(job_id: str, acting_as: str | None = None) -> 
     where = {'created_by': acting_as} if acting_as is not None else None;
 
     result = self._require_store().delete(job_id, where=where);
-    if result and self._apscheduler is not None {
+    if result {
+        (self._scheduled_sigs or {}).pop(job_id, None);
+    }
+    if result and self._apscheduler is not None and self._is_effectively_leader() {
         try {
             self._apscheduler.remove_job(job_id);
         } except Exception as e {
@@ -596,7 +988,11 @@ impl JacScaleScheduler.delete_job(job_id: str, acting_as: str | None = None) -> 
 }
 
 impl JacScaleScheduler._execute_task(
-    name: str, user_id: str, is_walker: bool, job_id: str | None = None
+    name: str,
+    user_id: str,
+    is_walker: bool,
+    job_id: str | None = None,
+    args: dict | None = None
 ) -> None {
     import asyncio;
     label = 'walker' if is_walker else 'function';
@@ -629,11 +1025,11 @@ impl JacScaleScheduler._execute_task(
             try {
                 if is_walker {
                     result = await self._server.execution_manager.spawn_walker(
-                        target, {}, user_id
+                        target, args or {}, user_id
                     );
                 } else {
                     result = await self._server.execution_manager.execute_function(
-                        target, {}, user_id
+                        target, args or {}, user_id
                     );
                 }
                 if isinstance(result, dict) and 'error' in result {
@@ -664,7 +1060,16 @@ impl JacScaleScheduler._record_run(
     job_id: str, status: str, error: str | None = None
 ) -> None {
     try {
-        self._require_store().record_run(job_id, status, error);
+        store = self._require_store();
+        store.record_run(job_id, status, error);
+        job = store.find_active_one(job_id);
+        if job is not None and job.get('trigger') == 'date' {
+            store.update(
+                job_id,
+                {'status': 'completed', 'completed_at': _utc_now_iso()},
+                where={'status': 'active'}
+            );
+        }
     } except Exception as e {
         logger.warning(f"Could not record run for job {job_id}: {e}");
     }
@@ -677,7 +1082,12 @@ impl JacScaleScheduler._mark_failed(job_id: str | None, reason: str) -> None {
 }
 
 impl JacScaleScheduler._schedule_apscheduler_job(
-    job_id: str, name: str, spec: TriggerSpec, user_id: str, is_walker: bool = True
+    job_id: str,
+    name: str,
+    spec: TriggerSpec,
+    user_id: str,
+    is_walker: bool = True,
+    args: dict | None = None
 ) -> None {
     if self._apscheduler is None {
         raise RuntimeError("APScheduler is not initialized");
@@ -705,7 +1115,7 @@ impl JacScaleScheduler._schedule_apscheduler_job(
                 return;
             }
         }
-        self._execute_task(name, user_id, is_walker, job_id=job_id);
+        self._execute_task(name, user_id, is_walker, job_id=job_id, args=args);
     }
 
     self._apscheduler.add_job(
@@ -715,4 +1125,8 @@ impl JacScaleScheduler._schedule_apscheduler_job(
         replace_existing=True,
         **spec.apscheduler_kwargs()
     );
+    if self._scheduled_sigs is None {
+        self._scheduled_sigs = {};
+    }
+    self._scheduled_sigs[job_id] = self._job_signature(spec, args);
 }

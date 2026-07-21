@@ -31,6 +31,7 @@ obj Scheduler {
         _running: bool = False,
         _stop_event: (threading.Event | None) = None,
         _done_event: (threading.Event | None) = None,
+        _in_flight_names: (set | None) = None,
         dynamic_handler: (Callable | None) = None;
 
     static def instance -> Scheduler;
@@ -38,6 +39,8 @@ obj Scheduler {
         name: str, target: Callable, spec: ScheduleSpec, is_walker: bool
     ) -> None;
 
+    def remove(name: str) -> None;
+    def _wake -> None;
     def start -> None;
     def stop -> None;
     def wait -> None;
@@ -53,6 +56,7 @@ obj Scheduler {
     ) -> (datetime.datetime | None);
 
     def _parse_cron_next(cron: str, now: datetime.datetime) -> datetime.datetime;
+    def _weekday_matches(field: str, candidate: datetime.datetime) -> bool;
     def _cron_field_matches(
         field: str, value: int, min_val: int, max_val: int
     ) -> bool;
