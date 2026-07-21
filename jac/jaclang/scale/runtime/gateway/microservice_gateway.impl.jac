@@ -235,10 +235,9 @@ glob _BUILTIN_PREFIXES: tuple = (
      _GATEWAY_OWNED_PATHS: set[str] = {
          "/user/register",
          "/user/login",
-         "/user/refresh_token",
-         "/user/me",
-         "/user/update_password",
-         "/user/update_me"
+         "/user/refresh-token",
+         "/user/password",
+         "/user/me"
      };
 
 impl MicroserviceGateway.build_forward_headers(request: Request) -> dict[str, str] {

@@ -538,8 +538,12 @@ class JacScalePlugin {
                     get_scale_config().get_microservices_config().get("identity", {})
                 );
                 jit = bool(identity_cfg.get("gateway_owned", True));
-            } except Exception {
-                jit = True;
+            } except Exception as e {
+                import logging;
+                logging.getLogger(__name__).warning(
+                    f"identity config unreadable; gateway-token JIT stays off: {e}"
+                );
+                jit = False;
             }
         }
         return JacScaleUserManager(base_path=base_path, jit_provision=jit);

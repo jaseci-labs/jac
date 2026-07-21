@@ -102,3 +102,50 @@ test "identity config defaults to gateway_owned and honors an opt-out" {
     cfg2 = JacScaleConfig(project_dir=Path(tmp2)).get_microservices_config();
     assert cfg2["identity"]["gateway_owned"] is False;
 }
+
+
+test "a tombstoned user cannot be re-provisioned from a still-valid token" {
+    tmp = tempfile.mkdtemp();
+    um = JacScaleUserManager(base_path=tmp, jit_provision=True);
+    um._identity_storage._store_user(
+        {
+            "user_id": "ghost",
+            "status": "deleted",
+            "identities": [],
+            "credentials": [],
+            "root_id": "root-ghost",
+            "role": "user",
+            "profile": {},
+            "created_at": "2026-01-01T00:00:00",
+            "updated_at": "2026-01-01T00:00:00"
+        }
+    );
+    assert um.user_exists("ghost") is False;
+    token = um.create_jwt_token("ghost");
+    detail = um.validate_jwt_token_detail(token);
+    assert detail["status"] == "unknown_user" , detail;
+}
+
+
+test "delete_user leaves a tombstone, not an absence" {
+    tmp = tempfile.mkdtemp();
+    um = JacScaleUserManager(base_path=tmp, jit_provision=True);
+    um._identity_storage._store_user(
+        {
+            "user_id": "doomed",
+            "status": "active",
+            "identities": [],
+            "credentials": [],
+            "root_id": "root-doomed",
+            "role": "user",
+            "profile": {},
+            "created_at": "2026-01-01T00:00:00",
+            "updated_at": "2026-01-01T00:00:00"
+        }
+    );
+    result = um.delete_user("doomed");
+    assert result.get("message") , result;
+    raw = um._identity_storage.get_user_by_id("doomed");
+    assert raw is not None and raw.get("status") == "deleted";
+    assert um._identity_storage.ensure_user_by_id("doomed") is None;
+}

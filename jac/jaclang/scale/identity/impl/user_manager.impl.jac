@@ -641,6 +641,7 @@ impl JacScaleUserManager.delete_user(user_id: str) -> dict[str, str] {
         }
     }
     self._identity_storage.delete_user(user_id);
+
     return {'message': 'User deleted successfully', 'user_id': user_id};
 }
 
