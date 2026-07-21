@@ -1710,7 +1710,10 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
             }
         }
 
-        def _render_page(self: JacRequestHandler, func_name: str, args: dict = {}) {
+        def _render_page(
+            self: JacRequestHandler, func_name: str, args: (dict | None) = None
+        ) {
+            args = args if args is not None else {};
             username = self._authenticate();
             if not username {
                 username = Con.GUEST.value;
@@ -2359,16 +2362,22 @@ impl JacAPIServer.start(
     on_ready: Callable[[int], None] | None = None
 ) -> None {
     import from pathlib { Path }
+    import from jaclang.runtimelib.builtin { ScheduleTrigger }
     self.introspector.load();
     self._ensure_sv_siblings();
 
     for (name, walker_cls) in self.introspector._walkers.items() {
-        if walker_cls?.schedule_spec {
+        if (
+            walker_cls?.schedule_spec
+            and walker_cls.schedule_spec.trigger == ScheduleTrigger.STATIC
+        ) {
             self.scheduler.register(name, walker_cls, walker_cls.schedule_spec, True);
         }
     }
     for (name, func) in self.introspector._functions.items() {
-        if func?.schedule_spec {
+        if (
+            func?.schedule_spec and func.schedule_spec.trigger == ScheduleTrigger.STATIC
+        ) {
             self.scheduler.register(name, func, func.schedule_spec, False);
         }
     }

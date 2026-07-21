@@ -14,16 +14,29 @@ impl Scheduler.register(
     if next_run is None {
         return;
     }
-    self._tasks.append(
-        ScheduledTask(
-            name=name,
-            target=target,
-            spec=spec,
-            is_walker=is_walker,
-            next_run=next_run,
-            last_run=None
-        )
+    task = ScheduledTask(
+        name=name,
+        target=target,
+        spec=spec,
+        is_walker=is_walker,
+        next_run=next_run,
+        last_run=None
     );
+    for (i, existing) in enumerate(self._tasks) {
+        if existing.name == name {
+            self._tasks[i] = task;
+            return;
+        }
+    }
+    self._tasks.append(task);
+}
+
+impl Scheduler.remove(name: str) -> None {
+    self._tasks = [
+        t
+        for t in self._tasks
+        if t.name != name
+    ];
 }
 
 impl Scheduler.start -> None {
@@ -48,6 +61,7 @@ impl Scheduler.stop -> None {
     if self._thread is not None and self._thread.is_alive() {
         self._thread.join(timeout=5);
     }
+    self._tasks = [];
 }
 
 impl Scheduler.wait -> None {
@@ -92,9 +106,15 @@ impl Scheduler._run_loop -> None {
             break;
         }
         heapq.heappop(heap);
+        if not any((t is task) for t in self._tasks) {
+            continue;
+        }
         now = datetime.datetime.now(datetime.timezone.utc);
-        task.last_run = now;
-        threading.Thread(target=self._execute, args=(task, ), daemon=True).start();
+        if not task.in_flight {
+            task.last_run = now;
+            task.in_flight = True;
+            threading.Thread(target=self._execute, args=(task, ), daemon=True).start();
+        }
         new_next = self._compute_next_run(task.spec, now);
         task.next_run = new_next;
         if new_next is not None {
@@ -168,18 +188,34 @@ impl Scheduler._parse_cron_next(
     candidate = now.replace(second=0, microsecond=0) + datetime.timedelta(minutes=1);
     limit = now + datetime.timedelta(days=366);
     while candidate <= limit {
-        if (
+        if not (
             self._cron_field_matches(f_month, candidate.month, 1, 12)
             and self._cron_field_matches(f_day, candidate.day, 1, 31)
-            and self._cron_field_matches(f_weekday, candidate.weekday(), 0, 6)
-            and self._cron_field_matches(f_hour, candidate.hour, 0, 23)
-            and self._cron_field_matches(f_min, candidate.minute, 0, 59)
+            and self._weekday_matches(f_weekday, candidate)
         ) {
+            candidate = (candidate + datetime.timedelta(days=1)).replace(
+                hour=0, minute=0
+            );
+            continue;
+        }
+        if not self._cron_field_matches(f_hour, candidate.hour, 0, 23) {
+            candidate = (candidate + datetime.timedelta(hours=1)).replace(minute=0);
+            continue;
+        }
+        if self._cron_field_matches(f_min, candidate.minute, 0, 59) {
             return candidate;
         }
         candidate = candidate + datetime.timedelta(minutes=1);
     }
     raise ValueError(f"No matching time found for cron: {cron}");
+}
+
+impl Scheduler._weekday_matches(field: str, candidate: datetime.datetime) -> bool {
+    wd = (candidate.weekday() + 1) % 7;
+    if self._cron_field_matches(field, wd, 0, 6) {
+        return True;
+    }
+    return wd == 0 and self._cron_field_matches(field, 7, 0, 7);
 }
 
 impl Scheduler._cron_field_matches(
@@ -238,5 +274,7 @@ impl Scheduler._execute(task: ScheduledTask) -> None {
         }
     } except Exception as e {
         logger.error(f"Error executing task '{task.name}': {e}");
+    } finally {
+        task.in_flight = False;
     }
 }

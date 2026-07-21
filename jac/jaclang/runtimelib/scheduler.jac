@@ -22,7 +22,8 @@ obj ScheduledTask {
         spec: ScheduleSpec,
         is_walker: bool,
         next_run: (datetime.datetime | None) = None,
-        last_run: (datetime.datetime | None) = None;
+        last_run: (datetime.datetime | None) = None,
+        in_flight: bool = False;
 }
 
 obj Scheduler {
@@ -38,6 +39,7 @@ obj Scheduler {
         name: str, target: Callable, spec: ScheduleSpec, is_walker: bool
     ) -> None;
 
+    def remove(name: str) -> None;
     def start -> None;
     def stop -> None;
     def wait -> None;
@@ -53,6 +55,7 @@ obj Scheduler {
     ) -> (datetime.datetime | None);
 
     def _parse_cron_next(cron: str, now: datetime.datetime) -> datetime.datetime;
+    def _weekday_matches(field: str, candidate: datetime.datetime) -> bool;
     def _cron_field_matches(
         field: str, value: int, min_val: int, max_val: int
     ) -> bool;
