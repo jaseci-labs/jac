@@ -7,14 +7,14 @@ borrows, `f(&mut w)` call sites), so the whole program passes the enforced
 ownership checker and compiles headerless with **no collector and zero
 reference counting**, machine-checked:
 
-    jac nacompile shooter_headless.na.jac --enforce-nogc --gc none --assert-no-rc
+    jac nacompile shooter_headless.jac --enforce-nogc --gc none --assert-no-rc
 
 The same unchanged source also compiles under `--gc rc` and `--gc cycles`;
 `demo.sh --headless` builds all three and checks the digests are
 byte-identical, so the borrow-checked build is a semantics-preserving drop-in
 (the ownbench erasure/identity discipline applied to a real game loop).
 
-What it runs: the exact per-frame pipeline of shooter.na.jac - input, fire
+What it runs: the exact per-frame pipeline of shooter.jac - input, fire
 cooldown, bullet integration + sphere hit tests, target respawn and bob - at a
 fixed 240 Hz tick, with two substitutions so it needs no window:
 
