@@ -2547,6 +2547,59 @@ impl String.lit_value.getter -> str {
     if isinstance(self.value, `bytes) {
         return self.value;
     }
+
+    if self.parent and isinstance(self.parent, FString) {
+        fstring_parent: FString = self.parent;
+        is_raw = False;
+        if fstring_parent.start and fstring_parent.start.value {
+            is_raw = 'r' in fstring_parent.start.value.lower();
+        }
+        if is_raw {
+            return self.value;
+        }
+        result = self.value;
+
+        def escape_dquotes(text: str) -> str {
+            out = "";
+            i = 0;
+            while i < len(text) {
+                ch = text[i];
+                if ch == '\\' and i + 1 < len(text) {
+                    out += ch + text[i + 1];
+                    i += 2;
+                    continue;
+                }
+                out += '\\"' if ch == '"' else ch;
+                i += 1;
+            }
+            return out;
+        }
+
+        def decode_basic_escapes(text: str) -> str {
+            simple = {'n': '\n', 't': '\t', 'r': '\r', '\\': '\\'};
+            out = "";
+            i = 0;
+            while i < len(text) {
+                ch = text[i];
+                if ch == '\\' and i + 1 < len(text) {
+                    nxt = text[i + 1];
+                    out += simple[nxt] if nxt in simple else ch + nxt;
+                    i += 2;
+                    continue;
+                }
+                out += ch;
+                i += 1;
+            }
+            return out;
+        }
+
+        try {
+            return ast3.literal_eval('"' + escape_dquotes(result) + '"');
+        } except (ValueError, SyntaxError) {
+            return decode_basic_escapes(result);
+        }
+    }
+
     if `any(
         (
             self.value.startswith(prefix)
@@ -2555,75 +2608,18 @@ impl String.lit_value.getter -> str {
     ) {
         return eval(self.value);
     } elif self.value.startswith(("'", '"')) {
-        if (
-            not self.find_parent_of_type(FString)
-            or not (self.parent and isinstance(self.parent, FString))
-        ) {
-            try {
-                return ast3.literal_eval(self.value);
-            } except (ValueError, SyntaxError) {
-                if (
-                    (self.value.startswith('"""') and self.value.endswith('"""'))
-                    or (self.value.startswith("'''") and self.value.endswith("'''"))
-                ) {
-                    return self.value[3:-3];
-                }
-                return self.value[1:-1];
-            }
-        }
         try {
             return ast3.literal_eval(self.value);
         } except (ValueError, SyntaxError) {
-            fstring_parent2: FString = self.parent;
-            is_raw2 = False;
             if (
-                fstring_parent2
-                and fstring_parent2.start
-                and fstring_parent2.start.value
+                (self.value.startswith('"""') and self.value.endswith('"""'))
+                or (self.value.startswith("'''") and self.value.endswith("'''"))
             ) {
-                prefix2 = fstring_parent2.start.value.lower();
-                is_raw2 = 'r' in prefix2;
+                return self.value[3:-3];
             }
-            if not is_raw2 {
-                result = self.value;
-                try {
-                    result = ast3.literal_eval(f'"{result}"');
-                } except (ValueError, SyntaxError) {
-                    placeholder = '\x00';
-                    result = result.replace('\\\\', placeholder);
-                    result = result.replace('\\n', '\n');
-                    result = result.replace('\\t', '\t');
-                    result = result.replace('\\r', '\r');
-                    result = result.replace(placeholder, '\\');
-                }
-                return result;
-            }
-            return self.value;
+            return self.value[1:-1];
         }
     } else {
-        if (self.parent and isinstance(self.parent, FString)) {
-            fstring_parent: FString = self.parent;
-            is_raw = False;
-            if (fstring_parent.start and fstring_parent.start.value) {
-                prefix = fstring_parent.start.value.lower();
-                is_raw = 'r' in prefix;
-            }
-            if not is_raw {
-                result = self.value;
-
-                try {
-                    result = ast3.literal_eval(f'"{result}"');
-                } except (ValueError, SyntaxError) {
-                    placeholder = '\x00';
-                    result = result.replace('\\\\', placeholder);
-                    result = result.replace('\\n', '\n');
-                    result = result.replace('\\t', '\t');
-                    result = result.replace('\\r', '\r');
-                    result = result.replace(placeholder, '\\');
-                }
-                return result;
-            }
-        }
         return self.value;
     }
 }
