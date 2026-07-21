@@ -1,16 +1,3 @@
-"""Python-congruent ``statistics`` for the native pathway.
-
-Double-precision implementations of the summary-statistics surface the
-census found in real projects (median/stdev first). Divergences from
-CPython, both documented here: results always compute in float (CPython
-runs exact Fraction arithmetic internally and `median` of an odd-count
-sequence returns the element itself, preserving int), and errors raise
-ValueError directly (CPython's StatisticsError subclasses ValueError, so
-`except ValueError` behaves identically on both backends). The generic
-defs monomorphize per element type, so int and float sequences both work
-without boxing.
-"""
-
 def:pub fmean[T](data: list[T]) -> float {
     n = len(data);
     if n == 0 {

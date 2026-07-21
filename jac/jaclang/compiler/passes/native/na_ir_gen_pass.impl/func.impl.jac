@@ -116,7 +116,9 @@ impl NaIRGenPass._record_ret_facts(name: str, sig: uni.FuncSignature) -> None {
     _rtb = _rt?.type;
     if _rtb is not None {
         try {
-            self.func_ret_type_key[name] = self._normalize_type_key(self._mangled_of(_rtb));
+            self.func_ret_type_key[name] = self._normalize_type_key(
+                self._mangled_of(_rtb)
+            );
         } except Exception { }
     }
     elems: list = [];
@@ -915,9 +917,7 @@ impl NaIRGenPass._emit_glob_init_func -> None {
     self.closure_cell_vars = set();
     self.closure_cell_handles = {};
     if self?._global_init_nodes and self._global_init_nodes {
-        self._scan_closure_escapes(
-            self.ir_in, [t[1] for t in self._global_init_nodes]
-        );
+        self._scan_closure_escapes(self.ir_in, [t[1] for t in self._global_init_nodes]);
     }
 
     self._attach_di_subprogram(func, "__jac_glob_init", 0);

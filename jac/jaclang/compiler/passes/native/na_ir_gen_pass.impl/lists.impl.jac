@@ -182,7 +182,9 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
     }
 
     _decl_elem = self._list_elem_llvm_of(nd);
-    _clos_elem = self._closure_struct_of(_decl_elem) if _decl_elem is not None else None;
+    _clos_elem = self._closure_struct_of(_decl_elem)
+        if _decl_elem is not None
+        else None;
 
     first_val = self._codegen_expr(nd.values[0]);
     if first_val is None {

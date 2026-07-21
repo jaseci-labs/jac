@@ -256,11 +256,7 @@ test "bundled shutil" {
 
 test "generic functions monomorphize" {
     run_with_both(
-        "prim_generics.jac",
-        "generics_py",
-        "generics_cl",
-        "generics_na",
-        require=["na"]
+        "prim_generics.jac", "generics_py", "generics_cl", "generics_na", require=["na"]
     );
 }
 

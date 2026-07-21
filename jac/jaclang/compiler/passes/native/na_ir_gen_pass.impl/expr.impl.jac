@@ -191,9 +191,7 @@ impl NaIRGenPass._emit_yield_suspend(v: ir.Value) -> None {
         exc_state = _entry["state"];
         self.builder.call(self._exc_push_fn, [exc_state]);
         env_ptr = self.builder.gep(
-            exc_state,
-            [ir.Constant(i32, 0), ir.Constant(i32, 0)],
-            name=f"rearm.env.{k}"
+            exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name=f"rearm.env.{k}"
         );
         env_i8p = self.builder.bitcast(env_ptr, i8p, name=f"rearm.envp.{k}");
         sj = self.builder.call(

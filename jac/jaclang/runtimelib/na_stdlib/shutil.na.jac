@@ -1,17 +1,3 @@
-"""Python-congruent ``shutil`` for the native pathway.
-
-The census-ranked surface real projects use: which, copyfile, copy, copy2,
-move, and rmtree, built on the native os intrinsics (getenv, path.join,
-path.isdir, path.isfile, path.basename) plus direct libc (access, unlink,
-rmdir, rename, opendir/readdir/closedir). The dirent d_name/d_type offsets
-follow the glibc x86-64/aarch64 layout (d_ino 8 + d_off 8 + d_reclen 2 +
-d_type 1 = 19), matching the platform scope of the other libc-backed
-bundled modules. Documented divergences: copy/copy2 duplicate bytes but do
-not yet preserve mode/mtime metadata; rmtree follows the isdir predicate,
-so directory symlinks are recursed into rather than unlinked; errors raise
-ValueError rather than CPython's OSError subclasses.
-"""
-
 import os;
 import from c { def access(path: str, mode: i32) -> i32;  }
 import from c { def unlink(path: str) -> i32;  }
@@ -77,16 +63,14 @@ def:pub move(src: str, dst: str) -> str {
         return real_dst;
     }
     if os.path.isdir(src) {
-        raise ValueError(
-            f"move: cannot relocate directory '{src}' across filesystems"
-        );
+        raise ValueError(f"move: cannot relocate directory '{src}' across filesystems");
     }
     copyfile(src, real_dst);
     unlink(src);
     return real_dst;
 }
 
-def:pub rmtree(path: str) -> None {
+def:pub rmtree(path: str) {
     d = opendir(path);
     if d == 0 {
         raise ValueError(f"rmtree: cannot open '{path}'");

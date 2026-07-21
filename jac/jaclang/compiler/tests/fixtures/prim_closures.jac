@@ -114,7 +114,10 @@ def closures_adapters_py -> dict {
         kept = kept + v;
     }
     chained = 0;
-    for v in map(lambda (x: int) -> int { x * k; }, filter(lambda (x: int) -> bool { x >= cut; }, [1, 4, 6])) {
+    for v in map(
+        lambda (x: int) -> int { x * k; },
+        filter(lambda (x: int) -> bool { x >= cut; }, [1, 4, 6])
+    ) {
         chained = chained + v;
     }
     return {"scaled": scaled, "kept": kept, "chained": chained,};
@@ -248,5 +251,4 @@ na {
         }
         return {"scaled": scaled, "kept": kept, "chained": chained,};
     }
-
 }

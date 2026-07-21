@@ -24,7 +24,7 @@ def chain2(n: int) -> Iterator[int] {
 def pacer(n: int) -> Iterator[None] {
     i = 0;
     while i < n {
-        yield;
+        yield ;
         i = i + 1;
     }
 }
@@ -104,6 +104,7 @@ def gens_py -> dict {
         "listy": listy,
         "resil": resil,
         "resil0": resil0,
+
     };
 }
 
@@ -129,7 +130,7 @@ na {
     def na_pacer(n: int) -> Iterator[None] {
         i = 0;
         while i < n {
-            yield;
+            yield ;
             i = i + 1;
         }
     }
@@ -209,6 +210,7 @@ na {
             "listy": listy,
             "resil": resil,
             "resil0": resil0,
+
         };
     }
 }

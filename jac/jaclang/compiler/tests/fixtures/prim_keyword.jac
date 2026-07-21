@@ -20,6 +20,7 @@ def keyword_py -> dict {
         "soft_match": 1 if issoftkeyword("match") else 0,
         "soft_class": 1 if issoftkeyword("class") else 0,
         "bare_is_def": 1 if keyword.iskeyword("def") else 0,
+
     };
 }
 
@@ -39,6 +40,7 @@ na {
             "soft_match": 1 if issoftkeyword("match") else 0,
             "soft_class": 1 if issoftkeyword("class") else 0,
             "bare_is_def": 1 if keyword.iskeyword("def") else 0,
+
         };
     }
 }

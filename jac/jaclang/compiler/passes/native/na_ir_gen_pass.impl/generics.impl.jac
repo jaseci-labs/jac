@@ -1,15 +1,3 @@
-"""TypeVar-function monomorphization.
-
-A generic def (`def f[T](...)`) registers as a template in `generic_fns`
-and declares no symbol. Each callsite structurally unifies the declared
-parameter types against the checker-solved argument types to bind the type
-params, then stamps (memoized per solved-type key) a specialized private
-copy whose body lowers with the binding active: `_lower_type` substitutes
-bound TypeVars and every mangle-driven helper reads through `_mangled_of`,
-which rewrites bound TypeVar names inside mangled type keys. No boxing;
-the callsite links the specialized copy like any direct call.
-"""
-
 impl NaIRGenPass._mangled_of(t: any) -> (str | None) {
     if t is None or not t?.mangle {
         return None;
@@ -75,20 +63,34 @@ impl NaIRGenPass._solve_generic_call(
 
     sig = ability.signature;
     params = sig.get_parameters() if sig is not None else [];
-    args = nd.params or [];
-    for (i, p) in enumerate(params) {
-        if i >= len(args) {
-            break;
+    _ft = ability.name_ref.type if ability.name_ref is not None else None;
+    _ft_params = list(_ft.parameters or [])
+        if _ft is not None and _ft?.parameters
+        else [];
+    positional: list = [];
+    kw_map: dict = {};
+    for a in (nd.params or []) {
+        if isinstance(a, uni.KWPair) {
+            if a.key is not None {
+                kw_map[a.key.sym_name] = a.value;
+            }
+        } else {
+            positional.append(a);
         }
-        a = args[i];
-        if not isinstance(a, uni.Expr) or isinstance(a, uni.KWPair) {
+    }
+    for (i, p) in enumerate(params) {
+        p_name = p.name.sym_name if p?.name and p.name is not None else None;
+        chosen = positional[i]
+            if i < len(positional)
+            else (kw_map.get(p_name) if p_name is not None else None);
+        if not isinstance(chosen, uni.Expr) {
             continue;
         }
-        decl_t = p.name.type if p?.name and p.name is not None else None;
+        decl_t = _ft_params[i].param_type if i < len(_ft_params) else None;
         if decl_t is None and p?.type_tag and p.type_tag is not None {
             decl_t = p.type_tag.tag.type if p.type_tag?.tag else None;
         }
-        unify(decl_t, a.type);
+        unify(decl_t, chosen.type);
     }
     for tp in (ability.type_params or []) {
         tp_name = tp.name.value if tp?.name and tp.name is not None else None;

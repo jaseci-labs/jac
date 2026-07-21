@@ -2266,7 +2266,7 @@ test "jac check native census ranks module outcomes" {
         }
         with open(os.path.join(td, "blocked.jac"), "w") as f {
             f.write(
-                "node Item {\n    has label: str = \"\";\n}\n\nwalker Visitor {\n" + "    can look with Item entry {\n        print(here.label);\n" + "    }\n}\n"
+                "node Item {\n    has label: str = \"\";\n}\n\n" + "def pin(label: str) -> int {\n    root ++> Item(label=label);\n" + "    return 1;\n}\n"
             );
         }
         (captured_stdout, captured_stderr, old_stdout, old_stderr) = _capture_output();
@@ -2286,7 +2286,7 @@ test "jac check native census ranks module outcomes" {
         assert "demote.jac" in combined , "demoted module path missing";
         assert "blocked.jac" in combined , "server module path missing";
         assert "pure.jac" in combined , "native module path missing";
-        assert "osp archetype" in combined , (
+        assert "root access (persistent graph)" in combined , (
             "server reason strings must be real signal labels"
         );
         assert result == 0 , "census demotions must not flip exit code";

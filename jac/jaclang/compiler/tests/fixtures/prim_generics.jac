@@ -25,6 +25,7 @@ def generics_py -> dict {
         "float_sum": f,
         "first_int": n,
         "first_len": len(w),
+
     };
 }
 
@@ -53,6 +54,7 @@ na {
             "float_sum": f,
             "first_int": n,
             "first_len": len(w),
+
         };
     }
 }

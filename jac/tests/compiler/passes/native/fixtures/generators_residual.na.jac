@@ -55,7 +55,7 @@ def count_chars(s: str) -> int {
 def pacer(n: int) -> Iterator[None] {
     i = 0;
     while i < n {
-        yield;
+        yield ;
         i = i + 1;
     }
 }

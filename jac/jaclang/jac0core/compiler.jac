@@ -522,9 +522,19 @@ def _scan_native_default_signals(
         if ab.is_async {
             return ("async ability", deps);
         }
-        if isinstance(ab.signature, uni.EventSignature)
-        and ab.find_parent_of_type(uni.Archetype) is None {
-            return ("event ability outside an archetype", deps);
+        if isinstance(ab.signature, uni.EventSignature) {
+            if ab.find_parent_of_type(uni.Archetype) is None {
+                return ("event ability outside an archetype", deps);
+            }
+            _ti = ab.signature.arch_tag_info;
+            _ti_names = [_ti]
+                if isinstance(_ti, uni.Name)
+                else (_ti.get_all_sub_nodes(uni.Name) if _ti is not None else []);
+            for _tn in _ti_names {
+                if _tn.value in ("Root", "root") {
+                    return ("root access (persistent graph)", deps);
+                }
+            }
         }
     }
     for stmt in module.body {
@@ -535,7 +545,7 @@ def _scan_native_default_signals(
             }
         }
         if (
-            isinstance(stmt, (uni.Ability, uni.GlobalVars))
+            isinstance(stmt, (uni.Ability, uni.GlobalVars, uni.Archetype, uni.Enum))
             and stmt.access is not None
             and stmt.access.tag.name == Tok.KW_PUB
         ) {

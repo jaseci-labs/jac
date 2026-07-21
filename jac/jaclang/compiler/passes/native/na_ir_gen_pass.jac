@@ -353,18 +353,12 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _stack_entry_alloca(var_type: ir.Type, name: str) -> ir.Value;
     def _mangled_of(t: any) -> (str | None);
     def _solve_generic_call(ability: uni.Ability, nd: uni.FuncCall) -> (dict | None);
-    def _instantiate_generic(
-        nd: uni.FuncCall, func_name: str
-    ) -> (ir.Function | None);
-
+    def _instantiate_generic(nd: uni.FuncCall, func_name: str) -> (ir.Function | None);
     def _stamp_mono_fn(
         ability: uni.Ability, spec_name: str, memo_key: str
     ) -> (ir.Function | None);
 
-    def _find_source_ability(
-        mod_name: str, func_name: str
-    ) -> (uni.Ability | None);
-
+    def _find_source_ability(mod_name: str, func_name: str) -> (uni.Ability | None);
     def _codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | None);
     def _adapter_callee(fn_expr: uni.UniNode) -> (tuple | None);
     def _adapter_clos_parts(clos: ir.Value) -> (tuple | None);

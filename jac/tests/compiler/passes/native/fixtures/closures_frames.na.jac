@@ -53,9 +53,11 @@ def globinit_lambda(v: int) -> int {
 glob entry_acc: list[int] = [];
 
 with entry {
-    fns: list[Callable[[int], int]] = [lambda (x: int) -> int { x + 7; }];
-    f = fns[0];
-    entry_acc.append(f(1));
+    if len(entry_acc) == 0 {
+        fns: list[Callable[[int], int]] = [lambda (x: int) -> int { x + 7; }];
+        f = fns[0];
+        entry_acc.append(f(1));
+    }
 }
 
 def entry_frame_escape -> int {

@@ -34,6 +34,10 @@ def use_identity_float(v: float) -> float {
     return identity(v);
 }
 
+def use_identity_kw(v: int) -> int {
+    return identity(val=v);
+}
+
 def use_tail_int(a: int, b: int) -> int {
     return tail_of([a, b]);
 }

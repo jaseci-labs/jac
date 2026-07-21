@@ -63,13 +63,13 @@ test "mono: identity specializes at int, float, and str" {
     assert fs(b"abcd") == 4;
     ff = get_func(eng, "use_identity_float", ctypes.c_double, ctypes.c_double);
     assert ff(2.5) == 2.5;
+    fk = get_func(eng, "use_identity_kw", ctypes.c_int64, ctypes.c_int64);
+    assert fk(9) == 9 , "keyword-supplied argument binds the type param";
 }
 
 test "mono: one body, different lowerings per instantiation" {
     (eng, _) = compile_native("generics_mono.na.jac");
-    ti = get_func(
-        eng, "use_tail_int", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
-    );
+    ti = get_func(eng, "use_tail_int", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
     assert ti(3, 9) == 9 , "i64 element load at int";
     ts = get_func(
         eng, "use_tail_str_len", ctypes.c_int64, ctypes.c_char_p, ctypes.c_char_p

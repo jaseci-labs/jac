@@ -1,10 +1,3 @@
-"""Python-congruent ``keyword`` for the native pathway.
-
-Mirrors CPython's kwlist/softkwlist verbatim, ordering included (CPython
-generates these from its grammar; they have been stable since 3.10's
-soft-keyword additions).
-"""
-
 glob kwlist: list[str] = [
          "False",
          "None",
@@ -41,9 +34,9 @@ glob kwlist: list[str] = [
          "while",
          "with",
          "yield",
-     ];
 
-glob softkwlist: list[str] = ["_", "case", "match", "type"];
+     ],
+     softkwlist: list[str] = ["_", "case", "match", "type"];
 
 def:pub iskeyword(s: str) -> bool {
     return s in kwlist;

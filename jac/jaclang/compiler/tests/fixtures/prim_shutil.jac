@@ -32,12 +32,15 @@ def shutil_py -> dict {
     out = {
         "copied_exists": 1 if os.path.exists(os.path.join(base, "sub", "a.txt")) else 0,
         "copy_ret_base": os.path.basename(copied),
-        "copy2_exists_pre_move": 0 if os.path.exists(os.path.join(base, "b.txt")) else 1,
+        "copy2_exists_pre_move": 0
+            if os.path.exists(os.path.join(base, "b.txt"))
+            else 1,
         "moved_body": moved_body,
         "moved_ret_base": os.path.basename(moved),
         "sh_found": 1 if sh_path is not None else 0,
         "sh_base": os.path.basename(sh_path) if sh_path is not None else "",
         "ghost_none": 1 if ghost is None else 0,
+
     };
     rmtree(base);
     out["rmtree_gone"] = 0 if os.path.exists(base) else 1;
@@ -61,9 +64,7 @@ na {
         f.close();
         copied = shutil.copy(src, os.path.join(base, "sub"));
         c2 = copy2(src, os.path.join(base, "b.txt"));
-        moved = move(
-            os.path.join(base, "b.txt"), os.path.join(base, "sub", "c.txt")
-        );
+        moved = move(os.path.join(base, "b.txt"), os.path.join(base, "sub", "c.txt"));
         g = open(os.path.join(base, "sub", "c.txt"), "r");
         moved_body = g.read();
         g.close();
@@ -82,6 +83,7 @@ na {
             "sh_found": 1 if sh_path is not None else 0,
             "sh_base": os.path.basename(sh_path) if sh_path is not None else "",
             "ghost_none": 1 if ghost is None else 0,
+
         };
         rmtree(base);
         out["rmtree_gone"] = 0 if os.path.exists(base) else 1;

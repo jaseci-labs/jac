@@ -17,7 +17,9 @@ impl NaIRGenPass._ensure_iter_types -> None {
         "RangeIterState", ["cur", "stop", "step"], [i64, i64, i64]
     );
 
-    self._register_iter_struct("MapIterState", ["upstream", "fn", "env"], [i8p, i64, i8p]);
+    self._register_iter_struct(
+        "MapIterState", ["upstream", "fn", "env"], [i8p, i64, i8p]
+    );
     self._register_iter_struct(
         "FilterIterState", ["upstream", "fn", "env"], [i8p, i64, i8p]
     );
