@@ -209,14 +209,9 @@ extra:
     property: G-PLSMBEBC20
 copyright: Copyright &copy; 2026 Jac Hackers Everywhere
 
+# The runnable-code stack (Pyodide, Monaco, viz.js, run-code.js) is injected
+# per-page by overrides/main.html for pages with `runnable_blocks: true`.
 extra_javascript:
-  - https://unpkg.com/viz.js@2.1.2/viz.js
-  - https://unpkg.com/viz.js@2.1.2/full.render.js
-  - https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pyodide.js
-  - https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.js
-  - https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs/loader.min.js
-  - js/jac.monarch.js
-  - js/run-code.js
   - js/feedback.js
   - js/logo.js
 

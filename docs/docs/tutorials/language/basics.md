@@ -1,3 +1,7 @@
+---
+runnable_blocks: true
+---
+
 # Jac Basics
 
 This tutorial covers the core syntax and concepts you need to start writing Jac programs. If you're coming from Python, most things will look familiar -- Jac compiles to Python bytecode and shares many of Python's constructs, so your existing knowledge applies directly. The key differences are syntactic (braces instead of indentation, semicolons to end statements) and conceptual (graph-native types, the `has` keyword for fields, `with entry` for entry points).

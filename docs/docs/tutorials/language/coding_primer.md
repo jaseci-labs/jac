@@ -1,3 +1,7 @@
+---
+runnable_blocks: true
+---
+
 # The Complete Beginner's Guide to Programming with Jac
 
 > **Welcome to Programming!** This guide will teach you how to program using Jac as your first programming language. No prior experience required. We'll start from the absolute basics and build up to advanced concepts step by step.
