@@ -1101,3 +1101,19 @@ test "renaming a page moves its route" {
         assert not (compiled_dir / "pages" / "index.js").exists() , "stale compiled JS of the old name must be gone";
     }
 }
+
+test "hyphenated page filenames sanitize to valid JS identifiers in _routes.js" {
+    with TemporaryDirectory() as tmpdir {
+        (reloader, compiled_dir, pages_dir) = _routed_project(
+            tmpdir, extra_pages={"features/about-connections.jac": "About"}
+        );
+        routes = (compiled_dir / "_routes.js").read_text();
+        assert "PagesFeaturesAboutConnections" in routes;
+        for line in routes.splitlines() {
+            if line.startswith("import ") {
+                imported_name = line.split(" as ")[1].split(" ")[0];
+                assert "-" not in imported_name , f"invalid JS identifier: {imported_name}";
+            }
+        }
+    }
+}

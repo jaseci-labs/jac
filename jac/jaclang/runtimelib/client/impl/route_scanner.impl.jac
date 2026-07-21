@@ -114,6 +114,16 @@ impl RouteScanner._file_to_route_path(filename: str) -> str {
     return filename;
 }
 
+def _sanitize_segment(segment: str) -> list[str] {
+    fragments: list[str] = [];
+    for fragment in re.split(r'[^0-9A-Za-z]+', segment) {
+        if len(fragment) > 0 {
+            fragments.append(fragment[0].upper() + fragment[1:]);
+        }
+    }
+    return fragments;
+}
+
 impl RouteScanner._file_to_component_name(file_path: Path) -> str {
     try {
         relative = file_path.relative_to(self.pages_dir);
@@ -127,26 +137,37 @@ impl RouteScanner._file_to_component_name(file_path: Path) -> str {
         }
 
         clean = re.sub(r'^\[\.\.\.(\w+)\]$', r'\1', part);
-
         clean = re.sub(r'^\[(\w+)\]$', r'\1', clean);
-        parts.append(clean[0].upper() + clean[1:] if len(clean) > 0 else clean);
+        parts.extend(_sanitize_segment(clean));
     }
     return self.COMPONENT_PREFIX + "".join(parts);
 }
 
 impl RouteScanner._detect_collisions(routes: list[RouteEntry]) -> None {
-    seen: dict[(str, Path)] = {};
+    seen_paths: dict[(str, Path)] = {};
+    seen_imports: dict[(str, Path)] = {};
     for route in routes {
         if route.is_layout {
             continue;
         }
-        if route.path in seen {
+        if route.path in seen_paths {
             raise ClientBundleError(
                 f"Route collision: '{route.path}' is defined by both "
-                f"'{seen[route.path]}' and '{route.file_path}'. "
+                f"'{seen_paths[route.path]}' and '{route.file_path}'. "
                 f"Remove one of them."
             );
         }
-        seen[route.path] = route.file_path;
+        seen_paths[route.path] = route.file_path;
+
+        if route.component_import in seen_imports {
+            raise ClientBundleError(
+                f"Route import-name collision: '{seen_imports[
+                    route.component_import
+                ]}' "
+                f"and '{route.file_path}' both sanitize to the JS identifier "
+                f"'{route.component_import}'. Rename one of the files."
+            );
+        }
+        seen_imports[route.component_import] = route.file_path;
     }
 }
