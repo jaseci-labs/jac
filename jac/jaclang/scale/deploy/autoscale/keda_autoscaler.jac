@@ -22,10 +22,10 @@ obj KEDAAutoscaler(Autoscaler) {
         _core_api: (any | None) = None,
         http_scaler_address: str = "keda-add-ons-http-external-scaler.keda:9090",
         interceptor_service_address: str = "keda-add-ons-http-interceptor-proxy.keda:8080",
-        logger: (Logger | None) = None;
-
-    static has _preflight_cache: dict[str, any] = {},
+        logger: (Logger | None) = None,
         _capabilities_cache: dict[str, any] = {};
+
+    static has _preflight_cache: dict[str, any] = {};
 
     def _get_cluster_key -> str;
     def _trigger_key(trigger: Trigger, trigger_index: int) -> str;

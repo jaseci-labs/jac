@@ -774,8 +774,8 @@ impl KEDAAutoscaler._capabilities_cache_key{
 
 impl KEDAAutoscaler.discover_capabilities{
     cluster_key = self._capabilities_cache_key();
-    if not refresh and cluster_key in KEDAAutoscaler._capabilities_cache {
-        return KEDAAutoscaler._capabilities_cache[cluster_key];
+    if not refresh and cluster_key in self._capabilities_cache {
+        return self._capabilities_cache[cluster_key];
     }
 
     api = self._custom_api or client.CustomObjectsApi();
@@ -883,12 +883,12 @@ impl KEDAAutoscaler.discover_capabilities{
         }
     }
 
-    KEDAAutoscaler._capabilities_cache[cluster_key] = caps;
+    self._capabilities_cache[cluster_key] = caps;
     return caps;
 }
 
 impl KEDAAutoscaler.invalidate_capabilities{
-    KEDAAutoscaler._capabilities_cache.pop(self._capabilities_cache_key(), None);
+    self._capabilities_cache.pop(self._capabilities_cache_key(), None);
 }
 
 impl KEDAAutoscaler.format_capabilities{

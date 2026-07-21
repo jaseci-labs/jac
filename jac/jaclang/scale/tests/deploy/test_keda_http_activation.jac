@@ -44,7 +44,6 @@ def _mocked_keda(
     apps_api: any = None,
     core_api: any = None
 ) -> tuple[KEDAAutoscaler, any, any, any] {
-    KEDAAutoscaler._capabilities_cache.clear();
     custom_api = custom_api or unittest.mock.MagicMock();
     if http_addon_installed {
         custom_api.list_cluster_custom_object.return_value = {};
@@ -494,16 +493,14 @@ test "destroy_collection sweeps InterceptorRoutes alongside ScaledObjects and Tr
 
 
 # --- Section I: capability discovery -----------------------------------------
-# Cache key is constant ("default") for every test in this process since there
-# is no real kube config loaded (see _get_cluster_key), so each test clears
-# _capabilities_cache itself before discovering — same reason _mocked_keda
-# clears it above. apps_api is mocked too (even though discovery itself never
-# touches it) so that apply_http_activation's target-existence check doesn't
-# fall through to a real, unconfigured AppsV1Api.
+# _capabilities_cache is per-instance (not static), so a freshly constructed
+# KEDAAutoscaler always starts with an empty cache -- no explicit clearing
+# needed. apps_api is mocked too (even though discovery itself never touches
+# it) so that apply_http_activation's target-existence check doesn't fall
+# through to a real, unconfigured AppsV1Api.
 def _keda_for(
     custom_api: any = None, core_api: any = None, apps_api: any = None
 ) -> KEDAAutoscaler {
-    KEDAAutoscaler._capabilities_cache.clear();
     return KEDAAutoscaler(
         _custom_api=custom_api or unittest.mock.MagicMock(),
         _core_api=core_api or unittest.mock.MagicMock(),
@@ -691,10 +688,9 @@ test "discover_capabilities cache key accounts for instance-specific service add
     caps_a = keda_a.discover_capabilities();
     assert caps_a.errors == [] , "Sanity check: instance A's own services should resolve cleanly";
 
-    # Built directly (not via _keda_for) so instance A's cache entry from
-    # above is not cleared -- the point is to prove two instances targeting
-    # the same cluster host, but with different service addresses, don't
-    # reuse each other's cached result.
+    # Instance B targets the same cluster host as instance A but with a
+    # different http_scaler_address -- proves the two don't get conflated
+    # even when both resolve to a cache entry keyed off the same host.
     keda_b = KEDAAutoscaler(
         _custom_api=_custom_api_for(),
         _core_api=_core_api_for(scaler=404),
@@ -716,10 +712,10 @@ test "discover_capabilities cache key accounts for distinct Kubernetes client id
     # Same cluster key and same default service addresses as instance A --
     # only the injected custom_api differs, representing a distinct
     # Kubernetes client/service account with RBAC denied on core discovery.
-    # Built directly (not via _keda_for) so instance A's cache entry from
-    # above is not cleared -- the point is to prove that identical
-    # cluster/address identity does not let two different clients share a
-    # cached result across what may be an authorization boundary.
+    # _capabilities_cache is per-instance, so there is no shared cache for
+    # this to leak through even before checking the assertion below; this
+    # proves instance B's own result reflects its own (restricted) client
+    # rather than accidentally matching instance A's.
     keda_b = KEDAAutoscaler(
         _custom_api=_custom_api_for(core=403), _core_api=_core_api_for()
     );
