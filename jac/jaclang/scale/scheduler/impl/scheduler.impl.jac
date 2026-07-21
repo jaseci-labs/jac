@@ -300,6 +300,118 @@ impl MemoryJobStore.record_run(
     job['run_count'] = int(job.get('run_count', 0)) + 1;
 }
 
+impl SchedulerLeaderLease.postinit -> None {
+    import threading;
+    self._holder_id = str(uuid4());
+    self._stop_event = threading.Event();
+    try {
+        self._db.create_index(
+            self._collection, {'lease_key': 1}, unique=True, name='lease_key_unique'
+        );
+    } except Exception as e {
+        logger.warning(f"Could not ensure lease index: {e}");
+    }
+}
+
+impl SchedulerLeaderLease.start -> None {
+    import threading;
+    if self._thread is not None {
+        return;
+    }
+    self._tick();
+    self._thread = threading.Thread(target=self._run_loop, daemon=True);
+    self._thread.start();
+}
+
+impl SchedulerLeaderLease.stop -> None {
+    self._stop_event.set();
+    if self._thread is not None {
+        self._thread.join(timeout=5);
+        self._thread = None;
+    }
+    if self.is_leader {
+        try {
+            self._db.delete_one(
+                self._collection,
+                {'lease_key': self._lease_key, 'holder': self._holder_id}
+            );
+        } except Exception as e {
+            logger.debug(f"Could not release scheduler lease: {e}");
+        }
+        self.is_leader = False;
+    }
+}
+
+impl SchedulerLeaderLease._run_loop -> None {
+    interval = max(self._ttl / 3.0, 1.0);
+    while not self._stop_event.wait(timeout=interval) {
+        try {
+            self._tick();
+        } except Exception as e {
+            logger.warning(f"Scheduler lease heartbeat failed: {e}");
+            if self.is_leader {
+                self.is_leader = False;
+                if self.on_lose {
+                    self.on_lose();
+                }
+            }
+        }
+    }
+}
+
+impl SchedulerLeaderLease._tick -> None {
+    import time;
+    now = time.time();
+    expires = now + self._ttl;
+    if self.is_leader {
+        renewed = self._db.update_one(
+            self._collection,
+            {'lease_key': self._lease_key, 'holder': self._holder_id},
+            {'$set': {'expires_at': expires}}
+        );
+        if renewed.modified_count > 0 {
+            if self.on_tick {
+                self.on_tick();
+            }
+            return;
+        }
+        self.is_leader = False;
+        if self.on_lose {
+            self.on_lose();
+        }
+        return;
+    }
+    took = self._db.update_one(
+        self._collection,
+        {'lease_key': self._lease_key, 'expires_at': {'$lt': now}},
+        {'$set': {'holder': self._holder_id, 'expires_at': expires}}
+    );
+    if took.modified_count > 0 {
+        self.is_leader = True;
+        if self.on_gain {
+            self.on_gain();
+        }
+        return;
+    }
+    existing = self._db.find_one(self._collection, {'lease_key': self._lease_key});
+    if existing is None {
+        try {
+            self._db.insert_one(
+                self._collection,
+                {
+                    'lease_key': self._lease_key,
+                    'holder': self._holder_id,
+                    'expires_at': expires
+                }
+            );
+            self.is_leader = True;
+            if self.on_gain {
+                self.on_gain();
+            }
+        } except Exception { }
+    }
+}
+
 impl JacScaleScheduler.postinit -> None {
     logging.getLogger('apscheduler').setLevel(logging.ERROR);
     self._user_exists_cache = {};
@@ -358,8 +470,26 @@ impl JacScaleScheduler.setup(system_user_id: str, server: Any | None = None) -> 
             mongo_db = MongoDb(client=get_mongo_client());
             self._store = MongoJobStore(_db=mongo_db, _collection=collection);
             logger.debug("MongoDB configured — jobs will be persisted");
+            if scheduler_cfg.get('coordination', 'leader') != 'none' {
+                app_name = getattr(server, 'module_name', '') or 'default';
+                self._lease = SchedulerLeaderLease(
+                    _db=mongo_db,
+                    _lease_key=f"scheduler:{app_name}",
+                    _ttl=float(scheduler_cfg.get('leader_ttl', 30.0))
+                );
+            }
         } except Exception as e {
-            logger.warning(f"MongoDB connection failed, using in-memory: {e}");
+            if scheduler_cfg.get('require_persistence', False) {
+                raise RuntimeError(
+                    f"MongoDB is configured but unreachable and "
+                    f"[scale.scheduler] require_persistence is set: {e}"
+                );
+            }
+            logger.error(
+                f"MongoDB connection failed, falling back to in-memory job store: "
+                f"{e}. Jobs will NOT be shared across replicas or survive restarts. "
+                f"Set [scale.scheduler] require_persistence = true to fail instead."
+            );
             self._store = MemoryJobStore();
         }
     } else {
@@ -396,9 +526,17 @@ impl JacScaleScheduler.setup(system_user_id: str, server: Any | None = None) -> 
 
 impl JacScaleScheduler.start -> None {
     if self._apscheduler is not None {
+        state_stopped = 0;
+        state_paused = 2;
+        state = getattr(self._apscheduler, 'state', state_stopped);
         try {
-            self._apscheduler.start();
-            logger.info("APScheduler started (timezone=UTC)");
+            if state == state_stopped {
+                self._apscheduler.start();
+                logger.info("APScheduler started (timezone=UTC)");
+            } elif state == state_paused {
+                self._apscheduler.resume();
+                logger.info("APScheduler resumed");
+            }
         } except Exception as e {
             logger.error(f"Failed to start APScheduler: {e}");
         }
@@ -406,6 +544,13 @@ impl JacScaleScheduler.start -> None {
 }
 
 impl JacScaleScheduler.stop(drain: bool = False) -> None {
+    if self._lease is not None {
+        try {
+            self._lease.stop();
+        } except Exception as e {
+            logger.debug(f"Error releasing scheduler lease: {e}");
+        }
+    }
     if self._apscheduler is not None and self._apscheduler.running {
         try {
             self._apscheduler.shutdown(wait=drain);
@@ -418,6 +563,77 @@ impl JacScaleScheduler.stop(drain: bool = False) -> None {
         Scheduler.instance().stop();
     } except Exception as e {
         logger.debug(f"Error stopping base Scheduler: {e}");
+    }
+}
+
+impl JacScaleScheduler._is_effectively_leader -> bool {
+    return self._lease is None or self._lease.is_leader;
+}
+
+impl JacScaleScheduler.start_coordinated(
+    walkers: dict, functions: dict, server: Any
+) -> None {
+    self._server = server;
+
+    def _gain {
+        logger.info("Scheduler leadership acquired — starting scheduled jobs");
+        introspector = server.introspector if server?.introspector else None;
+        live_walkers = (introspector._walkers or {}) if introspector else walkers;
+        live_functions = (introspector._functions or {}) if introspector else functions;
+        self.register_static_tasks(live_walkers, live_functions, server);
+        self.register_dynamic_tasks_from_db();
+        self.start();
+    }
+
+    def _lose {
+        logger.warning("Scheduler leadership lost — pausing scheduled jobs");
+        try {
+            Scheduler.instance().stop();
+        } except Exception as e {
+            logger.debug(f"Error stopping base Scheduler on demotion: {e}");
+        }
+        if self._apscheduler is not None and self._apscheduler.running {
+            try {
+                self._apscheduler.remove_all_jobs();
+                self._apscheduler.pause();
+            } except Exception as e {
+                logger.debug(f"Error pausing APScheduler on demotion: {e}");
+            }
+        }
+    }
+
+    if self._lease is None {
+        _gain();
+        return;
+    }
+    self._lease.on_gain = _gain;
+    self._lease.on_lose = _lose;
+    self._lease.on_tick = self._reconcile_dynamic_jobs;
+    self._lease.start();
+    if not self._lease.is_leader {
+        logger.info("Scheduler running as follower — another replica holds the lease");
+    }
+}
+
+impl JacScaleScheduler._reconcile_dynamic_jobs -> None {
+    if self._apscheduler is None {
+        return;
+    }
+    try {
+        (jobs, _total) = self._require_store().find_active();
+        active_ids = {str(j.get('job_id')) for j in jobs};
+        for ap_job in self._apscheduler.get_jobs() {
+            if ap_job.id not in active_ids {
+                try {
+                    self._apscheduler.remove_job(ap_job.id);
+                } except Exception as e {
+                    logger.debug(f"Could not prune job {ap_job.id}: {e}");
+                }
+            }
+        }
+        self.register_dynamic_tasks_from_db(quiet=True);
+    } except Exception as e {
+        logger.warning(f"Dynamic job reconcile failed: {e}");
     }
 }
 
@@ -479,7 +695,7 @@ impl JacScaleScheduler.register_static_tasks(
     }
 }
 
-impl JacScaleScheduler.register_dynamic_tasks_from_db -> None {
+impl JacScaleScheduler.register_dynamic_tasks_from_db(quiet: bool = False) -> None {
     if self._apscheduler is None {
         return;
     }
@@ -546,6 +762,9 @@ impl JacScaleScheduler.register_dynamic_tasks_from_db -> None {
             failed += 1;
         }
     }
+    if quiet {
+        return;
+    }
     if restored or failed or orphaned or expired {
         logger.info(
             f"Dynamic job restoration complete: {restored} restored, "
@@ -599,14 +818,16 @@ impl JacScaleScheduler.create_job(
     job_data['job_id'] = persisted_id;
 
     try {
-        self._schedule_apscheduler_job(
-            job_id=persisted_id,
-            name=name,
-            spec=spec,
-            user_id=created_by,
-            is_walker=is_walker,
-            args=job_data['args']
-        );
+        if self._is_effectively_leader() {
+            self._schedule_apscheduler_job(
+                job_id=persisted_id,
+                name=name,
+                spec=spec,
+                user_id=created_by,
+                is_walker=is_walker,
+                args=job_data['args']
+            );
+        }
     } except Exception {
         try {
             store.delete(persisted_id);
@@ -669,39 +890,41 @@ impl JacScaleScheduler.update_job(
         return None;
     }
     effective_args = updates.get('args', existing.get('args') or {});
-    try {
-        self._schedule_apscheduler_job(
-            job_id=job_id,
-            name=name,
-            spec=spec,
-            user_id=user_id,
-            is_walker=is_walker,
-            args=effective_args
-        );
-    } except Exception {
-        previous: dict[str, Any] = {
-            k: existing.get(k) for k in ('trigger', 'interval', 'cron', 'date')
-        };
-        previous['args'] = existing.get('args') or {};
-        previous['updated_at'] = existing.get('updated_at');
+    if self._is_effectively_leader() {
         try {
-            rolled_back = self._require_store().update(
-                job_id, previous, where={'updated_at': updates['updated_at']}
+            self._schedule_apscheduler_job(
+                job_id=job_id,
+                name=name,
+                spec=spec,
+                user_id=user_id,
+                is_walker=is_walker,
+                args=effective_args
             );
-            if not rolled_back {
-                logger.warning(
-                    f"Skipped rollback of job {job_id}: a newer update landed "
-                    f"after the failed reschedule"
+        } except Exception {
+            previous: dict[str, Any] = {
+                k: existing.get(k) for k in ('trigger', 'interval', 'cron', 'date')
+            };
+            previous['args'] = existing.get('args') or {};
+            previous['updated_at'] = existing.get('updated_at');
+            try {
+                rolled_back = self._require_store().update(
+                    job_id, previous, where={'updated_at': updates['updated_at']}
+                );
+                if not rolled_back {
+                    logger.warning(
+                        f"Skipped rollback of job {job_id}: a newer update landed "
+                        f"after the failed reschedule"
+                    );
+                }
+            } except Exception as rollback_err {
+                logger.error(
+                    f"Failed to roll back job {job_id} after reschedule failure; "
+                    f"stored spec no longer matches the live scheduler: "
+                    f"{type(rollback_err).__name__}: {rollback_err}"
                 );
             }
-        } except Exception as rollback_err {
-            logger.error(
-                f"Failed to roll back job {job_id} after reschedule failure; "
-                f"stored spec no longer matches the live scheduler: "
-                f"{type(rollback_err).__name__}: {rollback_err}"
-            );
+            raise;
         }
-        raise;
     }
 
     updated = dict(existing);
@@ -714,7 +937,7 @@ impl JacScaleScheduler.delete_job(job_id: str, acting_as: str | None = None) -> 
     where = {'created_by': acting_as} if acting_as is not None else None;
 
     result = self._require_store().delete(job_id, where=where);
-    if result and self._apscheduler is not None {
+    if result and self._apscheduler is not None and self._is_effectively_leader() {
         try {
             self._apscheduler.remove_job(job_id);
         } except Exception as e {

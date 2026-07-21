@@ -209,6 +209,21 @@ impl JacAPIServerCore.start(
     no_client: bool = False,
     on_ready: Callable[..., None] | None = None
 ) -> None {
+    import os;
+    import threading;
+    if os.environ.get('JAC_SV_SIBLING') == '1' {
+        def _watch_parent {
+            import time as _time;
+            while True {
+                if os.getppid() == 1 {
+                    logger.info("sv sibling: parent exited — shutting down");
+                    os._exit(0);
+                }
+                _time.sleep(2.0);
+            }
+        }
+        threading.Thread(target=_watch_parent, daemon=True).start();
+    }
     self.introspector.load();
     self._ensure_sv_siblings();
 
@@ -621,12 +636,22 @@ impl JacAPIServerCore._refresh_dev_endpoints -> None {
     self.server.execute();
     self.server.app.openapi_schema = None;
 
-    JacScaleScheduler.instance().register_static_tasks(
-        self.introspector._walkers or {}, self.introspector._functions or {}, self
-    );
+    jac_scheduler = JacScaleScheduler.instance();
+    if jac_scheduler._is_effectively_leader() {
+        jac_scheduler.register_static_tasks(
+            self.introspector._walkers or {}, self.introspector._functions or {}, self
+        );
+    }
 }
 
 impl JacAPIServerCore._setup_scheduler -> None {
+    import os;
+    if os.environ.get('JAC_SV_SIBLING') == '1' {
+        logger.info(
+            "sv sibling process — scheduler disabled (parent server owns scheduled jobs)"
+        );
+        return;
+    }
     logger.info("Initializing scheduler subsystem");
     scheduler_cfg = get_scale_config().get_scheduler_config();
     try {
@@ -647,13 +672,9 @@ impl JacAPIServerCore._setup_scheduler -> None {
     jac_scheduler = JacScaleScheduler.instance();
     jac_scheduler.setup(system_user_id=system_user_id, server=self);
 
-    jac_scheduler.register_static_tasks(
+    jac_scheduler.start_coordinated(
         self.introspector._walkers or {}, self.introspector._functions or {}, self
     );
-
-    jac_scheduler.register_dynamic_tasks_from_db();
-
-    jac_scheduler.start();
     logger.info("Scheduler subsystem ready");
 
     timeout_sec = int(scheduler_cfg.get('shutdown_timeout', 10));

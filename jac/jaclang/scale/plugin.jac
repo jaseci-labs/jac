@@ -608,14 +608,27 @@ class JacScalePlugin {
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
                 env=child_env,
-                cwd=str(base_dir)
+                cwd=str(base_dir),
+                start_new_session=True
             );
         } finally {
             log_file.close();
         }
 
+        def _terminate_tree {
+            import signal;
+            if proc.poll() is not None {
+                return;
+            }
+            try {
+                os.killpg(proc.pid, signal.SIGTERM);
+            } except (ProcessLookupError, PermissionError, OSError) {
+                proc.terminate();
+            }
+        }
+
         if not wait_for_health(base_url, lambda { proc.poll() is None; }) {
-            proc.terminate();
+            _terminate_tree();
             raise RuntimeError(
                 f"sv-to-sv service '{module_name}' did not become healthy at "
                 f"{base_url}; see {log_path} for the service's output"
@@ -623,13 +636,7 @@ class JacScalePlugin {
         }
 
         sv_client.register(module_name, base_url);
-
-        def _cleanup {
-            if proc.poll() is None {
-                proc.terminate();
-            }
-        }
-        atexit.register(_cleanup);
+        atexit.register(_terminate_tree);
     }
 
     static def get_sv_registry -> dict[str, str] {

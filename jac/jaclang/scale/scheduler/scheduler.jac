@@ -86,21 +86,45 @@ obj TriggerSpec {
     def apscheduler_kwargs -> dict;
 }
 
+obj SchedulerLeaderLease {
+    has _db: Any,
+        _collection: str = 'scheduler_leases',
+        _lease_key: str = 'scheduler',
+        _holder_id: str = '',
+        _ttl: float = 30.0,
+        _thread: Any | None = None,
+        _stop_event: Any | None = None,
+        is_leader: bool = False,
+        on_gain: Any | None = None,
+        on_lose: Any | None = None,
+        on_tick: Any | None = None;
+
+    def postinit -> None;
+    def start -> None;
+    def stop -> None;
+    def _tick -> None;
+    def _run_loop -> None;
+}
+
 obj JacScaleScheduler {
     has _apscheduler: Any | None = None,
         _system_user_id: str = '__system__',
         _store: JobStore | None = None,
         _server: Any | None = None,
         _user_exists_cache: dict[str, float] | None = None,
-        _user_exists_ttl: float = 30.0;
+        _user_exists_ttl: float = 30.0,
+        _lease: SchedulerLeaderLease | None = None;
 
     def postinit -> None;
     static def instance -> JacScaleScheduler;
     def setup(system_user_id: str, server: Any | None = None) -> None;
     def start -> None;
     def stop(drain: bool = False) -> None;
+    def start_coordinated(walkers: dict, functions: dict, server: Any) -> None;
     def register_static_tasks(walkers: dict, functions: dict, server: Any) -> None;
-    def register_dynamic_tasks_from_db -> None;
+    def register_dynamic_tasks_from_db(quiet: bool = False) -> None;
+    def _is_effectively_leader -> bool;
+    def _reconcile_dynamic_jobs -> None;
     def create_job(
         name: str, spec: TriggerSpec, created_by: str, args: dict | None = None
     ) -> dict;

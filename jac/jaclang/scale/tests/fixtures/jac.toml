@@ -7,3 +7,6 @@ description = "Test fixture for jac-scale serve tests"
 X-Custom-Test-Header = "test-value"
 Cross-Origin-Opener-Policy = "same-origin"
 Cross-Origin-Embedder-Policy = "require-corp"
+
+[scale.scheduler]
+coordination = "none"
