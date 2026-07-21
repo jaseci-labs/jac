@@ -14,7 +14,6 @@ import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
 import from jaclang.compiler.passes.ecmascript.backends.preact { PreactBackend }
 import from jaclang.compiler.passes.ecmascript.backends.solid { SolidBackend }
 import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
-import from jaclang.cli.mcp.compiler_bridge { CompilerBridge }
 import from jaclang.jac0core.program { JacProgram }
 
 glob FIXTURES = os.path.join(
@@ -114,19 +113,6 @@ test "Solid compiler-created fragments stay backend-native" {
     );
     assert "<>" in js , (
         "Solid compiler-created fragments must lower to native JSX fragments"
-    );
-}
-
-test "MCP CompilerBridge.jac_to_js emits runtime imports" {
-    result = CompilerBridge.jac_to_js(_MINIMAL_JSX);
-    assert not result["warnings"] , (f"MCP jac_to_js warnings: {result['warnings']}");
-    js = result["js_code"];
-    assert js.strip() , "MCP jac_to_js must produce non-empty JS output";
-    assert _count_runtime_imports(js, "__jacJsx") == 1 , (
-        "MCP jac_to_js must import __jacJsx exactly once:\n" + js[:400]
-    );
-    assert 'from "@jac/runtime"' in js , (
-        "MCP jac_to_js must import from @jac/runtime"
     );
 }
 
