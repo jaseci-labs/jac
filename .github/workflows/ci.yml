@@ -1311,3 +1311,56 @@ jobs:
             exit 1
           fi
           echo "PASS: jac removed"
+
+  # Aggregate gate. GitHub has no "require all checks" branch-protection toggle
+  # -- you can only enumerate individual contexts, and anything you forget to
+  # list silently stops blocking merges. This job depends on EVERY other job so
+  # branch protection can require this ONE context ("Everything Passed") and get
+  # true "all checks passed" behavior. Maintenance note: GitHub Actions has no
+  # wildcard for `needs`, so a NEW job must still be added to the `needs:` list
+  # below by hand -- forgetting silently drops it from the gate. That list is the
+  # only place to update, though; the required-checks set in repo settings never
+  # changes again.
+  #
+  # `always()` so the gate runs even when an upstream job fails, is skipped, or
+  # the run is cancelled -- otherwise a failed dependency would just skip the
+  # gate, and a skipped required check counts as passing under branch protection
+  # (the trap the per-job `needs` comments above already call out). The gate then
+  # fails iff any dependency ended in `failure` or `cancelled`; `skipped` (a job
+  # path-filtered out on a PR) and `success` are both accepted.
+  everything-passed:
+    name: Everything Passed
+    if: always()
+    needs:
+      - changes
+      - build-jac
+      - test-compiler
+      - test-runtime
+      - jac-check
+      - contribution-checks
+      - test-solid-and-desktop
+      - test-client
+      - test-packages-and-docs
+      - test-native-macos
+      - test-launcher
+      - test-cef-build
+      - test-scale
+      - test-scale-k8s
+      - test-pypi-build
+      - k8s-real-e2e
+      - installer-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any dependency failed or was cancelled
+        if: >-
+          contains(needs.*.result, 'failure') ||
+          contains(needs.*.result, 'cancelled')
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "::error::One or more CI jobs failed or were cancelled; blocking merge."
+          echo "Per-job results:"
+          echo "$RESULTS"
+          exit 1
+      - name: All required jobs passed (or were skipped)
+        run: echo "Everything passed. ✅"

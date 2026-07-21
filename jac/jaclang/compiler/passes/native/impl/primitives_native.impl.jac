@@ -5797,6 +5797,12 @@ impl NativeBuiltinEmitter.emit_float(
     if isinstance(arg_val.type, ir.IntType) {
         return b.sitofp(arg_val, ir.DoubleType(), name="float.from.int");
     }
+    if isinstance(arg_val.type, ir.DoubleType) {
+        return arg_val;
+    }
+    if isinstance(arg_val.type, ir.FloatType) {
+        return b.fpext(arg_val, ir.DoubleType(), name="float.from.f32");
+    }
     return None;
 }
 

@@ -343,6 +343,8 @@ impl NaIRGenPass._codegen_try(nd: uni.TryStmt) -> None {
     exc_state_type = self._exc_state_type;
     exc_state_ptr = exc_state_type.as_pointer();
     func = self.builder.function;
+    _gc = self._gen_ctx;
+    _in_gen = _gc is not None and func is _gc["resume_fn"];
 
     func.attributes.add("optnone");
     func.attributes.add("noinline");
@@ -357,7 +359,9 @@ impl NaIRGenPass._codegen_try(nd: uni.TryStmt) -> None {
     self.builder.branch(setup_bb);
 
     self.builder.position_at_end(setup_bb);
-    exc_state = self.builder.alloca(exc_state_type, name="exc.state");
+    exc_state = self._stack_entry_alloca(exc_state_type, "exc.state")
+        if _in_gen
+        else self.builder.alloca(exc_state_type, name="exc.state");
 
     self.builder.call(self._exc_push_fn, [exc_state]);
 
@@ -374,8 +378,14 @@ impl NaIRGenPass._codegen_try(nd: uni.TryStmt) -> None {
     self.builder.cbranch(is_exception, dispatch_bb, body_bb);
 
     self.builder.position_at_end(body_bb);
+    if _in_gen {
+        self._gen_try_stack.append({"state": exc_state, "dispatch": dispatch_bb});
+    }
     if isinstance(nd.body, (list, tuple)) {
         self._codegen_body(nd.body);
+    }
+    if _in_gen {
+        self._gen_try_stack.pop();
     }
     if not self.builder.block.is_terminated {
         self.builder.branch(success_bb);

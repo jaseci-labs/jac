@@ -8,12 +8,20 @@ impl NaIRGenPass._lower_type(t: any) -> (ir.Type | None) {
             UnionType as _UnionType,
             FunctionType as _FunctionType,
             NeverType as _NeverType,
-            AnyType as _AnyType
+            AnyType as _AnyType,
+            TypeVarType as _TypeVarType
         }
     } except ImportError {
         return None;
     }
-    key = t.mangle() if t?.mangle else None;
+    if isinstance(t, _TypeVarType) {
+        _sol = self._mono_solution;
+        if _sol is not None and t.name in _sol {
+            return self._lower_type(_sol[t.name]);
+        }
+        return None;
+    }
+    key = self._mangled_of(t);
     if key is not None and key in self._lowered_type_cache {
         return self._lowered_type_cache[key];
     }
@@ -47,7 +55,7 @@ impl NaIRGenPass._type_key_of(expr: (uni.UniNode | None)) -> (str | None) {
     if not isinstance(expr, uni.Expr) or expr.type is None {
         return None;
     }
-    return expr.type.mangle();
+    return self._mangled_of(expr.type);
 }
 
 impl NaIRGenPass._enum_name_of(expr: (uni.UniNode | None)) -> (str | None) {
@@ -76,7 +84,7 @@ impl NaIRGenPass._tuple_key_of(expr: (uni.UniNode | None)) -> (str | None) {
     if not isinstance(expr, uni.Expr) or expr.type is None {
         return None;
     }
-    tk = expr.type.mangle();
+    tk = self._mangled_of(expr.type);
     if not tk.startswith("tuple[") {
         return None;
     }
@@ -108,7 +116,7 @@ impl NaIRGenPass._spec_of(
     if not isinstance(expr, uni.Expr) or expr.type is None {
         return None;
     }
-    tk = expr.type.mangle();
+    tk = self._mangled_of(expr.type);
     matched = tk in names;
     for nm in names {
         if tk.startswith(nm + "[") {
@@ -141,7 +149,7 @@ impl NaIRGenPass._struct_name_of(expr: (uni.UniNode | None)) -> (str | None) {
     if not isinstance(expr, uni.Expr) or expr.type is None {
         return None;
     }
-    tk = expr.type.mangle();
+    tk = self._mangled_of(expr.type);
     if tk in self.struct_types {
         return tk;
     }
@@ -191,14 +199,18 @@ impl NaIRGenPass._typed_elem_llvm_of(
     if not isinstance(expr, uni.Expr) or expr.type is None {
         return None;
     }
-    if not expr.type.mangle().startswith(prefix) {
+    if not self._mangled_of(expr.type).startswith(prefix) {
         return None;
     }
     args = expr.type.private.type_args or [];
     if not args {
         return None;
     }
-    return self._lower_type(args[0]);
+    lowered = self._lower_type(args[0]);
+    if lowered is not None and isinstance(lowered, ir.VoidType) {
+        return ir.IntType(64);
+    }
+    return lowered;
 }
 
 impl NaIRGenPass._elem_spec_of(expr: (uni.UniNode | None)) -> (str | None) {
@@ -545,6 +557,20 @@ impl NaIRGenPass._entry_alloca(var_type: ir.Type, name: str) -> ir.Value {
     }
     alloca = self.builder.alloca(var_type, name=name);
 
+    self.builder.position_at_end(cur_block);
+    return alloca;
+}
+
+impl NaIRGenPass._stack_entry_alloca(var_type: ir.Type, name: str) -> ir.Value {
+    func = self.builder.function;
+    entry_block = func.entry_basic_block;
+    cur_block = self.builder.block;
+    if entry_block.instructions {
+        self.builder.position_before(entry_block.instructions[0]);
+    } else {
+        self.builder.position_at_start(entry_block);
+    }
+    alloca = self.builder.alloca(var_type, name=name);
     self.builder.position_at_end(cur_block);
     return alloca;
 }

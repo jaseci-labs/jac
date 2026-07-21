@@ -640,6 +640,12 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
         func, full_name, method.loc.first_line if method.loc else 0
     );
 
+    _scan_body = ModuleCodegenPass.unwrap_body(method);
+    if _scan_body is not None {
+        _scan_owner = method.body if isinstance(method.body, uni.ImplDef) else method;
+        self._scan_closure_escapes(_scan_owner, _scan_body);
+    }
+
     self_alloca = self.builder.alloca(func.args[0].type, name="self");
     self.builder.store(func.args[0], self_alloca);
     self.local_vars["self"] = self_alloca;
@@ -811,6 +817,11 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
     self._attach_di_subprogram(
         func, full_name, method.loc.first_line if method.loc else 0
     );
+    _scan_body = ModuleCodegenPass.unwrap_body(method);
+    if _scan_body is not None {
+        _scan_owner = method.body if isinstance(method.body, uni.ImplDef) else method;
+        self._scan_closure_escapes(_scan_owner, _scan_body);
+    }
     self_alloca = self.builder.alloca(func.args[0].type, name="self");
     self.builder.store(func.args[0], self_alloca);
     self.local_vars["self"] = self_alloca;

@@ -233,19 +233,20 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
 impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
     _gc = self._gen_ctx;
     if _gc is not None and self.builder.function is _gc["resume_fn"] {
-        if nd.expr is not None {
-            self.emit(
-                E5092,
-                node_override=nd,
-                kind="statement",
-                name="return <value> in a generator",
-                help_text="A native generator supports only bare `return` (stop iteration); a StopIteration value has no consumer on the JacIter surface."
-            );
-            return;
-        }
         _gr_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
             if nd.loc
             else 0}";
+        if nd.expr is not None {
+            _rv = self._codegen_expr(nd.expr);
+            if _rv is not None
+            and isinstance(_rv.type, ir.PointerType)
+            and self._is_owned(_rv) {
+                self._emit_rc_release_simple(_rv, op="gen_ret_val", loc=_gr_loc);
+            }
+        }
+        for _entry in self._gen_try_stack {
+            self.builder.call(self._exc_pop_fn, []);
+        }
         self._emit_scope_cleanup(skip_var=None, loc=_gr_loc);
         _gr_i64 = ir.IntType(64);
         _gr_ip = self.builder.bitcast(
@@ -800,7 +801,7 @@ impl NaIRGenPass._match_seq_parts(pat: uni.MatchSequence) -> tuple {
 impl NaIRGenPass._match_elem_ty_of(
     subj_ty: (object | None), prefix: str, idx: int
 ) -> (object | None) {
-    if subj_ty is None or not subj_ty.mangle().startswith(prefix) {
+    if subj_ty is None or not self._mangled_of(subj_ty).startswith(prefix) {
         return None;
     }
     targs = subj_ty.private.type_args or [];
@@ -1067,7 +1068,7 @@ impl NaIRGenPass._match_arch_cond(
     if static_name is None
     and subj_ty is not None
     and isinstance(subj.type, ir.PointerType) {
-        tk = subj_ty.mangle();
+        tk = self._mangled_of(subj_ty);
         cands = [tk] + (tk.split("|") if "|" in tk else []);
         for part in cands {
             if part in self.struct_types {
@@ -2693,15 +2694,13 @@ impl NaIRGenPass._codegen_for_indexed(
     );
     _gen_stop_slot: (ir.Value | None) = None;
     _gen_step_slot: (ir.Value | None) = None;
+    _gen_coll_slot: (ir.Value | None) = None;
     if _gen_yield_loop and kind != "range" {
-        self.emit(
-            E5092,
-            node_override=nd,
-            kind="statement",
-            name=f"yield inside a for over a {kind}",
-            help_text="Inside a native generator, a loop body that yields can iterate ranges or iterator values (`for x in iter(xs)` / another generator); direct indexed iteration over this collection cannot resume mid-loop yet."
-        );
-        return;
+        _gen_coll_slot = self._entry_alloca(collection_val.type, "for.coll.slot");
+        if not self._is_owned(collection_val) {
+            self._emit_rc_retain(collection_val, op="for_coll_spill", loc=_rc_loc);
+        }
+        self.builder.store(collection_val, _gen_coll_slot);
     }
 
     if kind == "range" {
@@ -2745,9 +2744,13 @@ impl NaIRGenPass._codegen_for_indexed(
                 and _existing.type.pointee == vtype
             );
             alloca = _existing if _reuse else self._entry_alloca(vtype, vname);
+            _in_resume_fn = (
+                self._gen_ctx is not None
+                and self.builder.function is self._gen_ctx["resume_fn"]
+            );
             if isinstance(vtype, ir.PointerType) and (rc_vars or kind == "str") {
                 null_const = ir.Constant(vtype, None);
-                if not _reuse {
+                if not _reuse and not _in_resume_fn {
                     _saved_block = self.builder.block;
                     self.builder.position_after(alloca);
                     self.builder.store(null_const, alloca);
@@ -2776,6 +2779,21 @@ impl NaIRGenPass._codegen_for_indexed(
     if _gen_step_slot is not None {
         range_step = self.builder.load(_gen_step_slot, name="for.step");
     }
+    if _gen_coll_slot is not None {
+        collection_val = self.builder.load(_gen_coll_slot, name="for.coll");
+        if kind == "str" {
+            strlen_fn = self._get_or_declare_extern(
+                "strlen", i64, [ir.IntType(8).as_pointer()]
+            );
+            len_val = self.builder.call(strlen_fn, [collection_val], name="for.len");
+        } elif kind == "bytes" {
+            len_val = self._bytes_len_val(collection_val);
+        } else {
+            len_val = self.builder.call(
+                helpers["len"], [collection_val], name="for.len"
+            );
+        }
+    }
     cur_idx = self.builder.load(idx_alloca, name="for.cur.idx");
     if kind == "range" and range_step is not None {
         _step_pos = self.builder.icmp_signed(
@@ -2792,6 +2810,9 @@ impl NaIRGenPass._codegen_for_indexed(
     self.builder.position_at_end(body_bb);
 
     if kind != "range" {
+        if _gen_coll_slot is not None {
+            collection_val = self.builder.load(_gen_coll_slot, name="for.coll.body");
+        }
         body_idx = self.builder.load(idx_alloca, name="for.body.idx");
         if kind == "items" {
             key_val = self.builder.call(
@@ -2896,7 +2917,13 @@ impl NaIRGenPass._codegen_for_indexed(
     self.builder.branch(cond_bb);
     self.builder.position_at_end(end_bb);
 
-    if coll_release_op
+    if _gen_coll_slot is not None {
+        _coll_end = self.builder.load(_gen_coll_slot, name="for.coll.end");
+        self._emit_rc_release_simple(
+            _coll_end, op=coll_release_op or "for_coll", loc=_for_loc
+        );
+        self.builder.store(ir.Constant(_coll_end.type, None), _gen_coll_slot);
+    } elif coll_release_op
     and isinstance(collection_val.type, ir.PointerType)
     and self._is_owned(collection_val) {
         self._emit_rc_release_simple(collection_val, op=coll_release_op, loc=_for_loc);
