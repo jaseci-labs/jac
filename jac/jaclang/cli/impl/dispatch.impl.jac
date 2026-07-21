@@ -29,14 +29,20 @@ def _exit_on_malformed_jac_toml(exc: any) {
 
 def _initialize_provider_registry {
     try {
-        import from jaclang.project.providers { initialize_provider_registry }
+        import importlib;
+        initialize_provider_registry = importlib.import_module(
+            ".".join(["jaclang", "project", "providers"])
+        ).initialize_provider_registry;
         initialize_provider_registry();
     } except Exception { }
 }
 
 def _initialize_template_registry {
     try {
-        import from jaclang.project.template_registry { initialize_template_registry }
+        import importlib;
+        initialize_template_registry = importlib.import_module(
+            ".".join(["jaclang", "project", "template_registry"])
+        ).initialize_template_registry;
         initialize_template_registry();
     } except Exception { }
 }
@@ -231,7 +237,8 @@ impl run_selected_command(command_name: str) -> None {
         _initialize_provider_registry();
     }
     if 'client' in meta.needs {
-        import jaclang.runtimelib.client.cli;
+        import importlib;
+        importlib.import_module(".".join(["jaclang", "runtimelib", "client", "cli"]));
     }
 
     script_args = _extract_script_args(meta);

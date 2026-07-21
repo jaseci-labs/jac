@@ -2511,7 +2511,7 @@ def _command_routes -> list[CommandMeta] {
             hidden=False,
             handler_module='jaclang.cli.commands.execution',
             handler_name='run',
-            needs=['providers'],
+            needs=[],
             description="",
             examples=[
                 ('jac run hello.jac', 'Run a simple program'),
