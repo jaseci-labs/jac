@@ -37,8 +37,8 @@ glob _UNTYPED_BODY: str = (
          "\n"
          "def fetch -> dict[str, str] {\n"
          "    resp = untyped_client.get(\"http://example.com\");\n"
-         "    print(resp.status_code);\n"
-         "    print(resp.headers);\n"
+         "    _ = resp.status_code;\n"
+         "    _ = resp.headers;\n"
          "    return resp.json();\n"
          "}\n"
      ),
@@ -47,7 +47,7 @@ glob _UNTYPED_BODY: str = (
          "\n"
          "def fetch -> dict[str, str] {\n"
          "    resp = get(\"http://example.com\");\n"
-         "    print(resp.headers);\n"
+         "    _ = resp.headers;\n"
          "    return resp.json();\n"
          "}\n"
      );

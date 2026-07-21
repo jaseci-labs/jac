@@ -173,13 +173,16 @@ impl JacAutoLintPass.enter_ability(ability_node: uni.Ability) -> None {
 }
 
 impl JacAutoLintPass.enter_impl_def(nd: uni.ImplDef) -> None {
-    if not self.lint_enabled or self.report_only {
+    if not self.lint_enabled {
         return;
     }
     impl_node = nd;
 
     if not self._is_suppressed(W3043) {
         self._convert_property_impl(impl_node);
+    }
+    if self.report_only {
+        return;
     }
     if not self._is_suppressed(W3010) {
         self._fix_impl_signature_mismatch(impl_node);
@@ -214,7 +217,7 @@ impl JacAutoLintPass.enter_enum(nd: uni.Enum) -> None {
 }
 
 impl JacAutoLintPass.enter_archetype(nd: uni.Archetype) -> None {
-    if not self.lint_enabled or self.report_only {
+    if not self.lint_enabled {
         return;
     }
     arch = nd;
@@ -223,6 +226,9 @@ impl JacAutoLintPass.enter_archetype(nd: uni.Archetype) -> None {
     and arch.body is not None
     and isinstance(arch.body, list) {
         self._convert_properties(arch);
+    }
+    if self.report_only {
+        return;
     }
     self._combine_has_in_node(arch);
 }
@@ -973,10 +979,6 @@ impl JacAutoLintPass.exit_func_call(nd: uni.FuncCall) -> None {
         }
     }
 
-    if self.report_only {
-        return;
-    }
-
     if self._convert_map_to_comprehension(nd) {
         return;
     }
@@ -985,6 +987,9 @@ impl JacAutoLintPass.exit_func_call(nd: uni.FuncCall) -> None {
         if getattr_replacement is not None {
             parent = nd.parent;
             if parent is not None and self.emit(W3039, node_override=nd) {
+                if self.report_only {
+                    return;
+                }
                 getattr_replacement.parent = parent;
                 self._replace_child_in_parent(parent, nd, getattr_replacement);
                 return;
@@ -2669,6 +2674,9 @@ impl JacAutoLintPass._convert_map_to_comprehension(nd: uni.FuncCall) -> bool {
     if not self.emit(W3042, node_override=nd, name=item_name) {
         return False;
     }
+    if self.report_only {
+        return True;
+    }
 
     target_node: uni.Expr = self._make_name_node(nd, item_name);
     compr_kid: list = [
@@ -2877,6 +2885,9 @@ impl JacAutoLintPass._convert_properties(container: uni.Archetype) -> None {
         ) {
             continue;
         }
+        if self.report_only {
+            continue;
+        }
         accessors: list[uni.Ability] = [
             self._make_accessor_from_ability(getter_ab, "property")
         ];
@@ -3044,6 +3055,9 @@ impl JacAutoLintPass._convert_property_impl(nd: uni.ImplDef) -> None {
     last_target = nd.target[-1];
     prop_name = last_target.value if isinstance(last_target, uni.Name) else "?";
     if not self.emit(W3043, node_override=nd, name=prop_name, type_name="...") {
+        return;
+    }
+    if self.report_only {
         return;
     }
 

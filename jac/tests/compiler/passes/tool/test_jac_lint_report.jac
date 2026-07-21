@@ -71,8 +71,27 @@ test "lint report path preserves every diagnostic the mutation pass emits" {
         "obj Instance {\n    has value: int = 1;\n}\n"
         "with entry {\n    instance = Instance();\n"
         "    ok = hasattr(instance, \"value\") and instance.value > 0;\n}\n",
-        # E3012 bare print() (opt-in rule; enabled via select = [\"all\"] below)
+        # E3012 bare print() (opt-in rule; enabled via select = ["all"] below)
         "def greet(name: str) -> None {\n    print(\"hi \" + name);\n}\n",
+        # W3039 getattr(..., None) → null-safe access
+        "obj Box {\n    has value: int = 0;\n}\n"
+        "with entry {\n    b = Box();\n    x = getattr(b, \"value\", None);\n}\n",
+        # W3042 map(lambda → JSX) → list comprehension
+        "def render(items: list) -> JsxElement {\n"
+        "    rows = items.map(\n"
+        "        lambda (item: any) -> any {\n"
+        "            return <li>{item}</li>;\n"
+        "        }\n"
+        "    );\n"
+        "    return <ul>{rows}</ul>;\n"
+        "}\n",
+        # W3043 @property → native has-accessor
+        "obj Counter {\n"
+        "    @property\n"
+        "    def val -> int {\n"
+        "        return 1;\n"
+        "    }\n"
+        "}\n",
 
     ];
 
