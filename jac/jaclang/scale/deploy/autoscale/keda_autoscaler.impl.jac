@@ -59,6 +59,13 @@ impl KEDAAutoscaler.preflight{
             KEDAAutoscaler._preflight_cache[cluster_key] = False;
             return install_warning;
         }
+        if e.status == 403 {
+            return [
+                "Permission denied (403) discovering KEDA core "
+                "(keda.sh/v1alpha1 ScaledObject). Grant RBAC list/get on "
+                "this resource to the jac-scale service account."
+            ];
+        }
         raise;
     }
 }
@@ -365,33 +372,27 @@ impl KEDAAutoscaler.http_scaled_object_name_for{
 impl KEDAAutoscaler.apply_http_activation{
     self._validate_http_activation_spec(spec);
 
-    cluster_key = self._get_cluster_key();
-    api = self._custom_api or client.CustomObjectsApi();
-    if cluster_key not in KEDAAutoscaler._capabilities_cache {
-        try {
-            api.list_cluster_custom_object(
-                group="http.keda.sh", version="v1beta1", plural="interceptorroutes"
-            );
-            KEDAAutoscaler._capabilities_cache[cluster_key] = True;
-        } except ApiException as e {
-            if e.status in [404, 422] {
-                KEDAAutoscaler._capabilities_cache[cluster_key] = False;
-            } else {
-                raise;
-            }
-        }
+    caps = self.discover_capabilities();
+    if caps.errors {
+        raise ValueError(
+            "KEDA HTTP Add-on capability check failed:\n" + "\n".join(caps.errors)
+        );
     }
-    if not KEDAAutoscaler._capabilities_cache[cluster_key] {
+    if not caps.http_addon_available {
         if self.logger {
-            self.logger.warn(
-                "KEDA HTTP Add-on CRDs not found on cluster. Install the HTTP "
-                "Add-on from the official docs, then redeploy: "
-                "https://keda.sh/docs/latest/deploy/#http-add-on"
-            );
+            message = caps.warnings[0]
+                if caps.warnings
+                else (
+                    "KEDA HTTP Add-on CRDs not found on cluster. Install the HTTP "
+                    "Add-on from the official docs, then redeploy: "
+                    "https://keda.sh/docs/latest/deploy/#http-add-on"
+                );
+            self.logger.warn(message);
         }
         return False;
     }
 
+    api = self._custom_api or client.CustomObjectsApi();
     apps_api = self._apps_api or client.AppsV1Api();
     core_api = self._core_api or client.CoreV1Api();
 
@@ -743,11 +744,128 @@ impl KEDAAutoscaler._validate_http_activation_spec{
 }
 
 impl KEDAAutoscaler._check_service_address{
-    return None;
+    (host, _, __) = address.partition(":");
+    if "." in host {
+        (name, _, namespace) = host.partition(".");
+    } else {
+        name = host;
+        namespace = "keda";
+    }
+    try {
+        core_api.read_namespaced_service(name=name, namespace=namespace);
+        return None;
+    } except ApiException as e {
+        if e.status == 403 {
+            return (
+                f"Permission denied (403) checking Service '{name}' in "
+                f"namespace '{namespace}'. Verify RBAC grants get/list on "
+                f"services for the jac-scale service account."
+            );
+        }
+        if e.status in [404, 422] {
+            return f"Service '{name}' not found in namespace '{namespace}' (address: '{address}').";
+        }
+        raise;
+    }
 }
 
 impl KEDAAutoscaler.discover_capabilities{
-    return KEDACapabilities();
+    cluster_key = self._get_cluster_key();
+    if not refresh and cluster_key in KEDAAutoscaler._capabilities_cache {
+        return KEDAAutoscaler._capabilities_cache[cluster_key];
+    }
+
+    api = self._custom_api or client.CustomObjectsApi();
+    core_api = self._core_api or client.CoreV1Api();
+    caps = KEDACapabilities();
+
+    install_core_cmd = (
+        "helm repo add kedacore https://kedacore.github.io/charts && "
+        "helm repo update && helm install keda kedacore/keda -n keda "
+        "--create-namespace --wait"
+    );
+    install_addon_cmd = "helm install http-add-on kedacore/keda-add-ons-http -n keda --wait";
+    upgrade_addon_cmd = "helm upgrade http-add-on kedacore/keda-add-ons-http -n keda --wait";
+
+    try {
+        api.list_cluster_custom_object(
+            group="keda.sh", version="v1alpha1", plural="scaledobjects"
+        );
+        caps.core_available = True;
+    } except ApiException as e {
+        if e.status == 403 {
+            caps.errors.append(
+                "Permission denied (403) discovering KEDA core "
+                "(keda.sh/v1alpha1 ScaledObject). Grant RBAC list/get on "
+                "this resource to the jac-scale service account."
+            );
+        } elif e.status in [404, 422] {
+            caps.warnings.append(
+                f"KEDA core not found on cluster. Install it with: {install_core_cmd}"
+            );
+        } else {
+            raise;
+        }
+    }
+
+    http_addon_status: (int | None) = None;
+    try {
+        api.list_cluster_custom_object(
+            group="http.keda.sh", version="v1beta1", plural="interceptorroutes"
+        );
+        caps.http_addon_available = True;
+        caps.interceptor_route_api_version = "v1beta1";
+    } except ApiException as e {
+        http_addon_status = e.status;
+        if e.status == 403 {
+            caps.errors.append(
+                "Permission denied (403) discovering the KEDA HTTP Add-on "
+                "(http.keda.sh/v1beta1 InterceptorRoute). Grant RBAC "
+                "list/get on this resource to the jac-scale service account."
+            );
+        } elif e.status not in [404, 422] {
+            raise;
+        }
+    }
+
+    if not caps.http_addon_available and http_addon_status in [404, 422] {
+        try {
+            api.list_cluster_custom_object(
+                group="http.keda.sh", version="v1alpha1", plural="httpscaledobjects"
+            );
+            caps.warnings.append(
+                "Legacy KEDA HTTP Add-on detected (http.keda.sh/v1alpha1 "
+                "HTTPScaledObject); jac-scale requires v1beta1 "
+                f"InterceptorRoute. Upgrade with: {upgrade_addon_cmd}"
+            );
+        } except ApiException as e {
+            if e.status in [404, 422] {
+                caps.warnings.append(
+                    f"KEDA HTTP Add-on not found on cluster. Install it with: {install_addon_cmd}"
+                );
+            } elif e.status != 403 {
+                raise;
+            }
+        }
+    }
+
+    if caps.http_addon_available {
+        caps.external_scaler_address = self.http_scaler_address;
+        caps.interceptor_service_address = self.interceptor_service_address;
+        scaler_error = self._check_service_address(core_api, self.http_scaler_address);
+        if scaler_error is not None {
+            caps.errors.append(scaler_error);
+        }
+        interceptor_error = self._check_service_address(
+            core_api, self.interceptor_service_address
+        );
+        if interceptor_error is not None {
+            caps.errors.append(interceptor_error);
+        }
+    }
+
+    KEDAAutoscaler._capabilities_cache[cluster_key] = caps;
+    return caps;
 }
 
 impl KEDAAutoscaler.invalidate_capabilities{
@@ -755,5 +873,14 @@ impl KEDAAutoscaler.invalidate_capabilities{
 }
 
 impl KEDAAutoscaler.format_capabilities{
-    return "not yet implemented";
+    if caps.http_addon_available and not caps.errors {
+        return "KEDA HTTP Add-on capabilities ready: core and HTTP Add-on both available.";
+    }
+    if caps.errors {
+        return f"KEDA HTTP Add-on not ready: {caps.errors[0]}";
+    }
+    if caps.warnings {
+        return f"KEDA HTTP Add-on not ready: {caps.warnings[0]}";
+    }
+    return "KEDA HTTP Add-on capabilities unknown.";
 }

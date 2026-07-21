@@ -620,7 +620,7 @@ test "discover_capabilities produces a distinct diagnostic for every failure mod
             legacy_calls = [
                 c
                 for c in custom_api.list_cluster_custom_object.call_args_list
-                if c[1].get("version") == "v1alpha1"
+                if c[1].get("plural") == "httpscaledobjects"
             ];
             assert legacy_calls == [] , (
                 f"{label}: RBAC-denied v1beta1 must not fall through to the "
