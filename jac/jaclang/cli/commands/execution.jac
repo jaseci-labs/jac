@@ -340,7 +340,10 @@ def run_jab_image(
         ("jac x black .", "Run an installed formatter on the current directory"),
         ("jac x eslint .", "Run a project npm tool (node_modules/.bin) via bun"),
         ("jac x --global hf whoami", "Force the global-site copy of a tool"),
-        ("jac x --global eslint .", "Run a globally-installed npm tool (jac install --npm --global eslint)"),
+        (
+            "jac x --global eslint .",
+            "Run a globally-installed npm tool (jac install --npm --global eslint)"
+        ),
         ("jac x --node vite build", "Force the project's npm tool"),
         ("jac x --list", "List the CLI tools available here"),
 

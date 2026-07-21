@@ -347,14 +347,6 @@ def run_npm_add(packages: list, dev: bool, install_global: bool = False) -> int 
     }
 }
 
-"""Install npm CLI tool(s) into the jac-owned global store (no project needed).
-
-The global-npm analogue of `jac install --global <pkg>` for Python: it drops
-standalone tools into the shared location that `jac x --global <tool>` runs from,
-recorded in no project's jac.toml. Unlike the project flow it does not touch the
-client bundler (no vite/react scaffolding) -- it is a plain `bun add` into the
-global node root from tool_paths.
-"""
 def run_npm_add_global(packages: list, dev: bool) -> int {
     import subprocess;
     import from jaclang.cli.console { console }
@@ -381,8 +373,7 @@ def run_npm_add_global(packages: list, dev: bool) -> int {
     pkg_json = dest / "package.json";
     if not pkg_json.exists() {
         pkg_json.write_text(
-            '{\n  "name": "jac-global-tools",\n  "private": true\n}\n',
-            encoding="utf-8"
+            '{\n  "name": "jac-global-tools",\n  "private": true\n}\n', encoding="utf-8"
         );
     }
     cmd: list = [bun, "add"];
@@ -391,8 +382,7 @@ def run_npm_add_global(packages: list, dev: bool) -> int {
     }
     cmd.extend(packages);
     console.print(
-        f"\n📦 Installing {len(packages)} npm tool(s) globally into {dest}",
-        style="bold"
+        f"\n📦 Installing {len(packages)} npm tool(s) globally into {dest}", style="bold"
     );
     result = subprocess.run(cmd, cwd=str(dest));
     if result.returncode != 0 {

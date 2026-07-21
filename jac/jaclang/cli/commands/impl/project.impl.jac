@@ -508,13 +508,16 @@ impl install(
     }
     if shadcn or npm {
         channel = "--shadcn" if shadcn else "--npm";
-        # --global now installs npm tools into the jac-owned global store (run
-        # with 'jac x --global'), so it is only ineffective for shadcn.
+
         flag_checks: list = [(no_save, "--no-save"), (dry_run, "--dry-run")];
         if shadcn {
             flag_checks.append((install_global, "--global"));
         }
-        ineffective: list[str] = [flag for (enabled, flag) in flag_checks if enabled];
+        ineffective: list[str] = [
+            flag
+            for (enabled, flag) in flag_checks
+            if enabled
+        ];
         if ineffective {
             console.warning(
                 f"{', '.join(ineffective)} has no effect with {channel} "

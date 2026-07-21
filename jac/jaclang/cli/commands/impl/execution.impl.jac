@@ -949,8 +949,6 @@ impl debug(filename: str, main: bool = True, cache: bool = False) -> int {
 }
 
 def _tool_site_dirs(use_global: bool) -> list {
-    # Labelled python site-packages tiers, sourced from the shared tool-location
-    # authority so install targets and the `jac x` search path never drift.
     import from jaclang.project.tool_paths { python_project_site, python_global_site }
 
     sites: list = [];
@@ -1082,11 +1080,6 @@ def _run_node_tool(name: str, bin_path: object, args: list) -> int {
 }
 
 def _tool_tiers(use_global: bool, use_node: bool) -> list {
-    # A tier is (scope, kind, loc): scope in {"project","global"}, kind in
-    # {"py","node"}. The full universe is ordered locality-first (project before
-    # global) and, within a scope, python before node -- matching how a shell
-    # PATH prefers the closest tool. `--global`/`--node` are orthogonal filters
-    # over that universe, so every scope/ecosystem combination is reachable.
     import from jaclang.project.config { get_config }
     import from jaclang.project.tool_paths {
         python_project_site,
@@ -1095,6 +1088,11 @@ def _tool_tiers(use_global: bool, use_node: bool) -> list {
     }
 
     config = get_config();
+    # A tier is (scope, kind, loc): scope in {"project","global"}, kind in
+    # {"py","node"}. The universe is ordered locality-first (project before
+    # global) and, within a scope, python before node -- like a shell PATH
+    # preferring the closest tool. --global/--node are orthogonal filters over
+    # it, so every scope/ecosystem combination stays reachable.
     universe: list = [];
     proj_py = python_project_site(config);
     if proj_py is not None {
@@ -1115,10 +1113,18 @@ def _tool_tiers(use_global: bool, use_node: bool) -> list {
 
     tiers = universe;
     if use_global {
-        tiers = [t for t in tiers if t[0] == "global"];
+        tiers = [
+            t
+            for t in tiers
+            if t[0] == "global"
+        ];
     }
     if use_node {
-        tiers = [t for t in tiers if t[1] == "node"];
+        tiers = [
+            t
+            for t in tiers
+            if t[1] == "node"
+        ];
     }
     return tiers;
 }

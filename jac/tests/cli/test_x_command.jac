@@ -358,8 +358,11 @@ test "_tool_tiers orders project python, project npm, global python, then global
         assert kinds.index(("global", "py")) < kinds.index(("global", "node"));
     } finally {
         os.chdir(old_cwd);
-        if old_env is None { os.environ.pop("JAC_GLOBAL_DIR", None); }
-        else { os.environ["JAC_GLOBAL_DIR"] = old_env; }
+        if old_env is None {
+            os.environ.pop("JAC_GLOBAL_DIR", None);
+        } else {
+            os.environ["JAC_GLOBAL_DIR"] = old_env;
+        }
         shutil.rmtree(tmp, ignore_errors=True);
         reset_config();
     }
@@ -414,8 +417,11 @@ test "_tool_tiers with use_global keeps only global tiers, including a global np
         assert ("global", "node") in kinds;
     } finally {
         os.chdir(old_cwd);
-        if old_env is None { os.environ.pop("JAC_GLOBAL_DIR", None); }
-        else { os.environ["JAC_GLOBAL_DIR"] = old_env; }
+        if old_env is None {
+            os.environ.pop("JAC_GLOBAL_DIR", None);
+        } else {
+            os.environ["JAC_GLOBAL_DIR"] = old_env;
+        }
         shutil.rmtree(tmp, ignore_errors=True);
         reset_config();
     }
@@ -518,8 +524,11 @@ test "x --global resolves a global npm tool through the node runner" {
         assert mock_node.call_args[0][1].name == "demo";
         assert mock_node.call_args[0][2] == ["v"];
     } finally {
-        if old_env is None { os.environ.pop("JAC_GLOBAL_DIR", None); }
-        else { os.environ["JAC_GLOBAL_DIR"] = old_env; }
+        if old_env is None {
+            os.environ.pop("JAC_GLOBAL_DIR", None);
+        } else {
+            os.environ["JAC_GLOBAL_DIR"] = old_env;
+        }
         shutil.rmtree(tmp, ignore_errors=True);
         reset_config();
     }
@@ -548,8 +557,11 @@ test "run_npm_add --global installs into the jac global npm dir via bun add" {
         assert mock_run.call_args[1]["cwd"] == str(npm_root);
         assert (npm_root / "package.json").exists();
     } finally {
-        if old_env is None { os.environ.pop("JAC_GLOBAL_DIR", None); }
-        else { os.environ["JAC_GLOBAL_DIR"] = old_env; }
+        if old_env is None {
+            os.environ.pop("JAC_GLOBAL_DIR", None);
+        } else {
+            os.environ["JAC_GLOBAL_DIR"] = old_env;
+        }
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }
@@ -569,8 +581,11 @@ test "run_npm_add --global --dev forwards --dev to bun add" {
         assert rc == 0;
         assert "--dev" in mock_run.call_args[0][0];
     } finally {
-        if old_env is None { os.environ.pop("JAC_GLOBAL_DIR", None); }
-        else { os.environ["JAC_GLOBAL_DIR"] = old_env; }
+        if old_env is None {
+            os.environ.pop("JAC_GLOBAL_DIR", None);
+        } else {
+            os.environ["JAC_GLOBAL_DIR"] = old_env;
+        }
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }
