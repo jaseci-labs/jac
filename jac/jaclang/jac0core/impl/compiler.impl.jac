@@ -1079,7 +1079,7 @@ impl JacCompiler._compile_once(
         self.run_schedule(
             mod=mod_targ,
             target_program=actual_program,
-            passes=get_py_code_gen(native=needs_native),
+            passes=get_py_code_gen(native=needs_native, native_only=is_native_mod),
             cancel_token=options.cancel_token
         );
         import from jaclang.jac0core.ext_registry { is_native_module as _is_na_sfx }

@@ -8,7 +8,7 @@ glob registry = get_registry();
     name="run",
     help="Run a Jac program",
     tier="core",
-    needs=["providers"],
+    needs=[],
     args=[
         Arg.create(
             "filename",

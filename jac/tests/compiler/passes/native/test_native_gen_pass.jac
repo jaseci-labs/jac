@@ -1395,7 +1395,7 @@ test "chess play random moves stress" {
         input=stdin_data,
         capture_output=True,
         text=True,
-        timeout=300
+        timeout=180
     );
     assert result.returncode == 0 , (
         f"Chess crashed with exit code {result.returncode}.\n"

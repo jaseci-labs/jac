@@ -680,3 +680,11 @@ class JacScalePlugin {
         return http_transport().call_walker(module_name, walker_name, args, stub_cls);
     }
 }
+
+def _install_scale_provider -> bool {
+    import from jaclang.jac0core.runtime { set_scale_provider }
+    set_scale_provider(JacScalePlugin);
+    return True;
+}
+
+glob _scale_provider_installed: bool = _install_scale_provider();

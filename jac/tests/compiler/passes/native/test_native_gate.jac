@@ -17,6 +17,8 @@ import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.compiler { get_py_code_gen }
 import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
 import from jaclang.compiler.passes.native { NaIRGenPass, NativeCompilePass }
+import from jaclang.compiler.passes.ecmascript { EsastGenPass }
+import from jaclang.jac0core.passes { PyastGenPass, PyBytecodeGenPass }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "passes", "native", "fixtures"
@@ -34,6 +36,16 @@ test "get_py_code_gen schedules the native passes when native=True" {
     with_native = get_py_code_gen(native=True);
     assert NaIRGenPass in with_native;
     assert NativeCompilePass in with_native;
+}
+
+
+test "get_py_code_gen native_only skips client and python codegen passes" {
+    native_only = get_py_code_gen(native=True, native_only=True);
+    assert NaIRGenPass in native_only;
+    assert NativeCompilePass in native_only;
+    assert EsastGenPass not in native_only;
+    assert PyastGenPass not in native_only;
+    assert PyBytecodeGenPass not in native_only;
 }
 
 
