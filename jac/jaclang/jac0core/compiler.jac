@@ -205,18 +205,19 @@ def get_inference_sched -> list[type[Transform[uni.Module, uni.Module]]] {
 }
 
 def get_py_code_gen(
-    native: bool = True, native_only: bool = False
+    native: bool = True
 ) -> list[type[Transform[uni.Module, uni.Module]]] {
     if _codegen_sched_loading.get() or _ir_sched_loading.get() {
         return [PyastGenPass, PyBytecodeGenPass];
     }
     _tok = _codegen_sched_loading.set(True);
     try {
-        passes: list[type[Transform[uni.Module, uni.Module]]] = [];
-        if not native_only {
-            import from jaclang.compiler.passes.ecmascript { EsastGenPass }
-            passes.append(EsastGenPass);
+        import from jaclang.compiler.passes.ecmascript { EsastGenPass }
+        import from jaclang.compiler.passes.main.pyjac_ast_link_pass {
+            PyJacAstLinkPass
         }
+
+        passes: list[type[Transform[uni.Module, uni.Module]]] = [EsastGenPass];
         if native {
             import from jaclang.compiler.passes.main.rc_facts_pass { RcFactsPass }
             import from jaclang.compiler.passes.native {
@@ -228,10 +229,6 @@ def get_py_code_gen(
                     [NaIRGenPass, NativeCompilePass], {'rc-facts': RcFactsPass}
                 )
             );
-        }
-
-        import from jaclang.compiler.passes.main.pyjac_ast_link_pass {
-            PyJacAstLinkPass
         }
         passes.extend([PyastGenPass, PyJacAstLinkPass, PyBytecodeGenPass]);
         return passes;

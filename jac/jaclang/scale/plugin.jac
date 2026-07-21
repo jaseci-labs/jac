@@ -307,7 +307,6 @@ def deploy_status(file_path: str, target: str = "kubernetes") -> int {
 @registry.command(
     name="scale",
     help="Manage scale deployments: local microservices (status/stop/restart/logs) and platform deployments (status/destroy on a .jac app)",
-    needs=["providers"],
     args=[
         Arg.create(
             "action",
@@ -680,11 +679,3 @@ class JacScalePlugin {
         return http_transport().call_walker(module_name, walker_name, args, stub_cls);
     }
 }
-
-def _install_scale_provider -> bool {
-    import from jaclang.jac0core.runtime { set_scale_provider }
-    set_scale_provider(JacScalePlugin);
-    return True;
-}
-
-glob _scale_provider_installed: bool = _install_scale_provider();

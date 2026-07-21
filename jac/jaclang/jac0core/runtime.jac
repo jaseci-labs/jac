@@ -82,31 +82,14 @@ glob _scale_provider_cache: list = [];
 
 glob _persistent_memory_provider: list = [None];
 
-def set_scale_provider(provider: any) {
-    _scale_provider_cache.clear();
-    _scale_provider_cache.append(provider);
-}
-
 def _scale_provider -> any {
     if _scale_provider_cache {
         return _scale_provider_cache[0];
     }
-    import os;
-    import sys;
-
-    if (
-        os.environ.get("JAC_SCALE_RUNTIME") != "1"
-        and os.environ.get("JAC_SV_SIBLING") != "1"
-        and "jaclang.scale.plugin" not in sys.modules
-    ) {
-        return None;
-    }
     result: any = None;
     try {
-        import importlib;
-        result = getattr(
-            importlib.import_module("jaclang.scale.plugin"), "JacScalePlugin"
-        );
+        import from jaclang.scale.plugin { JacScalePlugin }
+        result = JacScalePlugin;
     } except ImportError { }
     _scale_provider_cache.append(result);
     return result;
