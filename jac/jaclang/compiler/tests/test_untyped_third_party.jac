@@ -75,6 +75,10 @@ def _check(src: str, search_dir: str) -> JacProgram {
     } finally {
         sys.path.remove(search_dir);
         importlib.invalidate_caches();
+        # `import from` of an installed untyped .py module can load it into
+        # sys.modules; resolve_module() consults find_spec before sys.path, so
+        # a later project-local case must not inherit that cached origin.
+        sys.modules.pop("untyped_client", None);
     }
 }
 
