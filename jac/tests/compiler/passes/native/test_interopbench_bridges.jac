@@ -7,10 +7,15 @@ mixed-JIT scalar cells, the symmetric sv↔na caller/callee pair, and the
 full-native view driver. It is the compiler regression net for interop
 codegen and wrapper seams surfaced by the suite.
 
+The view cell needs the compiler-only native-accel modules, which the shipped
+binary omits; it self-skips there and is gated by ci_bridges.sh under dev
+source (see `_native_views_available`).
+
 Cross-runtime cells (xop_*) stay out of this gate: they need live servers,
 Node, and wasm artifacts. See ci_xruntime.sh instead.
 """
 
+import importlib.util;
 import os;
 import subprocess;
 import sys;
@@ -23,13 +28,17 @@ glob INTEROPBENCH = str(
      SMALL_CHURN = ["200", "20"];
 
 
-"""Subprocess env; view_driver needs checkout dev source under JAC_NO_DEV_SOURCE."""
-def _subprocess_env(dev_source: bool = False) -> dict[str, str] {
-    env = dict(os.environ);
-    if dev_source {
-        env.pop("JAC_NO_DEV_SOURCE", None);
-    }
-    return env;
+"""Whether the full-native view driver can run here.
+
+view_driver imports `jaclang.jac0core.native_accel` / `native_marshal` to
+force-accelerate an external `.na.jac` producer and to type its zero-copy
+views. Those compiler-only modules are on `runtime_vendor._DENY_PREFIXES`, so
+the shipped binary that runs this compiler suite deliberately omits them. When
+absent the view cell is gated by ci_bridges.sh under dev source instead (same
+rationale the docstring gives for the cross-runtime cells)."""
+def _native_views_available -> bool {
+    return importlib.util.find_spec("jaclang.jac0core.native_accel") is not None
+    and importlib.util.find_spec("jaclang.jac0core.native_marshal") is not None;
 }
 
 
@@ -42,15 +51,10 @@ def _run_command(
     command: list[str],
     label: str,
     expected_metrics: set[str],
-    dev_source: bool = False,
     zero_metrics: set[str] | None = None,
 ) -> str {
     proc = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        timeout=120,
-        env=_subprocess_env(dev_source),
+        command, capture_output=True, text=True, timeout=120, env=dict(os.environ),
     );
     assert proc.returncode == 0 , (
         f"{label} exited {proc.returncode}\n"
@@ -120,7 +124,6 @@ def _run_view(variant: str, count: str) -> str {
         command,
         f"iop_view/{variant}/{count}",
         {"view_ns", "materialise_ns"},
-        dev_source=True,
         zero_metrics=non_selected,
     );
 }
@@ -162,10 +165,16 @@ test "interopbench differential identity: symmetric sv and na callers" {
 
 
 test "interopbench differential identity: native list and struct views" {
+    if not _native_views_available() {
+        return;  # shipped binary omits native_accel/native_marshal (see helper)
+    }
     materialised = _run_view("materialised", "17");
     view = _run_view("view", "17");
     assert materialised == view , (
         f"iop_view output diverged:\n--- materialised ---\n{materialised}\n"
         f"--- view ---\n{view}"
+    );
+    assert view == "view:1275708384" , (
+        f"iop_view checksum changed from independently computed value: {view}"
     );
 }
