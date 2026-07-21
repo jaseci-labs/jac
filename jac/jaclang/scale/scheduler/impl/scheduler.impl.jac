@@ -405,7 +405,7 @@ impl JacScaleScheduler.register_static_tasks(
                 name=item_name,
                 target=_make_target(item_name, is_walker),
                 spec=spec,
-                is_walker=is_walker
+                is_walker=False
             );
         }
     }
