@@ -4,12 +4,12 @@ import asyncio;
 import json;
 import unittest.mock;
 import from tempfile { mkdtemp }
-import from uuid { uuid4 }
 import from fastapi { Request }
 
 import from jaclang.scale.config.config_loader { reset_scale_config }
 import from jaclang.scale.shared.enums { Platforms, Operations }
 import from jaclang.scale.identity.user_manager { JacScaleUserManager }
+import from jaclang.scale.sso.provider { SSOUserInfo }
 import from jaclang.scale.server.serve { JacAPIServer }
 import from jaclang.scale._optdeps.firebase_auth {
     firebase_admin as _real_firebase_admin
@@ -74,10 +74,28 @@ def _setup_user_manager(sso_config: dict) -> tuple[str, JacScaleUserManager] {
     ) {
         user_manager = JacScaleUserManager(base_path=test_dir);
     }
-    user_manager.create_user_with_identities = unittest.mock.Mock();
-    user_manager.find_user_by_identity = unittest.mock.Mock();
-    user_manager.link_sso_account = unittest.mock.Mock(return_value={});
     return (test_dir, user_manager);
+}
+
+
+obj MockFirebaseSSO {
+    has user_info: SSOUserInfo;
+
+    async def handle_id_token(id_token: str) -> SSOUserInfo {
+        if not id_token {
+            raise ValueError("Missing 'id_token'.");
+        }
+        return self.user_info;
+    }
+}
+
+
+def _create_existing_user(user_manager: JacScaleUserManager, email: str) -> str {
+    result = user_manager.create_user_with_identities(
+        identities=[{'type': 'email', 'value': email, 'verified': True}],
+        credential={'type': 'password', 'password': 'existing_pass'}
+    );
+    return result.get('user_id', '');
 }
 
 
@@ -176,41 +194,36 @@ test 'firebase sso initiate returns helpful error' {
 test 'firebase token auth login existing user' {
     (test_dir, user_manager) = _setup_user_manager(mock_sso_config_with_firebase());
     try {
-        mock_user_id = str(uuid4());
-        user_manager.find_user_by_identity.return_value = {
-            'user_id': mock_user_id,
-            'root_id': str(uuid4()),
-            'profile': {}
-        };
-        mock_fb = _mock_firebase_admin();
-        mock_fb.auth.verify_id_token.return_value = {
-            'email': 'user@example.com',
-            'uid': 'firebase-uid-123',
-            'name': 'Test User',
-            'picture': 'https://example.com/picture.jpg'
-        };
-        with unittest.mock.patch(
-            'jaclang.scale._optdeps.firebase_auth.HAS_FIREBASE_ADMIN', True
-        ), unittest.mock.patch(
-            'jaclang.scale._optdeps.firebase_auth.firebase_admin', mock_fb
-        ), unittest.mock.patch(
-            'jaclang.scale._optdeps.firebase_auth.credentials', mock_fb.credentials
-        ), unittest.mock.patch(
-            'jaclang.scale._optdeps.firebase_auth.auth', mock_fb.auth
-        ), unittest.mock.patch('jaclang.scale.sso.firebase.firebase_admin', mock_fb), unittest.mock.patch(
-            'jaclang.scale.sso.firebase.credentials', mock_fb.credentials
-        ), unittest.mock.patch('jaclang.scale.sso.firebase.auth', mock_fb.auth), unittest.mock.patch.object(
-            user_manager._identity_storage, 'update_user_fields', return_value=True
-        ), unittest.mock.patch.object(
-            user_manager, 'create_jwt_token', return_value='jwt-token'
+        user_id = _create_existing_user(user_manager, 'user@example.com');
+        mock_sso = MockFirebaseSSO(
+            SSOUserInfo(
+                email='user@example.com',
+                external_id='firebase-uid-123',
+                display_name='Test User',
+                picture='https://example.com/picture.jpg'
+            )
+        );
+        with unittest.mock.patch.object(
+            user_manager, 'get_sso', return_value=mock_sso
         ) {
             result = asyncio.run(
                 user_manager.firebase_token_auth_with_id_token('firebase-token')
             );
             assert result.ok;
             assert result.data['message'] == 'Login successful';
-            assert result.data['token'] == 'jwt-token';
             assert result.data['platform'] == 'firebase';
+            assert result.data['user_id'] == user_id;
+            token = result.data['token'];
+            assert token;
+            assert user_manager.validate_jwt_token(token) == user_id;
+            accounts = user_manager.get_sso_accounts(user_id);
+            assert len(accounts) == 1;
+            assert accounts[0]['platform'] == 'firebase';
+            assert accounts[0]['external_id'] == 'firebase-uid-123';
+            stored = user_manager.get_user(user_id);
+            firebase_sso = stored['profile']['sso']['firebase'];
+            assert firebase_sso['display_name'] == 'Test User';
+            assert firebase_sso['picture'] == 'https://example.com/picture.jpg';
         }
     } finally {
         _teardown_user_manager(test_dir);
@@ -221,39 +234,34 @@ test 'firebase token auth login existing user' {
 test 'firebase token auth auto register new user' {
     (test_dir, user_manager) = _setup_user_manager(mock_sso_config_with_firebase());
     try {
-        user_manager.find_user_by_identity.return_value = None;
-        user_manager.create_user_with_identities.return_value = {
-            'user_id': str(uuid4()),
-            'message': 'User registered successfully'
-        };
-        mock_fb = _mock_firebase_admin();
-        mock_fb.auth.verify_id_token.return_value = {
-            'email': 'newuser@example.com',
-            'uid': 'firebase-uid-999',
-            'name': 'New User'
-        };
-        with unittest.mock.patch(
-            'jaclang.scale._optdeps.firebase_auth.HAS_FIREBASE_ADMIN', True
-        ), unittest.mock.patch(
-            'jaclang.scale._optdeps.firebase_auth.firebase_admin', mock_fb
-        ), unittest.mock.patch(
-            'jaclang.scale._optdeps.firebase_auth.credentials', mock_fb.credentials
-        ), unittest.mock.patch(
-            'jaclang.scale._optdeps.firebase_auth.auth', mock_fb.auth
-        ), unittest.mock.patch('jaclang.scale.sso.firebase.firebase_admin', mock_fb), unittest.mock.patch(
-            'jaclang.scale.sso.firebase.credentials', mock_fb.credentials
-        ), unittest.mock.patch('jaclang.scale.sso.firebase.auth', mock_fb.auth), unittest.mock.patch.object(
-            user_manager, 'create_jwt_token', return_value='jwt-token'
-        ), unittest.mock.patch(
-            'jaclang.scale.identity.user_manager.generate_random_password',
-            return_value='random-pass'
+        assert user_manager.find_user_by_identity('newuser@example.com') is None;
+        mock_sso = MockFirebaseSSO(
+            SSOUserInfo(
+                email='newuser@example.com',
+                external_id='firebase-uid-999',
+                display_name='New User'
+            )
+        );
+        with unittest.mock.patch.object(
+            user_manager, 'get_sso', return_value=mock_sso
         ) {
             result = asyncio.run(
                 user_manager.firebase_token_auth_with_id_token('firebase-token')
             );
             assert result.ok;
-            assert result.data['token'] == 'jwt-token';
-            user_manager.create_user_with_identities.assert_called_once();
+            user_id = result.data['user_id'];
+            assert user_id;
+            token = result.data['token'];
+            assert token;
+            assert user_manager.validate_jwt_token(token) == user_id;
+            created = user_manager.find_user_by_identity('newuser@example.com');
+            assert created is not None;
+            assert created['user_id'] == user_id;
+            assert created['profile']['sso']['firebase']['display_name'] == 'New User';
+            accounts = user_manager.get_sso_accounts(user_id);
+            assert len(accounts) == 1;
+            assert accounts[0]['platform'] == 'firebase';
+            assert accounts[0]['external_id'] == 'firebase-uid-999';
         }
     } finally {
         _teardown_user_manager(test_dir);
@@ -330,36 +338,20 @@ test 'firebase token endpoint http integration' {
     original_project_id = os.environ.get('FIREBASE_AUTH_PROJECT_ID');
     os.environ['FIREBASE_AUTH_PROJECT_ID'] = 'test-firebase-project';
     reset_scale_config();
-    mock_fb = _mock_firebase_admin();
-    mock_fb.auth.verify_id_token.return_value = {
-        'email': 'user@example.com',
-        'uid': 'firebase-uid-123',
-        'name': 'Test User',
-        'picture': 'https://example.com/picture.jpg'
-    };
     client = make_client();
     try {
         user_manager = client.server.user_manager;
-        mock_user_id = str(uuid4());
-        user_manager.find_user_by_identity = unittest.mock.Mock(
-            return_value={
-                'user_id': mock_user_id,
-                'root_id': str(uuid4()),
-                'profile': {}
-            }
+        user_id = _create_existing_user(user_manager, 'user@example.com');
+        mock_sso = MockFirebaseSSO(
+            SSOUserInfo(
+                email='user@example.com',
+                external_id='firebase-uid-123',
+                display_name='Test User',
+                picture='https://example.com/picture.jpg'
+            )
         );
-        with unittest.mock.patch(
-            'jaclang.scale._optdeps.firebase_auth.HAS_FIREBASE_ADMIN', True
-        ), unittest.mock.patch(
-            'jaclang.scale._optdeps.firebase_auth.firebase_admin', mock_fb
-        ), unittest.mock.patch(
-            'jaclang.scale._optdeps.firebase_auth.credentials', mock_fb.credentials
-        ), unittest.mock.patch(
-            'jaclang.scale._optdeps.firebase_auth.auth', mock_fb.auth
-        ), unittest.mock.patch('jaclang.scale.sso.firebase.firebase_admin', mock_fb), unittest.mock.patch(
-            'jaclang.scale.sso.firebase.credentials', mock_fb.credentials
-        ), unittest.mock.patch('jaclang.scale.sso.firebase.auth', mock_fb.auth), unittest.mock.patch.object(
-            user_manager._identity_storage, 'update_user_fields', return_value=True
+        with unittest.mock.patch.object(
+            user_manager, 'get_sso', return_value=mock_sso
         ) {
             response = client.post(
                 '/sso/firebase/token', json={'id_token': 'firebase-token'}
@@ -370,7 +362,15 @@ test 'firebase token endpoint http integration' {
             data = extract_data(response.json());
             assert data.get('message') == 'Login successful';
             assert data.get('platform') == 'firebase';
-            assert 'token' in data;
+            assert data.get('user_id') == user_id;
+            token = data.get('token');
+            assert token;
+            assert user_manager.validate_jwt_token(token) == user_id;
+            accounts = user_manager.get_sso_accounts(user_id);
+            assert len(accounts) == 1;
+            assert accounts[0]['platform'] == 'firebase';
+            stored = user_manager.get_user(user_id);
+            assert stored['profile']['sso']['firebase']['display_name'] == 'Test User';
         }
     } finally {
         client.close();
