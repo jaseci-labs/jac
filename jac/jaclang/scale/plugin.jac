@@ -529,7 +529,20 @@ class JacScalePlugin {
         } except ImportError {
             return None;
         }
-        return JacScaleUserManager(base_path=base_path);
+        import os;
+        jit = False;
+        if os.environ.get("JAC_SV_NAME") {
+            try {
+                import from .config.config_loader { get_scale_config }
+                identity_cfg = dict(
+                    get_scale_config().get_microservices_config().get("identity", {})
+                );
+                jit = bool(identity_cfg.get("gateway_owned", True));
+            } except Exception {
+                jit = True;
+            }
+        }
+        return JacScaleUserManager(base_path=base_path, jit_provision=jit);
     }
 
     static def store(

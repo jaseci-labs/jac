@@ -1524,3 +1524,34 @@ test "bare /jobs (create + list) is forwarded as a built-in route, not 404'd" {
     resp_one = client.get("/jobs/abc123");
     assert resp_one.status_code == 503;
 }
+
+test "gateway owns core identity: register + login work with zero services" {
+    with tempfile.TemporaryDirectory() as tmp {
+        reg = ServiceRegistry();
+        gw = MicroserviceGateway(registry=reg, base_path=tmp);
+        gw.setup();
+        import from fastapi.testclient { TestClient }
+        client = TestClient(gw.app);
+        resp = client.post(
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "gwuser"}],
+                "credential": {"type": "password", "password": "pw-123456"}
+            }
+        );
+        assert resp.status_code in (200, 201) , (
+            f"register must be handled by the gateway itself, got "
+            f"{resp.status_code}: {resp.text[:200]}"
+        );
+        resp2 = client.post(
+            "/user/login",
+            json={
+                "identity": {"type": "username", "value": "gwuser"},
+                "credential": {"type": "password", "password": "pw-123456"}
+            }
+        );
+        assert resp2.status_code == 200 , resp2.text[:200];
+        token = resp2.json().get("data", {}).get("token") or resp2.json().get("token");
+        assert token , f"login response carries a session token: {resp2.text[:200]}";
+    }
+}

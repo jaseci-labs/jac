@@ -36,6 +36,7 @@ enum UserRole { ADMIN = 'admin', SYSTEM = 'system', USER = 'user', }
 obj JacScaleUserManager(UserManager) {
     has SUPPORTED_PLATFORMS: dict = {},
         ADMIN_USER_ID: str = '00000000-0000-0000-0000-000000000000',
+        jit_provision: bool = False,
         _identity_storage: IdentityStorage postinit;
 
     def postinit -> None;

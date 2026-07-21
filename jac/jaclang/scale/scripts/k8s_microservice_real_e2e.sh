@@ -353,6 +353,49 @@ for prefix in ${ROUTES}; do
 done
 
 _t "routing OK"
+
+echo "=== gateway-owned identity: register/login on gateway, token accepted by a service ==="
+REG_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+    "http://localhost:${GATEWAY_LOCAL_PORT}/user/register" \
+    -H "Content-Type: application/json" \
+    -d '{"identities":[{"type":"username","value":"e2e-identity-user"}],"credential":{"type":"password","password":"e2e-pass-123"}}')
+if [ "${REG_CODE}" != "200" ] && [ "${REG_CODE}" != "201" ]; then
+    echo "FAIL: gateway /user/register returned ${REG_CODE}" >&2
+    exit 1
+fi
+TOKEN=$(curl -fsS -X POST "http://localhost:${GATEWAY_LOCAL_PORT}/user/login" \
+    -H "Content-Type: application/json" \
+    -d '{"identity":{"type":"username","value":"e2e-identity-user"},"credential":{"type":"password","password":"e2e-pass-123"}}' \
+    | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('data',{}).get('token') or d.get('token') or '')")
+if [ -z "${TOKEN}" ]; then
+    echo "FAIL: gateway /user/login returned no token" >&2
+    exit 1
+fi
+PRODUCTS_PREFIX=$(jac -c "
+from jaclang.scale.runtime.discovery.discovery import resolve_routes
+for name, prefix in resolve_routes('${PROJECT_DIR}', {}).items():
+    if 'products' in name:
+        print(prefix)
+        break
+")
+ANON_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+    "http://localhost:${GATEWAY_LOCAL_PORT}${PRODUCTS_PREFIX}/function/whoami" \
+    -H "Content-Type: application/json" -d '{}')
+if [ "${ANON_CODE}" != "401" ] && [ "${ANON_CODE}" != "403" ]; then
+    echo "FAIL: whoami without a token must be rejected, got ${ANON_CODE}" >&2
+    exit 1
+fi
+AUTH_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+    "http://localhost:${GATEWAY_LOCAL_PORT}${PRODUCTS_PREFIX}/function/whoami" \
+    -H "Authorization: Bearer ${TOKEN}" \
+    -H "Content-Type: application/json" -d '{}')
+if [ "${AUTH_CODE}" != "200" ]; then
+    echo "FAIL: gateway-issued token rejected by the service (${AUTH_CODE}) - cross-service identity broken" >&2
+    exit 1
+fi
+echo "  register+login on gateway OK; service accepted the token (whoami 200, anon ${ANON_CODE})"
+
+_t "identity OK"
 echo "=== verify HPA OOM guardrails (cpu+memory metrics, behavior rate limits) ==="
 # The heredoc feeds python's stdin, so the HPA JSON must travel via a file.
 HPA_JSON="$(mktemp)"
