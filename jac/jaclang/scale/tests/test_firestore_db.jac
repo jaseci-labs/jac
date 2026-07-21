@@ -1,325 +1,87 @@
 import os;
+import atexit;
 import unittest.mock;
 import from jaclang.scale.config.config_loader { get_scale_config, reset_scale_config }
 import from jaclang.scale.deploy.database.factory { DatabaseType, _resolve_uri }
 import from jaclang.scale.persistence.firestore_db { FirestoreDb }
 import from jaclang.scale.persistence.lib { kvstore }
+import from jaclang.scale._optdeps.pymongo { DuplicateKeyError }
 
 
-def _copy_doc(doc: dict | None) -> dict | None {
-    if doc is None {
-        return None;
+glob _EMULATOR_IMAGE: str = 'gcr.io/google.com/cloudsdktool/google-cloud-cli',
+     _EMULATOR_STATE: dict = {};
+
+
+def _ensure_emulator -> dict {
+    # Start a real Firestore emulator once, or raise SkipTest if unavailable.
+    if _EMULATOR_STATE.get('started') {
+        if _EMULATOR_STATE.get('error') is not None {
+            raise unittest.SkipTest(_EMULATOR_STATE['error']);
+        }
+        return _EMULATOR_STATE;
     }
-    return doc.copy();
-}
+    _EMULATOR_STATE['started'] = True;
 
-
-def _matches_filter(doc: dict, field_path: str, op_string: str, value: any) -> bool {
-    doc_value = doc.get(field_path);
-
-    if op_string == '==' {
-        return doc_value == value;
-    } elif op_string == '!=' {
-        return doc_value != value;
-    } elif op_string == '>' {
-        return doc_value is not None and doc_value > value;
-    } elif op_string == '>=' {
-        return doc_value is not None and doc_value >= value;
-    } elif op_string == '<' {
-        return doc_value is not None and doc_value < value;
-    } elif op_string == '<=' {
-        return doc_value is not None and doc_value <= value;
-    } elif op_string == 'in' {
-        return doc_value in value;
-    } elif op_string == 'not-in' {
-        return doc_value not in value;
+    try {
+        import from testcontainers.core.container { DockerContainer }
+        import from testcontainers.core.waiting_utils { wait_for_logs }
+    } except ImportError as import_error {
+        _EMULATOR_STATE['error'] = f'testcontainers is not installed: {import_error}';
+        raise unittest.SkipTest(_EMULATOR_STATE['error']);
     }
 
-    raise ValueError(f'Unsupported fake Firestore operator: {op_string}');
-}
+    container = (
+        DockerContainer(_EMULATOR_IMAGE).with_command(
+            'gcloud emulators firestore start '
+            '--host-port=0.0.0.0:8080 --project=test'
+        ).with_exposed_ports(
+            8080
+        )
+    );
 
-
-class _FakeAlreadyExists(Exception) {}
-
-
-obj _FakeDocSnapshot {
-    has id: str,
-        data: dict | None = None,
-        exists: bool = False;
-
-    def postinit {
-        self.exists = self.data is not None;
-    }
-
-    def to_dict -> dict | None {
-        return _copy_doc(self.data);
-    }
-}
-
-
-obj _FakeDocRef {
-    has collection: _FakeCollection,
-        id: str;
-
-    def get -> _FakeDocSnapshot {
-        return _FakeDocSnapshot(
-            id=self.id, data=_copy_doc(self.collection.docs.get(self.id))
+    try {
+        container.start();
+        wait_for_logs(container, 'running', timeout=180);
+    } except Exception as start_error {
+        try {
+            container.stop();
+        } except Exception { }
+        _EMULATOR_STATE['error'] = (
+            f'Firestore emulator ({_EMULATOR_IMAGE}) could not start - '
+            f'Docker or the emulator image is unavailable in this environment: '
+            f'{start_error}'
         );
+        raise unittest.SkipTest(_EMULATOR_STATE['error']);
     }
 
-    def set(data: dict, merge: bool = False) {
-        if merge and self.id in self.collection.docs {
-            existing = _copy_doc(self.collection.docs[self.id]) or {};
-            existing.update(data);
-            self.collection.docs[self.id] = existing;
-        } else {
-            self.collection.docs[self.id] = _copy_doc(data) or {};
-        }
-    }
+    atexit.register(container.stop);
 
-    def create(data: dict) {
-        if self.id in self.collection.docs {
-            raise _FakeAlreadyExists(f'Document {self.id} already exists');
-        }
-        self.set(data);
-    }
-
-    def update(data: dict) {
-        if self.id not in self.collection.docs {
-            raise KeyError(self.id);
-        }
-        existing = _copy_doc(self.collection.docs[self.id]) or {};
-        existing.update(data);
-        self.collection.docs[self.id] = existing;
-    }
-
-    def delete {
-        self.collection.docs.pop(self.id, None);
-    }
+    host = container.get_container_host_ip();
+    port = container.get_exposed_port(8080);
+    _EMULATOR_STATE['container'] = container;
+    _EMULATOR_STATE['host_port'] = f'{host}:{port}';
+    return _EMULATOR_STATE;
 }
 
 
-obj _FakeFieldFilter {
-    has field_path: str,
-        op_string: str,
-        value: any;
+def _make_client -> any {
+    # Build a real google.cloud.firestore client bound to the emulator.
+    state = _ensure_emulator();
+    os.environ['FIRESTORE_EMULATOR_HOST'] = state['host_port'];
+    os.environ['GOOGLE_CLOUD_PROJECT'] = 'test';
+    import from google.cloud.firestore { Client }
+    return Client(project='test');
 }
 
 
-obj _FakeCountSnapshot {
-    has value: int;
-}
-
-
-obj _FakeAggregateQuery {
-    has query: _FakeQuery;
-
-    def get -> list {
-        return [[_FakeCountSnapshot(value=len(self.query.stream()))]];
-    }
-}
-
-
-obj _FakeQuery {
-    has collection: _FakeCollection,
-        filters: list = [],
-        limit_count: int | None = None,
-        select_fields: (list | None) = None;
-
-    def where(
-        field_path: str = '',
-        op_string: str = '',
-        value: any = None,
-        filter: (_FakeFieldFilter | None) = None
-    ) -> _FakeQuery {
-        if filter is not None {
-            actual_field = filter.field_path;
-            actual_op = filter.op_string;
-            actual_val = filter.value;
-        } else {
-            actual_field = field_path;
-            actual_op = op_string;
-            actual_val = value;
-        }
-        next_filters = self.filters + [
-            {'field_path': actual_field, 'op_string': actual_op, 'value': actual_val}
-        ];
-        return _FakeQuery(
-            collection=self.collection,
-            filters=next_filters,
-            limit_count=self.limit_count,
-            select_fields=self.select_fields
-        );
-    }
-
-    def limit(count: int) -> _FakeQuery {
-        return _FakeQuery(
-            collection=self.collection,
-            filters=self.filters,
-            limit_count=count,
-            select_fields=self.select_fields
-        );
-    }
-
-    def select(field_paths: list) -> _FakeQuery {
-        return _FakeQuery(
-            collection=self.collection,
-            filters=self.filters,
-            limit_count=self.limit_count,
-            select_fields=list(field_paths)
-        );
-    }
-
-    def count -> _FakeAggregateQuery {
-        return _FakeAggregateQuery(query=self);
-    }
-
-    def stream -> list {
-        results: list = [];
-        for (doc_id, doc) in self.collection.docs.items() {
-            matched = True;
-            for current in self.filters {
-                if not _matches_filter(
-                    doc, current['field_path'], current['op_string'], current['value']
-                ) {
-                    matched = False;
-                    break;
-                }
-            }
-            if matched {
-                data = _copy_doc(doc);
-                if self.select_fields is not None and data is not None {
-                    projected: dict = {};
-                    for (k, v) in data.items() {
-                        if k in self.select_fields {
-                            projected[k] = v;
-                        }
-                    }
-                    data = projected;
-                }
-                results.append(_FakeDocSnapshot(id=doc_id, data=data));
-            }
-        }
-        if self.limit_count is not None {
-            return results[:self.limit_count];
-        }
-        return results;
-    }
-}
-
-
-obj _FakeCollection {
-    has name: str,
-        docs: dict[str, dict] = {};
-
-    def document(doc_id: str) -> _FakeDocRef {
-        return _FakeDocRef(collection=self, id=doc_id);
-    }
-
-    def where(
-        field_path: str = '',
-        op_string: str = '',
-        value: any = None,
-        filter: (_FakeFieldFilter | None) = None
-    ) -> _FakeQuery {
-        return _FakeQuery(collection=self).where(
-            field_path=field_path, op_string=op_string, value=value, filter=filter
-        );
-    }
-
-    def limit(count: int) -> _FakeQuery {
-        return _FakeQuery(collection=self, limit_count=count);
-    }
-
-    def select(field_paths: list) -> _FakeQuery {
-        return _FakeQuery(collection=self, select_fields=list(field_paths));
-    }
-
-    def stream -> list {
-        return _FakeQuery(collection=self).stream();
-    }
-
-    def count -> _FakeAggregateQuery {
-        return _FakeQuery(collection=self).count();
-    }
-}
-
-
-obj _FakeBatch {
-    has ops: list = [];
-
-    def set(doc_ref: _FakeDocRef, data: dict) {
-        self.ops.append({'kind': 'set', 'ref': doc_ref, 'data': _copy_doc(data) or {}});
-    }
-
-    def create(doc_ref: _FakeDocRef, data: dict) {
-        self.ops.append(
-            {'kind': 'create', 'ref': doc_ref, 'data': _copy_doc(data) or {}}
-        );
-    }
-
-    def update(doc_ref: _FakeDocRef, data: dict) {
-        self.ops.append(
-            {'kind': 'update', 'ref': doc_ref, 'data': _copy_doc(data) or {}}
-        );
-    }
-
-    def delete(doc_ref: _FakeDocRef) {
-        self.ops.append({'kind': 'delete', 'ref': doc_ref});
-    }
-
-    def commit {
-        pending_create_ids: set = set();
-        for op in self.ops {
-            if op['kind'] == 'create' {
-                doc_id = op['ref'].id;
-                if (
-                    doc_id in pending_create_ids or doc_id in op['ref'].collection.docs
-                ) {
-                    raise _FakeAlreadyExists(f'Document {doc_id} already exists');
-                }
-                pending_create_ids.add(doc_id);
-            }
-        }
-        for op in self.ops {
-            if op['kind'] == 'set' {
-                op['ref'].set(op['data']);
-            } elif op['kind'] == 'create' {
-                op['ref'].set(op['data']);
-            } elif op['kind'] == 'update' {
-                op['ref'].update(op['data']);
-            } else {
-                op['ref'].delete();
-            }
-        }
-        self.ops = [];
-    }
-}
-
-
-obj _FakeFirestoreClient {
-    has collections: dict[str, _FakeCollection] = {};
-
-    def collection(name: str) -> _FakeCollection {
-        if name not in self.collections {
-            self.collections[name] = _FakeCollection(name=name);
-        }
-        return self.collections[name];
-    }
-
-    def batch -> _FakeBatch {
-        return _FakeBatch();
-    }
-
-    def close {
-        return None;
-    }
+def _make_db(db_name: str) -> FirestoreDb {
+    # Fresh FirestoreDb over the real emulator; unique db_name isolates data.
+    return FirestoreDb(client=_make_client(), db_name=db_name);
 }
 
 
 test "firestore kvstore operations" {
-    client = _FakeFirestoreClient();
-    db = FirestoreDb(client=client, db_name='app');
+    db = _make_db('appcrud');
 
     assert db.set('session:1', {'user_id': '42'}, 'sessions') == 'session:1';
     assert db.get('session:1', 'sessions')['user_id'] == '42';
@@ -342,7 +104,11 @@ test "firestore kvstore operations" {
     assert alice.inserted_id is not None;
     assert bob.inserted_id is not None;
     assert len(batch.inserted_ids) == 2;
-    assert 'app__users' in client.collections;
+
+    # Real backend must hold the documents under the db-prefixed collection name.
+    collection_ids = [ref.id for ref in db.client.collections()];
+    assert 'appcrud__users' in collection_ids;
+    assert len(list(db.client.collection('appcrud__users').stream())) == 4;
 
     admins = list(db.find('users', {'role': 'admin'}));
     assert len(admins) == 2;
@@ -382,14 +148,13 @@ test "firestore kvstore operations" {
 
 
 test "firestore insert_one rejects duplicate explicit _id" {
-    client = _FakeFirestoreClient();
-    db = FirestoreDb(client=client, db_name='app');
+    db = _make_db('dupone');
 
     db.insert_one('users', {'_id': 'u1', 'name': 'Alice'});
     raised = False;
     try {
         db.insert_one('users', {'_id': 'u1', 'name': 'Eve'});
-    } except _FakeAlreadyExists {
+    } except DuplicateKeyError {
         raised = True;
     }
     assert raised;
@@ -398,8 +163,7 @@ test "firestore insert_one rejects duplicate explicit _id" {
 
 
 test "firestore insert_many rejects duplicate explicit _id" {
-    client = _FakeFirestoreClient();
-    db = FirestoreDb(client=client, db_name='app');
+    db = _make_db('dupmany');
 
     db.insert_one('users', {'_id': 'u1', 'name': 'Alice'});
     raised = False;
@@ -407,18 +171,18 @@ test "firestore insert_many rejects duplicate explicit _id" {
         db.insert_many(
             'users', [{'_id': 'u2', 'name': 'Bob'}, {'_id': 'u1', 'name': 'Eve'}]
         );
-    } except _FakeAlreadyExists {
+    } except DuplicateKeyError {
         raised = True;
     }
     assert raised;
     assert db.find_by_id('users', 'u1')['name'] == 'Alice';
+    # The batch is atomic - the non-conflicting sibling must not be written.
     assert db.find_by_id('users', 'u2') is None;
 }
 
 
 test "firestore find honors projection" {
-    client = _FakeFirestoreClient();
-    db = FirestoreDb(client=client, db_name='app');
+    db = _make_db('projection');
 
     db.insert_one('users', {'_id': 'u1', 'name': 'Alice', 'role': 'admin', 'age': 30});
     db.insert_one('users', {'_id': 'u2', 'name': 'Bob', 'role': 'user', 'age': 25});
@@ -454,12 +218,12 @@ test "firestore find honors projection" {
 
 
 test "kvstore routes firestore through pooled client helper" {
-    fake_client = _FakeFirestoreClient();
+    real_client = _make_client();
 
     with unittest.mock.patch(
-        'jaclang.scale.persistence.db.get_firestore_client', return_value=fake_client
+        'jaclang.scale.persistence.db.get_firestore_client', return_value=real_client
     ) {
-        db = kvstore(db_name='app', db_type='firestore');
+        db = kvstore(db_name='routing', db_type='firestore');
         assert db.db_type == DatabaseType.FIRESTORE;
         assert db.set('hello', {'value': 1}) == 'hello';
         assert db.get('hello')['value'] == 1;
@@ -468,7 +232,7 @@ test "kvstore routes firestore through pooled client helper" {
 
 
 test "firestore returns None for redis-only methods and graph persistence" {
-    db = FirestoreDb(client=_FakeFirestoreClient(), db_name='app');
+    db = _make_db('redisonly');
 
     assert db.set_with_ttl('key', {'v': 1}, ttl=60) is None;
     assert db.incr('counter') is None;
@@ -477,8 +241,7 @@ test "firestore returns None for redis-only methods and graph persistence" {
 
 
 test "firestore rejects $or filter with NotImplementedError" {
-    client = _FakeFirestoreClient();
-    db = FirestoreDb(client=client, db_name='app');
+    db = _make_db('orfilter');
     db.insert_one('items', {'status': 'a'});
     db.insert_one('items', {'status': 'b'});
 
@@ -493,8 +256,7 @@ test "firestore rejects $or filter with NotImplementedError" {
 
 
 test "firestore rejects unsupported filter operator with ValueError" {
-    client = _FakeFirestoreClient();
-    db = FirestoreDb(client=client, db_name='app');
+    db = _make_db('badoperator');
     db.insert_one('items', {'count': 5});
 
     raised = False;

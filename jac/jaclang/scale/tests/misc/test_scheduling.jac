@@ -4,6 +4,7 @@ import contextlib;
 import datetime;
 import gc;
 import glob;
+import os;
 import shutil;
 import socket;
 import subprocess;
@@ -11,13 +12,18 @@ import time;
 import unittest.mock;
 import requests;
 import from pathlib { Path }
+import from tempfile { mkdtemp }
 import from typing { Any }
 import from jaclang.scale.scheduler.scheduler {
     JacScaleScheduler,
     MemoryJobStore,
+    MongoJobStore,
     TriggerSpec
 }
-import from jaclang.scale._optdeps.pymongo { PyMongoError }
+import from jaclang.scale.persistence.mongo_db { MongoDb }
+import from jaclang.scale._optdeps.pymongo { MongoClient, PyMongoError }
+import from jaclang.scale.identity.user_manager { JacScaleUserManager }
+import from jaclang.scale.config.config_loader { reset_scale_config }
 import from jaclang.scale.tests.auth_test_helpers {
     data as _data,
     register_and_login as _get_token
@@ -165,7 +171,7 @@ test "dynamic jobs - all trigger types for walker and function" {
     try {
         token = _get_token(base_url, "job_user", "pass123");
         h = {"Authorization": f"Bearer {token}"};
-        # Scheduler default TZ is UTC — compute the run_date in UTC so the
+        # Scheduler default TZ is UTC - compute the run_date in UTC so the
         # "1 hour in the future" semantics are stable regardless of CI/dev TZ.
         run_date = (
             datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)
@@ -503,7 +509,7 @@ test "static walkers and functions actually execute" {
             time.sleep(0.3);
         }
 
-        # Both walker and function side-effects must be present — proves both
+        # Both walker and function side-effects must be present - proves both
         # registration paths and execution paths are wired correctly.
         assert "static-interval-walker" in log , (
             f"static walker did not fire within 8s; log={log}"
@@ -522,21 +528,59 @@ test "static walkers and functions actually execute" {
     }
 }
 
-def _make_sched(user_exists_map: dict[str, bool] | None = None) -> JacScaleScheduler {
+# Minimal real server shape: the scheduler only reaches for `.user_manager`
+# (and `.introspector`, unused by these unit tests). This just carries the
+# REAL user_manager - it stubs no behavior.
+obj _SchedServer {
+    has user_manager: Any;
+}
+
+def _make_user_manager(usernames: list[str]) -> tuple[str, Any] {
+    # A genuine JacScaleUserManager on a throwaway SQLite store. Each listed
+    # username becomes a real user, so user_exists() answers from real state.
+    test_dir = mkdtemp();
+    with open(os.path.join(test_dir, "jac.toml"), "w") as f {
+        f.write('[project]\nname = "sched-test"\nversion = "1.0.0"\n');
+    }
+    prev_uri = os.environ.pop('MONGODB_URI', None);
+    try {
+        reset_scale_config();
+        um = JacScaleUserManager(base_path=test_dir);
+    } finally {
+        if prev_uri is not None {
+            os.environ['MONGODB_URI'] = prev_uri;
+        }
+    }
+    for name in usernames {
+        um.create_internal_user(name, "pass123");
+    }
+    return (test_dir, um);
+}
+
+def _teardown_um(test_dir: str, um: Any) {
+    with contextlib.suppress(Exception) {
+        um.close();
+    }
+    with contextlib.suppress(Exception) {
+        shutil.rmtree(test_dir);
+    }
+    reset_scale_config();
+}
+
+def _make_sched(
+    existing_users: list[str] | None = None
+) -> tuple[JacScaleScheduler, str, Any] {
     # postinit runs automatically on construction (allocates _user_exists_cache).
     sched = JacScaleScheduler();
+    # Real in-memory store - the scheduler's own collaborator, exercised for real.
     sched._store = MemoryJobStore();
+    # APScheduler is a third-party boundary; the tests below patch
+    # _schedule_apscheduler_job, so _apscheduler only needs to be non-None to
+    # clear the early-return guard in register_dynamic_tasks_from_db.
     sched._apscheduler = unittest.mock.MagicMock();
-    mock_user_manager = unittest.mock.MagicMock();
-    if user_exists_map is None {
-        mock_user_manager.user_exists.return_value = True;
-    } else {
-        mock_user_manager.user_exists.side_effect = user_exists_map.get;
-    }
-    mock_server = unittest.mock.MagicMock();
-    mock_server.user_manager = mock_user_manager;
-    sched._server = mock_server;
-    return sched;
+    (test_dir, um) = _make_user_manager(existing_users or []);
+    sched._server = _SchedServer(user_manager=um);
+    return (sched, test_dir, um);
 }
 
 test "TriggerSpec.validate rejects malformed cron expressions" {
@@ -566,286 +610,341 @@ test "TriggerSpec.validate accepts well-formed cron expressions" {
 }
 
 test "scheduler list_jobs propagates PyMongoError so endpoint can 503-map" {
-    sched = _make_sched();
-    sched._store = unittest.mock.MagicMock();
-    sched._store.find_active.side_effect = PyMongoError('mongo down');
-
-    raised_kind: str | None = None;
+    # A real pymongo client pointed at an unreachable server raises a genuine
+    # ServerSelectionTimeoutError (a PyMongoError) on its first operation - no
+    # stub. The store and scheduler must let it propagate unwrapped so the
+    # endpoint layer can map it to STORAGE_UNAVAILABLE / 503.
+    client = MongoClient("mongodb://127.0.0.1:1/", serverSelectionTimeoutMS=250);
     try {
-        sched.list_jobs();
-    } except PyMongoError {
-        raised_kind = 'pymongo';
-    } except Exception as e {
-        raised_kind = f'other:{type(e).__name__}';
+        sched = JacScaleScheduler();
+        sched._apscheduler = unittest.mock.MagicMock();
+        sched._store = MongoJobStore(
+            _db=MongoDb(client=client), _collection='scheduled_jobs'
+        );
+
+        raised_kind: str | None = None;
+        try {
+            sched.list_jobs();
+        } except PyMongoError {
+            raised_kind = 'pymongo';
+        } except Exception as e {
+            raised_kind = f'other:{type(e).__name__}';
+        }
+        assert raised_kind == 'pymongo' , (
+            f"PyMongoError must propagate unwrapped so the endpoint can map "
+            f"it to STORAGE_UNAVAILABLE/503; got {raised_kind}"
+        );
+    } finally {
+        with contextlib.suppress(Exception) {
+            client.close();
+        }
     }
-    assert raised_kind == 'pymongo' , (
-        f"PyMongoError must propagate unwrapped so _err_response can map "
-        f"it to STORAGE_UNAVAILABLE/503; got {raised_kind}"
-    );
 }
 
 test "scheduler get_job propagates PyMongoError" {
-    sched = _make_sched();
-    sched._store = unittest.mock.MagicMock();
-    sched._store.find_active_one.side_effect = PyMongoError('connection refused');
-
-    raised_pymongo = False;
+    client = MongoClient("mongodb://127.0.0.1:1/", serverSelectionTimeoutMS=250);
     try {
-        sched.get_job('some-id');
-    } except PyMongoError {
-        raised_pymongo = True;
+        sched = JacScaleScheduler();
+        sched._apscheduler = unittest.mock.MagicMock();
+        sched._store = MongoJobStore(
+            _db=MongoDb(client=client), _collection='scheduled_jobs'
+        );
+
+        raised_pymongo = False;
+        try {
+            sched.get_job('some-id');
+        } except PyMongoError {
+            raised_pymongo = True;
+        }
+        assert raised_pymongo , "PyMongoError from get_job must propagate";
+    } finally {
+        with contextlib.suppress(Exception) {
+            client.close();
+        }
     }
-    assert raised_pymongo , "PyMongoError from get_job must propagate";
 }
 
 test "user_is_live caches positive answer for ttl seconds" {
     # First call hits user_manager.user_exists; subsequent calls within TTL
     # are served from cache. After TTL expiry, user_manager is hit again.
-    sched = _make_sched();
+    # 'alice' is a REAL user - user_exists answers from the real store; we only
+    # spy on it (wraps=) to count how often the scheduler consults it.
+    (sched, test_dir, um) = _make_sched(existing_users=['alice']);
     sched._user_exists_ttl = 30.0;
-
-    base_t = 1_000_000.0;
-    with unittest.mock.patch('time.time') as mock_time {
-        mock_time.return_value = base_t;
-        assert sched._user_is_live('alice');
-        assert sched._server.user_manager.user_exists.call_count == 1;
-        # t=10 → within TTL, cache hit, user_manager not called again.
-        mock_time.return_value = base_t + 10.0;
-        assert sched._user_is_live('alice');
-        assert sched._server.user_manager.user_exists.call_count == 1 , (
-            f"Expected cache hit within TTL, but user_exists was called "
-            f"{sched._server.user_manager.user_exists.call_count} times"
-        );
-        # t=29.9 → still within TTL.
-        mock_time.return_value = base_t + 29.9;
-        assert sched._user_is_live('alice');
-        assert sched._server.user_manager.user_exists.call_count == 1;
-        # t=31 → past TTL, cache miss, user_manager called again.
-        mock_time.return_value = base_t + 31.0;
-        assert sched._user_is_live('alice');
-        assert sched._server.user_manager.user_exists.call_count == 2 , (
-            "Expected user_manager to be re-consulted after TTL expiry"
-        );
+    try {
+        base_t = 1_000_000.0;
+        with unittest.mock.patch('time.time') as mock_time {
+            with unittest.mock.patch.object(
+                um, 'user_exists', wraps=um.user_exists
+            ) as spy {
+                mock_time.return_value = base_t;
+                assert sched._user_is_live('alice');
+                assert spy.call_count == 1;
+                # t=10 → within TTL, cache hit, user_manager not called again.
+                mock_time.return_value = base_t + 10.0;
+                assert sched._user_is_live('alice');
+                assert spy.call_count == 1 , (
+                    f"Expected cache hit within TTL, but user_exists was called "
+                    f"{spy.call_count} times"
+                );
+                # t=29.9 → still within TTL.
+                mock_time.return_value = base_t + 29.9;
+                assert sched._user_is_live('alice');
+                assert spy.call_count == 1;
+                # t=31 → past TTL, cache miss, user_manager called again.
+                mock_time.return_value = base_t + 31.0;
+                assert sched._user_is_live('alice');
+                assert spy.call_count == 2 , (
+                    "Expected user_manager to be re-consulted after TTL expiry"
+                );
+            }
+        }
+    } finally {
+        _teardown_um(test_dir, um);
     }
 }
 
 test "user_is_live negative result is not cached" {
-    sched = _make_sched(user_exists_map={'ghost': False});
+    # 'ghost' is never created, so the real user_manager genuinely reports
+    # it as non-existent on every call.
+    (sched, test_dir, um) = _make_sched(existing_users=[]);
     sched._user_exists_ttl = 30.0;
-
-    with unittest.mock.patch('time.time') as mock_time {
-        mock_time.return_value = 1_000_000.0;
-        assert not sched._user_is_live('ghost');
-        # Next call within TTL — must still hit the user_manager.
-        mock_time.return_value = 1_000_001.0;
-        assert not sched._user_is_live('ghost');
-        assert sched._server.user_manager.user_exists.call_count == 2 , (
-            "Negative results must not be cached"
-        );
+    try {
+        with unittest.mock.patch('time.time') as mock_time {
+            with unittest.mock.patch.object(
+                um, 'user_exists', wraps=um.user_exists
+            ) as spy {
+                mock_time.return_value = 1_000_000.0;
+                assert not sched._user_is_live('ghost');
+                # Next call within TTL - must still hit the user_manager.
+                mock_time.return_value = 1_000_001.0;
+                assert not sched._user_is_live('ghost');
+                assert spy.call_count == 2 , ("Negative results must not be cached");
+            }
+        }
+    } finally {
+        _teardown_um(test_dir, um);
     }
 }
 
 test "user_is_live evicts positive cache when user later disappears" {
-    sched = JacScaleScheduler();
+    # 'bob' starts as a real user, is cached live, then is genuinely deleted
+    # from the real store; after TTL the re-check must observe the deletion.
+    (sched, test_dir, um) = _make_sched(existing_users=['bob']);
     sched._user_exists_ttl = 30.0;
-    sched._store = MemoryJobStore();
-    sched._apscheduler = unittest.mock.MagicMock();
+    try {
+        bob = um.find_user_by_identity('bob');
+        assert bob is not None;
+        bob_id = bob['user_id'];
 
-    state = {'alive': True};
-    mock_um = unittest.mock.MagicMock();
-    def _check_alive(_uid: str) -> bool {
-        return state['alive'];
-    }
-    mock_um.user_exists.side_effect = _check_alive;
-    mock_server = unittest.mock.MagicMock();
-    mock_server.user_manager = mock_um;
-    sched._server = mock_server;
-
-    base_t = 2_000_000.0;
-    with unittest.mock.patch('time.time') as mock_time {
-        mock_time.return_value = base_t;
-        assert sched._user_is_live('bob');
-        # User gets deleted while still cached.
-        state['alive'] = False;
-        # Within TTL → still served from positive cache.
-        mock_time.return_value = base_t + 10.0;
-        assert sched._user_is_live('bob');
-        # After TTL → cache expires, re-check, returns False, entry evicted.
-        mock_time.return_value = base_t + 35.0;
-        assert not sched._user_is_live('bob');
-        assert 'bob' not in sched._user_exists_cache , (
-            "Evicted negative entry should not linger in the cache"
-        );
+        base_t = 2_000_000.0;
+        with unittest.mock.patch('time.time') as mock_time {
+            mock_time.return_value = base_t;
+            assert sched._user_is_live('bob');
+            # User is really deleted while still cached.
+            um.delete_user(bob_id);
+            assert not um.user_exists('bob');
+            # Within TTL → still served from positive cache.
+            mock_time.return_value = base_t + 10.0;
+            assert sched._user_is_live('bob');
+            # After TTL → cache expires, re-check, returns False, entry evicted.
+            mock_time.return_value = base_t + 35.0;
+            assert not sched._user_is_live('bob');
+            assert 'bob' not in sched._user_exists_cache , (
+                "Evicted negative entry should not linger in the cache"
+            );
+        }
+    } finally {
+        _teardown_um(test_dir, um);
     }
 }
 
 test "register_dynamic_tasks_from_db marks jobs orphaned when creator gone" {
-    sched = _make_sched(user_exists_map={'alice': True, 'ghost': False});
-    alive_job = {
-        'job_id': 'job-alive',
-        'name': 'AliceWalker',
-        'created_by': 'alice',
-        'is_walker': True,
-        'status': 'active',
-        'trigger': 'interval',
-        'interval': 60.0
-    };
-    ghost_job = {
-        'job_id': 'job-ghost',
-        'name': 'GhostWalker',
-        'created_by': 'ghost',
-        'is_walker': True,
-        'status': 'active',
-        'trigger': 'interval',
-        'interval': 60.0
-    };
-    sched._store.insert(alive_job);
-    sched._store.insert(ghost_job);
+    # 'alice' is a real user, 'ghost' is not - so the orphan decision is driven
+    # by the real user_manager, and the orphaning is asserted on the real store.
+    (sched, test_dir, um) = _make_sched(existing_users=['alice']);
+    try {
+        alive_job = {
+            'job_id': 'job-alive',
+            'name': 'AliceWalker',
+            'created_by': 'alice',
+            'is_walker': True,
+            'status': 'active',
+            'trigger': 'interval',
+            'interval': 60.0
+        };
+        ghost_job = {
+            'job_id': 'job-ghost',
+            'name': 'GhostWalker',
+            'created_by': 'ghost',
+            'is_walker': True,
+            'status': 'active',
+            'trigger': 'interval',
+            'interval': 60.0
+        };
+        sched._store.insert(alive_job);
+        sched._store.insert(ghost_job);
 
-    # Patch _schedule_apscheduler_job so we can assert which jobs were
-    # actually handed off to APScheduler.
-    scheduled_ids: list[str] = [];
+        # Patch _schedule_apscheduler_job so we can assert which jobs were
+        # actually handed off to APScheduler.
+        scheduled_ids: list[str] = [];
 
-    def _capture_schedule(
-        job_id: str, name: str, spec: any, user_id: str, is_walker: bool = True
-    ) {
-        scheduled_ids.append(job_id);
+        def _capture_schedule(
+            job_id: str, name: str, spec: any, user_id: str, is_walker: bool = True
+        ) {
+            scheduled_ids.append(job_id);
+        }
+
+        with unittest.mock.patch.object(
+            sched, '_schedule_apscheduler_job', side_effect=_capture_schedule
+        ) {
+            sched.register_dynamic_tasks_from_db();
+        }
+
+        assert 'job-alive' in scheduled_ids , "Live job must be restored to APScheduler";
+        assert 'job-ghost' not in scheduled_ids , (
+            "Orphaned job (deleted creator) must NOT be re-added to APScheduler"
+        );
+
+        # Ghost job's status flipped from 'active' to 'orphaned' with a
+        # timestamp; find_active_one should no longer return it.
+        assert sched._store.find_active_one('job-ghost') is None , (
+            "Orphaned job must not surface as an active job anymore"
+        );
+        raw_ghost = sched._store._jobs.get('job-ghost') or {};
+        assert raw_ghost.get('status') == 'orphaned' , (
+            f"Expected status='orphaned', got {raw_ghost.get('status')!r}"
+        );
+        assert raw_ghost.get('orphaned_at') , "orphaned_at timestamp must be set";
+
+        raw_alive = sched._store._jobs.get('job-alive') or {};
+        assert raw_alive.get('status') == 'active';
+    } finally {
+        _teardown_um(test_dir, um);
     }
-
-    with unittest.mock.patch.object(
-        sched, '_schedule_apscheduler_job', side_effect=_capture_schedule
-    ) {
-        sched.register_dynamic_tasks_from_db();
-    }
-
-    assert 'job-alive' in scheduled_ids , "Live job must be restored to APScheduler";
-    assert 'job-ghost' not in scheduled_ids , (
-        "Orphaned job (deleted creator) must NOT be re-added to APScheduler"
-    );
-
-    # Ghost job's status flipped from 'active' to 'orphaned' with a
-    # timestamp; find_active_one should no longer return it.
-    assert sched._store.find_active_one('job-ghost') is None , (
-        "Orphaned job must not surface as an active job anymore"
-    );
-    raw_ghost = sched._store._jobs.get('job-ghost') or {};
-    assert raw_ghost.get('status') == 'orphaned' , (
-        f"Expected status='orphaned', got {raw_ghost.get('status')!r}"
-    );
-    assert raw_ghost.get('orphaned_at') , "orphaned_at timestamp must be set";
-
-    raw_alive = sched._store._jobs.get('job-alive') or {};
-    assert raw_alive.get('status') == 'active';
 }
 
 test "register_dynamic_tasks_from_db restores system-owned jobs without user_exists check" {
-    sched = _make_sched(user_exists_map={'__system__': False});
+    # No '__system__' user exists in the real store, so user_exists('__system__')
+    # genuinely returns False - yet the system-owned job must still be restored,
+    # proving the scheduler bypasses the liveness check for the system user.
+    (sched, test_dir, um) = _make_sched(existing_users=[]);
+    try {
+        assert not um.user_exists('__system__');
+        sys_job = {
+            'job_id': 'job-sys',
+            'name': 'SystemWalker',
+            'created_by': '__system__',
+            'is_walker': True,
+            'status': 'active',
+            'trigger': 'interval',
+            'interval': 60.0
+        };
+        sched._store.insert(sys_job);
 
-    sys_job = {
-        'job_id': 'job-sys',
-        'name': 'SystemWalker',
-        'created_by': '__system__',
-        'is_walker': True,
-        'status': 'active',
-        'trigger': 'interval',
-        'interval': 60.0
-    };
-    sched._store.insert(sys_job);
+        scheduled_ids: list[str] = [];
 
-    scheduled_ids: list[str] = [];
+        def _capture(
+            job_id: str, name: str, spec: any, user_id: str, is_walker: bool = True
+        ) {
+            scheduled_ids.append(job_id);
+        }
 
-    def _capture(
-        job_id: str, name: str, spec: any, user_id: str, is_walker: bool = True
-    ) {
-        scheduled_ids.append(job_id);
+        with unittest.mock.patch.object(
+            sched, '_schedule_apscheduler_job', side_effect=_capture
+        ) {
+            sched.register_dynamic_tasks_from_db();
+        }
+
+        assert 'job-sys' in scheduled_ids , (
+            "System-owned job must be restored regardless of user_exists()"
+        );
+        raw = sched._store._jobs.get('job-sys') or {};
+        assert raw.get('status') == 'active';
+    } finally {
+        _teardown_um(test_dir, um);
     }
-
-    with unittest.mock.patch.object(
-        sched, '_schedule_apscheduler_job', side_effect=_capture
-    ) {
-        sched.register_dynamic_tasks_from_db();
-    }
-
-    assert 'job-sys' in scheduled_ids , (
-        "System-owned job must be restored regardless of user_exists()"
-    );
-    raw = sched._store._jobs.get('job-sys') or {};
-    assert raw.get('status') == 'active';
 }
 
 test "update_job with acting_as=None updates jobs created by any user (admin path)" {
-    sched = _make_sched();
+    (sched, test_dir, um) = _make_sched();
+    try {
+        job = {
+            'job_id': 'job-x',
+            'name': 'DynamicScheduledWalker',
+            'created_by': 'alice',
+            'is_walker': True,
+            'status': 'active',
+            'trigger': 'interval',
+            'interval': 60.0
+        };
+        sched._store.insert(job);
 
-    job = {
-        'job_id': 'job-x',
-        'name': 'DynamicScheduledWalker',
-        'created_by': 'alice',
-        'is_walker': True,
-        'status': 'active',
-        'trigger': 'interval',
-        'interval': 60.0
-    };
-    sched._store.insert(job);
+        new_spec = TriggerSpec.validate(trigger='interval', interval=3600.0);
 
-    new_spec = TriggerSpec.validate(trigger='interval', interval=3600.0);
+        # Non-admin (bob) → must NOT update Alice's job.
+        with unittest.mock.patch.object(
+            sched, '_schedule_apscheduler_job'
+        ) as patched_schedule {
+            result = sched.update_job(job_id='job-x', spec=new_spec, acting_as='bob');
+            assert result is None , (
+                "Non-owner (acting_as='bob') must return None when Alice owns the job"
+            );
+            assert patched_schedule.call_count == 0 , (
+                "APScheduler must not be touched for unauthorized updates"
+            );
+        }
 
-    # Non-admin (bob) → must NOT update Alice's job.
-    with unittest.mock.patch.object(
-        sched, '_schedule_apscheduler_job'
-    ) as patched_schedule {
-        result = sched.update_job(job_id='job-x', spec=new_spec, acting_as='bob');
-        assert result is None , (
-            "Non-owner (acting_as='bob') must return None when Alice owns the job"
-        );
-        assert patched_schedule.call_count == 0 , (
-            "APScheduler must not be touched for unauthorized updates"
-        );
-    }
+        # Admin path (acting_as=None) → MUST update.
+        with unittest.mock.patch.object(
+            sched, '_schedule_apscheduler_job'
+        ) as patched_schedule {
+            result = sched.update_job(job_id='job-x', spec=new_spec, acting_as=None);
+            assert result is not None , (
+                "Admin override (acting_as=None) must succeed regardless of created_by"
+            );
+            assert result.get('interval') == 3600.0;
+            assert patched_schedule.call_count == 1 , (
+                "Admin update must re-schedule the job in APScheduler"
+            );
+        }
 
-    # Admin path (acting_as=None) → MUST update.
-    with unittest.mock.patch.object(
-        sched, '_schedule_apscheduler_job'
-    ) as patched_schedule {
-        result = sched.update_job(job_id='job-x', spec=new_spec, acting_as=None);
-        assert result is not None , (
-            "Admin override (acting_as=None) must succeed regardless of created_by"
-        );
-        assert result.get('interval') == 3600.0;
-        assert patched_schedule.call_count == 1 , (
-            "Admin update must re-schedule the job in APScheduler"
-        );
-    }
-
-    # Owner path (acting_as='alice') → also updates.
-    with unittest.mock.patch.object(sched, '_schedule_apscheduler_job') {
-        result = sched.update_job(job_id='job-x', spec=new_spec, acting_as='alice');
-        assert result is not None , "Owner must be able to update her own job";
+        # Owner path (acting_as='alice') → also updates.
+        with unittest.mock.patch.object(sched, '_schedule_apscheduler_job') {
+            result = sched.update_job(job_id='job-x', spec=new_spec, acting_as='alice');
+            assert result is not None , "Owner must be able to update her own job";
+        }
+    } finally {
+        _teardown_um(test_dir, um);
     }
 }
 
 test "delete_job with acting_as=None deletes jobs created by any user (admin path)" {
-    sched = _make_sched();
+    (sched, test_dir, um) = _make_sched();
+    try {
+        job = {
+            'job_id': 'job-del',
+            'name': 'DynamicScheduledWalker',
+            'created_by': 'alice',
+            'is_walker': True,
+            'status': 'active',
+            'trigger': 'interval',
+            'interval': 60.0
+        };
+        sched._store.insert(job);
 
-    job = {
-        'job_id': 'job-del',
-        'name': 'DynamicScheduledWalker',
-        'created_by': 'alice',
-        'is_walker': True,
-        'status': 'active',
-        'trigger': 'interval',
-        'interval': 60.0
-    };
-    sched._store.insert(job);
+        # Non-admin (bob) → MUST NOT delete.
+        deleted = sched.delete_job(job_id='job-del', acting_as='bob');
+        assert deleted == False , "Non-owner must not be able to delete Alice's job";
+        assert sched._store.find_active_one('job-del') is not None;
 
-    # Non-admin (bob) → MUST NOT delete.
-    deleted = sched.delete_job(job_id='job-del', acting_as='bob');
-    assert deleted == False , "Non-owner must not be able to delete Alice's job";
-    assert sched._store.find_active_one('job-del') is not None;
-
-    # Admin (acting_as=None) → MUST delete.
-    deleted = sched.delete_job(job_id='job-del', acting_as=None);
-    assert deleted == True , "Admin override (acting_as=None) must delete the job";
-    assert sched._store.find_active_one('job-del') is None , (
-        "Job must be gone from the store after admin delete"
-    );
+        # Admin (acting_as=None) → MUST delete.
+        deleted = sched.delete_job(job_id='job-del', acting_as=None);
+        assert deleted == True , "Admin override (acting_as=None) must delete the job";
+        assert sched._store.find_active_one('job-del') is None , (
+            "Job must be gone from the store after admin delete"
+        );
+    } finally {
+        _teardown_um(test_dir, um);
+    }
 }
