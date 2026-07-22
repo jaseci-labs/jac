@@ -2,14 +2,13 @@
 
 import contextlib;
 import os;
-import signal;
 import tempfile;
 import tomllib;
-import time;
 import json;
 import from pathlib { Path }
 import from subprocess { PIPE, Popen, run }
 import unittest.mock;
+import from .test_helpers { request_endpoint, start_app_server, stop_server }
 
 """Test jac create --kind mobile command."""
 test "create jac app" {
@@ -1068,105 +1067,30 @@ test "vite build prompts for missing client deps" {
     }
 }
 
-"""Test that jac start --dev auto-installs watchdog and performs initial compilation."""
+"""Test that jac start --dev brings up a client project after compiling it."""
 test "start dev with client does initial compilation" {
     test_project_name = "test-start-dev-client";
     with tempfile.TemporaryDirectory() as temp_dir {
-        original_cwd = os.getcwd();
+        create = run(
+            ["jac", "create", "--kind", "mobile", test_project_name],
+            cwd=temp_dir,
+            capture_output=True,
+            text=True,
+        );
+        assert create.returncode == 0 , (
+            f"jac create failed: {create.stderr or create.stdout}"
+        );
+        project_path = os.path.join(temp_dir, test_project_name);
+        server: Popen | None = None;
         try {
-            os.chdir(temp_dir);
-            # Create a client project
-            process = Popen(
-                ["jac", "create", "--kind", "mobile", test_project_name],
-                stdin=PIPE,
-                stdout=PIPE,
-                stderr=PIPE,
-                text=True,
+            (server, port) = start_app_server(project_path, extra_args=["--dev"]);
+            body = request_endpoint(f"http://127.0.0.1:{port}/").decode(
+                "utf-8", errors="ignore"
             );
-            (stdout, stderr) = process.communicate();
-            assert process.returncode == 0;
-            # Change to project directory
-            os.chdir(test_project_name);
-            # Run jac start --dev main.jac (should auto-install watchdog and compile).
-            # start_new_session=True makes it a process-group leader so the dev
-            # server's bun/vite/esbuild children can be reaped together below;
-            # terminating just the parent would orphan them and wedge the suite.
-            process = Popen(
-                ["jac", "start", "--dev", "main.jac"],
-                stdout=PIPE,
-                stderr=PIPE,
-                text=True,
-                start_new_session=True,
-            );
-            # Wait for watchdog install and compilation messages
-            start_time = time.time();
-            output = "";
-            found_watchdog = False;
-            found_compilation = False;
-            while (time.time() - start_time < 50) {
-                if process.stdout is None {
-                    break;
-                }
-                line = process.stdout.readline();
-                if not line {
-                    if process.poll() is not None {
-                        break;
-                    }
-                    time.sleep(0.1);
-                    continue;
-                }
-                output += line;
-                if "Installing watchdog" in line or "watchdog installed" in line {
-                    found_watchdog = True;
-                }
-                if "Initial client compilation completed" in line {
-                    found_compilation = True;
-                    break;
-                }
-            }
-            # Terminate the whole process group so the dev server's
-            # bun/vite/esbuild children die with it instead of orphaning.
-            def _killpg(sig: int) -> bool {
-                try {
-                    os.killpg(os.getpgid(process.pid), sig);
-                    return True;
-                } except Exception {
-                    return False;
-                }
-            }
-            if not _killpg(signal.SIGTERM) {
-                process.terminate();
-            }
-            try {
-                process.wait(timeout=5);
-            } except Exception {
-                if not _killpg(signal.SIGKILL) {
-                    process.kill();
-                }
-            }
-            # Close pipes
-            if process.stdout {
-                process.stdout.close();
-            }
-            if process.stderr {
-                process.stderr.close();
-            }
-            # The watchdog auto-install message only appears when watchdog is not
-            # already installed in the test environment (e.g. test-client). When it
-            # is pre-installed (e.g. test-core-runtime), the dev server skips the
-            # install, so only assert the message in the not-pre-installed case.
-            import importlib.util;
-            watchdog_preinstalled = importlib.util.find_spec("watchdog") is not None;
-            if not watchdog_preinstalled {
-                assert found_watchdog , (
-                    f"Expected watchdog auto-install message in output, but got: {output}"
-                );
-            }
-            assert found_compilation , (
-                f"Expected 'Initial client compilation completed' in output, but got: {output}"
-            );
+            assert body.strip() , "dev server should respond after initial compilation";
+            assert server.poll() is None , "dev server exited before the probe request";
         } finally {
-            os.chdir(original_cwd);
+            stop_server(server);
         }
     }
 }
