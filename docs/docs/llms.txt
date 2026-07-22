@@ -8,16 +8,18 @@ Key facts: statements end with `;`, blocks use `{ }`, fields are declared with `
 
 - [What is Jac](https://docs.jaseci.org/quick-guide/): overview and positioning
 - [Install](https://docs.jaseci.org/quick-guide/install/): the self-contained binary, upgrading, IDE setup
-- [Core concepts](https://docs.jaseci.org/quick-guide/what-makes-jac-different/): what the language abstracts away
-- [The ideas behind Jac](https://docs.jaseci.org/quick-guide/ideas-behind-jac/): the design philosophy -- discontinuities, glue, one checked medium across ecosystems/tiers/toolchains (synechic), computation moving to data
-- [One binary, build anything](https://docs.jaseci.org/quick-guide/one-binary/): the toolchain inside the jac binary
+- [Why Jac exists](https://docs.jaseci.org/quick-guide/why-jac/): the diagnosis -- discontinuities, glue, and the two von Neumann assumptions
+- [The two ideas](https://docs.jaseci.org/quick-guide/ideas-behind-jac/): the two properties -- synechic (one checked medium across ecosystems/tiers/toolchains) and topokinetic (computation moves through a topology of data), and why they compound
+- [Core concepts](https://docs.jaseci.org/quick-guide/what-makes-jac-different/): the practical tour -- codespaces, persistence, walkers, by/sem
+- [Vocabulary](https://docs.jaseci.org/quick-guide/vocabulary/): one-line canonical definitions of every coined term
+- [One binary, build anything](https://docs.jaseci.org/quick-guide/one-binary/): the toolchain inside the jac binary, and the polypiler
 - [Syntax cheatsheet](https://docs.jaseci.org/reference/language/syntax-cheatsheet/): the whole language on one page
-- [Jac vs a traditional stack](https://docs.jaseci.org/quick-guide/jac-vs-traditional-stack/): comparison with assembling frameworks
+- [One app, two stacks](https://docs.jaseci.org/quick-guide/jac-vs-traditional-stack/): the same app built both ways, with the glue counted
 
 ## Tutorials
 
 - [Jac fundamentals](https://docs.jaseci.org/tutorials/language/basics/): the language, for Python developers
-- [Graphs and walkers](https://docs.jaseci.org/tutorials/language/osp/): object-spatial programming
+- [Object-Spatial Programming](https://docs.jaseci.org/tutorials/language/osp/): nodes, edges, and walkers
 - [Build an AI Day Planner](https://docs.jaseci.org/tutorials/first-app/build-ai-day-planner/): flagship full-stack tutorial
 - [Your first AI function](https://docs.jaseci.org/tutorials/ai/quickstart/): `by llm()` quickstart
 - [Full-stack web apps](https://docs.jaseci.org/build/fullstack-web/): frontend and backend in one file
@@ -29,7 +31,7 @@ Key facts: statements end with `;`, blocks use `{ }`, fields are declared with `
 
 - [Reference overview](https://docs.jaseci.org/reference/): language and stack reference index
 - [CLI reference](https://docs.jaseci.org/reference/cli/): every jac command and flag
-- [byllm plugin](https://docs.jaseci.org/reference/plugins/byllm/): AI integration and model configuration
+- [byllm plugin](https://docs.jaseci.org/reference/plugins/byllm/): meaning types (`by llm()`, `sem`) and model configuration
 - [jac-scale](https://docs.jaseci.org/reference/plugins/jac-scale/): deployment and scaling subsystem
 
 ## Optional

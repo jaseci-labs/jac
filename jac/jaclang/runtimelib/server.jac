@@ -104,7 +104,9 @@ obj ModuleIntrospector {
         _bundle_error: (str | None) = None,
         _bundle_builder: any postinit,
         _function_access: dict[(str, bool)] = {},
-        _walker_access: dict[(str, bool)] = {};
+        _walker_access: dict[(str, bool)] = {},
+        _spa_routes_loaded: bool = False,
+        _spa_route_patterns: (list[str] | None) = None;
 
     def postinit -> None;
     def load(force_reload: bool = False) -> None;
@@ -127,6 +129,9 @@ obj ModuleIntrospector {
         function_name: str, args: dict[(str, Any)], username: str
     ) -> dict[str, any];
 
+    def spa_fallback_status(url_path: str) -> int;
+    def _load_spa_routes -> (list[str] | None);
+    def _spa_route_matches(pattern: str, segments: list[str]) -> bool;
     def is_auth_required_for_function(func_name: str) -> bool;
     def is_auth_required_for_walker(walker_name: str) -> bool;
 }

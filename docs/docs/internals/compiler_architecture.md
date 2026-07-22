@@ -113,7 +113,7 @@ graph TD
 
     FRONTEND --> FE1 --> FE2 --> FE3 --> FE4 --> FE5 --> FE6 --> FE7 --> FE8
     FE8 --> TYPECK["Type Check<br/>TypeCheckPass / StaticAnalysisPass / PortabilityWarnPass"]
-    TYPECK --> INTEROP["InteropAnalysisPass<br/>(boundary discovery)"]
+    TYPECK --> INTEROP["BoundaryAnalysisPass<br/>(boundary discovery)"]
     INTEROP --> SV[PyastGenPass + PyBytecodeGenPass]
     INTEROP --> CL[EsastGenPass]
     INTEROP --> NA[NaIRGenPass + NativeCompilePass]
@@ -347,9 +347,9 @@ Two design decisions bound what "fully stamped" means:
 
 ---
 
-## Stage 4: Boundary Discovery -- `InteropAnalysisPass`
+## Stage 4: Boundary Discovery -- `BoundaryAnalysisPass`
 
-[`InteropAnalysisPass`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/passes/interop_analysis_pass.jac)
+[`BoundaryAnalysisPass`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/passes/boundary_analysis_pass.jac)
 runs once *before* code generation. It walks every call site and records:
 
 1. The `CodeContext` of the **caller** and **callee** (SERVER / CLIENT / NATIVE).
@@ -392,7 +392,7 @@ Builtins and language keywords ultimately resolve to methods on
 `JacRuntimeInterface` in [`jac0core/runtime.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/runtime.jac).
 
 The primitive type contract for this backend lives in
-[`pycore/passes/primitives_py.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/pycore/passes/primitives_py.jac).
+[`compiler/passes/ecmascript/primitives_es.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/ecmascript/primitives_es.jac) and [`compiler/passes/native/primitives_native.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/native/primitives_native.jac).
 
 ### Client backend -- `cl { }`
 
@@ -450,19 +450,23 @@ Linking is also self-contained -- no external linker is invoked:
 The native backend supplies its own memory management: a 32-byte
 allocation header with reference counts (see `HDR_*` globals in
 `na_ir_gen_pass.jac`). Cross-codespace calls between Python and native
-flow through the interop bridge generated from `InteropAnalysisPass`.
+flow through the interop bridge generated from `BoundaryAnalysisPass`.
 
 ---
 
 ## Primitive Emitter Contract
 
-Every backend implements the same abstract emitter interface. This is what
-makes "`'hello'.upper()` works in all three codespaces" a guarantee rather
-than a convention.
+The two lowering backends (ECMAScript and native) implement the same
+abstract emitter interface, defined in
+[`compiler/primitives.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/primitives.jac).
+The server backend needs no emitters: it compiles to Python bytecode, so
+CPython itself provides the reference semantics the other backends must
+match. This is what makes "`'hello'.upper()` works in all three codespaces"
+a guarantee rather than a convention.
 
 ```mermaid
 graph TD
-    subgraph "Abstract"
+    subgraph "Abstract (compiler/primitives.jac)"
         INT[IntEmitter]
         STR[StrEmitter]
         LIST[ListEmitter]
@@ -470,35 +474,30 @@ graph TD
         BLT[BuiltinEmitter]
     end
 
-    subgraph "Server (primitives_py)"
-        PyInt[PyIntEmitter]
-        PyStr[PyStrEmitter]
-    end
-
     subgraph "Client (primitives_es)"
-        EsInt[ESIntEmitter]
-        EsStr[ESStrEmitter]
+        EsInt[ES IntEmitter]
+        EsStr[ES StrEmitter]
     end
 
     subgraph "Native (primitives_native)"
-        NaInt[NativeIntEmitter]
-        NaStr[NativeStrEmitter]
+        NaInt[Native IntEmitter]
+        NaStr[Native StrEmitter]
     end
 
-    INT --> PyInt
     INT --> EsInt
     INT --> NaInt
-    STR --> PyStr
     STR --> EsStr
     STR --> NaStr
 ```
 
-Twelve emitter families are defined, one per primitive type (`int`,
-`float`, `str`, `bytes`, `list`, `dict`, `set`, `frozenset`, `tuple`,
-`range`, `complex`) plus `BuiltinEmitter` for top-level functions like
-`print()`, `len()`, `range()`, `sorted()`. The codegen pass calls
-`StrEmitter.emit_op_add(...)` and the appropriate subclass produces
-Python `BinOp`, an ES `BinaryExpression`, or an LLVM `call @str_concat`.
+Thirteen emitter families are defined: one per primitive type (`int`,
+`float`, `complex`, `str`, `bytes`, `list`, `dict`, `set`, `frozenset`,
+`tuple`, `range`), plus `BuiltinEmitter` for top-level functions like
+`print()`, `len()`, `range()`, `sorted()`, and `ExceptionEmitter` for the
+exception machinery. The codegen pass calls `StrEmitter.emit_op_add(...)`
+and the backend's subclass produces an ES `BinaryExpression` or an LLVM
+`call @str_concat`; the Python backend emits an ordinary `BinOp` whose
+semantics come from CPython directly.
 
 If a backend hasn't implemented an operation, the emitter returns `None`
 and the compiler raises a diagnostic at compile time -- see the diagnostic
@@ -511,7 +510,7 @@ user-facing reference, [Primitives & Codespace Semantics](../reference/language/
 
 ## Cross-Codespace Interop
 
-`InteropAnalysisPass` discovers boundaries; the backends close them.
+`BoundaryAnalysisPass` discovers boundaries; the backends close them.
 
 | Direction | Bridge | Generated by |
 |-----------|--------|--------------|
@@ -519,7 +518,7 @@ user-facing reference, [Primitives & Codespace Semantics](../reference/language/
 | `sv → cl` | None at runtime -- the client mounts its own DOM. The server only ships the bootstrap payload | `PyastGenPass` emits the static-file route for the bundle |
 | `sv → na` | In-process `ctypes.CFUNCTYPE` over the JIT'd function address (MCJIT); an AOT `--shared` build is loaded across the process boundary instead | `PyastGenPass` emits the ctypes stub; `NaIRGenPass` exposes the function with C ABI |
 | `na → sv` | Python callback wrapped in a `ctypes.CFUNCTYPE` and registered as a JIT symbol (`llvm.add_symbol`), so MCJIT resolves the native call back into CPython | `interop_bridge.register_py_callbacks`, alongside the `sv → na` stub |
-| `na → na` | Direct symbol reference resolved by the in-tree linker | `InteropAnalysisPass` records the import; `NativeCompilePass` emits the relocation |
+| `na → na` | Direct symbol reference resolved by the in-tree linker | `BoundaryAnalysisPass` records the import; `NativeCompilePass` emits the relocation |
 | `sv → sv` (microservice) | HTTP between processes when an `sv import` resolves to a different deployment | `PyastGenPass` emits a generated `__jac_sv_client` RPC stub; the manifest is consumed by the built-in `scale` subsystem |
 
 Boundary types are serialised through the schemas in
@@ -616,7 +615,7 @@ A short index, organised by the role each file plays in the pipeline.
 - [`jac0core/passes/pyast_gen_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/passes/pyast_gen_pass.jac)
   / [impl](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/passes/impl/pyast_gen_pass.impl.jac)
 - [`jac0core/passes/pybc_gen_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/passes/pybc_gen_pass.jac)
-- [`pycore/passes/primitives_py.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/pycore/passes/primitives_py.jac)
+- [`compiler/passes/ecmascript/primitives_es.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/ecmascript/primitives_es.jac) and [`compiler/passes/native/primitives_native.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/native/primitives_native.jac)
 - [`jac0core/runtime.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/runtime.jac)
   -- `JacRuntimeInterface`
 
@@ -641,7 +640,7 @@ A short index, organised by the role each file plays in the pipeline.
 
 **Interop**
 
-- [`jac0core/passes/interop_analysis_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/passes/interop_analysis_pass.jac)
+- [`jac0core/passes/boundary_analysis_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/passes/boundary_analysis_pass.jac)
 - [`jac0core/interop_bridge.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/interop_bridge.jac)
 
 **Caching**
@@ -659,8 +658,8 @@ A short index, organised by the role each file plays in the pipeline.
   builtin, and standard-library entry, mapped to its parser, AST node, and
   runtime.
 - [UniIR Nodes](uniir_node.md) -- full AST node reference.
-- [Import Patterns](jac_import_patterns.md) -- how variant modules
-  (`.sv.jac`, `.cl.jac`, `.na.jac`) merge into one logical module.
+- [Import Patterns](jac_import_patterns.md) -- how JavaScript/npm import
+  patterns map to Jac client imports and what each generates.
 - [Primitives & Codespace Semantics](../reference/language/primitives.md)
   -- user-facing contract that the emitters satisfy.
 - [Native Compilation](../reference/language/native-pathway.md) -- user

@@ -10,7 +10,7 @@ This page is a **lookup reference**, not a learning guide. For hands-on learning
 # ============================================================
 # Jac compiles to Python bytecode, JavaScript, and native machine code.
 # It features graph-native programming, object-spatial walkers,
-# AI-native constructs, and full-stack codespaces -- all with
+# meaning-typed AI constructs, and full-stack codespaces -- all with
 # brace-delimited blocks.
 # Run a file with: jac <filename>
 

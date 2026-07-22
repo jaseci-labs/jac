@@ -8,7 +8,7 @@ Scale ships **built into `jaclang` core** as the `scale` subsystem (importable a
 
 ## The scale-invariance contract
 
-Scale exists to keep one promise: **your program text does not change with the shape of its deployment.** The program that runs as a script serves as an API and deploys to a cluster --
+Scale exists to keep one promise: **your program text does not change with the shape of its deployment.** The property is *scale invariance*: program semantics are invariant under deployment-scale transformation, one user to N users, one machine to M machines, transient to persistent. Delivered, it presents a *single system image*: processes, machines, and users appear to the program as one continuous machine. The program that runs as a script serves as an API and deploys to a cluster --
 
 ```bash
 jac run main.jac             # one user, one process, local store
@@ -25,65 +25,6 @@ jac start main.jac --scale   # N users, M machines, Kubernetes
 - **Cost** moves, it doesn't vanish: scaling is paid in machines and operator attention instead of engineering time. The single system image hides the deployment's shape from the program, not the bill from the people running it.
 
 This reference is split across three focused pages, hubbed here. Use the quick reference below to jump to the area you need.
-
-<!-- This page was split into three sub-pages (see "Reference pages" below). Old
-     deep links such as jac-scale/#storage still resolve to this hub; the script
-     below forwards a matching fragment to the section's new home so external
-     bookmarks keep working. -->
-<script>
-(function () {
-  var moved = {
-    "admin-portal": "jac-scale-http",
-    "api-documentation": "jac-scale-http",
-    "api-endpoints": "jac-scale-http",
-    "async-walkers": "jac-scale-persistence",
-    "authentication": "jac-scale-http",
-    "autoscaling": "jac-scale-kubernetes",
-    "builtins": "jac-scale-persistence",
-    "centralised-logs": "jac-scale-kubernetes",
-    "cli-commands": "jac-scale-http",
-    "cross-service-shared-volumes": "jac-scale-kubernetes",
-    "database-and-dashboards": "jac-scale-persistence",
-    "direct-database-access-kvstore": "jac-scale-persistence",
-    "distributed-locks-redis-only": "jac-scale-persistence",
-    "emailer": "jac-scale-http",
-    "event-streaming": "jac-scale-persistence",
-    "firestore-operations": "jac-scale-persistence",
-    "graph-traversal-api": "jac-scale-persistence",
-    "graph-visualization": "jac-scale-http",
-    "health-checks": "jac-scale-kubernetes",
-    "identity-management-password-reset": "jac-scale-http",
-    "kubernetes-deployment": "jac-scale-kubernetes",
-    "kubernetes-secrets": "jac-scale-kubernetes",
-    "microservice-interop-sv-to-sv": "jac-scale-http",
-    "microservice-mode-in-kubernetes": "jac-scale-kubernetes",
-    "middleware-walkers": "jac-scale-http",
-    "mongodb-operations": "jac-scale-persistence",
-    "permissions-access-control": "jac-scale-http",
-    "pre-bound-serviceaccount": "jac-scale-kubernetes",
-    "prometheus-metrics": "jac-scale-kubernetes",
-    "redis-operations": "jac-scale-persistence",
-    "remote-image-registry": "jac-scale-kubernetes",
-    "restspec-decorator": "jac-scale-http",
-    "sandbox-environments": "jac-scale-kubernetes",
-    "service-discovery": "jac-scale-http",
-    "setting-up-kubernetes": "jac-scale-kubernetes",
-    "starting-a-server": "jac-scale-http",
-    "storage": "jac-scale-persistence",
-    "sv_client-api-reference": "jac-scale-http",
-    "troubleshooting": "jac-scale-kubernetes",
-    "walker-imports": "jac-scale-http",
-    "webhooks": "jac-scale-http",
-    "websockets": "jac-scale-http"
-  };
-  function reroute() {
-    var h = (location.hash || "").replace(/^#/, "");
-    if (h && moved[h]) { location.replace("../" + moved[h] + "/#" + h); }
-  }
-  reroute();
-  window.addEventListener("hashchange", reroute);
-})();
-</script>
 
 ---
 
@@ -135,33 +76,7 @@ For end-to-end walkthroughs rather than reference material, see the Deploy tutor
 
 ## Library Mode
 
-For teams preferring pure Python syntax or integrating Jac into existing Python codebases, Library Mode provides an alternative deployment approach. Instead of `.jac` files, you use Python files with Jac's runtime as a library.
-
-> **Complete Guide:** See [Library Mode](../language/library-mode.md) for the full API reference, code examples, and migration guide.
-
-**Key Features:**
-
-- All Jac features accessible through `jaclang.lib` imports
-- Pure Python syntax with decorators (`@on_entry`, `@on_exit`)
-- Full IDE/tooling support (autocomplete, type checking, debugging)
-- Zero migration friction for existing Python projects
-
-**Quick Example:**
-
-```python
-from jaclang.lib import Node, Walker, spawn, root, on_entry
-
-class Task(Node):
-    title: str
-    done: bool = False
-
-class TaskFinder(Walker):
-    @on_entry
-    def find(self, here: Task) -> None:
-        print(f"Found: {here.title}")
-
-spawn(TaskFinder(), root())
-```
+Teams preferring pure Python syntax can drive all of Scale through `jaclang.lib` instead of `.jac` files. See [Library Mode](../language/library-mode.md) for the full API reference and examples.
 
 ---
 

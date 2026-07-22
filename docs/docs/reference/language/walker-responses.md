@@ -7,7 +7,7 @@ This reference covers the `report` mechanism and the common patterns for structu
 > **Related:**
 >
 > - [Graph Operations](osp.md) - Node creation, traversal, and deletion
-> - [Part III: OSP](osp.md) - Walker and node fundamentals
+> - [Object-Spatial Programming](osp.md) - Walker and node fundamentals
 > - [Build an AI Day Planner](../../tutorials/first-app/build-ai-day-planner.md) - Full tutorial using these patterns
 
 ---

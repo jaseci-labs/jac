@@ -1,5 +1,7 @@
 # Local API Server
 
+> **Concept:** [Scale invariance](../../reference/plugins/jac-scale.md#the-scale-invariance-contract): your program text does not change with the shape of its deployment. `jac start` is the same program as `jac run`, served.
+
 During development, `jac run` executes your program and exits. But production applications need to stay running and respond to HTTP requests from browsers, mobile apps, or other services. The `jac start` command transforms your Jac application into a persistent API server -- every walker and function marked with `:pub` or `:priv` access modifiers automatically becomes a REST endpoint, complete with authentication, JSON serialization, and API documentation.
 
 This means you go from "Jac program that runs locally" to "HTTP API server that clients can call" with a single command change -- no Flask routes, no Express middleware, no API framework needed.

@@ -1,6 +1,6 @@
 # Primitives and Codespace Semantics
 
-**In this part:**
+**On this page:**
 
 - [Overview](#overview) - What are primitives and why they matter across codespaces
 - [Codespace Model](#codespace-model) - Server, Client, and Native compilation targets
@@ -663,4 +663,3 @@ This is what makes Jac's multi-target compilation practical: you learn one set o
 - [Types and Values](types-and-values.md) and [Operators](operators.md) - Type system and operator reference
 - [Core Concepts](../../quick-guide/what-makes-jac-different.md) - Conceptual overview of codespaces
 - [jac-client Reference](../plugins/jac-client.md) - Client codespace plugin details
-- [Appendices](appendices.md) - Operator quick reference, keyword reference

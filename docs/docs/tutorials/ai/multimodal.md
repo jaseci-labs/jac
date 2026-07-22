@@ -32,10 +32,10 @@ jac install 'byllm[video]'
 byLLM supports image inputs through the `Image` type. Images can be provided as input to any `by llm()` function or method.
 
 !!! tip "Model for vision tasks"
-    Vision tasks require a vision-capable model like `gpt-4o`. Set it in your `jac.toml`:
+    Vision tasks require a vision-capable model like `anthropic/claude-sonnet-4-6`. Set it in your `jac.toml`:
     ```toml
     [byllm.model]
-    default_model = "gpt-4o"
+    default_model = "anthropic/claude-sonnet-4-6"
     ```
 
 ### Basic Example
