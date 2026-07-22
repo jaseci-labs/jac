@@ -94,11 +94,8 @@ test "build_env keeps per-service overrides but never shadows the K8S_* vars" {
 
 
 test "gateway pod client-build fallback uses --client web, not the typecheck-gated full build" {
-    # #7667: the pod boot fallback ran a bare `jac build <entry>`, whose
-    # whole-project type-check gate fails any app with type errors, so the
-    # client was silently skipped and / served a JSON 404. The fallback must
-    # build only the client bundle (--client web), the same gate-free path as
-    # the host-side _build_client_bundle.
+    # #7667: a bare `jac build` gates on the whole-project type-check, so a
+    # type-error app silently shipped without its client and / served a 404.
     cfg = KubernetesConfig(app_name="jac-shop", namespace="ns");
     builder = MicroserviceManifestBuilder(k8s_config=cfg);
     with mock.patch.object(builder, "_client_entry", return_value="main.jac") {
@@ -106,9 +103,7 @@ test "gateway pod client-build fallback uses --client web, not the typecheck-gat
     }
     args = entry["args"][0];
     assert 'jac build "main.jac" --client web' in args;
-    # the guard that skips the build when the host already shipped the dist
     assert "[ ! -f .jac/client/dist/index.html ]" in args;
-    # the gate-prone bare-build form must be gone
     assert 'jac build "main.jac" ||' not in args;
 }
 
