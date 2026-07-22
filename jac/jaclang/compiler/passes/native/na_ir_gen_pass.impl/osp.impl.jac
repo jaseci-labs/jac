@@ -811,23 +811,30 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
     self._emit_arena_helpers();
     _argtys = osp_conn_fn.function_type.args;
     _src_i64 = self._coerce_type(src, _argtys[0]);
-    _rgn_val: ir.Value = ir.Constant(i64, 0);
+    _tgt_i64 = self._coerce_type(tgt, _argtys[1]);
+    _rgn_src: ir.Value = ir.Constant(i64, 0);
+    _rgn_tgt: ir.Value = ir.Constant(i64, 0);
     if self.region_handle_of_fn is not None {
         _i8p_conn = ir.IntType(8).as_pointer();
         _src_conn = self.builder.inttoptr(_src_i64, _i8p_conn, name="conn.src.p");
-        _rgn_val = self.builder.call(
-            self.region_handle_of_fn, [_src_conn], name="conn.rgn"
+        _rgn_src = self.builder.call(
+            self.region_handle_of_fn, [_src_conn], name="conn.rgn.src"
+        );
+        _tgt_conn = self.builder.inttoptr(_tgt_i64, _i8p_conn, name="conn.tgt.p");
+        _rgn_tgt = self.builder.call(
+            self.region_handle_of_fn, [_tgt_conn], name="conn.rgn.tgt"
         );
     }
     self.builder.call(
         osp_conn_fn,
         [
             _src_i64,
-            self._coerce_type(tgt, _argtys[1]),
+            _tgt_i64,
             self._coerce_type(edge_obj, _argtys[2]),
             self._coerce_type(ir.Constant(i64, undirected), _argtys[3]),
             self._coerce_type(ir.Constant(i64, edge_tag), _argtys[4]),
-            self._coerce_type(_rgn_val, _argtys[5])
+            self._coerce_type(_rgn_src, _argtys[5]),
+            self._coerce_type(_rgn_tgt, _argtys[6])
         ]
     );
     return tgt;

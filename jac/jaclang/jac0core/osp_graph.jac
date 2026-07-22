@@ -245,17 +245,21 @@ def _rt_del(s: int) {
 }
 
 def osp_conn(
-    src: int, tgt: int, eobj: int, undirected: int, edge_tag: int, rgn: int
+    src: int,
+    tgt: int,
+    eobj: int,
+    undirected: int,
+    edge_tag: int,
+    rgn_src: int,
+    rgn_tgt: int
 ) -> int {
     ss = _nt_slot(src);
     ts = _nt_slot(tgt);
-    if rgn != 0 {
-        if _nt_ho[ss] < 0 and _nt_hi[ss] < 0 {
-            _rk_reg(src, rgn);
-        }
-        if ts != ss and _nt_ho[ts] < 0 and _nt_hi[ts] < 0 {
-            _rk_reg(tgt, rgn);
-        }
+    if rgn_src != 0 and _nt_ho[ss] < 0 and _nt_hi[ss] < 0 {
+        _rk_reg(src, rgn_src);
+    }
+    if rgn_tgt != 0 and ts != ss and _nt_ho[ts] < 0 and _nt_hi[ts] < 0 {
+        _rk_reg(tgt, rgn_tgt);
     }
     r = -1;
     if _row_free {
@@ -436,20 +440,15 @@ def osp_region_died(rgn: int) -> int {
         }
         h = (h + 1) & m;
     }
+    stash_ho: list[int] = [];
+    stash_hi: list[int] = [];
     e = _rt_head[s];
     while e >= 0 {
         addr = _rk_addr[e];
         ns = _nt_find(addr);
         if ns >= 0 {
-            r = _nt_ho[ns];
-            while r >= 0 {
-                nx = _r_nsrc[r];
-                _r_src[r] = -1;
-                _r_handle[r] = 0;
-                _row_free.append(r);
-                n += 1;
-                r = nx;
-            }
+            stash_ho.append(_nt_ho[ns]);
+            stash_hi.append(_nt_hi[ns]);
             _nt_del(ns);
         }
         nx2 = _rk_next[e];
@@ -457,5 +456,37 @@ def osp_region_died(rgn: int) -> int {
         e = nx2;
     }
     _rt_del(s);
+    i = 0;
+    while i < len(stash_ho) {
+        r = stash_ho[i];
+        while r >= 0 {
+            nx = _r_nsrc[r];
+            if _r_src[r] != -1 {
+                if _nt_find(_r_tgt[r]) >= 0 {
+                    _unlink_in(_r_tgt[r], r);
+                }
+                _r_src[r] = -1;
+                _r_handle[r] = 0;
+                _row_free.append(r);
+                n += 1;
+            }
+            r = nx;
+        }
+        r = stash_hi[i];
+        while r >= 0 {
+            nx = _r_ntgt[r];
+            if _r_src[r] != -1 {
+                if _nt_find(_r_src[r]) >= 0 {
+                    _unlink_out(_r_src[r], r);
+                }
+                _r_src[r] = -1;
+                _r_handle[r] = 0;
+                _row_free.append(r);
+                n += 1;
+            }
+            r = nx;
+        }
+        i += 1;
+    }
     return n;
 }
