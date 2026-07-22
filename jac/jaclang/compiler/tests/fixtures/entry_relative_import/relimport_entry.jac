@@ -1,9 +1,4 @@
-"""Entry module that reaches a sibling package through a relative import.
-
-`services/` has no `__init__.jac`, so it resolves as an implicit Jac namespace
-package. The leading dot only resolves if the entry module itself was given a
-package context when it was loaded.
-"""
+"""Entry module reaching a sibling through a relative import."""
 
 import from .services.greeter { greet }
 

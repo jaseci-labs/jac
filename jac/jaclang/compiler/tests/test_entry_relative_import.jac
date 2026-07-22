@@ -1,21 +1,5 @@
-"""Regression coverage for relative imports in an entry module (issue #7661).
-
-`jac start` loads the entry through `Jac.jac_import(...)` *without*
-`override_name='__main__'`. That path used to hand the module straight to
-`importlib.import_module`, which creates a plain top-level module with no
-`__path__`. A module with no `__path__` is not a package, so its `__package__`
-is empty and a leading-dot import inside it raised
-
-    attempted relative import with no known parent package
-
-even though `jac check` reported the file clean. `jac run` hid the problem
-because it executes through the native backend and never touches this loader.
-
-The `override_name='__main__'` path had the same defect: the entry was given no
-`__path__`, and naming it `__main__` while its `__package__` pointed at the real
-module name meant the parent package was re-imported as a fresh, context-free
-copy. Both entry paths are covered below.
-"""
+"""Entry modules resolve leading-dot relative imports (issue #7661).
+Covers both entry paths: plain load and `override_name='__main__'`."""
 
 import sys;
 import from pathlib { Path }
