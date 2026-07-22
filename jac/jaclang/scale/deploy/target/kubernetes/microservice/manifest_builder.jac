@@ -843,6 +843,7 @@ obj MicroserviceManifestBuilder {
         }
         gw_prefix = "";
         client_entry = self._client_entry();
+
         if client_entry {
             gw_prefix = (
                 f'if [ ! -f .jac/client/dist/index.html ]; then '
