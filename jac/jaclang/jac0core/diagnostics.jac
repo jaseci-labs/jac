@@ -1386,6 +1386,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Use of JS-specific property '.{prop}' — use '{alternative}' for cross-codespace portability",
          help="Use Jac common builtins instead of JS-specific properties."
      ),
+     W6005 = _warn(
+         "W6005",
+         Category.SEMANTIC,
+         "Bare call to JS host constructor '{name}' — use `new({name}, ...)` instead",
+         help="Jac has no `new` keyword. Host constructors like TextEncoder and URL must be created with the portable `new(Cls, ...args)` builtin, which lowers to `Reflect.construct(Cls, [args])` in client code."
+     ),
      E9001 = _err("E9001", Category.ICE, "ICE: Pass {pass_name} -- {details}"),
      E9002 = _err(
          "E9002",

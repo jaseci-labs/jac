@@ -467,6 +467,12 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         props: list[(es.Property | es.SpreadElement)]
     ) -> (es.Expression | None);
 
+    def _try_lower_js_host_constructor_call(
+        nd: uni.FuncCall,
+        callee_expr: es.Expression,
+        call_args: list[(es.Expression | es.SpreadElement)]
+    ) -> (es.Expression | None);
+
     def exit_func_call(nd: uni.FuncCall) -> None;
     def exit_index_slice(nd: uni.IndexSlice) -> None;
     def exit_special_var_ref(nd: uni.SpecialVarRef) -> None;

@@ -445,3 +445,55 @@ def collect_method_names(arch: uni.Archetype) -> set[str] {
     }
     return names;
 }
+
+glob JS_HOST_CONSTRUCTORS: frozenset[str] = frozenset(
+         {
+             "Array",
+             "ArrayBuffer",
+             "BigInt",
+             "Boolean",
+             "CustomEvent",
+             "DataView",
+             "Date",
+             "Error",
+             "Float32Array",
+             "Float64Array",
+             "Headers",
+             "Int32Array",
+             "Map",
+             "Number",
+             "Object",
+             "PopStateEvent",
+             "Promise",
+             "Proxy",
+             "ReadableStream",
+             "ReadableStreamDefaultReader",
+             "ReadableStreamReadResult",
+             "RegExp",
+             "Response",
+             "Set",
+             "String",
+             "TextDecoder",
+             "TextEncoder",
+             "TypeError",
+             "URL",
+             "URLSearchParams",
+             "Uint32Array",
+             "Uint8Array",
+             "WebSocket"
+         }
+     );
+
+def is_js_host_constructor_call(nd: uni.FuncCall) -> bool {
+    if not nd.in_client_context() {
+        return False;
+    }
+    if not isinstance(nd.target, uni.Name) {
+        return False;
+    }
+    if nd.target.sym_name == "new" {
+        return False;
+    }
+
+    return nd.target.sym_name in JS_HOST_CONSTRUCTORS;
+}

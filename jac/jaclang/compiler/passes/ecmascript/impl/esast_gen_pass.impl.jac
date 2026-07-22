@@ -1711,6 +1711,36 @@ impl EsastGenPass._try_lower_server_rpc_call(
     return result_expr;
 }
 
+impl EsastGenPass._try_lower_js_host_constructor_call(
+    nd: uni.FuncCall,
+    callee_expr: es.Expression,
+    call_args: list[(es.Expression | es.SpreadElement)]
+) -> (es.Expression | None) {
+    import from jaclang.compiler.symbol_utils { is_js_host_constructor_call }
+
+    if not is_js_host_constructor_call(nd) {
+        return None;
+    }
+
+    reflect_callee = self.sync_loc(
+        es.MemberExpression(
+            object=self.sync_loc(es.Identifier(name='Reflect'), jac_node=nd),
+            property=self.sync_loc(es.Identifier(name='construct'), jac_node=nd),
+            computed=False
+        ),
+        jac_node=nd
+    );
+    ctor_args_array = self.sync_loc(
+        es.ArrayExpression(elements=call_args), jac_node=nd
+    );
+    return self.sync_loc(
+        es.CallExpression(
+            callee=reflect_callee, arguments=[callee_expr, ctor_args_array]
+        ),
+        jac_node=nd
+    );
+}
+
 impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
     args: list[(es.Expression | es.SpreadElement)] = [];
     props: list[(es.Property | es.SpreadElement)] = [];
@@ -1968,6 +1998,18 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
         }
         nd.gen.es_ast = result_expr;
         return;
+    }
+    if not props {
+        host_ctor = self._try_lower_js_host_constructor_call(
+            nd, callee_expr, call_args
+        );
+        if host_ctor is not None {
+            if use_kwargs_temp and spread_arg is not None {
+                host_ctor = self._wrap_with_kwargs_temp(host_ctor, spread_arg, nd);
+            }
+            nd.gen.es_ast = host_ctor;
+            return;
+        }
     }
     if _call_kind == "instantiation" and isinstance(callee, es.Expression) {
         result_expr: es.Expression = self.sync_loc(
