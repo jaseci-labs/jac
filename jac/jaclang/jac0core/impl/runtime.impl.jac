@@ -818,7 +818,7 @@ impl JacModule.jac_import(
         if (override_name == '__main__') {
             import from jaclang.meta_importer { JacMetaImporter }
             finder = JacMetaImporter();
-            spec = finder.find_spec(module_name, None);
+            spec: any = finder.find_spec(module_name, None);
             if (
                 spec and spec.origin and spec.origin.endswith('.jac') and (lng == 'py')
             ) {
@@ -851,8 +851,13 @@ impl JacModule.jac_import(
             module.__file__ = spec.origin;
             module.__name__ = '__main__';
             module.__spec__ = spec;
-            if spec.submodule_search_locations {
-                module.__path__ = spec.submodule_search_locations;
+            if not spec.submodule_search_locations {
+                spec.submodule_search_locations = [os.path.abspath(caller_dir)];
+            }
+            module.__path__ = spec.submodule_search_locations;
+            module.__package__ = spec.parent;
+            if module_name not in sys.modules {
+                sys.modules[module_name] = module;
             }
             JacRuntimeInterface.load_module('__main__', module);
 
@@ -889,7 +894,9 @@ impl JacModule.jac_import(
             }
             if (entry_spec and entry_spec.origin) {
                 if not entry_spec.submodule_search_locations {
-                    entry_spec.submodule_search_locations = [caller_dir];
+                    entry_spec.submodule_search_locations = [
+                        os.path.abspath(caller_dir)
+                    ];
                 }
                 module = types.ModuleType(module_name);
                 module.__file__ = entry_spec.origin;
