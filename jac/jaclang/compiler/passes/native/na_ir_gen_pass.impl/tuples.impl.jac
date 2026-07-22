@@ -82,6 +82,7 @@ impl NaIRGenPass._infer_unpack_struct_ptr(nd: object) -> (ir.Type | None) {
 impl NaIRGenPass._codegen_tuple_unpack(
     targets: list, tuple_val: ir.Value, tuple_node: (object | None)
 ) -> bool {
+    _orig_tv = tuple_val;
     struct_type: (ir.LiteralStructType | None) = None;
     is_value = False;
     if isinstance(tuple_val.type, ir.LiteralStructType) {
@@ -109,7 +110,7 @@ impl NaIRGenPass._codegen_tuple_unpack(
         return False;
     }
 
-    retain_fields = not is_value and not self._is_owned(tuple_val);
+    retain_fields = not is_value;
     pending_old: list = [];
     for (i, target) in enumerate(targets) {
         if i >= len(struct_type.elements) {
@@ -154,6 +155,9 @@ impl NaIRGenPass._codegen_tuple_unpack(
 
     for old_val in pending_old {
         self._emit_rc_release_simple(old_val, op="unpack_old", loc="");
+    }
+    if (not is_value) and self._is_owned(_orig_tv) {
+        self._emit_rc_release_simple(_orig_tv, op="unpack_box", loc="");
     }
     return True;
 }

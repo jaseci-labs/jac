@@ -24,7 +24,9 @@ obj ClientManifest {
         imports: dict[(str, str)] = field(default_factory=`dict),
         endpoint_effects: dict[(str, dict)] = field(default_factory=`dict),
         tests: list[dict[(str, str)]] = field(default_factory=`list),
-        server_imports: list[str] = field(default_factory=`list);
+        server_imports: list[str] = field(default_factory=`list),
+        page_export: (str | None) = None,
+        layout_export: (str | None) = None;
 }
 
 enum InteropContext { SERVER = 'server', NATIVE = 'native', CLIENT = 'client' }

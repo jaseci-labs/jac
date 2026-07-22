@@ -1594,6 +1594,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
             _shape_spec = self._infer_list_elem_type(list_val);
             elem_type_name = _shape_spec if _shape_spec is not None else list_spec;
             arg_vals = self._codegen_call_args(nd);
+            _orig_args = list(arg_vals);
 
             _elem_struct = self.var_list_elem_struct.get(target_name);
             if _elem_struct is not None
@@ -1631,6 +1632,9 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
 
             self._clear_rc_ctx();
             if result is not None {
+                if method_name == "insert" {
+                    self._release_owned_args(_orig_args, op="list_method_arg");
+                }
                 return result;
             }
         }

@@ -48,7 +48,6 @@ impl JacAPIServerCore.postinit -> None {
         self.server = JFastApiServer();
     }
     self.server.set_user_manager(self.user_manager);
-    self._api_key_manager = ApiKeyManager();
     self.server.app.add_middleware(
         CORSMiddleware,
         allow_origins=['*'],

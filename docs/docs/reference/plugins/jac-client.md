@@ -103,7 +103,7 @@ Client npm imports are type-checked from each package's TypeScript declarations.
 - **Unions, arrays, literals, optional/rest parameters, namespaces with `export =`, and `extends` heritage** are modeled where the parser supports them.
 
 ```jac
-cl import from "cfgpkg" { getConfig, Config }
+import from "cfgpkg" { getConfig, Config }
 
 def:pub use() -> str {
     c: Config = getConfig();
@@ -208,25 +208,23 @@ def:pub create_task(title: str) -> Task {
 }
 
 # Client: receives hydrated Task instances
-cl {
-    sv import from .main { get_tasks, create_task }
+sv import from .main { get_tasks, create_task }
 
-    def:pub app -> JsxElement {
-        has tasks: list = [];
+def:pub app -> JsxElement {
+    has tasks: list = [];
 
-        async can with entry {
-            tasks = await get_tasks();  # list of Task objects
-        }
-
-        async def addTask(title: str) -> None {
-            task = await create_task(title);  # a Task object
-            tasks = tasks + [task];
-        }
-
-        return <div>
-            {[<span key={t.title}>{t.title} - {t.done}</span> for t in tasks]}
-        </div>;
+    async can with entry {
+        tasks = await get_tasks();  # list of Task objects
     }
+
+    async def addTask(title: str) -> None {
+        task = await create_task(title);  # a Task object
+        tasks = tasks + [task];
+    }
+
+    return <div>
+        {[<span key={t.title}>{t.title} - {t.done}</span> for t in tasks]}
+    </div>;
 }
 ```
 
@@ -284,12 +282,10 @@ def:pub get_greeting() -> str {         # unmarked -> server endpoint
 When you want the boundary explicit, wrap client code in a `cl { ... }` block -- the braces bracket exactly the tagged region:
 
 ```jac
-cl {
-    def:pub app() -> JsxElement {
-        return <div>
-            <h1>Hello, World!</h1>
-        </div>;
-    }
+def:pub app() -> JsxElement {
+    return <div>
+        <h1>Hello, World!</h1>
+    </div>;
 }
 ```
 
@@ -300,7 +296,7 @@ A `cl { ... }` block also works inside a function or class body to locally overr
 For one-off client-side declarations, use the single-statement `cl` prefix:
 
 ```jac
-cl import from react { useState }
+import from react { useState }
 cl glob THEME: str = "dark";
 ```
 
@@ -318,10 +314,8 @@ cl def:pub app -> JsxElement {
 The entry `app()` function must be exported with `:pub`:
 
 ```jac
-cl {
-    def:pub app() -> JsxElement {  # :pub required
-        return <App />;
-    }
+def:pub app() -> JsxElement {  # :pub required
+    return <App />;
 }
 ```
 
@@ -336,46 +330,40 @@ every JSX call site per attribute. `children` is the special prop that holds
 the JSX nested between a component's tags:
 
 ```jac
-cl {
-    def:pub Button(
-        className: str = "",
-        onClick: MouseEventHandler = None,
-        children: any = None
-    ) -> JsxElement {
-        return <button className={className} onClick={onClick}>
-            {children}
-        </button>;
-    }
+def:pub Button(
+    className: str = "",
+    onClick: MouseEventHandler = None,
+    children: any = None
+) -> JsxElement {
+    return <button className={className} onClick={onClick}>
+        {children}
+    </button>;
 }
 ```
 
 ### Using Props
 
 ```jac
-cl {
-    def:pub Card(title: str, description: str = "", children: any = None) -> JsxElement {
-        return <div className="card">
-            <h2>{title}</h2>
-            <p>{description}</p>
-            {children}
-        </div>;
-    }
+def:pub Card(title: str, description: str = "", children: any = None) -> JsxElement {
+    return <div className="card">
+        <h2>{title}</h2>
+        <p>{description}</p>
+        {children}
+    </div>;
 }
 ```
 
 ### Composition
 
 ```jac
-cl {
-    def:pub app() -> JsxElement {
-        return <div>
-            <Card title="Welcome" description="Hello!">
-                <Button onClick={lambda -> None { print("clicked"); }}>
-                    Click Me
-                </Button>
-            </Card>
-        </div>;
-    }
+def:pub app() -> JsxElement {
+    return <div>
+        <Card title="Welcome" description="Hello!">
+            <Button onClick={lambda -> None { print("clicked"); }}>
+                Click Me
+            </Button>
+        </Card>
+    </div>;
 }
 ```
 
@@ -388,17 +376,15 @@ cl {
 Inside client-tagged code (a `cl { }` block or a `.cl.jac` file), `has` creates reactive state:
 
 ```jac
-cl {
-    def:pub Counter() -> JsxElement {
-        has count: int = 0;  # Compiles to useState(0)
+def:pub Counter() -> JsxElement {
+    has count: int = 0;  # Compiles to useState(0)
 
-        return <div>
-            <p>Count: {count}</p>
-            <button onClick={lambda -> None { count = count + 1; }}>
-                Increment
-            </button>
-        </div>;
-    }
+    return <div>
+        <p>Count: {count}</p>
+        <button onClick={lambda -> None { count = count + 1; }}>
+            Increment
+        </button>
+    </div>;
 }
 ```
 
@@ -412,19 +398,17 @@ cl {
 ### Complex State
 
 ```jac
-cl {
-    def:pub Form() -> JsxElement {
-        has name: str = "";
-        has items: list = [];
-        has data: dict = {"key": "value"};
+def:pub Form() -> JsxElement {
+    has name: str = "";
+    has items: list = [];
+    has data: dict = {"key": "value"};
 
-        # Create new references for lists/objects
-        def add_item(item: str) -> None {
-            items = items + [item];  # Concatenate to new list
-        }
-
-        return <div>Form</div>;
+    # Create new references for lists/objects
+    def add_item(item: str) -> None {
+        items = items + [item];  # Concatenate to new list
     }
+
+    return <div>Form</div>;
 }
 ```
 
@@ -457,40 +441,38 @@ Similar to how `has` variables automatically generate `useState`, the `can with 
 | `can with (a, b) entry { ... }` | `useEffect(() => { ... }, [a, b])` |
 
 ```jac
-cl {
-    def:pub DataLoader() -> JsxElement {
-        has data: list = [];
-        has loading: bool = True;
+def:pub DataLoader() -> JsxElement {
+    has data: list = [];
+    has loading: bool = True;
 
-        # Run once on mount (async with IIFE wrapping)
-        async can with entry {
-            data = await fetch_data();
-            loading = False;
-        }
-
-        # Cleanup on unmount
-        can with exit {
-            cleanup_subscriptions();
-        }
-
-        return <div>...</div>;
+    # Run once on mount (async with IIFE wrapping)
+    async can with entry {
+        data = await fetch_data();
+        loading = False;
     }
 
-    def:pub UserProfile(userId: str) -> JsxElement {
-        has user: dict = {};
-
-        # Re-run when userId changes (dependency array)
-        async can with [userId] entry {
-            user = await fetch_user(userId);
-        }
-
-        # Multiple dependencies using tuple syntax
-        async can with (userId, refresh) entry {
-            user = await fetch_user(userId);
-        }
-
-        return <div>{user.name}</div>;
+    # Cleanup on unmount
+    can with exit {
+        cleanup_subscriptions();
     }
+
+    return <div>...</div>;
+}
+
+def:pub UserProfile(userId: str) -> JsxElement {
+    has user: dict = {};
+
+    # Re-run when userId changes (dependency array)
+    async can with [userId] entry {
+        user = await fetch_user(userId);
+    }
+
+    # Multiple dependencies using tuple syntax
+    async can with (userId, refresh) entry {
+        user = await fetch_user(userId);
+    }
+
+    return <div>{user.name}</div>;
 }
 ```
 
@@ -499,48 +481,44 @@ cl {
 You can also use `useEffect` manually by importing it from React:
 
 ```jac
-cl {
-    import from react { useEffect }
+import from react { useEffect }
 
-    def:pub DataLoader() -> JsxElement {
-        has data: list = [];
-        has loading: bool = True;
+def:pub DataLoader() -> JsxElement {
+    has data: list = [];
+    has loading: bool = True;
 
-        # Run once on mount
-        useEffect(lambda -> None {
-            fetch_data();
-        }, []);
+    # Run once on mount
+    useEffect(lambda -> None {
+        fetch_data();
+    }, []);
 
-        # Run when dependency changes
-        useEffect(lambda -> None {
-            refresh_data();
-        }, [some_dep]);
+    # Run when dependency changes
+    useEffect(lambda -> None {
+        refresh_data();
+    }, [some_dep]);
 
-        return <div>...</div>;
-    }
+    return <div>...</div>;
 }
 ```
 
 ### useContext
 
 ```jac
-cl {
-    import from react { createContext, useContext }
+import from react { createContext, useContext }
 
-    glob AppContext = createContext(None);
+glob AppContext = createContext(None);
 
-    def:pub AppProvider(children: any = None) -> JsxElement {
-        has theme: str = "light";
+def:pub AppProvider(children: any = None) -> JsxElement {
+    has theme: str = "light";
 
-        return <AppContext.Provider value={{"theme": theme}}>
-            {children}
-        </AppContext.Provider>;
-    }
+    return <AppContext.Provider value={{"theme": theme}}>
+        {children}
+    </AppContext.Provider>;
+}
 
-    def:pub ThemedComponent() -> JsxElement {
-        ctx = useContext(AppContext);
-        return <div className={ctx.theme}>Content</div>;
-    }
+def:pub ThemedComponent() -> JsxElement {
+    ctx = useContext(AppContext);
+    return <div className={ctx.theme}>Content</div>;
 }
 ```
 
@@ -549,33 +527,31 @@ cl {
 Create reusable state logic by defining functions that use `has`:
 
 ```jac
-cl {
-    import from react { useEffect }
+import from react { useEffect }
 
-    def use_local_storage(key: str, initial_value: any) -> tuple {
-        has value: any = initial_value;
+def use_local_storage(key: str, initial_value: any) -> tuple {
+    has value: any = initial_value;
 
-        useEffect(lambda -> None {
-            stored = localStorage.getItem(key);
-            if stored {
-                value = JSON.parse(stored);
-            }
-        }, []);
+    useEffect(lambda -> None {
+        stored = localStorage.getItem(key);
+        if stored {
+            value = JSON.parse(stored);
+        }
+    }, []);
 
-        useEffect(lambda -> None {
-            localStorage.setItem(key, JSON.stringify(value));
-        }, [value]);
+    useEffect(lambda -> None {
+        localStorage.setItem(key, JSON.stringify(value));
+    }, [value]);
 
-        return (value, lambda (v: any) -> None { value = v; });
-    }
+    return (value, lambda (v: any) -> None { value = v; });
+}
 
-    def:pub Settings() -> JsxElement {
-        (theme, set_theme) = use_local_storage("theme", "light");
-        return <div>
-            <p>Current: {theme}</p>
-            <button onClick={lambda -> None { set_theme("dark"); }}>Dark</button>
-        </div>;
-    }
+def:pub Settings() -> JsxElement {
+    (theme, set_theme) = use_local_storage("theme", "light");
+    return <div>
+        <p>Current: {theme}</p>
+        <button onClick={lambda -> None { set_theme("dark"); }}>Dark</button>
+    </div>;
 }
 ```
 
@@ -591,28 +567,26 @@ Use native Jac `spawn` syntax to call walkers from client code. First, import yo
 # Import walkers from backend
 sv import from ...main { get_tasks, create_task }
 
-cl {
-    def:pub TaskList() -> JsxElement {
-        has tasks: list = [];
-        has loading: bool = True;
+def:pub TaskList() -> JsxElement {
+    has tasks: list = [];
+    has loading: bool = True;
 
-        # Fetch data on component mount
-        async can with entry {
-            result = root spawn get_tasks();
-            if result.reports and result.reports.length > 0 {
-                tasks = result.reports[0];
-            }
-            loading = False;
+    # Fetch data on component mount
+    async can with entry {
+        result = root spawn get_tasks();
+        if result.reports and result.reports.length > 0 {
+            tasks = result.reports[0];
         }
-
-        if loading {
-            return <p>Loading...</p>;
-        }
-
-        return <ul>
-            {[<li key={task["id"]}>{task["title"]}</li> for task in tasks]}
-        </ul>;
+        loading = False;
     }
+
+    if loading {
+        return <p>Loading...</p>;
+    }
+
+    return <ul>
+        {[<li key={task["id"]}>{task["title"]}</li> for task in tasks]}
+    </ul>;
 }
 ```
 
@@ -643,39 +617,37 @@ The spawn call returns a result object with:
 ```jac
 sv import from ...main { add_task, toggle_task, delete_task }
 
-cl {
-    def:pub TaskManager() -> JsxElement {
-        has tasks: list = [];
+def:pub TaskManager() -> JsxElement {
+    has tasks: list = [];
 
-        # Create
-        async def handle_add(title: str) -> None {
-            result = root spawn add_task(title=title);
-            if result.reports and result.reports.length > 0 {
-                tasks = tasks + [result.reports[0]];
-            }
+    # Create
+    async def handle_add(title: str) -> None {
+        result = root spawn add_task(title=title);
+        if result.reports and result.reports.length > 0 {
+            tasks = tasks + [result.reports[0]];
         }
-
-        # Update
-        async def handle_toggle(task_id: str) -> None {
-            result = root spawn toggle_task(task_id=task_id);
-            if result.reports and result.reports[0]["success"] {
-                tasks = [
-                    {**t, "completed": not t["completed"]} if t["id"] == task_id else t
-                    for t in tasks
-                ];
-            }
-        }
-
-        # Delete
-        async def handle_delete(task_id: str) -> None {
-            result = root spawn delete_task(task_id=task_id);
-            if result.reports and result.reports[0]["success"] {
-                tasks = [t for t in tasks if t["id"] != task_id];
-            }
-        }
-
-        return <div>...</div>;
     }
+
+    # Update
+    async def handle_toggle(task_id: str) -> None {
+        result = root spawn toggle_task(task_id=task_id);
+        if result.reports and result.reports[0]["success"] {
+            tasks = [
+                {**t, "completed": not t["completed"]} if t["id"] == task_id else t
+                for t in tasks
+            ];
+        }
+    }
+
+    # Delete
+    async def handle_delete(task_id: str) -> None {
+        result = root spawn delete_task(task_id=task_id);
+        if result.reports and result.reports[0]["success"] {
+            tasks = [t for t in tasks if t["id"] != task_id];
+        }
+    }
+
+    return <div>...</div>;
 }
 ```
 
@@ -684,34 +656,32 @@ cl {
 Wrap spawn calls in try/catch and track loading/error state:
 
 ```jac
-cl {
-    def:pub SafeDataView() -> JsxElement {
-        has data: any = None;
-        has loading: bool = True;
-        has error: str = "";
+def:pub SafeDataView() -> JsxElement {
+    has data: any = None;
+    has loading: bool = True;
+    has error: str = "";
 
-        async can with entry {
-            loading = True;
-            try {
-                result = root spawn get_data();
-                if result.reports and result.reports.length > 0 {
-                    data = result.reports[0];
-                }
-            } except Exception as e {
-                error = f"Failed to load: {e}";
+    async can with entry {
+        loading = True;
+        try {
+            result = root spawn get_data();
+            if result.reports and result.reports.length > 0 {
+                data = result.reports[0];
             }
-            loading = False;
+        } except Exception as e {
+            error = f"Failed to load: {e}";
         }
-
-        if loading { return <p>Loading...</p>; }
-        if error {
-            return <div>
-                <p>{error}</p>
-                <button onClick={lambda -> None { location.reload(); }}>Retry</button>
-            </div>;
-        }
-        return <div>{JSON.stringify(data)}</div>;
+        loading = False;
     }
+
+    if loading { return <p>Loading...</p>; }
+    if error {
+        return <div>
+            <p>{error}</p>
+            <button onClick={lambda -> None { location.reload(); }}>Retry</button>
+        </div>;
+    }
+    return <div>{JSON.stringify(data)}</div>;
 }
 ```
 
@@ -720,30 +690,28 @@ cl {
 Use `setInterval` with effect cleanup for periodic data refresh:
 
 ```jac
-cl {
-    import from react { useEffect }
+import from react { useEffect }
 
-    def:pub LiveData() -> JsxElement {
-        has data: any = None;
+def:pub LiveData() -> JsxElement {
+    has data: any = None;
 
-        async def fetch_data() -> None {
-            result = root spawn get_live_data();
-            if result.reports and result.reports.length > 0 {
-                data = result.reports[0];
-            }
+    async def fetch_data() -> None {
+        result = root spawn get_live_data();
+        if result.reports and result.reports.length > 0 {
+            data = result.reports[0];
         }
-
-        async can with entry { await fetch_data(); }
-
-        # The outer lambda must NOT be annotated `-> None` -- a cleanup effect
-        # returns a function, so `-> None` would be a type error.
-        useEffect(lambda {
-            interval = setInterval(lambda { fetch_data(); }, 5000);
-            return lambda { clearInterval(interval); };
-        }, []);
-
-        return <div>{data and <p>Last updated: {data["timestamp"]}</p>}</div>;
     }
+
+    async can with entry { await fetch_data(); }
+
+    # The outer lambda must NOT be annotated `-> None` -- a cleanup effect
+    # returns a function, so `-> None` would be a type error.
+    useEffect(lambda {
+        interval = setInterval(lambda { fetch_data(); }, 5000);
+        return lambda { clearInterval(interval); };
+    }, []);
+
+    return <div>{data and <p>Last updated: {data["timestamp"]}</p>}</div>;
 }
 ```
 
@@ -784,20 +752,18 @@ myapp/
 | `pages/(auth)/dashboard.jac` | `/dashboard` | Route group (no URL segment) |
 | `pages/layout.jac` | -- | Wraps child routes with `<Outlet />` |
 
-Each page file exports a `page` function:
+A page is any export that returns `JsxPage` (the name is free); a layout returns `JsxLayout`. `JsxPage` and `JsxLayout` are ambient builtin types, no import needed:
 
 ```jac
 # pages/users/[id].jac
-cl import from "@jac/runtime" { useParams, Link }
+import from "@jac/runtime" { useParams, Link }
 
-cl {
-    def:pub page() -> JsxElement {
-        params = useParams();
-        return <div>
-            <Link to="/users">Back</Link>
-            <h1>User {params["id"]}</h1>
-        </div>;
-    }
+def:pub UserDetail() -> JsxPage {
+    params = useParams();
+    return <div>
+        <Link to="/users">Back</Link>
+        <h1>User {params["id"]}</h1>
+    </div>;
 }
 ```
 
@@ -805,14 +771,12 @@ cl {
 
 ```jac
 # pages/(auth)/layout.jac -- protects all pages in this group
-cl import from "@jac/runtime" { AuthGuard, Outlet }
+import from "@jac/runtime" { AuthGuard, Outlet }
 
-cl {
-    def:pub layout() -> JsxElement {
-        return <AuthGuard redirect="/login">
-            <Outlet />
-        </AuthGuard>;
-    }
+def:pub AuthShell() -> JsxLayout {
+    return <AuthGuard redirect="/login">
+        <Outlet />
+    </AuthGuard>;
 }
 ```
 
@@ -821,90 +785,82 @@ cl {
 For manual routing, import components from `@jac/runtime`:
 
 ```jac
-cl import from "@jac/runtime" { Router, Routes, Route, Link }
+import from "@jac/runtime" { Router, Routes, Route, Link }
 
-cl {
-    def:pub app() -> JsxElement {
-        return <Router>
-            <nav>
-                <Link to="/">Home</Link>
-                <Link to="/about">About</Link>
-            </nav>
+def:pub app() -> JsxElement {
+    return <Router>
+        <nav>
+            <Link to="/">Home</Link>
+            <Link to="/about">About</Link>
+        </nav>
 
-            <Routes>
-                <Route path="/" element={<Home />} />
-                <Route path="/about" element={<About />} />
-            </Routes>
-        </Router>;
-    }
+        <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/about" element={<About />} />
+        </Routes>
+    </Router>;
 }
 ```
 
 ### URL Parameters
 
 ```jac
-cl import from "@jac/runtime" { useParams }
+import from "@jac/runtime" { useParams }
 
-cl {
-    def:pub UserProfile() -> JsxElement {
-        params = useParams();
-        user_id = params["id"];
+def:pub UserProfile() -> JsxElement {
+    params = useParams();
+    user_id = params["id"];
 
-        return <div>User: {user_id}</div>;
-    }
-
-    # Route: /user/:id
+    return <div>User: {user_id}</div>;
 }
+
+# Route: /user/:id
 ```
 
 ### Programmatic Navigation
 
 ```jac
-cl import from "@jac/runtime" { useNavigate }
+import from "@jac/runtime" { useNavigate }
 
-cl {
-    def:pub LoginForm() -> JsxElement {
-        navigate = useNavigate();
+def:pub LoginForm() -> JsxElement {
+    navigate = useNavigate();
 
-        async def handle_login() -> None {
-            success = await do_login();
-            if success {
-                navigate("/dashboard");
-            }
+    async def handle_login() -> None {
+        success = await do_login();
+        if success {
+            navigate("/dashboard");
         }
-
-        return <button onClick={lambda -> None { handle_login(); }}>
-            Login
-        </button>;
     }
+
+    return <button onClick={lambda -> None { handle_login(); }}>
+        Login
+    </button>;
 }
 ```
 
 ### Nested Routes with Outlet
 
 ```jac
-cl import from "@jac/runtime" { Outlet }
+import from "@jac/runtime" { Outlet }
 
-cl {
-    # pages/layout.jac -- root layout wrapping all pages
-    def:pub layout() -> JsxElement {
-        return <>
-            <nav>...</nav>
-            <main><Outlet /></main>
-            <footer>...</footer>
-        </>;
-    }
+# pages/layout.jac -- root layout wrapping all pages
+def:pub RootShell() -> JsxLayout {
+    return <>
+        <nav>...</nav>
+        <main><Outlet /></main>
+        <footer>...</footer>
+    </>;
+}
 
-    # pages/dashboard/layout.jac -- nested dashboard layout
-    def:pub DashboardLayout() -> JsxElement {
-        # Child routes render where Outlet is placed
-        return <div>
-            <Sidebar />
-            <main>
-                <Outlet />
-            </main>
-        </div>;
-    }
+# pages/dashboard/layout.jac -- nested dashboard layout
+def:pub DashboardLayout() -> JsxElement {
+    # Child routes render where Outlet is placed
+    return <div>
+        <Sidebar />
+        <main>
+            <Outlet />
+        </main>
+    </div>;
 }
 ```
 
@@ -947,47 +903,43 @@ jac-client provides built-in authentication functions via `@jac/runtime`.
 ### jacLogin
 
 ```jac
-cl import from "@jac/runtime" { jacLogin, useNavigate }
+import from "@jac/runtime" { jacLogin, useNavigate }
 
-cl {
-    def:pub LoginForm() -> JsxElement {
-        has username: str = "";
-        has password: str = "";
-        has error: str = "";
+def:pub LoginForm() -> JsxElement {
+    has username: str = "";
+    has password: str = "";
+    has error: str = "";
 
-        navigate = useNavigate();
+    navigate = useNavigate();
 
-        async def handleLogin(e: FormEvent) -> None {
-            e.preventDefault();
-            # jacLogin returns bool (True = success, False = failure)
-            success = await jacLogin(username, password);
-            if success {
-                navigate("/dashboard");
-            } else {
-                error = "Invalid credentials";
-            }
+    async def handleLogin(e: FormEvent) -> None {
+        e.preventDefault();
+        # jacLogin returns bool (True = success, False = failure)
+        success = await jacLogin(username, password);
+        if success {
+            navigate("/dashboard");
+        } else {
+            error = "Invalid credentials";
         }
-
-        return <form onSubmit={handleLogin}>...</form>;
     }
+
+    return <form onSubmit={handleLogin}>...</form>;
 }
 ```
 
 ### jacSignup
 
 ```jac
-cl import from "@jac/runtime" { jacSignup }
+import from "@jac/runtime" { jacSignup }
 
-cl {
-    async def handleSignup() -> None {
-        # jacSignup returns dict with success key
-        result = await jacSignup(username, password);
-        if result["success"] {
-            # User registered and logged in
-            navigate("/dashboard");
-        } else {
-            error = result["error"] or "Signup failed";
-        }
+async def handleSignup() -> None {
+    # jacSignup returns dict with success key
+    result = await jacSignup(username, password);
+    if result["success"] {
+        # User registered and logged in
+        navigate("/dashboard");
+    } else {
+        error = result["error"] or "Signup failed";
     }
 }
 ```
@@ -995,25 +947,23 @@ cl {
 ### jacLogout / jacIsLoggedIn
 
 ```jac
-cl import from "@jac/runtime" { jacLogout, jacIsLoggedIn }
+import from "@jac/runtime" { jacLogout, jacIsLoggedIn }
 
-cl {
-    def:pub NavBar() -> JsxElement {
-        isLoggedIn = jacIsLoggedIn();
+def:pub NavBar() -> JsxElement {
+    isLoggedIn = jacIsLoggedIn();
 
-        def handleLogout() -> None {
-            jacLogout();
-            # Redirect to login
-        }
-
-        return <nav>
-            {isLoggedIn and (
-                <button onClick={lambda -> None { handleLogout(); }}>Logout</button>
-            ) or (
-                <a href="/login">Login</a>
-            )}
-        </nav>;
+    def handleLogout() -> None {
+        jacLogout();
+        # Redirect to login
     }
+
+    return <nav>
+        {isLoggedIn and (
+            <button onClick={lambda -> None { handleLogout(); }}>Logout</button>
+        ) or (
+            <a href="/login">Login</a>
+        )}
+    </nav>;
 }
 ```
 
@@ -1054,15 +1004,13 @@ client_secret = "your-google-client-secret"
 Use `AuthGuard` to protect routes in file-based routing:
 
 ```jac
-cl import from "@jac/runtime" { AuthGuard, Outlet }
+import from "@jac/runtime" { AuthGuard, Outlet }
 
-cl {
-    # pages/(auth)/layout.jac
-    def:pub layout() -> JsxElement {
-        return <AuthGuard redirect="/login">
-            <Outlet />
-        </AuthGuard>;
-    }
+# pages/(auth)/layout.jac
+def:pub AuthShell() -> JsxLayout {
+    return <AuthGuard redirect="/login">
+        <Outlet />
+    </AuthGuard>;
 }
 ```
 
@@ -1073,24 +1021,20 @@ cl {
 ### Inline Styles
 
 ```jac
-cl {
-    def:pub StyledComponent() -> JsxElement {
-        return <div style={{"color": "blue", "padding": "10px"}}>
-            Styled content
-        </div>;
-    }
+def:pub StyledComponent() -> JsxElement {
+    return <div style={{"color": "blue", "padding": "10px"}}>
+        Styled content
+    </div>;
 }
 ```
 
 ### CSS Classes
 
 ```jac
-cl {
-    def:pub Card() -> JsxElement {
-        return <div className="card card-primary">
-            Content
-        </div>;
-    }
+def:pub Card() -> JsxElement {
+    return <div className="card card-primary">
+        Content
+    </div>;
 }
 ```
 
@@ -1105,9 +1049,7 @@ cl {
 ```
 
 ```jac
-cl {
-    import "./styles/main.css";
-}
+import "./styles/main.css";
 ```
 
 ### Scoped CSS (`.style.css` annexes)
@@ -1179,26 +1121,24 @@ Key points:
 ### cn() Utility (Tailwind/shadcn)
 
 ```jac
-cl {
-    # cn() from local lib/utils.ts (shadcn/ui pattern)
-    import from "../lib/utils" { cn }
+# cn() from local lib/utils.ts (shadcn/ui pattern)
+import from "../lib/utils" { cn }
 
-    def:pub StylingExamples() -> JsxElement {
-        has condition: bool = True;
-        has hasError: bool = False;
-        has isSuccess: bool = True;
+def:pub StylingExamples() -> JsxElement {
+    has condition: bool = True;
+    has hasError: bool = False;
+    has isSuccess: bool = True;
 
-        className = cn(
-            "base-class",
-            condition and "active",
-            {"error": hasError, "success": isSuccess}
-        );
+    className = cn(
+        "base-class",
+        condition and "active",
+        {"error": hasError, "success": isSuccess}
+    );
 
-        return <div>
-            <div className="p-4 bg-blue-500 text-white">Tailwind</div>
-            <div className={className}>Dynamic</div>
-        </div>;
-    }
+    return <div>
+        <div className="p-4 bg-blue-500 text-white">Tailwind</div>
+        <div className={className}>Dynamic</div>
+    </div>;
 }
 ```
 
@@ -1219,23 +1159,21 @@ cl {
 ### JSX Syntax Reference
 
 ```jac
-cl {
-    def:pub JsxExamples() -> JsxElement {
-        has variable: str = "text";
-        has condition: bool = True;
-        has items: list = [];
-        has props: dict = {};
+def:pub JsxExamples() -> JsxElement {
+    has variable: str = "text";
+    has condition: bool = True;
+    has items: list = [];
+    has props: dict = {};
 
-        return <div>
-            <input type="text" value={variable} />
+    return <div>
+        <input type="text" value={variable} />
 
-            {condition and <div>Shown if true</div>}
+        {condition and <div>Shown if true</div>}
 
-            {items}
+        {items}
 
-            <button {**props} {variable}>Click</button>
-        </div>;
-    }
+        <button {**props} {variable}>Click</button>
+    </div>;
 }
 ```
 
@@ -1246,34 +1184,30 @@ Two brace forms appear in attribute position. `{**props}` is a **spread** -- it 
 A `try` slot whose body needs to wait on async work can name its loading state with an `awaiting` clause. The cl lowering wraps the slot in `<JacAwaiting fallback={...}>{...}</JacAwaiting>` from `@jac/runtime` -- a `React.Suspense` shim -- so the `awaiting` body renders during the dispatched-but-not-joined window and the `try` body takes over once it settles. On `sv` and `na` targets the `awaiting` body is dropped with a `W2020` warning until the streaming-SSR and native-thread lowerings land.
 
 ```jac
-cl {
-    def:pub Profile(user_id: int) -> JsxElement {
-        return <article>
-            {try {
-                <ResolvedProfile id={user_id}/>
-            } awaiting {
-                <p>Loading profile…</p>
-            }}
-        </article>;
-    }
+def:pub Profile(user_id: int) -> JsxElement {
+    return <article>
+        {try {
+            <ResolvedProfile id={user_id}/>
+        } awaiting {
+            <p>Loading profile…</p>
+        }}
+    </article>;
 }
 ```
 
 Add an `except` arm to name the error state. On the cl target the slot then lowers to a `<JacClientErrorBoundary fallback={...}>` (auto-imported from `@jac/runtime`, where it re-exports [`react-error-boundary`'s `ErrorBoundary`](#jacclienterrorboundary)) **wrapping** the `<JacAwaiting>` node, so a throw in the resolved `try` body -- including from data the suspense shim awaited -- is caught and the `except` body renders in its place:
 
 ```jac
-cl {
-    def:pub Profile(user_id: int) -> JsxElement {
-        return <article>
-            {try {
-                <ResolvedProfile id={user_id}/>
-            } awaiting {
-                <p>Loading profile…</p>
-            } except Exception {
-                <p>Could not load profile.</p>
-            }}
-        </article>;
-    }
+def:pub Profile(user_id: int) -> JsxElement {
+    return <article>
+        {try {
+            <ResolvedProfile id={user_id}/>
+        } awaiting {
+            <p>Loading profile…</p>
+        } except Exception {
+            <p>Could not load profile.</p>
+        }}
+    </article>;
 }
 ```
 
@@ -1284,14 +1218,12 @@ Because a JS error boundary catches every error regardless of declared type, per
 Use Jac's block-comment syntax wrapped in a JSX expression slot -- `{#* ... *#}` -- to leave a note inside a JSX tree. The comment renders nothing and is preserved verbatim by `jac fmt`:
 
 ```jac
-cl {
-    def:pub App() -> JsxElement {
-        return <div>
-            <h1>Hello</h1>
-            {#* TODO: replace with a custom Button component *#}
-            <button>Click me</button>
-        </div>;
-    }
+def:pub App() -> JsxElement {
+    return <div>
+        <h1>Hello</h1>
+        {#* TODO: replace with a custom Button component *#}
+        <button>Click me</button>
+    </div>;
 }
 ```
 
@@ -1322,12 +1254,10 @@ export const Button: React.FC<ButtonProps> = ({ label, onClick }) => {
 ```
 
 ```jac
-cl {
-    import from "./components/Button" { Button }
+import from "./components/Button" { Button }
 
-    def:pub app() -> JsxElement {
-        return <Button label="Click" onClick={lambda -> None { }} />;
-    }
+def:pub app() -> JsxElement {
+    return <Button label="Click" onClick={lambda -> None { }} />;
 }
 ```
 
@@ -1423,11 +1353,9 @@ The `[client.paths]` section lets you define custom import path aliases. Aliases
 With the above config, you can use aliases in your `.cl.jac` or `cl {}` code:
 
 ```jac
-cl {
-    import from "@components/Button" { Button }
-    import from "@utils/format" { formatDate }
-    import from "@shared" { constants }
-}
+import from "@components/Button" { Button }
+import from "@utils/format" { formatDate }
+import from "@shared" { constants }
 ```
 
 | Feature | How It's Applied |
@@ -1471,14 +1399,12 @@ tailwindcss = "^4.0.0"
 Then import Tailwind in your entry CSS and use `className=` in components:
 
 ```jac
-cl {
-    import "./assets/main.css";  # contains: @import "tailwindcss";
+import "./assets/main.css";  # contains: @import "tailwindcss";
 
-    def:pub app() -> JsxElement {
-        return <div className="min-h-screen bg-gray-100 p-8">
-            <h1 className="text-3xl font-bold">Hello</h1>
-        </div>;
-    }
+def:pub app() -> JsxElement {
+    return <div className="min-h-screen bg-gray-100 p-8">
+        <h1 className="text-3xl font-bold">Hello</h1>
+    </div>;
 }
 ```
 
@@ -2088,28 +2014,26 @@ Styling is React Native's model only: `style={{...}}` objects over a flexbox sub
     On the web target, `@jac/mobui` lowers to DOM through `react-native-web`. Declare it under `[dependencies.npm]` in `jac.toml` (the mobUI examples do); the bundler only aliases `react-native` to `react-native-web` when the dependency is present, so plain web projects that never touch `@jac/mobui` are unaffected.
 
 ```jac
-cl {
-    import from "@jac/mobui" {
-        View, Text, Pressable, TextInput, Image, ScrollView, StyleSheet
-    }
+import from "@jac/mobui" {
+    View, Text, Pressable, TextInput, Image, ScrollView, StyleSheet
+}
 
-    glob styles = StyleSheet.create({
-        card: {padding: 16, borderRadius: 16, backgroundColor: "#1b2030", gap: 12},
-        title: {fontSize: 22, fontWeight: "bold", color: "#f4f5fb"},
-    });
+glob styles = StyleSheet.create({
+    card: {padding: 16, borderRadius: 16, backgroundColor: "#1b2030", gap: 12},
+    title: {fontSize: 22, fontWeight: "bold", color: "#f4f5fb"},
+});
 
-    def:pub app -> JsxElement {
-        has name: str = "";
-        return
-            <ScrollView style={{flex: 1, backgroundColor: "#10131c"}}>
-                <View style={styles.card}>
-                    <Text style={styles.title}>Hello, {name or "stranger"}</Text>
-                    <Pressable onPress={lambda { name = "Jac"; }}>
-                        <Text>Tap me</Text>
-                    </Pressable>
-                </View>
-            </ScrollView>;
-    }
+def:pub app -> JsxElement {
+    has name: str = "";
+    return
+        <ScrollView style={{flex: 1, backgroundColor: "#10131c"}}>
+            <View style={styles.card}>
+                <Text style={styles.title}>Hello, {name or "stranger"}</Text>
+                <Pressable onPress={lambda { name = "Jac"; }}>
+                    <Text>Tap me</Text>
+                </Pressable>
+            </View>
+        </ScrollView>;
 }
 ```
 
@@ -2217,20 +2141,18 @@ install_dismiss_text = "Not Now"         # Custom dismiss button text
 For advanced use cases, import the PWA runtime module:
 
 ```jac
-cl import from "@jac/pwa" { usePwaInstall, PwaInstallButton }
+import from "@jac/pwa" { usePwaInstall, PwaInstallButton }
 
-cl {
-    def:pub CustomInstallUI() -> JsxElement {
-        (canInstall, triggerInstall) = usePwaInstall();
+def:pub CustomInstallUI() -> JsxElement {
+    (canInstall, triggerInstall) = usePwaInstall();
 
-        return <div>
-            {canInstall and (
-                <button onClick={lambda -> None { triggerInstall(); }}>
-                    Get the App
-                </button>
-            )}
-        </div>;
-    }
+    return <div>
+        {canInstall and (
+            <button onClick={lambda -> None { triggerInstall(); }}>
+                Get the App
+            </button>
+        )}
+    </div>;
 }
 ```
 
@@ -2301,10 +2223,8 @@ Define global variables that are replaced at compile time using the `[client.vit
 These values are inlined by Vite during bundling. String values must be double-quoted (JSON-encoded). Access them in client code:
 
 ```jac
-cl {
-    def:pub Footer() -> JsxElement {
-        return <p>Version: {globalThis.BUILD_VERSION}</p>;
-    }
+def:pub Footer() -> JsxElement {
+    return <p>Version: {globalThis.BUILD_VERSION}</p>;
 }
 ```
 
@@ -2347,23 +2267,21 @@ In dev mode, API routes are automatically proxied:
 Jac provides ambient DOM types (`ChangeEvent`, `KeyboardEvent`, `MouseEvent`, `FormEvent`, etc.) that are available without import. Use these for type-safe event handling:
 
 ```jac
-cl {
-    def:pub Form() -> JsxElement {
-        has value: str = "";
+def:pub Form() -> JsxElement {
+    has value: str = "";
 
-        return <div>
-            <input
-                value={value}
-                onChange={lambda (e: ChangeEvent) { value = e.target.value; }}
-                onKeyPress={lambda (e: KeyboardEvent) {
-                    if e.key == "Enter" { submit(); }
-                }}
-            />
-            <button onClick={lambda -> None { submit(); }}>
-                Submit
-            </button>
-        </div>;
-    }
+    return <div>
+        <input
+            value={value}
+            onChange={lambda (e: ChangeEvent) { value = e.target.value; }}
+            onKeyPress={lambda (e: KeyboardEvent) {
+                if e.key == "Enter" { submit(); }
+            }}
+        />
+        <button onClick={lambda -> None { submit(); }}>
+            Submit
+        </button>
+    </div>;
 }
 ```
 
@@ -2410,32 +2328,30 @@ The following event and element types are available in all Jac modules without a
 **Usage examples:**
 
 ```jac
-cl {
-    def:pub TypedForm() -> JsxElement {
-        has text: str = "";
-        has checked: bool = False;
+def:pub TypedForm() -> JsxElement {
+    has text: str = "";
+    has checked: bool = False;
 
-        return <div>
-            <input
-                value={text}
-                onChange={lambda (e: ChangeEvent) { text = e.target.value; }}
-                onKeyDown={lambda (e: KeyboardEvent) {
-                    if e.key == "Enter" and not e.shiftKey { submit(); }
-                }}
-            />
-            <input
-                type="checkbox"
-                checked={checked}
-                onChange={lambda (e: ChangeEvent) { checked = e.target.checked; }}
-            />
-            <form onSubmit={lambda (e: FormEvent) {
-                e.preventDefault();
-                handleSubmit();
-            }}>
-                <button type="submit">Submit</button>
-            </form>
-        </div>;
-    }
+    return <div>
+        <input
+            value={text}
+            onChange={lambda (e: ChangeEvent) { text = e.target.value; }}
+            onKeyDown={lambda (e: KeyboardEvent) {
+                if e.key == "Enter" and not e.shiftKey { submit(); }
+            }}
+        />
+        <input
+            type="checkbox"
+            checked={checked}
+            onChange={lambda (e: ChangeEvent) { checked = e.target.checked; }}
+        />
+        <form onSubmit={lambda (e: FormEvent) {
+            e.preventDefault();
+            handleSubmit();
+        }}>
+            <button type="submit">Submit</button>
+        </form>
+    </div>;
 }
 ```
 
@@ -2455,24 +2371,22 @@ cl {
 ## Conditional Rendering
 
 ```jac
-cl {
-    def:pub ConditionalComponent() -> JsxElement {
-        has show: bool = False;
-        has items: list = [];
+def:pub ConditionalComponent() -> JsxElement {
+    has show: bool = False;
+    has items: list = [];
 
-        if show {
-            content = <p>Visible</p>;
-        } else {
-            content = <p>Hidden</p>;
-        }
-        return <div>
-            {content}
-
-            {show and <p>Only when true</p>}
-
-            {[<li key={item["id"]}>{item["name"]}</li> for item in items]}
-        </div>;
+    if show {
+        content = <p>Visible</p>;
+    } else {
+        content = <p>Hidden</p>;
     }
+    return <div>
+        {content}
+
+        {show and <p>Only when true</p>}
+
+        {[<li key={item["id"]}>{item["name"]}</li> for item in items]}
+    </div>;
 }
 ```
 
@@ -2489,14 +2403,12 @@ cl {
 Import and wrap `JacClientErrorBoundary` around any subtree where you want to catch render-time errors:
 
 ```jac
-cl import from "@jac/runtime" { JacClientErrorBoundary }
+import from "@jac/runtime" { JacClientErrorBoundary }
 
-cl {
-    def:pub app() -> JsxElement {
-        return <JacClientErrorBoundary fallback={<div>Oops! Something went wrong.</div>}>
-            <MainAppComponents />
-        </JacClientErrorBoundary>;
-    }
+def:pub app() -> JsxElement {
+    return <JacClientErrorBoundary fallback={<div>Oops! Something went wrong.</div>}>
+        <MainAppComponents />
+    </JacClientErrorBoundary>;
 }
 ```
 
@@ -2519,12 +2431,10 @@ By default, jac-client internally wraps your entire application with `JacClientE
 ### Example with Custom Fallback
 
 ```jac
-cl {
-    def:pub App() -> JsxElement {
-        return <JacClientErrorBoundary fallback={<div className="error">Component failed to load</div>}>
-            <ExpensiveWidget />
-        </JacClientErrorBoundary>;
-    }
+def:pub App() -> JsxElement {
+    return <JacClientErrorBoundary fallback={<div className="error">Component failed to load</div>}>
+        <ExpensiveWidget />
+    </JacClientErrorBoundary>;
 }
 ```
 
@@ -2533,16 +2443,14 @@ cl {
 You can nest multiple error boundaries for fine-grained error isolation:
 
 ```jac
-cl {
-    def:pub App() -> JsxElement {
-        return <JacClientErrorBoundary fallback={<div>App error</div>}>
-            <Header />
-            <JacClientErrorBoundary fallback={<div>Content error</div>}>
-                <MainContent />
-            </JacClientErrorBoundary>
-            <Footer />
-        </JacClientErrorBoundary>;
-    }
+def:pub App() -> JsxElement {
+    return <JacClientErrorBoundary fallback={<div>App error</div>}>
+        <Header />
+        <JacClientErrorBoundary fallback={<div>Content error</div>}>
+            <MainContent />
+        </JacClientErrorBoundary>
+        <Footer />
+    </JacClientErrorBoundary>;
 }
 ```
 
@@ -2607,24 +2515,22 @@ Jac does not have a JavaScript-style `new` keyword. Use the `new(...)` ambient b
 
 <!-- jac-skip -->
 ```jac
-cl {
-    # WebSocket
-    ws = new(WebSocket, url);
+# WebSocket
+ws = new(WebSocket, url);
 
-    # URL
-    url = new(URL, String(baseUrl));
+# URL
+url = new(URL, String(baseUrl));
 
-    # Date
-    now = new(Date);
+# Date
+now = new(Date);
 
-    # Promise
-    p = new(Promise, lambda(resolve: any, reject: any) {
-        resolve.call(None, "done");
-    });
+# Promise
+p = new(Promise, lambda(resolve: any, reject: any) {
+    resolve.call(None, "done");
+});
 
-    # CustomEvent
-    evt = new(CustomEvent, "my-event", {"detail": data});
-}
+# CustomEvent
+evt = new(CustomEvent, "my-event", {"detail": data});
 ```
 
 `new(Cls, ...args)` is portable: it works in any codespace. On the server it is a thin wrapper for `Cls(*args)`; in `cl` blocks the compiler rewrites the call into `Reflect.construct(Cls, [args])` so it can drive JS class constructors that require `new`.
@@ -2635,12 +2541,10 @@ When passing callbacks to be invoked later, use `.call(None, ...)`:
 
 <!-- jac-skip -->
 ```jac
-cl {
-    handler = myCallback;
-    ws.onmessage = lambda(e: any) {
-        handler.call(None, JSON.parse(e.data));
-    };
-}
+handler = myCallback;
+ws.onmessage = lambda(e: any) {
+    handler.call(None, JSON.parse(e.data));
+};
 ```
 
 ### Module-Level State
@@ -2648,10 +2552,8 @@ cl {
 Use `glob` for state shared across a module:
 
 ```jac
-cl {
-    glob initialized: bool = False;
-    glob cache: any = None;
-}
+glob initialized: bool = False;
+glob cache: any = None;
 ```
 
 For more patterns, see the [Advanced Patterns & JS Interop tutorial](../../tutorials/fullstack/advanced-patterns.md).

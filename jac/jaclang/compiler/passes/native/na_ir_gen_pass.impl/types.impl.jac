@@ -1205,7 +1205,7 @@ impl NaIRGenPass._emit_binary_op(
                 lmul_rep.add_incoming(lmul_nr, lmul_onext_bb);
                 self.builder.branch(lmul_outer_bb);
                 self.builder.position_at_start(lmul_done_bb);
-                return lmul_new;
+                return self._mark_owned(lmul_new);
             }
         }
     }
@@ -1264,7 +1264,7 @@ impl NaIRGenPass._emit_binary_op(
                 i2.add_incoming(n2, body2_bb);
                 self.builder.branch(loop2_bb);
                 self.builder.position_at_start(done_bb);
-                return new_list;
+                return self._mark_owned(new_list);
             }
         }
     }

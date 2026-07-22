@@ -16,7 +16,7 @@ Two routing systems, both client-side (URL changes, no full reload). **File-base
 
 Keeping the template's `app()` while adding `pages/` is the classic mix: it compiles, it serves, and every route is silently discarded.
 
-Client placement is inferred: a `pages/*.jac` file whose `def:pub page` returns JSX (or carries an npm import) compiles client automatically - no wrapper or prefix needed (see `jac-codespaces`). The page, layout, and `main.jac` examples below are plain markerless `.jac`.
+Client placement is inferred: a `pages/*.jac` file whose export returns `JsxPage` (or carries an npm import) compiles client automatically - no wrapper or prefix needed (see `jac-codespaces`). The page, layout, and `main.jac` examples below are plain markerless `.jac`.
 
 ## File-based routing (recommended)
 
@@ -38,30 +38,35 @@ myapp/
     └── [...notFound].jac    # * catch-all (404)
 ```
 
-**Which files become routes:** Only plain `.jac` files in `pages/` are treated as routes. The scanner skips files whose name contains `.cl.`, `.impl.`, or `.test.` : these are never turned into routes regardless of location.
+**Which files become routes: the return type decides.** A `pages/` file is a route when a public export returns **`JsxPage`**, and a layout when one returns **`JsxLayout`**. `JsxPage` and `JsxLayout` are ambient builtin types (no import, like `JsxElement`), and `JsxElement` is assignable to both, so a component body returning JSX satisfies them.
 
-| File | Becomes a route? | Purpose |
-|---|---|---|
-| `pages/about.jac` | yes | page |
-| `pages/about.cl.jac` | **no** | co-located component |
-| `pages/about.impl.jac` | **no** | jac impl-separation file |
-| `pages/about.test.jac` | **no** | test file |
+The **export name is free** - the router imports whatever the `JsxPage`-returning export is called. A co-located component returns `JsxElement`, so it is never a route and needs no marker. `.impl.` and `.test.` sidecars are skipped structurally (module roles, not route modules).
 
-**Co-location pattern** - split into a thin `.jac` route (exports `def:pub page`) and a component the scanner skips. The component's JSX already infers it client; give it a `.cl.jac` name so the route scanner skips it - here `.cl.` is the scanner-skip signal, not a placement marker (placement is inferred either way). Both live in `pages/`, only the plain `.jac` becomes a route. Import the sibling using the stem without `.cl`: `budget_ui.cl.jac` → `import from .budget_ui { BudgetUI }`.
+| File | export returns | Becomes a route? | Purpose |
+|---|---|---|---|
+| `pages/about.jac` | `JsxPage` | yes | page (any export name) |
+| `pages/layout.jac` | `JsxLayout` | layout | wraps the directory via `<Outlet/>` |
+| `pages/about_ui.jac` | `JsxElement` | **no** | co-located component |
+| `pages/about.impl.jac` | - | **no** | jac impl-separation sidecar |
+| `pages/about.test.jac` | - | **no** | test sidecar |
+
+Naming a def `page` or `layout` marks nothing on its own - only the return type does.
+
+**Co-location pattern** - a thin route returning `JsxPage` plus a plain component returning `JsxElement`, both in `pages/`. Import the sibling by stem: `budget_ui.jac` → `import from .budget_ui { BudgetUI }`.
 
 ```
 pages/
-├── budget.jac               # /budget  - thin route, exports page
-└── budget_ui.cl.jac         # skipped  - complex UI component, exported as BudgetUI
+├── budget.jac               # /budget  - returns Page
+└── budget_ui.jac            # not a route - returns JsxElement, imported by budget.jac
 ```
 
-Each page file exports a **`def:pub page`**; each layout file a **`def:pub layout`** containing `<Outlet />` where child routes render:
+A page returns **`JsxPage`**; a layout returns **`JsxLayout`** and contains `<Outlet />` where child routes render. Both can be named anything:
 
 ```jac
 # pages/users/[id].jac
 import from "@jac/runtime" { Link, useParams }
 
-def:pub page() -> JsxElement {
+def:pub UserDetail() -> JsxPage {
     params = useParams();
     userId = params["id"];                  # subscript, NOT params.id (E1030)
     if not userId { return <p>Not found</p>; }   # truthy check catches undefined
@@ -70,16 +75,18 @@ def:pub page() -> JsxElement {
 ```
 
 ```jac
-# pages/layout.jac - shared shell; nest more layout.jac files per directory
+# pages/layout.jac - shared shell; nest one per directory to scope it
 import from "@jac/runtime" { Outlet, Link }
 
-def:pub layout() -> JsxElement {
+def:pub Shell() -> JsxLayout {
     return <div className="app">
         <nav><Link to="/">Home</Link><Link to="/dashboard">Dashboard</Link></nav>
         <main><Outlet /></main>
     </div>;
 }
 ```
+
+The filename still decides the **URL** (`index.jac` → the directory root, `[id].jac` → `:id`, `[...rest].jac` → catch-all); the return type only decides **what is a route**. A layout is scoped to the directory its file sits in, so `layout.jac` remains the conventional filename even though any filename with a `JsxLayout`-returning export works.
 
 A `layout.jac` inside a subdirectory scopes to that directory's URL prefix only:
 

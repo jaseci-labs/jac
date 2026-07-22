@@ -704,7 +704,7 @@ impl NaIRGenPass._codegen_list_slice(
 
     self.builder.position_at_end(loop_done);
 
-    return new_list;
+    return self._mark_owned(new_list);
 }
 
 impl NaIRGenPass._codegen_string_slice(
