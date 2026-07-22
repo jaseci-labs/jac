@@ -53,16 +53,17 @@ glob FORBIDDEN: dict[str, str] = {
              "inference schedule"
          ),
          ("ecmascript/impl/esast_gen_pass.impl.jac", ".lookup("): (
-             3,
+             4,
              "declaration-surface reads: (1) sv-import client stub "
              "generation resolves the SOURCE module's exported ability - "
              "no fact on the local tree exists; (2) component PascalCase "
              "rename collision guard checks whether the capitalized name "
              "is already declared in the module - the declared NAME is "
-             "the consumed fact, not a resolved type; (3) runtime-import "
-             "injection guard checks whether the imported name is already "
-             "declared in the module before emitting a @jac/runtime import - "
-             "the declared NAME is the consumed fact, not a resolved type"
+             "the consumed fact, not a resolved type; (3-4) runtime-import "
+             "injection guard checks ir_in and the main module (when "
+             "different) for a locally declared name before emitting a "
+             "@jac/runtime import - the declared NAME is the consumed "
+             "fact, not a resolved type"
          ),
          ("ecmascript/impl/esast_gen_pass.impl.jac", "type_tag.tag"): (
              7,
