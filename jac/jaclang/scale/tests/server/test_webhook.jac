@@ -7,6 +7,7 @@ import glob;
 import hashlib;
 import hmac;
 import json;
+import logging;
 import os;
 import socket;
 import subprocess;
@@ -14,6 +15,7 @@ import time;
 import uuid;
 import shutil;
 import requests;
+import from logging.handlers { MemoryHandler }
 import from pathlib { Path }
 import from typing { cast }
 
@@ -144,7 +146,7 @@ def _register_and_login(base_url: str, username: str, password: str) -> str {
 
 """Verify webhook endpoints are registered for walkers with webhook protocol."""
 def run_webhook_endpoint_exists_test(base_url: str) {
-    # Hit endpoints directly — non-404 means the route is registered
+    # Hit endpoints directly; non-404 means the route is registered
     resp = requests.post(f"{base_url}/webhook/PaymentReceived", json={}, timeout=5);
     assert resp.status_code != 404 , (
         "Expected /webhook/PaymentReceived to be registered"
@@ -559,6 +561,57 @@ def _run_with_shared_mongo(run_test: Callable[[str], None]) {
         os.environ.pop("MONGODB_URI", None);
         _reset_shared_mongo(uri);
         _cleanup_db_files(wh_fixtures_dir);
+    }
+}
+
+"""Boot a fixture app while capturing log records, return durability warnings seen."""
+def _boot_and_capture_webhook_warnings(fixture_file: str) -> list[str] {
+    capture = MemoryHandler(10000);
+    root_logger = logging.getLogger();
+    root_logger.addHandler(capture);
+    client = None;
+    try {
+        client = make_client(fixture_file);
+        return [
+            r.getMessage()
+            for r in capture.buffer
+            if "Webhook API keys are stored in memory" in r.getMessage()
+        ];
+    } finally {
+        root_logger.removeHandler(capture);
+        if client is not None {
+            client.close();
+        }
+    }
+}
+
+test "webhook warning absent at boot without webhook walkers" {
+    original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
+    try {
+        warnings = _boot_and_capture_webhook_warnings("todo_app.jac");
+        assert not warnings , (
+            "Webhook durability warning fired at boot for an app with no "
+            f"webhook walkers: {warnings}"
+        );
+    } finally {
+        if original_mongodb_uri is not None {
+            os.environ["MONGODB_URI"] = original_mongodb_uri;
+        }
+    }
+}
+
+test "webhook warning present at boot with webhook walkers" {
+    original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
+    try {
+        warnings = _boot_and_capture_webhook_warnings("test_api.jac");
+        assert warnings , (
+            "Expected webhook durability warning at boot for an app with "
+            "webhook walkers and no MongoDB"
+        );
+    } finally {
+        if original_mongodb_uri is not None {
+            os.environ["MONGODB_URI"] = original_mongodb_uri;
+        }
     }
 }
 

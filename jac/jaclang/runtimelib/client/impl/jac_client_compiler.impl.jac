@@ -540,7 +540,7 @@ impl JacClientCompiler._scan_and_compile_pages(
     collected_globals: (dict[(str, Any)] | None) = None,
     target_name: str = "web"
 ) -> bool {
-    scanner = RouteScanner(self.project_dir);
+    scanner = RouteScanner(self.project_dir, symbols_of=self._page_symbols);
     if not scanner.has_pages_dir() {
         return False;
     }
@@ -565,7 +565,7 @@ impl JacClientCompiler._scan_and_compile_pages(
 }
 
 impl JacClientCompiler.rescan_pages(self: JacClientCompiler) -> bool {
-    scanner = RouteScanner(self.project_dir);
+    scanner = RouteScanner(self.project_dir, symbols_of=self._page_symbols);
     if not scanner.has_pages_dir() {
         return False;
     }
@@ -589,6 +589,21 @@ impl JacClientCompiler.rescan_pages(self: JacClientCompiler) -> bool {
     }
     self._generate_routes_manifest();
     return True;
+}
+
+impl JacClientCompiler._page_symbols(
+    self: JacClientCompiler, module_path: Path
+) -> (list[str] | None) {
+    try {
+        compiled = self.jac_compiler.compile_module(module_path);
+    } except Exception {
+        return None;
+    }
+    mod = compiled[1];
+    if mod is None {
+        return None;
+    }
+    return list(mod.sym_tab.names_in_scope.keys());
 }
 
 impl JacClientCompiler._generate_routes_manifest(self: JacClientCompiler) -> None {

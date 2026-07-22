@@ -54,11 +54,12 @@ impl RouteScanner._scan_directory(
                 routes.extend(child_routes);
             }
         } elif entry.is_file() and entry.suffix == '.jac' {
-            if any(suffix in entry.name for suffix in self.SKIP_SUFFIXES) {
+            if any(suffix in entry.name for suffix in self.MODULE_ROLE_SUFFIXES) {
                 continue;
             }
+            symbols = self._symbols_for(entry);
             stem = entry.stem;
-            if stem == self.LAYOUT_FILENAME {
+            if self._is_layout_file(entry, symbols) {
                 layout_key = url_prefix or "/";
                 if layout_key in self._layouts {
                     raise ClientBundleError(
@@ -76,6 +77,9 @@ impl RouteScanner._scan_directory(
                 );
                 self._layouts[layout_key] = layout_entry;
                 self._page_files.append(entry);
+                continue;
+            }
+            if not self._is_route_file(entry, symbols) {
                 continue;
             }
             route_segment = self._file_to_route_path(stem);
@@ -149,4 +153,35 @@ impl RouteScanner._detect_collisions(routes: list[RouteEntry]) -> None {
         }
         seen[route.path] = route.file_path;
     }
+}
+
+impl RouteScanner._symbols_for(file_path: Path) -> (list[str] | None) {
+    if self.symbols_of is None {
+        return None;
+    }
+    return self.symbols_of(file_path);
+}
+
+impl RouteScanner._is_layout_file(
+    file_path: Path, symbols: (list[str] | None)
+) -> bool {
+    if file_path.stem != self.LAYOUT_FILENAME {
+        return False;
+    }
+    if self.symbols_of is None or symbols is None {
+        return True;
+    }
+    return 'layout' in symbols;
+}
+
+impl RouteScanner._is_route_file(file_path: Path, symbols: (list[str] | None)) -> bool {
+    if self.symbols_of is None {
+        return not any(
+            suffix in file_path.name for suffix in self.LEGACY_PLACEMENT_SUFFIXES
+        );
+    }
+    if symbols is None {
+        return True;
+    }
+    return 'page' in symbols;
 }

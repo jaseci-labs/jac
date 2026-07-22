@@ -774,14 +774,12 @@ impl MicroserviceGateway.start -> None {
 
 impl MicroserviceGateway._install_admin_api -> None {
     import from jaclang.scale.jserver.jfast_api { JFastApiServer }
-    import from jaclang.scale.webhook.webhook { ApiKeyManager }
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
 
     self.server = JFastApiServer(app=self.app);
 
     self.user_manager = Jac.get_user_manager(base_path=self.base_path);
     self.server.set_user_manager(self.user_manager);
-    self._api_key_manager = ApiKeyManager();
 
     self.register_admin_endpoints();
     self.register_logs_endpoints();
