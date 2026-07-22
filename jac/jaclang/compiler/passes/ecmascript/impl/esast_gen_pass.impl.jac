@@ -3557,8 +3557,15 @@ impl EsastGenPass._inject_runtime_import(name: str, nd: uni.UniNode) -> None {
     if name in self.injected_imports or self._has_import(name) {
         return;
     }
+
+    if isinstance(self.ir_in, uni.Module)
+    and self.ir_in.lookup(name, deep=False) is not None {
+        return;
+    }
     mod = self.get_main_mod();
-    if mod is not None and mod.lookup(name, deep=False) is not None {
+    if mod is not None
+    and mod is not self.ir_in
+    and mod.lookup(name, deep=False) is not None {
         return;
     }
     src = runtime_import_source(name, self.backend);
