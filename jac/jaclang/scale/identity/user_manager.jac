@@ -43,13 +43,15 @@ obj JacScaleUserManager(UserManager) {
     def create_user_with_identities(
         identities: list[dict[str, any]],
         credential: dict[str, any],
-        profile: dict[str, any] | None = None
+        profile: dict[str, any] | None = None,
+        root_id: str | None = None
     ) -> dict[str, any];
 
     def create_internal_user(
-        username: str, password: str, role: str = 'user'
+        username: str, password: str, role: str = 'user', root_id: str | None = None
     ) -> dict[str, any];
 
+    def resolve_shared_root_id -> str;
     def authenticate(identifier: str, password: str) -> dict[str, any] | None;
     def find_user_by_identity(value: str) -> dict[str, any] | None;
     def user_exists(user_id: str) -> bool;
