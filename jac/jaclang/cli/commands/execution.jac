@@ -8,6 +8,7 @@ glob registry = get_registry();
     name="run",
     help="Run a Jac program",
     tier="core",
+    needs=[],
     args=[
         Arg.create(
             "filename",
@@ -23,10 +24,20 @@ glob registry = get_registry();
             short="s"
         ),
         Arg.create(
-            "main", typ=bool, default=True, help="Treat module as __main__", short="m"
+            "main",
+            typ=bool,
+            default=True,
+            help="Treat module as __main__",
+            short="m",
+            config_key="run.main"
         ),
         Arg.create(
-            "cache", typ=bool, default=True, help="Enable compilation cache", short="c"
+            "cache",
+            typ=bool,
+            default=True,
+            help="Enable compilation cache",
+            short="c",
+            config_key="run.cache"
         ),
         Arg.create(
             "profile",
@@ -110,6 +121,7 @@ def run(
     name="dev",
     help="Serve with hot reload and live compilation",
     tier="core",
+    needs=["providers"],
     args=[
         Arg.create(
             "filename",
@@ -117,7 +129,14 @@ def run(
             default="",
             help="Entry .jac file (default: [project] entry-point from jac.toml)"
         ),
-        Arg.create("port", typ=int, default=8000, help="Port to serve on", short="p"),
+        Arg.create(
+            "port",
+            typ=int,
+            default=8000,
+            help="Port to serve on",
+            short="p",
+            config_key="serve.port"
+        ),
         Arg.create(
             "api_port",
             typ=int,
@@ -149,6 +168,7 @@ def enter(
     name="start",
     help="Start server for a Jac program",
     tier="core",
+    needs=["providers", "client"],
     args=[
         Arg.create(
             "filename",
@@ -156,8 +176,22 @@ def enter(
             default="main.jac",
             help="Path to .jac file (default: main.jac)"
         ),
-        Arg.create("port", typ=int, default=8000, help="Server port", short="p"),
-        Arg.create("main", typ=bool, default=True, help="Treat as __main__", short="m"),
+        Arg.create(
+            "port",
+            typ=int,
+            default=8000,
+            help="Server port",
+            short="p",
+            config_key="serve.port"
+        ),
+        Arg.create(
+            "main",
+            typ=bool,
+            default=True,
+            help="Treat as __main__",
+            short="m",
+            config_key="run.main"
+        ),
         Arg.create(
             "faux",
             typ=bool,
@@ -299,6 +333,7 @@ def run_jab_image(
 @registry.command(
     name="x",
     help="Run an installed CLI tool (console-script) under the Jac runtime",
+    needs=["providers"],
     args=[
         Arg.create(
             "name",

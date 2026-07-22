@@ -1,0 +1,3461 @@
+def _command_routes -> list[CommandMeta] {
+    return [
+        CommandMeta(
+            name='ai',
+            help='Launch an interactive Jac coding agent',
+            group='general',
+            tier='',
+            hidden=False,
+            handler_module='jaclang.cli.commands.ai',
+            handler_name='ai',
+            needs=[],
+            description="",
+            examples=[
+                (
+                    'jac ai',
+                    "Start a session (uses jac.toml's model, else local default)"
+                ),
+                ('jac ai "add a walker to main.jac"', 'Run a single request and exit'),
+                (
+                    'jac ai -m openai/gpt-4o',
+                    'Use a cloud model (key from jac.toml or env)'
+                ),
+                ('jac ai -m local:gemma-4-e2b', 'Use a smaller/faster local model'),
+                (
+                    'jac ai --n_ctx 32768',
+                    'Give the local model a larger context window'
+                ),
+                ('jac ai --safe', 'Approve each file write and command before it runs'),
+                (
+                    'jac ai -q "fix the build"',
+                    'Compact output -- just tool calls and the answer'
+                ),
+                (
+                    'jac ai --ui',
+                    'Open a web UI with a live agent phase-graph visualizer'
+                )
+            ],
+            args=[
+                ArgMeta(
+                    name='prompt',
+                    kind='POSITIONAL',
+                    typ='str',
+                    default='',
+                    help='Optional one-shot request; omit for an interactive session',
+                    short=None,
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='model',
+                    kind='OPTION',
+                    typ='str',
+                    default='',
+                    help='Model to use, e.g. local:gemma-4-e4b or openai/gpt-4o',
+                    short='m',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='n_ctx',
+                    kind='OPTION',
+                    typ='int',
+                    default=0,
+                    help='Context-window size for local models (tokens)',
+                    short='n',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='safe',
+                    kind='FLAG',
+                    typ='bool',
+                    default=False,
+                    help='Confirm every file write and code execution (off by default)',
+                    short='s',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='quiet',
+                    kind='FLAG',
+                    typ='bool',
+                    default=False,
+                    help='Compact output: hide live reasoning, timings, and step detail',
+                    short='q',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='ui',
+                    kind='FLAG',
+                    typ='bool',
+                    default=False,
+                    help='Open the agent in a web UI with a live phase-graph visualizer',
+                    short='u',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='browse',
+            help='Headless browser automation over CDP (open, click, snapshot, ...)',
+            group='tools',
+            tier='',
+            hidden=True,
+            handler_module='jaclang.cli.commands.browse',
+            handler_name='browse',
+            needs=[],
+            description="",
+            examples=[
+                ('jac browse open example.com', 'Launch a browser and navigate'),
+                ('jac browse snapshot', 'Accessibility tree with @e1/@e2 refs'),
+                (
+                    'jac browse click @e5',
+                    'Click an element by snapshot ref (real input)'
+                ),
+                ("jac browse fill '#email' you@example.com", 'Clear and fill a field'),
+                ('jac browse get title', 'Read the page title'),
+                ("jac browse wait '#app'", 'Wait until a selector is actionable'),
+                ('jac browse console', 'Read buffered console/log output'),
+                ('jac browse scroll down', 'Scroll the page by ~one viewport'),
+                (
+                    'jac browse -s work open example.com',
+                    "Use an isolated 'work' session"
+                ),
+                ('jac browse state save auth.json', 'Save cookies + localStorage'),
+                ('jac browse close', 'Close the browser')
+            ],
+            args=[
+                ArgMeta(
+                    name='action',
+                    kind='POSITIONAL',
+                    typ='str',
+                    default=None,
+                    help='open|navigate|click|type|fill|press|get|eval|wait|scroll|console|snapshot|screenshot|state|sessions|close',
+                    short=None,
+                    choices=None,
+                    required=True,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='args',
+                    kind='REMAINDER',
+                    typ='str',
+                    default=[],
+                    help='Arguments for the action (selector, url, text, path, ...)',
+                    short='a',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='session',
+                    kind='OPTION',
+                    typ='str',
+                    default='default',
+                    help='Session name; each session is an isolated browser instance',
+                    short='s',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='viewport',
+                    kind='OPTION',
+                    typ='str',
+                    default='1280x720',
+                    help='Browser window size as WIDTHxHEIGHT (applied at open)',
+                    short='v',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='build',
+            help='Build a sealed .jab artifact (type-checks first)',
+            group='build',
+            tier='',
+            hidden=False,
+            handler_module='jaclang.cli.commands.build',
+            handler_name='build',
+            needs=['providers', 'client'],
+            description="",
+            examples=[
+                ('jac build', 'Gate + build a single .jab into dist/'),
+                ('jac build --as binary', 'Gate + build a self-contained executable'),
+                ('jac build --fat', 'Gate + build a fat jab (Python deps vendored)'),
+                ('jac build --as wheel', 'Gate + build a PyPI wheel'),
+                ('jac build --check_only', 'Run the whole-program gate only'),
+                ('jac build --no_typecheck', 'Build without the gate (escape hatch)'),
+                ('jac build --client mobile', 'Build the mobile client shell')
+            ],
+            args=[
+                ArgMeta(
+                    name='filename',
+                    kind='POSITIONAL',
+                    typ='str',
+                    default='',
+                    help='Entry .jac file (default: [project] entry-point from jac.toml)',
+                    short=None,
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='as',
+                    kind='OPTION',
+                    typ='str',
+                    default='jab',
+                    help="What to emit: 'jab' (single-file sealed app bundle, default), 'sealed' (unpacked image dir), 'binary' (self-contained executable), 'wheel' (PyPI), 'npm' (tarball), 'source' (ejected FastAPI+JS tree), 'native' (AOT native binary)",
+                    short='a',
+                    choices=[
+                        'jab',
+                        'sealed',
+                        'binary',
+                        'wheel',
+                        'npm',
+                        'source',
+                        'native'
+                    ],
+                    required=False,
+                    dest='projection',
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='output',
+                    kind='OPTION',
+                    typ='str',
+                    default='dist',
+                    help='Output directory for the built artifact',
+                    short='o',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='no_typecheck',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Skip the whole-program type-check gate (escape hatch)',
+                    short='n',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='fat',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Vendor the Python dependency closure as wheels into the bundle (jab/binary only) so it materializes offline, with no PyPI',
+                    short='f',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='check_only',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Run the gate and emit nothing',
+                    short='c',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='client',
+                    kind='OPTION',
+                    typ='str',
+                    default='',
+                    help='Build a client shell instead of the artifact: web, pwa, mobile, desktop (desktop builds a native webview app).',
+                    short='',
+                    choices=[
+                        'web',
+                        'pwa',
+                        'static',
+                        'mobile',
+                        'desktop',
+                        'cef',
+                        'react-native'
+                    ],
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='platform',
+                    kind='OPTION',
+                    typ='str',
+                    default=None,
+                    help='Platform for desktop/mobile shells (windows, macos, linux, all, android, ios)',
+                    short='p',
+                    choices=['windows', 'macos', 'linux', 'all', 'android', 'ios'],
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='check',
+            help='Type check Jac files',
+            group='analysis',
+            tier='core',
+            hidden=False,
+            handler_module='jaclang.cli.commands.analysis',
+            handler_name='check',
+            needs=[],
+            description="",
+            examples=[
+                ('jac check myprogram.jac', 'Check a single file'),
+                (
+                    'jac check . --native-census',
+                    'Rank modules by native compile outcome'
+                ),
+                ('jac check . --lint', 'Report lint violations only'),
+                ('jac check . --lint --fix', 'Auto-fix lint violations'),
+                ('jac check file1.jac file2.jac', 'Check multiple files'),
+                ('jac check myproject/', 'Check all files in directory'),
+                ('jac check . --ignore jac scale test', 'Check excluding directories'),
+                (
+                    'jac check myprogram.jac --disable-error-code E1030 W2001',
+                    'Check while suppressing selected diagnostics'
+                ),
+                (
+                    'jac check myprogram.jac --parse-only',
+                    'Only check syntax, skip type checking'
+                ),
+                ('jac check myprogram.jac --nowarn', 'Check without warnings')
+            ],
+            args=[
+                ArgMeta(
+                    name='paths',
+                    kind='MULTI',
+                    typ='str',
+                    default=None,
+                    help='Paths to .jac files or directories',
+                    short='p',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='print_errs',
+                    kind='OPTION',
+                    typ='bool',
+                    default=True,
+                    help='Print detailed error messages',
+                    short='e',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='ignore',
+                    kind='MULTI',
+                    typ='str',
+                    default=[],
+                    help='Directories or files to ignore (space separated)',
+                    short='i',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='disable-error-code',
+                    kind='MULTI',
+                    typ='str',
+                    default=[],
+                    help='Diagnostic codes or lint kebab aliases to suppress (same as [check].suppress in jac.toml; e.g. E1030 no-print)',
+                    short='d',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='parse_only',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Only check syntax (skip type checking)',
+                    short='p',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='nowarn',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Suppress warning output (warnings are still counted)',
+                    short='n',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='lint',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help="Report lint violations only (absorbs 'jac lint')",
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest='lint_only',
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='fix',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='With --lint: auto-fix violations',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='native-census',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Compile with codegen and report per-module native outcome (native / demoted / server) ranked by reason (needs the native toolchain)',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='clean',
+            help='Clean project build artifacts',
+            group='project',
+            tier='',
+            hidden=False,
+            handler_module='jaclang.cli.commands.project',
+            handler_name='clean',
+            needs=['providers'],
+            description="",
+            examples=[
+                ('jac clean', 'Clean data directory (default)'),
+                ('jac clean --all', 'Clean all .jac artifacts'),
+                ('jac clean --cache', 'Clean only cache directory'),
+                ('jac clean --data --cache', 'Clean data and cache directories')
+            ],
+            args=[
+                ArgMeta(
+                    name='all',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Clean all .jac artifacts (data, cache, packages, client)',
+                    short='a',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='data',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Clean data directory (.jac/data)',
+                    short='d',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='cache',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Clean cache directory (.jac/cache)',
+                    short='c',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='packages',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Clean virtual environment (.jac/venv)',
+                    short='p',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='force',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Force clean without confirmation',
+                    short='f',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='code',
+            help="Query code structure via the compiler (grep's structural successor)",
+            group='analysis',
+            tier='',
+            hidden=False,
+            handler_module='jaclang.cli.commands.code',
+            handler_name='code',
+            needs=[],
+            description="",
+            examples=[
+                (
+                    'jac code symbol User',
+                    'Definition(s) of a symbol plus where it is used'
+                ),
+                (
+                    'jac code uses make_user',
+                    'Every read/write of a symbol, def/use-precise'
+                ),
+                ('jac code map', 'Structural overview: nodes, walkers, edges, objs'),
+                ('jac code map walker', 'Only walker archetypes'),
+                (
+                    'jac code walkers User',
+                    'Walkers whose entry points traverse a node type'
+                ),
+                (
+                    'jac code slice Profile --depth 2',
+                    'Typed neighbourhood for prompt assembly'
+                ),
+                ('jac code diag', 'Structured compiler errors and warnings'),
+                ('jac code symbol User --text', 'Same query, human-readable output')
+            ],
+            args=[
+                ArgMeta(
+                    name='action',
+                    kind='POSITIONAL',
+                    typ='str',
+                    default='',
+                    help='symbol | uses | map | walkers | slice | diag',
+                    short=None,
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='target',
+                    kind='POSITIONAL',
+                    typ='str',
+                    default='',
+                    help='Symbol name, node type, archetype-kind filter, or file path',
+                    short=None,
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='text',
+                    kind='FLAG',
+                    typ='bool',
+                    default=False,
+                    help='Human-readable text instead of the default JSON',
+                    short='t',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='depth',
+                    kind='OPTION',
+                    typ='int',
+                    default=1,
+                    help='Type-dependency depth for `slice` (default 1)',
+                    short='d',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='completions',
+            help='Generate shell completion script',
+            group='tools',
+            tier='',
+            hidden=True,
+            handler_module='jaclang.cli.commands.tools',
+            handler_name='completions',
+            needs=[],
+            description="",
+            examples=[
+                ('jac completions --install', 'Install bash completions to ~/.bashrc'),
+                (
+                    'jac completions --shell zsh --install',
+                    'Install zsh completions to ~/.zshrc'
+                ),
+                ('jac completions --shell bash', 'Print bash completions to stdout')
+            ],
+            args=[
+                ArgMeta(
+                    name='shell',
+                    kind='OPTION',
+                    typ='str',
+                    default='bash',
+                    help='Shell to generate completions for (bash, zsh, fish)',
+                    short='s',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='install',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Install completions to shell config file (~/.bashrc, ~/.zshrc, etc.)',
+                    short='i',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='config',
+            help='Manage Jac configuration',
+            group='config',
+            tier='',
+            hidden=False,
+            handler_module='jaclang.cli.commands.config',
+            handler_name='config',
+            needs=[],
+            description="",
+            examples=[
+                ('jac config show', 'Show all configuration'),
+                ('jac config get run.cache', 'Get specific setting'),
+                ('jac config set run.cache false', 'Set a value'),
+                ('jac config reset run.cache', 'Reset to default'),
+                ('jac config list', 'List available settings'),
+                ('jac config show --group run', 'Show settings in a group')
+            ],
+            args=[
+                ArgMeta(
+                    name='action',
+                    kind='POSITIONAL',
+                    typ='str',
+                    default='show',
+                    help='Action: show, get, set, reset, list',
+                    short=None,
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='key',
+                    kind='POSITIONAL',
+                    typ='str',
+                    default='',
+                    help='Configuration key',
+                    short=None,
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='value',
+                    kind='POSITIONAL',
+                    typ='str',
+                    default='',
+                    help='Value to set',
+                    short=None,
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='group',
+                    kind='OPTION',
+                    typ='str',
+                    default='',
+                    help='Config group filter',
+                    short='g',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='output',
+                    kind='OPTION',
+                    typ='str',
+                    default='table',
+                    help='Output format: table, json, toml',
+                    short='o',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='create',
+            help='Create a new Jac project',
+            group='project',
+            tier='core',
+            hidden=False,
+            handler_module='jaclang.cli.commands.project',
+            handler_name='create',
+            needs=['providers', 'templates'],
+            description="",
+            examples=[
+                (
+                    'jac create',
+                    'Initialize a cli project in the current directory (name from cwd)'
+                ),
+                (
+                    'jac create --pack ./my-template --pack_output my.jacpack',
+                    'Bundle a template directory into a .jacpack'
+                ),
+                ('jac create myapp', 'Create new myapp/ directory (cli kind)'),
+                ('jac create myapp --kind service', 'Scaffold a headless API service'),
+                (
+                    'jac create myapp --kind native-binary',
+                    'Scaffold a natively-compiled binary'
+                ),
+                ('jac create myapp --kind web-app', 'Scaffold a full-stack web app'),
+                ('jac create --force', 'Reinitialize existing project'),
+                ('jac create --use ./my.jacpack', 'Create from local .jacpack file'),
+                ('jac create --use https://example.com/t.jacpack', 'Create from URL'),
+                ('jac create --list', 'List available project kinds and named variants')
+            ],
+            args=[
+                ArgMeta(
+                    name='name',
+                    kind='POSITIONAL',
+                    typ='str',
+                    default='',
+                    help='Project name (omit to initialize the current directory)',
+                    short=None,
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='force',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Overwrite existing jac.toml',
+                    short='f',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='kind',
+                    kind='OPTION',
+                    typ='str',
+                    default='',
+                    help='Project kind to scaffold (cli, cli-native, service, web-app, ...)',
+                    short='k',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='use',
+                    kind='OPTION',
+                    typ='str',
+                    default='default',
+                    help='Custom template: file path or URL to a .jacpack (or a variant name)',
+                    short='u',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='list',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='List available project kinds and named variants',
+                    short='l',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='pack',
+                    kind='OPTION',
+                    typ='str',
+                    default='',
+                    help="Bundle a template directory into a .jacpack instead of creating (absorbs 'jac jacpack pack')",
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='pack_output',
+                    kind='OPTION',
+                    typ='str',
+                    default='',
+                    help='With --pack: output .jacpack file path',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='skip',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Skip npm package installation (when creating client kinds: web-app/web-static/mobile)',
+                    short='s',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='style',
+                    kind='OPTION',
+                    typ='str',
+                    default=None,
+                    help='shadcn style preset (nova|vega|maia|lyra|mira)',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='baseColor',
+                    kind='OPTION',
+                    typ='str',
+                    default=None,
+                    help='shadcn base palette (neutral|stone|zinc|gray)',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='theme',
+                    kind='OPTION',
+                    typ='str',
+                    default=None,
+                    help='shadcn accent theme (e.g. rose, emerald)',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='font',
+                    kind='OPTION',
+                    typ='str',
+                    default=None,
+                    help='shadcn font family (e.g. inter, outfit)',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='radius',
+                    kind='OPTION',
+                    typ='str',
+                    default=None,
+                    help='shadcn border radius (none|small|medium|large)',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='menuAccent',
+                    kind='OPTION',
+                    typ='str',
+                    default=None,
+                    help='shadcn menu accent (subtle|bold)',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='menuColor',
+                    kind='OPTION',
+                    typ='str',
+                    default=None,
+                    help='shadcn menu color scheme',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='db',
+            help='Inspect, rescue, and manage Jac persistence databases',
+            group='db',
+            tier='',
+            hidden=False,
+            handler_module='jaclang.cli.commands.db',
+            handler_name='db',
+            needs=[],
+            description="",
+            examples=[
+                ('jac db inspect', 'Summarize the DB for the .jac in cwd'),
+                (
+                    'jac db inspect --app path/to/app.jac',
+                    "Summarize a specific app's DB"
+                ),
+                ('jac db fsck', 'Scan for dangling refs / orphans (read-only)'),
+                ('jac db fsck repair', 'Heal dangling refs and collect orphans'),
+                ('jac db quarantine list', 'List quarantined anchors'),
+                ('jac db quarantine show <row-id>', 'Show one quarantined row in full'),
+                ('jac db alias list', 'List DB-resident aliases'),
+                (
+                    'jac db alias add old.mod.OldName new.mod.NewName',
+                    'Register a rescue alias'
+                ),
+                ('jac db alias remove old.mod.OldName', 'Remove a rescue alias'),
+                ('jac db recover <row-id>', 'Try to un-quarantine one row'),
+                ('jac db recover-all', 'Try to un-quarantine every row; report counts'),
+                ('jac db schema rules', 'List registered __jac_schema__ drift rules')
+            ],
+            args=[
+                ArgMeta(
+                    name='action',
+                    kind='POSITIONAL',
+                    typ='str',
+                    default='inspect',
+                    help='Action: inspect, fsck, quarantine, alias, recover, recover-all, schema',
+                    short=None,
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='sub',
+                    kind='POSITIONAL',
+                    typ='str',
+                    default='',
+                    help='Sub-action (for alias/quarantine) or row id (for recover)',
+                    short=None,
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='arg1',
+                    kind='POSITIONAL',
+                    typ='str',
+                    default='',
+                    help='First argument (alias old_name, row id, etc.)',
+                    short=None,
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='arg2',
+                    kind='POSITIONAL',
+                    typ='str',
+                    default='',
+                    help='Second argument (alias new_name, etc.)',
+                    short=None,
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='limit',
+                    kind='OPTION',
+                    typ='int',
+                    default=50,
+                    help='Row limit for list commands',
+                    short='n',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='app',
+                    kind='OPTION',
+                    typ='str',
+                    default='',
+                    help='Path to the .jac app file to import before dispatching. If omitted, the single .jac file in the current directory is used. The app must be importable so user-defined archetypes (and any @archetype_alias decorators) register before the command touches the backend.',
+                    short='a',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='dev',
+            help='Serve with hot reload and live compilation',
+            group='execution',
+            tier='core',
+            hidden=False,
+            handler_module='jaclang.cli.commands.execution',
+            handler_name='dev',
+            needs=['providers'],
+            description="",
+            examples=[
+                ('jac dev', 'Dev-serve the current project with hot reload'),
+                (
+                    'jac dev main.jac --port 3000',
+                    'Dev-serve a specific entry on port 3000'
+                )
+            ],
+            args=[
+                ArgMeta(
+                    name='filename',
+                    kind='POSITIONAL',
+                    typ='str',
+                    default='',
+                    help='Entry .jac file (default: [project] entry-point from jac.toml)',
+                    short=None,
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='port',
+                    kind='OPTION',
+                    typ='int',
+                    default=8000,
+                    help='Port to serve on',
+                    short='p',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key='serve.port'
+                ),
+                ArgMeta(
+                    name='api_port',
+                    kind='OPTION',
+                    typ='int',
+                    default=0,
+                    help='Backend API port for client dev servers (0 = auto)',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='dot',
+            help='Generate graph visualization (DOT format)',
+            group='tools',
+            tier='',
+            hidden=True,
+            handler_module='jaclang.cli.commands.tools',
+            handler_name='dot',
+            needs=[],
+            description="",
+            examples=[
+                ('jac dot myprogram.jac', 'Generate DOT graph'),
+                ('jac dot myprogram.jac --saveto graph.dot', 'Save to file'),
+                ('jac dot myprogram.jac --depth 3', 'Limit traversal depth')
+            ],
+            args=[
+                ArgMeta(
+                    name='filename',
+                    kind='POSITIONAL',
+                    typ='str',
+                    default=None,
+                    help='Path to .jac file',
+                    short=None,
+                    choices=None,
+                    required=True,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='session',
+                    kind='OPTION',
+                    typ='str',
+                    default='',
+                    help='Session identifier',
+                    short='s',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='initial',
+                    kind='OPTION',
+                    typ='str',
+                    default='',
+                    help='Initial node ID',
+                    short='i',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='depth',
+                    kind='OPTION',
+                    typ='int',
+                    default=-1,
+                    help='Max traversal depth',
+                    short='d',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='traverse',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Enable traversal mode',
+                    short='t',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='connection',
+                    kind='MULTI',
+                    typ='str',
+                    default=[],
+                    help='Connection filters',
+                    short='c',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='bfs',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Use breadth-first search',
+                    short='b',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='edge_limit',
+                    kind='OPTION',
+                    typ='int',
+                    default=512,
+                    help='Max edges',
+                    short='e',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='node_limit',
+                    kind='OPTION',
+                    typ='int',
+                    default=512,
+                    help='Max nodes',
+                    short='n',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='saveto',
+                    kind='OPTION',
+                    typ='str',
+                    default='',
+                    help='Output file path',
+                    short='o',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='to_screen',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Print to stdout',
+                    short='p',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='format',
+                    kind='OPTION',
+                    typ='str',
+                    default='dot',
+                    help='Output format',
+                    short='f',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='fmt',
+            help='Format Jac source code',
+            group='analysis',
+            tier='core',
+            hidden=False,
+            handler_module='jaclang.cli.commands.analysis',
+            handler_name='format',
+            needs=[],
+            description="",
+            examples=[
+                ('jac fmt myfile.jac', 'Format a single file'),
+                ('jac fmt myproject/', 'Format all files in directory'),
+                ('jac fmt myfile.jac --to_screen', 'Preview formatted output'),
+                ('jac fmt . --lintfix', 'Format and auto-fix lint violations'),
+                ('jac fmt . --check', 'Check formatting without modifying files')
+            ],
+            args=[
+                ArgMeta(
+                    name='paths',
+                    kind='MULTI',
+                    typ='str',
+                    default=None,
+                    help='Paths to .jac files or directories',
+                    short='p',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='to_screen',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Print to stdout instead of writing',
+                    short='s',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='lintfix',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Also apply auto-lint fixes in the same pass',
+                    short='l',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='check',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Check if files are formatted without modifying them (exit 1 if unformatted)',
+                    short='c',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='cache',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Skip files already known to be formatted (content + config + version keyed)',
+                    short='C',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='gen-cli-manifest',
+            help='Regenerate the CLI manifest route table from the command registry',
+            group='tools',
+            tier='',
+            hidden=True,
+            handler_module='jaclang.cli.commands.tools',
+            handler_name='gen_cli_manifest',
+            needs=[],
+            description="",
+            examples=[
+                ('jac gen-cli-manifest', 'Regenerate the manifest route table'),
+                (
+                    'jac gen-cli-manifest --verify',
+                    'Check the manifest is up to date (for CI)'
+                )
+            ],
+            args=[
+                ArgMeta(
+                    name='verify',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Check that manifest.impl.jac route table is up to date; exit 1 if not',
+                    short='v',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='gen-jir-registry',
+            help='Regenerate jir_registry.jac from unitree node classes',
+            group='tools',
+            tier='',
+            hidden=True,
+            handler_module='jaclang.cli.commands.tools',
+            handler_name='gen_jir_registry',
+            needs=[],
+            description="",
+            examples=[
+                ('jac gen-jir-registry', 'Regenerate jir_registry.jac'),
+                (
+                    'jac gen-jir-registry --verify',
+                    'Check registry is up to date (for CI)'
+                )
+            ],
+            args=[
+                ArgMeta(
+                    name='verify',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Check that jir_registry.jac is up to date; exit 1 if not',
+                    short='v',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='gen-uni-dispatch',
+            help='Regenerate static enter_node/exit_node dispatch for UniPass subclasses',
+            group='tools',
+            tier='',
+            hidden=True,
+            handler_module='jaclang.cli.commands.tools',
+            handler_name='gen_uni_dispatch',
+            needs=[],
+            description="",
+            examples=[
+                ('jac gen-uni-dispatch', 'Regenerate all dispatch annexes'),
+                (
+                    'jac gen-uni-dispatch --verify',
+                    'Check annexes are up to date (for CI)'
+                )
+            ],
+            args=[
+                ArgMeta(
+                    name='verify',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Check that dispatch annexes are up to date; exit 1 if not',
+                    short='v',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='gen_parser',
+            help='Generate Jac parser (internal use)',
+            group='analysis',
+            tier='',
+            hidden=True,
+            handler_module='jaclang.cli.commands.analysis',
+            handler_name='gen_parser',
+            needs=[],
+            description="",
+            examples=[('jac gen_parser', 'Regenerate the Jac parser')],
+            args=[]
+        ),
+        CommandMeta(
+            name='guide',
+            help='Show curated Jac reference guides',
+            group='general',
+            tier='learn',
+            hidden=False,
+            handler_module='jaclang.cli.commands.guide',
+            handler_name='guide',
+            needs=[],
+            description="",
+            examples=[
+                ('jac guide', 'List every available guide'),
+                ('jac guide jac-types', 'Print the jac-types guide'),
+                ('jac guide --search walker', "List guides mentioning 'walker'"),
+                ('jac guide --json', 'List guides as JSON for tooling'),
+                ('jac guide --export ~/.claude/skills', 'Export guides as Agent Skills')
+            ],
+            args=[
+                ArgMeta(
+                    name='topic',
+                    kind='POSITIONAL',
+                    typ='str',
+                    default='',
+                    help='Guide name to display (omit to list every guide)',
+                    short=None,
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='search',
+                    kind='OPTION',
+                    typ='str',
+                    default='',
+                    help='List only guides matching a keyword',
+                    short='s',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='export',
+                    kind='OPTION',
+                    typ='str',
+                    default='',
+                    help='Export all guides as a Claude Code skills directory at this path',
+                    short='e',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='json',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Emit machine-readable JSON (for tools and agents)',
+                    short='j',
+                    choices=None,
+                    required=False,
+                    dest='as_json',
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='install',
+            help='Install project dependencies',
+            group='project',
+            tier='',
+            hidden=False,
+            handler_module='jaclang.cli.commands.project',
+            handler_name='install',
+            needs=['providers'],
+            description="",
+            examples=[
+                ('jac install', 'Install all dependencies from jac.toml'),
+                ('jac install --plan', 'Show the fully resolved dependency plan'),
+                (
+                    'jac install --scale',
+                    'Also install deploy-time capabilities (kubernetes/docker) for the operator machine'
+                ),
+                ('jac install requests', 'Add requests to jac.toml and install it'),
+                (
+                    'jac install "numpy>=1.24" pandas',
+                    'Add multiple packages with version constraints'
+                ),
+                ('jac install pytest --dev', 'Add a dev dependency'),
+                (
+                    'jac install numpy --no-save',
+                    'Install without recording in jac.toml'
+                ),
+                (
+                    'jac install --git https://github.com/user/plugin.git',
+                    'Install and record a git dependency'
+                ),
+                ('jac install --npm left-pad', 'Add a client-side npm dependency'),
+                ('jac install --shadcn button card', 'Add shadcn UI components'),
+                ('jac install -e .', 'Install current package in editable mode'),
+                (
+                    'jac install -e /path/to/lib',
+                    'Install a cloned library in editable mode'
+                ),
+                (
+                    'jac install -e ./my-plugin -e ./my-lib',
+                    'Install multiple packages in editable mode (space-separated or repeated -e)'
+                ),
+                ('jac install --dev', 'Include dev dependencies'),
+                (
+                    'jac install --extras data monitoring',
+                    'Include optional dependency groups'
+                ),
+                (
+                    'jac install -e . --extras all',
+                    'Editable install with all optional deps'
+                ),
+                (
+                    'jac install --force-reinstall',
+                    'Reinstall all packages from scratch'
+                ),
+                ('jac install --pre', 'Include pre-release versions'),
+                (
+                    'jac install --no-cache-dir',
+                    "Install without using pip's download cache"
+                ),
+                (
+                    'jac install --dry-run',
+                    'Preview what would be installed without doing it'
+                ),
+                (
+                    'jac install --no-deps',
+                    'Install packages without their dependencies'
+                ),
+                (
+                    'jac install --prefer-binary',
+                    'Prefer pre-built wheels over source builds'
+                ),
+                (
+                    'jac install -e ./my-plugin --global',
+                    "Install a plugin into the global site so it's importable from any project"
+                )
+            ],
+            args=[
+                ArgMeta(
+                    name='packages',
+                    kind='MULTI',
+                    typ='str',
+                    default=[],
+                    help="Package(s) to add to jac.toml and install into the project's venv (.jac/venv)",
+                    short='p',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='editable',
+                    kind='APPEND',
+                    typ='str',
+                    default=[],
+                    help='Install the package at this path in editable mode; repeat for multiple packages',
+                    short='e',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar='PATH',
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='dev',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Include dev dependencies, or record named package(s) as dev dependencies',
+                    short='d',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='extras',
+                    kind='MULTI',
+                    typ='str',
+                    default=[],
+                    help='Optional dependency groups to install (e.g. data monitoring)',
+                    short='x',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='no-save',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Install named package(s) without recording them in jac.toml',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='git',
+                    kind='OPTION',
+                    typ='str',
+                    default='',
+                    help='Git repository URL to install and record as a git dependency',
+                    short='g',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='npm',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help="Install npm package(s); with no names, install all npm deps from jac.toml. With --global, install standalone npm CLI tools runnable via 'jac x --global'",
+                    short='n',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='shadcn',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Install shadcn UI component(s) from the bundled registry',
+                    short='s',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='verbose',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Verbose output',
+                    short='v',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='force-reinstall',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Reinstall all packages even if they are already up-to-date',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='no-cache-dir',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Disable the pip download cache',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='pre',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Include pre-release and development versions',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='dry-run',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Show what would be installed without actually installing anything',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='no-deps',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help="Don't install package dependencies",
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='quiet',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Suppress pip output',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='prefer-binary',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Prefer wheel files over source distributions',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='global',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Install into the jac-owned global store shared by every project, not the project venv (Python: the global site; with --npm: global npm CLI tools)',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest='install_global',
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='scale',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Materialize the deploy-time capability closure (adds deploy-only clients like kubernetes/docker) instead of just the runtime closure',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='plan',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help="Show the fully resolved dependency plan instead of installing (absorbs 'jac deps')",
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='json',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='With --plan: emit the plan as JSON',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest='as_json',
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='lsp',
+            help='Start Jac language server',
+            group='tools',
+            tier='',
+            hidden=False,
+            handler_module='jaclang.cli.commands.tools',
+            handler_name='lsp',
+            needs=[],
+            description="",
+            examples=[('jac lsp', 'Start language server for IDE integration')],
+            args=[]
+        ),
+        CommandMeta(
+            name='model',
+            help='Manage byllm local-model weights (Gemma 4 and friends)',
+            group='config',
+            tier='',
+            hidden=False,
+            handler_module='jaclang.byllm.cli',
+            handler_name='model',
+            needs=[],
+            description="",
+            examples=[
+                ('jac model list', 'Show bundled aliases and download status'),
+                ('jac model pull gemma-4-e4b', 'Download Gemma 4 E4B GGUF weights'),
+                ('jac model rm gemma-4-e4b', 'Delete cached weights for an alias')
+            ],
+            args=[
+                ArgMeta(
+                    name='action',
+                    kind='POSITIONAL',
+                    typ='str',
+                    default='list',
+                    help='Action: list, pull, rm',
+                    short=None,
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='alias',
+                    kind='POSITIONAL',
+                    typ='str',
+                    default='',
+                    help='Local-model alias (e.g. gemma-4-e4b). Omit for `list`.',
+                    short=None,
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='nacompile',
+            help="Compile a Jac file to a standalone native binary (prefer 'jac build --as native' for projects)",
+            group='transform',
+            tier='',
+            hidden=True,
+            handler_module='jaclang.cli.commands.nacompile',
+            handler_name='nacompile',
+            needs=[],
+            description="",
+            examples=[
+                ('jac nacompile program.na.jac', 'Compile to ./program'),
+                ('jac nacompile program.jac', 'Auto-promote and compile to ./program'),
+                ('jac nacompile program.na.jac -o mybin', 'Compile to ./mybin'),
+                (
+                    'jac nacompile program.na.jac --scrub',
+                    'Clean rebuild (wipe IR cache)'
+                ),
+                (
+                    'jac nacompile program.na.jac -g',
+                    'Compile with DWARF debug info (gdb ./program works)'
+                ),
+                (
+                    'jac nacompile game.na.jac --target wasm32 -o game.wasm',
+                    'Compile to a wasm module'
+                ),
+                (
+                    'jac nacompile mathlib.na.jac --shared',
+                    'Build ./libmathlib.so exporting its `:pub` functions over the C ABI'
+                ),
+                (
+                    'jac nacompile service.na.jac --gc none --assert-no-rc',
+                    'Compile and prove the artifact contains no RC/collector machinery'
+                )
+            ],
+            args=[
+                ArgMeta(
+                    name='filename',
+                    kind='POSITIONAL',
+                    typ='str',
+                    default=None,
+                    help='Path to .jac or .na.jac file',
+                    short=None,
+                    choices=None,
+                    required=True,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='output',
+                    kind='OPTION',
+                    typ='str',
+                    default='',
+                    help='Output binary path (defaults to filename without extension)',
+                    short='o',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='scrub',
+                    kind='FLAG',
+                    typ='str',
+                    default=None,
+                    help='Scrub build: wipe cached IR and recompile everything from scratch',
+                    short='s',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='target',
+                    kind='OPTION',
+                    typ='str',
+                    default='',
+                    help="Code target: native host (default) or 'wasm32' for a browser .wasm module",
+                    short='t',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='shared',
+                    kind='FLAG',
+                    typ='str',
+                    default=None,
+                    help='Build a C-ABI shared library (.so/.dylib/.dll) exporting `:pub` symbols instead of an executable',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='debug',
+                    kind='FLAG',
+                    typ='str',
+                    default=None,
+                    help='Emit DWARF debug info + symbol table so the binary is debuggable with gdb/lldb',
+                    short='g',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='gc',
+                    kind='OPTION',
+                    typ='str',
+                    default='',
+                    help="Memory-management runtime to emit: 'cycles' (refcounting + cycle collector), 'rc' (refcounting only, no collector code), or 'none' (no refcounting call sites; memory is never reclaimed). Defaults to jac.toml [gc] default, else 'cycles'",
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='assert-no-rc',
+                    kind='FLAG',
+                    typ='str',
+                    default=None,
+                    help='Fail the build if the emitted IR contains any RC/collector machinery: __rc_* helpers, trace functions, roots-buffer globals, or entry-point GC env probes',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='enforce-nogc',
+                    kind='FLAG',
+                    typ='str',
+                    default=None,
+                    help='Enforce zero-RC ownership coverage (E140x hard errors) on the compiled module, regardless of jac.toml [gc.enforce] patterns',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='ninja',
+            help='Open the built-in jac editor (fused Neovim + LSP + tree-sitter)',
+            group='tools',
+            tier='',
+            hidden=False,
+            handler_module='jaclang.cli.commands.tools',
+            handler_name='ninja',
+            needs=[],
+            description="",
+            examples=[('jac ninja file.jac', 'Edit a jac file in the built-in editor')],
+            args=[]
+        ),
+        CommandMeta(
+            name='precommit',
+            help='Run fmt (--lintfix) + check using jac.toml lint settings; installable as a git hook',
+            group='analysis',
+            tier='',
+            hidden=True,
+            handler_module='jaclang.cli.commands.analysis',
+            handler_name='precommit',
+            needs=[],
+            description="",
+            examples=[
+                ('jac precommit', 'Format (lintfix) and check the whole project'),
+                ('jac precommit --staged', "Run on staged '.jac' files only"),
+                ('jac precommit --install', 'Install a .git/hooks/pre-commit hook'),
+                (
+                    'jac precommit --install --force',
+                    'Replace an existing hook (kept as pre-commit.bak)'
+                )
+            ],
+            args=[
+                ArgMeta(
+                    name='paths',
+                    kind='MULTI',
+                    typ='str',
+                    default=[],
+                    help='Paths to .jac files or directories (default: project root)',
+                    short='p',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='staged',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Only process git-staged .jac files',
+                    short='s',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='verify',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Verify only: do not rewrite files (exit 1 if unformatted)',
+                    short='v',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='install',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Install a git pre-commit hook that runs this command',
+                    short='i',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='force',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='With --install: replace an existing foreign hook (a backup is kept)',
+                    short='f',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='remove',
+            help='Remove a dependency from the project',
+            group='project',
+            tier='',
+            hidden=False,
+            handler_module='jaclang.cli.commands.project',
+            handler_name='remove',
+            needs=['providers'],
+            description="",
+            examples=[
+                ('jac remove requests', 'Remove a package'),
+                ('jac remove pytest --dev', 'Remove dev dependency'),
+                ('jac remove --npm left-pad', 'Remove a client-side npm dependency'),
+                ('jac remove --shadcn button', 'Remove shadcn UI components')
+            ],
+            args=[
+                ArgMeta(
+                    name='packages',
+                    kind='MULTI',
+                    typ='str',
+                    default=[],
+                    help='Packages to remove',
+                    short='p',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='dev',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Remove from dev dependencies',
+                    short='d',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='npm',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Remove npm (client-side) dependency',
+                    short='n',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='shadcn',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Remove shadcn UI component(s)',
+                    short='s',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='retheme',
+            help='Re-theme a jac-shadcn project: regenerate global.css from [jac-shadcn]',
+            group='project',
+            tier='',
+            hidden=False,
+            handler_module='jaclang.cli.shadcn.cli',
+            handler_name='retheme',
+            needs=[],
+            description="",
+            examples=[
+                (
+                    'jac retheme',
+                    'Regenerate global.css from the current [jac-shadcn] config'
+                ),
+                (
+                    'jac retheme --theme rose --font inter',
+                    'Switch accent + font in place'
+                ),
+                (
+                    'jac retheme --style mira',
+                    'Switch style and re-resolve installed components'
+                )
+            ],
+            args=[
+                ArgMeta(
+                    name='style',
+                    kind='OPTION',
+                    typ='str',
+                    default=None,
+                    help='Component style preset',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='baseColor',
+                    kind='OPTION',
+                    typ='str',
+                    default=None,
+                    help='Base neutral palette',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='theme',
+                    kind='OPTION',
+                    typ='str',
+                    default=None,
+                    help='Accent color theme',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='font',
+                    kind='OPTION',
+                    typ='str',
+                    default=None,
+                    help='Font family',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='radius',
+                    kind='OPTION',
+                    typ='str',
+                    default=None,
+                    help='Border radius preset',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='menuAccent',
+                    kind='OPTION',
+                    typ='str',
+                    default=None,
+                    help='Menu accent (subtle|bold)',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='menuColor',
+                    kind='OPTION',
+                    typ='str',
+                    default=None,
+                    help='Menu color scheme',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='run',
+            help='Run a Jac program',
+            group='execution',
+            tier='core',
+            hidden=False,
+            handler_module='jaclang.cli.commands.execution',
+            handler_name='run',
+            needs=[],
+            description="",
+            examples=[
+                ('jac run hello.jac', 'Run a simple program'),
+                ('jac run', 'Run the current project per its jac.toml kind'),
+                (
+                    'jac run app.jab',
+                    "Run a sealed app bundle (kind-aware; servable kinds use the app's configured port -- override with jac start app.jab --port N)"
+                ),
+                (
+                    'jac run --entry my_walker app.jac arg1',
+                    'Invoke a specific entrypoint'
+                ),
+                ('jac run --debug app.jac', 'Run under the Python debugger'),
+                (
+                    'jac run --show',
+                    'Print what the project would run/build, without doing it'
+                ),
+                ('jac run --no-cache app.jac', 'Run without caching'),
+                ('jac run --profile prod app.jac', 'Run with production profile'),
+                (
+                    'jac run -e all app.jac',
+                    'Run and show all diagnostics (errors+warnings)'
+                ),
+                ('jac run -e none app.jac', 'Run silently, suppress all diagnostics'),
+                ('jac run script.jac arg1 arg2', 'Run with script arguments')
+            ],
+            args=[
+                ArgMeta(
+                    name='filename',
+                    kind='POSITIONAL',
+                    typ='str',
+                    default='',
+                    help="Path to .jac or .py file (omit to use the project's jac.toml)",
+                    short=None,
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='show',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Print the resolved project-kind run plan without executing it',
+                    short='s',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='main',
+                    kind='OPTION',
+                    typ='bool',
+                    default=True,
+                    help='Treat module as __main__',
+                    short='m',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key='run.main'
+                ),
+                ArgMeta(
+                    name='cache',
+                    kind='OPTION',
+                    typ='bool',
+                    default=True,
+                    help='Enable compilation cache',
+                    short='c',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key='run.cache'
+                ),
+                ArgMeta(
+                    name='profile',
+                    kind='OPTION',
+                    typ='str',
+                    default='',
+                    help='Configuration profile to load (e.g. prod, staging)',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='diagnostics',
+                    kind='OPTION',
+                    typ='str',
+                    default='',
+                    help='Diagnostic verbosity: error (default, fail on errors), all (errors+warnings), none (silent)',
+                    short='e',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='entry',
+                    kind='OPTION',
+                    typ='str',
+                    default='',
+                    help="Invoke a specific function/walker entrypoint (absorbs 'jac enter')",
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest='entry_name',
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='node',
+                    kind='OPTION',
+                    typ='str',
+                    default='',
+                    help='Starting node ID for --entry (OSP node binding)',
+                    short='n',
+                    choices=None,
+                    required=False,
+                    dest='nd',
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='root',
+                    kind='OPTION',
+                    typ='str',
+                    default='',
+                    help='Root executor ID for --entry',
+                    short='r',
+                    choices=None,
+                    required=False,
+                    dest='root_id',
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='debug',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help="Run under the Python debugger (absorbs 'jac debug')",
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest='debug_mode',
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='args',
+                    kind='REMAINDER',
+                    typ='str',
+                    default=None,
+                    help='Arguments passed to the script',
+                    short='a',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='scale',
+            help='Manage scale deployments: local microservices (status/stop/restart/logs) and platform deployments (status/destroy on a .jac app)',
+            group='microservices',
+            tier='',
+            hidden=False,
+            handler_module='jaclang.scale.plugin',
+            handler_name='scale_cmd',
+            needs=[],
+            description="",
+            examples=[
+                ('jac scale status', 'Show status of all microservices'),
+                ('jac scale stop orders', 'Stop the orders service'),
+                ('jac scale restart cart', 'Restart the cart service'),
+                ('jac scale logs products', 'Show logs for products service'),
+                ('jac scale destroy', 'Stop all services'),
+                ('jac scale status app.jac', 'Show platform deployment status of app'),
+                ('jac scale destroy app.jac', "Remove app's platform deployment"),
+                (
+                    'jac scale destroy app.jac --component database',
+                    'Remove only MongoDB from the deployment'
+                )
+            ],
+            args=[
+                ArgMeta(
+                    name='action',
+                    kind='POSITIONAL',
+                    typ='str',
+                    default=None,
+                    help='Action: status, stop, restart, logs, destroy',
+                    short=None,
+                    choices=None,
+                    required=True,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='service_name',
+                    kind='POSITIONAL',
+                    typ='str',
+                    default='',
+                    help='Service name (stop/restart/logs), or a .jac app file for platform status/destroy',
+                    short=None,
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='lines',
+                    kind='OPTION',
+                    typ='int',
+                    default=50,
+                    help="Number of log lines to show (for 'logs' action)",
+                    short='l',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='target',
+                    kind='OPTION',
+                    typ='str',
+                    default='kubernetes',
+                    help='Platform target for .jac app status/destroy (kubernetes, aws, gcp, etc.)',
+                    short='t',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='component',
+                    kind='OPTION',
+                    typ='str',
+                    default='',
+                    help='Platform destroy: component to remove (application, database, cache, monitoring, dashboard; default: entire deployment)',
+                    short='c',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='setup',
+            help='Setup a build target (one-time initialization)',
+            group='project',
+            tier='',
+            hidden=False,
+            handler_module='jaclang.runtimelib.client.cli',
+            handler_name='setup',
+            needs=['providers', 'client'],
+            description="",
+            examples=[
+                ('jac setup mobile', 'Setup mobile target (default platform)'),
+                ('jac setup mobile --platform ios', 'Setup iOS scaffold only'),
+                (
+                    'jac setup mobile --platform all',
+                    'Setup both Android and iOS (macOS)'
+                )
+            ],
+            args=[
+                ArgMeta(
+                    name='target',
+                    kind='POSITIONAL',
+                    typ='str',
+                    default=None,
+                    help='Target to setup (e.g., desktop)',
+                    short=None,
+                    choices=None,
+                    required=True,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='platform',
+                    kind='OPTION',
+                    typ='str',
+                    default=None,
+                    help='Platform for mobile setup (android, ios, all)',
+                    short='p',
+                    choices=['android', 'ios', 'all'],
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='start',
+            help='Start server for a Jac program',
+            group='execution',
+            tier='core',
+            hidden=False,
+            handler_module='jaclang.cli.commands.execution',
+            handler_name='start',
+            needs=['providers', 'client'],
+            description="",
+            examples=[
+                ('jac start', 'Start server with default main.jac'),
+                ('jac start app.jac', 'Start server with specific file'),
+                ('jac start --port 3000', 'Start main.jac on port 3000'),
+                ('jac start app.jac --faux', 'Generate API docs without starting'),
+                ('jac start --dev', 'Start with hot module replacement'),
+                (
+                    'jac start app.jac --dev --no-client',
+                    'HMR mode without client bundling'
+                ),
+                ('jac start --profile prod', 'Start with production profile'),
+                ('jac start --client mobile', 'Run the mobile client dev server'),
+                (
+                    'jac start --scale',
+                    'Deploy to a platform target instead of serving locally'
+                )
+            ],
+            args=[
+                ArgMeta(
+                    name='filename',
+                    kind='POSITIONAL',
+                    typ='str',
+                    default='main.jac',
+                    help='Path to .jac file (default: main.jac)',
+                    short=None,
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='port',
+                    kind='OPTION',
+                    typ='int',
+                    default=8000,
+                    help='Server port',
+                    short='p',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key='serve.port'
+                ),
+                ArgMeta(
+                    name='main',
+                    kind='OPTION',
+                    typ='bool',
+                    default=True,
+                    help='Treat as __main__',
+                    short='m',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key='run.main'
+                ),
+                ArgMeta(
+                    name='faux',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Print docs only (no server)',
+                    short='f',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='dev',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Enable HMR (Hot Module Replacement) mode',
+                    short='d',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='api_port',
+                    kind='OPTION',
+                    typ='int',
+                    default=0,
+                    help='Separate API port for HMR mode (0=same as port)',
+                    short='a',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='no-client',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Skip client bundling/serving (API only)',
+                    short='n',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='profile',
+                    kind='OPTION',
+                    typ='str',
+                    default='',
+                    help='Configuration profile to load (e.g. prod, staging)',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='client',
+                    kind='OPTION',
+                    typ='str',
+                    default='web',
+                    help='Client build target for dev server (web, pwa, mobile, desktop). Choices reflect installed targets (desktop builds a native webview app).',
+                    short='',
+                    choices=[
+                        'web',
+                        'pwa',
+                        'static',
+                        'mobile',
+                        'desktop',
+                        'cef',
+                        'react-native'
+                    ],
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='host',
+                    kind='OPTION',
+                    typ='str',
+                    default='',
+                    help='Mobile dev (--client mobile --dev): optional host/IP override for Capacitor live-reload. When omitted, jac auto-selects a host.',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='platform',
+                    kind='OPTION',
+                    typ='str',
+                    default='auto',
+                    help='Mobile start/dev: android or ios (auto = use [client.mobile] default_platform or android)',
+                    short='',
+                    choices=['auto', 'android', 'ios'],
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='scale',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Deploy to a target platform instead of running locally',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='target',
+                    kind='OPTION',
+                    typ='str',
+                    default='kubernetes',
+                    help='Deployment target (kubernetes, aws, gcp, etc.)',
+                    short='t',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='enable-tls',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help="Enable HTTPS via Let's Encrypt (run after pointing your domain CNAME to the NLB)",
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='dry-run',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Print the manifests that would be applied; touch nothing (no cluster contact, no downloads, no client build, no DB provisioning, no TLS issuance, no deploy tooling installed)',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='show-yaml',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='With --dry-run: dump the raw YAML stream',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='test',
+            help='Run Jac test suite',
+            group='analysis',
+            tier='core',
+            hidden=False,
+            handler_module='jaclang.cli.commands.analysis',
+            handler_name='test',
+            needs=[],
+            description="",
+            examples=[
+                ('jac test', 'Run all tests in current directory'),
+                ('jac test mytest.jac', 'Run tests in specific file'),
+                ('jac test a.jac b.jac', 'Run tests in several files'),
+                ('jac test --test_name my_test', 'Run only test_my_test'),
+                (
+                    'jac test --xit --verbose',
+                    'Stop on first failure with verbose output'
+                )
+            ],
+            args=[
+                ArgMeta(
+                    name='paths',
+                    kind='MULTI',
+                    typ='str',
+                    default=[],
+                    help='Paths to test files or directories',
+                    short='p',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='test_name',
+                    kind='OPTION',
+                    typ='str',
+                    default='',
+                    help='Run specific test (without test_ prefix)',
+                    short='t',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='filter',
+                    kind='OPTION',
+                    typ='str',
+                    default='',
+                    help='Filter test files (Unix patterns)',
+                    short='f',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='xit',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Stop on first failure',
+                    short='x',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='maxfail',
+                    kind='OPTION',
+                    typ='int',
+                    default=None,
+                    help='Stop after N failures',
+                    short='m',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='directory',
+                    kind='OPTION',
+                    typ='str',
+                    default='',
+                    help='Test directory',
+                    short='d',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='verbose',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Verbose output',
+                    short='v',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key='test.verbose'
+                ),
+                ArgMeta(
+                    name='ignore',
+                    kind='OPTION',
+                    typ='str',
+                    default='',
+                    help='Path to skip during collection (pytest --ignore)',
+                    short='i',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='profile',
+                    kind='OPTION',
+                    typ='str',
+                    default='',
+                    help='Configuration profile to load (e.g. prod, staging)',
+                    short='',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='tool',
+            help='Run AST tools',
+            group='tools',
+            tier='',
+            hidden=False,
+            handler_module='jaclang.cli.commands.tools',
+            handler_name='tool',
+            needs=[],
+            description="",
+            examples=[
+                ('jac tool list_tools', 'List all available AST tools'),
+                ('jac tool <tool_name> [args...]', 'Run a specific tool')
+            ],
+            args=[
+                ArgMeta(
+                    name='tool',
+                    kind='POSITIONAL',
+                    typ='str',
+                    default=None,
+                    help='Name of the AST tool to run',
+                    short=None,
+                    choices=None,
+                    required=True,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='args',
+                    kind='REMAINDER',
+                    typ='str',
+                    default=[],
+                    help='Arguments for the tool',
+                    short='a',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='update',
+            help='Update project dependencies to latest compatible versions',
+            group='project',
+            tier='',
+            hidden=False,
+            handler_module='jaclang.cli.commands.project',
+            handler_name='update',
+            needs=['providers'],
+            description="",
+            examples=[
+                ('jac update', 'Update all dependencies to latest compatible versions'),
+                ('jac update requests', 'Update a specific package'),
+                ('jac update --dev', 'Also update dev dependencies')
+            ],
+            args=[
+                ArgMeta(
+                    name='packages',
+                    kind='MULTI',
+                    typ='str',
+                    default=[],
+                    help='Packages to update (all if empty)',
+                    short='p',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='dev',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Include dev dependencies',
+                    short='d',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='verbose',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Verbose output',
+                    short='v',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+        CommandMeta(
+            name='x',
+            help='Run an installed CLI tool (console-script) under the Jac runtime',
+            group='execution',
+            tier='',
+            hidden=False,
+            handler_module='jaclang.cli.commands.execution',
+            handler_name='x',
+            needs=['providers'],
+            description="",
+            examples=[
+                (
+                    'jac x hf download gpt2',
+                    "Run the 'hf' tool (project venv first, else global)"
+                ),
+                (
+                    'jac x black .',
+                    'Run an installed formatter on the current directory'
+                ),
+                (
+                    'jac x eslint .',
+                    'Run a project npm tool (node_modules/.bin) via bun'
+                ),
+                ('jac x --global hf whoami', 'Force the global-site copy of a tool'),
+                (
+                    'jac x --global eslint .',
+                    'Run a globally-installed npm tool (jac install --npm --global eslint)'
+                ),
+                ('jac x --node vite build', "Force the project's npm tool"),
+                ('jac x --list', 'List the CLI tools available here')
+            ],
+            args=[
+                ArgMeta(
+                    name='name',
+                    kind='POSITIONAL',
+                    typ='str',
+                    default='',
+                    help='Tool/command name to run (omit to list available tools)',
+                    short=None,
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='global',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='Resolve from jac-owned global tools only (global python site + global npm), ignoring the project',
+                    short='g',
+                    choices=None,
+                    required=False,
+                    dest='use_global',
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='node',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help="Resolve from the project's npm tools (node_modules/.bin) only",
+                    short='n',
+                    choices=None,
+                    required=False,
+                    dest='use_node',
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='list_tools',
+                    kind='OPTION',
+                    typ='bool',
+                    default=False,
+                    help='List the CLI tools available to run here',
+                    short='l',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+                ArgMeta(
+                    name='args',
+                    kind='REMAINDER',
+                    typ='str',
+                    default=None,
+                    help='Arguments passed to the tool',
+                    short='a',
+                    choices=None,
+                    required=False,
+                    dest=None,
+                    metavar=None,
+                    config_key=None
+                ),
+
+            ]
+        ),
+
+    ];
+}
+
+glob _COMMANDS: dict[str, CommandMeta] = {},
+     _COMMANDS_LOADED: bool = False;
+
+def _ensure_commands_loaded {
+    if _COMMANDS_LOADED {
+        return;
+    }
+    built: dict[str, CommandMeta] = {};
+    for meta in _command_routes() {
+        built[meta.name] = meta;
+    }
+    _COMMANDS = built;
+    _COMMANDS_LOADED = True;
+}
+
+impl get_command_meta(name: str) -> CommandMeta | None {
+    _ensure_commands_loaded();
+    return _COMMANDS.get(name);
+}
+
+impl iter_command_meta(include_hidden: bool = False) -> list[CommandMeta] {
+    _ensure_commands_loaded();
+    out: list[CommandMeta] = [];
+    for meta in _COMMANDS.values() {
+        if not include_hidden and meta.hidden {
+            continue;
+        }
+        out.append(meta);
+    }
+    return out;
+}
+
+impl known_command_names(include_hidden: bool = False) -> set[str] {
+    return {meta.name for meta in iter_command_meta(include_hidden=include_hidden)};
+}
+
+impl get_groups -> list[str] {
+    groups = {meta.group for meta in iter_command_meta(include_hidden=True)};
+    return sorted(groups);
+}

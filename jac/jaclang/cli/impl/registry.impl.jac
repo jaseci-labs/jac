@@ -3,7 +3,6 @@ import from jaclang.cli.banners { JAC_GITHUB_URL }
 
 impl CommandRegistry.init -> None {
     self.commands = {};
-    self._pending_extensions = {};
     self._finalized = False;
     self.parser = argparse.ArgumentParser(
         prog='jac',
@@ -40,7 +39,8 @@ impl CommandRegistry.command(
     examples: list[tuple[str, str]] | None = None,
     group: str = "general",
     tier: str = "",
-    hidden: bool = False
+    hidden: bool = False,
+    needs: list[str] = []
 ) -> Callable[[Callable], Callable] {
     import from jaclang.cli.command { Arg, CommandSpec }
     def decorator(func: Callable) -> Callable {
@@ -53,6 +53,7 @@ impl CommandRegistry.command(
             group=group,
             tier=tier,
             hidden=hidden,
+            needs=needs,
             handler=func
         );
         return func;
@@ -99,6 +100,31 @@ impl CommandRegistry.finalize -> argparse.ArgumentParser {
     }
     self._finalized = True;
     return self.parser;
+}
+
+impl CommandRegistry.build_command_parser(
+    spec: CommandSpec
+) -> argparse.ArgumentParser {
+    description = spec.description or spec.help;
+    if spec.examples {
+        description += "\n\nExamples:\n";
+        for (cmd, desc) in spec.examples {
+            description += f"  {cmd}\n";
+            if desc {
+                description += f"      {desc}\n";
+            }
+        }
+    }
+    parser = argparse.ArgumentParser(
+        prog=f"jac {spec.name}",
+        description=description,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        add_help=True
+    );
+    for arg in spec.args {
+        self._add_argument(parser, arg);
+    }
+    return parser;
 }
 
 impl CommandRegistry._build_subparser(
@@ -216,11 +242,4 @@ impl get_registry -> CommandRegistry {
         _registry = CommandRegistry();
     }
     return _registry;
-}
-
-impl register_feature_commands -> None {
-    import jaclang.runtimelib.client.cli;
-    import jaclang.cli.shadcn.cli;
-    import jaclang.scale.plugin;
-    import jaclang.byllm.cli;
 }

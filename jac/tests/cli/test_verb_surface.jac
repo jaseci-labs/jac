@@ -12,19 +12,13 @@ flags to existing verbs and contribute at most one top-level verb each
 `@registry.command` path as core.
 """
 
-import from jaclang.cli.registry { get_registry, register_feature_commands }
-import from jaclang.cli.cli { TOMBSTONED_VERBS }
-import jaclang.cli.commands;
+import from jaclang.cli.manifest { TOMBSTONED_VERBS, iter_command_meta }
 
 glob VERB_BUDGET: int = 28;
 
-def _all_specs(include_hidden: bool = False) -> list {
-    register_feature_commands();
-    return get_registry().get_all(include_hidden=include_hidden);
-}
 
 test "visible verbs stay within the budget" {
-    verbs = sorted([s.name for s in _all_specs()]);
+    verbs = sorted([m.name for m in iter_command_meta()]);
     assert len(verbs) <= VERB_BUDGET , f"{len(
         verbs
     )} visible verbs exceed the budget of {VERB_BUDGET}: {verbs}. "
@@ -32,7 +26,7 @@ test "visible verbs stay within the budget" {
 }
 
 test "tombstoned verbs stay unregistered" {
-    names = {s.name for s in _all_specs(include_hidden=True)};
+    names = {m.name for m in iter_command_meta(include_hidden=True)};
     revived = sorted(
         [
             v

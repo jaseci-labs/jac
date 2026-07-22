@@ -173,3 +173,26 @@ def gen_jir_registry(verify: bool = False) -> int;
     group="tools"
 )
 def gen_uni_dispatch(verify: bool = False) -> int;
+
+@registry.command(
+    name="gen-cli-manifest",
+    hidden=True,
+    help="Regenerate the CLI manifest route table from the command registry",
+    args=[
+        Arg.create(
+            "verify",
+            typ=bool,
+            default=False,
+            help="Check that manifest.impl.jac route table is up to date; exit 1 if not",
+            short="v"
+        ),
+
+    ],
+    examples=[
+        ("jac gen-cli-manifest", "Regenerate the manifest route table"),
+        ("jac gen-cli-manifest --verify", "Check the manifest is up to date (for CI)"),
+
+    ],
+    group="tools"
+)
+def gen_cli_manifest(verify: bool = False) -> int;

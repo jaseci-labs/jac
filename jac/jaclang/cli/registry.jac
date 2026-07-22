@@ -16,7 +16,8 @@ obj CommandRegistry {
         examples: list[tuple[str, str]] | None = None,
         group: str = "general",
         tier: str = "",
-        hidden: bool = False
+        hidden: bool = False,
+        needs: list[str] = []
     ) -> Callable[[Callable], Callable];
 
     def get(name: str) -> CommandSpec | None;
@@ -27,6 +28,7 @@ obj CommandRegistry {
 
     def get_groups -> list[str];
     def finalize -> argparse.ArgumentParser;
+    def build_command_parser(spec: CommandSpec) -> argparse.ArgumentParser;
     def _build_subparser(
         subparsers: any, spec: CommandSpec
     ) -> argparse.ArgumentParser;
@@ -37,5 +39,3 @@ obj CommandRegistry {
 glob _registry: CommandRegistry | None = None;
 
 def get_registry -> CommandRegistry;
-
-def register_feature_commands -> None;

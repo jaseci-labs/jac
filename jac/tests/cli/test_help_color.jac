@@ -1,4 +1,4 @@
-"""Color-scheme tests for the top-level `HelpFormatter`.
+"""Color-scheme tests for the top-level manifest help screens.
 
 The hand-rolled `jac` / `jac --help` screens are colorized to match the theme
 Python 3.14's argparse applies to `jac COMMAND --help`, so the two help
@@ -14,9 +14,9 @@ surfaces read as one system. Coloring is gated through `JacConsole.use_color`
 """
 
 import re;
-import from jaclang.cli.help { HelpFormatter }
-import from jaclang.cli.command { CommandSpec }
 import from jaclang.cli.console { _get_console }
+import from jaclang.cli.manifest { CommandMeta }
+import from jaclang.cli.manifest_help { format_curated_help, format_verbose_help }
 
 
 # ANSI roles the formatter uses (mirrors argparse's 3.14 theme).
@@ -25,13 +25,25 @@ glob _HEADER: str = "\033[1;34m",  # bold blue  -> section/group headers
      _PROG: str = "\033[1;35m";  # bold magenta -> program name
 
 
-def _specs -> list[CommandSpec] {
+def _sample_commands -> list[CommandMeta] {
     return [
-        CommandSpec(
-            name="run", help="Run a Jac program", group="execution", tier="core"
+        CommandMeta(
+            name="run",
+            help="Run a Jac program",
+            group="execution",
+            tier="core",
+            hidden=False,
+            handler_module="jaclang.cli.commands.execution",
+            handler_name="run"
         ),
-        CommandSpec(
-            name="check", help="Type check Jac files", group="analysis", tier="core"
+        CommandMeta(
+            name="check",
+            help="Type check Jac files",
+            group="analysis",
+            tier="core",
+            hidden=False,
+            handler_module="jaclang.cli.commands.analysis",
+            handler_name="check"
         )
     ];
 }
@@ -56,13 +68,7 @@ def _with_color(enabled: bool, fn: any) -> str {
 
 
 test "main help applies the argparse-matching palette when color is enabled" {
-    fmt = HelpFormatter();
-    out = _with_color(
-        True,
-        lambda { fmt.format_main_help(
-            _specs(), prog="jac", version="9.9.9", verbose=True
-        ); }
-    );
+    out = _with_color(True, lambda { format_verbose_help(prog="jac"); });
     assert _HEADER in out , f"section headers not colored bold-blue; captured={out!r}";
     assert _CMD in out , f"command names not colored green; captured={out!r}";
     assert _PROG in out , f"program name not colored magenta; captured={out!r}";
@@ -70,34 +76,16 @@ test "main help applies the argparse-matching palette when color is enabled" {
 
 
 test "main help is plain text when color is disabled" {
-    fmt = HelpFormatter();
-    out = _with_color(
-        False,
-        lambda { fmt.format_main_help(
-            _specs(), prog="jac", version="9.9.9", verbose=True
-        ); }
-    );
+    out = _with_color(False, lambda { format_verbose_help(prog="jac"); });
     assert "\033[" not in out , f"disabled color still emitted ANSI escapes; captured={out!r}";
-    # Data still present, just uncolored.
     assert "Program Execution:" in out , f"header text missing; captured={out!r}";
     assert "run" in out and "check" in out , f"command names missing; captured={out!r}";
 }
 
 
 test "main help coloring preserves layout (strip-ANSI == plain)" {
-    fmt = HelpFormatter();
-    on = _with_color(
-        True,
-        lambda { fmt.format_main_help(
-            _specs(), prog="jac", version="9.9.9", verbose=True
-        ); }
-    );
-    off = _with_color(
-        False,
-        lambda { fmt.format_main_help(
-            _specs(), prog="jac", version="9.9.9", verbose=True
-        ); }
-    );
+    on = _with_color(True, lambda { format_verbose_help(prog="jac"); });
+    off = _with_color(False, lambda { format_verbose_help(prog="jac"); });
     assert _strip_ansi(on) == off , f"coloring changed layout; stripped={_strip_ansi(
         on
     )!r} plain={off!r}";
@@ -105,9 +93,8 @@ test "main help coloring preserves layout (strip-ANSI == plain)" {
 
 
 test "curated (bare jac) help colors headers/commands/prog and stays plain when off" {
-    fmt = HelpFormatter();
-    on = _with_color(True, lambda { fmt.format_curated_help(_specs(), prog="jac"); });
-    off = _with_color(False, lambda { fmt.format_curated_help(_specs(), prog="jac"); });
+    on = _with_color(True, lambda { format_curated_help(prog="jac"); });
+    off = _with_color(False, lambda { format_curated_help(prog="jac"); });
 
     assert _HEADER in on , f"curated headers not colored; captured={on!r}";
     assert _CMD in on , f"curated command names not colored; captured={on!r}";

@@ -7,6 +7,7 @@ glob registry = get_registry();
     name="create",
     help="Create a new Jac project",
     tier="core",
+    needs=["providers", "templates"],
     args=[
         Arg.create(
             "name",
@@ -154,6 +155,7 @@ def create(
 @registry.command(
     name="install",
     help="Install project dependencies",
+    needs=["providers"],
     args=[
         Arg.create(
             "packages",
@@ -357,6 +359,7 @@ def install(
 @registry.command(
     name="remove",
     help="Remove a dependency from the project",
+    needs=["providers"],
     args=[
         Arg.create(
             "packages", kind=ArgKind.MULTI, default=[], help="Packages to remove"
@@ -392,6 +395,7 @@ def remove(
 @registry.command(
     name="update",
     help="Update project dependencies to latest compatible versions",
+    needs=["providers"],
     args=[
         Arg.create(
             "packages",
@@ -424,6 +428,7 @@ def script(name: str = "", list_scripts: bool = False) -> int;
 @registry.command(
     name="clean",
     help="Clean project build artifacts",
+    needs=["providers"],
     args=[
         Arg.create(
             "all",
