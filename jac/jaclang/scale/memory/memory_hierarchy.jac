@@ -86,6 +86,7 @@ obj MongoBackend(PersistentMemory) {
         mongo_url: (str | None) = None,
         _l2_ref: (any | None) = None,
         _l1_id: (str | None) = None,
+        _probe_ok: (bool | None) = None,
         fetch_count: int = 0,
         put_count: int = 0;
 
