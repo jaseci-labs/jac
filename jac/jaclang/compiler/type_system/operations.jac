@@ -222,9 +222,23 @@ def get_type_of_binary_operation(
         }
     }
 
-    if left_type.is_any_type() or right_type.is_any_type() {
+    if evaluator.is_explicit_any(left_type)
+    or evaluator.is_explicit_any(right_type)
+    or left_type.is_any_type()
+    or right_type.is_any_type() {
         if not (isinstance(expr.op, uni.Token) and expr.op.name == Tok.BW_OR) {
-            return jtypes.UnknownType();
+            return jtypes.AnyType();
+        }
+    }
+
+    if isinstance(left_type, jtypes.UnknownType)
+    or isinstance(right_type, jtypes.UnknownType) {
+        # The operand site already carries the W1051 diagnostic; resolving a
+        # magic method on Unknown can only fail, and a second error on the op
+        # is cascade noise. Propagate a diagnosed Unknown so downstream
+        # assignment/parameter seams stay quiet too.
+        if not (isinstance(expr.op, uni.Token) and expr.op.name == Tok.BW_OR) {
+            return jtypes.UnknownType(is_diagnosed=True);
         }
     }
 

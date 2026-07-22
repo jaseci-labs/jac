@@ -18,7 +18,14 @@ impl NaIRGenPass._native_archetypes(module: uni.Module) -> list[uni.Archetype] {
             result[aname] = arch;
         }
     }
-    return list(result.values());
+    return [
+        a
+        for a in result.values()
+        # Generic archetypes (`class Emitter[V, C]`) are templates: they are
+        # never instantiated directly, so nothing lowers for them. Subclasses
+        # that fix the type args lower as ordinary archetypes.
+        if not a.type_params
+    ];
 }
 
 impl NaIRGenPass._forward_declare_archetype_names(module: uni.Module) -> None {
@@ -413,8 +420,20 @@ impl NaIRGenPass._forward_declare_method(arch_name: str, method: uni.Ability) ->
     }
     _is_static = method.is_static;
 
+    _m_params = sig.get_parameters();
+    if (
+        not _is_static
+        and _m_params
+        and _m_params[0].name
+        and _m_params[0].name.value == "self"
+    ) {
+        # Class-style methods declare `self` explicitly; the leading struct
+        # pointer already carries it, so it must not become a second param.
+        _m_params = _m_params[1:];
+    }
+
     param_types: list[ir.Type] = [] if _is_static else [struct_type.as_pointer()];
-    for p in sig.get_parameters() {
+    for p in _m_params {
         param_types.append(
             self._resolve_jac_type(p) if p.type_tag is not None else ir.IntType(64)
         );
@@ -431,7 +450,7 @@ impl NaIRGenPass._forward_declare_method(arch_name: str, method: uni.Ability) ->
     if not _is_static {
         func.args[0].name = "self";
     }
-    for (i, p) in enumerate(sig.get_parameters()) {
+    for (i, p) in enumerate(_m_params) {
         func.args[i + _base].name = p.name.value if p.name else f"arg{i}";
     }
     self.method_funcs[full_name] = func;
@@ -486,7 +505,18 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     }
 
     sig = method.signature;
-    for (i, p) in enumerate(sig.get_parameters()) {
+    _body_params = sig.get_parameters();
+    if (
+        not _is_static
+        and _body_params
+        and _body_params[0].name
+        and _body_params[0].name.value == "self"
+    ) {
+        # The explicit `self` of a class-style method is arg0, already bound
+        # to the `self` local above.
+        _body_params = _body_params[1:];
+    }
+    for (i, p) in enumerate(_body_params) {
         param_name = p.name.value if p.name else f"arg{i}";
         arg_val = func.args[i + _base];
         if param_name in self.closure_cell_vars {
@@ -1537,6 +1567,20 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     }
 
     if (
+        isinstance(trailer.target, uni.AtomTrailer)
+        and trailer.target.is_attr
+        and self._get_name(trailer.target.target) == "os"
+        and self._get_name(trailer.target.right) == "environ"
+        and self?._native_stdlib_modules
+        and "os" in self._native_stdlib_modules
+    ) {
+        _env_res = self._emit_os_environ_call(method_name, nd);
+        if _env_res is not None {
+            return _env_res;
+        }
+    }
+
+    if (
         target_name == "os"
         and self?._native_stdlib_modules
         and "os" in self._native_stdlib_modules
@@ -1593,6 +1637,15 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     }
 
     list_spec = self._list_spec_of(trailer.target);
+    if list_spec == "u8" and method_name in ("append", "extend") {
+        _ba_recv = self._codegen_expr(trailer.target);
+        if _ba_recv is not None {
+            _ba_res = self._dispatch_bytearray_method(method_name, _ba_recv, nd);
+            if _ba_res is not None {
+                return _ba_res;
+            }
+        }
+    }
     if list_spec is not None {
         list_val = self._codegen_expr(trailer.target);
         if list_val is not None {

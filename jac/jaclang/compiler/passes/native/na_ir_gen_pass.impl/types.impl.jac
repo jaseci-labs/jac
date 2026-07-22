@@ -121,7 +121,8 @@ impl NaIRGenPass._dict_key_of(expr: (uni.UniNode | None)) -> (str | None) {
 }
 
 impl NaIRGenPass._list_spec_of(expr: (uni.UniNode | None)) -> (str | None) {
-    return self._spec_of(expr, ("list", ), self.list_types);
+    # bytearray shares the List.u8 layout, so list machinery serves it.
+    return self._spec_of(expr, ("list", "bytearray"), self.list_types);
 }
 
 impl NaIRGenPass._spec_of(
@@ -270,6 +271,10 @@ impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
         return self._get_bytes_struct_type().as_pointer();
     }
 
+    if cname == "bytearray" {
+        return self._ensure_bytearray_type();
+    }
+
     if cname in self.struct_types {
         return self.struct_types[cname].as_pointer();
     }
@@ -315,15 +320,7 @@ impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
         }
 
         (k_spec, k_size) = self._dict_key_spec(k_llvm);
-
-        v_spec = "i64";
-        if isinstance(v_llvm, ir.DoubleType) {
-            v_spec = "f64";
-        } elif isinstance(v_llvm, ir.PointerType) {
-            v_spec = "ptr";
-        } elif self?.jacval_type and v_llvm == self.jacval_type {
-            v_spec = "jacval";
-        }
+        v_spec = self._dict_val_spec(v_llvm);
         self._emit_dict_helpers(k_spec, v_spec, k_llvm, v_llvm, k_size);
         return self.dict_types[f"{k_spec}:{v_spec}"].as_pointer();
     }

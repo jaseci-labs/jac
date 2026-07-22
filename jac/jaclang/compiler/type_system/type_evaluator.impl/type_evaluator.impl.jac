@@ -1368,6 +1368,17 @@ impl TypeEvaluator._get_type_of_expression_core(
                 ) {
                     return self.prefetch.any_class;
                 }
+                if isinstance(base_type, types.AnyType) {
+                    # Subscripting Any yields Any; falling through would
+                    # degrade it to strict Unknown and cascade at every
+                    # downstream assignment/parameter seam.
+                    return base_type;
+                }
+                if isinstance(base_type, types.UnknownType) {
+                    # The base expression already carries its W1051; keep the
+                    # propagated Unknown quiet at downstream seams.
+                    return types.UnknownType(is_diagnosed=True);
+                }
                 if isinstance(base_type, types.ClassType)
                 and base_type.is_instantiable_class() {
                     type_args: list[types.TypeBase] = [];
