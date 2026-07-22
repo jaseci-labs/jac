@@ -7,21 +7,26 @@ glob WARMUP_CALLS: int = 5,
      DEFAULT_CALLS: int = 500;
 
 
-def sv_direct_checksum(seed: int, work: int) -> int {
-    value = seed;
-    for i in range(work) {
-        value = (value * 1103515245 + 12345 + i) % 2147483648;
+# The server reference side is pinned to the server codespace with `sv {}`:
+# since #7589 made native the default, a markerless `def` would be promoted
+# native and collapse the boundary. `sv_callback_checksum` must stay server so
+# the `na {}` callback genuinely crosses na→sv on every invocation.
+sv {
+    def sv_direct_checksum(seed: int, work: int) -> int {
+        value = seed;
+        for i in range(work) {
+            value = (value * 1103515245 + 12345 + i) % 2147483648;
+        }
+        return value;
     }
-    return value;
-}
 
-
-def sv_callback_checksum(seed: int, work: int) -> int {
-    value = seed;
-    for i in range(work) {
-        value = (value * 1103515245 + 12345 + i) % 2147483648;
+    def sv_callback_checksum(seed: int, work: int) -> int {
+        value = seed;
+        for i in range(work) {
+            value = (value * 1103515245 + 12345 + i) % 2147483648;
+        }
+        return value;
     }
-    return value;
 }
 
 
@@ -32,21 +37,24 @@ na {
 }
 
 
-def run_free(work: int, calls: int) -> int {
-    checksum = 0;
-    for call_no in range(calls) {
-        checksum = (checksum + sv_direct_checksum(call_no + 1, work)) % 2147483648;
+sv {
+    def run_free(work: int, calls: int) -> int {
+        checksum = 0;
+        for call_no in range(calls) {
+            checksum = (checksum + sv_direct_checksum(call_no + 1, work)) % 2147483648;
+        }
+        return checksum;
     }
-    return checksum;
-}
 
-
-def run_bridge(work: int, calls: int) -> int {
-    checksum = 0;
-    for call_no in range(calls) {
-        checksum = (checksum + native_invoke_callback(call_no + 1, work)) % 2147483648;
+    def run_bridge(work: int, calls: int) -> int {
+        checksum = 0;
+        for call_no in range(calls) {
+            checksum = (
+                checksum + native_invoke_callback(call_no + 1, work)
+            ) % 2147483648;
+        }
+        return checksum;
     }
-    return checksum;
 }
 
 

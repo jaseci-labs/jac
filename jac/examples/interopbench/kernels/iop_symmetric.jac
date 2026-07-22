@@ -17,12 +17,17 @@ glob WARMUP_CALLS: int = 5,
      DEFAULT_CALLS: int = 500;
 
 
-def sv_lcg(seed: int, work: int) -> int {
-    value = seed;
-    for i in range(work) {
-        value = (value * 1103515245 + 12345 + i) % MODULUS;
+# The sv side is pinned to the server codespace with `sv {}`: since #7589 made
+# native the default, markerless `def`s would be promoted native and the
+# sv_local/na_to_sv variants would stop exercising the sv side of the boundary.
+sv {
+    def sv_lcg(seed: int, work: int) -> int {
+        value = seed;
+        for i in range(work) {
+            value = (value * 1103515245 + 12345 + i) % MODULUS;
+        }
+        return value;
     }
-    return value;
 }
 
 
@@ -53,21 +58,22 @@ na {
 }
 
 
-def run_sv_local(work: int, calls: int) -> int {
-    checksum = 0;
-    for call_no in range(calls) {
-        checksum = (checksum + sv_lcg(call_no + 1, work)) % MODULUS;
+sv {
+    def run_sv_local(work: int, calls: int) -> int {
+        checksum = 0;
+        for call_no in range(calls) {
+            checksum = (checksum + sv_lcg(call_no + 1, work)) % MODULUS;
+        }
+        return checksum;
     }
-    return checksum;
-}
 
-
-def run_sv_to_na(work: int, calls: int) -> int {
-    checksum = 0;
-    for call_no in range(calls) {
-        checksum = (checksum + native_lcg(call_no + 1, work)) % MODULUS;
+    def run_sv_to_na(work: int, calls: int) -> int {
+        checksum = 0;
+        for call_no in range(calls) {
+            checksum = (checksum + native_lcg(call_no + 1, work)) % MODULUS;
+        }
+        return checksum;
     }
-    return checksum;
 }
 
 

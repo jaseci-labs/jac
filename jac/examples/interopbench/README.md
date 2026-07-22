@@ -22,6 +22,13 @@ commands on the in-tree compiler.
 Mixed-JIT scalar cells (`iop_call`, `iop_cb`, `iop_symmetric`) and
 experimental C-ABI fixtures (`iop_ffi_*`, requires `cc` for struct/vtable cells).
 
+The server-reference side of each scalar cell is pinned to the server codespace
+with explicit `sv {}` blocks. This is load-bearing: since #7589 made native the
+default codespace, a markerless `def` is promoted native, so both `free` and
+`bridge` would run native and the sv↔na boundary would vanish (identical timings,
+empty native-export manifest). Do not remove the `sv {}` markers -- they are what
+keeps `free` a plain-Python baseline and `bridge`/`*_to_na` a real crossing.
+
 Read paired variants for boundary cost:
 
 - `iop_call`: `free` vs `bridge` (`sv → na`, work in native). Execution-placement

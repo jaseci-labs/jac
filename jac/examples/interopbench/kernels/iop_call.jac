@@ -7,12 +7,14 @@ glob WARMUP_CALLS: int = 5,
      DEFAULT_CALLS: int = 500;
 
 
-def sv_checksum(seed: int, work: int) -> int {
-    value = seed;
-    for i in range(work) {
-        value = (value * 1103515245 + 12345 + i) % 2147483648;
+sv {
+    def sv_checksum(seed: int, work: int) -> int {
+        value = seed;
+        for i in range(work) {
+            value = (value * 1103515245 + 12345 + i) % 2147483648;
+        }
+        return value;
     }
-    return value;
 }
 
 
@@ -27,21 +29,22 @@ na {
 }
 
 
-def run_free(work: int, calls: int) -> int {
-    checksum = 0;
-    for call_no in range(calls) {
-        checksum = (checksum + sv_checksum(call_no + 1, work)) % 2147483648;
+sv {
+    def run_free(work: int, calls: int) -> int {
+        checksum = 0;
+        for call_no in range(calls) {
+            checksum = (checksum + sv_checksum(call_no + 1, work)) % 2147483648;
+        }
+        return checksum;
     }
-    return checksum;
-}
 
-
-def run_bridge(work: int, calls: int) -> int {
-    checksum = 0;
-    for call_no in range(calls) {
-        checksum = (checksum + native_checksum(call_no + 1, work)) % 2147483648;
+    def run_bridge(work: int, calls: int) -> int {
+        checksum = 0;
+        for call_no in range(calls) {
+            checksum = (checksum + native_checksum(call_no + 1, work)) % 2147483648;
+        }
+        return checksum;
     }
-    return checksum;
 }
 
 

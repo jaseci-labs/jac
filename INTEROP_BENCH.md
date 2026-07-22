@@ -25,7 +25,10 @@ coverage.
 > an externally imported `.na.jac` producer no longer yields the zero-copy
 > `NativeListView`/`NativeStructView` the cell measured (it returns ordinary
 > Python-marshalled lists). The cell, its driver, and its producer were removed
-> rather than left measuring nothing. Phase 4–7 source cells are retained for
+> rather than left measuring nothing. The same native-default change also means
+> the scalar cells now pin their server-reference side with explicit `sv {}`
+> blocks (a markerless `def` would be promoted native and collapse the boundary);
+> those markers are load-bearing. Phase 4–7 source cells are retained for
 > explicit `--experimental` runs, but remain outside the default runnable
 > contract until their phase acceptance criteria pass.
 
