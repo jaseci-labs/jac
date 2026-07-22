@@ -62,7 +62,10 @@ def _run_with_time(
         env=env,
     );
     # `/usr/bin/time` writes its summary to stderr after the child's own stderr.
-    rss_kb = 0;
+    # NOTE: some kernels (WSL2) report maxrss at 1 MiB granularity, so a
+    # genuine reading of 0 means "peaked below the reporting floor", which a
+    # tight allocator legitimately hits. -1 means the summary line was absent.
+    rss_kb = -1;
     if is_bsd_time {
         m = re.search(r"(\d+)\s+maximum resident set size", proc.stderr);
         if m {
@@ -119,7 +122,7 @@ def _measure_gc_savings(
             bin_path, env_extra=None, stdin_data=stdin_data, timeout=timeout
         );
         assert gc_rc == 0 , f"{fixture} (with GC) exited non-zero: {gc_rc}";
-        assert gc_rss > 0 , f"{fixture} (with GC) failed to capture RSS";
+        assert gc_rss >= 0 , f"{fixture} (with GC) failed to capture RSS";
         # GC disabled — every allocation leaks until process exit.
         (nogc_rss, nogc_rc, _nogc_out) = _run_with_time(
             bin_path,
@@ -128,7 +131,7 @@ def _measure_gc_savings(
             timeout=timeout,
         );
         assert nogc_rc == 0 , f"{fixture} (JAC_NO_GC=1) exited non-zero: {nogc_rc}";
-        assert nogc_rss > 0 , f"{fixture} (JAC_NO_GC=1) failed to capture RSS";
+        assert nogc_rss >= 0 , f"{fixture} (JAC_NO_GC=1) failed to capture RSS";
         if fixture in LENIENT_FIXTURES {
             # Lenient: just don't regress badly.
             assert gc_rss <= nogc_rss + lenient_slack_kb , (
@@ -189,7 +192,7 @@ def _measure_cycle_collection(
             bin_path, env_extra={"JAC_NO_GC": "1"}, timeout=timeout
         );
         assert nogc_rc == 0 , f"{fixture} (JAC_NO_GC=1) exited non-zero: {nogc_rc}";
-        assert on_rss > 0 and off_rss > 0 and nogc_rss > 0 , (
+        assert on_rss >= 0 and off_rss >= 0 and nogc_rss >= 0 , (
             f"{fixture}: failed to capture RSS (on={on_rss} off={off_rss} nogc={nogc_rss})"
         );
         saved = nogc_rss - on_rss;

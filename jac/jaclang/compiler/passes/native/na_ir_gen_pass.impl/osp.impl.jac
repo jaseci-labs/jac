@@ -808,15 +808,26 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
     }
 
     self._osp_make_immortal(edge_obj);
+    self._emit_arena_helpers();
     _argtys = osp_conn_fn.function_type.args;
+    _src_i64 = self._coerce_type(src, _argtys[0]);
+    _rgn_val: ir.Value = ir.Constant(i64, 0);
+    if self.region_handle_of_fn is not None {
+        _i8p_conn = ir.IntType(8).as_pointer();
+        _src_conn = self.builder.inttoptr(_src_i64, _i8p_conn, name="conn.src.p");
+        _rgn_val = self.builder.call(
+            self.region_handle_of_fn, [_src_conn], name="conn.rgn"
+        );
+    }
     self.builder.call(
         osp_conn_fn,
         [
-            self._coerce_type(src, _argtys[0]),
+            _src_i64,
             self._coerce_type(tgt, _argtys[1]),
             self._coerce_type(edge_obj, _argtys[2]),
             self._coerce_type(ir.Constant(i64, undirected), _argtys[3]),
-            self._coerce_type(ir.Constant(i64, edge_tag), _argtys[4])
+            self._coerce_type(ir.Constant(i64, edge_tag), _argtys[4]),
+            self._coerce_type(_rgn_val, _argtys[5])
         ]
     );
     return tgt;
@@ -903,6 +914,7 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
         ],
         name="osp.refs"
     );
+    self._mark_owned(_result);
 
     if _node_filter is not None {
         _ntag = _er_tags.get(_node_filter, -1);
@@ -922,6 +934,7 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
             [_unfiltered, ir.Constant(i64, _ntag)],
             name="osp.refs.filt"
         );
+        self._mark_owned(_result);
 
         self._emit_rc_release_simple(_unfiltered, op="osp_refs_filtered", loc="");
     }
@@ -986,9 +999,10 @@ impl NaIRGenPass._osp_visit_targets(target: uni.UniNode) -> (ir.Value | None) {
         }
     }
     _argtys = _wrap.function_type.args;
-    return self.builder.call(
+    _wrapped = self.builder.call(
         _wrap, [self._coerce_type(_val, _argtys[0])], name="osp.wrap1"
     );
+    return self._mark_owned(_wrapped);
 }
 
 impl NaIRGenPass._codegen_visit(nd: uni.VisitStmt) -> None {

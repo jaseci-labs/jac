@@ -233,6 +233,16 @@ impl NaIRGenPass._emit_arena_helpers -> None {
         _d_body
     );
     b = ir.IRBuilder(_d_body);
+    _died_fn = self.func_symtab.get("osp_region_died");
+    if (_died_fn is not None) and (self._osp_ensure_fn is not None) {
+        b.call(self._osp_ensure_fn, []);
+        _died_argty = _died_fn.function_type.args[0];
+        _rgn_i64 = b.ptrtoint(_dhdl, i64, name="rgn.died.i64");
+        if _died_argty != i64 {
+            _rgn_i64 = b.bitcast(_rgn_i64, _died_argty, name="rgn.died.arg");
+        }
+        b.call(_died_fn, [_rgn_i64]);
+    }
     _cur = b.alloca(i8p, name="cur");
     b.store(
         b.load(
@@ -364,6 +374,53 @@ impl NaIRGenPass._emit_arena_helpers -> None {
     b = ir.IRBuilder(_aa_managed);
     b.ret(b.call(self.rc_alloc_fn, [_aa_fn.args[1]], name="an.rc"));
     self.osp_anchor_alloc_fn = _aa_fn;
+
+    _rh_fn = self._define_function(
+        "__jac_region_handle_of", ir.FunctionType(i64, [i8p])
+    );
+    _rh_fn.linkage = "private";
+    _rh_fn.args[0].name = "obj";
+    _rh_entry = _rh_fn.append_basic_block("entry");
+    _rh_magic = _rh_fn.append_basic_block("check.magic");
+    _rh_load = _rh_fn.append_basic_block("load.hdl");
+    _rh_zero = _rh_fn.append_basic_block("zero");
+    b = ir.IRBuilder(_rh_entry);
+    _rh_obj = _rh_fn.args[0];
+    b.cbranch(
+        b.icmp_unsigned("==", _rh_obj, ir.Constant(i8p, None), name="rh.null"),
+        _rh_zero,
+        _rh_magic
+    );
+    b = ir.IRBuilder(_rh_magic);
+    _rh_aid = b.load(
+        b.bitcast(
+            b.gep(_rh_obj, [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name="rh.aid.s"),
+            i64p,
+            name="rh.aid.p"
+        ),
+        name="rh.aid"
+    );
+    _rh_hi = b.lshr(_rh_aid, ir.Constant(i64, 32), name="rh.hi");
+    _rh_hi = b.and_(_rh_hi, ir.Constant(i64, 0xFFFF), name="rh.hi.m");
+    b.cbranch(
+        b.icmp_unsigned("==", _rh_hi, ir.Constant(i64, HDR_MAGIC + 1), name="rh.arena"),
+        _rh_load,
+        _rh_zero
+    );
+    b = ir.IRBuilder(_rh_load);
+    b.ret(
+        b.load(
+            b.bitcast(
+                b.gep(_rh_obj, [ir.Constant(i64, HDR_DTOR_OFF)], name="rh.hdl.s"),
+                i64p,
+                name="rh.hdl.p"
+            ),
+            name="rh.hdl"
+        )
+    );
+    b = ir.IRBuilder(_rh_zero);
+    b.ret(ir.Constant(i64, 0));
+    self.region_handle_of_fn = _rh_fn;
 }
 
 
