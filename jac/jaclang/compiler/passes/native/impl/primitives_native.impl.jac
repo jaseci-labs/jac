@@ -5675,6 +5675,10 @@ impl NativeBuiltinEmitter.emit_str(
     b = get_builder(p);
     i8p = ir.IntType(8).as_pointer();
 
+    if p?.jacval_type and arg_val.type == p.jacval_type {
+        return p._emit_any_str(arg_val);
+    }
+
     if p._is_bytes_value(arg_val) {
         return p._emit_bytes_repr(arg_val);
     }
