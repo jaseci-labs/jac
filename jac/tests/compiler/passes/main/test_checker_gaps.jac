@@ -45,7 +45,7 @@ def compile_and_check(fixture_name: str) -> JacProgram {
     program = JacProgram();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, fixture_name),
-        options=CompileOptions(type_check=False)
+        options=CompileOptions(type_check=False, default_codespace='server')
     );
     TypeCheckPass(ir_in=mod, prog=program);
     return program;
@@ -329,7 +329,9 @@ test "gap 46 impl file standalone scope resolution" {
     program = JacProgram();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_gap_impl_scope.impl.jac"),
-        options=CompileOptions(resolve_annex_parent=True, type_check=False)
+        options=CompileOptions(
+            resolve_annex_parent=True, type_check=False, default_codespace='server'
+        )
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
@@ -631,6 +633,18 @@ test "gap 55 literal annotations resolve and discriminate" {
 # now keeps the parameter for error recovery, so only the real keyword error
 # (E0013) is reported. (jaseci-labs/jaseci#6353 gap #3)
 # =========================================================================
+test "clib import calls do not raise spurious E1051 (#7626 C2)" {
+    # Inline clib decls are real FuncSignatures, so their calls run the
+    # normal arg matcher; fixed-arity, empty-variadic, and multi-variadic
+    # shapes must all pass without "Too many positional arguments".
+    program = compile_and_check("checker_clib_no_e1051.jac");
+    msgs = [str(e) for e in program.errors_had];
+    joined = " ".join(msgs);
+    assert "Too many positional arguments" not in joined , (
+        f"clib call shapes cascaded into E1051: {msgs}"
+    );
+}
+
 test "gap 56 keyword param does not cascade into E1051" {
     program = compile_and_check("checker_keyword_param_no_cascade.jac");
     msgs = [str(e) for e in program.errors_had];

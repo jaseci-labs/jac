@@ -2362,6 +2362,7 @@ impl Parser.parse_fstring -> FString {
                 fv_kid.append(self.make_uni_token(self.previous()));
 
                 spec_parts: list[str] = [];
+                spec_nodes: list[String | FormattedValue] = [];
                 while not self.check(TokenKind.RBRACE) and not self.at_end() {
                     if self.match_tok(TokenKind.LBRACE) {
                         nested_lbrace_uni = self.make_uni_token(self.previous());
@@ -2371,8 +2372,7 @@ impl Parser.parse_fstring -> FString {
                             for sp in spec_parts {
                                 spec_text += sp;
                             }
-                            format_spec = self.make_string_from_value(spec_text);
-                            fv_kid.append(format_spec);
+                            spec_nodes.append(self.make_string_from_value(spec_text));
                             spec_parts = [];
                         }
 
@@ -2393,8 +2393,7 @@ impl Parser.parse_fstring -> FString {
                             format_spec=None,
                             kid=nested_fv_kid
                         );
-                        fv_kid.append(nested_fv);
-                        format_spec = nested_fv;
+                        spec_nodes.append(nested_fv);
                     } else {
                         spec_tok = self.advance();
                         spec_parts.append(spec_tok.value);
@@ -2405,7 +2404,16 @@ impl Parser.parse_fstring -> FString {
                     for sp in spec_parts {
                         spec_text += sp;
                     }
-                    format_spec = self.make_string_from_value(spec_text);
+                    spec_nodes.append(self.make_string_from_value(spec_text));
+                }
+                if spec_nodes {
+                    if len(spec_nodes) == 1 and isinstance(spec_nodes[0], String) {
+                        format_spec = spec_nodes[0];
+                    } else {
+                        format_spec = FString(
+                            start=None, parts=spec_nodes, end=None, kid=list(spec_nodes)
+                        );
+                    }
                     fv_kid.append(format_spec);
                 }
             }
@@ -3271,7 +3279,8 @@ impl Parser.parse_element_stmt{
             stmt = self.parse_element_stmt();
             if stmt is not None {
                 stmt.add_kids_left([sv_tok]);
-                if stmt?.code_context {
+
+                if stmt?.code_context and not isinstance(stmt, Import) {
                     stmt.code_context = CodeContext.SERVER;
                 }
             }
@@ -3529,7 +3538,10 @@ impl Parser.parse_client_block -> ClientBlock {
                 body.append(stmt);
                 kid.append(stmt);
 
-                if stmt?.code_context and stmt._source_context_token() is None {
+                if stmt?.code_context
+                and (
+                    stmt._source_context_token() is None or isinstance(stmt, Import)
+                ) {
                     stmt.code_context = CodeContext.CLIENT;
                 }
             }

@@ -28,12 +28,23 @@ def build_service_apt_prefix(k8s_config: KubernetesConfig) -> str {
             );
         }
     }
-    pkg_list = ' '.join(sorted(set(packages)));
+    pkgs = sorted(set(packages));
+    pkg_list = ' '.join(pkgs);
+
+    present = ' && '.join(
+        [
+            f"dpkg-query -W -f='${{Status}}' {pkg} 2>/dev/null "
+            "| grep -q 'install ok installed'" for pkg in pkgs
+        ]
+    );
 
     return (
+        f"if {present}; then "
+        f"echo '[jac-scale] system packages present ({pkg_list}); skipping apt'; "
+        "else "
         "export DEBIAN_FRONTEND=noninteractive && "
         "apt-get update && apt-get install -y --no-install-recommends "
-        f"{pkg_list} && "
+        f"{pkg_list}; fi && "
     );
 }
 
@@ -50,20 +61,29 @@ def build_runtime_install_commands(
     commands.append('export DEBIAN_FRONTEND=noninteractive');
 
     if config.additional_packages {
-        commands.append(
-            'echo \'APT::Sandbox::User "root";\' > /etc/apt/apt.conf.d/00sandbox'
+        pkgs = sorted(set(config.additional_packages));
+
+        present = ' && '.join(
+            [
+                f"dpkg-query -W -f='${{Status}}' {pkg} 2>/dev/null "
+                "| grep -q 'install ok installed'" for pkg in pkgs
+            ]
+        );
+        apt_cmds = ' && '.join(
+            [
+                'echo \'APT::Sandbox::User "root";\' > /etc/apt/apt.conf.d/00sandbox',
+                '{ sed -i \'/trixie-updates\\|trixie-security/d\' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null || true; }',
+                '{ sed -i -E \'/^Suites:/ s/[[:space:]]+trixie-updates//g\' /etc/apt/sources.list.d/*.sources 2>/dev/null || true; }',
+                '{ apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 '
+                '-o Acquire::https::Timeout=20 update || true; }',
+                f"apt-get install -y {' '.join(pkgs)}"
+            ]
         );
         commands.append(
-            'sed -i \'/trixie-updates\\|trixie-security/d\' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null || true'
+            f"if {present}; then "
+            "echo '[jac-scale] system packages present; skipping apt'; "
+            f"else {apt_cmds}; fi"
         );
-        commands.append(
-            'sed -i -E \'/^Suites:/ s/[[:space:]]+trixie-updates//g\' /etc/apt/sources.list.d/*.sources 2>/dev/null || true'
-        );
-        commands.append(
-            'apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 '
-            '-o Acquire::https::Timeout=20 update || true'
-        );
-        commands.append(f"apt-get install -y {' '.join(config.additional_packages)}");
     }
 
     tc = f"{APP_MOUNT_PATH}/{TOOLCHAIN_SUBDIR}";
@@ -117,9 +137,14 @@ def build_bootstrap_init_container(
     cache = f"{BUNDLE_MOUNT_PATH}/.cache";
     commands.append(
         f'if mkdir -p {cache}/pip 2>/dev/null; then '
+        f'chmod 0777 {cache} {cache}/pip 2>/dev/null || true; '
         f'if [ "$(du -sm {cache} 2>/dev/null | cut -f1)" -gt 512 ] 2>/dev/null; then '
-        f'rm -rf {cache}/pip && mkdir -p {cache}/pip; fi; '
-        f'export PIP_CACHE_DIR={cache}/pip; '
+        f'rm -rf {cache}/pip && mkdir -p {cache}/pip && '
+        f'chmod 0777 {cache}/pip 2>/dev/null || true; fi; '
+        f'if touch {cache}/pip/.writable 2>/dev/null; then '
+        f'rm -f {cache}/pip/.writable; export PIP_CACHE_DIR={cache}/pip; '
+        f'else export PIP_CACHE_DIR=/tmp/jac-pip-cache; fi; '
+        f'else export PIP_CACHE_DIR=/tmp/jac-pip-cache; '
         f'fi'
     );
 
@@ -135,6 +160,14 @@ def build_bootstrap_init_container(
             'prebuilt client dist; full install"; fi'
         );
     }
+
+    vendor_wheels = f"{APP_MOUNT_PATH}/_vendor/wheels";
+    commands.append(
+        f'if ls {vendor_wheels}/*.whl >/dev/null 2>&1; then '
+        f'export PIP_NO_INDEX=1 PIP_FIND_LINKS="{vendor_wheels}"; '
+        'echo "[jac-scale] vendored wheels found; python deps install '
+        'offline"; fi'
+    );
     commands.append("jac install");
     script = ' && '.join(commands);
     container: dict[str, any] = {

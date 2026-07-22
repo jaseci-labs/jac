@@ -13,14 +13,11 @@ packages = ["jac_syntax_highlighter"]
 "pygments" = "<2.20"
 mkdocs = "*"
 mkdocs-material = "*"
-mkdocs-redirects = "*"
 pymdown-extensions = "*"
-mkdocs-video = "*"
 mkdocs-open-in-new-tab = "*"
 starlette = "*"
 uvicorn = "*"
 watchdog = "*"
-mkdocs-graphviz = "*"
 mkdocs-material-extensions = "*"
 
 [entrypoints."pygments.lexers"]

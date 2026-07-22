@@ -21,7 +21,7 @@ Pass flags after `--` to customize the install:
 **Specific version:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --version 2.3.1
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --version 0.34.1
 ```
 
 **Uninstall:**
@@ -88,7 +88,7 @@ jac install byllm
 # `jac start --scale`. Scale's optional deps install per-project via jac.toml.
 ```
 
-The MCP server for AI-assisted Jac development is built into the binary -- run `jac mcp` directly, no install needed (see [Agent Skills and MCP](agent-skills-and-mcp.md)).
+The MCP server for AI-assisted Jac development is built into the binary -- run `jac mcp` directly, no install needed (see [Agent Skills and MCP](../reference/agent-skills-and-mcp.md)).
 
 `jac install` resolves packages from PyPI into your project environment; jaclang itself is provided by the binary, so it is never reinstalled. See [One Binary, Build Anything](one-binary.md) for the full picture of what the binary bundles, and the [CLI reference](../reference/cli/index.md#jac-install) for all options.
 
@@ -161,7 +161,7 @@ Expected output:
   (_) __ _  ___     Jac Language
   | |/ _` |/ __|
   | | (_| | (__     Version:  0.X.X
- _/ |\__,_|\___|    Python 3.12.3
+ _/ |\__,_|\___|    Python 3.14.1
 |__/                Platform: Linux x86_64
 
 📚 Documentation: https://docs.jaseci.org
@@ -190,7 +190,7 @@ You should see `Hello from Jac!` printed to the console.
 The full-stack client framework ships with `jaclang` core, so you can scaffold a complete full-stack project in one command:
 
 ```bash
-jac create example --use web-app
+jac create example --kind web-app
 cd example
 jac install
 jac start
@@ -254,14 +254,14 @@ Use `jac create` to scaffold a new project:
 
 ```bash
 # Client-only web app (no backend, runs in the browser)
-jac create my-app --use web-static
+jac create my-app --kind web-static
 
 # Start the development server
 cd my-app
 jac start
 ```
 
-The `--use web-static` template sets up a complete project with:
+The `web-static` kind sets up a complete project with:
 
 - `main.jac` -- Entry point with client code
 - `jac.toml` -- Project configuration
@@ -272,8 +272,8 @@ Available templates:
 
 | Template | Command | What It Creates |
 |----------|---------|-----------------|
-| Web app | `--use web-app` | Full-stack web app with frontend and backend |
-| Web static | `--use web-static` | Client-only app that runs in the browser (no backend) |
+| Web app | `--kind web-app` | Full-stack web app with frontend and backend |
+| Web static | `--kind web-static` | Client-only app that runs in the browser (no backend) |
 
 You can also use community templates (Jacpacks):
 

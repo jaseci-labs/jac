@@ -110,7 +110,12 @@ impl PeLinker.parse_object -> bool {
         }
         self.symbols.append(
             CoffSymbol(
-                name=name, value=val, sec_num=secn, storage_class=sc, weak_tag=wtag
+                name=name,
+                value=val,
+                sec_num=secn,
+                storage_class=sc,
+                weak_tag=wtag,
+                typ=_typ
             )
         );
         for _a in range(naux) {
@@ -152,16 +157,34 @@ impl PeLinker.build_executable -> bytes {
         sec_i += 1;
     }
 
+    _known_data_syms = {"stdin", "stdout", "stderr", "environ", "_environ", "_iob"};
     extern_funcs: list[str] = [];
+    extern_data: list[str] = [];
+    imp_bases: list[str] = [];
     for s in self.symbols {
         if s is not None
         and s.sec_num == 0
         and s.storage_class == SYM_CLASS_EXTERNAL
         and s.name
         and s.weak_tag < 0 {
-            if s.name not in extern_funcs {
+            if s.name.startswith("__imp_") {
+                _base = s.name[6:];
+                if _base and _base not in imp_bases {
+                    imp_bases.append(_base);
+                }
+            } elif s.name in _known_data_syms and ((s.typ >> 4) & 0xF) != 2 {
+                if s.name not in extern_data {
+                    extern_data.append(s.name);
+                }
+            } elif s.name not in extern_funcs {
                 extern_funcs.append(s.name);
             }
+        }
+    }
+    import_syms: list[str] = list(extern_funcs);
+    for _nm in imp_bases + extern_data {
+        if _nm not in import_syms {
+            import_syms.append(_nm);
         }
     }
 
@@ -213,7 +236,7 @@ impl PeLinker.build_executable -> bytes {
 
     dll_of: dict[str, str] = {};
     dlls: list[str] = [];
-    for name in extern_funcs {
+    for name in import_syms {
         raw_dll = self.symbol_lib_map.get(name, default_dll);
 
         if ".dll" in raw_dll.lower() {
@@ -230,7 +253,7 @@ impl PeLinker.build_executable -> bytes {
     for d in dlls {
         by_dll[d] = [];
     }
-    for name in extern_funcs {
+    for name in import_syms {
         by_dll[dll_of[name]].append(name);
     }
 
@@ -308,18 +331,18 @@ impl PeLinker.build_executable -> bytes {
         idata[o:o + len(db)] = db;
     }
 
-    func_iat_va: dict[str, int] = {};
+    sym_iat_va: dict[str, int] = {};
     for d in dlls {
         j = 0;
         for name in by_dll[d] {
-            func_iat_va[name] = IMAGE_BASE + idata_rva + iat_rva[d] + j * 8;
+            sym_iat_va[name] = IMAGE_BASE + idata_rva + iat_rva[d] + j * 8;
             j += 1;
         }
     }
     for name in extern_funcs {
         toff = thunk_off[name];
         thunk_va = IMAGE_BASE + text_rva + toff;
-        disp = func_iat_va[name] - (thunk_va + 6);
+        disp = sym_iat_va[name] - (thunk_va + 6);
         struct.pack_into("<H", code_blob, toff, 0x25ff);
         struct.pack_into("<i", code_blob, toff + 2, disp);
     }
@@ -345,6 +368,19 @@ impl PeLinker.build_executable -> bytes {
         if s is not None {
             if s.sec_num == 0 and s.name in thunk_off {
                 trva = text_rva + thunk_off[s.name];
+            } elif s.sec_num == 0
+            and s.name.startswith("__imp_")
+            and s.name[6:] in sym_iat_va {
+                trva = sym_iat_va[s.name[6:]] - IMAGE_BASE;
+            } elif s.sec_num == 0 and s.name in extern_data {
+                raise ValueError(
+                    f"PE linker: direct reference to imported DATA symbol "
+                    f"'{s.name}'. PE data imports resolve through the IAT, "
+                    f"which adds one indirection a direct reference cannot "
+                    f"absorb; reference it as '__imp_{s.name}' (declare the "
+                    f"global dllimport) so the access loads through the "
+                    f"import slot."
+                );
             } elif s.sec_num > 0 {
                 ssec = s.sec_num - 1;
                 spl = sec_seg.get(ssec);

@@ -8,18 +8,19 @@ produces, then compile a native host that embeds CPython to serve that bundle an
 renders it in either the OS-native webview (WebKitGTK on Linux, WKWebView on
 macOS, WebView2 on Windows) or Chromium Embedded Framework (CEF).
 
-!!! note "Status"
+!!! note "Status: beta 🧪"
     `jac build --client desktop` produces a working, self-contained desktop
-    binary that renders your `cl` UI. Wiring the `sv` backend/walkers onto the
-    embedded interpreter, HMR dev mode, and per-OS installers/signing are in
-    progress - see [issue #6436](https://github.com/jaseci-labs/jaseci/issues/6436).
+    binary that renders your `cl` UI and runs `sv` walkers/functions
+    **in-process** on the embedded interpreter, with full HMR dev mode via
+    `jac start --client desktop --dev`. Only per-OS installers/code-signing
+    remain open - see [issue #6436](https://github.com/jaseci-labs/jaseci/issues/6436).
 
 > **Prerequisites**
 >
 > - Completed: [Project Setup](setup.md) - you have a working `jac start` web app
 > - The full-stack client and desktop framework ships with `jaclang` core -- nothing extra to install
-> - Installed: the OS web engine + a C toolchain (the native host links a small
->   `libwebview.so`, built on first use). On Debian/Ubuntu:
+> - On Linux, the WebKitGTK system libraries: a bundled helper script offers to
+>   install them on first build. To install them manually on Debian/Ubuntu:
 >   `sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev`
 > - **No Rust toolchain required.**
 

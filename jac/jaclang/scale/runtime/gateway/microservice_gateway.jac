@@ -47,7 +47,6 @@ obj MicroserviceGateway(JacAPIServerAdmin, JacAPIServerAuth, JacAPIServerLogs, J
         _metrics_duration: any = None,
         server: any = None,
         user_manager: any = None,
-        _api_key_manager: any = None,
         _metrics: any = None,
         base_path: str = ".";
 

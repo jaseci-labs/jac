@@ -16,7 +16,14 @@ import sys;
 import from pathlib { Path }
 
 glob BENCH = Path(str(__file__)).resolve().parent.parent,
-     KERNELS = ["binarytrees", "vecdot", "histogram", "vm", "rbtree", "deriv"],
+     KERNELS = [
+         "own_binarytrees",
+         "own_vecdot",
+         "own_histogram",
+         "own_vm",
+         "own_rbtree",
+         "own_deriv"
+     ],
      MODES = ["none", "rc", "cycles"];
 
 """nacompile flags for a memory mode."""
@@ -29,7 +36,7 @@ def mode_flags(mode: str) -> list[str] {
 
 """Compile one cell with IR dumping and count the RC machinery."""
 def audit(kernel: str, mode: str) -> dict {
-    src = BENCH / "kernels" / f"{kernel}.na.jac";
+    src = BENCH / "kernels" / f"{kernel}.jac";
     out = BENCH / "bin" / f"audit_{kernel}_{mode}";
     out.parent.mkdir(exist_ok=True);
     ll = BENCH / "results" / f"{kernel}_{mode}.ll";

@@ -22,7 +22,7 @@ jac start
 | `--faux` `-f` | Print generated API docs only (no server) | false |
 | `--dev` `-d` | Enable HMR (Hot Module Replacement) mode | false |
 | `--api_port` `-a` | Separate API port for HMR mode (0=same as port) | 0 |
-| `--no_client` `-n` | Skip client bundling/serving (API only) | false |
+| `--no-client` `-n` | Skip client bundling/serving (API only) | false |
 | `--profile` | Configuration profile to load (e.g. prod, staging) | - |
 | `--client` | Client build target for dev server (web, desktop, pwa) | - |
 | `--scale` | Deploy to a target platform instead of running locally | false |
@@ -42,7 +42,7 @@ jac start --port 3000
 jac start --dev
 
 # API only -- skip client bundling
-jac start --dev --no_client
+jac start --dev --no-client
 
 # Preview generated API endpoints without starting
 jac start --faux

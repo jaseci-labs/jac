@@ -79,6 +79,19 @@ glob JS_GLOBALS: dict[str, str] = {
          "`skip` is an object-spatial walker statement; native lowers it only "
          "inside a walker `with` event ability (a body that returns no value). "
          "In a value-returning function, use an explicit `return` to exit early."
+     ),
+     _NATIVE_DECORATOR_HELP: str = (
+         "Native lowers decorators only on module-level, non-generator "
+         "functions, and only when each decorator is a plain name resolving "
+         "to a native function (applied at module glob-init). Method, "
+         "archetype, and dynamically-computed decorators would silently run "
+         "the undecorated body; remove the decorator or move the definition "
+         "to a @sv/Python context."
+     ),
+     _NATIVE_UNPACK_HELP: str = (
+         "Unpacking arguments at a native call site is not lowered yet; "
+         "pass the elements explicitly or move the call to a @sv/Python "
+         "context."
      );
 
 
@@ -183,6 +196,10 @@ impl native_capability_violations(mod: uni.Module) -> list {
         }
     }
 
+    import os;
+    _base_dir = os.path.dirname(os.path.abspath(mod.loc.mod_path))
+        if (mod?.loc and mod.loc.mod_path)
+        else '.';
     for stmt in _native_stmts {
         if isinstance(stmt, uni.Import) {
             if stmt.clib_decls or not stmt.items {
@@ -191,8 +208,21 @@ impl native_capability_violations(mod: uni.Module) -> list {
             for item in stmt.items {
                 (mod_name, _ok) = classify_native_import(item);
                 if mod_name is not None and not _ok {
-                    import from jaclang.jac0core.codeinfo { is_bundled_native_module }
+                    import from jaclang.jac0core.codeinfo {
+                        is_bundled_native_module,
+                        resolve_native_module
+                    }
                     if is_bundled_native_module(mod_name) {
+                        continue;
+                    }
+                    _plain_bare = (
+                        not stmt.is_absorb
+                        and isinstance(item, uni.ModulePath)
+                        and item.alias is None
+                        and len(item.path) == 1
+                    );
+                    if (stmt.is_absorb or _plain_bare)
+                    and resolve_native_module(mod_name, _base_dir)[1] is not None {
                         continue;
                     }
 
@@ -211,8 +241,9 @@ impl native_capability_violations(mod: uni.Module) -> list {
                         _stdlib_help = (
                             f"Native compilation supports these stdlib imports: "
                             f"{_supported_list}; C-library imports "
-                            f"(`import from \"lib\" {{...}}`); and other native "
-                            f"(.na.jac) modules (`import from mod {{...}}`). Move "
+                            f"(`import from \"lib\" {{...}}`); and other Jac "
+                            f"modules on the native pathway (`import mod` or "
+                            f"`import from mod {{...}}`, unaliased). Move "
                             f"Python-dependent code to a @sv/Python context."
                         );
                     }
@@ -225,10 +256,6 @@ impl native_capability_violations(mod: uni.Module) -> list {
         work: list = [stmt];
         while work {
             nd = work.pop();
-            if isinstance(nd, NATIVE_REJECT_MATCH_PATTERNS) {
-                out.append((nd, "match pattern", type(nd).__name__, None));
-                continue;
-            }
             if isinstance(nd, NATIVE_REJECT_NODES) {
                 kind = "expression" if isinstance(nd, uni.Expr) else "statement";
                 out.append((nd, kind, type(nd).__name__, None));
@@ -252,15 +279,126 @@ impl native_capability_violations(mod: uni.Module) -> list {
                 continue;
             }
 
-            if isinstance(nd, uni.ParamVar) and nd.unpack is not None {
-                out.append(
-                    (
-                        nd,
-                        "variadic parameter",
-                        f"{nd.unpack.value}{nd.name.value if nd.name else ''}",
-                        None
-                    )
+            if isinstance(nd, (uni.Ability, uni.ArchSpec, uni.ImplDef))
+            and nd.decorators {
+                _dec_static_fn = (
+                    isinstance(nd, uni.Ability)
+                    and not isinstance(nd.parent, uni.Archetype)
+                    and nd.find_parent_of_type(uni.Ability) is None
+                    and not nd.get_all_sub_nodes(typ=uni.YieldExpr)
                 );
+                if _dec_static_fn {
+                    for _dexpr in nd.decorators {
+                        if not isinstance(_dexpr, uni.Name) {
+                            _dec_static_fn = False;
+                            break;
+                        }
+                    }
+                }
+                if not _dec_static_fn {
+                    _dec_owner = "?";
+                    if isinstance(nd, uni.Ability) and nd.name_ref {
+                        _dec_owner = nd.name_ref.sym_name;
+                    } elif isinstance(nd, uni.Archetype) and nd.name {
+                        _dec_owner = nd.name.value;
+                    }
+                    out.append(
+                        (
+                            nd.decorators[0],
+                            "decorator",
+                            f"on {_dec_owner}",
+                            _NATIVE_DECORATOR_HELP
+                        )
+                    );
+                }
+            }
+
+            if isinstance(nd, uni.ParamVar) and nd.unpack is not None {
+                _vp_name = f"{nd.unpack.value}{nd.name.value if nd.name else ''}";
+                _vp_encl = nd.find_parent_of_type(uni.Ability);
+                if _vp_encl is None {
+                    _vp_impl = nd.find_parent_of_type(uni.ImplDef);
+                    if _vp_impl is not None
+                    and isinstance(_vp_impl.decl_link, uni.Ability) {
+                        _vp_encl = _vp_impl.decl_link;
+                    }
+                }
+                if nd.type_tag is None {
+                    out.append(
+                        (
+                            nd,
+                            "variadic parameter",
+                            _vp_name,
+                            (
+                                "Annotate the variadic parameter (e.g. "
+                                "`*args: int`, `*args: any`) so the native "
+                                "pack type is known."
+                            )
+                        )
+                    );
+                    continue;
+                }
+                if nd.find_parent_of_type(uni.LambdaExpr) is not None {
+                    out.append((nd, "variadic parameter", _vp_name, None));
+                    continue;
+                }
+                if (
+                    _vp_encl is not None
+                    and _vp_encl.name_ref is not None
+                    and _vp_encl.name_ref.sym_name in ("init", "__init__")
+                    and isinstance(_vp_encl.parent, uni.Archetype)
+                ) {
+                    out.append(
+                        (
+                            nd,
+                            "variadic parameter",
+                            _vp_name,
+                            (
+                                "Native constructors are lowered as field "
+                                "initializers; give `init` a fixed "
+                                "parameter list."
+                            )
+                        )
+                    );
+                    continue;
+                }
+                if (
+                    _vp_encl is not None
+                    and _vp_encl.access is not None
+                    and _vp_encl.access.tag.name == Tok.KW_PUB
+                ) {
+                    out.append(
+                        (
+                            nd,
+                            "variadic parameter",
+                            _vp_name,
+                            (
+                                "The interop bridge cannot marshal a "
+                                "parameter pack; expose a fixed-arity "
+                                "`def:pub` wrapper that calls the variadic "
+                                "function instead."
+                            )
+                        )
+                    );
+                    continue;
+                }
+            }
+
+            if isinstance(nd, uni.UnaryExpr)
+            and isinstance(nd.op, uni.Token)
+            and nd.op.name == Tok.STAR_POW
+            and isinstance(nd.parent, uni.FuncCall)
+            and nd in (nd.parent.params or []) {
+                out.append(
+                    (nd, "call argument unpacking", nd.op.value, _NATIVE_UNPACK_HELP)
+                );
+                continue;
+            }
+
+            if isinstance(nd, uni.KWPair)
+            and nd.key is None
+            and isinstance(nd.parent, uni.FuncCall) {
+                out.append((nd, "call argument unpacking", "**", _NATIVE_UNPACK_HELP));
                 continue;
             }
 
@@ -285,62 +423,20 @@ impl native_capability_violations(mod: uni.Module) -> list {
                 continue;
             }
 
-            if isinstance(nd, uni.Ability)
-            and nd.find_parent_of_type(uni.Ability) is not None {
-                import from jaclang.compiler.symbol_utils { ability_of_symbol }
-                _data_caps = [
-                    _cs
-                    for _cs in nd.get_enclosing_captures()
-                    if ability_of_symbol(_cs) is None
-                ];
-                if _data_caps {
-                    out.append(
-                        (
-                            nd,
-                            "statement",
-                            "Ability (nested function capturing enclosing locals)",
-                            None
-                        )
-                    );
-                    continue;
-                }
-            }
-
-            if isinstance(nd, uni.BinaryExpr)
-            and isinstance(nd.op, uni.Token)
-            and nd.op.name == Tok.WALRUS_EQ
-            and not isinstance(nd.left, uni.Name) {
-                out.append((nd, "binary operator", "WALRUS_EQ", None));
-                continue;
-            }
-
-            if isinstance(nd, uni.CompareExpr) and len(nd.ops) > 1 {
-                _plain_ops = (Tok.EE, Tok.NE, Tok.LT, Tok.GT, Tok.LTE, Tok.GTE);
-                for _o in nd.ops {
-                    _oname = _o.name if isinstance(_o, uni.Token) else str(_o);
-                    if _oname not in _plain_ops {
-                        out.append((nd, "chained comparison operator", _oname, None));
-                        break;
-                    }
-                }
-            }
-
             if isinstance(nd, uni.FormattedValue) {
                 _conv = nd.conversion if nd.conversion is not None else -1;
-                if _conv not in (-1, 115) {
+                if _conv == 97 {
                     out.append(
                         (
                             nd,
                             "f-string conversion",
-                            ("!r" if _conv == 114 else "!a"),
-                            None
+                            "!a",
+                            (
+                                "ascii() escaping is not implemented natively; "
+                                "use !r or move the statement to @sv"
+                            )
                         )
                     );
-                    continue;
-                }
-                if nd.format_spec is not None
-                and static_fstring_spec_text(nd.format_spec) is None {
-                    out.append((nd, "f-string format spec", "<dynamic spec>", None));
                     continue;
                 }
             }
@@ -372,18 +468,17 @@ impl native_capability_violations(mod: uni.Module) -> list {
             if isinstance(nd, uni.EdgeRefTrailer) and nd.chain {
                 _chain = nd.chain;
                 _ci = 0 if isinstance(_chain[0], uni.EdgeOpRef) else 1;
-                _shape_ok = (_ci < len(_chain))
-                and isinstance(_chain[_ci], uni.EdgeOpRef);
-                if _shape_ok {
+                _hops = 0;
+                while (_ci < len(_chain)) and isinstance(_chain[_ci], uni.EdgeOpRef) {
+                    _hops += 1;
                     _ci += 1;
                     if (_ci < len(_chain))
                     and isinstance(_chain[_ci], uni.FilterCompr)
-                    and (_chain[_ci].f_type is not None)
-                    and (not _chain[_ci].compares) {
+                    and (_chain[_ci].f_type is not None) {
                         _ci += 1;
                     }
-                    _shape_ok = _ci == len(_chain);
                 }
+                _shape_ok = (_hops > 0) and (_ci == len(_chain));
                 if not _shape_ok {
                     out.append(
                         (
@@ -391,13 +486,14 @@ impl native_capability_violations(mod: uni.Module) -> list {
                             "expression",
                             "EdgeRefTrailer",
                             (
-                                "native lowers only a single-hop edge reference "
-                                "(`[origin -->]` / `[here ->:Edge:->]`) with an "
-                                "optional trailing node-type filter (`[?:Node]`). "
-                                "Multi-hop chains (`[here -->-->]`) and value-compare "
-                                "filters (`[?:Node(x > 1)]`) are not yet supported; "
-                                "split the traversal into single hops or move it to "
-                                "@sv."
+                                "native lowers edge references as one or more hops "
+                                "(`[origin --> ...]` / `[here ->:Edge:-> ...]`), each "
+                                "with an optional node-type filter (`[?:Node]`, "
+                                "optionally with field predicates `[?:Node, x > 1]`). "
+                                "A compare-only filter inside a chain needs a type "
+                                "filter naming the element archetype first; other "
+                                "shapes are not yet supported - restructure the "
+                                "traversal or move it to @sv."
                             )
                         )
                     );
@@ -410,52 +506,6 @@ impl native_capability_violations(mod: uni.Module) -> list {
         }
     }
     return out;
-}
-
-impl module_native_compat(mod: uni.Module) -> bool {
-    scan_mods = [mod];
-    has_entry = False;
-    for mc in mod.get_all_sub_nodes(typ=uni.ModuleCode) {
-        for k in mc.kid {
-            if isinstance(k, uni.Token) and k.value == "entry" {
-                has_entry = True;
-                break;
-            }
-        }
-        if has_entry {
-            break;
-        }
-    }
-    if not has_entry {
-        return False;
-    }
-    for m in scan_mods {
-        for nd_type in NATIVE_DISQUALIFIER_NODES {
-            if m.get_all_sub_nodes(typ=nd_type) {
-                return False;
-            }
-        }
-        for arch in m.get_all_sub_nodes(typ=uni.Archetype) {
-            if arch.arch_kind is not None {
-                return False;
-            }
-        }
-        for ab in m.get_all_sub_nodes(typ=uni.Ability) {
-            if ab.is_async or isinstance(ab.signature, uni.EventSignature) {
-                return False;
-            }
-        }
-    }
-    return True;
-}
-
-impl CapabilityCheckPass.postinit -> None {
-    super.postinit();
-}
-
-impl CapabilityCheckPass.transform(ir_in: uni.Module) -> uni.Module {
-    ir_in.gen.native_compat = module_native_compat(ir_in);
-    return ir_in;
 }
 
 impl NativeCapabilityCheckPass.postinit -> None {

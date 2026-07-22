@@ -1,6 +1,6 @@
-# Part II: Functions and Objects
+# Functions and Objects
 
-**In this part:**
+**On this page:**
 
 - [Functions and Abilities](#functions-and-abilities) - Function declaration, parameters, abilities
 - [Object-Oriented Programming](#object-oriented-programming) - Objects, inheritance, enums
@@ -189,7 +189,7 @@ walker ListItems {
 }
 ```
 
-> See [Part III: OSP](osp.md) for complete walker and ability documentation.
+> See [Object-Spatial Programming](osp.md) for complete walker and ability documentation.
 
 ### 5 Methods
 
@@ -494,7 +494,7 @@ Jac uses `obj` instead of `class` to define types (though `class` is also suppor
 
 ### 1 Objects (Classes)
 
-Objects are Jac's basic unit of data and behavior. Use `obj` for general-purpose types. For graph-based programming, use `node`, `edge`, or `walker` instead (see Part III: OSP).
+Objects are Jac's basic unit of data and behavior. Use `obj` for general-purpose types. For graph-based programming, use `node`, `edge`, or `walker` instead (see [Object-Spatial Programming](osp.md)).
 
 !!! note "When to use `obj` vs `class`"
     Jac's `obj` enforces stricter semantics than Python's `class` -- fields are declared upfront with `has`, constructors are auto-generated, and the structure is designed to be portable across codespaces (server, client, native). This strictness is intentional: it enables the compiler to target multiple execution environments from the same source code.
@@ -922,6 +922,8 @@ impl Calculator.multiply {
 
 A single logical module can be split across *variant files* that target different execution contexts. Variant suffixes are `.sv.jac` (server), `.cl.jac` (client), and `.na.jac` (native). All files sharing the same base name are automatically discovered and compiled together.
 
+Variant files are an *explicit* placement mechanism, and for the client side they are optional: the compiler infers client placement from client-only syntax (JSX, npm imports) in plain `.jac` files, so splitting a module into `.cl.jac` variants is a style choice rather than a requirement. Native placement is likewise inferred when code uses an extern C surface: an import whose braces declare C-ABI functions (e.g. `import from raylib { def InitWindow(w: i32, h: i32, title: str) -> None; }`) seeds native placement for itself and the declarations that use it. For pure native-compatible code with no such FFI seed, the `.na.jac` variant (or an `na {}` block) remains how native code is declared.
+
 **Head module precedence:** `.jac` > `.sv.jac` > `.cl.jac` > `.na.jac`. The highest-precedence file that exists on disk becomes the *head module*; all lower-precedence variants are attached as variant annexes. If no plain `.jac` file exists, the next available variant acts as head.
 
 ```
@@ -1063,5 +1065,5 @@ with entry {
 
 **Related Reference:**
 
-- [Part I: Foundation](foundation.md) - Variables, types, control flow
-- [Part III: OSP](osp.md) - Nodes, edges, walkers
+- [Types and Values](types-and-values.md), [Variables and Scope](variables-and-scope.md), [Control Flow](control-flow.md) - The language core
+- [Object-Spatial Programming](osp.md) - Nodes, edges, walkers

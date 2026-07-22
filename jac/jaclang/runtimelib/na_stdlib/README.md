@@ -29,11 +29,11 @@ bundled one. A bundled module links through the existing cross-module machinery
 - **`json.na.jac`** (#6940 Phase 1) -- a recursive-descent `loads` over boxed
   `any` (dict/list/str/int/float/bool/None) plus a `dumps` serializer matching
   CPython's default `(', ', ': ')` separators and insertion-ordered keys.
-  Two documented divergences: `dumps` of a bare float uses the native
-  `str(float)` (`%g`), not CPython's shortest-round-trip repr (parity is gated on
-  the Ryu float repr, #6940 Phase 0.3); and only the control set + JSON
-  metacharacters are escaped, so congruence holds for ASCII payloads
-  (`ensure_ascii` of non-ASCII is a follow-up).
+  One documented divergence: only the control set + JSON metacharacters are
+  escaped, so congruence holds for ASCII payloads (`ensure_ascii` of
+  non-ASCII is a follow-up). (`dumps` of floats now matches CPython: native
+  `str(float)` produces the shortest-round-trip repr -- #6940 Phase 0.3,
+  pinned byte-for-byte against CPython in the native suite.)
 - **`datetime.na.jac`** (#6940 Phase 1 / #6951) -- a UTC `datetime` and
   `timezone` pair. `timezone.utc` is a class attribute and `datetime.now` /
   `datetime.fromtimestamp` are class-level constructors, riding the native
@@ -136,8 +136,9 @@ bundled one. A bundled module links through the existing cross-module machinery
   C0 controls (0x00-0x1f) and DEL (0x7f). SCOPE: **single-line output only** --
   CPython wraps representations longer than `width=80` across lines, so any
   object whose repr exceeds one line diverges (width-driven wrapping not
-  implemented); string dict keys; no floats (the `json` `str(float)` `%g`
-  divergence); bytes > 0x7f pass through unescaped, so *unicode* non-printables
+  implemented); string dict keys; floats print with CPython's
+  shortest-round-trip repr (#6940 Phase 0.3, so the old `%g` divergence is
+  gone); bytes > 0x7f pass through unescaped, so *unicode* non-printables
   (e.g. U+00A0, U+200B) are NOT `\uXXXX`-escaped as CPython would -- congruent
   for ASCII and printable-unicode payloads. Out-of-scope value types: `set`
   raises `ValueError("pprint: unsupported value type on native")` instead of
@@ -159,6 +160,30 @@ bundled one. A bundled module links through the existing cross-module machinery
   error-path/behavior divergence); `ratio` is the same IEEE-double value (only
   its `str` rendering would differ);
   `get_opcodes`/`unified_diff`/`ndiff`/`Differ`/`HtmlDiff` not provided.
+
+- **`statistics.na.jac`** (#7593 item 18) -- double-precision
+  `fmean`/`mean`/`median`/`median_low`/`median_high`/`variance`/`pvariance`/
+  `stdev`/`pstdev` over generic `[T]` defs, so int and float sequences both
+  monomorphize without boxing. SCOPE/divergences: results always compute in
+  float (CPython runs exact Fraction arithmetic internally and `median` of an
+  odd-count sequence returns the element itself, preserving int), and errors
+  raise `ValueError` directly (CPython's `StatisticsError` subclasses
+  `ValueError`, so `except ValueError` behaves identically on both backends).
+
+- **`shutil.na.jac`** (#7593 item 18) -- `which`/`copyfile`/`copy`/`copy2`/
+  `move`/`rmtree` over the native os intrinsics (getenv, path.join,
+  path.isdir, path.isfile, path.basename) plus direct libc (access, unlink,
+  rmdir, rename, opendir/readdir/closedir). The dirent d_name offset follows
+  the glibc x86-64/aarch64 layout (d_ino 8 + d_off 8 + d_reclen 2 + d_type 1
+  = 19), matching the platform scope of the other libc-backed modules.
+  SCOPE/divergences: copy/copy2 duplicate bytes but do not yet preserve
+  mode/mtime metadata; rmtree follows the isdir predicate, so directory
+  symlinks are recursed into rather than unlinked; errors raise `ValueError`
+  rather than CPython's `OSError` subclasses.
+
+- **`keyword.na.jac`** (#7593 item 18) -- `kwlist`/`softkwlist`/`iskeyword`/
+  `issoftkeyword` mirroring CPython's lists verbatim, ordering included
+  (stable since 3.10's soft-keyword additions).
 
 - **`fractions.na.jac`** (#6978 Phase 2) -- a pure-Jac (Mechanism B) `Fraction`
   over native `int`, normalized on construction via Euclid's GCD with the sign

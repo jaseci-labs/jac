@@ -37,8 +37,8 @@ glob _UNTYPED_BODY: str = (
          "\n"
          "def fetch -> dict[str, str] {\n"
          "    resp = untyped_client.get(\"http://example.com\");\n"
-         "    print(resp.status_code);\n"
-         "    print(resp.headers);\n"
+         "    _ = resp.status_code;\n"
+         "    _ = resp.headers;\n"
          "    return resp.json();\n"
          "}\n"
      ),
@@ -47,7 +47,7 @@ glob _UNTYPED_BODY: str = (
          "\n"
          "def fetch -> dict[str, str] {\n"
          "    resp = get(\"http://example.com\");\n"
-         "    print(resp.headers);\n"
+         "    _ = resp.headers;\n"
          "    return resp.json();\n"
          "}\n"
      );
@@ -75,6 +75,10 @@ def _check(src: str, search_dir: str) -> JacProgram {
     } finally {
         sys.path.remove(search_dir);
         importlib.invalidate_caches();
+        # `import from` of an installed untyped .py module can load it into
+        # sys.modules; resolve_module() consults find_spec before sys.path, so
+        # a later project-local case must not inherit that cached origin.
+        sys.modules.pop("untyped_client", None);
     }
 }
 
