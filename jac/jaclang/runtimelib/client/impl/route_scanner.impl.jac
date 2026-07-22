@@ -146,28 +146,26 @@ impl RouteScanner._file_to_component_name(file_path: Path) -> str {
 impl RouteScanner._detect_collisions(routes: list[RouteEntry]) -> None {
     seen_paths: dict[(str, Path)] = {};
     seen_imports: dict[(str, Path)] = {};
-    for route in routes {
-        if route.is_layout {
-            continue;
-        }
-        if route.path in seen_paths {
+    all_entries = routes + list(self._layouts.values());
+    for entry in all_entries {
+        if (not entry.is_layout) and (entry.path in seen_paths) {
             raise ClientBundleError(
-                f"Route collision: '{route.path}' is defined by both "
-                f"'{seen_paths[route.path]}' and '{route.file_path}'. "
+                f"Route collision: '{entry.path}' is defined by both "
+                f"'{seen_paths[entry.path]}' and '{entry.file_path}'. "
                 f"Remove one of them."
             );
         }
-        seen_paths[route.path] = route.file_path;
-
-        if route.component_import in seen_imports {
+        if not entry.is_layout {
+            seen_paths[entry.path] = entry.file_path;
+        }
+        other = seen_imports.get(entry.component_import);
+        if other {
             raise ClientBundleError(
-                f"Route import-name collision: '{seen_imports[
-                    route.component_import
-                ]}' "
-                f"and '{route.file_path}' both sanitize to the JS identifier "
-                f"'{route.component_import}'. Rename one of the files."
+                f"Route import-name collision: '{other}' and '{entry.file_path}' "
+                f"both sanitize to the JS identifier '{entry.component_import}'. "
+                f"Rename one of the files."
             );
         }
-        seen_imports[route.component_import] = route.file_path;
+        seen_imports[entry.component_import] = entry.file_path;
     }
 }
