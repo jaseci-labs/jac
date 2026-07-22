@@ -84,6 +84,26 @@ test "bare host constructor calls emit W6005 at jac check" {
     );
 }
 
+test "WebAssembly namespace is not treated as a constructor" {
+    prog = JacProgram();
+    with NamedTemporaryFile(
+        mode="w", suffix=".jac", delete=False, dir=_test_tmp_dir
+    ) as f {
+        f.write("cl def f() -> any { return WebAssembly(); }\n");
+        f.flush();
+        ir = prog.compile(f.name, type_check=True);
+    }
+    warnings = warnings_with_code(prog, "W6005");
+    assert len(warnings) == 0 , (
+        "WebAssembly() must not warn W6005, got: " + str([str(w) for w in warnings])
+    );
+    assert ir.gen.js and "Reflect.construct(WebAssembly" not in ir.gen.js , (
+        "WebAssembly() must not lower through Reflect.construct; got:\n" + (
+            ir.gen.js or "<no js>"
+        )
+    );
+}
+
 test "new(TextEncoder) does not emit W6005" {
     prog = compile_inline("cl def f() -> any { return new(TextEncoder); }\n");
     warnings = warnings_with_code(prog, "W6005");

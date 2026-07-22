@@ -480,26 +480,9 @@ glob JS_HOST_CONSTRUCTORS: frozenset[str] = frozenset(
              "URLSearchParams",
              "Uint32Array",
              "Uint8Array",
-             "WebAssembly",
              "WebSocket"
          }
      );
-
-def _sym_from_js_globals_stub(sym: uni.Symbol) -> bool {
-    if sym.decl is None or sym.decl.loc is None {
-        return False;
-    }
-    mod_path = sym.decl.loc.mod_path;
-    return isinstance(mod_path, str) and mod_path.endswith("js_globals.pyi");
-}
-
-def _sym_from_dom_types_stub(sym: uni.Symbol) -> bool {
-    if sym.decl is None or sym.decl.loc is None {
-        return False;
-    }
-    mod_path = sym.decl.loc.mod_path;
-    return isinstance(mod_path, str) and mod_path.endswith("dom_types.pyi");
-}
 
 def is_js_host_constructor_call(nd: uni.FuncCall) -> bool {
     if not nd.in_client_context() {
@@ -510,13 +493,6 @@ def is_js_host_constructor_call(nd: uni.FuncCall) -> bool {
     }
     if nd.target.sym_name == "new" {
         return False;
-    }
-
-    sym = nd.target.sym;
-    if sym is not None {
-        if _sym_from_js_globals_stub(sym) or _sym_from_dom_types_stub(sym) {
-            return True;
-        }
     }
 
     return nd.target.sym_name in JS_HOST_CONSTRUCTORS;
