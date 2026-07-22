@@ -56,9 +56,9 @@ def:pub app() -> JsxElement {                   # JSX -> client
 
 Reference propagation pulls helpers - it does NOT turn server API surface into client code:
 
-- **`def:pub` functions and walkers stay server endpoints.** A client reference never inlines them into the bundle; the call compiles to the auto-RPC bridge (`await save_note(...)`, `result = root spawn add_task(title=t);` - see `jac-fullstack-patterns`). (A `def:pub` whose own body carries JSX is client by the structural rule - that is how markerless `def:pub app` and components work.)
-- **Top-level `obj` archetypes referenced from both sides are auto-shared** into the bundle - typed instances cross the wire hydrated, no duplicate declaration needed.
-- **Anything with an explicit access tag stays put.** A `:pub`/`:priv`/`:protect` tag declares intent about a declaration's surface; inference will not move it.
+- **`def:pub` functions and walkers stay server endpoints.** A client reference never inlines them into the bundle; the call compiles to the auto-RPC bridge (`await save_note(...)`, `result = root spawn add_task(title=t);` - see `jac-fullstack-patterns`). (A `def:pub` whose own body carries JSX is client by the structural rule - that is how markerless `def:pub app` and components work.) Access tags on `def`s declare endpoint surface, so tagged defs never relocate - but that is a `def`-only rule: a tagged `glob` is visibility, not placement, and pulls like any other.
+- **`node`/`edge`/`walker` archetypes never relocate** - they are the persistence/OSP surface. Referenced from client code they are auto-shared: the bundle gets a wire-codec class (constructor with the declared field defaults, `__from_wire`/`__to_wire`, `_jac_id`) while the archetype itself stays server.
+- **Plain `obj` archetypes referenced from both sides are auto-shared** the same way - typed instances cross the wire hydrated, no duplicate declaration needed. An `obj` referenced *only* by client code relocates wholesale into the bundle instead (real class, methods and all).
 
 ## Explicit overrides - they always win
 
@@ -72,7 +72,7 @@ All existing marker-annotated code remains valid - markers are the explicit styl
 
 ## `sv` pinning - the override you will actually need
 
-Inference pulls what client code references. When that is wrong - the helper wraps a server-only dependency, the `glob` holds a secret - pin the declaration with `sv`:
+Inference pulls what client code references. When that is wrong - the helper wraps a server-only dependency, the `glob` holds a secret - pin the declaration with `sv` (an access tag does NOT pin; `sv` does):
 
 ```jac
 import os;

@@ -111,7 +111,10 @@ glob R_AARCH64_PREL32 = 261,
      R_AARCH64_MOVW_UABS_G2_NC = 268,
      R_AARCH64_MOVW_UABS_G3 = 269,
      R_AARCH64_ABS32 = 258,
-     R_AARCH64_RELATIVE = 1027;
+     R_AARCH64_RELATIVE = 1027,
+     R_AARCH64_TLSLE_ADD_TPREL_HI12 = 549,
+     R_AARCH64_TLSLE_ADD_TPREL_LO12 = 550,
+     R_AARCH64_TLSLE_ADD_TPREL_LO12_NC = 551;
 
 
 def _elf_hash(name: str) -> int {
@@ -2814,7 +2817,55 @@ impl ElfLinker.build_static_executable -> bytes {
     data_bytes = bytearray(data_blob);
 
     missing: set[str] = set();
+    _a64_tprel = (
+        R_AARCH64_TLSLE_ADD_TPREL_HI12,
+        R_AARCH64_TLSLE_ADD_TPREL_LO12,
+        R_AARCH64_TLSLE_ADD_TPREL_LO12_NC
+    );
     for rela in self.relocations {
+        if arch.e_machine == 183 and rela.rtype in _a64_tprel {
+            tls_off = 0;
+            tls_place = local_sym_map.get(rela.sym_name) if rela.sym_name else None;
+            if tls_place is None {
+                tls_place = sym_idx_placement.get(rela.sym_idx);
+            }
+            if tls_place is not None and tls_place[0] == "tls" {
+                tls_off = tls_place[1];
+            }
+            tls_site = _resolve_patch_site(
+                rela.offset,
+                rela.target_sec,
+                code_sections,
+                rodata_sections,
+                data_sections,
+                code_bytes,
+                rodata_bytes,
+                data_bytes,
+                text_vaddr,
+                rodata_vaddr,
+                data_vaddr
+            );
+            if tls_site is not None {
+                (_tb, _to, _tv) = tls_site;
+                tpoff = _align(16, max(tls_align, 1)) + tls_off + rela.addend;
+                if tpoff >= (1 << 24) {
+                    raise ValueError(
+                        f"ELF static linker: aarch64 TLS-LE offset {tpoff} "
+                        f"exceeds the 24-bit add-immediate range for symbol "
+                        f"'{rela.sym_name}'."
+                    );
+                }
+                if rela.rtype == R_AARCH64_TLSLE_ADD_TPREL_HI12 {
+                    _imm = (tpoff >> 12) & 0xFFF;
+                } else {
+                    _imm = tpoff & 0xFFF;
+                }
+                _insn = struct.unpack_from("<I", _tb, _to)[0];
+                _insn = (_insn & 0xFFC003FF) | (_imm << 10);
+                struct.pack_into("<I", _tb, _to, _insn);
+            }
+            continue;
+        }
         if arch.e_machine == 62 and rela.rtype == R_X86_64_TPOFF32 {
             tls_off = 0;
             tls_place = local_sym_map.get(rela.sym_name) if rela.sym_name else None;

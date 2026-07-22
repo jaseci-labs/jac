@@ -73,6 +73,7 @@ class BoundaryAnalysisPass(UniPass) {
         self: BoundaryAnalysisPass, type_name: str, source_mod: (uni.Module | None)
     ) -> None;
 
+    def _literal_default(self: BoundaryAnalysisPass, expr: any) -> tuple[(bool, any)];
     def after_pass(self: BoundaryAnalysisPass) -> None;
     def _record_access_levels(self: BoundaryAnalysisPass, manifest: any) -> None;
     def enter_archetype(self: BoundaryAnalysisPass, nd: uni.Archetype) -> None;

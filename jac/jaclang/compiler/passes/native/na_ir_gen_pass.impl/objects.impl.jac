@@ -398,6 +398,11 @@ impl NaIRGenPass._forward_declare_method(arch_name: str, method: uni.Ability) ->
     method_name = method.name_ref.sym_name if method.name_ref else "unnamed";
     full_name = f"{arch_name}.{method_name}";
 
+    if method.type_params {
+        self._generic_methods[full_name] = method;
+        self.has_native_code = True;
+        return;
+    }
     if full_name in self.method_funcs {
         return;
     }
@@ -1594,6 +1599,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
             _shape_spec = self._infer_list_elem_type(list_val);
             elem_type_name = _shape_spec if _shape_spec is not None else list_spec;
             arg_vals = self._codegen_call_args(nd);
+            _orig_args = list(arg_vals);
 
             _elem_struct = self.var_list_elem_struct.get(target_name);
             if _elem_struct is not None
@@ -1631,6 +1637,9 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
 
             self._clear_rc_ctx();
             if result is not None {
+                if method_name == "insert" {
+                    self._release_owned_args(_orig_args, op="list_method_arg");
+                }
                 return result;
             }
         }
@@ -1802,6 +1811,32 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     }
 
     func = self._resolve_method(type_name, method_name);
+    _is_mono_method = False;
+    if func is None {
+        _gm_owner: (str | None) = None;
+        for _gm_cur in self._mro_of(type_name) {
+            if f"{_gm_cur}.{method_name}" in self._generic_methods {
+                _gm_owner = _gm_cur;
+                break;
+            }
+        }
+        if _gm_owner is not None {
+            _gm_errs = len(self.errors_had);
+            func = self._instantiate_generic_method(nd, _gm_owner, method_name);
+            if func is None {
+                if len(self.errors_had) == _gm_errs {
+                    self.emit(
+                        E5092,
+                        node_override=nd,
+                        kind="method",
+                        name=f"{_gm_owner}.{method_name}"
+                    );
+                }
+                return None;
+            }
+            _is_mono_method = True;
+        }
+    }
     _demoted = False;
     if func is None {
         if f"{type_name}.{method_name}" in self._native_skipped_methods {
@@ -1852,7 +1887,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         nd, func, self_offset=1
     );
 
-    if self._arch_has_vtable(type_name) {
+    if self._arch_has_vtable(type_name) and not _is_mono_method {
         result = self._codegen_virtual_call(obj_val, method_name, args, type_name);
         if result is not None {
             if isinstance(func.return_value.type, ir.VoidType) {

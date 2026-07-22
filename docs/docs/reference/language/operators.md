@@ -1,6 +1,6 @@
 # Operators
 
-**In this part:**
+**On this page:**
 
 - [Arithmetic](#1-arithmetic-operators), [Comparison](#2-comparison-operators), [Logical](#3-logical-operators), [Bitwise](#4-bitwise-operators) - The standard operator set
 - [Assignment Operators](#5-assignment-operators) - Plain, augmented, and walrus forms
@@ -544,7 +544,7 @@ sem plan_shopping.recipe = "A description of the meal to prepare";
 !!! tip
     Always use `sem` to provide context for `by llm()` functions. Docstrings are for human documentation and are not included in compiler-generated prompts.
 
-See [Part V: AI Integration](../plugins/byllm.md) for detailed LLM usage.
+See [byLLM Reference](../plugins/byllm.md) for detailed LLM usage.
 
 ## 10 The `as` Cast Operator
 

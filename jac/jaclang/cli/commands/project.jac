@@ -200,7 +200,7 @@ def create(
             "npm",
             typ=bool,
             default=False,
-            help="Install npm (client-side) package(s); with no names, install all npm deps from jac.toml"
+            help="Install npm package(s); with no names, install all npm deps from jac.toml. With --global, install standalone npm CLI tools runnable via 'jac x --global'"
         ),
         Arg.create(
             "shadcn",
@@ -260,7 +260,7 @@ def create(
             "global",
             typ=bool,
             default=False,
-            help="Install into the jac-owned global site (importable from any project), not the project venv",
+            help="Install into the jac-owned global store shared by every project, not the project venv (Python: the global site; with --npm: global npm CLI tools)",
             short="",
             dest="install_global"
         ),

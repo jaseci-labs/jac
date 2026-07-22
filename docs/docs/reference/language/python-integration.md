@@ -94,9 +94,6 @@ Use this to break circular imports between modules that only reference each othe
 
 Jac integrates with Python through a seamless import mechanism. When jaclang is installed, a `.pth` file automatically registers a lightweight import hook at Python startup, so `.jac` files can be imported using standard Python import statements without requiring build steps, compilation commands, or configuration files.
 
-!!! note
-    In previous versions, `import jaclang` was required before importing `.jac` modules. This is no longer necessary: Jac imports work automatically after installation. The explicit `import jaclang` still works and is harmless if present in existing code.
-
 **Key Integration Features:**
 
 * **Bidirectional Module Imports:** Python files can import Jac modules, and Jac files can import Python modules using standard import syntax. Modules written in `.jac` and `.py` can be used interchangeably within a project.
