@@ -3,6 +3,7 @@
 import gc;
 import os;
 import shutil;
+import signal;
 import socket;
 import sys;
 import time;
@@ -146,34 +147,82 @@ def start_app_server(project_path: any, extra_args: list | None = None) -> tuple
     }
     args = [*args, "main.jac", "-p", str(port)];
     import from subprocess { DEVNULL }
-    server = Popen(args, cwd=project_path, env=env, stdout=DEVNULL, stderr=DEVNULL);
+    # start_new_session=True makes the server its own process-group leader, so
+    # stop_server can signal the whole tree (jac start -> bun x vite -> node
+    # vite -> esbuild). Without it, terminate() only reaches the top process and
+    # the vite/esbuild children orphan, holding the pytest-xdist worker fds open
+    # and hanging the suite at teardown.
+    server = Popen(
+        args,
+        cwd=project_path,
+        env=env,
+        stdout=DEVNULL,
+        stderr=DEVNULL,
+        start_new_session=True
+    );
     wait_for_port("127.0.0.1", port, timeout=120.0);
     return (server, port);
 }
 
-"""Terminate a server process, escalating to kill if it lingers."""
-def stop_server(server: any) -> None {
-    if server is None {
+"""Signal a whole process group, tolerating an already-dead group."""
+def _signal_group(server: any, sig: int) -> bool {
+    try {
+        pgid = os.getpgid(server.pid);
+    } except Exception {
+        return False;
+    }
+    try {
+        os.killpg(pgid, sig);
+    } except Exception {
+        return False;
+    }
+    return True;
+}
+
+"""Terminate a process tree started with ``start_new_session=True``.
+
+Closes any captured streams first so pipe readers cannot wedge, then signals
+the whole process group (jac start -> bun/vite/esbuild). Falls back to
+terminate()/kill() on the lone process if the group is already gone.
+"""
+def stop_process_group(process: any) -> None {
+    if process is None {
         return;
     }
-    if server.stdout {
-        try {
-            server.stdout.close();
-        } except Exception {
-            0;
+    for stream in (process.stdout, process.stderr) {
+        if stream {
+            try {
+                stream.close();
+            } except Exception {
+                0;
+            }
         }
     }
-    server.terminate();
+    if not _signal_group(process, signal.SIGTERM) {
+        process.terminate();
+    }
     try {
-        server.wait(timeout=15);
+        process.wait(timeout=15);
     } except Exception {
-        server.kill();
+        if not _signal_group(process, signal.SIGKILL) {
+            process.kill();
+        }
         try {
-            server.wait(timeout=5);
+            process.wait(timeout=5);
         } except Exception {
             0;
         }
     }
+}
+
+"""Terminate a server process tree, escalating to kill if it lingers.
+
+Signals the entire process group (see ``start_app_server``) so bun/vite/esbuild
+children die with the parent instead of orphaning and wedging the test session.
+Falls back to terminate()/kill() on the lone process if the group is gone.
+"""
+def stop_server(server: any) {
+    stop_process_group(server);
     time.sleep(1);
     gc.collect();
 }

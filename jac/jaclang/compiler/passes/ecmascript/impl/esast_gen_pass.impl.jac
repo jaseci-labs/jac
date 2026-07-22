@@ -1974,6 +1974,19 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
             es.NewExpression(callee=callee_expr, arguments=call_args), jac_node=nd
         );
     } else {
+        if isinstance(nd.target, uni.Name) {
+            import from jaclang.runtimelib.client_surface {
+                runtime_import_source,
+                runtime_symbol
+            }
+            _rt_name = nd.target.sym_name;
+            if (
+                runtime_symbol(_rt_name)
+                and runtime_import_source(_rt_name, self.backend) == "@jac/runtime"
+            ) {
+                self._inject_runtime_import(_rt_name, nd);
+            }
+        }
         result_expr = self.sync_loc(
             es.CallExpression(callee=callee_expr, arguments=call_args), jac_node=nd
         );
@@ -3416,21 +3429,32 @@ impl EsastGenPass._view_push_stmt(
 
 impl EsastGenPass._jsx_fragment(
     children: list[es.Expression], anchor: uni.UniNode
-) -> es.CallExpression {
-    import from jaclang.runtimelib.client_surface { backend_jsx_factory_name }
+) -> es.Expression {
+    import from jaclang.compiler.passes.ecmascript.view_ir {
+        ViewElement,
+        FragmentTag,
+        DynamicChild
+    }
     self._ensure_backend();
-    factory_name = backend_jsx_factory_name(self.backend);
-    return self.sync_loc(
-        es.CallExpression(
-            callee=self.sync_loc(es.Identifier(name=factory_name), jac_node=anchor),
-            arguments=[
-                self.sync_loc(es.Literal(value=None), jac_node=anchor),
-                self.sync_loc(es.ObjectExpression(properties=[]), jac_node=anchor),
-                self.sync_loc(es.ArrayExpression(elements=children), jac_node=anchor)
-            ]
+    child_nodes: list[DynamicChild] = [];
+    for child in children {
+        child_nodes.append(
+            self.sync_loc(DynamicChild(value=child, jac_node=anchor), jac_node=anchor)
+        );
+    }
+    view = self.sync_loc(
+        ViewElement(
+            tag=FragmentTag(jac_node=anchor),
+            attrs=[],
+            children=child_nodes,
+            jac_node=anchor
         ),
         jac_node=anchor
     );
+    for sym in self.backend.view_runtime_symbols(view) {
+        self._inject_runtime_import(sym, anchor);
+    }
+    return self.backend.lower_view(view, self.sync_loc);
 }
 
 impl EsastGenPass._view_fragment_return(
@@ -3552,6 +3576,17 @@ impl EsastGenPass._inject_runtime_import(name: str, nd: uni.UniNode) -> None {
     import from jaclang.runtimelib.client_surface { runtime_import_source }
     self._ensure_backend();
     if name in self.injected_imports or self._has_import(name) {
+        return;
+    }
+
+    if isinstance(self.ir_in, uni.Module)
+    and self.ir_in.lookup(name, deep=False) is not None {
+        return;
+    }
+    mod = self.get_main_mod();
+    if mod is not None
+    and mod is not self.ir_in
+    and mod.lookup(name, deep=False) is not None {
         return;
     }
     src = runtime_import_source(name, self.backend);
@@ -5780,6 +5815,7 @@ impl EsastGenPass._collect_stmt_body(
 impl EsastGenPass._build_spawn_runtime_call(
     nd: uni.BinaryExpr, parts: SpawnCallParts
 ) -> es.AwaitExpression {
+    self._inject_runtime_import('__jacSpawn', nd);
     walker_literal = self.sync_loc(
         es.Literal(value=parts.walker.walker_name), jac_node=parts.walker.call_node
     );

@@ -13,8 +13,8 @@ re-login) and still unwrap `body` like the HTTP path.
 
 import from "@jac/runtime" { __jacCallFunction, __setLocalStorage, __getLocalStorage }
 
-# Note: `__jacSpawn` is auto-imported by the cl test harness prelude, so it is
-# already in scope here -- re-importing it would be a duplicate declaration.
+# `__jacSpawn` is used directly below; the compiler injects its `@jac/runtime`
+# import when lowering the call (same as spawn syntax).
 """Install a mock native host; returns the list that records each invoke payload
 (the JSON string the runtime passes to `__jac_invoke`). `reply` is the full
 bridge reply object `{status, ok, body}`."""

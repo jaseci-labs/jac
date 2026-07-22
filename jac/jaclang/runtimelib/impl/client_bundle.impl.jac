@@ -147,7 +147,7 @@ impl ClientBundleBuilder._compile_to_js(source_path: Path) -> tuple[str, Module]
     }
 
     _ensure_js_generated(mod, program);
-    return ((mod.gen.js or ''), mod) if mod else ('', mod);
+    return ((mod.gen.js or '') if mod else '', mod);
 }
 
 impl ClientBundleBuilder._signature(paths: Iterable[Path]) -> str {
