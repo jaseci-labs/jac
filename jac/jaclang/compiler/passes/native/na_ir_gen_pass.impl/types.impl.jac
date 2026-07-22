@@ -56,7 +56,9 @@ impl NaIRGenPass._lower_type(t: any) -> (ir.Type | None) {
                 # value (#7626 C5). Pointer members keep the null-riding
                 # collapse below.
                 lowered = self._jac_optional_type(_mlow);
-            } elif _mlow is not None {
+            } else {
+                # Includes _mlow is None: an unlowerable member must
+                # propagate as None so demotion/skip seams keep firing.
                 lowered = _mlow;
             }
         }
