@@ -25,8 +25,10 @@ Covers:
   22. _should_parallelize: default OFF, env var, per-call overrides
   23. make_model_params: tool description annotations + finish_tool untagged
   24. make_model_params: scheduling hint injection gating
+  25. Caller contextvars reach tools on parallel, inline and timeout paths
 """
 
+import contextvars;
 import threading;
 import time;
 import pathlib;
@@ -770,6 +772,98 @@ test "parallel_hint=False suppresses hint even when parallel is on" {
     # Cleanup
     reset_byllm_config();
 }
+
+# ---------------------------------------------------------------------------
+# 25. Caller context reaches tools on every dispatch path
+# ---------------------------------------------------------------------------
+"""Tool that reports the caller contextvar it observes."""
+def _ctx_probe -> str {
+    return _PROBE_VAR.get();
+}
+
+
+glob _PROBE_VAR: contextvars.ContextVar = contextvars.ContextVar(
+         "byllm_probe", default="<unset>"
+     );
+
+
+test "parallel tools observe the caller's contextvars" {
+    # A batch runs on the worker pool, which does not inherit context unless
+    # dispatch copies it. Without the copy both tools read the default.
+    token = _PROBE_VAR.set("caller-value");
+    try {
+        tcs = [
+            MockToolCall(tool=_ctx_probe, args={}).to_tool_call(),
+            MockToolCall(tool=_ctx_probe, args={}).to_tool_call()
+        ];
+        results = list(dispatch_batch(tcs));
+        assert len(results) == 2;
+        for r in results {
+            assert "caller-value" in r[1].content , (
+                f"tool lost the caller context: {r[1].content}"
+            );
+        }
+    } finally {
+        _PROBE_VAR.reset(token);
+    }
+}
+
+
+test "a single tool observes the caller's contextvars" {
+    # The inline path already worked; asserted so the two paths stay consistent.
+    token = _PROBE_VAR.set("caller-value");
+    try {
+        results = list(
+            dispatch_batch([MockToolCall(tool=_ctx_probe, args={}).to_tool_call()])
+        );
+        assert "caller-value" in results[0][1].content;
+    } finally {
+        _PROBE_VAR.reset(token);
+    }
+}
+
+
+test "a tool with a timeout observes the caller's contextvars" {
+    # _call_sync runs timed tools on their own thread, so this path needs the
+    # same context copy even though the batch is a single tool.
+    token = _PROBE_VAR.set("caller-value");
+    try {
+        tc = MockToolCall(tool=_ctx_probe, args={}).to_tool_call();
+        tc.tool.timeout_sec = 5.0;
+        results = list(dispatch_batch([tc]));
+        assert "caller-value" in results[0][1].content , (
+            f"timed tool lost the caller context: {results[0][1].content}"
+        );
+    } finally {
+        _PROBE_VAR.reset(token);
+    }
+}
+
+
+test "a tool setting a contextvar does not leak into the caller or siblings" {
+    # Each tool runs in its own copy, so writes stay local.
+    def _ctx_setter -> str {
+        _PROBE_VAR.set("mutated-by-tool");
+        return _PROBE_VAR.get();
+    }
+    token = _PROBE_VAR.set("caller-value");
+    try {
+        tcs = [
+            MockToolCall(tool=_ctx_setter, args={}).to_tool_call(),
+            MockToolCall(tool=_ctx_probe, args={}).to_tool_call()
+        ];
+        results = list(dispatch_batch(tcs));
+        contents = [r[1].content for r in results];
+        assert any("mutated-by-tool" in c for c in contents);
+        # the sibling still sees the caller's value, not the mutation
+        assert any("caller-value" in c for c in contents);
+        # and the caller itself is untouched
+        assert _PROBE_VAR.get() == "caller-value";
+    } finally {
+        _PROBE_VAR.reset(token);
+    }
+}
+
 
 test "serialize tool names listed in system prompt hint" {
     os.environ.pop("BYLLM_PARALLEL_TOOL_CALLING", None);
