@@ -540,14 +540,18 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     def _deploy_observability(app_name: str) -> None {
         logs_cfg = self._read_microservices_logs_config();
         tracing_cfg = self._read_microservices_tracing_config();
-        if not logs_cfg.get("enabled", False)
-        and not tracing_cfg.get("enabled", False) {
-            return;
-        }
 
         self._load_kube_config();
         apps_v1 = client.AppsV1Api();
         core_v1 = client.CoreV1Api();
+
+        if not logs_cfg.get("enabled", False)
+        and not tracing_cfg.get("enabled", False) {
+            MonitoringDeployer(self.k8s_config, self.logger).destroy(
+                app_name, self.k8s_config.namespace, apps_v1, core_v1
+            );
+            return;
+        }
 
         provider = get_cluster_provider();
 
