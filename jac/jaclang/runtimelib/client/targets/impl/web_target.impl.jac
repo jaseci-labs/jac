@@ -47,24 +47,25 @@ impl WebTarget.dev(
         hot_watcher.start();
     }
 
-    console.print("\n🌐 Starting web dev server (Vite + HMR)", style="bold");
-    console.print("  Press Ctrl+C to stop\n", style="muted");
-    process = bundler.start_dev_server(port=port, suppress_initial_output=False);
-    if process {
-        try {
-            process.wait();
-        } except KeyboardInterrupt {
-            console.print("\n  Stopping dev server...", style="muted");
-            stop_dev_watcher(hot_watcher);
-            process.terminate();
+    try {
+        console.print("\n🌐 Starting web dev server (Vite + HMR)", style="bold");
+        console.print("  Press Ctrl+C to stop\n", style="muted");
+        process = bundler.start_dev_server(port=port, suppress_initial_output=False);
+        if process {
             try {
-                process.wait(timeout=5);
-            } except Exception {
-                process.kill();
+                process.wait();
+            } except KeyboardInterrupt {
+                console.print("\n  Stopping dev server...", style="muted");
+                process.terminate();
+                try {
+                    process.wait(timeout=5);
+                } except Exception {
+                    process.kill();
+                }
             }
-        } else {
-            stop_dev_watcher(hot_watcher);
         }
+    } finally {
+        stop_dev_watcher(hot_watcher);
     }
 }
 
