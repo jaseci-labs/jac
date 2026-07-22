@@ -16,11 +16,11 @@ edge Road { has length: int = 0; }
 obj NotAWalker { has v: int; }
 
 walker MyWalker {
-    can on_root with `root entry { ; }
+    can on_root with Root entry { ; }
 }
 
 walker AsyncWalker {
-    can on_root with `root entry { ; }
+    can on_root with Root entry { ; }
 }
 
 with entry {
