@@ -844,9 +844,17 @@ obj MicroserviceManifestBuilder {
         gw_prefix = "";
         client_entry = self._client_entry();
         if client_entry {
+            # --client web: build only the client bundle, exactly like the
+            # host-side _build_client_bundle above. A bare `jac build` runs the
+            # whole-project type-check gate first, so any app with type errors
+            # (including the pervasive Any-typed .cl.jac diagnostics that do
+            # not affect the emitted bundle) silently shipped without its
+            # client and served a JSON 404 at /. The in-pod build is a
+            # packaging fallback, not a validation gate; dev-time `jac build`
+            # keeps the strict gate. #7667
             gw_prefix = (
                 f'if [ ! -f .jac/client/dist/index.html ]; then '
-                f'jac build "{client_entry}" '
+                f'jac build "{client_entry}" --client web '
                 f'|| echo "[jac-scale] client build failed; / will 404"; '
                 f'fi; '
             );
