@@ -68,11 +68,11 @@ For a served app, `jac browse` drives a headless Chrome from the CLI (`jac brows
 
 ## After changing a server contract
 
-Renamed or retyped a `def:pub` param, a walker `has` field, or a report shape? Run `jac check` project-wide and read the hits in `.cl.jac` files as **drift pointers to the stale callers**:
+Renamed or retyped a `def:pub` param, a walker `has` field, or a report shape? Run `jac check` project-wide and read the hits in client `.jac` files as **drift pointers to the stale callers**:
 
 ```
 ⚠ warning[W1101]: Cannot import name 'greet' from module '..services.api'
-  --> components/App.cl.jac:1:33
+  --> components/App.jac:1:33
 ```
 
 - `W1101` at a client's `sv import` - the imported endpoint/type no longer exists on the server (rename or removal).
