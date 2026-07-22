@@ -105,10 +105,10 @@ def _rerase(src: str, dst: str) {
 }
 
 test "rgraph: region and bare baselines agree; drops witness the leak" {
-    src = os.path.join(OWNBENCH, "kernels", "reg_graph.na.jac");
+    src = os.path.join(OWNBENCH, "kernels", "reg_graph.jac");
     args = ["30", "10", "5"];
     with tempfile.TemporaryDirectory() as tmp {
-        bare_src = os.path.join(tmp, "reg_graph_bare.na.jac");
+        bare_src = os.path.join(tmp, "reg_graph_bare.jac");
         _rerase(src, bare_src);
         digests: set = set();
         for mode in MODES {
@@ -133,7 +133,7 @@ test "rgraph: region and bare baselines agree; drops witness the leak" {
 }
 
 test "rgraph: python backend matches native digest" {
-    src = os.path.join(OWNBENCH, "kernels", "reg_graph.na.jac");
+    src = os.path.join(OWNBENCH, "kernels", "reg_graph.jac");
     args = ["30", "10", "5"];
     with tempfile.TemporaryDirectory() as tmp {
         nb = os.path.join(tmp, "native");
@@ -160,7 +160,7 @@ test "rgraph: python backend matches native digest" {
 }
 
 test "rtransfer: move, copy, and serial agree on the subgraph checksum" {
-    src = os.path.join(OWNBENCH, "kernels", "reg_transfer.na.jac");
+    src = os.path.join(OWNBENCH, "kernels", "reg_transfer.jac");
     with tempfile.TemporaryDirectory() as tmp {
         rb = os.path.join(tmp, "reg_transfer");
         _nacompile(src, "cycles", rb);
@@ -174,7 +174,7 @@ test "rtransfer: move, copy, and serial agree on the subgraph checksum" {
 }
 
 test "wspawn: walker and resource drops fire once per request" {
-    src = os.path.join(OWNBENCH, "kernels", "reg_wspawn.na.jac");
+    src = os.path.join(OWNBENCH, "kernels", "reg_wspawn.jac");
     with tempfile.TemporaryDirectory() as tmp {
         for mode in MODES {
             wb = os.path.join(tmp, f"reg_wspawn_{mode}");
@@ -187,7 +187,7 @@ test "wspawn: walker and resource drops fire once per request" {
 }
 
 test "roverhead: managed and region anchored allocation both run" {
-    src = os.path.join(OWNBENCH, "kernels", "reg_overhead.na.jac");
+    src = os.path.join(OWNBENCH, "kernels", "reg_overhead.jac");
     with tempfile.TemporaryDirectory() as tmp {
         ob = os.path.join(tmp, "reg_overhead");
         _nacompile(src, "cycles", ob);
