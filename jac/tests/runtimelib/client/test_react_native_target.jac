@@ -253,6 +253,20 @@ test "ViteCompiler wires jac_client_compiler on init" {
     assert "self.compiled_dir = self.jac_client_compiler.compiled_dir" in impl_content;
 }
 
+test "react native target addresses the entry by project-relative module path" {
+    impl_path = _targets_dir / "impl" / "react_native_target.impl.jac";
+    impl_content = impl_path.read_text();
+
+    assert "entry_file.stem" not in impl_content , (
+        "the entry must be addressed by its project-relative module path; "
+        "entry_file.stem drops the directory for a nested entry and only "
+        "half-strips compound extensions like .cl.jac"
+    );
+    assert impl_content.count(
+        "entry_module: str = entry_module_for(entry_file, project_dir)"
+    ) == 2 , ("both build() and dev() must resolve the entry module the same way");
+}
+
 test "react native compiler selects .native variants when available" {
     impl_path = _client_dir / "impl" / "jac_client_compiler.impl.jac";
     impl_content = impl_path.read_text();
@@ -346,6 +360,173 @@ test "react native scaffold writes Expo project files" {
         # D8: New Architecture + Hermes from day one.
         assert "newArchEnabled" in app_json;
         assert "hermes" in app_json;
+    }
+}
+
+test "scaffold merges [dependencies.npm.native] into package.json" {
+    import tempfile;
+    import from jaclang.runtimelib.client.targets.react_native.scaffold {
+        write_expo_scaffold
+    }
+
+    with tempfile.TemporaryDirectory() as tmp {
+        project_root = Path(tmp);
+        (project_root / "jac.toml").write_text(
+            "[project]\n"
+            'name = "demo"\n\n'
+            "[dependencies.npm]\n"
+            'left-pad = "^1.3.0"\n\n'
+            "[dependencies.npm.native]\n"
+            'react-native-webview = "^13.15.0"\n'
+            'react-native-svg = "^15.13.0"\n'
+        );
+        rn_dir = project_root / "mobile-rn";
+        write_expo_scaffold(rn_dir, project_root);
+        pkg_content = (rn_dir / "package.json").read_text();
+        assert "react-native-webview" in pkg_content;
+        assert "^13.15.0" in pkg_content;
+        assert "react-native-svg" in pkg_content;
+        assert "left-pad" not in pkg_content;
+        assert "react-native-gesture-handler" in pkg_content;
+        assert "expo-asset" in pkg_content;
+    }
+}
+
+test "scaffold tolerates a project with no jac.toml" {
+    import tempfile;
+    import from jaclang.runtimelib.client.targets.react_native.scaffold {
+        write_expo_scaffold
+    }
+
+    with tempfile.TemporaryDirectory() as tmp {
+        project_root = Path(tmp);
+        rn_dir = project_root / "mobile-rn";
+        write_expo_scaffold(rn_dir, project_root);
+        assert (rn_dir / "package.json").exists();
+        assert "expo" in (rn_dir / "package.json").read_text();
+    }
+}
+
+"""Build a temp project whose client entry is nested below the project root and
+imports a module that lives above it, then return (compiler, entry)."""
+def _nested_entry_project(proj: Path) -> tuple[any, Path] {
+    import from jaclang.runtimelib.client.vite_client_bundle { ViteClientBundleBuilder }
+
+    (proj / "package.json").write_text('{"name":"t","version":"0.0.0"}');
+    (proj / "shared").mkdir(parents=True, exist_ok=True);
+    (proj / "shared" / "utils.cl.jac").write_text(
+        'def:pub format_date(d: str) -> str {\n    return "on " + d;\n}\n'
+    );
+    (proj / "apps" / "mobile").mkdir(parents=True, exist_ok=True);
+    entry = proj / "apps" / "mobile" / "main.cl.jac";
+    entry.write_text(
+        'import from ...shared.utils { format_date }\n\n'
+        'def:pub app() -> any {\n'
+        '    return <div>{format_date("fri")}</div>;\n'
+        '}\n'
+    );
+    builder = ViteClientBundleBuilder(vite_package_json=proj / "package.json");
+    compiler = builder._get_compiler().jac_client_compiler;
+    compiler.compiled_dir = proj / "out";
+    compiler.project_dir = proj;
+    return (compiler, entry);
+}
+
+test "nested client entry stages deps at project-relative paths, not flat" {
+    import tempfile;
+
+    with tempfile.TemporaryDirectory() as tmp {
+        proj = Path(str(tmp)).resolve();
+        (compiler, entry) = _nested_entry_project(proj);
+        (_, mod, _) = compiler.jac_compiler.compile_module(entry);
+        assert mod is not None;
+        compiler.compile(mod, entry, target_name="web");
+        out = proj / "out";
+        assert (out / "apps" / "mobile" / "main.js").exists() , (
+            "nested entry must compile to its project-relative path"
+        );
+        assert (out / "shared" / "utils.js").exists() , (
+            "a dep above the entry must keep its project-relative path"
+        );
+        assert not (out / "utils.js").exists() , (
+            "dep was staged flat: the emitted import points at "
+            "../../shared/utils.js and will not resolve"
+        );
+    }
+}
+
+test "entry outside the project dir stages relative to its own folder" {
+    # Guards the fallback: source_root may only be the project dir when the
+    # entry actually lives under it. Rooting at an unrelated project dir makes
+    # every relative_to() raise, collapsing the whole tree to flat output.
+    import tempfile;
+    import from jaclang.runtimelib.client.vite_client_bundle { ViteClientBundleBuilder }
+
+    with tempfile.TemporaryDirectory() as tmp {
+        proj = Path(str(tmp)).resolve();
+        (proj / "package.json").write_text('{"name":"t","version":"0.0.0"}');
+        app = proj / "app";
+        (app / "src").mkdir(parents=True, exist_ok=True);
+        (app / "src" / "header.cl.jac").write_text(
+            'def:pub Header() -> any {\n    return <div>hi</div>;\n}\n'
+        );
+        entry = app / "main.cl.jac";
+        entry.write_text(
+            'import from .src.header { Header }\n\n'
+            'def:pub app() -> any {\n    return <div><Header/></div>;\n}\n'
+        );
+        builder = ViteClientBundleBuilder(vite_package_json=proj / "package.json");
+        compiler = builder._get_compiler().jac_client_compiler;
+        compiler.compiled_dir = proj / "out";
+        # project_dir deliberately does not contain the entry.
+        compiler.project_dir = proj / "unrelated";
+        (_, mod, _) = compiler.jac_compiler.compile_module(entry);
+        assert mod is not None;
+        compiler.compile(mod, entry, target_name="web");
+        out = proj / "out";
+        assert (out / "main.js").exists() , (
+            "entry must still stage relative to its own folder"
+        );
+        assert (out / "src" / "header.js").exists() , (
+            "a dep below the entry must keep its relative path; rooting at an "
+            "unrelated project dir flattens it and breaks the emitted import"
+        );
+        assert not (out / "header.js").exists() , (
+            "dep was staged flat instead of under src/"
+        );
+    }
+}
+
+test "entry_module_for matches the path the compiler actually writes" {
+    import tempfile;
+    import from jaclang.runtimelib.client.targets.react_native.build {
+        entry_module_for
+    }
+    import from jaclang.runtimelib.client.vite_client_bundle { ViteClientBundleBuilder }
+
+    with tempfile.TemporaryDirectory() as tmp {
+        proj = Path(str(tmp)).resolve();
+        (proj / "package.json").write_text('{"name":"t","version":"0.0.0"}');
+        builder = ViteClientBundleBuilder(vite_package_json=proj / "package.json");
+        compiler = builder._get_compiler().jac_client_compiler;
+        for rel in [
+            "apps/mobile/main.jac",
+            "apps/mobile/main.cl.jac",
+            "apps/mobile/main.native.cl.jac",
+            "apps/mobile/main.impl.jac",
+            "shared/widgets.cl.jac",
+            "main.jac"
+        ] {
+            f = proj / rel;
+            f.parent.mkdir(parents=True, exist_ok=True);
+            f.write_text("");
+            expected = compiler._jac_path_to_js(rel);
+            got = entry_module_for(f, proj) + ".js";
+            assert got == expected , (
+                f"entry module for {rel} resolved to {got!r} but the compiler "
+                f"writes it to {expected!r}"
+            );
+        }
     }
 }
 
