@@ -14,6 +14,7 @@ it is copied into a `TemporaryDirectory`). Builds are slow, so timeouts are
 generous (`wait_for_port` up to 120s).
 """
 
+import atexit;
 import json;
 import os;
 import shutil;
@@ -87,28 +88,35 @@ def _copy_littlex_into(dest: any) {
     }
 }
 
-"""Scaffold littleX into a temp project dir and install npm deps.
+# Module-scoped cache holding the one pre-installed littleX template. A dict
+# (mutated in place, never rebound) is used so we don't reassign a `glob`.
+glob _LX_TEMPLATE: dict = {};
 
-Returns ``(project_dir, jac_cmd, env)``. Fails the test if ``jac install --npm``
-fails (bun/npm unavailable or a dependency cannot be resolved).
+"""Build the shared littleX template once: copy the source and run the (slow,
+~30s) ``jac install --npm`` a single time. Every test then copies this template
+(a near-instant filesystem copy) instead of re-installing npm deps, which is
+what made this file the long pole of the client suite. The template lives in an
+mkdtemp dir removed at interpreter exit.
 """
-def _setup_littlex_project(temp_dir: any) -> tuple {
-    project_dir = os.path.join(temp_dir, "littlex-e2e");
-    os.makedirs(project_dir, exist_ok=True);
-    _copy_littlex_into(project_dir);
+def _littlex_template -> str {
+    if "dir" in _LX_TEMPLATE {
+        return _LX_TEMPLATE["dir"];
+    }
+    base = tempfile.mkdtemp(prefix="littlex-tmpl-");
+    atexit.register(lambda { shutil.rmtree(base, ignore_errors=True); });
+    tmpl_dir = os.path.join(base, "littlex-e2e");
+    os.makedirs(tmpl_dir, exist_ok=True);
+    _copy_littlex_into(tmpl_dir);
 
-    main_jac = os.path.join(project_dir, "main.jac");
+    main_jac = os.path.join(tmpl_dir, "main.jac");
     assert os.path.isfile(main_jac) , "littleX main.jac missing after copy";
 
-    jac_cmd = get_jac_command();
-    env = get_env_with_bun();
-
     add_result = run(
-        [*jac_cmd, "install", "--npm"],
-        cwd=project_dir,
+        [*get_jac_command(), "install", "--npm"],
+        cwd=tmpl_dir,
         capture_output=True,
         text=True,
-        env=env,
+        env=get_env_with_bun(),
     );
     if add_result.returncode != 0 {
         pytest.fail(
@@ -117,7 +125,42 @@ def _setup_littlex_project(temp_dir: any) -> tuple {
             f"STDERR:\n{add_result.stderr[:2000]}\n"
         );
     }
-    return (project_dir, jac_cmd, env);
+    _LX_TEMPLATE["dir"] = tmpl_dir;
+    return tmpl_dir;
+}
+
+"""Scaffold littleX into a per-test project dir. Returns ``(project_dir,
+jac_cmd, env)``.
+
+Copies the shared pre-installed template (see ``_littlex_template``) so each
+test gets its own isolated tree (own build output / server state) without
+paying the npm install again. The copy hardlinks regular files
+(``copy_function=os.link``): the vite build needs a real ``node_modules`` tree
+(a symlinked one is not reused, so the build re-installs and the speedup is
+lost), but hardlinking makes even the large ``node_modules`` near-instant and
+adds no disk -- the test never writes into ``node_modules``, so the shared
+inodes stay pristine. Build artifacts (``.jac`` / ``dist`` / ``build``) are
+dropped so each test still builds from a clean state.
+"""
+def _setup_littlex_project(temp_dir: any) -> tuple {
+    project_dir = os.path.join(temp_dir, "littlex-e2e");
+    ignore = shutil.ignore_patterns(
+        ".jac", "dist", "build", "__pycache__", ".pytest_cache"
+    );
+    try {
+        shutil.copytree(
+            _littlex_template(),
+            project_dir,
+            symlinks=True,
+            copy_function=os.link,
+            ignore=ignore,
+        );
+    } except OSError {
+        # Hardlinks fail across filesystems (EXDEV); fall back to a real copy.
+        shutil.rmtree(project_dir, ignore_errors=True);
+        shutil.copytree(_littlex_template(), project_dir, ignore=ignore);
+    }
+    return (project_dir, get_jac_command(), get_env_with_bun());
 }
 
 

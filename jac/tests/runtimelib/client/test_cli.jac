@@ -2,6 +2,7 @@
 
 import contextlib;
 import os;
+import signal;
 import tempfile;
 import tomllib;
 import time;
@@ -1086,12 +1087,16 @@ test "start dev with client does initial compilation" {
             assert process.returncode == 0;
             # Change to project directory
             os.chdir(test_project_name);
-            # Run jac start --dev main.jac (should auto-install watchdog and compile)
+            # Run jac start --dev main.jac (should auto-install watchdog and compile).
+            # start_new_session=True makes it a process-group leader so the dev
+            # server's bun/vite/esbuild children can be reaped together below;
+            # terminating just the parent would orphan them and wedge the suite.
             process = Popen(
                 ["jac", "start", "--dev", "main.jac"],
                 stdout=PIPE,
                 stderr=PIPE,
                 text=True,
+                start_new_session=True,
             );
             # Wait for watchdog install and compilation messages
             start_time = time.time();
@@ -1119,12 +1124,25 @@ test "start dev with client does initial compilation" {
                     break;
                 }
             }
-            # Terminate the process
-            process.terminate();
+            # Terminate the whole process group so the dev server's
+            # bun/vite/esbuild children die with it instead of orphaning.
+            def _killpg(sig: int) -> bool {
+                try {
+                    os.killpg(os.getpgid(process.pid), sig);
+                    return True;
+                } except Exception {
+                    return False;
+                }
+            }
+            if not _killpg(signal.SIGTERM) {
+                process.terminate();
+            }
             try {
                 process.wait(timeout=5);
             } except Exception {
-                process.kill();
+                if not _killpg(signal.SIGKILL) {
+                    process.kill();
+                }
             }
             # Close pipes
             if process.stdout {

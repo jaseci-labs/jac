@@ -282,10 +282,11 @@ impl build_runtime_tarball(
 
     entry_js = _strip_jac_runtime_imports(entry_js);
     if bundle_symbols {
+        api = runtime_api_names(framework);
         missing_exports = sorted(
             sym
             for sym in bundle_symbols
-            if sym not in _already_exported(entry_js)
+            if sym in api and sym not in _already_exported(entry_js)
         );
         if missing_exports {
             entry_js = (

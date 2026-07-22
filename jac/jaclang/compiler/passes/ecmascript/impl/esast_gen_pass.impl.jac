@@ -1953,6 +1953,19 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
             es.NewExpression(callee=callee_expr, arguments=call_args), jac_node=nd
         );
     } else {
+        if isinstance(nd.target, uni.Name) {
+            import from jaclang.runtimelib.client_surface {
+                runtime_import_source,
+                runtime_symbol
+            }
+            _rt_name = nd.target.sym_name;
+            if (
+                runtime_symbol(_rt_name)
+                and runtime_import_source(_rt_name, self.backend) == "@jac/runtime"
+            ) {
+                self._inject_runtime_import(_rt_name, nd);
+            }
+        }
         result_expr = self.sync_loc(
             es.CallExpression(callee=callee_expr, arguments=call_args), jac_node=nd
         );

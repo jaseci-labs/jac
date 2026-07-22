@@ -478,7 +478,11 @@ test "jacjsx import added in real compilation" {
         content = output_file.read_text();
         # JSX code should compile to use __jacJsx
         assert "__jacJsx" in content , "Compiled JS should contain __jacJsx for JSX elements";
-        assert "import {__jacJsx" in content or "import{__jacJsx" in content , "__jacJsx is used but import statement is missing";
+        assert (
+            "import {__jacJsx" in content
+            or "import{__jacJsx" in content
+            or "import { __jacJsx" in content
+        ) , "__jacJsx is used but import statement is missing";
         # --- build error: reported out-of-band, never via _entry.js ---
         entry_file = unique_dir / ".jac" / "client" / "compiled" / "_entry.js";
         error_file = unique_dir / ".jac" / "client" / ".jac-build-error.json";
