@@ -1,16 +1,13 @@
 """Regression tests for WebTarget.dev() -- the web/static/PWA dev flow.
 
-Bug (#7660): WebTarget.dev() started the Vite dev server without ever
-compiling the .jac client entry into `.jac/client/compiled/` first, so a
-brand new project's first `jac start -d` failed with "Failed to resolve
-import /compiled/_entry.js". StaticTarget and PWATarget both inherit this
-method, so they were affected too. Mobile/Desktop targets already compiled
-up front via `prepare_vite_dev_compilation()`; this brings Web in line.
+Bug (#7660): WebTarget.dev() started Vite without compiling the .jac
+client entry first, so a fresh project's first `jac start -d` failed
+with "Failed to resolve import /compiled/_entry.js". StaticTarget and
+PWATarget inherit this method, so both were affected too.
 
-These tests mock at that same seam instead of driving a real compile,
-since `prepare_vite_dev_compilation()` resolves its output dir via the
-process-wide ambient project config, which won't match an isolated temp
-project inside this test runner.
+Tests mock prepare_vite_dev_compilation() rather than calling it for
+real, since it resolves output paths via ambient project config that
+won't match an isolated temp project in this test runner.
 """
 
 import unittest.mock;
