@@ -1,23 +1,16 @@
-"""Regression tests for WebTarget.dev() -- the web/static/PWA HMR dev flow.
+"""Regression tests for WebTarget.dev() -- the web/static/PWA dev flow.
 
-Bug (#7660): WebTarget.dev() -- inherited directly by StaticTarget, and
-indirectly by PWATarget via `super.dev(...)` -- started the Vite dev server
-without ever compiling the .jac client entry into `.jac/client/compiled/`
-first. A brand new project's very first `jac start -d` therefore always
-failed with "Failed to resolve import /compiled/_entry.js"; it only started
-working after a `jac start` (production build) had populated that directory
-as a side effect. MobileTarget.dev() and NativeDesktopTarget.dev() already
-compiled up front via `prepare_vite_dev_compilation()`; WebTarget.dev() was
-the one target that skipped this step.
+Bug (#7660): WebTarget.dev() started the Vite dev server without ever
+compiling the .jac client entry into `.jac/client/compiled/` first, so a
+brand new project's first `jac start -d` failed with "Failed to resolve
+import /compiled/_entry.js". StaticTarget and PWATarget both inherit this
+method, so they were affected too. Mobile/Desktop targets already compiled
+up front via `prepare_vite_dev_compilation()`; this brings Web in line.
 
-These tests mock at the same seam MobileTarget/NativeDesktopTarget's own
-tests do (client_dev_common's helpers), rather than driving a real compile:
-`prepare_vite_dev_compilation()` resolves its output directory through the
-process-wide ambient project config, so invoking it for real against an
-isolated temp project inside a test runner whose own ambient project is this
-monorepo lands compiled output in the *monorepo's* .jac/client/compiled
-instead -- a separate, pre-existing global-state quirk, unrelated to this
-fix, that isn't worth fighting in a unit test.
+These tests mock at that same seam instead of driving a real compile,
+since `prepare_vite_dev_compilation()` resolves its output dir via the
+process-wide ambient project config, which won't match an isolated temp
+project inside this test runner.
 """
 
 import unittest.mock;
