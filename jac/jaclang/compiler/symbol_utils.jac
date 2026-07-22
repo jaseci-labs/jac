@@ -445,3 +445,79 @@ def collect_method_names(arch: uni.Archetype) -> set[str] {
     }
     return names;
 }
+
+glob JS_HOST_CONSTRUCTORS: frozenset[str] = frozenset(
+         {
+             "Array",
+             "ArrayBuffer",
+             "BigInt",
+             "Boolean",
+             "CustomEvent",
+             "DataView",
+             "Date",
+             "Error",
+             "Float32Array",
+             "Float64Array",
+             "Headers",
+             "Int32Array",
+             "Map",
+             "Number",
+             "Object",
+             "PopStateEvent",
+             "Promise",
+             "Proxy",
+             "ReadableStream",
+             "ReadableStreamDefaultReader",
+             "ReadableStreamReadResult",
+             "RegExp",
+             "Response",
+             "Set",
+             "String",
+             "TextDecoder",
+             "TextEncoder",
+             "TypeError",
+             "URL",
+             "URLSearchParams",
+             "Uint32Array",
+             "Uint8Array",
+             "WebAssembly",
+             "WebSocket"
+         }
+     );
+
+def _sym_from_js_globals_stub(sym: uni.Symbol) -> bool {
+    if sym.decl is None or sym.decl.loc is None {
+        return False;
+    }
+    mod_path = sym.decl.loc.mod_path;
+    return isinstance(mod_path, str) and mod_path.endswith("js_globals.pyi");
+}
+
+def _sym_from_dom_types_stub(sym: uni.Symbol) -> bool {
+    if sym.decl is None or sym.decl.loc is None {
+        return False;
+    }
+    mod_path = sym.decl.loc.mod_path;
+    return isinstance(mod_path, str) and mod_path.endswith("dom_types.pyi");
+}
+
+def is_js_host_constructor_call(nd: uni.FuncCall) -> bool {
+    if not nd.in_client_context() {
+        return False;
+    }
+    if not isinstance(nd.target, uni.Name) {
+        return False;
+    }
+    if nd.target.sym_name == "new" {
+        return False;
+    }
+
+    sym = nd.target.sym;
+    if sym is not None {
+        if _sym_from_js_globals_stub(sym) or _sym_from_dom_types_stub(sym) {
+            return True;
+        }
+    }
+
+    return nd.target.sym_name in JS_HOST_CONSTRUCTORS;
+}

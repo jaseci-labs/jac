@@ -1,6 +1,6 @@
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.transform { Transform }
-import from jaclang.jac0core.diagnostics { E5090, W6001, W6002, W6003, W6004 }
+import from jaclang.jac0core.diagnostics { E5090, W6001, W6002, W6003, W6004, W6005 }
 import from jaclang.jac0core.codeinfo { NATIVE_SUPPORTED_STDLIB }
 
 glob NATIVE_REJECT_NODES: tuple = (uni.DisconnectOp, uni.PyInlineCode, );
@@ -28,6 +28,7 @@ obj PortabilityWarnPass(Transform[uni.Module, uni.Module]) {
     def _check_js_methods(mod: uni.Module) -> None;
     def _check_js_keywords(mod: uni.Module) -> None;
     def _check_js_properties(mod: uni.Module) -> None;
+    def _check_js_host_constructors(mod: uni.Module) -> None;
 }
 
 obj NativeCapabilityCheckPass(Transform[uni.Module, uni.Module]) {
