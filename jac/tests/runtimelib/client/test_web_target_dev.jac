@@ -142,35 +142,3 @@ test "static and pwa targets both rely on webtarget's fixed dev flow" {
         "so it inherits the compile-before-serve fix too"
     );
 }
-
-
-"""Fast source-level pin of the compile-before-serve ordering and the
-unconditional watcher cleanup, independent of the interaction tests above."""
-test "web target impl source compiles before serving and always stops the watcher" {
-    impl_path = (
-        Path(__file__).parent.parent.parent.parent / "jaclang" / "runtimelib" / "client" / "targets" / "impl" / "web_target.impl.jac"
-    );
-    content = impl_path.read_text();
-
-    dev_start = content.index("impl WebTarget.dev(");
-    dev_end = content.index("\nimpl WebTarget.start(");
-    dev_body = content[dev_start:dev_end];
-
-    compile_idx = dev_body.index("prepare_vite_dev_compilation(");
-    serve_idx = dev_body.index("start_dev_server(");
-    assert compile_idx < serve_idx , (
-        "WebTarget.dev() must call prepare_vite_dev_compilation() before "
-        "start_dev_server()"
-    );
-
-    # Cleanup must be unconditional: stop_dev_watcher() has to sit in a
-    # `finally` that wraps the server start/wait, not only inside the
-    # `if process { ... }` branch (that regression would leak the watcher
-    # thread whenever start_dev_server returns a falsy process).
-    finally_idx = dev_body.index("} finally {");
-    stop_idx = dev_body.index("stop_dev_watcher(hot_watcher)");
-    assert compile_idx < finally_idx < stop_idx , (
-        "stop_dev_watcher(hot_watcher) must run inside a `finally` block "
-        "so it always executes, regardless of what start_dev_server returns"
-    );
-}
