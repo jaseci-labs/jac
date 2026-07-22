@@ -583,6 +583,8 @@ impl ModuleIntrospector.load(force_reload: bool = False) -> None {
 }
 
 impl ModuleIntrospector._load_manifest -> None {
+    self._spa_routes_loaded = False;
+    self._spa_route_patterns = None;
     if not self._module {
         return;
     }
@@ -2067,7 +2069,11 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                         for (key, values) in query_params.items()
                         if (key != 'mode')
                     };
-                    self._render_page(base_route_app, args);
+                    self._render_page(
+                        base_route_app,
+                        args,
+                        server.introspector.spa_fallback_status('/')
+                    );
                     return;
                 }
                 Jac.send_json(
