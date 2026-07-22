@@ -51,14 +51,8 @@ impl NaIRGenPass._lower_type(t: any) -> (ir.Type | None) {
                 and _mlow is not None
                 and not isinstance(_mlow, (ir.PointerType, ir.VoidType))
             ) {
-                # `T | None` with a non-pointer T has nothing to ride null
-                # on: lower as a tagged JacOptional {i8 tag, T payload}
-                # value (#7626 C5). Pointer members keep the null-riding
-                # collapse below.
                 lowered = self._jac_optional_type(_mlow);
             } else {
-                # Includes _mlow is None: an unlowerable member must
-                # propagate as None so demotion/skip seams keep firing.
                 lowered = _mlow;
             }
         }
@@ -814,9 +808,6 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
 
     _opt_tgt = self._opt_payload_of(target_type);
     if _opt_tgt is not None {
-        # Wrapping into a scalar optional (#7626 C5). A pointer source can
-        # only be the None literal here (the payload is non-pointer), so
-        # it takes the zero-tag arm; anything else wraps with tag 1.
         if isinstance(val.type, (ir.PointerType, ir.VoidType)) {
             return ir.Constant(target_type, None);
         }
@@ -847,13 +838,9 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
                 0,
                 name="opt.none.jv"
             );
-            return self.builder.select(
-                _tag_set, _boxed, _none_jv, name="opt.tojv"
-            );
+            return self.builder.select(_tag_set, _boxed, _none_jv, name="opt.tojv");
         }
-        # Narrowing to the payload type: the checker only lets this
-        # through under an is-not-None narrow, so a zero tag here is a
-        # runtime misuse -- raise instead of yielding a garbage zero.
+
         _is_none = self.builder.icmp_signed(
             "==", _tag, ir.Constant(ir.IntType(8), 0), name="opt.isnone"
         );
@@ -1107,19 +1094,14 @@ impl NaIRGenPass._promote_to_float(
 impl NaIRGenPass._emit_binary_op(
     op: str, left: ir.Value, right: ir.Value
 ) -> (ir.Value | None) {
-    # Archetype operands dispatch operator dunders FIRST (#7626 B3): the
-    # numeric paths below assume int/float/known-primitive shapes and
-    # would trip on archetype struct pointers. Non-archetype operands
-    # fall straight through (the dispatch returns None fast for them).
-    if isinstance(left.type, ir.PointerType) or isinstance(right.type, ir.PointerType) {
+    if isinstance(left.type, ir.PointerType)
+    or isinstance(right.type, ir.PointerType) {
         _dunder_res = self._emit_arch_dunder_binop(op, left, right);
         if _dunder_res is not None {
             return _dunder_res;
         }
     }
-    # Scalar-optional operands reaching an arithmetic op are checker-
-    # narrowed non-None values: unwrap to the payload (raising at runtime
-    # if the tag says otherwise) before the numeric paths (#7626 C5).
+
     if self._opt_payload_of(left.type) is not None {
         left = self._coerce_type(left, self._opt_payload_of(left.type));
     }
@@ -1621,11 +1603,6 @@ impl NaIRGenPass._emit_binary_op(
 impl NaIRGenPass._emit_arch_dunder_binop(
     op: str, left: ir.Value, right: ir.Value
 ) -> (ir.Value | None) {
-    # Archetype operands: static dunder dispatch (#7626 B3). When an
-    # operand's type is an archetype whose MRO defines the operator's
-    # magic method (the same layout-registry walk class patterns use),
-    # the binop lowers as that method call -- left magic first, then the
-    # right operand's reflected form with swapped operands.
     import from jaclang.compiler.type_system.operations { BINARY_OPERATOR_MAP }
     _pair = BINARY_OPERATOR_MAP.get(op);
     if _pair is None {

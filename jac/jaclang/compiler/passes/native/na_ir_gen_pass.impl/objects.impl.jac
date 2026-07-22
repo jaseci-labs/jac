@@ -399,9 +399,6 @@ impl NaIRGenPass._forward_declare_method(arch_name: str, method: uni.Ability) ->
     full_name = f"{arch_name}.{method_name}";
 
     if method.type_params {
-        # Generic methods register as templates keyed Arch.method; call
-        # sites stamp self-prepended specializations (#7626 A4). No eager
-        # declaration -- a TypeVar param has no lowerable type yet.
         self._generic_methods[full_name] = method;
         self.has_native_code = True;
         return;
@@ -1887,8 +1884,6 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     );
 
     if self._arch_has_vtable(type_name) and not _is_mono_method {
-        # Mono-stamped generic methods have no vtable slot; they always
-        # dispatch directly to their per-callsite specialization.
         result = self._codegen_virtual_call(obj_val, method_name, args, type_name);
         if result is not None {
             if isinstance(func.return_value.type, ir.VoidType) {

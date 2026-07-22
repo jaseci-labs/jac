@@ -70,12 +70,6 @@ impl NaIRGenPass._codegen_bound_args(
                 _unpack_names.append(param.op.value);
                 continue;
             }
-            # `*expr` (#7626 A6): classify by the operand's LOWERED type
-            # (the checker leaves star operands untyped). A tuple value
-            # (ptr-to-literal-struct) has static arity -- splice its
-            # elements as pre-lowered positionals; a registered list
-            # value becomes a marker the variadic-callee pack builder
-            # copies element-wise. Anything else keeps the loud reject.
             _tv = self._codegen_expr(param.operand);
             _tt = _tv.type if _tv is not None else None;
             _tup_ptr = (
@@ -239,7 +233,9 @@ impl NaIRGenPass._codegen_bound_args(
             }
             if isinstance(chosen, tuple) and chosen and chosen[0] == "spread.val" {
                 val = chosen[1];
-            } elif isinstance(chosen, tuple) and chosen and chosen[0] == "spread.list.val" {
+            } elif isinstance(chosen, tuple)
+            and chosen
+            and chosen[0] == "spread.list.val" {
                 self.emit(
                     E5092,
                     node_override=nd,
@@ -260,12 +256,14 @@ impl NaIRGenPass._codegen_bound_args(
 
         for pix in range(len(sig_params), len(positional)) {
             _extra_p = positional[pix];
-            if isinstance(_extra_p, tuple) and _extra_p
+            if isinstance(_extra_p, tuple)
+            and _extra_p
             and _extra_p[0] == "spread.val" {
                 args.append(_extra_p[1]);
                 continue;
             }
-            if isinstance(_extra_p, tuple) and _extra_p
+            if isinstance(_extra_p, tuple)
+            and _extra_p
             and _extra_p[0] == "spread.list.val" {
                 continue;
             }
@@ -295,7 +293,9 @@ impl NaIRGenPass._codegen_bound_args(
             }
             if isinstance(chosen, tuple) and chosen and chosen[0] == "spread.val" {
                 val = chosen[1];
-            } elif isinstance(chosen, tuple) and chosen and chosen[0] == "spread.list.val" {
+            } elif isinstance(chosen, tuple)
+            and chosen
+            and chosen[0] == "spread.list.val" {
                 self.emit(
                     E5092,
                     node_override=nd,
@@ -340,7 +340,9 @@ impl NaIRGenPass._codegen_bound_args(
             }
             if isinstance(chosen, tuple) and chosen and chosen[0] == "spread.val" {
                 val = chosen[1];
-            } elif isinstance(chosen, tuple) and chosen and chosen[0] == "spread.list.val" {
+            } elif isinstance(chosen, tuple)
+            and chosen
+            and chosen[0] == "spread.list.val" {
                 self.emit(
                     E5092,
                     node_override=nd,
@@ -449,10 +451,6 @@ impl NaIRGenPass._codegen_varargs_list(
     );
     for e in extras {
         if isinstance(e, tuple) and e and e[0] == "spread.list.val" {
-            # `f(*xs)` into the pack: runtime-copy the source list's
-            # elements so the callee's pack never aliases the caller's
-            # list (tuple-pack semantics parity). The marker carries the
-            # already-lowered list value.
             _src = e[1];
             _src_h = None;
             for (_sn, _slt) in self.list_types.items() {
@@ -483,16 +481,12 @@ impl NaIRGenPass._codegen_varargs_list(
             _cp_i = self.builder.phi(i64, name="spread.i");
             _cp_i.add_incoming(ir.Constant(i64, 0), _cp_pre);
             self.builder.cbranch(
-                self.builder.icmp_unsigned(
-                    ">=", _cp_i, _cp_len, name="spread.atend"
-                ),
+                self.builder.icmp_unsigned(">=", _cp_i, _cp_len, name="spread.atend"),
                 _cp_done,
                 _cp_body
             );
             self._builder = ir.IRBuilder(_cp_body);
-            _cp_e = self.builder.call(
-                _src_h["get"], [_src, _cp_i], name="spread.elem"
-            );
+            _cp_e = self.builder.call(_src_h["get"], [_src, _cp_i], name="spread.elem");
             _cp_e2 = self._coerce_type(_cp_e, helpers["elem_type"]);
             self._rc_call_with_ctx(
                 helpers["append"], [lv, _cp_e2], op="list_init", loc=_loc

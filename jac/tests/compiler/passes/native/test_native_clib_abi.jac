@@ -104,13 +104,9 @@ test "clib SysV: by-value float structs pass and return in SSE registers" {
         assert not prog.errors_had , f"Compilation errors: {errors}";
         eng = ir.gen.native_engine;
         assert eng is not None;
-        f = get_func(
-            eng, "use_ptd", ctypes.c_double, ctypes.c_double, ctypes.c_double
-        );
+        f = get_func(eng, "use_ptd", ctypes.c_double, ctypes.c_double, ctypes.c_double);
         assert abs(f(1.5, 2.25) - 6.0) < 1e-9 , f"ptd_sum(1.5, 2.25) = {f(1.5, 2.25)}";
-        g = get_func(
-            eng, "use_ptf", ctypes.c_double, ctypes.c_double, ctypes.c_double
-        );
+        g = get_func(eng, "use_ptf", ctypes.c_double, ctypes.c_double, ctypes.c_double);
         assert abs(g(1.0, 0.5) - 2.0) < 1e-5 , f"ptf_sum(1.0, 0.5) = {g(1.0, 0.5)}";
         h = get_func(
             eng, "roundtrip", ctypes.c_double, ctypes.c_double, ctypes.c_double

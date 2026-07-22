@@ -389,11 +389,6 @@ impl native_capability_violations(mod: uni.Module) -> list {
             and nd.op.name == Tok.STAR_POW
             and isinstance(nd.parent, uni.FuncCall)
             and nd in (nd.parent.params or []) {
-                # `*x` spreads lower natively (#7626 A6): tuple spreads by
-                # static arity, list spreads through a variadic callee --
-                # codegen enforces those typed shape rules with structured
-                # E5092s (this gate runs before inference, so it cannot).
-                # `**` unpacking stays statically gated here.
                 out.append(
                     (nd, "call argument unpacking", nd.op.value, _NATIVE_UNPACK_HELP)
                 );
@@ -474,8 +469,7 @@ impl native_capability_violations(mod: uni.Module) -> list {
                 _chain = nd.chain;
                 _ci = 0 if isinstance(_chain[0], uni.EdgeOpRef) else 1;
                 _hops = 0;
-                while (_ci < len(_chain))
-                and isinstance(_chain[_ci], uni.EdgeOpRef) {
+                while (_ci < len(_chain)) and isinstance(_chain[_ci], uni.EdgeOpRef) {
                     _hops += 1;
                     _ci += 1;
                     if (_ci < len(_chain))

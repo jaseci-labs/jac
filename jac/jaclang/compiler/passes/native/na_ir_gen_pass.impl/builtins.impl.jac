@@ -1081,9 +1081,6 @@ impl NaIRGenPass._emit_sys_stream(stream: str) -> (ir.Value | None) {
         libc_gv = ir.GlobalVariable(self.llvm_module, i8p, name=libc_name);
         libc_gv.linkage = "external";
         if "windows" in str(self.llvm_module.triple or "") {
-            # PE data imports resolve through the IAT; dllimport makes
-            # LLVM reference `__imp_<name>` so the linker's import-slot
-            # indirection is correct (#7626 C4).
             libc_gv.storage_class = "dllimport";
         }
         self.extern_funcs[libc_name] = libc_gv;

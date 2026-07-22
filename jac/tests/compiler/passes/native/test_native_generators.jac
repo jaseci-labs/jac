@@ -187,6 +187,16 @@ test "generator: capturing lambda escaping inside a generator frame" {
     assert f(0) == 0;
 }
 
+test "generator: plain param after a captured param keeps its own value" {
+    # Cell-promoted params leave param_slots, so the creation fn must map
+    # remaining plain params by their ORIGINAL signature index -- not by
+    # enumeration order -- or `base` here would be stored from k's arg.
+    (eng, _) = compile_native("generators_closures.na.jac");
+    f = get_func(eng, "sum_gen_mixed", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
+    assert f(3, 10) == 63 , "g(10)+g(11) with k=3: 30+33";
+    assert f(0, 5) == 0;
+}
+
 test "generator: capturing lambda as a map callback inside a generator" {
     (eng, _) = compile_native("generators_closures.na.jac");
     f = get_func(eng, "sum_gen_mapped", ctypes.c_int64, ctypes.c_int64);

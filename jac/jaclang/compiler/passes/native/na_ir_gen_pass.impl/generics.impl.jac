@@ -195,12 +195,6 @@ impl NaIRGenPass._stamp_mono_fn(
 impl NaIRGenPass._instantiate_generic_for_target(
     func_name: str, tag_node: uni.UniNode
 ) -> (ir.Function | None) {
-    # Generic fns as values, v1 (#7626 A5): when a template escapes into a
-    # binding annotated with a CONCRETE Callable type, the annotation
-    # supplies the TypeVar solution, so the specialization stamps eagerly
-    # and the plain-fn result wraps into a closure value at the existing
-    # coercion seam. Truly-polymorphic escape (no concrete target) stays a
-    # loud error -- it would need runtime specialization or boxing.
     try {
         import from jaclang.compiler.type_system.types {
             FunctionType as _A5FnType,
@@ -302,9 +296,7 @@ impl NaIRGenPass._instantiate_generic_method(
     self._mono_solution = solution;
     self._mono_mangle_map = _mangles;
     try {
-        fn = self._stamp_mono_method(
-            ability, owner_arch, method_name, spec_name, key
-        );
+        fn = self._stamp_mono_method(ability, owner_arch, method_name, spec_name, key);
     } finally {
         self._mono_solution = saved_sol;
         self._mono_mangle_map = saved_map;

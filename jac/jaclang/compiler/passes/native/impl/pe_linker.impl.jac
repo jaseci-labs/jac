@@ -157,12 +157,6 @@ impl PeLinker.build_executable -> bytes {
         sec_i += 1;
     }
 
-    # Undefined externals split three ways (#7626 C4): `__imp_<base>`
-    # references import <base> and resolve straight to its IAT slot (the
-    # dllimport indirection -- correct for DATA and function pointers
-    # alike); known data symbols without the COFF function type get an
-    # import entry but NO .text JMP thunk (a thunk is only meaningful for
-    # calls); everything else keeps the call-thunk path.
     _known_data_syms = {"stdin", "stdout", "stderr", "environ", "_environ", "_iob"};
     extern_funcs: list[str] = [];
     extern_data: list[str] = [];

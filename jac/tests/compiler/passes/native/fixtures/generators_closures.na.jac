@@ -23,6 +23,22 @@ def sum_gen_scaled(k: int) -> int {
     return t;
 }
 
+def gen_mixed(k: int, base: int) -> Iterator[int] {
+    f = lambda (x: int) -> int { x * k; };
+    fns: list[Callable[[int], int]] = [f];
+    g = fns[0];
+    yield g(base);
+    yield g(base + 1);
+}
+
+def sum_gen_mixed(k: int, base: int) -> int {
+    t = 0;
+    for v in gen_mixed(k, base) {
+        t += v;
+    }
+    return t;
+}
+
 def gen_mapped(k: int) -> Iterator[int] {
     for v in map(lambda (x: int) -> int { x + k; }, [1, 2, 3]) {
         yield v;

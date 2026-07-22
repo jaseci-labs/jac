@@ -3538,20 +3538,24 @@ test "aarch64 static-musl binary runs (cross vendor-musl, #7626 C1)" {
     import tempfile;
     import jaclang;
     qemu = shutil.which("qemu-aarch64-static") or shutil.which("qemu-aarch64");
-    musl_a64 = os.path.join(
-        os.path.dirname(jaclang.__file__),
-        "..",
-        ".pbs-build",
-        "linux-aarch64",
-        "musl",
-        "lib",
-        "libc.a"
-    );
+    _musl_env = os.environ.get("JAC_NATIVE_MUSL_DIR", "");
+    musl_a64 = os.path.join(_musl_env, "libc.a")
+        if _musl_env
+        else os.path.join(
+            os.path.dirname(jaclang.__file__),
+            "..",
+            ".pbs-build",
+            "linux-aarch64",
+            "musl",
+            "lib",
+            "libc.a"
+        );
     if not qemu or not os.path.exists(musl_a64) {
         import pytest;
         pytest.skip(
             "aarch64 qemu-user or cross vendored musl not present "
-            "(run `zig build vendor-musl-linux-aarch64`)"
+            "(run `zig build vendor-musl-linux-aarch64`, or set "
+            "JAC_NATIVE_MUSL_DIR)"
         );
     }
     fixture = str(os.path.join(FIXTURES, "aarch64_global_roundtrip.jac"));

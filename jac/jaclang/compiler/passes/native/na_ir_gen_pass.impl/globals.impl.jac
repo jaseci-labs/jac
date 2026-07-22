@@ -7,13 +7,6 @@ impl NaIRGenPass._register_globals(module: uni.Module) -> None {
 }
 
 impl NaIRGenPass._register_entry_globals(module: uni.Module) -> None {
-    # Python scoping makes `with entry` assignments module globals (the
-    # frontend already stamps them SymbolStorage.MODULE_GLOBAL); register
-    # them as native globals so lambdas, nested fns, and free defs resolve
-    # them exactly like `glob` declarations. The entry body's own stores
-    # initialize them inside jac_entry, after __jac_glob_init. Names whose
-    # type cannot lower (or is assigned inconsistently) are left frame-local,
-    # which keeps the existing structured-error behavior for those shapes.
     candidates: dict = {};
     dropped: set = set();
     for stmt in ModuleCodegenPass.iter_context_stmts(module, CodeContext.NATIVE) {
@@ -71,9 +64,7 @@ impl NaIRGenPass._register_entry_globals(module: uni.Module) -> None {
     }
     for (var_name, var_type) in candidates.items() {
         try {
-            global_var = ir.GlobalVariable(
-                self.llvm_module, var_type, name=var_name
-            );
+            global_var = ir.GlobalVariable(self.llvm_module, var_type, name=var_name);
         } except Exception as _dup_err {
             continue;
         }

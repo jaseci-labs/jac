@@ -689,10 +689,6 @@ impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None 
         return;
     }
 
-    # Key the resume/drop symbols off the emitted function's name, not the
-    # source name: monomorphized generic generators stamp one resume/drop
-    # pair per specialization (func.name is the spec symbol), so they must
-    # not collide on the shared source name.
     _sym_base = func.name;
     resume_fnty = ir.FunctionType(i1, [i8p, i8p]);
     resume_fn = ir.Function(
@@ -751,7 +747,7 @@ impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None 
         } else {
             slot = self._entry_alloca(ptype, pname);
             (_sn, _soff, _st) = gc["slots"][-1];
-            param_slots.append((pname, _soff, ptype));
+            param_slots.append((pname, _soff, ptype, i));
         }
         self.local_vars[pname] = slot;
         self.param_vars.add(pname);
@@ -835,9 +831,8 @@ impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None 
         self.builder.ptrtoint(drop_fn, i64, name="gen.dtor.i64"), dtor_slot_p
     );
 
-    _plain_param_idx = {pname: pi for (pi, (pname, _o, _t)) in enumerate(param_slots)};
-    for (pname, poff, ptype) in param_slots {
-        arg = func.args[_plain_param_idx[pname]];
+    for (pname, poff, ptype, pidx) in param_slots {
+        arg = func.args[pidx];
         p_raw = self.builder.gep(raw, [ir.Constant(i64, poff)], name=f"gen.p.{pname}");
         p_slot = self.builder.bitcast(
             p_raw, ptype.as_pointer(), name=f"gen.ps.{pname}"
@@ -850,8 +845,6 @@ impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None 
 
     _ci32 = ir.IntType(32);
     for ci in cell_inits {
-        # Allocate each closure cell once here, in the creation fn, and
-        # park its handle in the frame slot the resume fn reloads.
         cellp = self._alloc_iter_struct(ci["cell_name"]);
         _cvalp = self.builder.gep(
             cellp,

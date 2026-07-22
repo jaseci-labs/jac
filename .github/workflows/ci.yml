@@ -667,10 +667,13 @@ jobs:
         jac test jac/tests/compiler/passes/native/test_shared_lib.jac
         jac test jac/tests/compiler/passes/native/test_exec_link.jac
 
-    - name: Run bundled-stdlib equivalence pins (darwin dirent et al, #7626 C3)
+    - name: Run bundled-stdlib equivalence pins (darwin, #7626 C3)
       env:
         JAC_TEST_JOBS: "0"
-        PYTEST_ADDOPTS: -k "shutil or ospath"
+        # os.path + textwrap + keyword are pure-compute na modules that must
+        # agree on darwin; the shutil pin self-skips there until the stat
+        # seam gets a per-OS floor (see test_prim_equivalence.jac).
+        PYTEST_ADDOPTS: -k "shutil or path or textwrap or keyword"
       run: jac test jac/jaclang/compiler/tests/test_prim_equivalence.jac
 
   # aarch64 cross lane (#7626 C1): cross-compile with the in-house ELF linker
@@ -703,6 +706,9 @@ jobs:
       env:
         JAC_TEST_JOBS: "0"
         PYTEST_ADDOPTS: -k aarch64
+        # The sealed CI binary's pkg_root only bundles host-arch musl; point
+        # the static-link search at the repo-vendored cross runtime.
+        JAC_NATIVE_MUSL_DIR: ${{ github.workspace }}/jac/.pbs-build/linux-aarch64/musl/lib
       run: jac test jac/tests/compiler/passes/native/test_native_gen_pass.jac
 
   # Launcher unit tests: trailer codec + `.jab`-overlay round-trip

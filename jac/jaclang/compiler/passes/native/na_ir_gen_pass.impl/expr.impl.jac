@@ -708,9 +708,6 @@ impl NaIRGenPass._codegen_compare_link(
     }
 
     if op in (Tok.KW_IS, Tok.KW_ISN, Tok.EE, Tok.NE) {
-        # Scalar optionals (#7626 C5): `x is None` reads the tag. This
-        # stands apart from the jacval branch above -- a module can use
-        # `T | None` without ever touching `any`.
         _on_negate = op in (Tok.KW_ISN, Tok.NE);
         _o_right = right_node.expr
             if isinstance(right_node, uni.CfgExpr)

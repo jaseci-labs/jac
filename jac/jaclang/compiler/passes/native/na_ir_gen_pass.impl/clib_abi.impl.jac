@@ -297,20 +297,13 @@ impl NaIRGenPass._codegen_clib_call(
 }
 
 impl NaIRGenPass._clib_sext_ret(func_name: str, result: ir.Value) -> ir.Value {
-    # C's narrow SIGNED ints (i8/i16/i32) must sign-extend into Jac's
-    # 64-bit world at this seam; the generic int widening zero-extends
-    # (correct for u8/u16/u32/bool), so without this a strcmp() == -1
-    # surfaces as 4294967295 once boxed to `any` or widened to int
-    # (#7626 C2). The declared C return type carries the signedness.
     if not isinstance(result.type, ir.IntType) or result.type.width >= 64 {
         return result;
     }
     _fd = self._foreign_fns().get(func_name);
     _rname = _fd.get("ret") if _fd is not None else None;
     if _rname in ("i8", "i16", "i32") {
-        return self.builder.sext(
-            result, ir.IntType(64), name=f"{func_name}.ret.sext"
-        );
+        return self.builder.sext(result, ir.IntType(64), name=f"{func_name}.ret.sext");
     }
     return result;
 }

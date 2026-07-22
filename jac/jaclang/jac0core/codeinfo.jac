@@ -212,11 +212,6 @@ def native_target_os -> str {
 }
 
 def _native_variant_path(base_no_ext: str) -> (str | None) {
-    # Target-OS-suffixed native module variants (#7626 C3): a
-    # `<name>.<os>.na.jac` sibling (os in darwin/windows/linux) wins over
-    # the plain `<name>.na.jac` for the effective native target, so
-    # libc-layout-divergent floors (dirent, errno) can ship per-OS
-    # without a preprocessor.
     import os;
     _osv = os.path.join(f"{base_no_ext}.{native_target_os()}.na.jac");
     if os.path.exists(_osv) {
@@ -247,8 +242,7 @@ def resolve_native_module(
             cand = _native_variant_path(os.path.join(search, path_name));
             if cand is not None {
                 rel = os.path.relpath(
-                    os.path.join(search, f"{path_name}.na"),
-                    os.path.abspath(base_dir)
+                    os.path.join(search, f"{path_name}.na"), os.path.abspath(base_dir)
                 );
                 return (rel, cand);
             }

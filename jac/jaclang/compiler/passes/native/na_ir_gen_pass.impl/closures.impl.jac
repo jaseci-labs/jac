@@ -120,12 +120,6 @@ impl NaIRGenPass._emit_closure_cell(var_name: str, slot_type: ir.Type) -> ir.Val
     func: any = self.builder.function;
     _gc = self._gen_ctx;
     if _gc is not None and func is _gc["resume_fn"] {
-        # Generator frame: the resume fn's entry block re-runs on every
-        # resume, so the cell cannot be allocated here. Instead the frame
-        # gets a slot holding the cell HANDLE -- the creation fn allocates
-        # the cell exactly once and stores it there (see _codegen_generator
-        # consuming gc["cell_inits"]); the resume fn only reloads it. The
-        # handle slot rides the normal drop-fn release path.
         cell_ptr_ty = self.struct_types[cell_name].as_pointer();
         handle_slot = self._entry_alloca(cell_ptr_ty, f"__cell_{var_name}");
         (_sn, _soff, _st) = _gc["slots"][-1];
@@ -143,9 +137,7 @@ impl NaIRGenPass._emit_closure_cell(var_name: str, slot_type: ir.Type) -> ir.Val
         self.builder.position_at_end(entry_block);
         cell = self.builder.load(handle_slot, name=f"cellh.{var_name}");
         slot: any = self.builder.gep(
-            cell,
-            [ir.Constant(i32, 0), ir.Constant(i32, 0)],
-            name=f"cell.{var_name}"
+            cell, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name=f"cell.{var_name}"
         );
         self.builder.position_at_end(cur_block);
         self.closure_cell_handles[var_name] = cell;

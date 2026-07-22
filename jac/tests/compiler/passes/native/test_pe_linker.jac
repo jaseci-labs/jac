@@ -223,20 +223,7 @@ test "data import: dllimport global resolves through an IAT slot (#7626 C4)" {
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
     src = (
-        'target triple = "x86_64-pc-windows-msvc"\n'
-        + '@ext_counter = external dllimport global i64\n'
-        + 'declare void @exit(i32)\n'
-        + 'define i64 @read_it() {\n'
-        + 'entry:\n'
-        + '  %v = load i64, i64* @ext_counter\n'
-        + '  ret i64 %v\n'
-        + '}\n'
-        + 'define void @_jac_win_start() {\n'
-        + 'entry:\n'
-        + '  %r = call i64 @read_it()\n'
-        + '  call void @exit(i32 0)\n'
-        + '  ret void\n'
-        + '}\n'
+        'target triple = "x86_64-pc-windows-msvc"\n' + '@ext_counter = external dllimport global i64\n' + 'declare void @exit(i32)\n' + 'define i64 @read_it() {\n' + 'entry:\n' + '  %v = load i64, i64* @ext_counter\n' + '  ret i64 %v\n' + '}\n' + 'define void @_jac_win_start() {\n' + 'entry:\n' + '  %r = call i64 @read_it()\n' + '  call void @exit(i32 0)\n' + '  ret void\n' + '}\n'
     );
     mod = llvm.parse_assembly(src);
     mod.verify();
@@ -267,20 +254,7 @@ test "data import: direct reference to imported data is a loud link error (#7626
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
     src = (
-        'target triple = "x86_64-pc-windows-msvc"\n'
-        + '@stdout = external global i8*\n'
-        + 'declare void @exit(i32)\n'
-        + 'define i8* @read_it() {\n'
-        + 'entry:\n'
-        + '  %v = load i8*, i8** @stdout\n'
-        + '  ret i8* %v\n'
-        + '}\n'
-        + 'define void @_jac_win_start() {\n'
-        + 'entry:\n'
-        + '  %r = call i8* @read_it()\n'
-        + '  call void @exit(i32 0)\n'
-        + '  ret void\n'
-        + '}\n'
+        'target triple = "x86_64-pc-windows-msvc"\n' + '@stdout = external global i8*\n' + 'declare void @exit(i32)\n' + 'define i8* @read_it() {\n' + 'entry:\n' + '  %v = load i8*, i8** @stdout\n' + '  ret i8* %v\n' + '}\n' + 'define void @_jac_win_start() {\n' + 'entry:\n' + '  %r = call i8* @read_it()\n' + '  call void @exit(i32 0)\n' + '  ret void\n' + '}\n'
     );
     mod = llvm.parse_assembly(src);
     mod.verify();

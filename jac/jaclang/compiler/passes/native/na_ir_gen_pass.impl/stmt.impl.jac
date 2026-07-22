@@ -1458,9 +1458,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
         and nd.type_tag is not None
         and nd.type_tag.tag is not None
     ) {
-        value = self._instantiate_generic_for_target(
-            nd.value.value, nd.type_tag.tag
-        );
+        value = self._instantiate_generic_for_target(nd.value.value, nd.type_tag.tag);
     }
     if value is None {
         value = self._codegen_expr(nd.value) if nd.value else None;
@@ -2316,10 +2314,6 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             if isinstance(var_type, ir.PointerType)
             and not _mk_cell
             and not _in_gen_frame {
-                # Zero-init the fresh slot up in the entry block. Generator
-                # frame slots are excluded: the resume fn's entry block runs
-                # on EVERY resume (nulling live slots mid-iteration), and the
-                # creation fn already memsets the whole frame to zero.
                 _func_e = self.builder.function;
                 _ebb = _func_e.entry_basic_block;
                 _cur_bb = self.builder.block;
@@ -2331,8 +2325,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         break;
                     }
                 }
-                if _anchor_idx is not None
-                and _anchor_idx + 1 < len(_entry_instrs) {
+                if _anchor_idx is not None and _anchor_idx + 1 < len(_entry_instrs) {
                     self.builder.position_before(_entry_instrs[_anchor_idx + 1]);
                 } else {
                     self.builder.position_at_end(_ebb);

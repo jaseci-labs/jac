@@ -926,7 +926,6 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
                 ],
                 name="osp.refs.many"
             );
-
             self._emit_rc_release_simple(_cur, op="osp_refs_hop", loc="");
         }
 
@@ -977,9 +976,6 @@ impl NaIRGenPass._codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | Non
     _f = nd.right;
     _fname = self._get_name(_f.f_type) if _f.f_type is not None else None;
     if _fname is None and _f.compares {
-        # Bare predicate `[?fld == v]`: legal when the target's checked
-        # element type names the archetype (a preceding type filter or a
-        # typed edge ref), so the layout is known without guessing.
         _fname = self._elem_arch_name_of(nd.target);
     }
     if _fname is None {
@@ -1016,15 +1012,12 @@ impl NaIRGenPass._codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | Non
             [target_val, ir.Constant(i64, _ntag)],
             name="osp.chain.filt"
         );
-        if isinstance(target_val.type, ir.PointerType)
-        and self._is_owned(target_val) {
+        if isinstance(target_val.type, ir.PointerType) and self._is_owned(target_val) {
             self._emit_rc_release_simple(target_val, op="chain_filter", loc="");
         }
     }
     if _f.compares {
-        _pred = self._emit_osp_predicate_filter(
-            _result, _fname, list(_f.compares), nd
-        );
+        _pred = self._emit_osp_predicate_filter(_result, _fname, list(_f.compares), nd);
         if _pred is None {
             return None;
         }
@@ -1067,16 +1060,8 @@ impl NaIRGenPass._elem_arch_name_of(expr: (uni.UniNode | None)) -> (str | None) 
 }
 
 impl NaIRGenPass._emit_osp_predicate_filter(
-    src: ir.Value,
-    arch_name: str,
-    compares: list[uni.CompareExpr],
-    nd: uni.UniNode
+    src: ir.Value, arch_name: str, compares: list[uni.CompareExpr], nd: uni.UniNode
 ) -> (ir.Value | None) {
-    # Lower `[?fld <op> value, ...]` as an inline keep-loop: per element,
-    # load each named field through the layout registry, compare against
-    # the (hoisted, loop-invariant) RHS, AND the results, and append
-    # survivors to a fresh list. Only runs when the element archetype is
-    # statically known, so field offsets never have to be guessed.
     _fields = self.struct_field_indices.get(arch_name);
     if _fields is None {
         self.emit(
@@ -1155,8 +1140,7 @@ impl NaIRGenPass._emit_osp_predicate_filter(
         }
         _op = cmp.ops[0].name if isinstance(cmp.ops[0], uni.Token) else str(cmp.ops[0]);
         _cres = self._codegen_compare_link(
-            _op, _fval, _rhs_vals[_ci], cmp.left, cmp.rights[0],
-            release_operands=False
+            _op, _fval, _rhs_vals[_ci], cmp.left, cmp.rights[0], release_operands=False
         );
         if _cres is None {
             self._builder = ir.IRBuilder(_done);
