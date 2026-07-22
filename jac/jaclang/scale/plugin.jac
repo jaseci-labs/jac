@@ -62,11 +62,15 @@ def scale_start(
     target: str,
     enable_tls: bool,
     dry_run: bool,
-    show_yaml: bool
+    show_yaml: bool,
+    port: int = 0
 ) -> int | None {
     os.environ["JAC_SCALE_RUNTIME"] = "1";
     scale_config = get_scale_config();
     ms_config = scale_config.get_microservices_config();
+    if port {
+        ms_config["gateway_port"] = port;
+    }
     is_sv_sibling = os.environ.get("JAC_SV_SIBLING") == "1";
 
     enabled = ms_config.get("enabled", None);

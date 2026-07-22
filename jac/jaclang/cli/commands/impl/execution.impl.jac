@@ -93,7 +93,7 @@ def _execute_plan(
     if plan.action == "serve" {
         return start(
             filename=plan.entry_path,
-            port=plan.flags.get("port", 8000),
+            port=plan.flags.get("port", 0),
             no_client=plan.flags.get("no_client", False),
             dev=plan.flags.get("dev", False),
             client=plan.flags.get("client", "web")
@@ -142,6 +142,27 @@ def _run_jab(filename: str, port: (int | None), args: list, serve_only: bool) ->
     return run_jab_image(img_root, port, args, serve_only, filename);
 }
 
+def _resolve_serve_port(requested: int, filename: str) -> int {
+    if requested {
+        return requested;
+    }
+    import from pathlib { Path }
+    import from jaclang.project.config { get_config, get_config_for_path }
+
+    cfg = get_config();
+    if filename {
+        entry = Path(filename);
+        if entry.exists() {
+            entry_cfg = get_config_for_path(entry.resolve().parent);
+            if entry_cfg is not None
+            and (cfg is None or entry_cfg.project_root != cfg.project_root) {
+                cfg = entry_cfg;
+            }
+        }
+    }
+    return (cfg.serve.port if cfg else 0) or 8000;
+}
+
 impl run_jab_image(
     img_root: Path, port: (int | None), args: list, serve_only: bool, label: str
 ) -> int {
@@ -167,15 +188,9 @@ impl run_jab_image(
     }
     servable = kind in ["service", "service-mesh", "web-app", "web-static"];
     if serve_only or servable {
-        serve_port = port;
-        if serve_port is None {
-            import from jaclang.project.config { get_config_for_path }
-            img_cfg = get_config_for_path(img_root);
-            serve_port = img_cfg.serve.port if img_cfg else 8000;
-        }
         return start(
             filename=entry_abs,
-            port=serve_port,
+            port=port if port is not None else 0,
             no_client=(kind == "service"),
             dev=False
         );
@@ -484,7 +499,7 @@ impl enter(
     return 0;
 }
 
-impl dev(filename: str = "", port: int = 8000, api_port: int = 0) -> int {
+impl dev(filename: str = "", port: int = 0, api_port: int = 0) -> int {
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
     import from jaclang.project.kinds { resolve_entry }
@@ -513,7 +528,7 @@ impl dev(filename: str = "", port: int = 8000, api_port: int = 0) -> int {
 
 impl start(
     filename: str,
-    port: int = 8000,
+    port: int = 0,
     main: bool = True,
     faux: bool = False,
     dev: bool = False,
@@ -534,16 +549,27 @@ impl start(
 
     set_effective_default_codespace('server');
 
+    requested_port: int = port;
+
     import from jaclang.runtimelib.client.cli { run_client_start }
     client_rc = run_client_start(
-        filename, client, host, platform, port, api_port, dev, no_client
+        filename,
+        client,
+        host,
+        platform,
+        _resolve_serve_port(requested_port, filename),
+        api_port,
+        dev,
+        no_client
     );
     if client_rc is not None {
         return client_rc;
     }
 
     import from jaclang.scale.plugin { scale_start }
-    scale_rc = scale_start(filename, scale, target, enable_tls, dry_run, show_yaml);
+    scale_rc = scale_start(
+        filename, scale, target, enable_tls, dry_run, show_yaml, requested_port
+    );
     if scale_rc is not None {
         return scale_rc;
     }
@@ -556,7 +582,7 @@ impl start(
             );
             return 1;
         }
-        return _run_jab(filename, port, [], serve_only=True);
+        return _run_jab(filename, requested_port or None, [], serve_only=True);
     }
     if not Path(filename).exists() {
         console.error(f"couldn't read `{filename}`: No such file or directory");
@@ -589,6 +615,8 @@ impl start(
         mach.close();
         return 1;
     }
+
+    port = _resolve_serve_port(requested_port, filename);
 
     if dev and not no_client {
         vite_port = port;
