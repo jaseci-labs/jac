@@ -63,11 +63,17 @@ impl JacClientCompiler.compile(
     client_globals_map = self.jac_compiler.extract_globals(module_manifest, module);
     collected_globals: dict[(str, Any)] = dict(client_globals_map);
     visited: set[Path] = set();
+    project_root = self.project_dir.resolve();
+    entry_root = module_path.resolve().parent;
+    source_root = (
+        project_root if entry_root.is_relative_to(project_root) else entry_root
+    );
     self.compile_dependencies_recursively(
         module_path,
         visited=visited,
         collected_exports=collected_exports,
         collected_globals=collected_globals,
+        source_root=source_root,
         target_name=target_name
     );
     self._has_pages = self._scan_and_compile_pages(
