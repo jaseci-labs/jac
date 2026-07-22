@@ -4,6 +4,9 @@
 `dict[str, any]`) used to stringify the JacVal type-discriminant tag instead of
 unboxing and converting the underlying scalar. These assertions pin the native
 (`na`) result to what CPython's `str()` would produce for each scalar kind.
+
+This file intentionally recompiles the fixture per test, matching the native
+suite's isolation convention and keeping each JIT engine local to its test.
 """
 
 import ctypes;
@@ -29,7 +32,9 @@ def compile_native(fixture: str) -> tuple[ExecutionEngine, uni.Module] {
 }
 
 """Get a ctypes-callable function from the JIT engine."""
-def get_func(eng: object, name: str, restype: type | None, *argtypes: type) -> object {
+def get_func(
+    eng: ExecutionEngine, name: str, restype: type | None, *argtypes: type
+) -> object {
     addr = eng.get_function_address(name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     functype = ctypes.CFUNCTYPE(restype, *argtypes);
