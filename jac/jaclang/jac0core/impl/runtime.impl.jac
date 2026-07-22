@@ -1839,6 +1839,10 @@ impl JacLLM.add_mtir_to_map(scope: str, mtir: Info) -> None {
 }
 
 impl JacLLM.get_mtir_from_map(scope: str) -> (Info | None) {
+    import from jaclang.jac0core.mtp { MTIR_OVERLAY }
+    if scope in MTIR_OVERLAY {
+        return MTIR_OVERLAY[scope];
+    }
     if (JacRuntime.program is None) {
         raise AttributeError('JacRuntime.program is not initialized');
     }

@@ -1,5 +1,7 @@
 import from collections.abc { Callable }
 
+glob MTIR_OVERLAY: dict = {};
+
 obj MTRuntime {
     has caller: Callable[(..., object)],
         args: dict[((int | str), object)],
