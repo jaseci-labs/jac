@@ -1853,3 +1853,43 @@ test "tool failure on a callable without __name__ is handled, not escaped (issue
     assert isinstance(result, str) , f"expected str, got {type(result).__name__}";
     assert result.startswith("Tool error:") , f"unexpected return: {result!r}";
 }
+
+
+"""One assistant message carrying a single write_code call with `raw` arguments."""
+def _tool_call_message(raw: object) -> dict {
+    fn = types.SimpleNamespace(name="write_code", arguments=raw);
+    call = types.SimpleNamespace(id="call_1", function=fn, type="function");
+    return {"tool_calls": [call], "content": ""};
+}
+
+
+test "unparseable tool-call arguments are reported whatever the finish_reason (issue #7657)" {
+    truncated = '{"file_path": "/app/Landing.cl.jac", "content": "node Landing { has t';
+
+    # Streaming leaves finish_reason empty when the terminating chunk never
+    # arrives -- exactly when a call was cut short. Keying off "length" alone
+    # therefore misses the real-world case: the arguments are silently replaced
+    # with "{}" and the tool is invoked bare, so the model is told it omitted
+    # required arguments rather than that its call was truncated.
+    for finish_reason in ["", "stop", "length"] {
+        message = _tool_call_message(truncated);
+        damaged = _byllm_llm_mod._sanitize_tool_calls(message);
+        ids = _byllm_llm_mod._truncated_call_ids(message, finish_reason) | damaged;
+        assert "call_1" in ids , f"truncated call must be reported (finish_reason={finish_reason!r}), got {ids!r}";
+    }
+}
+
+
+test "intact and argument-less tool calls are never reported as truncated (issue #7657)" {
+    valid = '{"file_path": "/app/a.jac", "content": "with entry { print(1); }"}';
+    message = _tool_call_message(valid);
+    damaged = _byllm_llm_mod._sanitize_tool_calls(message);
+    assert not damaged , f"valid arguments must not be flagged: {damaged!r}";
+    assert message["tool_calls"][0].function.arguments == valid , "valid arguments must reach the tool untouched";
+
+    # A tool that genuinely takes no arguments is normal, not damage.
+    for raw in ["", "{}", None] {
+        blank = _tool_call_message(raw);
+        assert not _byllm_llm_mod._sanitize_tool_calls(blank) , f"argument-less call must not be flagged as truncated: {raw!r}";
+    }
+}
