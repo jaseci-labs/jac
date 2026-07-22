@@ -180,7 +180,7 @@ impl __doFuncFetch(function_name: str, args: dict) -> any {
             if handler {
                 handler();
             }
-            raise Exception(f"Function {function_name} failed: unauthorized");
+            return {};
         }
         error_text = await response.text();
         raise Exception(f"Function {function_name} failed: {error_text}");
