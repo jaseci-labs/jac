@@ -373,7 +373,27 @@ impl NaIRGenPass._emit_any_str(jacval: ir.Value) -> ir.Value {
     b.cbranch(is_none, none_bb, int_bb);
 
     b.position_at_end(str_bb);
-    str_res = b.inttoptr(payload, i8p, name="anystr.sp");
+    str_null_bb = func.append_basic_block(name="anystr.str.null");
+    str_copy_bb = func.append_basic_block(name="anystr.str.copy");
+    is_null_str = b.icmp_unsigned(
+        "==", payload, ir.Constant(i64, 0), name="anystr.strnull"
+    );
+    b.cbranch(is_null_str, str_null_bb, str_copy_bb);
+
+    b.position_at_end(str_null_bb);
+    str_null_res = self._make_global_string("", name_prefix=".anystr.empty");
+    str_null_end = b.basic_block;
+    b.branch(merge_bb);
+
+    b.position_at_end(str_copy_bb);
+    src_ptr = b.inttoptr(payload, i8p, name="anystr.sp");
+    strlen_fn = self._get_or_declare_extern("strlen", i64, [i8p]);
+    src_len = b.call(strlen_fn, [src_ptr], name="anystr.strlen");
+    copy_size = b.add(src_len, ir.Constant(i64, 1), name="anystr.strsize");
+    str_buf = b.call(self.rc_alloc_fn, [copy_size], name="anystr.strcopy");
+    strcpy_fn = self._get_or_declare_extern("strcpy", i8p, [i8p, i8p]);
+    b.call(strcpy_fn, [str_buf, src_ptr], name="anystr.strcpy");
+    str_res = str_buf;
     str_end = b.basic_block;
     b.branch(merge_bb);
 
@@ -414,11 +434,13 @@ impl NaIRGenPass._emit_any_str(jacval: ir.Value) -> ir.Value {
     b.position_at_end(merge_bb);
     phi = b.phi(i8p, name="anystr.res");
     phi.add_incoming(str_res, str_end);
+    phi.add_incoming(str_null_res, str_null_end);
     phi.add_incoming(bool_res, bool_end);
     phi.add_incoming(float_res, float_end);
     phi.add_incoming(none_res, none_end);
     phi.add_incoming(int_buf, int_end);
-    return phi;
+
+    return self._mark_owned(phi);
 }
 
 impl NaIRGenPass._codegen_index_set(
