@@ -2270,3 +2270,140 @@ test "stdlib server serves graph visualizer and docs" {
         client.close();
     }
 }
+
+# =============================================================================
+# Route-aware SPA fallback (honest 404s for paths no client route serves)
+# =============================================================================
+"""Write a minimal file-based routing tree into `dest`/pages for fallback tests."""
+def write_routed_pages(dest: Path) {
+    page_src = "def:pub page() -> JsxElement {\n    return <div>page</div>;\n}\n";
+    pages = dest / "pages";
+    (pages / "posts").mkdir(parents=True, exist_ok=True);
+    (pages / "(auth)").mkdir(parents=True, exist_ok=True);
+    (pages / "docs").mkdir(parents=True, exist_ok=True);
+    (pages / "index.jac").write_text(page_src);
+    (pages / "about.jac").write_text(page_src);
+    (pages / "posts" / "[slug].jac").write_text(page_src);
+    (pages / "(auth)" / "dashboard.jac").write_text(page_src);
+    (pages / "docs" / "[...rest].jac").write_text(page_src);
+    (pages / "[...notFound].jac").write_text(page_src);
+}
+
+"""The fallback answers 200 only for paths a scanned client route can serve;
+everything else is an honest 404. A stale long-poll client (e.g. an mkdocs
+livereload tab) previously got 200 in ~3ms and busy-looped at ~300 req/s -
+non-200 is what flips such clients into their backoff path."""
+test "spa fallback status is route aware when pages exist" {
+    import from jaclang.runtimelib.server { ModuleIntrospector }
+    with TemporaryDirectory() as tmpdir {
+        proj = Path(tmpdir);
+        shutil.copy(fixture_abs_path("client_app.jac"), proj / "routed_app.jac");
+        write_routed_pages(proj);
+        intro = ModuleIntrospector("routed_app", str(proj));
+        assert intro.spa_fallback_status("/") == 200;
+        assert intro.spa_fallback_status("/about") == 200;
+        assert intro.spa_fallback_status("/about/") == 200;
+        assert intro.spa_fallback_status("/posts/anything") == 200;
+        assert intro.spa_fallback_status("/dashboard") == 200;
+        assert intro.spa_fallback_status("/docs/a/b/c") == 200;
+        assert intro.spa_fallback_status("/livereload/179920204/179926361") == 404 , f"patterns={intro._load_spa_routes()}";
+        assert intro.spa_fallback_status("/no/such/route") == 404;
+        assert intro.spa_fallback_status("/posts") == 404;
+        assert intro.spa_fallback_status("/posts/a/b") == 404;
+        assert intro.spa_fallback_status("/wp-admin") == 404;
+    }
+}
+
+"""Without a pages/ directory the route table is unknowable (manual <Router>
+apps declare routes in JSX), so the fallback must stay permissive."""
+test "spa fallback status stays permissive without pages dir" {
+    import from jaclang.runtimelib.server { ModuleIntrospector }
+    intro = ModuleIntrospector("client_app", FIXTURES);
+    assert intro.spa_fallback_status("/anything/at/all") == 200;
+    assert intro.spa_fallback_status("/livereload/1/2") == 200;
+}
+
+"""End-to-end: the fallback handler must pass the route-aware status through
+to the HTTP response while still serving the app shell (so the client-side 404
+page renders). Route patterns are pinned on the introspector directly - adding
+a real pages/ tree would flip the test fixture into the full project bundle
+pipeline, which this suite's lightweight fixtures cannot build."""
+def pin_routes(spa: JacTestClient) {
+    intro = spa.server.introspector;
+    intro._spa_route_patterns = ["/", "/about", "/posts/:slug"];
+    intro._spa_routes_loaded = True;
+}
+
+test "serve spa fallback 404s unknown paths but still serves the app html" {
+    _require_client_integration();
+    with TemporaryDirectory() as tmpdir {
+        spa = make_spa_client(tmpdir);
+        pin_routes(spa);
+        response = spa.get("/livereload/179920204/179926361");
+        assert response.status_code == 404 , f"expected 404, got {response.status_code}";
+        html = response.text;
+        assert "<!DOCTYPE html>" in html , "404 should still serve the app shell";
+        assert '<div id="__jac_root">' in html;
+        spa.server.introspector._spa_route_patterns = ["/about"];
+        response = spa.get("/");
+        assert response.status_code == 404 , f"index-less root: expected 404, got {response.status_code}";
+        assert "<!DOCTYPE html>" in response.text;
+        spa.close();
+    }
+}
+
+test "serve spa fallback keeps 200 for known page routes" {
+    _require_client_integration();
+    with TemporaryDirectory() as tmpdir {
+        spa = make_spa_client(tmpdir);
+        pin_routes(spa);
+        response = spa.get("/posts/hello-world");
+        assert response.status_code == 200 , f"expected 200, got {response.status_code}";
+        assert "<!DOCTYPE html>" in response.text;
+        response = spa.get("/");
+        assert response.status_code == 200 , f"root with index route: expected 200, got {response.status_code}";
+        response = spa.get("/nope");
+        assert response.status_code == 404 , f"expected 404, got {response.status_code}";
+        spa.close();
+    }
+}
+
+"""The route table must follow the app across reloads: every reload path goes
+through _load_manifest, which clears the cached patterns so the next fallback
+request rescans pages/. Without the reset, a page added after first request
+404s until restart and a deleted page keeps answering 200."""
+test "spa fallback route table refreshes on manifest reload" {
+    import from jaclang.runtimelib.server { ModuleIntrospector }
+    with TemporaryDirectory() as tmpdir {
+        proj = Path(tmpdir);
+        shutil.copy(fixture_abs_path("client_app.jac"), proj / "routed_app.jac");
+        write_routed_pages(proj);
+        intro = ModuleIntrospector("routed_app", str(proj));
+        assert intro.spa_fallback_status("/pricing") == 404;
+        page_src = "def:pub page() -> JsxElement {\n    return <div>p</div>;\n}\n";
+        (proj / "pages" / "pricing.jac").write_text(page_src);
+        assert intro.spa_fallback_status("/pricing") == 404 , "table is cached until a reload";
+        intro._load_manifest();
+        assert intro.spa_fallback_status("/pricing") == 200 , f"patterns={intro._load_spa_routes()}";
+        (proj / "pages" / "about.jac").unlink();
+        intro._load_manifest();
+        assert intro.spa_fallback_status("/about") == 404;
+        assert intro.spa_fallback_status("/pricing") == 200;
+    }
+}
+
+"""A pages-routed project with no index page has no client route for '/', so
+the root must be an honest 404 too (the client renders its catch-all there)."""
+test "spa fallback root is route aware without an index page" {
+    import from jaclang.runtimelib.server { ModuleIntrospector }
+    with TemporaryDirectory() as tmpdir {
+        proj = Path(tmpdir);
+        pages = proj / "pages";
+        pages.mkdir(parents=True, exist_ok=True);
+        page_src = "def:pub page() -> JsxElement {\n    return <div>p</div>;\n}\n";
+        (pages / "dashboard.jac").write_text(page_src);
+        intro = ModuleIntrospector("routed_app", str(proj));
+        assert intro.spa_fallback_status("/") == 404;
+        assert intro.spa_fallback_status("/dashboard") == 200;
+    }
+}

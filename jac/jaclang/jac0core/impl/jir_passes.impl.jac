@@ -842,6 +842,7 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
     if isinstance(ir_node, self._Module) {
         nd.setdefault('src_terminals', None);
         nd.setdefault('is_raised_from_py', False);
+        nd.setdefault('decided_codespace', '');
     }
 
     if isinstance(ir_node, self._Import) {

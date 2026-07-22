@@ -3273,8 +3273,7 @@ impl TypeEvaluator._is_sv_async_call(expr: uni.FuncCall) -> bool {
     if syms is None {
         syms = set();
         for imp in mod.get_all_sub_nodes(uni.Import) {
-            tok = imp._source_context_token();
-            if tok is None or tok.name != Tok.KW_SERVER {
+            if not imp.is_sv_marked {
                 continue;
             }
 

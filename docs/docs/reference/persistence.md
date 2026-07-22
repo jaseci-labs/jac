@@ -1,6 +1,6 @@
 # Persistence & Schema Migration
 
-Jac apps persist their object-spatial graph automatically. Anything reachable from `root` survives across runs -- but the schema of your `node`/`obj`/`edge`/`walker` archetypes inevitably evolves: you add a field, rename one, change a type, rename a class. This page covers what happens when you do.
+Jac apps persist their object-spatial graph automatically, under one rule: whatever is reachable from `root` persists. The rule is called *persistence by reachability*, and the `root` node is the distinguished node anchoring every topology (each served user is issued a root of their own). But the schema of your `node`/`obj`/`edge`/`walker` archetypes inevitably evolves: you add a field, rename one, change a type, rename a class. This page covers what happens when you do.
 
 The short version: **edits never delete persisted data**. Schema changes are tolerated, type changes are coerced, and rows that genuinely can't be loaded land in a quarantine sidecar instead of being dropped. You inspect and rescue them with [`jac db`](cli/index.md#database-operations). For changes that need intent -- a field rename, a custom value transform -- archetypes declare their history in a [`__jac_schema__` hook](#declared-drift-rules-__jac_schema__) and the runtime repairs old documents on load.
 
@@ -25,6 +25,9 @@ walker create {
 After `jac run --entry create app.jac`, alice and bob live in `.jac/data/<app>.db`. A subsequent `jac run --entry dump app.jac` (with a walker that traverses `[-->]`) sees them.
 
 **Backends.** Out of the box, `SqliteMemory` writes to `.jac/data/<app>.db`. Configure a Mongo database under `[scale.*]` and set `MONGODB_URI`, then `jac install` pulls in `pymongo` and persistence flips to the [scale](plugins/jac-scale.md) `MongoBackend`. The storage swaps; the developer-facing model (this page) doesn't change.
+
+!!! info "Why reachability? Persistence is a predicate, not an event"
+    In the I/O conception, persistence is something a program *does* at a moment -- open a session, call save -- and forgetting to do it is a bug. Jac makes persistence a *predicate*: a datum is durable exactly while it stands in a reachable position, the same way a value is live under garbage collection exactly while it's reachable from the collector's roots. One rule serves both temporal directions -- reachability decides what survives the past (collection) and what survives into the future (persistence). The idea has a research lineage (it is the identification rule of *orthogonal persistence*, pioneered in PS-algol in the 1980s), with one deliberate restriction that makes it practical: Jac persists the **topology** (nodes and edges), not the whole language heap -- closures, walker-local state, and ordinary objects stay transient, because they are the moving parts, not the remembered world.
 
 ---
 
@@ -417,7 +420,7 @@ That means the same set of guarantees holds regardless of where your data lives:
 
 (Backend-specific extras layer on top: the Mongo backend adds read-repair write-back, quarantine reason codes, and startup auto-retry.)
 
-To supply a custom backend, see [Plugins → Custom persistence backends](plugin-authoring.md#custom-persistence-backends), which uses `JacRuntime.set_persistent_memory_provider`.
+**Custom persistence backends.** `TieredMemory` resolves its L3 store through `JacRuntime.get_persistent_memory(config)`, which returns `None` by default (so core falls back to `SqliteMemory`). To supply a custom backend, for example in an ejected standalone backend, call `JacRuntime.set_persistent_memory_provider(fn)` with a callable that takes the config dict and returns a `PersistentMemory` implementation.
 
 ---
 

@@ -1,9 +1,12 @@
 import json;
+import logging;
 import os;
 import shutil;
 import subprocess;
 import sys;
 import from pathlib { Path }
+
+glob logger = logging.getLogger(__name__);
 
 glob VENDOR_DIR_REL: str = "_vendor",
      WHEELS_SUBDIR: str = "wheels",
@@ -57,7 +60,29 @@ def download_wheels(
     }
     (rc, out) = _pip(args + specs);
     if rc != 0 {
-        return (False, out);
+        if platform_tag or python_version {
+            return (False, out);
+        }
+        return _build_wheels_native(specs, dest, out);
+    }
+    return (True, "");
+}
+
+
+def _build_wheels_native(
+    specs: list[str], dest: Path, download_err: str
+) -> tuple[bool, str] {
+    (rc, out) = _pip(["wheel", "--wheel-dir", str(dest)] + specs);
+    if rc != 0 {
+        return (False, f"{download_err}\n{out}");
+    }
+    import re;
+    built = sorted(set(re.findall(r"Building wheel for ([A-Za-z0-9_.\-]+)", out)));
+    if built {
+        logger.info(
+            f"Built wheel(s) from source: {', '.join(built)}; they target "
+            "the vendoring interpreter and architecture."
+        );
     }
     return (True, "");
 }

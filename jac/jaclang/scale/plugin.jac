@@ -594,14 +594,9 @@ class JacScalePlugin {
         child_env = dict(os.environ);
         child_env["JAC_SV_SIBLING"] = "1";
 
-        cmd = [
-            jac_executable(),
-            "start",
-            str(module_file),
-            "--port",
-            str(port),
-            "--no_client"
-        ];
+        cmd = [jac_executable()] + sv_client.headless_start_args(
+            str(module_file), port
+        );
 
         log_dir = base_dir / '.jac' / 'logs';
         log_dir.mkdir(parents=True, exist_ok=True);
@@ -663,12 +658,16 @@ class JacScalePlugin {
         }
     }
 
-    static def sv_service_call(module_name: str, func_name: str, args: dict) -> any {
+    static def sv_transport_available -> bool {
         try {
             import httpx;
+            return True;
         } except ImportError {
-            return None;
+            return False;
         }
+    }
+
+    static def sv_service_call(module_name: str, func_name: str, args: dict) -> any {
         import from jaclang.scale.runtime.transport.transport { http_transport }
         return http_transport().call_function(module_name, func_name, args);
     }
@@ -676,11 +675,6 @@ class JacScalePlugin {
     static def sv_walker_call(
         module_name: str, walker_name: str, args: dict, stub_cls: any
     ) -> any {
-        try {
-            import httpx;
-        } except ImportError {
-            return None;
-        }
         import from jaclang.scale.runtime.transport.transport { http_transport }
         return http_transport().call_walker(module_name, walker_name, args, stub_cls);
     }

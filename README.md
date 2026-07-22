@@ -2,7 +2,7 @@
   <img alt="Jac logo" src="docs/docs/assets/logo.png" width="80px">
 
   <h1>The Jac Programming Language</h1>
-  <h3>The Only Language You Need to Build Anything</h3>
+  <h3>One language, one compiler, the whole stack. No glue.</h3>
 
   <p>One self-contained binary. One Python-like language. AI, graphs, persistence, APIs, UIs, and cloud deployment as language features, compiled to Python bytecode, JavaScript, and native machine code.</p>
 
@@ -44,7 +44,7 @@
   </picture>
 </div>
 
-Jac is a programming language designed for humans and AI to build together. It compiles one clean, Python-like syntax to Python bytecode, JavaScript, and native machine code, with the entire PyPI, npm, and C ecosystems available without wrappers or interop layers. The things every real application needs (an LLM call, a data model that persists, a REST API, a frontend, a deployment story) are language features, not frameworks you assemble around it.
+Jac is a programming language designed for humans and AI to build together. It compiles one clean, Python-like syntax to Python bytecode, JavaScript, and native machine code, with the entire PyPI, npm, and C ecosystems available without wrappers or interop layers. The things every real application needs (an LLM call, a data model that persists, a REST API, a frontend, a deployment story) are language features, not frameworks you assemble around it. The design rests on two properties, *synechic* and *topokinetic*, defined below.
 
 ## Try Jac in 30 seconds
 
@@ -69,9 +69,69 @@ Open <http://localhost:8000> and scroll. Sign the guestbook -- it's backed by wa
 >
 > Prebuilt binaries ship for **macOS and Linux**; on Windows, use WSL (a native PowerShell installer is coming soon). See the [installation guide](https://docs.jaseci.org/quick-guide/install/) for versions, upgrading, and IDE setup.
 
+## Why Jac exists
+
+Open the repository of any well-built product and count what a maintainer must read: TypeScript, Python, SQL, and shell where the logic lives; JSX and CSS for presentation; JSON, TOML, YAML, Dockerfile, HCL, and dotenv for configuration. Twelve notations, five package ecosystems, two lockfiles. Nobody chose that. It is what precipitates when every architectural seam is also a change of language, type system, package manager, and serialization format.
+
+The deeper cost isn't the reading; it's that **no compiler can see across any of those seams**. Rename one field and TypeScript checks the frontend, Python checks the backend, and *nothing* checks the wire format, the ORM mapping, the OpenAPI document, or the prompt template between them. The whole-program type checker of the modern stack is `grep`. That is where bugs pool, and it's why teams staff a specialist per boundary: the org chart is a picture of the glue.
+
+<details>
+<summary><strong>The four-copy record (what one field costs in a conventional stack)</strong></summary>
+
+<br>
+
+One record, maintained in four notations, in one repository:
+
+```sql
+CREATE TABLE users (              -- migrations/0004_users.sql
+    id UUID PRIMARY KEY,
+    email TEXT NOT NULL UNIQUE,
+    display_name TEXT NOT NULL );
+```
+
+```python
+class User(Base):                  # app/models.py (ORM)
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(unique=True)
+    display_name: Mapped[str]
+
+class UserOut(BaseModel):          # app/schemas.py (API)
+    id: UUID
+    email: str
+    display_name: str
+```
+
+```typescript
+export interface User {           // web/src/types/user.ts
+    id: string;
+    email: string;
+    displayName: string;
+}
+```
+
+Four copies, three type systems, and one landmine: the fourth copy renames `display_name` to `displayName` in a serializer config nobody has reviewed since it was pasted in. Adding one field is a four-file, three-language change plus a migration, a regenerated client, and a cache-key bump -- and not one line of that diff implements behavior. In Jac the record is **one `node` declaration**; the compiler owns its representation in the store, on the wire, and in the browser.
+
+</details>
+
+None of this is required by computation. The pattern traces to two silent assumptions in the 1945 report that defined the stored-program computer: that *computation is stationary* (the site of processing is fixed, and data travels to it), and that *the machine is the program's world* (a program's semantics end at the edge of its process, so frontend and backend, managed and native, script and service are separate programs, joined by hand). Both were engineering defaults for a machine with one memory. Seventy years of habit made them look like laws. Jac is one bet against each.
+
+**Against the second assumption, Jac is synechic** (from the Greek *synecheia*, continuity): one continuous, checked medium across ecosystems, tiers, and toolchains. One language spans frontend, backend, and native code, and inherits each one's ecosystem (PyPI, npm, the C world) through a plain `import`, so one compiler sees both sides of every call: rename a field and every stale use (server, client, or native) is a **compile error**, not a production incident. Building the first production synechic language is the whole point of Jac.
+
+**Against the first assumption, Jac is topokinetic** (from the Greek *topos*, place, and *kinesis*, motion): the moving locus of computation is a language construct. In Jac's Object-Spatial Programming, data lives as a persistent topology of nodes and edges, and **walkers** carry computation through it, dispatched by arrival. Whatever is reachable from `root` persists: persistence is a predicate, not an event, and the database dissolves into the language.
+
+The two properties compound, and the dissolved database is the proof: continuity without motion still calls a store outside the language's semantics, and motion without continuity is a graph paradigm marooned in one process. Jac is the first language that is both. And the boundaries that *are* physics stay visible on purpose: a cross-tier call is `async` because the network is real, write conflicts surface as typed errors, and sharing data across users takes an explicit `grant`. Jac deletes the paperwork, not the physics.
+
+The full argument: [Why Jac Exists](https://docs.jaseci.org/quick-guide/why-jac/) and [The Two Ideas](https://docs.jaseci.org/quick-guide/ideas-behind-jac/), or the side-by-side count in [One App, Two Stacks](https://docs.jaseci.org/quick-guide/jac-vs-traditional-stack/).
+
 ## For AI agents
 
-Jac is designed for humans and AI to build together, and that includes your coding agent. The `jac` binary ships an MCP server with Jac validation, formatting, docs, and examples built in. Wire it into Claude Code with one command:
+Jac is designed for humans and AI to build together, and that includes your coding agent. The lowest-effort setup is no setup: point your agent at the `jac` CLI and tell it to figure it out. The binary is self-documenting -- `jac guide` prints curated reference guides on every corner of the language, and one command extracts them as Agent Skills your agent can load directly:
+
+```bash
+jac guide --export ~/.claude/skills
+```
+
+For a deeper integration, the `jac` binary also ships an MCP server with Jac validation, formatting, docs, and examples built in. Wire it into Claude Code with one command:
 
 ```bash
 claude mcp add jac -- jac mcp
@@ -91,9 +151,11 @@ Fetch https://raw.githubusercontent.com/jaseci-labs/jaseci/main/SKILL.md and fol
 
 LLM-friendly docs pointers live at [docs.jaseci.org/llms.txt](https://docs.jaseci.org/llms.txt), and `jac ai` gives you a Jac-fluent coding agent in your terminal with no setup at all.
 
+There's a structural reason agents do better in Jac than in a conventional stack. Glue code is most of what coding models emit (it dominates their training corpora), and glue is exactly the code no tool can verify -- cheap to generate, expensive to trust. In Jac there is less glue to write and one compiler that checks all of it: a whole full-stack app fits in one file that fits in a context window, and a cross-tier mistake an agent makes is a compile error instead of a production surprise. When authorship is abundant, the scarce resource is *jurisdiction*: the reach of the verifiers that can examine a change and say no, and Jac is built to leave no program point outside it. Even `sem` annotations do triple duty: prompt material for `by llm()`, documentation for humans, context for your agent.
+
 ## One binary, your whole toolchain
 
-One download replaces the interpreter, the JS runtime, the compilers and linker, the package managers, the server, and the deployer:
+One download replaces the interpreter, the JS runtime, the compilers and linker, the package managers, the server, and the deployer. At its center is a **polypiler**: a compiler whose unit of compilation is the whole polyglot application and whose targets are ecosystems rather than instruction sets:
 
 <div align="center">
   <picture>
@@ -170,7 +232,7 @@ One language and one skill set produce every kind of software. Each row is one c
 | WebAssembly in the browser | `jac build` in a `web-static` project | [Native pathway](https://docs.jaseci.org/reference/language/native-pathway/) |
 | Kubernetes deployment | `jac start --scale` | [Deploy & scale](https://docs.jaseci.org/reference/plugins/jac-scale/) |
 
-Proof it's real: a [playable chess engine](https://docs.jaseci.org/tutorials/native/chess/) compiled to a standalone binary, a [raylib game running as WebAssembly](jac/examples/raylib_shooter/web) in the browser, and [littleX](jac/examples/littleX), a full Twitter-style social app, backend to frontend, in about 1,100 lines of Jac.
+Proof it's real: a [playable chess engine](https://docs.jaseci.org/tutorials/native/chess/) compiled to a standalone binary, a [raylib game running as WebAssembly](jac/examples/raylib_shooter/web) in the browser, and [littleX](jac/examples/littleX), a full Twitter-style social app. littleX's entire backend -- 4 node types, 4 edge types, and 20 walkers that serve as business logic, REST endpoints, persistence, and authorization at once -- is **2 files and 475 lines**; the whole app, frontend included, is 37 Jac files with exactly one 65-line config file and **zero glue artifacts**: no route tables, no ORM models, no migrations, no serializers, no auth middleware. Run `wc -l` on it and check.
 
 ## And build it better
 
@@ -191,7 +253,7 @@ Each of those deliverables is a **project kind**: `jac create myapp --kind <kind
 | `desktop` 🧪 | Native desktop binary | The same app wrapped in the **OS webview** as one compiled binary -- no Electron, no Rust, no PyInstaller |
 | `mobile` 🧪 | Android / iOS app | The same `cl` bundle wrapped by Capacitor, or true-native React Native via mobUI -- JS tooling runs on the bundled Bun, no Node.js |
 
-The full cookbook, with a small working example of each: [What You Can Build](https://docs.jaseci.org/quick-guide/project-kinds/).
+The full matrix, with a working recipe and guided track for each: [What You Can Build](https://docs.jaseci.org/quick-guide/project-kinds/).
 
 ## AI, graphs, and UIs are language features
 
@@ -208,7 +270,7 @@ with entry {
 }
 ```
 
-No prompt, no parsing, no API glue. The compiler constructs the prompt from your function's name, argument names, and types (plus optional `sem` annotations), and the return type is an enforced output schema. This is [Meaning-Typed Programming](https://arxiv.org/abs/2405.08965). Declare your model once in `jac.toml`, run `jac install byllm`, and use any [LiteLLM-compatible provider](https://docs.litellm.ai/docs/providers), or go fully local with `jac install 'byllm[local]'`. [Learn more →](https://docs.jaseci.org/reference/plugins/byllm/)
+No prompt, no parsing, no API glue. The compiler constructs the prompt from your function's name, argument names, and types (plus optional `sem` annotations), and the return type is an enforced output schema. These are **meaning types**, the constructs of [Meaning-Typed Programming](https://arxiv.org/abs/2405.08965). Declare your model once in `jac.toml`, run `jac install byllm`, and use any [LiteLLM-compatible provider](https://docs.litellm.ai/docs/providers), or go fully local with `jac install 'byllm[local]'`. [Learn more →](https://docs.jaseci.org/reference/plugins/byllm/)
 
 ### Your data is a graph, and your API writes itself
 
@@ -239,7 +301,7 @@ walker:pub list_tasks {
 jac start api.jac --no-client   # POST /walker/add_task · /walker/list_tasks
 ```
 
-Model your domain as nodes and edges; send **walkers** to traverse it. Mark a walker `:pub` and `jac start` turns it into a REST endpoint: request bodies map onto its fields, `report` becomes the JSON response, Swagger docs appear at `/docs`, and every user gets their own isolated, persistent graph. No ORM, no schema migrations, no session plumbing. [Graphs & walkers →](https://docs.jaseci.org/tutorials/language/osp/)
+Model your domain as nodes and edges, and send **walkers** (mobile computation, dispatched by arrival) to traverse it: this is **Object-Spatial Programming**. Mark a walker `:pub` and `jac start` turns it into a REST endpoint: request bodies map onto its fields, `report` becomes the JSON response, Swagger docs appear at `/docs`, and every user gets their own isolated, persistent graph. Whatever is reachable from `root` persists. No ORM, no schema migrations, no session plumbing. [Object-Spatial Programming →](https://docs.jaseci.org/tutorials/language/osp/)
 
 ### Frontend and backend in one file
 
@@ -277,7 +339,7 @@ cl def:pub app -> JsxElement {
 }
 ```
 
-Code in `cl` compiles to a React/JSX bundle for the browser; everything else compiles to Python for the server. That `await add_todo(...)` in the click handler is a real RPC: the compiler generates the HTTP call, serialization, and shared types across the boundary. `jac start` serves it; `jac start --dev` gives you hot reload. [Full-stack tutorial →](https://docs.jaseci.org/build/fullstack-web/)
+Code in `cl` (the client **codespace**) compiles to a React/JSX bundle for the browser; everything else compiles to Python for the server. That `await add_todo(...)` in the click handler is a real RPC: the compiler generates the HTTP call, serialization, and shared types across the boundary. `jac start` serves it; `jac start --dev` gives you hot reload. [Full-stack tutorial →](https://docs.jaseci.org/build/fullstack-web/)
 
 For all three ideas in one file (an AI categorizer, a native-compiled scoring function, a persistent graph, and a React UI), see [`jac/examples/mini_todo`](jac/examples/mini_todo).
 
@@ -288,7 +350,7 @@ jac start main.jac           # local: REST API + auth + Swagger + persistence
 jac start main.jac --scale   # cloud: Kubernetes with Redis, MongoDB, load balancing
 ```
 
-Your code doesn't change when you outgrow one machine. The `scale` subsystem ships inside the binary: `--scale` builds the images, provisions Redis and MongoDB, and deploys to Kubernetes with health checks. Zero Dockerfiles, zero YAML, zero DevOps. [Deploy & scale →](https://docs.jaseci.org/reference/plugins/jac-scale/)
+Your program text does not change with the shape of its deployment: this is **scale invariance**, and the `scale` subsystem that delivers it ships inside the binary. `--scale` builds the images, provisions Redis and MongoDB, and deploys to Kubernetes with health checks. You write no Dockerfile and no YAML, and what stays in your code is only the physics: latency, failure, and cost surface as typed semantics. [Deploy & scale →](https://docs.jaseci.org/reference/plugins/jac-scale/)
 
 ## Learn Jac
 
@@ -314,7 +376,13 @@ The official VS Code extension lives at [jaseci-labs/jac-vscode](https://github.
 
 ## Research
 
-Jac's core ideas are peer-reviewed research, not just design taste. The project grew out of research at the University of Michigan and is now developed in the open by a global community. Citing Jac in your own work? GitHub's "Cite this repository" button (powered by [CITATION.cff](CITATION.cff)) gives a ready-made reference.
+Jac's core ideas are peer-reviewed research, not just design taste:
+
+- **Object-Spatial Programming** -- the formal model behind nodes, edges, and walkers: mobile computation over a persistent typed topology ([arXiv:2503.15812](https://arxiv.org/abs/2503.15812))
+- **MTP: A Meaning-Typed Language Abstraction for AI-Integrated Programming** -- `by llm()` and `sem`, evaluated against hand-built prompt pipelines: comparable-or-better accuracy with substantially less code and lower token cost (OOPSLA 2025, [arXiv:2405.08965](https://arxiv.org/abs/2405.08965))
+- **The Jaseci Programming Paradigm and Runtime Stack** -- the production lineage: walkers served as scale-out endpoints in commercial products (IEEE Computer Architecture Letters, 2023)
+
+A book-length treatment, developing the synechic and topokinetic language classes and the theory beneath Jac's design, is in preparation. The project grew out of research at the University of Michigan and is now developed in the open by a global community. Citing Jac in your own work? GitHub's "Cite this repository" button (powered by [CITATION.cff](CITATION.cff)) gives a ready-made reference. More on [docs.jaseci.org: Research & Papers](https://docs.jaseci.org/community/research/).
 
 ## Built with Jac
 
