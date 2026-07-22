@@ -6,6 +6,79 @@ impl NaIRGenPass._register_globals(module: uni.Module) -> None {
     }
 }
 
+impl NaIRGenPass._register_entry_globals(module: uni.Module) -> None {
+    candidates: dict = {};
+    dropped: set = set();
+    for stmt in ModuleCodegenPass.iter_context_stmts(module, CodeContext.NATIVE) {
+        if not isinstance(stmt, uni.ModuleCode) {
+            continue;
+        }
+        for assign in stmt.get_all_sub_nodes(typ=uni.Assignment) {
+            if assign.aug_op is not None {
+                continue;
+            }
+            targets = assign.target
+                if isinstance(assign.target, (list, tuple))
+                else [(assign.target)];
+            for target in targets {
+                if (
+                    not isinstance(target, uni.NameAtom)
+                    or target.sym is None
+                    or target.sym.storage != uni.SymbolStorage.MODULE_GLOBAL
+                ) {
+                    continue;
+                }
+                var_name = self._get_name(target);
+                if (
+                    var_name is None
+                    or var_name in self.global_vars
+                    or var_name in dropped
+                ) {
+                    continue;
+                }
+                var_type: (ir.Type | None) = None;
+                if isinstance(target, uni.Expr) {
+                    try {
+                        var_type = self._lower_type(target.type);
+                    } except Exception {
+                        var_type = None;
+                    }
+                }
+                if var_type is None and assign.value is not None {
+                    var_type = self._infer_global_init_type(assign.value);
+                }
+                if var_type is None or isinstance(var_type, ir.VoidType) {
+                    dropped.add(var_name);
+                    candidates.pop(var_name, None);
+                    continue;
+                }
+                prev = candidates.get(var_name);
+                if prev is not None and prev != var_type {
+                    dropped.add(var_name);
+                    candidates.pop(var_name, None);
+                    continue;
+                }
+                candidates[var_name] = var_type;
+            }
+        }
+    }
+    for (var_name, var_type) in candidates.items() {
+        try {
+            global_var = ir.GlobalVariable(self.llvm_module, var_type, name=var_name);
+        } except Exception as _dup_err {
+            continue;
+        }
+        global_var.linkage = "internal";
+        global_var.initializer = ir.Constant(var_type, None);
+        self.global_vars[var_name] = global_var;
+        self.global_var_types[var_name] = var_type;
+        self._global_origins[var_name] = module.loc.mod_path
+            if module?.loc
+            else "(current module)";
+        self.has_native_code = True;
+    }
+}
+
 impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
     for assign in nd.assignments {
         targets = assign.target

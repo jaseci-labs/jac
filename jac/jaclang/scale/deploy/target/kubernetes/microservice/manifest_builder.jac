@@ -843,10 +843,11 @@ obj MicroserviceManifestBuilder {
         }
         gw_prefix = "";
         client_entry = self._client_entry();
+
         if client_entry {
             gw_prefix = (
                 f'if [ ! -f .jac/client/dist/index.html ]; then '
-                f'jac build "{client_entry}" '
+                f'jac build "{client_entry}" --client web '
                 f'|| echo "[jac-scale] client build failed; / will 404"; '
                 f'fi; '
             );

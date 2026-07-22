@@ -29,7 +29,7 @@ Jac-client supports two routing approaches:
 
 ## File-Based Routing (Recommended)
 
-Create a `pages/` directory with `.jac` files that automatically become routes.
+Create a `pages/` directory with `.jac` files whose exports return `JsxPage`; each becomes a route.
 
 ### Project Structure
 
@@ -68,17 +68,15 @@ myapp/
 
 ### Basic Page
 
-Each page file exports a `page` function:
+A page is any export that returns `JsxPage` (the name is free); a layout returns `JsxLayout`. `JsxPage` and `JsxLayout` are ambient builtin types, no import needed:
 
 ```jac
 # pages/about.jac
-cl {
-    def:pub page() -> JsxElement {
-        return <div>
-            <h1>About Us</h1>
-            <p>Learn more about our company.</p>
-        </div>;
-    }
+def:pub About() -> JsxPage {
+    return <div>
+        <h1>About Us</h1>
+        <p>Learn more about our company.</p>
+    </div>;
 }
 ```
 
@@ -88,34 +86,32 @@ Use square brackets for dynamic URL segments:
 
 ```jac
 # pages/users/[id].jac
-cl import from "@jac/runtime" { Link, useParams }
+import from "@jac/runtime" { Link, useParams }
 
-cl {
-    def:pub page() -> JsxElement {
-        params = useParams();
-        userId = params["id"];
+def:pub UserDetail() -> JsxPage {
+    params = useParams();
+    userId = params["id"];
 
-        # Mock data lookup
-        users = {
-            "1": {"name": "Alice", "role": "Admin"},
-            "2": {"name": "Bob", "role": "Developer"}
-        };
+    # Mock data lookup
+    users = {
+        "1": {"name": "Alice", "role": "Admin"},
+        "2": {"name": "Bob", "role": "Developer"}
+    };
 
-        user = users[userId];
+    user = users[userId];
 
-        if not user {
-            return <div>
-                <h1>User Not Found</h1>
-                <Link to="/users">Back to Users</Link>
-            </div>;
-        }
-
+    if not user {
         return <div>
-            <Link to="/users">← Back</Link>
-            <h1>User: {user["name"]}</h1>
-            <p>Role: {user["role"]}</p>
+            <h1>User Not Found</h1>
+            <Link to="/users">Back to Users</Link>
         </div>;
     }
+
+    return <div>
+        <Link to="/users">← Back</Link>
+        <h1>User: {user["name"]}</h1>
+        <p>Role: {user["role"]}</p>
+    </div>;
 }
 ```
 
@@ -123,19 +119,17 @@ cl {
 
 ```jac
 # pages/posts/[slug].jac
-cl import from "@jac/runtime" { Link, useParams }
+import from "@jac/runtime" { Link, useParams }
 
-cl {
-    def:pub page() -> JsxElement {
-        params = useParams();
-        slug = params["slug"];  # e.g., "getting-started-with-jac"
+def:pub PostDetail() -> JsxPage {
+    params = useParams();
+    slug = params["slug"];  # e.g., "getting-started-with-jac"
 
-        return <article>
-            <Link to="/posts">← All Posts</Link>
-            <h1>Blog Post</h1>
-            <p>Slug: {slug}</p>
-        </article>;
-    }
+    return <article>
+        <Link to="/posts">← All Posts</Link>
+        <h1>Blog Post</h1>
+        <p>Slug: {slug}</p>
+    </article>;
 }
 ```
 
@@ -145,16 +139,14 @@ Use `[...param]` for catch-all routes (404 pages, docs, etc.):
 
 ```jac
 # pages/[...notFound].jac
-cl import from "@jac/runtime" { Link }
+import from "@jac/runtime" { Link }
 
-cl {
-    def:pub page() -> JsxElement {
-        return <div style={{"textAlign": "center", "padding": "2rem"}}>
-            <h1>404 - Page Not Found</h1>
-            <p>The page you are looking for does not exist.</p>
-            <Link to="/">Back to Home</Link>
-        </div>;
-    }
+def:pub NotFound() -> JsxPage {
+    return <div style={{"textAlign": "center", "padding": "2rem"}}>
+        <h1>404 - Page Not Found</h1>
+        <p>The page you are looking for does not exist.</p>
+        <Link to="/">Back to Home</Link>
+    </div>;
 }
 ```
 
@@ -185,19 +177,17 @@ Create `layout.jac` to wrap pages with shared UI:
 
 ```jac
 # pages/layout.jac
-cl import from "@jac/runtime" { Outlet }
-cl import from ..components.navigation { Navigation }
+import from "@jac/runtime" { Outlet }
+import from ..components.navigation { Navigation }
 
-cl {
-    def:pub layout() -> JsxElement {
-        return <>
-            <Navigation />
-            <main style={{"maxWidth": "960px", "margin": "0 auto"}}>
-                <Outlet />  # Child routes render here
-            </main>
-            <footer>Footer content</footer>
-        </>;
-    }
+def:pub RootShell() -> JsxLayout {
+    return <>
+        <Navigation />
+        <main style={{"maxWidth": "960px", "margin": "0 auto"}}>
+            <Outlet />  # Child routes render here
+        </main>
+        <footer>Footer content</footer>
+    </>;
 }
 ```
 
@@ -218,18 +208,16 @@ cl {
 For explicit route configuration, import from `@jac/runtime`:
 
 ```jac
-cl import from "@jac/runtime" { Router, Routes, Route, Link }
+import from "@jac/runtime" { Router, Routes, Route, Link }
 
-cl {
-    def:pub app() -> JsxElement {
-        return <Router>
-            <Routes>
-                <Route path="/" element={<Home />} />
-                <Route path="/about" element={<About />} />
-                <Route path="/contact" element={<Contact />} />
-            </Routes>
-        </Router>;
-    }
+def:pub app() -> JsxElement {
+    return <Router>
+        <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/about" element={<About />} />
+            <Route path="/contact" element={<Contact />} />
+        </Routes>
+    </Router>;
 }
 ```
 
@@ -240,61 +228,57 @@ cl {
 ### Setting Up Routes
 
 ```jac
-cl import from "@jac/runtime" { Router, Routes, Route, Link }
+import from "@jac/runtime" { Router, Routes, Route, Link }
 
-cl {
-    def:pub Home() -> JsxElement {
-        return <div>
-            <h1>Home Page</h1>
-            <p>Welcome to our site!</p>
-        </div>;
-    }
+def:pub Home() -> JsxElement {
+    return <div>
+        <h1>Home Page</h1>
+        <p>Welcome to our site!</p>
+    </div>;
+}
 
-    def:pub About() -> JsxElement {
-        return <div>
-            <h1>About Us</h1>
-            <p>Learn more about our company.</p>
-        </div>;
-    }
+def:pub About() -> JsxElement {
+    return <div>
+        <h1>About Us</h1>
+        <p>Learn more about our company.</p>
+    </div>;
+}
 
-    def:pub Contact() -> JsxElement {
-        return <div>
-            <h1>Contact</h1>
-            <p>Get in touch with us.</p>
-        </div>;
-    }
+def:pub Contact() -> JsxElement {
+    return <div>
+        <h1>Contact</h1>
+        <p>Get in touch with us.</p>
+    </div>;
+}
 
-    def:pub app() -> JsxElement {
-        return <Router>
-            <nav>
-                <Link to="/">Home</Link>
-                <Link to="/about">About</Link>
-                <Link to="/contact">Contact</Link>
-            </nav>
+def:pub app() -> JsxElement {
+    return <Router>
+        <nav>
+            <Link to="/">Home</Link>
+            <Link to="/about">About</Link>
+            <Link to="/contact">Contact</Link>
+        </nav>
 
-            <main>
-                <Routes>
-                    <Route path="/" element={<Home />} />
-                    <Route path="/about" element={<About />} />
-                    <Route path="/contact" element={<Contact />} />
-                </Routes>
-            </main>
-        </Router>;
-    }
+        <main>
+            <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/about" element={<About />} />
+                <Route path="/contact" element={<Contact />} />
+            </Routes>
+        </main>
+    </Router>;
 }
 ```
 
 ### Link vs Anchor
 
 ```jac
-cl {
-    # Use Link for internal navigation, anchor for external
-    def:pub NavExample() -> JsxElement {
-        return <div>
-            <Link to="/about">About</Link>
-            <a href="https://example.com">External Site</a>
-        </div>;
-    }
+# Use Link for internal navigation, anchor for external
+def:pub NavExample() -> JsxElement {
+    return <div>
+        <Link to="/about">About</Link>
+        <a href="https://example.com">External Site</a>
+    </div>;
 }
 ```
 
@@ -314,66 +298,60 @@ pages/users/[id].jac  # Matches /users/:id
 
 ```jac
 # pages/users/[id].jac
-cl import from "@jac/runtime" { useParams }
+import from "@jac/runtime" { useParams }
 
-cl {
-    def:pub page() -> JsxElement {
-        params = useParams();
-        user_id = params["id"];
+def:pub UserDetail() -> JsxPage {
+    params = useParams();
+    user_id = params["id"];
 
-        return <div>
-            <h1>User Profile</h1>
-            <p>Viewing user: {user_id}</p>
-        </div>;
-    }
+    return <div>
+        <h1>User Profile</h1>
+        <p>Viewing user: {user_id}</p>
+    </div>;
 }
 ```
 
 **Manual Route Approach:**
 
 ```jac
-cl import from "@jac/runtime" { Router, Routes, Route, useParams }
+import from "@jac/runtime" { Router, Routes, Route, useParams }
 
-cl {
-    def:pub UserProfile() -> JsxElement {
-        params = useParams();
-        user_id = params["id"];
+def:pub UserProfile() -> JsxElement {
+    params = useParams();
+    user_id = params["id"];
 
-        return <div>
-            <h1>User Profile</h1>
-            <p>Viewing user: {user_id}</p>
-        </div>;
-    }
+    return <div>
+        <h1>User Profile</h1>
+        <p>Viewing user: {user_id}</p>
+    </div>;
+}
 
-    def:pub app() -> JsxElement {
-        return <Router>
-            <Routes>
-                <Route path="/user/:id" element={<UserProfile />} />
-            </Routes>
-        </Router>;
-    }
+def:pub app() -> JsxElement {
+    return <Router>
+        <Routes>
+            <Route path="/user/:id" element={<UserProfile />} />
+        </Routes>
+    </Router>;
 }
 ```
 
 ### Multiple Parameters
 
 ```jac
-cl import from "@jac/runtime" { useParams }
+import from "@jac/runtime" { useParams }
 
-cl {
-    def:pub BlogPost() -> JsxElement {
-        params = useParams();
+def:pub BlogPost() -> JsxElement {
+    params = useParams();
 
-        return <div>
-            <p>Category: {params["category"]}</p>
-            <p>Post ID: {params["postId"]}</p>
-        </div>;
-    }
-
-    # Route: /blog/:category/:postId
-    # URL: /blog/tech/123
-    # params = {"category": "tech", "postId": "123"}
+    return <div>
+        <p>Category: {params["category"]}</p>
+        <p>Post ID: {params["postId"]}</p>
+    </div>;
 }
+
+# Route: /blog/:category/:postId
+# URL: /blog/tech/123
+# params = {"category": "tech", "postId": "123"}
 ```
 
 ---
@@ -397,68 +375,64 @@ pages/
 
 ```jac
 # pages/dashboard/layout.jac
-cl import from "@jac/runtime" { Outlet, Link }
+import from "@jac/runtime" { Outlet, Link }
 
-cl {
-    def:pub layout() -> JsxElement {
-        return <div className="dashboard">
-            <aside>
-                <Link to="/dashboard">Overview</Link>
-                <Link to="/dashboard/settings">Settings</Link>
-                <Link to="/dashboard/profile">Profile</Link>
-            </aside>
+def:pub DashboardShell() -> JsxLayout {
+    return <div className="dashboard">
+        <aside>
+            <Link to="/dashboard">Overview</Link>
+            <Link to="/dashboard/settings">Settings</Link>
+            <Link to="/dashboard/profile">Profile</Link>
+        </aside>
 
-            <main>
-                <Outlet />
-            </main>
-        </div>;
-    }
+        <main>
+            <Outlet />
+        </main>
+    </div>;
 }
 ```
 
 ### Layout Pattern (Manual)
 
 ```jac
-cl import from "@jac/runtime" { Router, Routes, Route, Outlet, Link }
+import from "@jac/runtime" { Router, Routes, Route, Outlet, Link }
 
-cl {
-    def:pub DashboardLayout() -> JsxElement {
-        return <div className="dashboard">
-            <aside>
-                <Link to="/dashboard">Overview</Link>
-                <Link to="/dashboard/settings">Settings</Link>
-                <Link to="/dashboard/profile">Profile</Link>
-            </aside>
+def:pub DashboardLayout() -> JsxElement {
+    return <div className="dashboard">
+        <aside>
+            <Link to="/dashboard">Overview</Link>
+            <Link to="/dashboard/settings">Settings</Link>
+            <Link to="/dashboard/profile">Profile</Link>
+        </aside>
 
-            <main>
-                <Outlet />
-            </main>
-        </div>;
-    }
+        <main>
+            <Outlet />
+        </main>
+    </div>;
+}
 
-    def:pub DashboardHome() -> JsxElement {
-        return <h2>Dashboard Overview</h2>;
-    }
+def:pub DashboardHome() -> JsxElement {
+    return <h2>Dashboard Overview</h2>;
+}
 
-    def:pub DashboardSettings() -> JsxElement {
-        return <h2>Settings</h2>;
-    }
+def:pub DashboardSettings() -> JsxElement {
+    return <h2>Settings</h2>;
+}
 
-    def:pub DashboardProfile() -> JsxElement {
-        return <h2>Profile</h2>;
-    }
+def:pub DashboardProfile() -> JsxElement {
+    return <h2>Profile</h2>;
+}
 
-    def:pub app() -> JsxElement {
-        return <Router>
-            <Routes>
-                <Route path="/dashboard" element={<DashboardLayout />}>
-                    <Route index element={<DashboardHome />} />
-                    <Route path="settings" element={<DashboardSettings />} />
-                    <Route path="profile" element={<DashboardProfile />} />
-                </Route>
-            </Routes>
-        </Router>;
-    }
+def:pub app() -> JsxElement {
+    return <Router>
+        <Routes>
+            <Route path="/dashboard" element={<DashboardLayout />}>
+                <Route index element={<DashboardHome />} />
+                <Route path="settings" element={<DashboardSettings />} />
+                <Route path="profile" element={<DashboardProfile />} />
+            </Route>
+        </Routes>
+    </Router>;
 }
 ```
 
@@ -469,64 +443,60 @@ cl {
 ### useNavigate Hook
 
 ```jac
-cl import from "@jac/runtime" { useNavigate }
+import from "@jac/runtime" { useNavigate }
 
-cl {
-    def:pub LoginForm() -> JsxElement {
-        has email: str = "";
-        has password: str = "";
+def:pub LoginForm() -> JsxElement {
+    has email: str = "";
+    has password: str = "";
 
-        navigate = useNavigate();
+    navigate = useNavigate();
 
-        async def handle_login() -> None {
-            success = await do_login(email, password);
+    async def handle_login() -> None {
+        success = await do_login(email, password);
 
-            if success {
-                # Redirect to dashboard
-                navigate("/dashboard");
-            }
+        if success {
+            # Redirect to dashboard
+            navigate("/dashboard");
         }
-
-        return <form>
-            <input
-                value={email}
-                onChange={lambda (e: ChangeEvent) { email = e.target.value; }}
-            />
-            <button onClick={lambda -> None { handle_login(); }}>
-                Login
-            </button>
-        </form>;
     }
+
+    return <form>
+        <input
+            value={email}
+            onChange={lambda (e: ChangeEvent) { email = e.target.value; }}
+        />
+        <button onClick={lambda -> None { handle_login(); }}>
+            Login
+        </button>
+    </form>;
 }
 ```
 
 ### Navigation Options
 
 ```jac
-cl import from "@jac/runtime" { useNavigate }
+import from "@jac/runtime" { useNavigate }
 
-cl {
-    def:pub NavExample() -> JsxElement {
-        navigate = useNavigate();
+def:pub NavExample() -> JsxElement {
+    navigate = useNavigate();
 
-        return <div>
-            <button onClick={lambda -> None { navigate("/home"); }}>
-                Go Home
-            </button>
+    return <div>
+        <button onClick={lambda -> None { navigate("/home"); }}>
+            Go Home
+        </button>
 
-            <button onClick={lambda -> None { navigate("/login", {"replace": True}); }}>
-                Login (replace)
-            </button>
+        <button onClick={lambda -> None { navigate("/login", {"replace": True}); }}>
+            Login (replace)
+        </button>
 
-            <button onClick={lambda -> None { navigate(-1); }}>
-                Back
-            </button>
+        <button onClick={lambda -> None { navigate(-1); }}>
+            Back
+        </button>
 
-            <button onClick={lambda -> None { navigate(1); }}>
-                Forward
-            </button>
-        </div>;
-    }
+        <button onClick={lambda -> None { navigate(1); }}>
+            Forward
+        </button>
+    </div>;
 }
 ```
 
@@ -540,14 +510,12 @@ For file-based routing, use the built-in `AuthGuard` component in a layout file:
 
 ```jac
 # pages/(protected)/layout.jac
-cl import from "@jac/runtime" { AuthGuard, Outlet }
+import from "@jac/runtime" { AuthGuard, Outlet }
 
-cl {
-    def:pub layout() -> JsxElement {
-        return <AuthGuard redirect="/login">
-            <Outlet />
-        </AuthGuard>;
-    }
+def:pub ProtectedShell() -> JsxLayout {
+    return <AuthGuard redirect="/login">
+        <Outlet />
+    </AuthGuard>;
 }
 ```
 
@@ -556,25 +524,23 @@ Any pages in the `(protected)` group will require authentication.
 ### Custom Protected Routes
 
 ```jac
-cl import from "@jac/runtime" { useNavigate, jacIsLoggedIn }
+import from "@jac/runtime" { useNavigate, jacIsLoggedIn }
 
-cl {
-    def:pub ProtectedRoute(children: any = None) -> JsxElement {
-        navigate = useNavigate();
-        isAuthenticated = jacIsLoggedIn();
+def:pub ProtectedRoute(children: any = None) -> JsxElement {
+    navigate = useNavigate();
+    isAuthenticated = jacIsLoggedIn();
 
-        can with entry {
-            if not isAuthenticated {
-                navigate("/login", {"replace": True});
-            }
-        }
-
+    can with entry {
         if not isAuthenticated {
-            return <div>Redirecting...</div>;
+            navigate("/login", {"replace": True});
         }
-
-        return <div>{children}</div>;
     }
+
+    if not isAuthenticated {
+        return <div>Redirecting...</div>;
+    }
+
+    return <div>{children}</div>;
 }
 ```
 
@@ -587,41 +553,39 @@ cl {
 Access query parameters using `useLocation` and standard URL parsing:
 
 ```jac
-cl import from "@jac/runtime" { useLocation, useNavigate }
+import from "@jac/runtime" { useLocation, useNavigate }
 
-cl {
-    def:pub SearchResults() -> JsxElement {
-        location = useLocation();
-        navigate = useNavigate();
+def:pub SearchResults() -> JsxElement {
+    location = useLocation();
+    navigate = useNavigate();
 
-        # Parse query parameters from location.search
-        searchParams = URLSearchParams(location.search);
-        query = searchParams.get("q") or "";
-        page = int(searchParams.get("page") or "1");
+    # Parse query parameters from location.search
+    searchParams = URLSearchParams(location.search);
+    query = searchParams.get("q") or "";
+    page = int(searchParams.get("page") or "1");
 
-        def updatePage(newPage: int) -> None {
-            navigate(f"/search?q={query}&page={newPage}");
-        }
-
-        return <div>
-            <h2>Results for: {query}</h2>
-            <p>Page: {page}</p>
-
-            <button
-                onClick={lambda -> None { updatePage(page - 1); }}
-                disabled={page <= 1}
-            >
-                Previous
-            </button>
-
-            <button onClick={lambda -> None { updatePage(page + 1); }}>
-                Next
-            </button>
-        </div>;
+    def updatePage(newPage: int) -> None {
+        navigate(f"/search?q={query}&page={newPage}");
     }
 
-    # URL: /search?q=hello&page=2
+    return <div>
+        <h2>Results for: {query}</h2>
+        <p>Page: {page}</p>
+
+        <button
+            onClick={lambda -> None { updatePage(page - 1); }}
+            disabled={page <= 1}
+        >
+            Previous
+        </button>
+
+        <button onClick={lambda -> None { updatePage(page + 1); }}>
+            Next
+        </button>
+    </div>;
 }
+
+# URL: /search?q=hello&page=2
 ```
 
 ---
@@ -629,26 +593,24 @@ cl {
 ## 404 Not Found
 
 ```jac
-cl import from "@jac/runtime" { Router, Routes, Route, Link }
+import from "@jac/runtime" { Router, Routes, Route, Link }
 
-cl {
-    def:pub NotFound() -> JsxElement {
-        return <div className="error-page">
-            <h1>404</h1>
-            <p>Page not found</p>
-            <Link to="/">Go Home</Link>
-        </div>;
-    }
+def:pub NotFound() -> JsxElement {
+    return <div className="error-page">
+        <h1>404</h1>
+        <p>Page not found</p>
+        <Link to="/">Go Home</Link>
+    </div>;
+}
 
-    def:pub app() -> JsxElement {
-        return <Router>
-            <Routes>
-                <Route path="/" element={<Home />} />
-                <Route path="/about" element={<About />} />
-                <Route path="*" element={<NotFound />} />
-            </Routes>
-        </Router>;
-    }
+def:pub app() -> JsxElement {
+    return <Router>
+        <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/about" element={<About />} />
+            <Route path="*" element={<NotFound />} />
+        </Routes>
+    </Router>;
 }
 ```
 
@@ -659,32 +621,30 @@ cl {
 Use `useLocation` with `Link` to create active link styling:
 
 ```jac
-cl import from "@jac/runtime" { Link, useLocation }
+import from "@jac/runtime" { Link, useLocation }
 
-cl {
-    def:pub Navigation() -> JsxElement {
-        location = useLocation();
+def:pub Navigation() -> JsxElement {
+    location = useLocation();
 
-        def isActive(path: str) -> bool {
-            return location.pathname == path;
-        }
-
-        return <nav>
-            <Link
-                to="/"
-                className={"nav-link " + ("active" if isActive("/") else "")}
-            >
-                Home
-            </Link>
-
-            <Link
-                to="/about"
-                className={"nav-link " + ("active" if isActive("/about") else "")}
-            >
-                About
-            </Link>
-        </nav>;
+    def isActive(path: str) -> bool {
+        return location.pathname == path;
     }
+
+    return <nav>
+        <Link
+            to="/"
+            className={"nav-link " + ("active" if isActive("/") else "")}
+        >
+            Home
+        </Link>
+
+        <Link
+            to="/about"
+            className={"nav-link " + ("active" if isActive("/about") else "")}
+        >
+            About
+        </Link>
+    </nav>;
 }
 ```
 
@@ -706,103 +666,101 @@ cl {
 ## Complete Example
 
 ```jac
-cl import from "@jac/runtime" { Router, Routes, Route, Link, Outlet, useParams, useNavigate }
+import from "@jac/runtime" { Router, Routes, Route, Link, Outlet, useParams, useNavigate }
 
-cl {
-    # Layout
-    def:pub Layout() -> JsxElement {
-        return <div className="app">
-            <header>
-                <nav>
-                    <Link to="/">Home</Link>
-                    <Link to="/products">Products</Link>
-                    <Link to="/about">About</Link>
-                </nav>
-            </header>
+# Layout
+def:pub Layout() -> JsxElement {
+    return <div className="app">
+        <header>
+            <nav>
+                <Link to="/">Home</Link>
+                <Link to="/products">Products</Link>
+                <Link to="/about">About</Link>
+            </nav>
+        </header>
 
-            <main>
-                <Outlet />
-            </main>
+        <main>
+            <Outlet />
+        </main>
 
-            <footer>
-                <p>© 2024 My App</p>
-            </footer>
-        </div>;
-    }
+        <footer>
+            <p>© 2024 My App</p>
+        </footer>
+    </div>;
+}
 
-    # Pages
-    def:pub Home() -> JsxElement {
-        return <div>
-            <h1>Welcome!</h1>
-            <Link to="/products">Browse Products</Link>
-        </div>;
-    }
+# Pages
+def:pub Home() -> JsxElement {
+    return <div>
+        <h1>Welcome!</h1>
+        <Link to="/products">Browse Products</Link>
+    </div>;
+}
 
-    def:pub Products() -> JsxElement {
-        products = [
-            {"id": 1, "name": "Widget A"},
-            {"id": 2, "name": "Widget B"},
-            {"id": 3, "name": "Widget C"}
-        ];
+def:pub Products() -> JsxElement {
+    products = [
+        {"id": 1, "name": "Widget A"},
+        {"id": 2, "name": "Widget B"},
+        {"id": 3, "name": "Widget C"}
+    ];
 
-        return <div>
-            <h1>Products</h1>
-            <ul>
-                {[
-                    <li key={p["id"]}>
-                        <Link to={f"/products/{p['id']}"}>
-                            {p["name"]}
-                        </Link>
-                    </li>
-                    for p in products
-                ]}
-            </ul>
-        </div>;
-    }
+    return <div>
+        <h1>Products</h1>
+        <ul>
+            {[
+                <li key={p["id"]}>
+                    <Link to={f"/products/{p['id']}"}>
+                        {p["name"]}
+                    </Link>
+                </li>
+                for p in products
+            ]}
+        </ul>
+    </div>;
+}
 
-    def:pub ProductDetail() -> JsxElement {
-        params = useParams();
-        navigate = useNavigate();
+def:pub ProductDetail() -> JsxElement {
+    params = useParams();
+    navigate = useNavigate();
 
-        product_id = params["id"];
+    product_id = params["id"];
 
-        return <div>
-            <button onClick={lambda -> None { navigate(-1); }}>
-                ← Back
-            </button>
-            <h1>Product {product_id}</h1>
-            <p>Details about product {product_id}</p>
-        </div>;
-    }
+    return <div>
+        <button onClick={lambda -> None { navigate(-1); }}>
+            ← Back
+        </button>
+        <h1>Product {product_id}</h1>
+        <p>Details about product {product_id}</p>
+    </div>;
+}
 
-    def:pub About() -> JsxElement {
-        return <div>
-            <h1>About Us</h1>
-            <p>We make great products.</p>
-        </div>;
-    }
+def:pub About() -> JsxElement {
+    return <div>
+        <h1>About Us</h1>
+        <p>We make great products.</p>
+    </div>;
+}
 
-    def:pub NotFound() -> JsxElement {
-        return <div>
-            <h1>404 - Not Found</h1>
-            <Link to="/">Go Home</Link>
-        </div>;
-    }
+def:pub NotFound() -> JsxElement {
+    return <div>
+        <h1>404 - Not Found</h1>
+        <Link to="/">Go Home</Link>
+    </div>;
+}
 
-    # App
-    def:pub app() -> JsxElement {
-        return <Router>
-            <Routes>
-                <Route path="/" element={<Layout />}>
-                    <Route index element={<Home />} />
-                    <Route path="products" element={<Products />} />
-                    <Route path="products/:id" element={<ProductDetail />} />
-                    <Route path="about" element={<About />} />
-                    <Route path="*" element={<NotFound />} />
-                </Route>
-            </Routes>
-        </Router>;
-    }
+# App
+def:pub app() -> JsxElement {
+    return <Router>
+        <Routes>
+            <Route path="/" element={<Layout />}>
+                <Route index element={<Home />} />
+                <Route path="products" element={<Products />} />
+                <Route path="products/:id" element={<ProductDetail />} />
+                <Route path="about" element={<About />} />
+                <Route path="*" element={<NotFound />} />
+            </Route>
+        </Routes>
+    </Router>;
 }
 ```
 
@@ -813,7 +771,7 @@ cl {
 Import from `@jac/runtime`:
 
 ```jac
-cl import from "@jac/runtime" {
+import from "@jac/runtime" {
     Link,           # Navigation link component
     useNavigate,    # Programmatic navigation
     useParams,      # Access URL parameters

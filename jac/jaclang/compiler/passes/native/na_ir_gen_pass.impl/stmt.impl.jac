@@ -1451,7 +1451,18 @@ impl NaIRGenPass._apply_scalar_aug_op(
 
 impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
     _rhs_errs_before = len(self.errors_had);
-    value = self._codegen_expr(nd.value) if nd.value else None;
+    value: (ir.Value | None) = None;
+    if (
+        isinstance(nd.value, uni.Name)
+        and nd.value.value in self.generic_fns
+        and nd.type_tag is not None
+        and nd.type_tag.tag is not None
+    ) {
+        value = self._instantiate_generic_for_target(nd.value.value, nd.type_tag.tag);
+    }
+    if value is None {
+        value = self._codegen_expr(nd.value) if nd.value else None;
+    }
 
     if value is None and isinstance(nd.value, uni.FuncCall) {
         func_name = self._get_name(nd.value.target);
@@ -2290,21 +2301,32 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             _mk_cell = (
                 var_name in self.closure_cell_vars
                 and var_name not in self.closure_cell_handles
-                and self._gen_ctx is None
             );
             if _mk_cell {
                 alloca = self._emit_closure_cell(var_name, var_type);
             } else {
                 alloca = self._entry_alloca(var_type, var_name);
             }
-            if isinstance(var_type, ir.PointerType) and not _mk_cell {
+            _in_gen_frame = (
+                self._gen_ctx is not None
+                and self.builder.function is self._gen_ctx["resume_fn"]
+            );
+            if isinstance(var_type, ir.PointerType)
+            and not _mk_cell
+            and not _in_gen_frame {
                 _func_e = self.builder.function;
                 _ebb = _func_e.entry_basic_block;
                 _cur_bb = self.builder.block;
                 _entry_instrs = list(_ebb.instructions);
-
-                if len(_entry_instrs) >= 2 {
-                    self.builder.position_before(_entry_instrs[1]);
+                _anchor_idx: (int | None) = None;
+                for (_ei, _einstr) in enumerate(_entry_instrs) {
+                    if _einstr is alloca {
+                        _anchor_idx = _ei;
+                        break;
+                    }
+                }
+                if _anchor_idx is not None and _anchor_idx + 1 < len(_entry_instrs) {
+                    self.builder.position_before(_entry_instrs[_anchor_idx + 1]);
                 } else {
                     self.builder.position_at_end(_ebb);
                 }

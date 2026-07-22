@@ -467,6 +467,51 @@ test "a cl-block sv import does not trigger service discovery" {
     }
 }
 
+test "a dotted sv-import target resolves to the service module stem" {
+    # A server-side bridge that does not sit in the service's own directory
+    # addresses it with a dotted target; discovery is keyed by module stem, so
+    # the dotted form must be reduced or it registers a phantom service.
+    import os;
+    tmp = Path(tempfile.mkdtemp());
+    (tmp / "jac.toml").write_text("[project]\nname = \"app\"\n");
+    (tmp / "main.jac").write_text("with entry { print(1); }\n");
+    svc = tmp / "services";
+    svc.mkdir();
+    (svc / "ideServer.jac").write_text("def:pub ping -> int { return 1; }\n");
+    bridge = tmp / "apps";
+    bridge.mkdir();
+    (bridge / "bridge.jac").write_text("sv import from services.ideServer { ping }\n");
+    try {
+        files = discover_sv_service_files(str(tmp / "main.jac"));
+        assert files.get("ideServer") == os.path.join("services", "ideServer.jac") , (
+            "dotted sv-import target must resolve to the real service file, "
+            f"got: {files}"
+        );
+        routes = discover_sv_services(str(tmp / "main.jac"));
+        assert "services.ideServer" not in routes , (
+            "the dotted form must not register a phantom service/route, "
+            f"got: {routes}"
+        );
+        assert routes.get("ideServer") == "/ideServer" , (
+            f"expected a clean /ideServer route, got: {routes}"
+        );
+    } finally {
+        shutil.rmtree(str(tmp), ignore_errors=True);
+    }
+}
+
+test "sv_target_stem reduces dotted, path and suffixed import targets" {
+    import from jaclang.scale.runtime.discovery.discovery { sv_target_stem }
+
+    assert sv_target_stem("ideServer") == "ideServer";
+    assert sv_target_stem("services.ideServer") == "ideServer";
+    assert sv_target_stem("a.b.c.deepSvc") == "deepSvc";
+    # String-path targets must not degrade to the file extension.
+    assert sv_target_stem("services/ideServer.jac") == "ideServer";
+    assert sv_target_stem("./services/ideServer") == "ideServer";
+    assert sv_target_stem("ideServer.sv.jac") == "ideServer";
+}
+
 test "resolve_service_files falls back to <name>.jac for import-only routes" {
     tmp = Path(tempfile.mkdtemp());
     (tmp / "jac.toml").write_text("[project]\nname = \"app\"\n");

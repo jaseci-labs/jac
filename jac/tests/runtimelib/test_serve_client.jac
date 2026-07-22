@@ -2276,7 +2276,7 @@ test "stdlib server serves graph visualizer and docs" {
 # =============================================================================
 """Write a minimal file-based routing tree into `dest`/pages for fallback tests."""
 def write_routed_pages(dest: Path) {
-    page_src = "def:pub page() -> JsxElement {\n    return <div>page</div>;\n}\n";
+    page_src = "def:pub View() -> JsxPage {\n    return <div>page</div>;\n}\n";
     pages = dest / "pages";
     (pages / "posts").mkdir(parents=True, exist_ok=True);
     (pages / "(auth)").mkdir(parents=True, exist_ok=True);
@@ -2380,7 +2380,7 @@ test "spa fallback route table refreshes on manifest reload" {
         write_routed_pages(proj);
         intro = ModuleIntrospector("routed_app", str(proj));
         assert intro.spa_fallback_status("/pricing") == 404;
-        page_src = "def:pub page() -> JsxElement {\n    return <div>p</div>;\n}\n";
+        page_src = "def:pub View() -> JsxPage {\n    return <div>p</div>;\n}\n";
         (proj / "pages" / "pricing.jac").write_text(page_src);
         assert intro.spa_fallback_status("/pricing") == 404 , "table is cached until a reload";
         intro._load_manifest();
@@ -2400,7 +2400,7 @@ test "spa fallback root is route aware without an index page" {
         proj = Path(tmpdir);
         pages = proj / "pages";
         pages.mkdir(parents=True, exist_ok=True);
-        page_src = "def:pub page() -> JsxElement {\n    return <div>p</div>;\n}\n";
+        page_src = "def:pub View() -> JsxPage {\n    return <div>p</div>;\n}\n";
         (pages / "dashboard.jac").write_text(page_src);
         intro = ModuleIntrospector("routed_app", str(proj));
         assert intro.spa_fallback_status("/") == 404;

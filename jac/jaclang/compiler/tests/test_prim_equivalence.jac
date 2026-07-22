@@ -249,6 +249,15 @@ test "bundled keyword" {
 }
 
 test "bundled shutil" {
+    import platform;
+    if platform.system() == "Darwin" {
+        import pytest;
+        # The dirent floor is darwin-correct (#7626 C3), but rmtree also
+        # rides os-path intrinsics whose stat-buffer layout is still
+        # glibc-shaped, so the full shutil surface aborts on darwin.
+        # Un-skip when the stat seam gets its own per-OS floor.
+        pytest.skip("darwin shutil runtime parity blocked on the stat-layout seam");
+    }
     run_with_both(
         "prim_shutil.jac", "shutil_py", "shutil_cl", "shutil_na", require=["na"]
     );

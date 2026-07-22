@@ -1482,13 +1482,13 @@ cl {
 
 # Page files export a `page` function inside a `cl { }` block:
 # cl {
-#     def:pub page() -> JsxElement { ... }
+#     def:pub Home() -> JsxPage { ... }
 # }
 
 # Layout files use <Outlet /> for child routes:
 # cl import from "@jac/runtime" { Outlet }
 # cl {
-#     def:pub layout() -> JsxElement {
+#     def:pub Shell() -> JsxLayout {
 #         return <><nav>...</nav><Outlet /></>;
 #     }
 # }

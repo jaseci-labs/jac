@@ -240,10 +240,12 @@ test "frame scan: lambda escaping the module entry frame" {
     assert f() == 8 , "entry-frame lambda called through the list, f(1) = 1+7";
 }
 
-test "frame guardrail: entry lambda reading an entry local is a loud error" {
-    # Python treats `with entry` assignments as module globals, so a lambda
-    # there reads them dynamically; natively they are frame locals the lambda
-    # cannot see. This must be a structured demotion, never a silent 0.
+test "entry lambda reading an entry-assigned name lowers as a global read" {
+    # Python treats `with entry` assignments as module globals; the native
+    # backend now registers entry-block assignment targets as module globals
+    # (#7626 A1), so a lambda there reads them like any `glob` -- no more
+    # frame-local E5092. Behavioral parity is pinned in
+    # test_native_entry_globals.jac.
     prog = compile_na_inline(
         "entry_local_lambda",
         "glob acc: list[int] = [];\n"
@@ -254,8 +256,8 @@ test "frame guardrail: entry lambda reading an entry local is a loud error" {
         "    acc.append(f(1));\n"
         "}\n"
     );
-    assert has_error_code(prog, "E5092") , (
-        f"expected E5092 for an entry lambda reading an entry local, got: "
+    assert not prog.errors_had , (
+        f"entry lambda over an entry-assigned name should lower natively, got: "
         f"{[str(e) for e in prog.errors_had]}"
     );
 }

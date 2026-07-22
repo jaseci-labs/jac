@@ -79,13 +79,17 @@ glob FORBIDDEN: dict[str, str] = {
              "resolution"
          ),
          ("native/na_ir_gen_pass.impl/generics.impl.jac", "type_tag.tag"): (
-             1,
-             "generic-template declared-annotation fallback in "
-             "_solve_generic_call: the primary fact is the ability symbol's "
-             "central FunctionType (name_ref.type), but a bundled/imported "
-             "template compiled symtab_ir_only has no stamped FunctionType, "
-             "and for an uninstantiated template the declared annotation IS "
-             "the fact - there is no per-callsite resolved type to consume"
+             3,
+             "generic-template declared-annotation reads where the "
+             "declaration IS the fact: (1) the _solve_generic_call fallback "
+             "(a bundled/imported template compiled symtab_ir_only has no "
+             "stamped FunctionType, and an uninstantiated template has no "
+             "per-callsite resolved type to consume); (2)+(3) "
+             "_instantiate_generic_for_target (#7626 A5) matches the "
+             "template's declared TypeVar param annotations against the "
+             "binding's concrete Callable annotation to derive the "
+             "monomorphization solution - the template is uninstantiated, "
+             "so the declared annotations are the only TypeVar surface"
          ),
          ("native/na_ir_gen_pass.impl/calls.impl.jac", "symbol_utils"): (
              2,
@@ -118,13 +122,17 @@ glob FORBIDDEN: dict[str, str] = {
              "declaration-surface read during archetype field lowering"
          ),
          ("native/na_ir_gen_pass.impl/stmt.impl.jac", "type_tag.tag"): (
-             5,
+             7,
              "surface-shape dispatch on declared annotation forms "
-             "(assessed train 4: legitimately kept); plus the "
+             "(assessed train 4: legitimately kept); the "
              "escaping-closure value-hint guard (#7593 item 12), a "
              "presence-only test that fires when NO annotation is "
              "declared - the declaration surface's absence is the "
-             "consumed fact, not a re-derived type"
+             "consumed fact, not a re-derived type; plus the generic-"
+             "as-value hook (#7626 A5): a presence test and a handoff of "
+             "the annotation NODE to _instantiate_generic_for_target, "
+             "which needs the declared Callable annotation itself (the "
+             "template is uninstantiated, so no resolved type exists)"
          ),
 
      };

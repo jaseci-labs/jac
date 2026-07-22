@@ -105,16 +105,6 @@ impl NaIRGenPass._instantiate_generic(
     nd: uni.FuncCall, func_name: str
 ) -> (ir.Function | None) {
     ability = self.generic_fns[func_name];
-    if self._ability_is_generator(ability) {
-        self.emit(
-            E5092,
-            node_override=nd,
-            kind="function",
-            name=func_name,
-            help_text="Generic generator functions are not monomorphized yet; declare a concrete element type."
-        );
-        return None;
-    }
     solution = self._solve_generic_call(ability, nd);
     if not solution {
         self.emit(
@@ -182,6 +172,8 @@ impl NaIRGenPass._stamp_mono_fn(
     saved_cell_vars = self.closure_cell_vars;
     saved_cell_handles = self.closure_cell_handles;
     saved_symtab = dict(self.func_symtab);
+    saved_gen_ctx = self._gen_ctx;
+    self._gen_ctx = None;
     self.func_symtab[name] = fn;
     try {
         self._codegen_ability(ability);
@@ -195,6 +187,169 @@ impl NaIRGenPass._stamp_mono_fn(
         self.closure_cell_vars = saved_cell_vars;
         self.closure_cell_handles = saved_cell_handles;
         self.func_symtab = saved_symtab;
+        self._gen_ctx = saved_gen_ctx;
+    }
+    return fn;
+}
+
+impl NaIRGenPass._instantiate_generic_for_target(
+    func_name: str, tag_node: uni.UniNode
+) -> (ir.Function | None) {
+    try {
+        import from jaclang.compiler.type_system.types {
+            FunctionType as _A5FnType,
+            TypeVarType as _A5TypeVar
+        }
+    } except ImportError {
+        return None;
+    }
+    tag_t = tag_node.type if isinstance(tag_node, uni.Expr) else None;
+    if not isinstance(tag_t, _A5FnType) {
+        return None;
+    }
+    ability = self.generic_fns.get(func_name);
+    sig = ability.signature if ability is not None else None;
+    if sig is None {
+        return None;
+    }
+    _tgt_params = tag_t.parameters or [];
+    solution: dict = {};
+    for (i, p) in enumerate(sig.get_parameters()) {
+        _pt = None;
+        if p.type_tag and p.type_tag.tag and isinstance(p.type_tag.tag, uni.Expr) {
+            _pt = p.type_tag.tag.type;
+        }
+        if isinstance(_pt, _A5TypeVar) and i < len(_tgt_params) {
+            _sol_t = _tgt_params[i].param_type;
+            if _sol_t is not None and _pt.name not in solution {
+                solution[_pt.name] = _sol_t;
+            }
+        }
+    }
+    _rt = sig.return_type.type if isinstance(sig.return_type, uni.Expr) else None;
+    if (
+        isinstance(_rt, _A5TypeVar)
+        and _rt.name not in solution
+        and tag_t.return_type is not None
+    ) {
+        solution[_rt.name] = tag_t.return_type;
+    }
+    if not solution {
+        return None;
+    }
+    _mangles: dict = {};
+    for (k, v) in solution.items() {
+        _mangles[k] = v.mangle() if v?.mangle else "any";
+    }
+    parts = sorted([f"{k}={m}" for (k, m) in _mangles.items()]);
+    key = func_name + "|" + ",".join(parts);
+    _hit = self._mono_fns.get(key);
+    if _hit is not None {
+        return _hit;
+    }
+    import re;
+    safe = re.sub(r"[^0-9A-Za-z_]", "_", "_".join(parts));
+    spec_name = f"__jac_mono_{func_name}_{safe}";
+    saved_sol = self._mono_solution;
+    saved_map = self._mono_mangle_map;
+    self._mono_solution = solution;
+    self._mono_mangle_map = _mangles;
+    try {
+        fn = self._stamp_mono_fn(ability, spec_name, key);
+    } finally {
+        self._mono_solution = saved_sol;
+        self._mono_mangle_map = saved_map;
+    }
+    return fn;
+}
+
+impl NaIRGenPass._instantiate_generic_method(
+    nd: uni.FuncCall, owner_arch: str, method_name: str
+) -> (ir.Function | None) {
+    ability = self._generic_methods[f"{owner_arch}.{method_name}"];
+    solution = self._solve_generic_call(ability, nd);
+    if not solution {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="method",
+            name=f"{owner_arch}.{method_name}",
+            help_text="Could not solve this call's type arguments for monomorphization; annotate the arguments with concrete types."
+        );
+        return None;
+    }
+    _mangles: dict = {};
+    for (k, v) in solution.items() {
+        _mangles[k] = v.mangle() if v?.mangle else "any";
+    }
+    parts = sorted([f"{k}={m}" for (k, m) in _mangles.items()]);
+    key = f"{owner_arch}.{method_name}|" + ",".join(parts);
+    _hit = self._mono_fns.get(key);
+    if _hit is not None {
+        return _hit;
+    }
+    import re;
+    safe = re.sub(r"[^0-9A-Za-z_]", "_", "_".join(parts));
+    spec_name = f"__jac_mono_{owner_arch}_{method_name}_{safe}";
+    saved_sol = self._mono_solution;
+    saved_map = self._mono_mangle_map;
+    self._mono_solution = solution;
+    self._mono_mangle_map = _mangles;
+    try {
+        fn = self._stamp_mono_method(ability, owner_arch, method_name, spec_name, key);
+    } finally {
+        self._mono_solution = saved_sol;
+        self._mono_mangle_map = saved_map;
+    }
+    return fn;
+}
+
+impl NaIRGenPass._stamp_mono_method(
+    ability: uni.Ability,
+    arch_name: str,
+    method_name: str,
+    spec_name: str,
+    memo_key: str
+) -> (ir.Function | None) {
+    full_name = f"{arch_name}.{method_name}";
+    struct_type = self.struct_types.get(arch_name);
+    sig = ability.signature;
+    if struct_type is None or sig is None or ability.is_static {
+        self.emit(E5092, node_override=ability, kind="method", name=full_name);
+        return None;
+    }
+    param_types: list = [struct_type.as_pointer()];
+    for p in sig.get_parameters() {
+        param_types.append(
+            self._resolve_jac_type(p) if p.type_tag is not None else ir.IntType(64)
+        );
+    }
+    ret_type = self._resolve_jac_type(sig.return_type);
+    fnty = ir.FunctionType(ret_type, param_types);
+    fn = ir.Function(self.llvm_module, fnty, name=spec_name);
+    fn.linkage = "private";
+    fn.args[0].name = "self";
+    for (i, p) in enumerate(sig.get_parameters()) {
+        fn.args[i + 1].name = p.name.value if p.name else f"arg{i}";
+    }
+    self._mono_fns[memo_key] = fn;
+
+    saved_gen_ctx = self._gen_ctx;
+    self._gen_ctx = None;
+    _saved_mf = self.method_funcs.get(full_name);
+    self.method_funcs[full_name] = fn;
+    try {
+        self._codegen_method(arch_name, ability);
+    } finally {
+        if _saved_mf is not None {
+            self.method_funcs[full_name] = _saved_mf;
+        } else {
+            self.method_funcs.pop(full_name, None);
+        }
+        self._gen_ctx = saved_gen_ctx;
+    }
+    if full_name in self._native_skipped_methods {
+        return None;
     }
     return fn;
 }

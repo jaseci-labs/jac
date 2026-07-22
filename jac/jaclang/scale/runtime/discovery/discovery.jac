@@ -67,6 +67,11 @@ def scan_markers(text: str, file_path: str) -> ModuleMarkers | None {
 }
 
 
+def sv_target_stem(target: str) -> str {
+    return base_stem(target).rsplit(".", 1)[-1];
+}
+
+
 def _stem_entry_rank(rel_path: str, is_service: bool) -> int {
     rank: int = 0;
     if is_service {
@@ -165,7 +170,7 @@ def _scan_project(entry_file: str) -> tuple {
             is_svc = False;
             if markers is not None {
                 for target in markers.sv_import_targets {
-                    services.add(target);
+                    services.add(sv_target_stem(target));
                 }
                 is_svc = markers.is_service;
                 if is_svc {

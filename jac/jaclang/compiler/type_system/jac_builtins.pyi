@@ -36,6 +36,8 @@ __all__ = [
     "Root",
     "GenericEdge",
     "JsxElement",
+    "JsxPage",
+    "JsxLayout",
     "OPath",
     "DSFunc",
     "EdgeDir",
@@ -108,7 +110,22 @@ class Root(Node):
 
 class GenericEdge(Edge): ...
 
-class JsxElement:
+# Route marker types for the client file-based router. A `pages/` module whose
+# public export returns `JsxPage` is a route; one returning `JsxLayout` is a
+# layout. `JsxElement` is assignable to both, so a component body returning JSX
+# satisfies a `-> JsxPage` / `-> JsxLayout` signature; the distinct annotation is
+# what marks the export as a route/layout (the name of the export is free).
+class JsxPage:
+    tag: object
+    props: dict[str, object]
+    children: list[object]
+
+class JsxLayout:
+    tag: object
+    props: dict[str, object]
+    children: list[object]
+
+class JsxElement(JsxPage, JsxLayout):
     tag: object
     props: dict[str, object]
     children: list[object]
