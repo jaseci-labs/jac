@@ -1,6 +1,7 @@
 import os;
 import jaclang.jac0core.unitree as uni;
 import from pathlib { Path }
+import from jaclang.jac0core.constant { CodeContext }
 import from jaclang.jac0core.parser { parse }
 import from jaclang.jac0core.ext_registry {
     base_stem,
@@ -44,17 +45,20 @@ def scan_markers(text: str, file_path: str) -> ModuleMarkers | None {
         return None;
     }
     targets: list[str] = [];
-    for imp in mod.get_all_sub_nodes(uni.Import) {
-        first = imp.kid[0] if imp.kid else None;
-        is_sv = (
-            (first is not None)
-            and (first?.name == _SV_PREFIX_TOK)
-            and (imp.from_loc is not None)
-        );
-        if is_sv {
-            name = imp.from_loc.base_module_name;
-            if name {
-                targets.append(name);
+    if codespace_of(file_path) != CLIENT {
+        for imp in mod.get_all_sub_nodes(uni.Import) {
+            first = imp.kid[0] if imp.kid else None;
+            is_sv = (
+                (first is not None)
+                and (first?.name == _SV_PREFIX_TOK)
+                and (imp.from_loc is not None)
+                and (imp.code_context != CodeContext.CLIENT)
+            );
+            if is_sv {
+                name = imp.from_loc.base_module_name;
+                if name {
+                    targets.append(name);
+                }
             }
         }
     }
