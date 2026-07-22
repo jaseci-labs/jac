@@ -1,5 +1,6 @@
 import asyncio;
 import atexit;
+import contextvars;
 import inspect;
 import logging;
 import os;
@@ -64,7 +65,9 @@ def _call_sync(tc: any, timeout: any) -> any {
             error_box[0] = e;
         }
     }
-    t = threading.Thread(target=_worker, daemon=True);
+
+    ctx = contextvars.copy_context();
+    t = threading.Thread(target=ctx.run, args=(_worker, ), daemon=True);
     t.start();
     t.join(timeout=timeout);
     if t.is_alive() {
@@ -173,7 +176,8 @@ def dispatch_batch(tool_calls: list) -> any {
 
     futures: dict = {};
     for tc in tool_calls {
-        f = _WORKER_POOL.submit(_run_one, tc);
+        ctx = contextvars.copy_context();
+        f = _WORKER_POOL.submit(ctx.run, _run_one, tc);
         futures[f] = tc;
     }
     for f in as_completed(futures) {
