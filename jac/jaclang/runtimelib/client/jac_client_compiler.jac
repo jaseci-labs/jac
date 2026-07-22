@@ -93,9 +93,13 @@ class JacClientCompiler {
     ) -> bool;
 
     def rescan_pages(self: JacClientCompiler) -> bool;
-    def _page_symbols(
+    def _route_exports(
         self: JacClientCompiler, module_path: Path
-    ) -> (list[str] | None);
+    ) -> tuple[((str | None), (str | None))];
+
+    def _route_exports_from_ast(
+        self: JacClientCompiler, mod: Any
+    ) -> tuple[((str | None), (str | None))];
 
     def _generate_routes_manifest(self: JacClientCompiler) -> None;
     def _write_source_map(

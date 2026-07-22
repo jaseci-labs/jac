@@ -113,7 +113,7 @@ def:pub Dashboard() -> JsxElement {
 # pages/(auth)/layout.jac - every page in (auth)/ now requires login
 import from "@jac/runtime" { AuthGuard, Outlet }
 
-def:pub layout() -> JsxElement {
+def:pub AuthShell() -> JsxLayout {
     return <AuthGuard redirect="/login"><Outlet /></AuthGuard>;
 }
 ```
