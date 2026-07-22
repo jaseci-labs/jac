@@ -83,7 +83,7 @@ nav:
           - Concurrency: "reference/language/concurrency.md"
           - Comprehensions & Filters: "reference/language/advanced.md"
           - Walker Patterns: "reference/language/walker-responses.md"
-          - Gradual Ownership: "reference/language/ownership-borrowing.md"
+          - Gradual Borrow Checking: "reference/language/ownership-borrowing.md"
           - Syntax Cheatsheet: "reference/language/syntax-cheatsheet.md"
       - Native Compilation: "reference/language/native-pathway.md"
       - Capabilities & Plugins:
