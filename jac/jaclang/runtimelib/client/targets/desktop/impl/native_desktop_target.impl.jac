@@ -28,7 +28,14 @@ def _ensure_libwebview(webview_dir: Path) -> Path {
         return lib;
     }
     console.print(f"  Building {libwebview_name()} (one-time)...", style="muted");
-    res = subprocess.run([str(webview_dir / "build_libwebview.sh")]);
+    script = webview_dir / "build_libwebview.sh";
+
+    try {
+        script.chmod(script.stat().st_mode | 0o111);
+    } except OSError {
+        ;
+    }
+    res = subprocess.run([str(script)]);
     if res.returncode != 0 or not lib.exists() {
         raise RuntimeError(
             f"Failed to build {libwebview_name()} - is WebKitGTK + a C toolchain installed? "
@@ -121,12 +128,26 @@ def _assemble_native_host(
         stray.unlink();
     }
     launcher = output_dir / f"{app_name}-launch.sh";
+
     launcher.write_text(
         "#!/bin/sh\n"
         "cd \"$(dirname \"$0\")\" || exit 1\n"
         "export GDK_BACKEND=\"${GDK_BACKEND:-x11}\"\n"
         "export WEBKIT_DISABLE_DMABUF_RENDERER=\"${WEBKIT_DISABLE_DMABUF_RENDERER:-1}\"\n"
         "export WEBKIT_DISABLE_COMPOSITING_MODE=\"${WEBKIT_DISABLE_COMPOSITING_MODE:-1}\"\n"
+        "VENV_LIB=\"$(CDPATH= cd -- \"$(dirname \"$0\")/../../venv/lib\" 2>/dev/null && pwd)\"\n"
+        "if [ -n \"$VENV_LIB\" ] && [ -d \"$VENV_LIB\" ]; then\n"
+        "  for sp in \"$VENV_LIB\"/python*/site-packages; do\n"
+        "    if [ -d \"$sp\" ]; then\n"
+        "      if [ -n \"${JAC_DESKTOP_DEPS:-}\" ]; then\n"
+        "        export JAC_DESKTOP_DEPS=\"$sp${JAC_DESKTOP_DEPS:+:$JAC_DESKTOP_DEPS}\"\n"
+        "      else\n"
+        "        export JAC_DESKTOP_DEPS=\"$sp\"\n"
+        "      fi\n"
+        "      break\n"
+        "    fi\n"
+        "  done\n"
+        "fi\n"
         f"exec ./{app_name} \"$@\"\n"
     );
     os.chmod(launcher, 0o755);

@@ -23,7 +23,9 @@ import from jaclang.project.pyvenv {
     make_pip_spec,
     pip_command,
     remove_venv_from_path,
-    summarize_pip_failure
+    summarize_pip_failure,
+    _adjust_pip_args_for_fused_venv,
+    run_pip
 }
 import from jaclang.project.providers {
     InstallContext,
@@ -216,6 +218,37 @@ test "ensure_venv ensurepip missing" {
     }
 }
 
+# ===== Fused-venv pip targeting =====
+test "fused venv pip install rewrites to --target site-packages" {
+    reset_config();
+    (tmp, project_dir) = make_temp_project();
+    try {
+        venv_dir = project_dir / ".jac" / "venv";
+        site = venv_dir / "lib" / "python3.14" / "site-packages";
+        site.mkdir(parents=True, exist_ok=True);
+        adjusted = _adjust_pip_args_for_fused_venv(
+            venv_dir, ["install", "--upgrade", "fastapi>=0.121"]
+        );
+        assert adjusted[0] == "install";
+        assert "--target" in adjusted;
+        assert str(site) in adjusted;
+        assert "fastapi>=0.121" in adjusted;
+        # list/freeze must query the same tree.
+        listed = _adjust_pip_args_for_fused_venv(venv_dir, ["list", "--format=json"]);
+        assert "--path" in listed;
+        assert str(site) in listed;
+        # Respect an explicit --target from the caller.
+        explicit = _adjust_pip_args_for_fused_venv(
+            venv_dir, ["install", "--target", "/elsewhere", "six"]
+        );
+        assert explicit.count("--target") == 1;
+        assert "/elsewhere" in explicit;
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
 # ===== PythonProvider install/uninstall =====
 test "PythonProvider install_specs success" {
     reset_config();
@@ -237,6 +270,8 @@ test "PythonProvider install_specs success" {
             assert "install" in call_args;
             assert "--upgrade" in call_args;
             assert "requests>=2.28.0" in call_args;
+            # Provider still passes a plain install; run_pip rewrites it with
+            # --target for the fused jac-as-venv-python case.
             assert "--target" not in call_args;
         }
     } finally {

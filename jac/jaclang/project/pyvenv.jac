@@ -38,21 +38,11 @@ def make_git_spec(git_url: str, branch: str = "") -> str {
 
 
 def _seed_build_backend(target: Path, verbose: bool = False) {
-    import subprocess;
-    cmd = pip_command(
-        venv_python(target), ["install", "--upgrade", "pip", "setuptools", "wheel"]
+    (rc, _, err) = run_pip(
+        target, ["install", "--upgrade", "pip", "setuptools", "wheel"], verbose
     );
-    try {
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300);
-        if result.returncode != 0 and verbose {
-            console.print(
-                f"Warning: could not seed build backend in venv: {result.stderr.strip()}"
-            );
-        }
-    } except Exception as e {
-        if verbose {
-            console.print(f"Warning: could not seed build backend in venv: {e}");
-        }
+    if rc != 0 and verbose {
+        console.print(f"Warning: could not seed build backend in venv: {err.strip()}");
     }
 }
 
@@ -103,11 +93,154 @@ def ensure_venv(venv_dir: Path, verbose: bool = False) {
 }
 
 
+def _venv_site(venv_dir: Path) -> Path {
+    site = get_venv_site_packages(venv_dir);
+    site.mkdir(parents=True, exist_ok=True);
+    return site;
+}
+
+
+def _adjust_pip_args_for_fused_venv(venv_dir: Path, args: list[str]) -> list[str] {
+    if not args {
+        return args;
+    }
+    site = str(_venv_site(venv_dir));
+    cmd = args[0];
+    rest = args[1:];
+    if cmd == "install" {
+        if "--target" in rest or "-t" in rest or "--prefix" in rest {
+            return args;
+        }
+        return ["install", "--target", site] + rest;
+    }
+    if cmd in ("list", "freeze") {
+        if "--path" in rest {
+            return args;
+        }
+        return [cmd, "--path", site] + rest;
+    }
+    return args;
+}
+
+def _find_venv_distribution(site: Path, name: str) -> any {
+    import importlib.metadata;
+    wanted = re.sub(r"[-_.]+", "-", name).lower();
+    for dist in importlib.metadata.distributions(path=[str(site)]) {
+        raw = dist.metadata.get("Name") or "";
+        if not raw {
+            raw = getattr(dist, "name", "") or "";
+        }
+        if re.sub(r"[-_.]+", "-", str(raw)).lower() == wanted {
+            return dist;
+        }
+    }
+    return None;
+}
+
+
+def _uninstall_from_venv_site(venv_dir: Path, name: str) -> tuple[int, str, str] {
+    import shutil;
+    site = _venv_site(venv_dir);
+    dist = _find_venv_distribution(site, name);
+    if dist is None {
+        return (1, "", f"Package(s) not found: {name}");
+    }
+    removed: list[str] = [];
+    files = dist.files;
+    if files {
+        for rel in files {
+            path = Path(str(dist.locate_file(rel)));
+            try {
+                if path.is_file() or path.is_symlink() {
+                    path.unlink();
+                    removed.append(str(rel));
+                }
+            } except OSError {
+                continue;
+            }
+        }
+    }
+    dist_path = Path(str(getattr(dist, "_path", "")));
+    if str(dist_path) != "" and dist_path.exists() {
+        shutil.rmtree(dist_path, ignore_errors=True);
+    }
+    msg = f"Successfully uninstalled {name}";
+    if removed {
+        msg += f" ({len(removed)} files)";
+    }
+    return (0, msg + "\n", "");
+}
+
+
 def run_pip(
     venv_dir: Path, args: list[str], verbose: bool = False
 ) -> tuple[int, str, str] {
     import subprocess;
-    cmd = pip_command(venv_python(venv_dir), args);
+    if args and args[0] == "uninstall" {
+        names = [
+            a
+            for a in args[1:]
+            if a and not a.startswith("-")
+        ];
+        if not names {
+            return (1, "", "No packages specified for uninstall");
+        }
+        outs: list[str] = [];
+        errs: list[str] = [];
+        rc = 0;
+        for name in names {
+            if verbose {
+                console.print(
+                    f"Uninstalling {name} from {get_venv_site_packages(venv_dir)}"
+                );
+            }
+            (code, out, err) = _uninstall_from_venv_site(venv_dir, name);
+            if out {
+                outs.append(out);
+            }
+            if err {
+                errs.append(err);
+            }
+            if code != 0 {
+                rc = code;
+            }
+        }
+        return (rc, "".join(outs), "".join(errs));
+    }
+    if args and args[0] == "show" {
+        names = [
+            a
+            for a in args[1:]
+            if a and not a.startswith("-")
+        ];
+        site = _venv_site(venv_dir);
+        chunks: list[str] = [];
+        missing = False;
+        for name in names {
+            dist = _find_venv_distribution(site, name);
+            if dist is None {
+                missing = True;
+                continue;
+            }
+            meta = dist.metadata;
+            lines = [
+                f"Name: {meta.get('Name', name)}",
+                f"Version: {meta.get('Version', '')}",
+                f"Summary: {meta.get('Summary', '')}",
+                f"Home-page: {meta.get('Home-page', '')}",
+                f"Author: {meta.get('Author', '')}",
+                f"Location: {site}",
+                ""
+            ];
+            chunks.append("\n".join(lines));
+        }
+        if not chunks {
+            return (1, "", "WARNING: Package(s) not found: " + ", ".join(names));
+        }
+        return (1 if missing else 0, "\n".join(chunks), "");
+    }
+    adjusted = _adjust_pip_args_for_fused_venv(venv_dir, args);
+    cmd = pip_command(venv_python(venv_dir), adjusted);
     if verbose {
         console.print(f"Running: {' '.join(cmd)}");
     }

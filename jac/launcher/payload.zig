@@ -987,6 +987,14 @@ fn mkPayload(
         var jac_src = try Dir.cwd().openDir(io, try std.fmt.allocPrint(a, "{s}/jaclang", .{repo_root}), .{ .iterate = true });
         defer jac_src.close(io);
         try copyTree(io, gpa, a, jac_src, try std.fmt.allocPrint(a, "{s}/jaclang", .{site}), skipJaclang);
+        // Client/desktop compilation imports jaclang.compiler.passes.ecmascript
+        // as a Python package (__init__.py). A sealed JIR alone is not enough --
+        // if this directory is missing from the payload, `jac build --client`
+        // and `jac start --dev` fail with ModuleNotFoundError. Fail the build
+        // rather than ship a binary that can't compile clients.
+        const ecma = try std.fmt.allocPrint(a, "{s}/jaclang/compiler/passes/ecmascript/__init__.py", .{site});
+        if (!fileExists(io, ecma))
+            die("mkpayload: jaclang/compiler/passes/ecmascript missing from staged site (client/desktop builds need it)", .{});
     } else {
         log("==> linked-source mode: NOT bundling jaclang (compiler served from {s})", .{link_source.?});
     }
@@ -1824,7 +1832,15 @@ fn tarZstDir(io: Io, gpa: Allocator, a: Allocator, stage: []const u8, out: []con
                 // Carry the real on-disk mode so executable scripts keep their
                 // exec bit; `mode = 0` would strip IXUSR (see runtime.zig
                 // extractPayload's matching .executable_bit_only).
-                try tw.writeFileBytes(entry.path, bytes, .{ .mode = sourceFileMode(io, stage_dir, entry.path) });
+                // Defense in depth: force IXUSR for bundled shell scripts even
+                // when the source tree / copyTree lost the bit (CI checkouts,
+                // non-exec filesystems). Without this, desktop builds hit
+                // EACCES on build_libwebview.sh.
+                var mode = sourceFileMode(io, stage_dir, entry.path);
+                if (std.mem.endsWith(u8, entry.path, ".sh") and Io.File.Permissions.has_executable_bit) {
+                    if (mode == 0) mode = 0o755 else mode |= 0o111;
+                }
+                try tw.writeFileBytes(entry.path, bytes, .{ .mode = mode });
             },
         }
     }
