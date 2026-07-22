@@ -18,10 +18,16 @@ zero-copy `NativeListView`, struct-by-value C ABI correctness, wasm export
 cost) has no number behind it and no regression guard. This suite is that
 coverage.
 
-> **Status:** Phases 0–3 are runnable: the scalar call, inverse callback, and
-> full-native view cells have passed their acceptance gates. Phase 4–7 source
-> cells are retained for explicit `--experimental` runs, but remain outside
-> the default runnable contract until their phase acceptance criteria pass.
+> **Status:** Phases 0–2 are runnable: the scalar call, inverse callback, and
+> symmetric sv↔na cells have passed their acceptance gates. **Phase 3 (native
+> views) is retired:** #7587 removed the `native_accel.accelerate_module`
+> hot-swap the driver relied on and #7589 made native the default codespace, so
+> an externally imported `.na.jac` producer no longer yields the zero-copy
+> `NativeListView`/`NativeStructView` the cell measured (it returns ordinary
+> Python-marshalled lists). The cell, its driver, and its producer were removed
+> rather than left measuring nothing. Phase 4–7 source cells are retained for
+> explicit `--experimental` runs, but remain outside the default runnable
+> contract until their phase acceptance criteria pass.
 
 ### How to read the numbers (scope of valid conclusions)
 
@@ -66,7 +72,7 @@ family adapters.
 | # | Boundary | Wire | Kernel(s) | Real-world stand-in |
 |---|---|---|---|---|
 | 1 | `sv → sv` in-proc | free | `base_call` | plain Python-call floor (baseline) |
-| 7 | `sv → na` | mixed-file JIT / full-module wrappers | `iop_call`, `iop_view` | Python calling native code or consuming a native view |
+| 7 | `sv → na` | mixed-file JIT | `iop_call` | Python calling native code (view cell retired; see Status) |
 | 8 | `na → sv` | `na {}` native→Python call | `iop_cb` | native calling back into Python |
 | 12 | `na ↔ C` | `import from lib { def; obj }` | `iop_ffi_scalar`, `iop_ffi_struct`, `iop_ffi_vtable` | libm, raylib, SQLite, CEF |
 | 5 | `cl ↔ sv` | HTTP+JSON / explicit SSE client | `xop_crud`, `xop_feed`, `xop_stream` | littleX post/list, SSE token stream |
@@ -143,17 +149,12 @@ native/C. Each cell has its own exact reference twin.
   `m:invoke_ns`. Callback registration occurs before kernel entry, so compile/
   setup time may be measured externally but is not printed as
   `m:register_ns` without dedicated runtime instrumentation.
-- `iop_view`  -  full-native-module marshalling, not an inline-`na {}` scalar
-  bridge. A dedicated driver obtains `NativeListView` / `NativeStructView`,
-  checksums it while native storage is alive, then explicitly materialises
-  it (for example list/field extraction) and checksums the copy. Each variant
-  measures only its selected consumer; the non-selected `m:view_ns` or
-  `m:materialise_ns` metric is zero (asserted by the regression test). The suite
-  does not claim a selectable deep-copy marshaller that does not currently exist.
-  This cell measures **full-traversal consumer latency only**; it does not
-  measure the memory savings of zero-copy because RSS/allocation is not sampled,
-  so a near-equal view/materialise latency on a full scan says nothing about the
-  memory dimension.
+- `iop_view`  -  **retired** (see Status). It measured full-native-module
+  zero-copy `NativeListView` / `NativeStructView` consumption via the
+  `native_accel.accelerate_module` hot-swap; #7587 removed that hot-swap and
+  #7589 made native the default codespace, so an externally imported `.na.jac`
+  producer now returns ordinary Python-marshalled lists and the cell no longer
+  has a real measurement behind it.
 - `iop_ffi_scalar`  -  `sqrt` churn via `import from "libm.so" { def sqrt(x:
   f64) -> f64; }`. The kernel makes `n` foreign calls per outer call, so the
   metric is `m:per_ffi_call_ns` = wall / (`n` × outer-calls), i.e. per foreign
@@ -260,7 +261,6 @@ interopbench/
     base_call.jac
     base_pyimport.jac
     iop_call.jac           # na {} block + exact sv reference
-    iop_view.na.jac        # full native producer; driven by view_driver.jac
     iop_cb.jac
     iop_symmetric.jac      # matched sv↔na caller/callee pair
     support/interopbench.c # deterministic struct/callback implementation
@@ -277,7 +277,6 @@ interopbench/
   harness/
     common.jac             # strict parser + aggregate + oracle + result schema
     measure.jac            # family 1: command/build adapters
-    view_driver.jac        # full-module native wrapper adapter
     xbench.jac             # family 2: host lifecycle adapters
     audit.jac              # named manifest/wrapper/IR facts
     wasm_host.mjs          # Node host for xop_wasm_*
@@ -474,16 +473,18 @@ Do not invent `m:register_ns` or a generic stub count.
 native bindings; `iop_call` and `iop_cb` contain exactly their named
 exports/imports; audit output is versioned JSON.
 
-### Phase 3  -  native views ✅
+### Phase 3  -  native views ⛔ retired
 
-Add a full `kernels/iop_view.na.jac` producer and a dedicated driver using
-the existing native wrapper/layout path. Keep native storage alive while
-checksumming the view and materialised copy. Stop and document a missing
-public seam if this requires copying private test scaffolding into the suite.
+Originally: a full `kernels/iop_view.na.jac` producer and a dedicated driver
+using the native wrapper/layout path, keeping native storage alive while
+checksumming the zero-copy view against a materialised copy.
 
-**Accept when:** empty, one-element, and small-list view/materialised checksums
-match; the driver verifies it actually received `NativeListView` /
-`NativeStructView`; focused `test_native_marshal.jac` remains green.
+**Retired** after #7587 removed the `native_accel.accelerate_module` hot-swap
+the driver depended on and #7589 made native the default codespace. An
+externally imported `.na.jac` producer now returns ordinary Python-marshalled
+lists rather than `NativeListView` / `NativeStructView`, so the acceptance gate
+(driver verifies it received native views) can no longer be met. The cell,
+driver, and producer were removed instead of left measuring plain-list copies.
 
 ### Phase 4  -  C ABI floor, structs, and callback vtable
 

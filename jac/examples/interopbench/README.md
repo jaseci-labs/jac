@@ -6,7 +6,7 @@ differential-identity oracle per cell:
 
 | family | prefix | harness | what it measures |
 |---|---|---|---|
-| native bridges | `iop_*` | `harness/measure.jac` | mixed-JIT `sv↔na`, C FFI, zero-copy views |
+| native bridges | `iop_*` | `harness/measure.jac` | mixed-JIT `sv↔na`, C FFI |
 | cross-runtime | `xop_*` | `harness/xbench.jac` | loopback RPC, generated clients, wasm hosts |
 
 Kernels print a deterministic digest on stdout plus one `ns=<wall ns>` timing
@@ -19,8 +19,7 @@ commands on the in-tree compiler.
 
 ## Part 1: native-bridge kernels (`iop_*`)
 
-Mixed-JIT scalar cells (`iop_call`, `iop_cb`, `iop_symmetric`), the
-full-native view consumer (`iop_view` via `harness/view_driver.jac`), and
+Mixed-JIT scalar cells (`iop_call`, `iop_cb`, `iop_symmetric`) and
 experimental C-ABI fixtures (`iop_ffi_*`, requires `cc` for struct/vtable cells).
 
 Read paired variants for boundary cost:
@@ -34,8 +33,6 @@ Read paired variants for boundary cost:
   (matched caller/callee roles, work always on the callee). Also
   execution-placement, not pure boundary overhead - moving compute into native
   changes both the crossing and which runtime does the work.
-- `iop_view`: `materialised` vs `view` (explicit copy vs zero-copy views).
-  Full-traversal consumer latency only; memory savings are not measured (no RSS).
 
 ## Part 2: cross-runtime kernels (`xop_*`)
 
@@ -153,34 +150,8 @@ not enabled merely because it appears in the design document.
 | manifest audit | Exact imports: `sv_lcg`; exact exports: `native_lcg`, `run_na_local`, `run_na_to_sv` |
 | RSS | Not recorded; result cells use `rss_scope: "not_recorded"` |
 
-### `iop_view`
-
-| field | contract |
-|---|---|
-| scenario | Produce deterministic native integer and struct lists, consume both as zero-copy views, then explicitly materialise and checksum Python-owned copies |
-| variants | `materialised` (reference), `view` (measured boundary) |
-| source/roles | `kernels/iop_view.na.jac` owns `Sample`, retained native storage, and `produce_views`; `harness/view_driver.jac` owns wrapper activation, runtime type checks, timing, materialisation, and output |
-| command adapter | `full_native_view_driver` in `harness/measure.jac` |
-| exact command | `<sys.executable> -m jaclang run <absolute>/harness/view_driver.jac <variant> <count>` |
-| direct commands | `jac run harness/view_driver.jac materialised 17`; `jac run harness/view_driver.jac view 17` |
-| acceptance args | `empty=0`, `one=1`, `small=17` |
-| default args | `count=5000` |
-| timing owner | Driver, using `time.perf_counter_ns()` after wrapper activation and one producer warm-up; native-view checksum and materialise-plus-copy-checksum scopes are timed separately |
-| prerequisites | In-repository Jac runtime, native JIT support, and the existing `jaclang.jac0core.native_accel` / `native_marshal` wrapper path only |
-| reference twin | `materialised`, checksumming ordinary `list[int]` and `list[tuple[int, int]]` copied from the same native result |
-| measured path | `view`, checksumming `NativeListView` values and `NativeStructView` fields directly while producer-owned native globals retain both lists |
-| canonical digest | Exactly one `view:<checksum>` line; both variants use the same ordered integer/field reduction modulo 2^31−1 |
-| timing output | Exactly one `ns=<integer>` line covering only the selected consumer, excluding import/JIT/wrapper setup |
-| metric keys | Exactly `m:view_ns=<integer>` and `m:materialise_ns=<integer>`; the non-selected metric is zero |
-| reset rule | Each `produce_views(count)` call replaces both retained native globals; every command runs in a fresh process and warms with a separate one-element batch before creating the measured batch |
-| oracle | Require each selected consumer to receive `NativeListView`/`NativeStructView` values, then require canonical digest identity between variants |
-| wrapper seam | The driver calls the existing `accelerate_module` entry before timing because a cached plain import may otherwise retain Python implementations; no compiler-test fixture or manual `JacProgram`/ctypes setup is copied into the suite |
-| RSS | Not recorded in Phase 3; result cells explicitly use `rss_scope: "not_recorded"` |
-
 The scalar cells use mixed-file `jac run`; standalone `jac nacompile` is not
-a valid adapter for them. `iop_view` also uses `jac run`, but its dedicated
-driver activates the full-native producer through the existing native
-acceleration and wrapper/layout seam before measurement.
+a valid adapter for them.
 
 ## Result schema version 2
 
@@ -268,9 +239,6 @@ jac run harness/measure.jac \
   --kernels iop_symmetric \
   --variants sv_local,sv_to_na,na_local,na_to_sv --sizes small \
   --invocations 2 --out /tmp/interop_symmetric.json
-jac run harness/measure.jac \
-  --kernels iop_view --variants materialised,view --sizes small \
-  --invocations 2 --out /tmp/interop_view.json
 jac run harness/audit.jac --out /tmp/interop_audit.json
 ```
 

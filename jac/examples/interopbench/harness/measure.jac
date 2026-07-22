@@ -1,7 +1,7 @@
 """Measure enabled native-bridge interopbench cells.
 
 Usage:
-  jac run harness/measure.jac [--kernels iop_call,iop_cb,iop_symmetric,iop_view]
+  jac run harness/measure.jac [--kernels iop_call,iop_cb,iop_symmetric]
       [--variants <exact-oracle-group>] [--sizes empty|one|small|default]
       [--invocations N] [--out results/bridges_results.json]
 
@@ -20,7 +20,6 @@ import from common {
     run_command,
     SIZE_DEFAULT_CHURN,
     SIZE_SMALL_CHURN,
-    SIZE_VIEW_DEFAULT,
     write_results,
 }
 
@@ -85,25 +84,6 @@ glob BENCH = Path(str(__file__)).resolve().parent.parent,
              "rss_scope": "not_recorded",
 
          },
-         "iop_view": {
-             "scenario": "zero-copy native list and struct view consumption",
-             "source": "kernels/iop_view.na.jac",
-             "driver": "harness/view_driver.jac",
-             "variants": ["materialised", "view"],
-             "reference": "materialised",
-             "sizes": {
-                 "empty": ["0"],
-                 "one": ["1"],
-                 "small": ["17"],
-                 "default": SIZE_VIEW_DEFAULT,
-
-             },
-             "metrics": ["view_ns", "materialise_ns"],
-             "command_adapter": "full_native_view_driver",
-             "timing_source": "driver_perf_counter_ns",
-             "rss_scope": "not_recorded",
-
-         },
          "iop_ffi_scalar": {
              "scenario": "libm sqrt extern call churn over perfect-square inputs",
              "source": "kernels/iop_ffi_scalar.na.jac",
@@ -165,7 +145,7 @@ glob BENCH = Path(str(__file__)).resolve().parent.parent,
 """Parse the benchmark CLI."""
 def parse_opts(argv: list[str]) -> dict[str, str | int | bool] {
     opts: dict[str, str | int | bool] = {
-        "kernels": "iop_call,iop_cb,iop_symmetric,iop_view",
+        "kernels": "iop_call,iop_cb,iop_symmetric",
         "experimental": False,
         "variants": "",
         "sizes": "default",
@@ -273,8 +253,6 @@ def build_command(spec: dict[str, object], variant: str, args: list[str]) -> lis
     source = spec["source"] as str;
     if adapter in ("mixed_jit_jac_run", "clib_jit_jac_run") {
         entry = source;
-    } elif adapter == "full_native_view_driver" {
-        entry = spec["driver"] as str;
     } else {
         raise ValueError(f"unknown command adapter: {adapter}");
     }

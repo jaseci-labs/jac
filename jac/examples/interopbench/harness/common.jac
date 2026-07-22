@@ -15,7 +15,6 @@ glob DEFAULT_INVOCATIONS: int = 30,
      WARMUP_CALLS: int = 5,
      SIZE_SMALL_CHURN: list[str] = ["200", "20"],
      SIZE_DEFAULT_CHURN: list[str] = ["5000", "500"],
-     SIZE_VIEW_DEFAULT: list[str] = ["5000"],
      DEFAULT_WORK: int = 5000,
      DEFAULT_CALLS: int = 500;
 
