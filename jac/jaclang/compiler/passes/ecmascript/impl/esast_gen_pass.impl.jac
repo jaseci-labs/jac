@@ -1025,7 +1025,28 @@ impl EsastGenPass._return_type_includes_jsx_element(rt: uni.Expr) -> bool {
             or self._return_type_includes_jsx_element(rt.right)
         );
     }
-    return isinstance(rt, uni.Name) and rt.value == 'JsxElement';
+    return isinstance(rt, uni.Name)
+    and rt.value in ('JsxElement', 'JsxPage', 'JsxLayout');
+}
+
+impl EsastGenPass._return_type_route_role(rt: uni.Expr) -> (str | None) {
+    if (
+        isinstance(rt, uni.BinaryExpr)
+        and isinstance(rt.op, uni.Token)
+        and rt.op.name == Tok.BW_OR
+    ) {
+        left_role = self._return_type_route_role(rt.left);
+        return left_role or self._return_type_route_role(rt.right);
+    }
+    if isinstance(rt, uni.Name) {
+        if rt.value == 'JsxPage' {
+            return 'page';
+        }
+        if rt.value == 'JsxLayout' {
+            return 'layout';
+        }
+    }
+    return None;
 }
 
 impl EsastGenPass._component_pascal_name(nd: uni.Ability) -> (str | None) {
@@ -3743,7 +3764,14 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
     if (nd.code_context == CodeContext.CLIENT and not nd.is_method) {
         self.client_manifest.has_client = True;
         is_pub = nd.access and (nd.access.tag.name == Tok.KW_PUB);
-        if is_pub {
+        route_role: (str | None) = None;
+        if (
+            isinstance(nd.signature, uni.FuncSignature)
+            and nd.signature.return_type is not None
+        ) {
+            route_role = self._return_type_route_role(nd.signature.return_type);
+        }
+        if is_pub or route_role {
             name = nd.name_ref.sym_name;
             self.client_manifest.exports.append(name);
             if (
@@ -3761,6 +3789,12 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
             ]
                 if isinstance(nd.signature, uni.FuncSignature)
                 else [];
+            if route_role == 'page' and self.client_manifest.page_export is None {
+                self.client_manifest.page_export = name;
+            } elif route_role == 'layout'
+            and self.client_manifest.layout_export is None {
+                self.client_manifest.layout_export = name;
+            }
         }
     }
     component_call_abi = self._component_call_abi(nd);

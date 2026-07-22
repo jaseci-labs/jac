@@ -46,6 +46,18 @@ def build_graph(n: int) -> Spot {
     return a;
 }
 
+# The request loop lives in a def so `w` is a true frame local: entry-scope
+# names are module globals (CPython parity, #7626 A1), and a global binding
+# would keep the final walker alive past the metric prints.
+def run_reqs(entry_spot: Spot, reps: int) -> int {
+    total = 0;
+    for req in range(reps) {
+        w = entry_spot spawn Serve(res=Res(fd=req), cur=req + 1);
+        total += w.total;
+    }
+    return total;
+}
+
 with entry {
     n = 50;
     if len(sys.argv) > 1 {
@@ -56,12 +68,8 @@ with entry {
         reps = int(sys.argv[2]);
     }
     entry_spot = build_graph(n);
-    total = 0;
     t0 = time.perf_counter_ns();
-    for req in range(reps) {
-        w = entry_spot spawn Serve(res=Res(fd=req), cur=req + 1);
-        total += w.total;
-    }
+    total = run_reqs(entry_spot, reps);
     t1 = time.perf_counter_ns();
     print("wspawn:" + str(total));
     print("m:wdrops=" + str(wdrops));

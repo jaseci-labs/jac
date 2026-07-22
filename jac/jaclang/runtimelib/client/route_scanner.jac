@@ -4,6 +4,7 @@ obj RouteEntry {
     has path: str,
         component_import: str,
         file_path: Path,
+        source_export: str = 'page',
         auth_required: bool = False,
         is_layout: bool = False,
         is_catch_all: bool = False,
@@ -22,7 +23,8 @@ obj RouteScanner {
     }
 
     has project_root: Path,
-        symbols_of: (Callable[([Path], (list[str] | None))] | None) = None,
+        route_exports_of:
+            (Callable[([Path], tuple[((str | None), (str | None))])] | None) = None,
         pages_dir: Path postinit,
         _routes: list[RouteEntry] = [],
         _layouts: dict[(str, RouteEntry)] = {},
@@ -40,7 +42,7 @@ obj RouteScanner {
     def _file_to_route_path(filename: str) -> str;
     def _file_to_component_name(file_path: Path) -> str;
     def _detect_collisions(routes: list[RouteEntry]) -> None;
-    def _symbols_for(file_path: Path) -> (list[str] | None);
-    def _is_layout_file(file_path: Path, symbols: (list[str] | None)) -> bool;
-    def _is_route_file(file_path: Path, symbols: (list[str] | None)) -> bool;
+    def _route_exports_for(file_path: Path) -> tuple[((str | None), (str | None))];
+    def _is_layout_file(file_path: Path, layout_export: (str | None)) -> bool;
+    def _is_route_file(file_path: Path, page_export: (str | None)) -> bool;
 }

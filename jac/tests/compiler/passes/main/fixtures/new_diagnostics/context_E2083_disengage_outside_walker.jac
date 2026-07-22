@@ -7,7 +7,7 @@ obj NotAWalker {
 }
 
 walker MyWalker {
-    can visit_node with `root entry {
+    can visit_node with Root entry {
         disengage;  # <-- Ok
     }
 }

@@ -174,6 +174,14 @@ impl __doFuncFetch(function_name: str, args: dict) -> any {
         {"method": "POST", "headers": headers, "body": JSON.stringify(args)}
     );
     if not response.ok {
+        if response.status == 401 {
+            globalThis.__jacRemoveLocalStorage__("jac_token");
+            handler = globalThis.__jacHandleWalkerUnauthorized__;
+            if handler {
+                handler();
+            }
+            return {};
+        }
         error_text = await response.text();
         raise Exception(f"Function {function_name} failed: {error_text}");
     }

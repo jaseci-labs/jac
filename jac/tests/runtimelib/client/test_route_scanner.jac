@@ -1,17 +1,18 @@
 """Route-scanner membership tests for the file-based router.
 
-Locks in the root-cause fix for #7640: whether a `pages/` file becomes a route
-is decided by the top-level symbols the module defines (a route defines `page`,
-a layout defines `layout`), not by a filename skip-suffix. This lets a markerless
-co-located component live beside its route in `pages/` without being
-auto-registered as a broken route.
+Route membership is a TYPE, not a name: a `pages/` module is a route when a
+public export returns the ambient `JsxPage` type, and a layout when one returns
+`JsxLayout`. The export's name is free (`Dashboard`, `Shell`, ...), and the router
+imports it by that name. A co-located component returns `JsxElement`, so it is
+never a route and needs no marker.
 
-The scanner takes an injected `symbols_of` resolver (in production it is backed
-by the client compiler's compiled symbol table). Here the resolver reads the
-written source and reports the defined `def` names, standing in for
-`mod.sym_tab.names_in_scope`. Route symbols (`page` / `layout`) are detected
-whether or not the def is `:pub`, because the generated router imports them by
-name regardless.
+The URL still comes from the filename (`index.jac` -> the directory root,
+`[id].jac` -> `:id`, `[...rest].jac` -> catch-all).
+
+The scanner takes an injected `route_exports_of` resolver returning
+`(page_export, layout_export)`; in production it is backed by the compiled
+module's client manifest. Here it reads the written source, standing in for
+`manifest.page_export` / `manifest.layout_export`.
 """
 
 import re;
@@ -30,24 +31,26 @@ def _write(base: Path, rel: str, body: str) -> Path {
 }
 
 
-"""Stand-in for the module's compiled `sym_tab.names_in_scope`.
+"""Stand-in for the compiled manifest's `page_export` / `layout_export`.
 
-Reports the top-level `def` names a module declares (with or without `:pub`) so
-the scanner can decide route membership from what the module defines.
+Reports the name of the export annotated `-> JsxPage` and the one annotated
+`-> JsxLayout`, mirroring what the codegen records from the return type.
 """
-def _symbols_from_source(path: Path) -> (list[str] | None) {
+def _route_exports_from_source(path: Path) -> tuple[((str | None), (str | None))] {
     try {
         text = path.read_text(encoding='utf-8');
     } except OSError {
-        return None;
+        return (None, None);
     }
-    return re.findall(r'def(?::\w+)?\s+(\w+)\s*\(', text);
-}
+    page_hit = re.search(r'def(?::\w+)?\s+(\w+)\s*\([^)]*\)\s*->\s*JsxPage\b', text);
+    layout_hit = re.search(
+        r'def(?::\w+)?\s+(\w+)\s*\([^)]*\)\s*->\s*JsxLayout\b', text
+    );
+    return (
+        page_hit.group(1) if page_hit else None,
+        layout_hit.group(1) if layout_hit else None,
 
-
-"""A resolver that never resolves (simulates a page that fails to compile)."""
-def _unresolvable(path: Path) -> (list[str] | None) {
-    return None;
+    );
 }
 
 
@@ -62,143 +65,136 @@ def _route_paths(scanner: RouteScanner) -> set[str] {
 }
 
 
-"""A page and its markerless co-located component both live in pages/.
+"""A `-> JsxPage` export makes the file a route under any export name, and the
+scanner records that name so the generated manifest can import it."""
+test "page is marked by the Page return type under a free export name" {
+    with TemporaryDirectory() as tmp {
+        proj = Path(tmp);
+        _write(
+            proj,
+            "pages/dashboard.jac",
+            "def:pub Dashboard() -> JsxPage { return <div>d</div>; }",
+        );
+        scanner = RouteScanner(proj, route_exports_of=_route_exports_from_source);
+        routes = scanner.scan();
+        paths = {r.path for r in routes};
+        assert paths == {"/dashboard"} , f"Page-typed export should be a route; got {paths}";
+        assert routes[0].source_export == "Dashboard" , (
+            f"scanner must record the real export name; got {routes[0].source_export}"
+        );
+    }
+}
 
-The component (`budget_ui.jac`, plain `.jac`, no marker) defines `BudgetUI`,
-not `page`, so it must not become a route. Before the fix the scanner keyed off
-the `.cl.` skip-suffix and auto-registered this plain `.jac` as a broken
-`/budget_ui` route."""
-test "markerless co-located component is not auto-registered as a route" {
+
+"""A co-located component returns JsxElement, not Page, so it is not a route -
+no marker, no filename convention needed."""
+test "co-located JsxElement component is not a route" {
     with TemporaryDirectory() as tmp {
         proj = Path(tmp);
         _write(
             proj,
             "pages/budget.jac",
-            "def:pub page() -> JsxElement { return <BudgetUI />; }",
+            "def:pub Budget() -> JsxPage { return <BudgetUI />; }",
         );
         _write(
             proj,
             "pages/budget_ui.jac",
             "def:pub BudgetUI() -> JsxElement { return <div>ui</div>; }",
         );
-        scanner = RouteScanner(proj, symbols_of=_symbols_from_source);
+        scanner = RouteScanner(proj, route_exports_of=_route_exports_from_source);
         paths = _route_paths(scanner);
-        assert paths == {"/budget"} , f"co-located component should not be a route; got {paths}";
-        page_names = {pf.name for pf in scanner.get_page_files()};
-        assert "budget_ui.jac" not in page_names , "co-located component should not be compiled as a page";
+        assert paths == {"/budget"} , f"JsxElement component must not be a route; got {paths}";
     }
 }
 
 
-"""A page defined non-`pub` inside an explicit `cl {}` block is still a route.
-
-`manifest.exports` only lists `:pub` symbols, so keying on exports drops this
-form; the symbol table carries `page` regardless. Regression guard for the
-`test_hmr_client` pages, which use exactly this shape."""
-test "non-pub page inside a cl block is still a route" {
+"""A `-> JsxLayout` export makes the file its directory's layout under any name and
+any filename - `layout.jac` is no longer required."""
+test "layout is marked by the Layout return type under a free filename" {
     with TemporaryDirectory() as tmp {
         proj = Path(tmp);
         _write(
             proj,
-            "pages/blog.jac",
-            "cl {\n    def page() {\n        return <div>post</div>;\n    }\n}\n",
+            "pages/shell.jac",
+            "def:pub Shell() -> JsxLayout { return <div><Outlet /></div>; }",
         );
-        scanner = RouteScanner(proj, symbols_of=_symbols_from_source);
+        _write(
+            proj,
+            "pages/index.jac",
+            "def:pub Home() -> JsxPage { return <div>home</div>; }",
+        );
+        scanner = RouteScanner(proj, route_exports_of=_route_exports_from_source);
         paths = _route_paths(scanner);
-        assert paths == {"/blog"} , f"non-pub cl-block page should be a route; got {paths}";
+        assert paths == {"/"} , f"layout must not be a route; got {paths}";
+        layouts = scanner.get_layouts();
+        assert "/" in layouts , "Layout-typed export should register under '/'";
+        assert layouts["/"].source_export == "Shell" , (
+            f"layout must record its export name; got {layouts['/'].source_export}"
+        );
     }
 }
 
 
-"""A layout module registers as a layout (scoped to its dir), never a route."""
-test "layout module registers as layout not route" {
+"""The reserved names no longer mark anything: a module defining `page` /
+`layout` that does NOT return Page/Layout is just a component."""
+test "page and layout names alone no longer make a route" {
     with TemporaryDirectory() as tmp {
         proj = Path(tmp);
+        _write(
+            proj,
+            "pages/index.jac",
+            "def:pub Home() -> JsxPage { return <div>home</div>; }",
+        );
+        _write(
+            proj,
+            "pages/legacy.jac",
+            "def:pub page() -> JsxElement { return <div>old</div>; }",
+        );
         _write(
             proj,
             "pages/layout.jac",
             "def:pub layout() -> JsxElement { return <Outlet />; }",
         );
-        _write(
-            proj,
-            "pages/index.jac",
-            "def:pub page() -> JsxElement { return <div>home</div>; }",
-        );
-        scanner = RouteScanner(proj, symbols_of=_symbols_from_source);
+        scanner = RouteScanner(proj, route_exports_of=_route_exports_from_source);
         paths = _route_paths(scanner);
-        assert paths == {"/"} , f"layout must not be a route; got {paths}";
-        assert "/" in scanner.get_layouts() , "layout should register under '/'";
+        assert paths == {"/"} , f"untyped page/layout names must not route; got {paths}";
+        assert not scanner.get_layouts() , "untyped layout.jac must not register a layout";
     }
 }
 
 
-"""Legacy `.cl.jac` components stay out of the route table via their symbols,
-not a suffix rule, so existing projects keep working."""
-test "legacy cl-suffixed component stays skipped via symbols" {
-    with TemporaryDirectory() as tmp {
-        proj = Path(tmp);
-        _write(
-            proj,
-            "pages/budget.jac",
-            "def:pub page() -> JsxElement { return <BudgetUI />; }",
-        );
-        _write(
-            proj,
-            "pages/budget_ui.cl.jac",
-            "def:pub BudgetUI() -> JsxElement { return <div>ui</div>; }",
-        );
-        scanner = RouteScanner(proj, symbols_of=_symbols_from_source);
-        paths = _route_paths(scanner);
-        assert paths == {"/budget"} , f"legacy .cl.jac component should not be a route; got {paths}";
-    }
-}
-
-
-"""`.impl.` and `.test.` sidecars are module roles, not routes, and are skipped
-structurally without consulting symbols."""
+"""`.impl.` and `.test.` sidecars are module roles, never routes."""
 test "impl and test sidecars are not routes" {
     with TemporaryDirectory() as tmp {
         proj = Path(tmp);
         _write(
             proj,
             "pages/budget.jac",
-            "def:pub page() -> JsxElement { return <div>b</div>; }",
+            "def:pub Budget() -> JsxPage { return <div>b</div>; }",
         );
         _write(proj, "pages/budget.impl.jac", "impl budget.helper { return 1; }");
-        _write(proj, "pages/budget.test.jac", "test \"t\" { assert True; }",);
-        scanner = RouteScanner(proj, symbols_of=_symbols_from_source);
+        _write(proj, "pages/budget.test.jac", "test \"t\" { assert True; }");
+        scanner = RouteScanner(proj, route_exports_of=_route_exports_from_source);
         paths = _route_paths(scanner);
-        assert paths == {"/budget"} , f"impl/test sidecars must not be routes; got {paths}";
+        assert paths == {"/budget"} , f"sidecars must not be routes; got {paths}";
     }
 }
 
 
-"""A page whose symbols cannot be resolved (e.g. a transient compile error) must
-stay a route, not silently vanish from the route table; the real compile then
-surfaces the error. Fail-safe for the HMR route-refresh path."""
-test "unresolvable page stays a route instead of being dropped" {
+"""URL derivation still comes from the filename once a module qualifies as a
+route by its Page return type."""
+test "dynamic index and catch-all urls still derive from the filename" {
     with TemporaryDirectory() as tmp {
         proj = Path(tmp);
-        _write(proj, "pages/blog.jac", "def:pub page() -> JsxElement { return <div",);
-        scanner = RouteScanner(proj, symbols_of=_unresolvable);
-        paths = _route_paths(scanner);
-        assert paths == {"/blog"} , f"unresolvable page must stay a route; got {paths}";
-    }
-}
-
-
-"""Dynamic, index, and catch-all route derivation still comes from the filename
-once a module qualifies as a route by defining `page`."""
-test "dynamic index and catch-all routes still resolve" {
-    with TemporaryDirectory() as tmp {
-        proj = Path(tmp);
-        page = "def:pub page() -> JsxElement { return <div/>; }";
+        page = "def:pub View() -> JsxPage { return <div/>; }";
         _write(proj, "pages/index.jac", page);
         _write(proj, "pages/users/index.jac", page);
         _write(proj, "pages/users/[id].jac", page);
         _write(proj, "pages/[...notFound].jac", page);
-        scanner = RouteScanner(proj, symbols_of=_symbols_from_source);
+        scanner = RouteScanner(proj, route_exports_of=_route_exports_from_source);
         paths = _route_paths(scanner);
-        assert paths == {"/", "/users", "/users/:id", "/*"} , f"file-derived route paths regressed; got {paths}";
+        assert paths == {"/", "/users", "/users/:id", "/*"} , (
+            f"file-derived route paths regressed; got {paths}"
+        );
     }
 }

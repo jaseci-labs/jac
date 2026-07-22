@@ -29,7 +29,7 @@ import from pathlib { Path }
 
 glob BENCH = Path(str(__file__)).resolve().parent.parent,
      MODES = ["rc", "cycles"],
-     TRANSFER_SIZES = ["100", "1000", "10000", "100000"],
+     TRANSFER_SIZES = ["100", "1000", "10000", "100000", "1000000"],
      TRANSFER_SIZES_QUICK = ["100", "1000"];
 
 """Compile `src` under a gc mode; exit loudly on failure."""
@@ -49,7 +49,7 @@ def run_once(binary: Path, args: list[str]) -> dict {
         ["/usr/bin/time", "-v", str(binary)] + args,
         capture_output=True,
         text=True,
-        timeout=600,
+        timeout=1800,
     );
     if r.returncode != 0 {
         sys.exit(f"run failed rc={r.returncode}: {binary} {' '.join(args)}");
@@ -216,14 +216,23 @@ def main(opts: dict) {
     }
 
     sizes = TRANSFER_SIZES_QUICK if opts["quick"] else TRANSFER_SIZES;
-    treps = "5" if opts["quick"] else "20";
     out = BENCH / "bin" / "reg_transfer_cycles";
     compile_src(BENCH / "kernels" / "reg_transfer.jac", "cycles", out);
     results["reg_transfer"] = {};
     for size in sizes {
+        if opts["quick"] {
+            treps = "5";
+            tinv = inv;
+        } elif int(size) <= 100000 {
+            treps = "20";
+            tinv = inv;
+        } else {
+            treps = "5";
+            tinv = max(3, inv // 3);
+        }
         row: dict = {};
         for strategy in ["move", "copy", "serial"] {
-            cell = measure(out, [strategy, size, treps], inv);
+            cell = measure(out, [strategy, size, treps], tinv);
             row[strategy] = cell;
             print(
                 f"reg_transfer n={size:>7s} {strategy:6s} "
