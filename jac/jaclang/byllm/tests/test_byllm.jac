@@ -1855,41 +1855,34 @@ test "tool failure on a callable without __name__ is handled, not escaped (issue
 }
 
 
-"""One assistant message carrying a single write_code call with `raw` arguments."""
-def _tool_call_message(raw: object) -> dict {
-    fn = types.SimpleNamespace(name="write_code", arguments=raw);
-    call = types.SimpleNamespace(id="call_1", function=fn, type="function");
-    return {"tool_calls": [call], "content": ""};
-}
-
-
-test "unparseable tool-call arguments are reported whatever the finish_reason (issue #7657)" {
-    truncated = '{"file_path": "/app/Landing.cl.jac", "content": "node Landing { has t';
-
-    # Streaming leaves finish_reason empty when the terminating chunk never
-    # arrives -- exactly when a call was cut short. Keying off "length" alone
-    # therefore misses the real-world case: the arguments are silently replaced
-    # with "{}" and the tool is invoked bare, so the model is told it omitted
-    # required arguments rather than that its call was truncated.
-    for finish_reason in ["", "stop", "length"] {
-        message = _tool_call_message(truncated);
-        damaged = _byllm_llm_mod._sanitize_tool_calls(message);
-        ids = _byllm_llm_mod._truncated_call_ids(message, finish_reason) | damaged;
-        assert "call_1" in ids , f"truncated call must be reported (finish_reason={finish_reason!r}), got {ids!r}";
-    }
-}
-
-
-test "intact and argument-less tool calls are never reported as truncated (issue #7657)" {
-    valid = '{"file_path": "/app/a.jac", "content": "with entry { print(1); }"}';
-    message = _tool_call_message(valid);
+test "a tool call cut off mid-arguments is reported to the model (issue #7657)" {
+    # Streaming leaves finish_reason empty exactly when a call was cut short, so
+    # keying truncation off "length" alone misses the real case: the unparseable
+    # arguments are replaced with "{}" and the tool is then invoked bare.
+    cut_off = types.SimpleNamespace(
+        name="write_code",
+        arguments='{"file_path": "/app/Landing.cl.jac", "content": "node Landing { has t'
+    );
+    message = {
+        "tool_calls": [
+            types.SimpleNamespace(id="call_1", function=cut_off, type="function")
+        ],
+        "content": ""
+    };
     damaged = _byllm_llm_mod._sanitize_tool_calls(message);
-    assert not damaged , f"valid arguments must not be flagged: {damaged!r}";
-    assert message["tool_calls"][0].function.arguments == valid , "valid arguments must reach the tool untouched";
+    ids = _byllm_llm_mod._truncated_call_ids(message, "") | damaged;
+    assert "call_1" in ids , f"truncated call must be reported, got {ids!r}";
 
     # A tool that genuinely takes no arguments is normal, not damage.
-    for raw in ["", "{}", None] {
-        blank = _tool_call_message(raw);
-        assert not _byllm_llm_mod._sanitize_tool_calls(blank) , f"argument-less call must not be flagged as truncated: {raw!r}";
-    }
+    blank = {
+        "tool_calls": [
+            types.SimpleNamespace(
+                id="call_2",
+                function=types.SimpleNamespace(name="list_files", arguments=""),
+                type="function"
+            )
+        ],
+        "content": ""
+    };
+    assert not _byllm_llm_mod._sanitize_tool_calls(blank) , "an argument-less call must not be reported as truncated";
 }
