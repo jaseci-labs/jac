@@ -61,10 +61,10 @@ Same code split: `shapes.jac` holds everything EXCEPT the two `impl` blocks; `sh
 
 ## Client components: the handler annex
 
-The standard answer to "my `.cl.jac` component file is too big": declare the async handlers as **stubs inside the component**, implement them in the paired `.impl.jac`. This is how the `jac create --use web-app` scaffold ships and the dominant pattern in real Jac frontends - the `.cl.jac` stays a readable state-plus-render surface while fetch/mutate bodies live next door. Inside an `impl app.handler`, the component's reactive `has` fields are read and written **bare** - `items = ...`, never `self.items` - and assignments re-render exactly as they would inline. `root spawn walker(...)` and `await sv_fn(...)` calls work the same as in the component body.
+The standard answer to "my client component file is too big": declare the async handlers as **stubs inside the component**, implement them in the paired `.impl.jac`. This is how the `jac create --use web-app` scaffold ships and the dominant pattern in real Jac frontends - the component `.jac` stays a readable state-plus-render surface while fetch/mutate bodies live next door. Inside an `impl app.handler`, the component's reactive `has` fields are read and written **bare** - `items = ...`, never `self.items` - and assignments re-render exactly as they would inline. `root spawn walker(...)` and `await sv_fn(...)` calls work the same as in the component body.
 
 ```jac
-# frontend.cl.jac - state + stubs + render
+# frontend.jac - state + stubs + render
 def:pub app -> JsxElement {
     has items: list[str] = [],
         draft: str = "",
@@ -112,7 +112,7 @@ impl app.addItem -> None {
 ## Other annexes and module variants
 
 - **`.test.jac`**: `mod.test.jac` is the test annex - `test name { assert ...; }` blocks that see `mod`'s symbols without imports; run with `jac test` (see `jac-testing`).
-- **Variant modules**: `mod.sv.jac` (server), `mod.cl.jac` (client), `mod.na.jac` (native) are auto-discovered and merged into one logical module `mod`. Head-module precedence: `.jac` > `.sv.jac` > `.cl.jac` > `.na.jac` - the highest-precedence existing file is the head; the rest attach as variant annexes. Variant impls pair by full name (`mod.sv.impl.jac` implements `mod.sv.jac` decls); a head `mod.impl.jac` may implement declarations from *any* variant.
+- **Variant modules**: placement is inferred, so a plain `.jac` module is the default; the `.sv`/`.cl`/`.na` suffixes are the explicit form for splitting one logical module across codespaces (see `jac-codespaces`). `mod.sv.jac` (server), `mod.cl.jac` (client), `mod.na.jac` (native) are auto-discovered and merged into one logical module `mod`. Head-module precedence: `.jac` > `.sv.jac` > `.cl.jac` > `.na.jac` - the highest-precedence existing file is the head; the rest attach as variant annexes. Variant impls pair by full name (`mod.sv.impl.jac` implements `mod.sv.jac` decls); a head `mod.impl.jac` may implement declarations from *any* variant.
 - **Packages need no `__init__.jac`.** Any directory with `.jac` files is importable (`import from utils.math_utils { add }`). Add `__init__.jac` only as a re-export barrel (`import from .operations { add }` so consumers write `import from mathlib { add }`) or for package-init code.
 
 ## See also

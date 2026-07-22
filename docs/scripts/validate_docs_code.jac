@@ -147,7 +147,7 @@ def validate_code_blocks(code_blocks: list[CodeBlock]) -> list[ValidationResult]
     return results;
 }
 
-glob SKIP_FILES = ["breaking-changes.md", "jsx_client_serv_design.md", ],
+glob SKIP_FILES = ["breaking-changes.md", ],
      parser = argparse.ArgumentParser(
          description="Validate Jac code blocks in documentation (syntax only)",
      );

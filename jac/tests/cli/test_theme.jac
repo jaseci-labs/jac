@@ -13,6 +13,7 @@ import from jaclang.cli.shadcn.theme_handler {
     materialize_themed_starter,
     retheme_project
 }
+import from jaclang.cli.shadcn.shadcn_handler { resolve_single_component }
 
 
 # Module-level mock (a dataclass declared inside a test function can't resolve
@@ -151,9 +152,9 @@ test "materialize themed starter writes the project" {
         ok = materialize_themed_starter(tmpdir, "demo", cfg);
         assert ok == True;
         proj = Path(tmpdir);
-        assert (proj / "components" / "ui" / "button.cl.jac").exists();
-        assert (proj / "components" / "ui" / "card.cl.jac").exists();
-        assert (proj / "lib" / "utils.cl.jac").exists();
+        assert (proj / "components" / "ui" / "button.jac").exists();
+        assert (proj / "components" / "ui" / "card.jac").exists();
+        assert (proj / "lib" / "utils.jac").exists();
         assert (proj / "styles" / "global.css").exists();
         assert (proj / "main.jac").exists();
         # global.css is themed for the requested font + theme.
@@ -162,7 +163,7 @@ test "materialize themed starter writes the project" {
         # main.jac has the project name substituted.
         assert "Welcome to demo" in (proj / "main.jac").read_text();
         # Components resolved (no leftover cn-* tokens).
-        assert "cn-" not in (proj / "components" / "ui" / "button.cl.jac").read_text();
+        assert "cn-" not in (proj / "components" / "ui" / "button.jac").read_text();
         # jac.toml records the chosen theme and quotes scoped npm keys.
         toml_text = toml_path.read_text();
         assert 'theme = "rose"' in toml_text;
@@ -191,6 +192,46 @@ test "retheme regenerates global css and persists config" {
         toml_text = toml_path.read_text();
         assert 'theme = "emerald"' in toml_text;
         assert 'font = "outfit"' in toml_text;
+    }
+}
+
+test "retheme restyles hyphenated and stem-mismatch components" {
+    # GUARD: installed files are underscored (`input_group.jac`), registry keys
+    # are hyphenated (`input-group`), and `input-otp` even reverses its stem
+    # (file `otp_input.jac`). A style change must restyle all of them - the
+    # scan resolves each installed file back to its registry key, so none are
+    # silently skipped.
+    with tempfile.TemporaryDirectory() as tmpdir {
+        ui = Path(tmpdir) / "components" / "ui";
+        ui.mkdir(parents=True);
+        (ui / "input_group.jac").write_text(
+            resolve_single_component("input-group", "nova")["content"]
+        );
+        (ui / "otp_input.jac").write_text(
+            resolve_single_component("input-otp", "nova")["content"]
+        );
+        # Precondition: the two styles must actually differ, else the assert is trivial.
+        assert resolve_single_component("input-group", "nova")["content"] != resolve_single_component(
+            "input-group", "mira"
+        )["content"];
+        toml_path = Path(tmpdir) / "jac.toml";
+        toml_path.write_text(
+            '[project]\nname = "x"\n\n[jac-shadcn]\nstyle = "nova"\ntheme = "neutral"\nfont = "figtree"\n\n[dependencies.npm]\nclsx = "^2.1.1"\n'
+        );
+        config = MockConfig(
+            project_root=tmpdir,
+            _raw_data={
+                "jac-shadcn": {"style": "nova", "theme": "neutral", "font": "figtree"}
+            }
+        );
+        ok = retheme_project(config, {"style": "mira"});
+        assert ok == True;
+        assert (ui / "input_group.jac").read_text() == resolve_single_component(
+            "input-group", "mira"
+        )["content"];
+        assert (ui / "otp_input.jac").read_text() == resolve_single_component(
+            "input-otp", "mira"
+        )["content"];
     }
 }
 

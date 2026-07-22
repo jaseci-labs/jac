@@ -10,7 +10,7 @@ This page is a **lookup reference**, not a learning guide. For hands-on learning
 # ============================================================
 # Jac compiles to Python bytecode, JavaScript, and native machine code.
 # It features graph-native programming, object-spatial walkers,
-# AI-native constructs, and full-stack codespaces -- all with
+# meaning-typed AI constructs, and full-stack codespaces -- all with
 # brace-delimited blocks.
 # Run a file with: jac <filename>
 
@@ -1482,13 +1482,13 @@ cl {
 
 # Page files export a `page` function inside a `cl { }` block:
 # cl {
-#     def:pub page() -> JsxElement { ... }
+#     def:pub Home() -> JsxPage { ... }
 # }
 
 # Layout files use <Outlet /> for child routes:
 # cl import from "@jac/runtime" { Outlet }
 # cl {
-#     def:pub layout() -> JsxElement {
+#     def:pub Shell() -> JsxLayout {
 #         return <><nav>...</nav><Outlet /></>;
 #     }
 # }

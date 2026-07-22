@@ -39,29 +39,7 @@ Most of the time the codespace is chosen *for* you. An import inherits the codes
 - **Python / PyPI imports** are server code -- the default for anything unmarked.
 - An **extern-decl C import** -- braces containing C-ABI function declarations (`import from "libm.so" { def sqrt(x: f64) -> f64; }`) -- can only be satisfied by the native backend, so it lands in the native codespace automatically, and the declarations that use it become native too. Merely importing *from* a native module is not a native signal, and pure native-compatible code stays on the server -- without an FFI seed, `na` takes an explicit marker.
 
-Explicit markers override inference. When you want to pin an import's context (or simply make the split visible), there are three ways to set it:
-
-```jac
-# 1. Default: the top of any .jac file is the SERVER codespace.
-import os;
-
-# 2. Braced block -- scopes a group of statements for one codespace.
-cl {
-    import from react { useState, useRef }
-}
-```
-
-```jac
-# 3. Single-statement prefix -- tags exactly one statement.
-cl import from react { useEffect }
-na import from math_utils { square }
-sv import from analytics { track }
-```
-
-You can also dedicate a whole file to one codespace with a file extension: `.sv.jac` (server), `.cl.jac` (client), `.na.jac` (native). Inside such a file no header or prefix is needed.
-
-!!! tip "Prefer file-based separation, then braced blocks"
-    Explicit markers are optional -- inference places npm imports and their consumers client-side on its own. When you do split explicitly, dedicating a whole file to one codespace (`.sv.jac` / `.cl.jac` / `.na.jac`) is best -- each file has a single, unambiguous target, nothing in the body to track, and the split is visible from the directory tree. Within a mixed file, `cl { }` / `sv { }` / `na { }` braced blocks are the idiomatic choice -- the braces bracket exactly the tagged region and keep imports grouped. Reserve the single-statement prefix for one-off cases.
+Explicit markers override inference: a braced block (`cl { ... }`), a single-statement prefix (`cl import from react { useEffect }`), or a file extension (`.sv.jac` / `.cl.jac` / `.na.jac`). The full marker system, the inference rules, and their precedence are specified once in [Primitives & Codespace Semantics](language/primitives.md#codespace-model); this page assumes them and covers what is specific to imports.
 
 ---
 

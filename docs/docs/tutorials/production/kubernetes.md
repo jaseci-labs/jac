@@ -1,5 +1,7 @@
 # Kubernetes Deployment
 
+> **Concept:** [Scale invariance](../../reference/plugins/jac-scale.md#the-scale-invariance-contract): `--scale` changes where the program runs, never what it means.
+
 Moving from a local API server to a production Kubernetes deployment typically requires writing Dockerfiles, Kubernetes manifests, configuring databases, and setting up monitoring. Jac's built-in `scale` subsystem eliminates this boilerplate: `jac start --scale` generates and applies all the necessary Kubernetes resources automatically -- your application, a MongoDB instance for graph persistence, Redis for caching, and optionally Prometheus/Grafana for monitoring.
 
 This tutorial covers deploying to a local Kubernetes cluster (MicroK8s, minikube, or Docker Desktop), but the same command works for cloud providers (EKS, GKE, AKS) with `kubectl` properly configured.
@@ -485,7 +487,7 @@ kubectl get events --sort-by='.lastTimestamp'
 
 ```bash
 # Create a new full-stack project
-jac create todo --use web-static
+jac create todo --kind web-static
 cd todo
 
 # Deploy to Kubernetes

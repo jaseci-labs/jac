@@ -254,8 +254,8 @@ def get_format_sched(
 }
 
 def get_lint_sched -> list[type[Transform[uni.Module, uni.Module]]] {
-    import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacAutoLintPass }
-    return [JacAutoLintPass];
+    import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacLintCheckPass }
+    return [JacLintCheckPass];
 }
 
 def patch_co_filenames_bytes(raw_bc: bytes, find: str, replace: str) -> bytes {

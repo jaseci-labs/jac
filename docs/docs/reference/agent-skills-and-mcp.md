@@ -49,24 +49,7 @@ Claude Code, Cursor, and the Claude Agent SDK can *auto-load* [Agent Skills](htt
 
 ## MCP server (any MCP client)
 
-The built-in `jac mcp` server runs a Model Context Protocol server that exposes the Jac compiler -- grammar, documentation, examples, the bundled guides, and tools to validate, format, lint, run, and transpile Jac -- to any MCP-capable assistant.
-
-Start it with:
-
-```bash
-jac mcp
-```
-
-Then register it with your client. For Claude Code:
-
-```bash
-claude mcp add jac -- jac mcp
-```
-
-Other clients (Claude Desktop, Cursor, Windsurf, VS Code) use a JSON configuration block. The **[MCP Server reference](mcp.md)** has copy-paste configuration for every supported client, the full tool and resource catalog, transport options, and troubleshooting.
-
-!!! tip
-    The MCP server is built into the `jac` binary -- there is nothing to install. Just run `jac mcp`. (It has no third-party dependencies; the protocol is implemented on the Python standard library.)
+The built-in `jac mcp` server exposes the Jac compiler (grammar, documentation, examples, the bundled guides, and tools to validate, format, lint, run, and transpile Jac) to any MCP-capable assistant, with nothing to install. The **[MCP Server reference](mcp.md)** has copy-paste configuration for every supported client, the full tool and resource catalog, transport options, and troubleshooting.
 
 ## `jac ai` -- the built-in coding agent
 

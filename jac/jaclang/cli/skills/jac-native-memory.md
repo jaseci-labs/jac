@@ -8,9 +8,9 @@ Native Jac heap values (objects, strings, lists, dicts, sets) are reference-coun
 ## Emit-time `--gc` modes
 
 ```bash
-jac nacompile app.na.jac --gc cycles   # default: RC + Bacon-Rajan cycle collector
-jac nacompile app.na.jac --gc rc       # RC only; no collector code; ref cycles leak
-jac nacompile app.na.jac --gc none     # zero retain/release call sites emitted
+jac nacompile app.jac --gc cycles   # default: RC + Bacon-Rajan cycle collector
+jac nacompile app.jac --gc rc       # RC only; no collector code; ref cycles leak
+jac nacompile app.jac --gc none     # zero retain/release call sites emitted
 ```
 
 - Default comes from `jac.toml`: `[gc] default = "cycles"`.
@@ -69,7 +69,7 @@ with entry {
 ## Zero-RC enforced builds - the workflow
 
 ```bash
-jac nacompile service.na.jac --gc none --enforce-nogc --assert-no-rc
+jac nacompile service.jac --gc none --enforce-nogc --assert-no-rc
 ```
 
 1. **Enforce**: `--enforce-nogc` (this module) or `jac.toml` patterns (fnmatch vs module name):
@@ -97,7 +97,7 @@ Under `--gc none` an enforced module compiles **headerless**: owned payloads are
 
 ## Measuring and debugging
 
-- `JAC_RC_STATS=1 jac nacompile mod.na.jac` prints per-module RC coverage to stderr: `rc-stats [mod.na.jac] gc=cycles retains=1 releases=10 elided=3 coverage=21.4%` - a fully covered module shows `retains=0 releases=0 ... rc-free`. Move elision is proven automatically (core `RcFactsPass` backward-liveness), annotated or not.
+- `JAC_RC_STATS=1 jac nacompile mod.jac` prints per-module RC coverage to stderr: `rc-stats [mod.jac] gc=cycles retains=1 releases=10 elided=3 coverage=21.4%` - a fully covered module shows `retains=0 releases=0 ... rc-free`. Move elision is proven automatically (core `RcFactsPass` backward-liveness), annotated or not.
 - `JAC_NO_GC=1 ./binary` disables reclamation at run time in managed-mode binaries - useful to bisect whether a crash is RC-related (memory is then never freed).
 - Reserved intrinsics callable from native code: `__rc_debug_enable()` / `__rc_debug_disable()` (log retain/release traffic), `__rc_gc_disable()` / `__rc_gc_enable()`, `__rc_collect_cycles()`. These names are claimed by the runtime - never define your own.
 

@@ -1,6 +1,6 @@
-# Part II: Functions and Objects
+# Functions and Objects
 
-**In this part:**
+**On this page:**
 
 - [Functions and Abilities](#functions-and-abilities) - Function declaration, parameters, abilities
 - [Object-Oriented Programming](#object-oriented-programming) - Objects, inheritance, enums
@@ -189,7 +189,7 @@ walker ListItems {
 }
 ```
 
-> See [Part III: OSP](osp.md) for complete walker and ability documentation.
+> See [Object-Spatial Programming](osp.md) for complete walker and ability documentation.
 
 ### 5 Methods
 
@@ -494,7 +494,7 @@ Jac uses `obj` instead of `class` to define types (though `class` is also suppor
 
 ### 1 Objects (Classes)
 
-Objects are Jac's basic unit of data and behavior. Use `obj` for general-purpose types. For graph-based programming, use `node`, `edge`, or `walker` instead (see Part III: OSP).
+Objects are Jac's basic unit of data and behavior. Use `obj` for general-purpose types. For graph-based programming, use `node`, `edge`, or `walker` instead (see [Object-Spatial Programming](osp.md)).
 
 !!! note "When to use `obj` vs `class`"
     Jac's `obj` enforces stricter semantics than Python's `class` -- fields are declared upfront with `has`, constructors are auto-generated, and the structure is designed to be portable across codespaces (server, client, native). This strictness is intentional: it enables the compiler to target multiple execution environments from the same source code.
@@ -1066,4 +1066,4 @@ with entry {
 **Related Reference:**
 
 - [Types and Values](types-and-values.md), [Variables and Scope](variables-and-scope.md), [Control Flow](control-flow.md) - The language core
-- [Part III: OSP](osp.md) - Nodes, edges, walkers
+- [Object-Spatial Programming](osp.md) - Nodes, edges, walkers

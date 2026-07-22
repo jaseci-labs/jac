@@ -667,6 +667,50 @@ jobs:
         jac test jac/tests/compiler/passes/native/test_shared_lib.jac
         jac test jac/tests/compiler/passes/native/test_exec_link.jac
 
+    - name: Run bundled-stdlib equivalence pins (darwin, #7626 C3)
+      env:
+        JAC_TEST_JOBS: "0"
+        # os.path + textwrap + keyword are pure-compute na modules that must
+        # agree on darwin; the shutil pin self-skips there until the stat
+        # seam gets a per-OS floor (see test_prim_equivalence.jac).
+        PYTEST_ADDOPTS: -k "shutil or path or textwrap or keyword"
+      run: jac test jac/jaclang/compiler/tests/test_prim_equivalence.jac
+
+  # aarch64 cross lane (#7626 C1): cross-compile with the in-house ELF linker
+  # (MOVW_UABS relocation family) + arch-parameterized vendored musl, run the
+  # binaries under qemu-user. This was the native suite's last environmental
+  # skip: without qemu + cross libc the #6366 runtime tests never execute.
+  test-native-aarch64:
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Install qemu-user and aarch64 cross libc
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends qemu-user-static libc6-arm64-cross
+
+    - name: Set up jac (build the binary)
+      uses: ./.github/actions/setup-jac
+
+    - name: Vendor cross musl (aarch64)
+      working-directory: jac
+      run: zig build -Dno-ninja vendor-musl-linux-aarch64 --summary all
+
+    - name: Run aarch64 cross tests under qemu
+      env:
+        JAC_TEST_JOBS: "0"
+        PYTEST_ADDOPTS: -k aarch64
+        # The sealed CI binary's pkg_root only bundles host-arch musl; point
+        # the static-link search at the repo-vendored cross runtime.
+        JAC_NATIVE_MUSL_DIR: ${{ github.workspace }}/jac/.pbs-build/linux-aarch64/musl/lib
+      run: jac test jac/tests/compiler/passes/native/test_native_gen_pass.jac
+
   # Launcher unit tests: trailer codec + `.jab`-overlay round-trip
   # (append / detect / materialize-steps-over-overlay / graft). runtime.zig is
   # the sole owner of the trailer format, so these guard the whole `--as binary`

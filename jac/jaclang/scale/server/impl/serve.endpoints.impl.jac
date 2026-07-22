@@ -573,10 +573,12 @@ impl JacAPIServerEndpoints.create_webhook_parameters(
 }
 
 impl JacAPIServerEndpoints.register_webhook_endpoints -> None {
+    has_webhook_walkers = False;
     for walker_name in self.get_walkers() {
         protocol = self.get_walker_protocol(walker_name);
 
         if protocol == APIProtocol.WEBHOOK {
+            has_webhook_walkers = True;
             self.server.add_endpoint(
                 JEndPoint(
                     method=HTTPMethod.POST,
@@ -590,6 +592,9 @@ impl JacAPIServerEndpoints.register_webhook_endpoints -> None {
                 )
             );
         }
+    }
+    if has_webhook_walkers {
+        self.get_api_key_manager();
     }
 }
 

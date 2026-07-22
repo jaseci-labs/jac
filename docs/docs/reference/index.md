@@ -5,6 +5,7 @@ The complete technical reference for Jac -- pure lookup, organized by subject. I
 ## How to use this reference
 
 - **Looking up language syntax?** → [Language](#language) below.
+- **Meeting a term like *synechic* or *walker* for the first time?** → [The Vocabulary of Jac](../quick-guide/vocabulary.md).
 - **Looking up a `jac` command?** → [CLI Commands](cli/index.md).
 - **Configuring a project?** → [Configuration (`jac.toml`)](config/index.md).
 - **Wiring AI, deployment, or the full-stack client?** → [Capabilities and Plugins](#capabilities-and-plugins).
@@ -27,8 +28,7 @@ The core language -- syntax, types, objects, graphs, concurrency, and native com
 - **[Concurrency](language/concurrency.md)** -- async/await, `flow`/`wait`, parallel operations
 - **[Comprehensions & Filters](language/advanced.md)** -- filter/assign comprehensions, typed filters
 - **[Walker Patterns](language/walker-responses.md)** -- the `.reports` array, response patterns, nested spawning
-- **[Ownership & Borrowing](language/ownership-borrowing.md)** -- `own`/`imm`/`&`/`&mut` bindings, move checking, `Region` arenas (`in <handle> { }` opens), `def drop` ([checker spec](language/ownership-checker-spec.md))
-- **[Appendices](language/appendices.md)** -- keyword & operator reference, grammar, gotchas, migration
+- **[Gradual Borrow Checking](language/ownership-borrowing.md)** -- `own`/`imm`/`&`/`&mut` bindings, move checking, `Region` arenas (`in <handle> { }` opens), `def drop` ([checker spec](../internals/ownership-checker-spec.md))
 - **[Syntax Cheatsheet](language/syntax-cheatsheet.md)** -- one-page lookup
 - **[Native Compilation](language/native-pathway.md)** -- compiling to native binaries and C-ABI shared libraries; gc modes and zero-RC ownership builds
 
@@ -53,7 +53,6 @@ AI, deployment, and the full-stack frameworks. byLLM and Scale are **built into 
 - **[CLI Commands](cli/index.md)** -- every `jac` subcommand with options and examples
 - **[MCP Server](mcp.md)** -- expose your project to AI coding assistants via `jac mcp`
 - **[Agent Skills & MCP](agent-skills-and-mcp.md)** -- `jac guide`, exportable skills, and when to use each
-- **[Plugins (Removed)](plugin-authoring.md)** -- why Jac no longer has a plugin system; custom persistence backends
 - **[Configuration](config/index.md)** -- `jac.toml`, profiles, environments
 - **[Publishing Packages](publishing.md)** -- building wheels and npm tarballs
 - **[Persistence & Schema Migration](persistence.md)** -- the `root` graph, schema drift, migrations

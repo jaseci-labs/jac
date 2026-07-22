@@ -63,7 +63,7 @@ Set `kind = "cli-native"` in `jac.toml` when you want the *program* to execute t
 ## Your learning path
 
 - **Concepts you need** → [Core Concepts](../quick-guide/what-makes-jac-different.md) -- codespaces & object-spatial programming
-- **Learn the language** → [Jac Fundamentals](../tutorials/language/basics.md) · [Graphs & Walkers](../tutorials/language/osp.md)
+- **Learn the language** → [Jac Fundamentals](../tutorials/language/basics.md) · [Object-Spatial Programming](../tutorials/language/osp.md)
 - **Build it for real** → [Build a Chess Engine](../tutorials/native/chess.md) -- a complete native project · [WebAssembly in the Browser](../tutorials/native/wasm.md) -- the same `na` code compiled to wasm
 - **Look it up** → [Native pathway reference](../reference/language/native-pathway.md) · [CLI commands](../reference/cli/index.md)
 

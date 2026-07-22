@@ -3528,6 +3528,64 @@ test "aarch64 standalone binary runs (issue #6366)" {
     }
 }
 
+test "aarch64 static-musl binary runs (cross vendor-musl, #7626 C1)" {
+    # Cross static-link against the arch-parameterized vendored musl
+    # (`zig build vendor-musl-linux-aarch64`) and run the fully static
+    # binary under qemu-user with NO cross loader/libc prefix. Pins the
+    # whole cross pathway: MOVW_UABS relocations + per-arch musl staging
+    # + static ELF emission for a non-host arch.
+    import shutil;
+    import tempfile;
+    import jaclang;
+    qemu = shutil.which("qemu-aarch64-static") or shutil.which("qemu-aarch64");
+    _musl_env = os.environ.get("JAC_NATIVE_MUSL_DIR", "");
+    musl_a64 = os.path.join(_musl_env, "libc.a")
+        if _musl_env
+        else os.path.join(
+            os.path.dirname(jaclang.__file__),
+            "..",
+            ".pbs-build",
+            "linux-aarch64",
+            "musl",
+            "lib",
+            "libc.a"
+        );
+    if not qemu or not os.path.exists(musl_a64) {
+        import pytest;
+        pytest.skip(
+            "aarch64 qemu-user or cross vendored musl not present "
+            "(run `zig build vendor-musl-linux-aarch64`, or set "
+            "JAC_NATIVE_MUSL_DIR)"
+        );
+    }
+    fixture = str(os.path.join(FIXTURES, "aarch64_global_roundtrip.jac"));
+    with tempfile.TemporaryDirectory() as tmpdir {
+        out_bin = os.path.join(tmpdir, "a64_static");
+        comp_env = dict(os.environ);
+        comp_env["JAC_NATIVE_TARGET"] = "aarch64-unknown-linux-musl";
+        comp = subprocess.run(
+            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out_bin],
+            capture_output=True,
+            text=True,
+            timeout=180,
+            env=comp_env
+        );
+        assert comp.returncode == 0 , (
+            f"aarch64 static nacompile failed: exit={comp.returncode}\n"
+            f"stderr: {comp.stderr[-500:] if comp.stderr else '(empty)'}"
+        );
+        assert os.path.exists(out_bin) , f"Binary not created at {out_bin}";
+        result = subprocess.run(
+            [qemu, out_bin], capture_output=True, text=True, timeout=30
+        );
+        assert result.returncode == 42 , (
+            f"Expected exit 42 from the static aarch64 binary, got "
+            f"{result.returncode}.\n"
+            f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
+        );
+    }
+}
+
 test "elf linker rejects unhandled relocation (issue #6366 guard)" {
     # Defense-in-depth: the linker must refuse to emit a binary when a
     # relocation targeting an emitted section has no handler, rather than

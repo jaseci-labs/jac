@@ -994,7 +994,7 @@ impl JacTest.run_test(
                 if not is_annex(file)
             ];
             for file in files {
-                if is_cl_test_file_for_discovery(file) {
+                if is_cl_test_file_for_discovery(os.path.join(root_dir, file)) {
                     test_file = True;
                     cl_path = os.path.join(root_dir, file);
                     JacRuntimeInterface.get_console().info(
