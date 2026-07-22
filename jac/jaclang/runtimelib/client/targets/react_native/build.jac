@@ -13,6 +13,7 @@ import from jaclang.runtimelib.client.targets.react_native.common {
 import from jaclang.runtimelib.client.targets.react_native.html_tag_map {
     supported_rn_html_tags
 }
+import from jaclang.runtimelib.client.jac_client_compiler { JacClientCompiler }
 
 glob _RUNTIME_JS_FILES = {"client_runtime.js", "pwa_runtime.js"},
      _WEB_ONLY_GLOBALS = ["window", "document", "localStorage"],
@@ -113,10 +114,13 @@ def write_native_entry(rn_dir: Path) {
 }
 
 def _strip_module_ext(name: str) -> str {
-    for ext in [".native.cl.jac", ".cl.jac", ".impl.jac", ".test.jac", ".jac"] {
+    for ext in JacClientCompiler.COMPOUND_EXTENSIONS {
         if name.endswith(ext) {
             return name[:-len(ext)];
         }
+    }
+    if name.endswith(".jac") {
+        return name[:-len(".jac")];
     }
     return name;
 }
