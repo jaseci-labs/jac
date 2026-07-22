@@ -20,10 +20,10 @@ Answers to common questions about Jac, organized by topic. Click a category to e
         ```
 
     ??? question "What do I need to install to get started with Jac?"
-        See the [Installation Guide](https://docs.jaseci.org/quick-guide/install/)
+        See the [Installation Guide](../quick-guide/install.md)
 
     ??? question "What are good first projects to build with Jac?"
-        Check out the [AI Day Planner Tutorial](https://docs.jaseci.org/tutorials/first-app/build-ai-day-planner/)
+        Check out the [AI Day Planner Tutorial](../tutorials/first-app/build-ai-day-planner.md)
 
 ??? "Language & Concepts"
 
@@ -33,7 +33,7 @@ Answers to common questions about Jac, organized by topic. Click a category to e
         - Jaseci: The broader framework and ecosystem. All core capabilities -- `scale` for serving and deployment, byLLM for AI, the full-stack client framework, and the MCP server -- ship built into the `jac` binary; only their optional third-party dependencies are pulled per-project via `jac install`
 
     ??? question "Do I need to know graph theory to use Jaseci?"
-        No. Learn OSP: [OSP Guide](https://docs.jaseci.org/tutorials/language/osp/)
+        No. Learn OSP: [OSP Guide](../tutorials/language/osp.md)
 
     ??? question "Can I use Python libraries (PyPI) in Jac?"
         Yes. Jac integrates seamlessly with Python libraries.
@@ -46,7 +46,7 @@ Answers to common questions about Jac, organized by topic. Click a category to e
         - Type annotations encouraged
         - New keywords: `node`, `edge`, `walker`, `has`, `can`
 
-        Start here: [Jac Basics](https://docs.jaseci.org/tutorials/language/basics/)
+        Start here: [Jac Basics](../tutorials/language/basics.md)
 
     ??? question "I'm coming from JavaScript/TypeScript -- what should I know?"
         Jac's frontend syntax will look familiar (JSX-style):
@@ -61,7 +61,7 @@ Answers to common questions about Jac, organized by topic. Click a category to e
         - No `const`/`let` -- just variable assignment
         - Type annotations use `:` not TypeScript syntax
 
-        Start here: [Full-Stack Setup](https://docs.jaseci.org/tutorials/fullstack/setup/)
+        Start here: [Full-Stack Setup](../tutorials/fullstack/setup.md)
 
     ??? question "I'm new to programming / coming from another language -- where do I start?"
         Key concepts to learn:
@@ -70,7 +70,7 @@ Answers to common questions about Jac, organized by topic. Click a category to e
         2. **Graph thinking** -- Model data as nodes and edges
         3. **Walker pattern** -- Computation that moves through data
 
-        Start here: [Installation](https://docs.jaseci.org/quick-guide/install/) → [Build an AI Day Planner](https://docs.jaseci.org/tutorials/first-app/build-ai-day-planner/)
+        Start here: [Installation](../quick-guide/install.md) → [Build an AI Day Planner](../tutorials/first-app/build-ai-day-planner.md)
 
     ??? question "Can ____ be done in Jac? Is ____ compatible with Jac?"
         **Yes**, if the answer to any of these questions is yes:
@@ -88,17 +88,17 @@ Answers to common questions about Jac, organized by topic. Click a category to e
     ??? question "How does byLLM differ from calling OpenAI/Anthropic directly?"
         - Standardized interface across AI providers
         - Integrated model management in Jac
-        - Simplified prompt engineering
-        See [API key setup](https://docs.jaseci.org/tutorials/first-app/build-ai-day-planner/#part-5-making-it-smart-with-ai)
+        - Prompts derived from your names, types, and `sem` annotations, so there is no prompt text to maintain
+        See [API key setup](../tutorials/first-app/build-ai-day-planner.md#part-5-making-it-smart-with-ai)
 
     ??? question "How do I structure by llm() functions so that the output is deterministic and parseable?"
-        Use structured prompts and response templates. [byLLM Reference](https://docs.jaseci.org/reference/plugins/byllm/)
+        Use structured prompts and response templates. [byLLM Reference](../reference/plugins/byllm.md)
 
 ??? "Production & Deployment"
 
     ??? question "How do I deploy a Jac app to production?"
-        - [Local Deployment](https://docs.jaseci.org/tutorials/production/local/): `jac start` creates an HTTP API server.
-        - [Kubernetes Deployment](https://docs.jaseci.org/tutorials/production/kubernetes/): Deploy with a single command.
+        - [Local Deployment](../tutorials/production/local.md): `jac start` creates an HTTP API server.
+        - [Kubernetes Deployment](../tutorials/production/kubernetes.md): Deploy with a single command.
 
     ??? question "Do I need Docker/Kubernetes knowledge to deploy with scale?"
         No. Scale (built into `jaclang`) handles containerization and orchestration automatically.
@@ -107,7 +107,7 @@ Answers to common questions about Jac, organized by topic. Click a category to e
         - Containerizes Jac application
         - Sets up Kubernetes deployment
         - Manages scaling and load balancing
-        [Kubernetes Deployment Reference](https://docs.jaseci.org/tutorials/production/kubernetes/)
+        [Kubernetes Deployment Reference](../tutorials/production/kubernetes.md)
 
 ??? "Common Issues"
 
@@ -129,8 +129,8 @@ Answers to common questions about Jac, organized by topic. Click a category to e
         return {"id": jid(task), "title": task.title, "done": task.done};
         ```
 
-    ??? question "`jac create --use web-static` fails or asks about Bun."
-        The `--use web-static` template requires [Bun](https://bun.sh) for frontend bundling. If Bun isn't installed, `jac create` will offer to install it automatically. You can also install it manually: `curl -fsSL https://bun.sh/install | bash`.
+    ??? question "`jac create --kind web-static` fails or asks about Bun."
+        The `web-static` kind requires [Bun](https://bun.sh) for frontend bundling. If Bun isn't installed, `jac create` will offer to install it automatically. You can also install it manually: `curl -fsSL https://bun.sh/install | bash`.
 
 ??? "Debugging & Support"
 
@@ -138,29 +138,29 @@ Answers to common questions about Jac, organized by topic. Click a category to e
         Join the [Jaseci Discord Community](https://discord.gg/6j3QNdtcN6) and use the #get-help channel
 
     ??? question "What debugging tools are available for Jac?"
-        - VS Code debugger support: [Debugging Guide](https://docs.jaseci.org/tutorials/language/debugging/)
-        - Writing and running tests: [Testing Reference](https://docs.jaseci.org/reference/testing/)
+        - VS Code debugger support: [Debugging Guide](../tutorials/language/debugging.md)
+        - Writing and running tests: [Testing Reference](../reference/testing.md)
 
     ??? question "How do I debug graph state visually and trace execution flow?"
-        Use the graph visualization tool in the debugger: [Graph Visualization](https://docs.jaseci.org/tutorials/language/debugging/#graph-visualization)
+        Use the graph visualization tool in the debugger: [Graph Visualization](../tutorials/language/debugging.md#graph-visualization)
 
     ??? question "How do I test Jac walkers and nodes?"
-        [Testing Guide for Nodes and Walkers](https://docs.jaseci.org/reference/testing/#testing-nodes-and-walkers)
+        [Testing Guide for Nodes and Walkers](../reference/testing.md#testing-nodes-and-walkers)
 
 ??? "Project Structure & Best Practices"
 
     ??? question "Can I build a complete app in one .jac file?"
         Technically yes, but not recommended for larger apps. Use modular structure for scalability:
-        - [Full-Stack Setup](https://docs.jaseci.org/tutorials/fullstack/setup/) -- Project structure and multi-file organization
-        - [jac-client Reference](https://docs.jaseci.org/reference/plugins/jac-client/) -- Complete client plugin documentation
+        - [Full-Stack Setup](../tutorials/fullstack/setup.md) -- Project structure and multi-file organization
+        - [jac-client Reference](../reference/plugins/jac-client.md) -- Complete full-stack client documentation
 
     ??? question "Can I use Jac with React/frontend frameworks?"
         Yes. Jac supports:
-        - [React component style](https://docs.jaseci.org/tutorials/fullstack/components/)
-        - [npm package imports](https://docs.jaseci.org/reference/plugins/jac-client/#importing-npm-packages)
+        - [React component style](../tutorials/fullstack/components.md)
+        - [npm package imports](../reference/plugins/jac-client.md#npm-import-type-checking-jac-check)
 
     ??? question "How do I structure multi-agent AI systems in Jac?"
-        - [Use project template](https://docs.jaseci.org/reference/cli/#jac-create)
+        - [Use project template](../reference/cli/index.md#jac-create)
         `jac create <project_name> --use <template_name>`
         - Organize files by purpose:
           - .jac: Core logic
@@ -168,7 +168,7 @@ Answers to common questions about Jac, organized by topic. Click a category to e
           - .impl.jac: Implementation details
 
     ??? question "How do I handle authentication and authorization in Jac walkers?"
-        Use built-in authentication functions: [Authentication Tutorial](https://docs.jaseci.org/tutorials/fullstack/auth/)
+        Use built-in authentication functions: [Authentication Tutorial](../tutorials/fullstack/auth.md)
 
 ??? "Community & Contributing"
 
@@ -176,7 +176,7 @@ Answers to common questions about Jac, organized by topic. Click a category to e
         Very active! Join the [Jaseci Discord Community](https://discord.gg/6j3QNdtcN6) for support and discussions with fellow contributors.
 
     ??? question "How often is Jac updated?"
-        Check the [GitHub Releases](https://docs.jaseci.org/community/release_notes/jaclang/) for the latest updates and versions.
+        Check the [GitHub Releases](../community/release_notes/jaclang.md) for the latest updates and versions.
     ??? question "How do I contribute to Jaseci?"
         - [Discord contributors channel](https://discord.gg/6j3QNdtcN6)
-        - Read the [Contributing Guide](https://docs.jaseci.org/community/contributing/)
+        - Read the [Contributing Guide](../community/contributing.md)

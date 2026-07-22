@@ -56,9 +56,6 @@ Runtime dependencies declared under `[dependencies]` are written into the wheel'
 
 See the [Configuration Reference](config/index.md#project) for the full field list.
 
-!!! note "Migrated from `[package]`?"
-    Releases before jaclang 0.15 used a separate `[package]` section for publishing metadata. It has been merged into `[project]`. If you have an old `jac.toml`, rename `[package]` → `[project]` and `[package.include]` → `[project.include]`; plain `[package]` tables are no longer read.
-
 ### Controlling what ships
 
 By default `jac build --as wheel` collects a single directory named after the project (`mylib/`, with hyphens converted to underscores). Override this with `[project.include]`:
@@ -196,4 +193,3 @@ jac install -e /path/to/cloned/lib
 - [`jac build`](cli/index.md#jac-build) -- command reference (`--as wheel|npm`)
 - [`jac install`](cli/index.md#jac-install) -- installing dependencies and editable installs
 - [Configuration Reference](config/index.md#project) -- every `jac.toml` field
-- [Plugins (Removed)](plugin-authoring.md) -- why Jac no longer has a plugin system

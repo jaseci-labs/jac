@@ -30,7 +30,9 @@ class JacClientCompiler {
             'JacClientErrorBoundary'
         ];
 
-        COMPOUND_EXTENSIONS = ['.native.cl.jac', CLIENT_SUFFIX] + list(ANNEX_SUFFIXES);
+        COMPOUND_EXTENSIONS = ['.native.cl.jac', '.native.jac', CLIENT_SUFFIX] + list(
+            ANNEX_SUFFIXES
+        );
 
         PLATFORM_RUNTIME_FILES = {"react-native": "client_runtime_native.cl.jac"};
     }
@@ -47,6 +49,7 @@ class JacClientCompiler {
 
     def _get_client_dir(self: JacClientCompiler) -> Path;
     def _jac_path_to_js(self: JacClientCompiler, rel_str: str) -> str;
+    def _native_variant(self: JacClientCompiler, path: Path) -> Path;
     def compile_runtime_utils(
         self: JacClientCompiler, runtime_filename: str
     ) -> tuple[str, list[str]];
@@ -90,6 +93,10 @@ class JacClientCompiler {
     ) -> bool;
 
     def rescan_pages(self: JacClientCompiler) -> bool;
+    def _page_symbols(
+        self: JacClientCompiler, module_path: Path
+    ) -> (list[str] | None);
+
     def _generate_routes_manifest(self: JacClientCompiler) -> None;
     def _write_source_map(
         self: JacClientCompiler,

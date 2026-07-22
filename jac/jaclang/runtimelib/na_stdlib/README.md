@@ -160,6 +160,30 @@ bundled one. A bundled module links through the existing cross-module machinery
   its `str` rendering would differ);
   `get_opcodes`/`unified_diff`/`ndiff`/`Differ`/`HtmlDiff` not provided.
 
+- **`statistics.na.jac`** (#7593 item 18) -- double-precision
+  `fmean`/`mean`/`median`/`median_low`/`median_high`/`variance`/`pvariance`/
+  `stdev`/`pstdev` over generic `[T]` defs, so int and float sequences both
+  monomorphize without boxing. SCOPE/divergences: results always compute in
+  float (CPython runs exact Fraction arithmetic internally and `median` of an
+  odd-count sequence returns the element itself, preserving int), and errors
+  raise `ValueError` directly (CPython's `StatisticsError` subclasses
+  `ValueError`, so `except ValueError` behaves identically on both backends).
+
+- **`shutil.na.jac`** (#7593 item 18) -- `which`/`copyfile`/`copy`/`copy2`/
+  `move`/`rmtree` over the native os intrinsics (getenv, path.join,
+  path.isdir, path.isfile, path.basename) plus direct libc (access, unlink,
+  rmdir, rename, opendir/readdir/closedir). The dirent d_name offset follows
+  the glibc x86-64/aarch64 layout (d_ino 8 + d_off 8 + d_reclen 2 + d_type 1
+  = 19), matching the platform scope of the other libc-backed modules.
+  SCOPE/divergences: copy/copy2 duplicate bytes but do not yet preserve
+  mode/mtime metadata; rmtree follows the isdir predicate, so directory
+  symlinks are recursed into rather than unlinked; errors raise `ValueError`
+  rather than CPython's `OSError` subclasses.
+
+- **`keyword.na.jac`** (#7593 item 18) -- `kwlist`/`softkwlist`/`iskeyword`/
+  `issoftkeyword` mirroring CPython's lists verbatim, ordering included
+  (stable since 3.10's soft-keyword additions).
+
 - **`fractions.na.jac`** (#6978 Phase 2) -- a pure-Jac (Mechanism B) `Fraction`
   over native `int`, normalized on construction via Euclid's GCD with the sign
   carried by the numerator and the denominator kept positive (CPython's value

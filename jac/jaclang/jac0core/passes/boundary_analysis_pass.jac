@@ -24,6 +24,15 @@ class BoundaryAnalysisPass(UniPass) {
     ) -> (str | None);
 
     def _in_native_module(self: BoundaryAnalysisPass) -> bool;
+    def _native_source_module_of(
+        self: BoundaryAnalysisPass, mod: (uni.Module | None)
+    ) -> (str | None);
+
+    def _absorbed_module(
+        self: BoundaryAnalysisPass, item: uni.ModulePath
+    ) -> (uni.Module | None);
+
+    def _register_native_absorb(self: BoundaryAnalysisPass, nd: uni.Import) -> None;
     def enter_import(self: BoundaryAnalysisPass, nd: uni.Import) -> None;
     def _register_sv_import(
         self: BoundaryAnalysisPass,
@@ -64,6 +73,7 @@ class BoundaryAnalysisPass(UniPass) {
         self: BoundaryAnalysisPass, type_name: str, source_mod: (uni.Module | None)
     ) -> None;
 
+    def _literal_default(self: BoundaryAnalysisPass, expr: any) -> tuple[(bool, any)];
     def after_pass(self: BoundaryAnalysisPass) -> None;
     def _record_access_levels(self: BoundaryAnalysisPass, manifest: any) -> None;
     def enter_archetype(self: BoundaryAnalysisPass, nd: uni.Archetype) -> None;

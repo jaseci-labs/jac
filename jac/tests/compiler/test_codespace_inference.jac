@@ -107,6 +107,28 @@ test "mixed module generates rpc bridges in js" {
     assert 'fast_add' not in js , "native block must not leak into JS";
 }
 
+test "inferred client triggers server archetype auto-share with wire codecs" {
+    mod = compile_fixture("infer_wire_share.jac", cgen=True);
+    assert stamp_of(mod, "Todo") == 'server' , "node stays server (auto-shared)";
+    assert stamp_of(mod, "Particle") == 'native' , "extern-seed pull wins";
+    js = mod.gen.js;
+    assert 'class Todo' in js , "server node auto-shared into the client bundle";
+    assert '__from_wire' in js , "auto-shared archetype carries wire codecs";
+    assert 'class Particle' not in js , "native-pulled obj stays out of the client bundle";
+}
+
+test "pull policy: tagged globs and one-sided objs relocate, stubs keep defaults" {
+    mod = compile_fixture("infer_pull_policy.jac", cgen=True);
+    assert stamp_of(mod, "TOKENS") == 'client' , "access tags are visibility, not placement, for globs";
+    assert stamp_of(mod, "Panel") == 'client' , "obj referenced only by client code relocates";
+    assert stamp_of(mod, "Task") == 'server' , "node archetype is never pulled";
+    js = mod.gen.js;
+    assert 'TOKENS' in js , "pulled glob lands in the client bundle";
+    assert 'class Panel' in js , "pulled obj is a real client class";
+    assert 'class Task' in js , "two-sided node still auto-shares a stub";
+    assert '"untitled"' in js , "stub ctor materializes literal has-defaults";
+}
+
 test "sv import placement is inferred while boundary fact stays" {
     mod = compile_fixture("infer_sv_client.jac", cgen=True);
     assert stamp_of(mod, "fetch_items") == 'client' , "client-consumed sv import is placed client";
@@ -139,9 +161,14 @@ test "pure modules infer native under the shipped default" {
     }
 }
 
-test "test blocks keep a module server under native default" {
-    mod = compile_with_default("nadefault_with_tests.jac", "native");
-    assert mod.decided_codespace == '' , "test blocks run through the python harness";
+test "test blocks lower native under native default" {
+    mod = compile_with_default("nadefault_with_tests.jac", "native", cgen=True);
+    assert mod.decided_codespace == 'native' , (
+        "test blocks no longer block native inference"
+    );
+    assert mod.gen.native_engine is not None;
+    names = [t.name for t in mod.gen.native_layout.tests];
+    assert "test_double_works" in names;
 }
 
 test "pure modules infer native under an explicit native default" {
@@ -207,6 +234,46 @@ test "pure markerless module infers native under native default" {
     assert stamp_of(mod, "add") == 'native';
 }
 
+test "generator module infers native under native default" {
+    mod = compile_with_default("nadefault_generator.jac", "native", cgen=True);
+    assert mod.decided_codespace == 'native' , (
+        "generators lower natively (state machines incl. yield from) and are not server signals"
+    );
+    assert stamp_of(mod, "evens") == 'native';
+}
+
+test "local-graph OSP module infers native under native default" {
+    mod = compile_with_default("nadefault_local_osp.jac", "native", cgen=True);
+    assert mod.decided_codespace == 'native' , (
+        "walkers/nodes/spawn over a local graph lower natively; OSP is a server"
+        " signal only with a persistence surface"
+    );
+    assert stamp_of(mod, "collect") == 'native';
+}
+
+test "root access keeps a module server under native default" {
+    mod = compile_with_default("nadefault_root_osp.jac", "native");
+    assert mod.decided_codespace == '' , (
+        "root is the persistent graph; touching it implies a server surface"
+    );
+    assert stamp_of(mod, "add_task") == 'server';
+}
+
+test "lambda module infers native under native default" {
+    mod = compile_with_default("nadefault_lambda.jac", "native", cgen=True);
+    assert mod.decided_codespace == 'native' , (
+        "closures lower natively (escaping pairs, adapter callbacks) and are not server signals"
+    );
+    assert stamp_of(mod, "scale_all") == 'native';
+}
+
+test "structural match no longer forces server under native default" {
+    mod = compile_with_default("nadefault_match.jac", "native", cgen=True);
+    assert mod.decided_codespace == 'native' , (
+        "structural match patterns lower natively and are not server signals"
+    );
+}
+
 test "pure markerless module stays server under server default" {
     mod = compile_with_default("nadefault_pure.jac", "server");
     assert mod.decided_codespace == '' , "server default keeps markerless modules undecided";
@@ -230,16 +297,21 @@ test "server signal poisons the import closure" {
     assert stamp_of(mod, "helper") == 'server';
 }
 
-test "import cycles fall back to server under native default" {
-    mod = compile_with_default("nadefault_cyc_a.jac", "native");
-    assert mod.decided_codespace == '' , "native backend cannot link circular imports";
-    assert stamp_of(mod, "fa") == 'server';
+test "import cycles infer native under native default" {
+    mod = compile_with_default("nadefault_cyc_a.jac", "native", cgen=True);
+    assert mod.decided_codespace == 'native' , "cyclic pure closures lower natively";
+    assert stamp_of(mod, "fa") == 'native';
+    assert mod.gen.native_engine is not None , (
+        "cyclic closure should produce a native engine"
+    );
 }
 
-test "osp constructs keep module server under native default" {
-    mod = compile_with_default("nadefault_walker.jac", "native");
-    assert mod.decided_codespace == '' , "walker/node archetypes are server signals";
-    assert stamp_of(mod, "Visitor") == 'server';
+test "osp with root access keeps module server under native default" {
+    mod = compile_with_default("nadefault_root_osp.jac", "native", cgen=True);
+    assert mod.decided_codespace == '' , (
+        "root is the persistent graph; OSP with a persistence surface stays server"
+    );
+    assert stamp_of(mod, "Task") == 'server';
 }
 
 test "native default produces a native engine for pure modules" {
@@ -248,15 +320,142 @@ test "native default produces a native engine for pure modules" {
     assert mod.gen.native_engine is not None , "inferred-native module should lower to a native engine";
 }
 
+test "variadic defs infer native under native default" {
+    mod = compile_with_default("nadefault_varargs.jac", "native", cgen=True);
+    assert mod.decided_codespace == 'native' , "variadic params are native-lowerable; no demotion";
+    assert mod.gen.native_engine is not None , "variadic module should lower to a native engine";
+    assert stamp_of(mod, "pack_sum") == 'native';
+}
+
 test "non-lowerable pure module demotes to server under native default" {
     mod = compile_with_default("nadefault_nolower.jac", "native", cgen=True);
     assert mod.decided_codespace == '' , "demotion recompiles in the server codespace";
     assert stamp_of(mod, "build") == 'server';
 }
 
+test "implicit-ctor positional args lower natively under native default" {
+    mod = compile_with_default("nadefault_posctor.jac", "native", cgen=True);
+    assert mod.decided_codespace == 'native' , (
+        "positional implicit-ctor args map onto has-field order and lower"
+    );
+    assert mod.gen.native_engine is not None;
+    assert stamp_of(mod, "make") == 'native';
+}
+
 test "cascade: importer of a demoted module demotes with it" {
     mod = compile_with_default("nadefault_uses_nolower.jac", "native", cgen=True);
     assert mod.decided_codespace == '' , "importer of a demoted dep must demote too";
+}
+
+test "closure cap exceeded skips native inference with a note" {
+    import io;
+    import sys;
+    import from jaclang.jac0core.codeinfo { set_native_closure_cap }
+    set_native_closure_cap(1);
+    buf = io.StringIO();
+    old_stderr = sys.stderr;
+    sys.stderr = buf;
+    try {
+        mod = compile_with_default("nadefault_capchain_a.jac", "native", cgen=True);
+    } finally {
+        sys.stderr = old_stderr;
+        set_native_closure_cap(0);
+    }
+    assert mod.decided_codespace == '' , "cap-exceeded root must stay server";
+    assert stamp_of(mod, "fa") == 'server';
+    assert "native_closure_cap" in buf.getvalue() , (
+        f"note must name the knob, got: {buf.getvalue()!r}"
+    );
+}
+
+test "capped chain still infers native under the default cap" {
+    mod = compile_with_default("nadefault_capchain_a.jac", "native", cgen=True);
+    assert mod.decided_codespace == 'native' , "3-module pure chain fits default cap";
+    assert mod.gen.native_engine is not None;
+}
+
+test "transitive import chain infers native under native default" {
+    mod = compile_with_default("nadefault_transchain_a.jac", "native", cgen=True);
+    assert mod.decided_codespace == 'native' , (
+        "a -> b -> c transitive pure chain must lower native"
+    );
+    assert mod.gen.native_engine is not None;
+}
+
+test "census records demotion with first error code" {
+    import from jaclang.jac0core.compiler { na_census_begin, na_census_end }
+    na_census_begin();
+    try {
+        compile_with_default("nadefault_nolower.jac", "native", cgen=True);
+    } finally {
+        census = na_census_end();
+    }
+    rec = census.get(
+        os.path.realpath(os.path.join(FIXTURE_DIR, "nadefault_nolower.jac"))
+    );
+    assert rec is not None , "demoted module missing from census";
+    assert rec['outcome'] == 'demoted' , f"expected demoted, got {rec}";
+    assert rec['code'] == 'E5092' , f"expected first-error code, got {rec}";
+}
+
+test "census records native and server outcomes" {
+    import from jaclang.jac0core.compiler { na_census_begin, na_census_end }
+    na_census_begin();
+    try {
+        compile_with_default("nadefault_pure.jac", "native", cgen=True);
+        compile_with_default("nadefault_root_osp.jac", "native", cgen=True);
+    } finally {
+        census = na_census_end();
+    }
+    pure = census.get(
+        os.path.realpath(os.path.join(FIXTURE_DIR, "nadefault_pure.jac"))
+    );
+    blocked = census.get(
+        os.path.realpath(os.path.join(FIXTURE_DIR, "nadefault_root_osp.jac"))
+    );
+    assert pure is not None and pure['outcome'] == 'native' , f"got {pure}";
+    assert blocked is not None and blocked['outcome'] == 'server' , f"got {blocked}";
+    assert blocked['detail'] != '' , "server record must carry the classifier reason";
+}
+
+test "include chain infers native under native default" {
+    mod = compile_with_default("nadefault_star_main.jac", "native", cgen=True);
+    assert mod.decided_codespace == 'native' , (
+        "from-import of an include re-exporter must lower native"
+    );
+    assert mod.gen.native_engine is not None;
+}
+
+test "include chain stays server under server default" {
+    mod = compile_with_default("nadefault_star_main.jac", "server");
+    assert mod.decided_codespace == '' , (
+        "server default keeps include chains undecided"
+    );
+}
+
+test "bare jac import infers native under native default" {
+    mod = compile_with_default("nadefault_bare.jac", "native", cgen=True);
+    assert mod.decided_codespace == 'native' , (
+        "bare import of a resolvable plain .jac module is a dep edge, not a "
+        "server signal"
+    );
+    assert mod.gen.native_engine is not None;
+}
+
+test "aliased bare jac import stays server under native default" {
+    mod = compile_with_default("nadefault_bare_alias.jac", "native");
+    assert mod.decided_codespace == '' , (
+        "aliased bare imports are not lowered natively (call sites key on the "
+        "alias, which never matches the module symbol set)"
+    );
+}
+
+test "bare import of a cl module stays server under native default" {
+    mod = compile_with_default("nadefault_bare_cl.jac", "native");
+    assert mod.decided_codespace == '' , (
+        "a .cl.jac sibling is a cl/sv server signal even when its body has no "
+        "other signals"
+    );
 }
 
 test "explicit .na.jac mandate still fails loudly" {

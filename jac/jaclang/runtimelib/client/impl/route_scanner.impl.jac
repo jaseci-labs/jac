@@ -54,11 +54,12 @@ impl RouteScanner._scan_directory(
                 routes.extend(child_routes);
             }
         } elif entry.is_file() and entry.suffix == '.jac' {
-            if any(suffix in entry.name for suffix in self.SKIP_SUFFIXES) {
+            if any(suffix in entry.name for suffix in self.MODULE_ROLE_SUFFIXES) {
                 continue;
             }
+            symbols = self._symbols_for(entry);
             stem = entry.stem;
-            if stem == self.LAYOUT_FILENAME {
+            if self._is_layout_file(entry, symbols) {
                 layout_key = url_prefix or "/";
                 if layout_key in self._layouts {
                     raise ClientBundleError(
@@ -76,6 +77,9 @@ impl RouteScanner._scan_directory(
                 );
                 self._layouts[layout_key] = layout_entry;
                 self._page_files.append(entry);
+                continue;
+            }
+            if not self._is_route_file(entry, symbols) {
                 continue;
             }
             route_segment = self._file_to_route_path(stem);
@@ -114,6 +118,16 @@ impl RouteScanner._file_to_route_path(filename: str) -> str {
     return filename;
 }
 
+def _sanitize_segment(segment: str) -> list[str] {
+    fragments: list[str] = [];
+    for fragment in re.split(r'[^0-9A-Za-z]+', segment) {
+        if len(fragment) > 0 {
+            fragments.append(fragment[0].upper() + fragment[1:]);
+        }
+    }
+    return fragments;
+}
+
 impl RouteScanner._file_to_component_name(file_path: Path) -> str {
     try {
         relative = file_path.relative_to(self.pages_dir);
@@ -127,26 +141,66 @@ impl RouteScanner._file_to_component_name(file_path: Path) -> str {
         }
 
         clean = re.sub(r'^\[\.\.\.(\w+)\]$', r'\1', part);
-
         clean = re.sub(r'^\[(\w+)\]$', r'\1', clean);
-        parts.append(clean[0].upper() + clean[1:] if len(clean) > 0 else clean);
+        parts.extend(_sanitize_segment(clean));
     }
     return self.COMPONENT_PREFIX + "".join(parts);
 }
 
 impl RouteScanner._detect_collisions(routes: list[RouteEntry]) -> None {
-    seen: dict[(str, Path)] = {};
-    for route in routes {
-        if route.is_layout {
-            continue;
-        }
-        if route.path in seen {
+    seen_paths: dict[(str, Path)] = {};
+    seen_imports: dict[(str, Path)] = {};
+    all_entries = routes + list(self._layouts.values());
+    for entry in all_entries {
+        if (not entry.is_layout) and (entry.path in seen_paths) {
             raise ClientBundleError(
-                f"Route collision: '{route.path}' is defined by both "
-                f"'{seen[route.path]}' and '{route.file_path}'. "
+                f"Route collision: '{entry.path}' is defined by both "
+                f"'{seen_paths[entry.path]}' and '{entry.file_path}'. "
                 f"Remove one of them."
             );
         }
-        seen[route.path] = route.file_path;
+        if not entry.is_layout {
+            seen_paths[entry.path] = entry.file_path;
+        }
+        other = seen_imports.get(entry.component_import);
+        if other {
+            raise ClientBundleError(
+                f"Route import-name collision: '{other}' and '{entry.file_path}' "
+                f"both sanitize to the JS identifier '{entry.component_import}'. "
+                f"Rename one of the files."
+            );
+        }
+        seen_imports[entry.component_import] = entry.file_path;
     }
+}
+
+impl RouteScanner._symbols_for(file_path: Path) -> (list[str] | None) {
+    if self.symbols_of is None {
+        return None;
+    }
+    return self.symbols_of(file_path);
+}
+
+impl RouteScanner._is_layout_file(
+    file_path: Path, symbols: (list[str] | None)
+) -> bool {
+    if file_path.stem != self.LAYOUT_FILENAME {
+        return False;
+    }
+    if self.symbols_of is None or symbols is None {
+        return True;
+    }
+    return 'layout' in symbols;
+}
+
+impl RouteScanner._is_route_file(file_path: Path, symbols: (list[str] | None)) -> bool {
+    if self.symbols_of is None {
+        return not any(
+            suffix in file_path.name for suffix in self.LEGACY_PLACEMENT_SUFFIXES
+        );
+    }
+    if symbols is None {
+        return True;
+    }
+    return 'page' in symbols;
 }

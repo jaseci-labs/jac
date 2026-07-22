@@ -928,6 +928,49 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
     return _result;
 }
 
+impl NaIRGenPass._codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | None) {
+    i64 = ir.IntType(64);
+    _f = nd.right;
+    _fname = self._get_name(_f.f_type) if _f.f_type is not None else None;
+    if _f.compares or _fname is None {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="expression",
+            name="FilterCompr",
+            help_text="Only plain `[?:NodeType]` type filters lower natively; field-predicate filters are not supported yet - filter with an explicit loop."
+        );
+        return None;
+    }
+    target_val = self._codegen_expr(nd.target);
+    if target_val is None {
+        return None;
+    }
+    _model = self.ir_in.gen.osp_model;
+    _tags = _model.tags if _model is not None else {};
+    _ntag = _tags.get(_fname, -1);
+    if _ntag < 0 or self._osp_filter_fn is None {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="expression",
+            name="FilterCompr",
+            help_text=self._xmod_osp_help([_fname])
+        );
+        return None;
+    }
+    _result = self.builder.call(
+        self._osp_filter_fn,
+        [target_val, ir.Constant(i64, _ntag)],
+        name="osp.chain.filt"
+    );
+    if isinstance(target_val.type, ir.PointerType) and self._is_owned(target_val) {
+        self._emit_rc_release_simple(target_val, op="chain_filter", loc="");
+    }
+    self._mark_owned(_result);
+    return _result;
+}
+
 impl NaIRGenPass._osp_visit_targets(target: uni.UniNode) -> (ir.Value | None) {
     if isinstance(target, uni.EdgeRefTrailer) {
         return self._codegen_edge_ref_trailer(target);

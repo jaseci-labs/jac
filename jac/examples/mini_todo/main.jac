@@ -9,7 +9,7 @@ enum Category: int { WORK, PERSONAL, SHOPPING, HEALTH, OTHER }
 
 def categorize(title: str) -> Category by llm();
 
-na def priority_score(title: str) -> int {
+def priority_score(title: str) -> int {
     score: int = 0;
     for c in title {
         if c == "!" {
@@ -41,7 +41,7 @@ def:pub get_todos -> list[Todo] {
     return [root-->][?:Todo];
 }
 
-cl def:pub app -> JsxElement {
+def:pub app -> JsxElement {
     has todos: list[Todo] = [],
         text: str = "";
 

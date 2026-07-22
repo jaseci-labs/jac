@@ -1,11 +1,11 @@
 # Object-Spatial Programming
 
-Learn Jac's unique graph-based programming paradigm with nodes, edges, and walkers.
+Learn *Object-Spatial Programming* hands-on: nodes, edges, and walkers. OSP is the paradigm realizing Jac's *topokinetic* property ([The Two Ideas](../../quick-guide/ideas-behind-jac.md#topokinetic)): computation moves through a topology of data instead of data streaming to a fixed site of compute.
 
 > **Prerequisites**
 >
 > - Completed: [Installation](../../quick-guide/install.md)
-> - Recommended: [What Makes Jac Different](../../quick-guide/what-makes-jac-different.md) (gentler introduction)
+> - Recommended: [Core Concepts](../../quick-guide/what-makes-jac-different.md) (gentler introduction)
 > - Time: ~45 minutes
 
 !!! tip "This is the hands-on tutorial"

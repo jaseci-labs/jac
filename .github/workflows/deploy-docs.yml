@@ -1,4 +1,4 @@
-name: Build and Deploy jac-lang.org Documentation
+name: Build and Deploy Documentation Site (docs.jaseci.org)
 
 on:
   release:
@@ -57,7 +57,7 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('docs/pyproject.toml') }}
+          key: ${{ runner.os }}-pip-${{ hashFiles('docs/jac.toml') }}
           restore-keys: |
             ${{ runner.os }}-pip-
 
@@ -124,7 +124,6 @@ jobs:
 
           RUN apt-get update && apt-get install -y \
               curl \
-              graphviz \
               && rm -rf /var/lib/apt/lists/*
 
           WORKDIR /app
@@ -192,14 +191,14 @@ jobs:
     steps:
       - name: Build and Push Summary
         run: |
-          echo "## jac-lang.org Documentation Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## Documentation Deployment Summary (docs.jaseci.org)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Documentation Website" >> $GITHUB_STEP_SUMMARY
           echo "- **Image Tag**: ${{ needs.deploy-jac-lang-website.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
           echo "- **ECR Repository**: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Status**: ${{ needs.deploy-jac-lang-website.result }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Production URLs**:" >> $GITHUB_STEP_SUMMARY
-          echo "  - https://jac-lang.org" >> $GITHUB_STEP_SUMMARY
-          echo "  - https://www.jac-lang.org" >> $GITHUB_STEP_SUMMARY
+          echo "  - https://docs.jaseci.org" >> $GITHUB_STEP_SUMMARY
+          echo "  - https://jac-lang.org (legacy alias)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Note**: Deployment will be handled automatically by Flux in jaseci-cluster." >> $GITHUB_STEP_SUMMARY

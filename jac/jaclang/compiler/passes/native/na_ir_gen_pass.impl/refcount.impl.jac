@@ -509,6 +509,9 @@ impl NaIRGenPass._can_native_move_lower(nd: object) -> bool {
     if not isinstance(rhs, uni.Name) {
         return False;
     }
+    if rhs.value in self.closure_cell_handles {
+        return False;
+    }
     src_alloca = self.local_vars.get(rhs.value);
     if src_alloca is None {
         return False;
@@ -913,6 +916,9 @@ impl NaIRGenPass._emit_scope_cleanup(
         if var_name in self.nogc_stack_vars {
             continue;
         }
+        if var_name in self.closure_cell_handles {
+            continue;
+        }
 
         if isinstance(alloca.type, ir.PointerType)
         and isinstance(alloca.type.pointee, ir.PointerType) {
@@ -931,6 +937,11 @@ impl NaIRGenPass._emit_scope_cleanup(
             }
         }
     }
+    for (var_name, cell) in self.closure_cell_handles.items() {
+        if isinstance(cell.type, ir.PointerType) {
+            self._emit_rc_release_typed(cell, op="scope_exit", loc=loc);
+        }
+    }
     for (var_name, alloca) in _region_handles {
         self._emit_region_handle_drop(alloca, var_name);
     }
@@ -946,6 +957,9 @@ impl NaIRGenPass._emit_loop_iter_cleanup(body_locals: list, loc: str = "") -> No
             continue;
         }
         if var_name in self.nogc_stack_vars {
+            continue;
+        }
+        if var_name in self.closure_cell_handles {
             continue;
         }
         alloca = self.local_vars.get(var_name);

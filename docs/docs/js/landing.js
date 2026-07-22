@@ -11,9 +11,9 @@ document.addEventListener('DOMContentLoaded', function () {
     // Typing animation
     const phrases = [
         "# Write once, scale everywhere",
-        "# AI-first programming language",
+        "# Meaning-typed AI, built in",
         "# Object-Spatial Programming",
-        "# Cloud-native by design"
+        "# Scale-invariant by design"
     ];
     let phraseIndex = 0;
     let charIndex = 0;
@@ -104,7 +104,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const demoData = {
         byllm: {
             title: "AI-Integrated Programming with byLLM",
-            code: `<span class="jac-comment"># AI Integration with byLLM - No Prompt Engineering Required! 🤖</span>
+            code: `<span class="jac-comment"># AI Integration with byLLM - No Prompts to Write! 🤖</span>
 
 <span class="jac-keyword">import</span> <span class="jac-keyword">from</span> <span class="jac-variable">byllm</span>.<span class="jac-variable">llms</span> { <span class="jac-node">OpenAI</span> }
 
@@ -652,14 +652,14 @@ with entry { # Generate random points
 }`,
         codeLang: "python",
         output: `Distance: 5.79 , Circle area: 26.35`,
-        link: "https://www.jac-lang.org/tutorials/language/syntax/"
+        link: "/tutorials/language/basics/"
     },
     {
         tagline: "Programming Abstractions for AI",
-        summary: `Using "by" keyword to seamlessly integrate models into your development. No need for prompt engineering or interpret model outputs`,
+        summary: `Using the "by" keyword to delegate a function to a model. The prompt is derived from your names, types, and sem annotations, and the return type is enforced, so there is no prompt to write and no output to parse.`,
         filename: "ai_sentiment_analysis.jac",
         code: `
-# AI Integration with byLLM - No Prompt Engineering Required! 🤖
+# AI Integration with byLLM - No Prompts to Write! 🤖
 
 import from byllm { Model }
 
@@ -688,11 +688,11 @@ with entry {
 Customer sentiment: Negative. The customer expresses disappointment with product quality, which clearly indicates dissatisfaction.
 Translated result: Negativo. El cliente expresa decepción con la calidad del producto, lo que indica claramente insatisfacción.
     `,
-        link: "https://www.jac-lang.org/learn/jac-byllm/with_llm/"
+        link: "/reference/plugins/byllm/"
     },
     {
         tagline: "An Agentic Programming Model",
-        summary: `New programming model (object-oriented programming) to enable fast agentic-AI development`,
+        summary: `A new programming model built on Object-Spatial Programming to enable fast agentic-AI development`,
         filename: "agent_system.jac",
         code: `
 import from byllm.llm {Model}
@@ -824,7 +824,7 @@ with entry {
 
 Ensure to hydrate and listen to your body throughout the program. Adjust weights and reps as needed based on your fitness level.
     `,
-        link: "https://www.jac-lang.org/learn/introduction/#beyond-oop-an-agentic-programming-model"
+        link: "/quick-guide/ideas-behind-jac/#topokinetic"
     },
     {
         tagline: "Object-spatial programming",
@@ -883,7 +883,7 @@ Calculation History:
     },
     {
         tagline: "Zero to Infinite Scale without Code Changes",
-        summary: `Jac's cloud-native abstractions make persistence and user concepts part of the language so that simple programs can run unchanged locally or in the cloud.`,
+        summary: `Jac's scale invariance makes persistence and user concepts part of the language so that the same program text runs unchanged locally or in the cloud.`,
         filename: "cloud_scaling.jac",
         code: `
 # Example: Run unchanged locally or in the cloud!
@@ -892,7 +892,7 @@ def scale_demo():
 `,
         codeLang: "python",
         output: "Scaling with Jac is seamless!",
-        link: "https://www.jac-lang.org/learn/jac-scale/introduction/"
+        link: "/reference/plugins/jac-scale/"
     }
 ];
 

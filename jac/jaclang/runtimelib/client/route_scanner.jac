@@ -17,10 +17,12 @@ obj RouteScanner {
         INDEX_FILENAME = 'index';
         AUTH_GROUP_NAME = 'auth';
         COMPONENT_PREFIX = 'Pages';
-        SKIP_SUFFIXES = ['.cl.', '.impl.', '.test.'];
+        MODULE_ROLE_SUFFIXES = ['.impl.', '.test.'];
+        LEGACY_PLACEMENT_SUFFIXES = ['.cl.'];
     }
 
     has project_root: Path,
+        symbols_of: (Callable[([Path], (list[str] | None))] | None) = None,
         pages_dir: Path postinit,
         _routes: list[RouteEntry] = [],
         _layouts: dict[(str, RouteEntry)] = {},
@@ -38,4 +40,7 @@ obj RouteScanner {
     def _file_to_route_path(filename: str) -> str;
     def _file_to_component_name(file_path: Path) -> str;
     def _detect_collisions(routes: list[RouteEntry]) -> None;
+    def _symbols_for(file_path: Path) -> (list[str] | None);
+    def _is_layout_file(file_path: Path, symbols: (list[str] | None)) -> bool;
+    def _is_route_file(file_path: Path, symbols: (list[str] | None)) -> bool;
 }

@@ -34,6 +34,22 @@ impl JacClientCompiler._jac_path_to_js(self: JacClientCompiler, rel_str: str) ->
     return result.replace('\\', '/');
 }
 
+impl JacClientCompiler._native_variant(self: JacClientCompiler, path: Path) -> Path {
+    import from jaclang.jac0core.ext_registry { base_stem }
+    name = path.name;
+    if ".native." in name {
+        return path;
+    }
+    stem = base_stem(name);
+    for suffix in (".native.cl.jac", ".native.jac") {
+        candidate = path.with_name(stem + suffix);
+        if candidate.exists() {
+            return candidate.resolve();
+        }
+    }
+    return path;
+}
+
 impl JacClientCompiler.compile(
     self: JacClientCompiler,
     module: ModuleType,
@@ -178,17 +194,8 @@ impl JacClientCompiler.compile_dependencies_recursively(
         collected_globals = {};
     }
     module_path = module_path.resolve();
-    if (
-        target_name == "react-native"
-        and module_path.name.endswith(".cl.jac")
-        and not module_path.name.endswith(".native.cl.jac")
-    ) {
-        native_candidate = module_path.with_name(
-            module_path.name[:-len(".cl.jac")] + ".native.cl.jac"
-        );
-        if native_candidate.exists() {
-            module_path = native_candidate.resolve();
-        }
+    if target_name == "react-native" {
+        module_path = self._native_variant(module_path);
     }
     if (module_path in visited) {
         return;
@@ -227,17 +234,8 @@ impl JacClientCompiler.compile_dependencies_recursively(
     }
     for (_name, import_path) in manifest.imports.items() {
         path_obj = Path(import_path).resolve();
-        if (
-            target_name == "react-native"
-            and path_obj.name.endswith(".cl.jac")
-            and not path_obj.name.endswith(".native.cl.jac")
-        ) {
-            native_candidate = path_obj.with_name(
-                path_obj.name[:-len(".cl.jac")] + ".native.cl.jac"
-            );
-            if native_candidate.exists() {
-                path_obj = native_candidate.resolve();
-            }
+        if target_name == "react-native" {
+            path_obj = self._native_variant(path_obj);
         }
         if (path_obj in visited) {
             continue;
@@ -542,7 +540,7 @@ impl JacClientCompiler._scan_and_compile_pages(
     collected_globals: (dict[(str, Any)] | None) = None,
     target_name: str = "web"
 ) -> bool {
-    scanner = RouteScanner(self.project_dir);
+    scanner = RouteScanner(self.project_dir, symbols_of=self._page_symbols);
     if not scanner.has_pages_dir() {
         return False;
     }
@@ -567,7 +565,7 @@ impl JacClientCompiler._scan_and_compile_pages(
 }
 
 impl JacClientCompiler.rescan_pages(self: JacClientCompiler) -> bool {
-    scanner = RouteScanner(self.project_dir);
+    scanner = RouteScanner(self.project_dir, symbols_of=self._page_symbols);
     if not scanner.has_pages_dir() {
         return False;
     }
@@ -591,6 +589,21 @@ impl JacClientCompiler.rescan_pages(self: JacClientCompiler) -> bool {
     }
     self._generate_routes_manifest();
     return True;
+}
+
+impl JacClientCompiler._page_symbols(
+    self: JacClientCompiler, module_path: Path
+) -> (list[str] | None) {
+    try {
+        compiled = self.jac_compiler.compile_module(module_path);
+    } except Exception {
+        return None;
+    }
+    mod = compiled[1];
+    if mod is None {
+        return None;
+    }
+    return list(mod.sym_tab.names_in_scope.keys());
 }
 
 impl JacClientCompiler._generate_routes_manifest(self: JacClientCompiler) -> None {

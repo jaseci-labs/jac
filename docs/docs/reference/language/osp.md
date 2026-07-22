@@ -1,6 +1,6 @@
-# Part III: Object-Spatial Programming (OSP)
+# Object-Spatial Programming (OSP)
 
-**In this part:**
+**On this page:**
 
 - [Introduction to OSP](#introduction-to-osp) - Concepts, motivation, core example
 - [Nodes](#nodes) - Node declaration, entry/exit abilities
@@ -22,7 +22,7 @@
 
 ### 1 What is OSP?
 
-Object-Spatial Programming models data as graphs and computation as mobile agents (walkers) that traverse the graph. Instead of calling functions on objects, walkers visit nodes and perform operations based on location.
+*Object-Spatial Programming* (OSP) is the paradigm realizing Jac's *topokinetic* property: programs expressed as walkers traversing a persistent topology of nodes and edges, with abilities triggered by arrival. Where object-*oriented* programming organizes computation around encapsulated objects that are invoked, object-*spatial* programming organizes it around located objects that are visited: walkers visit nodes and perform operations based on location, and dispatch happens by arrival rather than by call. The property beneath the paradigm is defined in [The Two Ideas](../../quick-guide/ideas-behind-jac.md#topokinetic).
 
 ### 2 Why OSP?
 
@@ -597,7 +597,7 @@ curl -X POST http://localhost:8000/walker/add_todo \
   -d '{"title": "Learn OSP"}'
 ```
 
-Walker `has` properties become the request body. The `report` values become the response. See [Part IV: Full-Stack](../plugins/jac-client.md) and the [Scale Reference](../plugins/jac-scale.md) for full API documentation.
+Walker `has` properties become the request body. The `report` values become the response. See [jac-client Reference](../plugins/jac-client.md) and the [Scale Reference](../plugins/jac-scale.md) for full API documentation.
 
 ### 7 Walker Inheritance
 
@@ -623,14 +623,14 @@ These keywords have special meaning in specific contexts:
 
 | Reference | Valid Context | Description | See Also |
 |-----------|---------------|-------------|----------|
-| `self` | Any method/ability | Current instance (walker, node, object) | [Part II: Functions](functions-objects.md#object-oriented-programming) |
+| `self` | Any method/ability | Current instance (walker, node, object) | [Functions & Objects](functions-objects.md#object-oriented-programming) |
 | `here` | Walker ability | Current node the walker is visiting | [Walkers](#walkers) |
 | `visitor` | Node ability | The walker that triggered this ability | [Nodes](#nodes) |
 | `root` | Anywhere | Root node of the current graph | [Graph Construction](#graph-construction) |
 | `super` | Subclass method | Parent class reference | [Part II](functions-objects.md#3-inheritance) |
 | `init` | Object body | Constructor method name | [Part II](functions-objects.md#1-objects-classes) |
 | `postinit` | Object body | Post-constructor hook | [Variables and Scope](variables-and-scope.md#2-instance-variables-has) |
-| `props` | JSX context | Component props reference | [Part IV: Full-Stack](../plugins/jac-client.md#client-sections) |
+| `props` | JSX context | Component props reference | [jac-client Reference](../plugins/jac-client.md#client-sections) |
 
 **Usage examples:**
 
@@ -1294,4 +1294,4 @@ walker:priv GetStats {
 - [Walker Responses](walker-responses.md) - Patterns for handling `.reports` array
 - [Build an AI Day Planner](../../tutorials/first-app/build-ai-day-planner.md) - Full-stack tutorial using OSP concepts
 - [OSP Tutorial](../../tutorials/language/osp.md) - Hands-on tutorial with exercises
-- [What Makes Jac Different](../../quick-guide/what-makes-jac-different.md) - Gentle introduction to Jac's core concepts
+- [Core Concepts](../../quick-guide/what-makes-jac-different.md) - Gentle introduction to Jac's core concepts

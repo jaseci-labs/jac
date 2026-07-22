@@ -21,7 +21,7 @@ Jac compiles one language to three runtimes - Python bytecode (server `sv`), Jav
 | npm package | Client component/function library for any JS/TS project (`.d.ts` included) | `jac build --as npm` then `npm publish` | `jac-packaging`, `jac-cl-components` |
 | Shared library (C ABI) | `.so`/`.dylib`/`.dll` callable from C/C++/Rust/Go/ctypes; `:pub` is the export surface | `jac nacompile lib.jac --shared` (`--target macos\|windows` cross-builds) | `jac-native-shared`, `jac-native` |
 | Full-stack app | Server + React UI in one project; client code (inferred from JSX/npm imports, or `cl`-marked) compiles to the browser bundle, RPC generated across the boundary | `jac create app --kind web-app`; `jac start --dev` | `jac-fullstack-patterns`, `jac-cl-components`, `jac-sv-endpoints`, `jac-cl-routing` |
-| In-browser native (wasm) | `na {}` block compiled to WebAssembly, driven by a `cl` page - native-speed compute client-side | `jac start` (emits `/static/main.wasm`) | `jac-native-wasm`, `jac-cl-components` |
+| In-browser native (wasm) | native code compiled to WebAssembly, driven by a client page - native-speed compute client-side | `jac start` (emits `/static/main.wasm`) | `jac-native-wasm`, `jac-cl-components` |
 | Desktop app | The full-stack app wrapped in one nacompiled binary embedding the OS webview | `jac start --client desktop` / `jac build --client desktop` | `jac-desktop-app`, `jac-fullstack-patterns` |
 | Mobile app (webview) | Client bundle wrapped by Capacitor for Android/iOS; frontend-only, talks to a separately deployed server | `jac setup mobile --platform android`; `jac build --client mobile` (needs Android SDK / Xcode) | `jac-mobile-app`, `jac-cl-components` |
 

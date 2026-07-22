@@ -1101,3 +1101,47 @@ test "renaming a page moves its route" {
         assert not (compiled_dir / "pages" / "index.js").exists() , "stale compiled JS of the old name must be gone";
     }
 }
+
+test "hyphenated page filenames sanitize to valid JS identifiers in _routes.js" {
+    with TemporaryDirectory() as tmpdir {
+        (reloader, compiled_dir, pages_dir) = _routed_project(
+            tmpdir, extra_pages={"features/about-connections.jac": "About"}
+        );
+        routes = (compiled_dir / "_routes.js").read_text();
+        assert "PagesFeaturesAboutConnections" in routes;
+        for line in routes.splitlines() {
+            if line.startswith("import ") {
+                imported_name = line.split(" as ")[1].split(" ")[0];
+                assert "-" not in imported_name , f"invalid JS identifier: {imported_name}";
+            }
+        }
+    }
+}
+
+test "a page and a layout that sanitize to the same identifier raise ClientBundleError" {
+    import from jaclang.runtimelib.client { RouteScanner }
+    import from jaclang.runtimelib.client_bundle { ClientBundleError }
+
+    with TemporaryDirectory() as tmpdir {
+        unique_dir = Path(tmpdir) / f"project_{uuid.uuid4().hex[:8]}";
+        pages_dir = unique_dir / "pages";
+        pages_dir.mkdir(parents=True);
+        (pages_dir / "admin-layout.jac").write_text(
+            "cl {\n    def page() {\n        return <div>Admin</div>;\n    }\n}\n"
+        );
+        admin_dir = pages_dir / "admin";
+        admin_dir.mkdir();
+        (admin_dir / "layout.jac").write_text(
+            "cl {\n    def layout() {\n        return <div>Layout</div>;\n    }\n}\n"
+        );
+        scanner = RouteScanner(unique_dir);
+        raised = False;
+        try {
+            scanner.scan();
+        } except ClientBundleError as err {
+            raised = True;
+            assert "PagesAdminLayout" in str(err);
+        }
+        assert raised , "expected a ClientBundleError on page/layout identifier collision";
+    }
+}

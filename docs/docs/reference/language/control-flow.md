@@ -1,6 +1,6 @@
 # Control Flow
 
-**In this part:**
+**On this page:**
 
 - [Conditionals](#1-conditional-statements), [While Loops](#2-while-loops), [For Loops](#3-for-loops) - Branching and iteration
 - [Pattern Matching](#4-pattern-matching) - `match`/`case` destructuring

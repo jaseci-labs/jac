@@ -1,4 +1,4 @@
-# Jac Client Import Patterns - Implementation Status
+# Jac Client Import Patterns
 
 This document provides a comprehensive reference of all JavaScript/ECMAScript import patterns and their Jac equivalents, showing which patterns are currently supported.
 
@@ -148,13 +148,13 @@ import_item: (KW_DEFAULT | STAR_MUL | named_ref) (KW_AS NAME)?
 
 ### Validation
 
-- `pyast_gen_pass.py`:
+- `jac0core/passes/pyast_gen_pass.jac`:
   - Logs error if `default` or `*` used without `cl`
   - Logs error if string literal imports used without `cl` (Python doesn't support string literal module names)
-- `sym_tab_build_pass.py`: Only alias added to symbol table for default/namespace; skips symbol creation for String paths
-- `esast_gen_pass.py`: Generates appropriate `ImportSpecifier`, `ImportDefaultSpecifier`, or `ImportNamespaceSpecifier`
-- `parser.py`: Handles both `dotted_name` (list of Names) and `STRING` in import paths
-- `unitree.py`: `ModulePath.dot_path_str` extracts string value from String literals
+- `jac0core/passes/sym_tab_build_pass.jac`: Only alias added to symbol table for default/namespace; skips symbol creation for String paths
+- `compiler/passes/ecmascript/esast_gen_pass.jac`: Generates appropriate `ImportSpecifier`, `ImportDefaultSpecifier`, or `ImportNamespaceSpecifier`
+- `jac0core/parser/parser.jac`: Handles both `dotted_name` (list of Names) and `STRING` in import paths
+- `jac0core/unitree.jac`: `ModulePath.dot_path_str` extracts string value from String literals
 
 ## Testing
 
@@ -249,5 +249,3 @@ function MyComponent() {
 - **Path Aliases**: Full support via `[client.paths]` in jac.toml (Vite, TypeScript, and module resolver)
 - **String Literal Imports**: Full support for hyphenated package names (react-dom, styled-components, etc.)
 - ️ **Named + Namespace Mix**: Generates but produces invalid JavaScript
-
-**Last Updated**: 2025-10-23

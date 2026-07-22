@@ -4,7 +4,7 @@
 #
 #   default   benchmark BOTH builds: run each for a fixed number of seconds,
 #             then print the average and max FPS side by side
-#   --jac     build & run only the Jac-native shooter (shooter.na.jac), interactive
+#   --jac     build & run only the Jac-native shooter (shooter.jac), interactive
 #   --zig     build & run only the Zig shooter (shooter.zig), interactive
 #
 # Either way the script:
@@ -14,7 +14,7 @@
 #   4. builds the requested shooter(s)
 #   5. runs / benchmarks them
 #
-# shooter.na.jac links against raylib by its *logical* name -
+# shooter.jac links against raylib by its *logical* name -
 # `import from raylib { ... }` (no path, no extension). The native backend picks
 # the platform-correct filename (libraylib.so / libraylib.dylib / raylib.dll) for
 # the needed-library entry (DT_NEEDED on ELF, LC_LOAD_DYLIB on Mach-O), and emits
@@ -85,7 +85,7 @@ find_jac() {
 
 # ── 0.5 Headless mode: no window, no GPU, no raylib - handle it now ─────────
 #
-# shooter_headless.na.jac is the shooter's game loop with the renderer swapped
+# shooter_headless.jac is the shooter's game loop with the renderer swapped
 # for a deterministic digest and the ownership dial turned all the way up: it
 # passes the enforced borrow checker and compiles headerless with NO collector
 # and machine-checked zero reference counting (--enforce-nogc --gc none
@@ -95,14 +95,14 @@ HEADLESS_FRAMES="${HEADLESS_FRAMES:-100000}"
 
 if [ "$MODE" = "headless" ]; then
   JAC="$(find_jac)"
-  echo ">> compiling: shooter_headless.na.jac under three memory modes"
+  echo ">> compiling: shooter_headless.jac under three memory modes"
   echo "   none   : --enforce-nogc --gc none --assert-no-rc  (borrow-checked, zero RC)"
   echo "   rc     : --gc rc                                  (reference counting)"
   echo "   cycles : --gc cycles                              (rc + cycle collector)"
-  "$JAC" nacompile shooter_headless.na.jac --enforce-nogc --gc none --assert-no-rc \
+  "$JAC" nacompile shooter_headless.jac --enforce-nogc --gc none --assert-no-rc \
     -o shooter_headless_none >/dev/null
-  "$JAC" nacompile shooter_headless.na.jac --gc rc     -o shooter_headless_rc     >/dev/null
-  "$JAC" nacompile shooter_headless.na.jac --gc cycles -o shooter_headless_cycles >/dev/null
+  "$JAC" nacompile shooter_headless.jac --gc rc     -o shooter_headless_rc     >/dev/null
+  "$JAC" nacompile shooter_headless.jac --gc cycles -o shooter_headless_cycles >/dev/null
 
   echo ">> simulating ${HEADLESS_FRAMES} frames per build (240 Hz game tick) ..."
   headless_digests=""
@@ -203,12 +203,12 @@ echo ">> staged   : raylib shared library set -> ./ (via $stage_name)"
 
 # ── 4. Build helpers ────────────────────────────────────────────────────────
 
-# Compile shooter.na.jac -> ./shooter with the jac CLI.
+# Compile shooter.jac -> ./shooter with the jac CLI.
 build_jac() {
   local JAC
   JAC="$(find_jac)"
-  echo ">> compiling: $JAC nacompile shooter.na.jac"
-  "$JAC" nacompile shooter.na.jac
+  echo ">> compiling: $JAC nacompile shooter.jac"
+  "$JAC" nacompile shooter.jac
 }
 
 # Locate a Zig toolchain, downloading the single-archive distribution into

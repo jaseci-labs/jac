@@ -1,6 +1,6 @@
 """Executable counterpart of the ownership paper's erasure function.
 
-Usage: jac run harness/erase.jac kernels/binarytrees.na.jac > bare.na.jac
+Usage: jac run harness/erase.jac kernels/binarytrees.jac > bare.jac
 
 Deletes every ownership annotation from a kernel source:
   x: own T = ...   ->  x: T = ...
@@ -37,7 +37,7 @@ def erase(text: str) -> str {
 
 with entry {
     if len(sys.argv) != 2 {
-        sys.stderr.write("usage: jac run erase.jac <kernel.na.jac>\n");
+        sys.stderr.write("usage: jac run erase.jac <kernel.jac>\n");
         sys.exit(2);
     }
     sys.stdout.write(erase(Path(sys.argv[1]).read_text()));

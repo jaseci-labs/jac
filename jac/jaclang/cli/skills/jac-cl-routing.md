@@ -7,16 +7,16 @@ Two routing systems, both client-side (URL changes, no full reload). **File-base
 
 > **Pick ONE system and stay with it - do NOT mix them or switch mid-build.** Default to file-based routing. If you choose manual `<Router>`, keep route components OUT of `pages/`: a `pages/` directory and a manual `<Router>` fight over the URL, and manually importing `pages/foo.jac` breaks (the compiled JS resolves `./pages/foo.js`, which file-based routing never emits).
 
-**The choice decides `main.jac`'s `app` export** (see below). The `web-app` template ships the single-page shape - `main.jac` exports `def:pub app` returning `<ClientApp/>` from `frontend.cl.jac` - which is NOT routing. Converting it:
+**The choice decides `main.jac`'s `app` export** (see below). The `web-app` template ships the single-page shape - `main.jac` exports `def:pub app` returning `<ClientApp/>` from `frontend.jac` - which is NOT routing. Converting it:
 
 | | `main.jac` exports | route components live in | delete |
 |---|---|---|---|
-| **File-based** (default) | `def:pub app(children)` that renders `children` | `pages/` (shell = `pages/layout.jac`) | `frontend.cl.jac`, `frontend.impl.jac` |
-| **Manual** | `def:pub app()` returning your `<Router>` shell | anywhere OUTSIDE `pages/` | - (repurpose `frontend.cl.jac` as the shell) |
+| **File-based** (default) | `def:pub app(children)` that renders `children` | `pages/` (shell = `pages/layout.jac`) | `frontend.jac`, `frontend.impl.jac` |
+| **Manual** | `def:pub app()` returning your `<Router>` shell | anywhere OUTSIDE `pages/` | - (repurpose `frontend.jac` as the shell) |
 
 Keeping the template's `app()` while adding `pages/` is the classic mix: it compiles, it serves, and every route is silently discarded.
 
-Marker note: the `cl import` / `cl { }` wrappers in the page and layout examples below are the explicit style. Client placement is inferred - a `pages/*.jac` file whose `def:pub page` returns JSX is placed client without any wrapper (see `jac-codespaces`); both forms are valid.
+Client placement is inferred: a `pages/*.jac` file whose `def:pub page` returns JSX (or carries an npm import) compiles client automatically - no wrapper or prefix needed (see `jac-codespaces`). The page, layout, and `main.jac` examples below are plain markerless `.jac`.
 
 ## File-based routing (recommended)
 
@@ -38,50 +38,46 @@ myapp/
     └── [...notFound].jac    # * catch-all (404)
 ```
 
-**Which files become routes:** Only plain `.jac` files in `pages/` are treated as routes. The scanner skips files whose name contains `.cl.`, `.impl.`, or `.test.` : these are never turned into routes regardless of location.
+**Which files become routes:** A `pages/` file becomes a route only if it defines a top-level `page` (a layout only if it defines `layout`). Route membership is read from the symbols the module defines, not its filename : a co-located component beside its route defines its own name (e.g. `BudgetUI`), so it is never registered as a route and needs no marker. The `page` / `layout` def can be `:pub` or plain (inside `cl {}`); either way the router imports it by name. `.impl.` and `.test.` sidecars are skipped structurally (they are module roles, not standalone route modules).
 
-| File | Becomes a route? | Purpose |
-|---|---|---|
-| `pages/about.jac` | yes | page |
-| `pages/about.cl.jac` | **no** | co-located component |
-| `pages/about.impl.jac` | **no** | jac impl-separation file |
-| `pages/about.test.jac` | **no** | test file |
+| File | defines | Becomes a route? | Purpose |
+|---|---|---|---|
+| `pages/about.jac` | `page` | yes | page |
+| `pages/about_ui.jac` | `AboutUI` | **no** | co-located component (markerless) |
+| `pages/about.impl.jac` | - | **no** | jac impl-separation sidecar |
+| `pages/about.test.jac` | - | **no** | test sidecar |
 
-**Co-location pattern** - split into a thin `.jac` route (exports `def:pub page`) and a `.cl.jac` component. Both live in `pages/`, only `.jac` becomes a route. Import the sibling inside `cl {}` using the stem without `.cl`: `budget_ui.cl.jac` → `import from .budget_ui { BudgetUI }`.
+**Co-location pattern** - split into a thin `.jac` route (defines `page`) and a plain `.jac` component (defines its own name). Both live in `pages/`; only the one defining `page` becomes a route. Import the sibling by stem: `budget_ui.jac` → `import from .budget_ui { BudgetUI }`.
 
 ```
 pages/
-├── budget.jac               # /budget  - thin route, exports page
-└── budget_ui.cl.jac         # skipped  - complex UI component, exported as BudgetUI
+├── budget.jac               # /budget  - thin route, defines page
+└── budget_ui.jac            # not a route - defines BudgetUI, imported by budget.jac
 ```
 
 Each page file exports a **`def:pub page`**; each layout file a **`def:pub layout`** containing `<Outlet />` where child routes render:
 
 ```jac
 # pages/users/[id].jac
-cl import from "@jac/runtime" { Link, useParams }
+import from "@jac/runtime" { Link, useParams }
 
-cl {
-    def:pub page() -> JsxElement {
-        params = useParams();
-        userId = params["id"];                  # subscript, NOT params.id (E1030)
-        if not userId { return <p>Not found</p>; }   # truthy check catches undefined
-        return <div><Link to="/users">← Back</Link><h1>User {userId}</h1></div>;
-    }
+def:pub page() -> JsxElement {
+    params = useParams();
+    userId = params["id"];                  # subscript, NOT params.id (E1030)
+    if not userId { return <p>Not found</p>; }   # truthy check catches undefined
+    return <div><Link to="/users">← Back</Link><h1>User {userId}</h1></div>;
 }
 ```
 
 ```jac
 # pages/layout.jac - shared shell; nest more layout.jac files per directory
-cl import from "@jac/runtime" { Outlet, Link }
+import from "@jac/runtime" { Outlet, Link }
 
-cl {
-    def:pub layout() -> JsxElement {
-        return <div className="app">
-            <nav><Link to="/">Home</Link><Link to="/dashboard">Dashboard</Link></nav>
-            <main><Outlet /></main>
-        </div>;
-    }
+def:pub layout() -> JsxElement {
+    return <div className="app">
+        <nav><Link to="/">Home</Link><Link to="/dashboard">Dashboard</Link></nav>
+        <main><Outlet /></main>
+    </div>;
 }
 ```
 
@@ -109,10 +105,8 @@ auth_redirect = "/signin"
 
 ```
 # main.jac - server imports at top (if any), then:
-cl {
-    def:pub app(children: any) -> JsxElement {
-        return children as JsxElement;    # `children` is `any`; the cast satisfies -> JsxElement
-    }
+def:pub app(children: any) -> JsxElement {
+    return <>{children}</>;    # JSX places app client; the fragment renders the router children
 }
 ```
 
@@ -120,18 +114,16 @@ Wrap `children` to add global providers (theme, query client, auth context, etc.
 
 ```
 # main.jac
-cl import from .providers.ThemeProvider { ThemeProvider }
+import from .providers.ThemeProvider { ThemeProvider }
 
-cl {
-    def:pub app(children: any) -> JsxElement {
-        return <ThemeProvider>{children}</ThemeProvider>;
-    }
+def:pub app(children: any) -> JsxElement {
+    return <ThemeProvider>{children}</ThemeProvider>;
 }
 ```
 
 ⚠ Two failure modes, both easy to hit:
 
-- **Omitting the export** fails the build: `"app" is not exported by "compiled/main.js"` (in dev, the browser shows `SyntaxError: ... does not provide an export named 'app'`). Dropping the whole `cl { }` block instead is worse: `main.jac`'s client section is what turns on the client build, so without it `jac build` quietly produces a server-only app and ignores `pages/` entirely. A `pages/` directory on its own does NOT make a client app.
+- **Omitting the export** fails the build: `"app" is not exported by "compiled/main.js"` (in dev, the browser shows `SyntaxError: ... does not provide an export named 'app'`). A JSX-less `app` is just as bad: `def:pub app(children) { return children as JsxElement; }` carries no client signal, so inference places it **server** and it is never exported to the client entry - the same failure. Wrap `children` in JSX (`<>{children}</>` or a provider) so `app` is placed client. A `pages/` directory still needs `main.jac` to export a client `app`; the entry imports it by name.
 - **An `app` that ignores `children`** - e.g. the single-page shape `def:pub app -> JsxElement { return <Home/>; }` - **silently drops every route.** `jac check` passes, the bundle builds, the server starts, no error anywhere, and `pages/` simply never renders. This is the most common way a file-based app ends up stuck showing one stale page.
 
 Also note `return children;` alone fails `jac check` with `E1002: Cannot return Any, expected JsxElement` - cast it (`children as JsxElement`) or wrap it in JSX.
@@ -157,7 +149,7 @@ page = int(searchParams.get("page") or "1");
 
 ## Manual routing (secondary)
 
-Explicit route table in one `.cl.jac` component (e.g. `AppShell.cl.jac`) which `main.jac` mounts with the no-argument `def:pub app() -> JsxElement { return <AppShell/>; }`. With no `pages/` directory the generated entry renders `app` directly (`React.createElement(App, null)`) instead of wrapping a router in it, so the no-argument form is correct and `children` need not be declared. Components live OUTSIDE `pages/`. Nested routes render into the parent's `<Outlet />`:
+Explicit route table in one `.jac` component (e.g. `AppShell.jac`) which `main.jac` mounts with the no-argument `def:pub app() -> JsxElement { return <AppShell/>; }`. With no `pages/` directory the generated entry renders `app` directly (`React.createElement(App, null)`) instead of wrapping a router in it, so the no-argument form is correct and `children` need not be declared. Components live OUTSIDE `pages/`. Nested routes render into the parent's `<Outlet />`:
 
 ```jac
 import from "@jac/runtime" { Router, Routes, Route, Navigate, Outlet }

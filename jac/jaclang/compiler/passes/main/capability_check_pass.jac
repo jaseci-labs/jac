@@ -3,14 +3,7 @@ import from jaclang.jac0core.passes.transform { Transform }
 import from jaclang.jac0core.diagnostics { E5090, W6001, W6002, W6003, W6004 }
 import from jaclang.jac0core.codeinfo { NATIVE_SUPPORTED_STDLIB }
 
-glob NATIVE_REJECT_MATCH_PATTERNS: tuple = (
-         uni.MatchSequence,
-         uni.MatchMapping,
-         uni.MatchArch,
-         uni.MatchStar,
-
-     ),
-     NATIVE_REJECT_NODES: tuple = (uni.DisconnectOp, uni.PyInlineCode, );
+glob NATIVE_REJECT_NODES: tuple = (uni.DisconnectOp, uni.PyInlineCode, );
 
 def classify_native_import(item: uni.UniNode) -> tuple;
 

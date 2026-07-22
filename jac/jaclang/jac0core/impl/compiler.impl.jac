@@ -182,14 +182,10 @@ impl JacCompiler.get_bytecode(
                     self._restore_sections(full_target, actual_program, secs);
                     _had_native_secs = SEC_NATIVE_OBJ in secs or SEC_LLVM_IR in secs;
                 }
-                import from jaclang.jac0core.ext_registry {
-                    is_native_module as _bc_is_na
-                }
                 if (
                     _had_native_secs
                     and full_target not in actual_program._native_cache
                     and actual_program is not self._internal_program
-                    and _bc_is_na(full_target)
                 ) {
                     import logging as _bc_logging;
                     _bc_logging.getLogger(__name__).warning(
@@ -689,13 +685,20 @@ impl JacCompiler.parse_str(
     if run_codespace_infer {
         _opts = target_program._compile_options;
         _analysis_only = _opts is not None and _opts.no_cgen;
-        if (
+        _native_eligible = (
             not _analysis_only
             and target_program is not self._internal_program
             and _default_codespace_for(target_program) == 'native'
-            and _native_default_closure_ok(mod)
-        ) {
-            _coerce_native_module(mod);
+        );
+        if _native_eligible {
+            (_na_ok, _na_why) = _native_default_closure_verdict(mod);
+            if _na_ok {
+                _coerce_native_module(mod);
+                na_census_record(mod.loc.mod_path, 'native');
+            } else {
+                _seed_module_codespace(mod);
+                na_census_record(mod.loc.mod_path, 'server', '', _na_why);
+            }
         } else {
             _seed_module_codespace(mod);
         }
@@ -711,68 +714,86 @@ impl JacCompiler.compile(
 ) -> uni.Module {
     import from pathlib { Path as _WrapPath }
     import from jaclang.jac0core.ext_registry { codespace_of as _cs_of }
-    if options.force_target_program {
-        _wrap_prog = target_program;
-    } else {
-        _wrap_prog = self._resolve_program(file_path, target_program);
+    import from jaclang.jac0core.codeinfo {
+        get_effective_default_codespace_override,
+        set_effective_default_codespace
     }
-    _pre_errs = len(_wrap_prog.errors_had);
-    _mod: (uni.Module | None) = None;
-    _crash: (Exception | None) = None;
+    _prev_cs = get_effective_default_codespace_override();
     try {
-        _mod = self._compile_once(
+        if options.force_target_program {
+            _wrap_prog = target_program;
+        } else {
+            _wrap_prog = self._resolve_program(file_path, target_program);
+        }
+        _pre_errs = len(_wrap_prog.errors_had);
+        _pre_warns = len(_wrap_prog.warnings_had);
+        _mod: (uni.Module | None) = None;
+        _crash: (Exception | None) = None;
+        try {
+            _mod = self._compile_once(
+                file_path=file_path,
+                target_program=target_program,
+                use_str=use_str,
+                options=options
+            );
+        } except Exception as _e {
+            _crash = _e;
+        }
+        _resolved = os.path.realpath(file_path);
+        _probe = _mod if _mod is not None else _wrap_prog.mod.hub.get(_resolved);
+        _inferred_native = (
+            _cs_of(file_path) is None
+            and not options.aot_mode
+            and _probe is not None
+            and _probe.decided_codespace == 'native'
+        );
+        _failed = _crash is not None or len(_wrap_prog.errors_had) > _pre_errs;
+        if not (_inferred_native and _failed) {
+            if _crash is not None {
+                raise _crash;
+            }
+            return _mod;
+        }
+        _first_err = (
+            _wrap_prog.errors_had[_pre_errs].pretty_print().split('\n')[0]
+                if len(_wrap_prog.errors_had) > _pre_errs
+                else f"{type(_crash).__name__}: {_crash}"
+        );
+        _demote_alerts = _wrap_prog.errors_had[_pre_errs:];
+        _demote_code = (
+            _demote_alerts[0].code.code
+                if (_demote_alerts and _demote_alerts[0].code is not None)
+                else type(_crash).__name__
+        );
+        na_census_record(_resolved, 'demoted', _demote_code, _first_err);
+        _mark_demoted_native(_resolved);
+        _wrap_prog.errors_had = _wrap_prog.errors_had[:_pre_errs];
+        _wrap_prog.warnings_had = _wrap_prog.warnings_had[:_pre_warns];
+        try {
+            _wrap_prog.invalidate_module(_resolved);
+        } except Exception {
+            ;
+        }
+        try {
+            import from jaclang.cli.console { console as _note_console }
+            _note_console.print(
+                f"note: {file_path} preferred native but did not lower; "
+                f"compiled in the server codespace ({_first_err})",
+                style="dim",
+                file=sys.stderr
+            );
+        } except Exception {
+            ;
+        }
+        return self._compile_once(
             file_path=file_path,
             target_program=target_program,
             use_str=use_str,
             options=options
         );
-    } except Exception as _e {
-        _crash = _e;
+    } finally {
+        set_effective_default_codespace(_prev_cs);
     }
-    _resolved = os.path.realpath(file_path);
-    _probe = _mod if _mod is not None else _wrap_prog.mod.hub.get(_resolved);
-    _inferred_native = (
-        _cs_of(file_path) is None
-        and not options.aot_mode
-        and _probe is not None
-        and _probe.decided_codespace == 'native'
-    );
-    _failed = _crash is not None or len(_wrap_prog.errors_had) > _pre_errs;
-    if not (_inferred_native and _failed) {
-        if _crash is not None {
-            raise _crash;
-        }
-        return _mod;
-    }
-    _first_err = (
-        _wrap_prog.errors_had[_pre_errs].pretty_print().split('\n')[0]
-            if len(_wrap_prog.errors_had) > _pre_errs
-            else f"{type(_crash).__name__}: {_crash}"
-    );
-    _mark_demoted_native(_resolved);
-    _wrap_prog.errors_had = _wrap_prog.errors_had[:_pre_errs];
-    try {
-        _wrap_prog.invalidate_module(_resolved);
-    } except Exception {
-        ;
-    }
-    try {
-        import from jaclang.cli.console { console as _note_console }
-        _note_console.print(
-            f"note: {file_path} preferred native but did not lower; "
-            f"compiled in the server codespace ({_first_err})",
-            style="dim",
-            file=sys.stderr
-        );
-    } except Exception {
-        ;
-    }
-    return self._compile_once(
-        file_path=file_path,
-        target_program=target_program,
-        use_str=use_str,
-        options=options
-    );
 }
 
 impl JacCompiler._compile_once(
