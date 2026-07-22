@@ -28,8 +28,7 @@ import from jaclang.jac0core.jir {
     is_module_cache_valid,
     clear_module_client_kind_cache,
     compute_module_key,
-    write_precompiled_jir,
-    FLAG_PRECOMPILED
+    read_sec_inputs,
 }
 
 glob TEST_DIR = os.path.join(JAC_ROOT, "tests", "compiler"),
@@ -479,6 +478,37 @@ test "client_kind cache memoizes projects without jac.toml" {
     }
 }
 
+test "client_kind cache refreshes when a nearer jac.toml appears" {
+    clear_module_client_kind_cache();
+    with tempfile.TemporaryDirectory(dir=_test_tmp_dir) as d {
+        parent = os.path.join(d, "parent");
+        child = os.path.join(parent, "child");
+        os.makedirs(child);
+        src = os.path.join(child, "mod.jac");
+        parent_toml = os.path.join(parent, "jac.toml");
+        child_toml = os.path.join(child, "jac.toml");
+        with open(src, "w") as f {
+            f.write("glob x = 1;\n");
+        }
+        with open(parent_toml, "w") as f {
+            f.write(
+                '[project]\nname = "t"\nversion = "0.0.1"\nclient_kind = "mobui"\n'
+            );
+        }
+        past = time.time() - 5;
+        os.utime(src, (past, past));
+        os.utime(parent_toml, (past, past));
+        key_before = compute_module_key(src);
+        with open(child_toml, "w") as f {
+            f.write('[project]\nname = "t"\nversion = "0.0.1"\n');
+        }
+        key_after = compute_module_key(src);
+        assert key_before != key_after , (
+            "client-kind memoization must refresh when the nearest jac.toml changes"
+        );
+    }
+}
+
 test "is_module_cache_valid rejects mtime-fresh cache after jac.toml client_kind change" {
     clear_module_client_kind_cache();
     with tempfile.TemporaryDirectory(dir=_test_tmp_dir) as d {
@@ -529,11 +559,45 @@ test "is_module_cache_valid returns computed module key" {
         assert valid;
         assert key is not None;
         assert key == compute_module_key(jac_file);
+        assert read_sec_inputs(cache_path.read_bytes()) is not None;
     } finally {
         os.unlink(jac_file);
         cp = get_module_cache_path(jac_file);
         if cp.exists() {
             cp.unlink();
         }
+    }
+}
+
+test "is_module_cache_valid keeps bytecode when only test annex changes" {
+    clear_module_client_kind_cache();
+    with tempfile.TemporaryDirectory(dir=_test_tmp_dir) as d {
+        src = os.path.join(d, "mod.jac");
+        test_file = os.path.join(d, "mod.test.jac");
+        with open(src, "w") as f {
+            f.write("glob x = 1;\n");
+        }
+        with open(test_file, "w") as f {
+            f.write('test "t" { assert True; }\n');
+        }
+        past = time.time() - 5;
+        os.utime(src, (past, past));
+        os.utime(test_file, (past, past));
+        compiler = JacCompiler();
+        code = compiler.get_bytecode(src, JacProgram());
+        assert code is not None;
+        cache_path = get_module_cache_path(src);
+        assert cache_path.exists();
+        (valid_before, _) = is_module_cache_valid(src, cache_path);
+        assert valid_before;
+        with open(test_file, "w") as f {
+            f.write('test "t" { assert 1 == 1; }\n');
+        }
+        os.utime(src, (past, past));
+        os.utime(test_file, (past, past));
+        (valid_after, _) = is_module_cache_valid(src, cache_path);
+        assert valid_after , (
+            "bytecode cache should stay valid when only the test annex changes"
+        );
     }
 }

@@ -170,7 +170,10 @@ impl JacCompiler.get_bytecode(
     }
 
     cache_path = get_module_cache_path(full_target);
-    (cache_valid, computed_key) = is_module_cache_valid(full_target, cache_path);
+    input_fps = compute_input_fingerprints(full_target);
+    (cache_valid, computed_key) = is_module_cache_valid(
+        full_target, cache_path, input_fps
+    );
     if computed_key is not None {
         modkey = computed_key;
     }
@@ -209,7 +212,7 @@ impl JacCompiler.get_bytecode(
     }
     allow_unsealed = (not rebuild) and (not no_precompile);
     if modkey is None {
-        modkey = compute_module_key(full_target);
+        modkey = compute_module_key_from_fingerprints(input_fps);
     }
     precompiled_bc = self._get_precompiled_jir_bytecode(
         full_target, allow_unsealed, modkey
@@ -217,7 +220,9 @@ impl JacCompiler.get_bytecode(
     if precompiled_bc is not None {
         try {
             import from jaclang.jac0core.jir { write_precompiled_jir, FLAG_PRECOMPILED }
-            jir_bytes = write_precompiled_jir(precompiled_bc, modkey, FLAG_PRECOMPILED);
+            jir_bytes = write_precompiled_jir(
+                precompiled_bc, modkey, FLAG_PRECOMPILED, None, input_fps
+            );
             cache_path.parent.mkdir(parents=True, exist_ok=True);
 
             import os as _os;
@@ -266,7 +271,7 @@ impl JacCompiler.get_bytecode(
                 import zlib;
                 sections: dict[int, bytes] = {};
                 sections[SEC_BYTECODE] = result.gen.py_bytecode;
-                sections[SEC_MODKEY] = modkey.encode('utf-8');
+                sections.update(module_cache_sections(modkey, input_fps));
                 if actual_program.mtir_map {
                     sections[SEC_MTIR] = pickle.dumps(
                         actual_program.mtir_map, int(pickle.HIGHEST_PROTOCOL)

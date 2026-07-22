@@ -405,20 +405,22 @@ impl TypeEvaluator._import_module_from_path(
                         get_module_cache_path,
                         is_module_cache_valid,
                         compute_module_key,
-                        SEC_BYTECODE,
-                        SEC_MODKEY
+                        compute_input_fingerprints,
+                        module_cache_sections,
+                        SEC_BYTECODE
                     }
                     import from jaclang.jac0core.jir_passes { JirWriter }
                     cache_path = get_module_cache_path(resolved_path);
-                    if not is_module_cache_valid(resolved_path, cache_path)[0] {
+                    input_fps = compute_input_fingerprints(resolved_path);
+                    if not is_module_cache_valid(resolved_path, cache_path, input_fps)[
+                        0
+                    ] {
                         cache_path.parent.mkdir(parents=True, exist_ok=True);
                         writer = JirWriter();
 
-                        sections: dict[int, bytes] = {
-                            SEC_MODKEY: compute_module_key(resolved_path).encode(
-                                'utf-8'
-                            )
-                        };
+                        sections: dict[int, bytes] = module_cache_sections(
+                            compute_module_key(resolved_path), input_fps
+                        );
                         bc = mod.gen?.py_bytecode;
                         if bc is not None {
                             sections[SEC_BYTECODE] = bc;
