@@ -1451,7 +1451,20 @@ impl NaIRGenPass._apply_scalar_aug_op(
 
 impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
     _rhs_errs_before = len(self.errors_had);
-    value = self._codegen_expr(nd.value) if nd.value else None;
+    value: (ir.Value | None) = None;
+    if (
+        isinstance(nd.value, uni.Name)
+        and nd.value.value in self.generic_fns
+        and nd.type_tag is not None
+        and nd.type_tag.tag is not None
+    ) {
+        value = self._instantiate_generic_for_target(
+            nd.value.value, nd.type_tag.tag
+        );
+    }
+    if value is None {
+        value = self._codegen_expr(nd.value) if nd.value else None;
+    }
 
     if value is None and isinstance(nd.value, uni.FuncCall) {
         func_name = self._get_name(nd.value.target);

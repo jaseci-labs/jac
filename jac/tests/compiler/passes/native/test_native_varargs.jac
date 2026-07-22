@@ -144,8 +144,10 @@ test "varargs: cross-module callee receives the pack" {
     assert f() == 15 , f"Expected 15, got {f()}";
 }
 
-test "callsite star-unpack into a fixed-arity callee is a loud error" {
-    # Before this item, two(*xs) compiled CLEAN and returned 0 (the star
+test "callsite star-unpack of a LIST into a fixed-arity callee is a loud error" {
+    # A list's arity is not statically known, so this stays loud even now
+    # that tuple spreads and variadic-callee list spreads lower (#7626 A6).
+    # Before wave 2, two(*xs) compiled CLEAN and returned 0 (the star
     # expression lowered to None and both params default-padded).
     prog = compile_na_inline(
         "star_fixed",
@@ -156,6 +158,22 @@ test "callsite star-unpack into a fixed-arity callee is a loud error" {
         f"Expected a loud E5090/E5092 for two(*xs), got: "
         f"{[str(e) for e in prog.errors_had]}"
     );
+}
+
+test "callsite star-unpack: tuple spread splits into declared params" {
+    # #7626 A6: a tuple spread's arity is static, so add3(*xs) lowers by
+    # splitting the tuple into the three declared params.
+    (eng, _) = compile_native("call_unpack.na.jac");
+    f = get_func(eng, "spread_tuple", ctypes.c_int64);
+    assert f() == 30201 , "add3(1, 2, 3)";
+    g = get_func(eng, "spread_mixed", ctypes.c_int64);
+    assert g(1) == 30201 , "add3(1, *(2, 3)) mixes positional and spread";
+}
+
+test "callsite star-unpack: list spread routes through a variadic callee" {
+    (eng, _) = compile_native("call_unpack.na.jac");
+    f = get_func(eng, "spread_variadic", ctypes.c_int64);
+    assert f() == 15 , "vsum(*[4, 5, 6])";
 }
 
 test "double-star unpack at a call site is a loud error" {

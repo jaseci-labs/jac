@@ -188,14 +188,55 @@ def is_bundled_native_module(module_name: str) -> bool {
     return os.path.exists(os.path.join(root, f"{path_name}.na.jac"));
 }
 
+def native_target_os -> str {
+    import os;
+    import platform;
+    _t = os.environ.get("JAC_NATIVE_TARGET", "");
+    if _t {
+        if ("darwin" in _t) or ("apple" in _t) {
+            return "darwin";
+        }
+        if ("windows" in _t) or ("msvc" in _t) {
+            return "windows";
+        }
+        return "linux";
+    }
+    _s = platform.system();
+    if _s == "Darwin" {
+        return "darwin";
+    }
+    if _s == "Windows" {
+        return "windows";
+    }
+    return "linux";
+}
+
+def _native_variant_path(base_no_ext: str) -> (str | None) {
+    # Target-OS-suffixed native module variants (#7626 C3): a
+    # `<name>.<os>.na.jac` sibling (os in darwin/windows/linux) wins over
+    # the plain `<name>.na.jac` for the effective native target, so
+    # libc-layout-divergent floors (dirent, errno) can ship per-OS
+    # without a preprocessor.
+    import os;
+    _osv = os.path.join(f"{base_no_ext}.{native_target_os()}.na.jac");
+    if os.path.exists(_osv) {
+        return _osv;
+    }
+    _plain = f"{base_no_ext}.na.jac";
+    if os.path.exists(_plain) {
+        return _plain;
+    }
+    return None;
+}
+
 def resolve_native_module(
     module_name: str, base_dir: str, allow_inferred: bool = True
 ) -> tuple[(str | None, str | None)] {
     import os;
     clean = module_name.lstrip('.');
 
-    na_jac = os.path.join(base_dir, f"{clean}.na.jac");
-    if os.path.exists(na_jac) {
+    na_jac = _native_variant_path(os.path.join(base_dir, clean));
+    if na_jac is not None {
         return (f"{clean}.na", na_jac);
     }
 
@@ -203,9 +244,12 @@ def resolve_native_module(
     if path_name != clean {
         search = os.path.abspath(base_dir);
         while True {
-            cand = os.path.join(search, f"{path_name}.na.jac");
-            if os.path.exists(cand) {
-                rel = os.path.relpath(cand[:-4], os.path.abspath(base_dir));
+            cand = _native_variant_path(os.path.join(search, path_name));
+            if cand is not None {
+                rel = os.path.relpath(
+                    os.path.join(search, f"{path_name}.na"),
+                    os.path.abspath(base_dir)
+                );
                 return (rel, cand);
             }
             parent = os.path.dirname(search);
@@ -218,8 +262,8 @@ def resolve_native_module(
 
     bundled_root = native_stdlib_root();
     if bundled_root is not None {
-        bundled = os.path.join(bundled_root, f"{path_name}.na.jac");
-        if os.path.exists(bundled) {
+        bundled = _native_variant_path(os.path.join(bundled_root, path_name));
+        if bundled is not None {
             return (f"{path_name}.na", bundled);
         }
     }

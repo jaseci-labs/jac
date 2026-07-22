@@ -192,6 +192,83 @@ impl NaIRGenPass._stamp_mono_fn(
     return fn;
 }
 
+impl NaIRGenPass._instantiate_generic_for_target(
+    func_name: str, tag_node: uni.UniNode
+) -> (ir.Function | None) {
+    # Generic fns as values, v1 (#7626 A5): when a template escapes into a
+    # binding annotated with a CONCRETE Callable type, the annotation
+    # supplies the TypeVar solution, so the specialization stamps eagerly
+    # and the plain-fn result wraps into a closure value at the existing
+    # coercion seam. Truly-polymorphic escape (no concrete target) stays a
+    # loud error -- it would need runtime specialization or boxing.
+    try {
+        import from jaclang.compiler.type_system.types {
+            FunctionType as _A5FnType,
+            TypeVarType as _A5TypeVar
+        }
+    } except ImportError {
+        return None;
+    }
+    tag_t = tag_node.type if isinstance(tag_node, uni.Expr) else None;
+    if not isinstance(tag_t, _A5FnType) {
+        return None;
+    }
+    ability = self.generic_fns.get(func_name);
+    sig = ability.signature if ability is not None else None;
+    if sig is None {
+        return None;
+    }
+    _tgt_params = tag_t.parameters or [];
+    solution: dict = {};
+    for (i, p) in enumerate(sig.get_parameters()) {
+        _pt = None;
+        if p.type_tag and p.type_tag.tag and isinstance(p.type_tag.tag, uni.Expr) {
+            _pt = p.type_tag.tag.type;
+        }
+        if isinstance(_pt, _A5TypeVar) and i < len(_tgt_params) {
+            _sol_t = _tgt_params[i].param_type;
+            if _sol_t is not None and _pt.name not in solution {
+                solution[_pt.name] = _sol_t;
+            }
+        }
+    }
+    _rt = sig.return_type.type if isinstance(sig.return_type, uni.Expr) else None;
+    if (
+        isinstance(_rt, _A5TypeVar)
+        and _rt.name not in solution
+        and tag_t.return_type is not None
+    ) {
+        solution[_rt.name] = tag_t.return_type;
+    }
+    if not solution {
+        return None;
+    }
+    _mangles: dict = {};
+    for (k, v) in solution.items() {
+        _mangles[k] = v.mangle() if v?.mangle else "any";
+    }
+    parts = sorted([f"{k}={m}" for (k, m) in _mangles.items()]);
+    key = func_name + "|" + ",".join(parts);
+    _hit = self._mono_fns.get(key);
+    if _hit is not None {
+        return _hit;
+    }
+    import re;
+    safe = re.sub(r"[^0-9A-Za-z_]", "_", "_".join(parts));
+    spec_name = f"__jac_mono_{func_name}_{safe}";
+    saved_sol = self._mono_solution;
+    saved_map = self._mono_mangle_map;
+    self._mono_solution = solution;
+    self._mono_mangle_map = _mangles;
+    try {
+        fn = self._stamp_mono_fn(ability, spec_name, key);
+    } finally {
+        self._mono_solution = saved_sol;
+        self._mono_mangle_map = saved_map;
+    }
+    return fn;
+}
+
 impl NaIRGenPass._instantiate_generic_method(
     nd: uni.FuncCall, owner_arch: str, method_name: str
 ) -> (ir.Function | None) {

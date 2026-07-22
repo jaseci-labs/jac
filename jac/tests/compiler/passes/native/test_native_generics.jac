@@ -118,6 +118,34 @@ test "mono: generic method on an archetype stamps per call site" {
     assert g(0) == 3 , "picks 'yyy'";
 }
 
+test "iter flow: generator through a monomorphized Iterator[T] param" {
+    # #7626 B4: JacIter is type-erased, so iterator values pass through
+    # monomorphized signatures; the element type resolves per site.
+    (eng, _) = compile_native("iter_generic.na.jac");
+    f = get_func(eng, "use_take2", ctypes.c_int64);
+    assert f() == 1 , "take2(gen_nums(5)) == [0, 1]";
+}
+
+test "iter flow: iterator stored in a container and drained later" {
+    (eng, _) = compile_native("iter_generic.na.jac");
+    f = get_func(eng, "stored_iter", ctypes.c_int64);
+    assert f() == 3 , "0+1+2 through the stored iterator";
+}
+
+test "iter flow: lazy adapter over a passed-in iterator param" {
+    (eng, _) = compile_native("iter_generic.na.jac");
+    f = get_func(eng, "use_adapter", ctypes.c_int64);
+    assert f() == 6 , "map(+1) over gen_nums(3): 1+2+3";
+}
+
+test "mono as-value: concrete Callable annotation stamps the template (#7626 A5)" {
+    (eng, _) = compile_native("generics_as_value.na.jac");
+    f = get_func(eng, "use_pick_int", ctypes.c_int64, ctypes.c_int64);
+    assert f(7) == 7 , "pick2[int] through the closure value returns x";
+    g = get_func(eng, "use_pick_str_len", ctypes.c_int64);
+    assert g() == 3 , "pick2[str] picks 'abc'";
+}
+
 test "mono guardrail: a generic function used as a value stays rejected" {
     prog = compile_na_inline(
         "generic_as_value",

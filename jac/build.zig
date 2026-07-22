@@ -256,6 +256,19 @@ pub fn build(b: *std.Build) void {
         }
     }
 
+    // Arch-parameterized variants: `zig cc -target <arch>-linux-musl` cross-
+    // compiles musl from any host, so a cross `jac nacompile` (e.g. an x86_64
+    // host emitting an aarch64 static binary) and the aarch64 CI lane can
+    // static-link without target hardware (#7626 C1). Same payload plumbing
+    // as the host step; the step name pins the target osarch explicitly.
+    inline for ([_][]const u8{ "linux-x86_64", "linux-aarch64" }) |cross_osarch| {
+        const vendor_musl_cross = b.addRunArtifact(tool);
+        vendor_musl_cross.addArgs(&.{ "build-musl", cross_osarch, b.pathFromRoot(b.fmt(".pbs-build/{s}/musl/lib", .{cross_osarch})), b.graph.zig_exe });
+        vendor_musl_cross.has_side_effects = true;
+        b.step(b.fmt("vendor-musl-{s}", .{cross_osarch}), b.fmt("Harvest a static-musl runtime for {s} (cross-capable) into .pbs-build/{s}/musl/lib", .{ cross_osarch, cross_osarch }))
+            .dependOn(&vendor_musl_cross.step);
+    }
+
     // Standalone: compile the in-repo wasm_rt libc (vendored musl/wasi-libc
     // subset + jac allocator/io/abi adapters) to wasm32 LLVM bitcode under
     // .pbs-build/wasm32/libc, so na->wasm builds link libc INTO the module

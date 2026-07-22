@@ -323,7 +323,11 @@ obj NaIRGenPass(ModuleCodegenPass) {
         _closure_sig_keys: dict[str, str] = {},
         _closure_cell_structs: dict[str, str] = {},
         closure_thunks: dict[str, ir.Function] = {},
-        _closure_uid: int = 0;
+        _closure_uid: int = 0,
+        _opt_struct_types: dict[str, ir.Type] = {};
+
+    def _jac_optional_type(payload: ir.Type) -> ir.Type;
+    def _opt_payload_of(t: ir.Type) -> (ir.Type | None);
 
     def _scan_closure_escapes(nd: uni.UniNode, body: (list | tuple)) -> None;
     def _closure_sig_struct(fnty: ir.FunctionType) -> tuple;
@@ -360,6 +364,9 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> (ir.Function | None);
     def _instantiate_generic_method(
         nd: uni.FuncCall, owner_arch: str, method_name: str
+    ) -> (ir.Function | None);
+    def _instantiate_generic_for_target(
+        func_name: str, tag_node: uni.UniNode
     ) -> (ir.Function | None);
     def _stamp_mono_method(
         ability: uni.Ability, arch_name: str, method_name: str,
@@ -450,6 +457,9 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> tuple[(ir.Value, ir.Value)];
 
     def _emit_binary_op(op: str, left: ir.Value, right: ir.Value) -> (ir.Value | None);
+    def _emit_arch_dunder_binop(
+        op: str, left: ir.Value, right: ir.Value
+    ) -> (ir.Value | None);
     def _emit_comparison(
         op: str, left: ir.Value, right: ir.Value, is_float: bool
     ) -> (ir.Value | None);
@@ -1012,6 +1022,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_clib_call(
         func: ir.Function, func_name: str, args: list[ir.Value]
     ) -> (ir.Value | None);
+    def _clib_sext_ret(func_name: str, result: ir.Value) -> ir.Value;
 
     def _llvm_type_str(ty: ir.Type) -> str;
     def _export_native_layout -> None;
