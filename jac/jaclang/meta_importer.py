@@ -305,9 +305,7 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
 
         from jaclang.jac0core.runtime import JacRuntime as Jac
 
-        # Only an __init__ origin may legitimately produce no bytecode; search
-        # locations alone would swallow a top-level entry's diagnostics.
-        is_pkg = os.path.basename(file_path) in ext_registry.INIT_FILES
+        is_pkg = module.__spec__.submodule_search_locations is not None
 
         # Register module in JacRuntime's tracking (skip internal jaclang modules)
         if not module.__name__.startswith("jaclang."):

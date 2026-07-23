@@ -2044,7 +2044,6 @@ test "error traceback shows source code" {
         "attempted relative import" in stderr
         or "ImportError" in stderr
         or "__package__" in stderr
-        or "No module named" in stderr
     ) , "stderr should contain import error message";
 
     # Should show the source code line that caused the error

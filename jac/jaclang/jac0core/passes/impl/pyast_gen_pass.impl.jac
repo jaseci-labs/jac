@@ -149,6 +149,26 @@ impl PyastGenPass._is_native_ext_module -> bool {
     return bool(mod_path) and is_native_module(mod_path);
 }
 
+impl PyastGenPass.flatten_import_level(level: int) -> int {
+    import os;
+    import from jaclang.jac0core.ext_registry { INIT_FILES }
+    if level != 1 {
+        return level;
+    }
+    mod_path = self.ir_in.loc.mod_path if (self.ir_in and self.ir_in.loc) else '';
+    if not mod_path {
+        return level;
+    }
+    mod_dir = os.path.dirname(os.path.abspath(mod_path));
+    for init_name in `list(INIT_FILES) + ['__init__.py'] {
+        if os.path.isfile(os.path.join(mod_dir, init_name)) {
+            return level;
+        }
+    }
+    return 0;
+}
+
+
 impl PyastGenPass.exit_node(nd: uni.UniNode) -> None {
     if isinstance(nd, (uni.ClientBlock, uni.NativeBlock)) {
         return;
@@ -1166,7 +1186,9 @@ impl PyastGenPass.exit_import(nd: uni.Import) -> None {
                 py_node=ast3.ImportFrom(
                     module=module_name,
                     names=[self.sync(ast3.alias(name='*'), nd)],
-                    level=source.level
+                    level=self.flatten_import_level(source.level)
+                        if module_name
+                        else source.level
                 ),
                 jac_node=nd
             )
@@ -1194,7 +1216,9 @@ impl PyastGenPass.exit_import(nd: uni.Import) -> None {
                         cast(ast3.alias, i) for item in nd.items
                         for i in item.gen.py_ast
                     ],
-                    level=nd.from_loc.level
+                    level=self.flatten_import_level(nd.from_loc.level)
+                        if module_name
+                        else nd.from_loc.level
                 )
             )
         );
