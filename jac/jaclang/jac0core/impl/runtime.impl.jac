@@ -818,7 +818,7 @@ impl JacModule.jac_import(
         if (override_name == '__main__') {
             import from jaclang.meta_importer { JacMetaImporter }
             finder = JacMetaImporter();
-            spec: any = finder.find_spec(module_name, None);
+            spec = finder.find_spec(module_name, None);
             if (
                 spec and spec.origin and spec.origin.endswith('.jac') and (lng == 'py')
             ) {
@@ -851,13 +851,8 @@ impl JacModule.jac_import(
             module.__file__ = spec.origin;
             module.__name__ = '__main__';
             module.__spec__ = spec;
-            if not spec.submodule_search_locations {
-                spec.submodule_search_locations = [os.path.abspath(caller_dir)];
-            }
-            module.__path__ = spec.submodule_search_locations;
-            module.__package__ = spec.parent;
-            if module_name not in sys.modules {
-                sys.modules[module_name] = module;
+            if spec.submodule_search_locations {
+                module.__path__ = spec.submodule_search_locations;
             }
             JacRuntimeInterface.load_module('__main__', module);
 
@@ -877,49 +872,10 @@ impl JacModule.jac_import(
             module = importlib.reload(sys.modules[module_name]);
             JacRuntimeInterface.load_module(module_name, module, force=True);
         } else {
-            entry_spec: any = None;
-            if (
-                (lng == 'jac')
-                and ('.' not in module_name)
-                and (module_name not in sys.modules)
-            ) {
-                import from jaclang.meta_importer { JacMetaImporter }
-                entry_spec = JacMetaImporter().find_spec(module_name, None);
-                if (
-                    entry_spec
-                    and not (entry_spec.origin and entry_spec.origin.endswith('.jac'))
-                ) {
-                    entry_spec = None;
-                }
-            }
-            if (entry_spec and entry_spec.origin) {
-                if not entry_spec.submodule_search_locations {
-                    entry_spec.submodule_search_locations = [
-                        os.path.abspath(caller_dir)
-                    ];
-                }
-                module = types.ModuleType(module_name);
-                module.__file__ = entry_spec.origin;
-                module.__name__ = module_name;
-                module.__spec__ = entry_spec;
-                module.__path__ = entry_spec.submodule_search_locations;
-                sys.modules[module_name] = module;
-                JacRuntimeInterface.load_module(module_name, module);
-                codeobj = JacRuntime.get_compiler().get_bytecode(
-                    full_target=entry_spec.origin,
-                    target_program=JacRuntime.get_program()
-                );
-                if codeobj {
-                    exec(codeobj, module.__dict__);
-                } elif entry_spec.loader {
-                    entry_spec.loader.exec_module(module);
-                }
-            } else {
-                module = importlib.import_module(module_name);
-                JacRuntimeInterface.load_module(
-                    module_name, module, force=bool(reload_module)
-                );
-            }
+            module = importlib.import_module(module_name);
+            JacRuntimeInterface.load_module(
+                module_name, module, force=bool(reload_module)
+            );
         }
         if items {
             imported_items = [];

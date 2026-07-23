@@ -225,8 +225,16 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
             for suffix in ext_registry.MODULE_SUFFIXES:
                 module_file = candidate_path + suffix
                 if os.path.isfile(module_file):
+                    # Anchor a top-level file to its own directory so leading-dot
+                    # imports resolve; dotted modules keep their real parent.
+                    search_locations = (
+                        [os.path.dirname(module_file)] if path is None else None
+                    )
                     return importlib.util.spec_from_file_location(
-                        fullname, module_file, loader=self
+                        fullname,
+                        module_file,
+                        loader=self,
+                        submodule_search_locations=search_locations,
                     )
 
         return None
@@ -305,7 +313,9 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
 
         from jaclang.jac0core.runtime import JacRuntime as Jac
 
-        is_pkg = module.__spec__.submodule_search_locations is not None
+        # Only an __init__ origin may legitimately produce no bytecode; search
+        # locations alone would swallow a top-level entry's diagnostics.
+        is_pkg = os.path.basename(file_path) in ext_registry.INIT_FILES
 
         # Register module in JacRuntime's tracking (skip internal jaclang modules)
         if not module.__name__.startswith("jaclang."):
