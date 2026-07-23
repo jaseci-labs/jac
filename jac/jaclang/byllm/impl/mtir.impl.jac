@@ -9,6 +9,57 @@ glob SYSTEM_PERSONA = """\
     output. Only use tools.
     """;
 
+"""Render a human-readable definition of an enum/obj input *value*.
+
+Mirrors the semantic detail the OUTPUT schema carries -- the type-level
+semstring plus each member/field semstring -- pulled from the runtime
+`_jac_semstr` / `_jac_semstr_inner` attributes. Returns "" for primitives;
+recurses one level into nested enum/obj fields (bounded by `_depth`).
+"""
+def _describe_input_type(value: object, _depth: int = 0) -> str {
+    import from enum { Enum }
+    import from dataclasses { is_dataclass, fields as _dc_fields }
+    if _depth > 2 {
+        return "";
+    }
+    pad = "    " * (_depth + 1);
+    if isinstance(value, Enum) {
+        ty = type(value);
+        tsem = getattr(ty, "_jac_semstr", "") or "";
+        msem = getattr(ty, "_jac_semstr_inner", {}) or {};
+        rows = [f"{pad}{ty.__name__} (enum)" + (f" -- {tsem}" if tsem else "")];
+        for m in ty {
+            d = msem.get(m.name, "");
+            rows.append(f"{pad}  - {m.name} = {m.value!r}" + (f": {d}" if d else ""));
+        }
+        return "\n".join(rows);
+    }
+    if is_dataclass(value) and not isinstance(value, type) {
+        ty = type(value);
+        tsem = getattr(ty, "_jac_semstr", "") or "";
+        fsem = getattr(ty, "_jac_semstr_inner", {}) or {};
+        rows = [f"{pad}{ty.__name__} (obj)" + (f" -- {tsem}" if tsem else "")];
+        for f in _dc_fields(ty) {
+            if f.name.startswith("_") {
+                continue;
+            }
+            d = fsem.get(f.name, "");
+            tyname = f.type?.__name__ or str(f.type);
+            rows.append(f"{pad}  - {f.name} ({tyname})" + (f": {d}" if d else ""));
+            fval = getattr(value, f.name, None);
+            if isinstance(fval, Enum)
+            or (is_dataclass(fval) and not isinstance(fval, type)) {
+                nested = _describe_input_type(fval, _depth + 2);
+                if nested {
+                    rows.append(nested);
+                }
+            }
+        }
+        return "\n".join(rows);
+    }
+    return "";
+}
+
 """Create an MTRuntime instance from a callable and its arguments.
 
 Builds the message history with system persona, user input, and any media.
@@ -57,24 +108,35 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     if has_mtir {
         # MTIR mode: use compile-time extracted param info with semantic strings
         params = [param for param in ir_info.params];
+        arg_keys = list(args.keys());
+        # The parameter's own `sem fn.arg` lives on the callable at runtime,
+        # keyed by name. Prefer it over the MTIR param semstr, which is
+        # shadowed by the type-level sem for enum/obj params.
+        caller_psems = getattr(caller, "_jac_semstr_inner", {}) or {};
         for (key, value) in args.items() {
-            idx = list(args.keys()).index(key);
+            idx = arg_keys.index(key);
+            # Resolve the parameter name for this argument.
+            if isinstance(key, str) {
+                pname = key;
+            } elif key < len(params) {
+                # TODO: Handle *args, **kwargs properly.
+                pname = params[key].name;
+            } else {
+                pname = "arg";
+            }
+            mtir_sem = params[idx].semstr if idx < len(params) else "";
+            psem = caller_psems.get(pname) or mtir_sem or "";
             if isinstance(value, Media) {
-                media_inputs.append((value, params[idx].semstr or ""));
+                media_inputs.append((value, psem));
                 continue;
             }
-
-            if isinstance(key, str) {
-                inputs_detail.append(f"{key} = {(value, params[idx].semstr or "")}");
-            } else {
-                # TODO: Handle *args, **kwargs properly.
-                if key < len(params) {
-                    inputs_detail.append(
-                        f"{params[key].name} = {(value, params[idx].semstr or "")}"
-                    );
-                } else {
-                    inputs_detail.append(f"arg = {(value, params[idx].semstr or "")}");
-                }
+            inputs_detail.append(f"{pname} = {(value, psem)}");
+            # For enum/obj inputs, append the full type definition (type-level
+            # sem + per-member/field sems) so the model gets the same semantic
+            # detail the OUTPUT schema carries. Primitives yield "".
+            desc = _describe_input_type(value);
+            if desc {
+                inputs_detail.append(desc);
             }
         }
     } else {
