@@ -42,7 +42,7 @@ glob FORBIDDEN: dict[str, str] = {
      # at sites where the declaration IS the fact.
      SANCTIONED: dict[tuple, tuple] = {
          ("ecmascript/impl/esast_gen_pass.impl.jac", "symbol_utils"): (
-             3,
+             5,
              "collect_field_names/symbol_owner_archetype - symbol-FACT "
              "readers over an already-resolved walker symbol; and "
              "ability_of_symbol, the shared central helper (deduped from a "
@@ -50,7 +50,13 @@ glob FORBIDDEN: dict[str, str] = {
              "module's exported ability at sv-import client-stub generation. "
              "The former classify_call fallback is deleted (#7418): "
              "call_kind is stamped authoritatively by the required "
-             "inference schedule"
+             "inference schedule. Plus two client-boundary reads (#7632): "
+             "resolve_import_source_module (the delegated body of the "
+             "former local _resolve_source_module, now shared with "
+             "StaticAnalysisPass) and the classify/report helpers in "
+             "_partition_client_import_items - both consume the SOURCE "
+             "module's stamped code_context and declaration surface, "
+             "facts that exist on no local-tree node"
          ),
          ("ecmascript/impl/esast_gen_pass.impl.jac", ".lookup("): (
              2,
@@ -140,6 +146,9 @@ def scan_backends -> dict {
     counts: dict = {};
     for backend in ("ecmascript", "native") {
         for src in sorted((passes_root / backend).rglob("*.jac")) {
+            if not src.is_file() {
+                continue;
+            }
             rel = src.relative_to(passes_root).as_posix();
             lines = src.read_text(encoding="utf-8", errors="replace").splitlines();
             for (name, rx) in compiled.items() {

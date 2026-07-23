@@ -1117,31 +1117,3 @@ test "hyphenated page filenames sanitize to valid JS identifiers in _routes.js" 
         }
     }
 }
-
-test "a page and a layout that sanitize to the same identifier raise ClientBundleError" {
-    import from jaclang.runtimelib.client { RouteScanner }
-    import from jaclang.runtimelib.client_bundle { ClientBundleError }
-
-    with TemporaryDirectory() as tmpdir {
-        unique_dir = Path(tmpdir) / f"project_{uuid.uuid4().hex[:8]}";
-        pages_dir = unique_dir / "pages";
-        pages_dir.mkdir(parents=True);
-        (pages_dir / "admin-layout.jac").write_text(
-            "cl {\n    def page() {\n        return <div>Admin</div>;\n    }\n}\n"
-        );
-        admin_dir = pages_dir / "admin";
-        admin_dir.mkdir();
-        (admin_dir / "layout.jac").write_text(
-            "cl {\n    def layout() {\n        return <div>Layout</div>;\n    }\n}\n"
-        );
-        scanner = RouteScanner(unique_dir);
-        raised = False;
-        try {
-            scanner.scan();
-        } except ClientBundleError as err {
-            raised = True;
-            assert "PagesAdminLayout" in str(err);
-        }
-        assert raised , "expected a ClientBundleError on page/layout identifier collision";
-    }
-}

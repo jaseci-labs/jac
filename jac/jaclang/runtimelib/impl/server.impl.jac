@@ -1247,12 +1247,17 @@ impl ModuleIntrospector.spa_fallback_status(url_path: str) -> int {
 
 impl ModuleIntrospector._load_spa_routes -> (list[str] | None) {
     import from pathlib { Path }
-    import from jaclang.runtimelib.client.route_scanner { RouteScanner }
+    import from jaclang.runtimelib.client.route_scanner {
+        RouteScanner,
+        resolve_route_exports
+    }
     if not self.base_path {
         return None;
     }
     try {
-        scanner = RouteScanner(project_root=Path(self.base_path));
+        scanner = RouteScanner(
+            project_root=Path(self.base_path), route_exports_of=resolve_route_exports
+        );
         if not scanner.has_pages_dir() {
             return None;
         }

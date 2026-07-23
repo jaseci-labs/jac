@@ -950,25 +950,8 @@ impl EsastGenPass.exit_index_slice(nd: uni.IndexSlice) -> None {
 }
 
 impl EsastGenPass._resolve_source_module(nd: uni.Import) -> (uni.Module | None) {
-    if not nd.from_loc {
-        return None;
-    }
-    import from pathlib { Path }
-    resolved_path = nd.from_loc.resolve_relative_path();
-    abs_path = str(Path(resolved_path).resolve());
-    source_mod = self.prog.mod.hub.get(resolved_path)
-    or self.prog.mod.hub.get(abs_path);
-    if source_mod {
-        return source_mod;
-    }
-    if Path(resolved_path).exists() {
-        source_mod = self.prog.compile(
-            resolved_path, no_cgen=True, type_check=False, symtab_ir_only=True
-        );
-        self.prog.mod.hub[abs_path] = source_mod;
-        return source_mod;
-    }
-    return None;
+    import from jaclang.compiler.symbol_utils { resolve_import_source_module }
+    return resolve_import_source_module(self.prog, nd);
 }
 
 impl EsastGenPass._record_sv_backend(nd: uni.Import) -> None {
@@ -4686,7 +4669,20 @@ impl EsastGenPass.exit_import(nd: uni.Import) -> None {
         }
         return;
     }
+    emit_items: list = list(nd.items);
     if (nd.from_loc and nd.items) {
+        partition = self._partition_client_import_items(nd);
+        if partition is not None {
+            (emit_items, bridged_items) = partition;
+            if bridged_items {
+                self._generate_sv_import_stubs(nd, bridged_items);
+                self._record_sv_backend(nd);
+            }
+            if not emit_items {
+                nd.gen.es_ast = None;
+                return;
+            }
+        }
         resolved_path = nd.from_loc.resolve_relative_path();
         import_key = nd.from_loc.dot_path_str;
         self.client_manifest.imports[import_key] = resolved_path;
@@ -4726,7 +4722,7 @@ impl EsastGenPass.exit_import(nd: uni.Import) -> None {
         list[
             es.ImportSpecifier | es.ImportDefaultSpecifier | es.ImportNamespaceSpecifier
         ] = [];
-    for item in nd.items {
+    for item in emit_items {
         if isinstance(item, uni.ModuleItem) {
             if isinstance(item.name, uni.Name) {
                 imported = self.sync_loc(
@@ -4780,12 +4776,45 @@ impl EsastGenPass.exit_import(nd: uni.Import) -> None {
     nd.gen.es_ast = None;
 }
 
-impl EsastGenPass._generate_sv_import_stubs(nd: uni.Import) -> None {
+impl EsastGenPass._partition_client_import_items(
+    nd: uni.Import
+) -> (tuple[list, list] | None) {
+    import from jaclang.compiler.symbol_utils {
+        ClientImportVerdict,
+        classify_client_import_item,
+        is_client_boundary_import,
+        report_dead_client_import
+    }
+    if not is_client_boundary_import(nd) {
+        return None;
+    }
+    source_mod = self._resolve_source_module(nd);
+    if source_mod is None {
+        return None;
+    }
+    kept: list = [];
+    bridged: list = [];
+    for item in nd.items {
+        verdict = classify_client_import_item(source_mod, item);
+        if verdict == ClientImportVerdict.BRIDGED {
+            bridged.append(item);
+        } elif verdict == ClientImportVerdict.DEAD {
+            report_dead_client_import(self, nd, item);
+        } else {
+            kept.append(item);
+        }
+    }
+    return (kept, bridged);
+}
+
+impl EsastGenPass._generate_sv_import_stubs(
+    nd: uni.Import, items: (Sequence[uni.ModuleItem] | None) = None
+) -> None {
     import from jaclang.compiler.symbol_utils { ability_of_symbol }
 
     source_mod: uni.Module | None = self._resolve_source_module(nd);
     stubs: list[es.Statement] = [];
-    for item in nd.items {
+    for item in (items if items is not None else nd.items) {
         if not isinstance(item, uni.ModuleItem)
         or not isinstance(item.name, uni.Name) {
             continue;

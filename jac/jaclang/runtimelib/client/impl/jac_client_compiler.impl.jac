@@ -546,7 +546,7 @@ impl JacClientCompiler._scan_and_compile_pages(
     collected_globals: (dict[(str, Any)] | None) = None,
     target_name: str = "web"
 ) -> bool {
-    scanner = RouteScanner(self.project_dir, route_exports_of=self._route_exports);
+    scanner = RouteScanner(self.project_dir, route_exports_of=resolve_route_exports);
     if not scanner.has_pages_dir() {
         return False;
     }
@@ -571,7 +571,7 @@ impl JacClientCompiler._scan_and_compile_pages(
 }
 
 impl JacClientCompiler.rescan_pages(self: JacClientCompiler) -> bool {
-    scanner = RouteScanner(self.project_dir, route_exports_of=self._route_exports);
+    scanner = RouteScanner(self.project_dir, route_exports_of=resolve_route_exports);
     if not scanner.has_pages_dir() {
         return False;
     }
@@ -595,55 +595,6 @@ impl JacClientCompiler.rescan_pages(self: JacClientCompiler) -> bool {
     }
     self._generate_routes_manifest();
     return True;
-}
-
-impl JacClientCompiler._route_exports(
-    self: JacClientCompiler, module_path: Path
-) -> tuple[((str | None), (str | None))] {
-    import from jaclang { JacRuntime as Jac }
-    try {
-        mod = Jac.program.compile(str(module_path.resolve()));
-    } except Exception {
-        return (None, None);
-    }
-    if mod is None {
-        return (None, None);
-    }
-    manifest = mod.gen.client_manifest;
-    page_name = manifest.page_export if manifest else None;
-    layout_name = manifest.layout_export if manifest else None;
-    if page_name is None and layout_name is None {
-        (page_name, layout_name) = self._route_exports_from_ast(mod);
-    }
-    return (page_name, layout_name);
-}
-
-impl JacClientCompiler._route_exports_from_ast(
-    self: JacClientCompiler, mod: Any
-) -> tuple[((str | None), (str | None))] {
-    import jaclang.jac0core.unitree as uni;
-    page_name: (str | None) = None;
-    layout_name: (str | None) = None;
-    try {
-        abilities = mod.get_all_sub_nodes(uni.Ability);
-    } except Exception {
-        return (None, None);
-    }
-    for nd in abilities {
-        if nd.is_method or not isinstance(nd.signature, uni.FuncSignature) {
-            continue;
-        }
-        rt = nd.signature.return_type;
-        if not isinstance(rt, uni.Name) or nd.name_ref is None {
-            continue;
-        }
-        if rt.value == 'JsxPage' and page_name is None {
-            page_name = nd.name_ref.sym_name;
-        } elif rt.value == 'JsxLayout' and layout_name is None {
-            layout_name = nd.name_ref.sym_name;
-        }
-    }
-    return (page_name, layout_name);
 }
 
 impl JacClientCompiler._generate_routes_manifest(self: JacClientCompiler) -> None {

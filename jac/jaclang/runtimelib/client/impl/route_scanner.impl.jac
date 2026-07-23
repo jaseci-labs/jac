@@ -57,9 +57,9 @@ impl RouteScanner._scan_directory(
             if any(suffix in entry.name for suffix in self.MODULE_ROLE_SUFFIXES) {
                 continue;
             }
-            (page_export, layout_export) = self._route_exports_for(entry);
+            (page_export, layout_export) = self.route_exports_of(entry);
             stem = entry.stem;
-            if self._is_layout_file(entry, layout_export) {
+            if layout_export is not None {
                 layout_key = url_prefix or "/";
                 if layout_key in self._layouts {
                     raise ClientBundleError(
@@ -73,14 +73,14 @@ impl RouteScanner._scan_directory(
                     path=layout_key,
                     component_import=component_name,
                     file_path=entry,
-                    source_export=layout_export or 'layout',
+                    source_export=layout_export,
                     is_layout=True
                 );
                 self._layouts[layout_key] = layout_entry;
                 self._page_files.append(entry);
                 continue;
             }
-            if not self._is_route_file(entry, page_export) {
+            if page_export is None {
                 continue;
             }
             route_segment = self._file_to_route_path(stem);
@@ -95,7 +95,7 @@ impl RouteScanner._scan_directory(
                 path=route_path,
                 component_import=component_name,
                 file_path=entry,
-                source_export=page_export or 'page',
+                source_export=page_export,
                 auth_required=auth_required,
                 is_catch_all=is_catch_all
             );
@@ -176,30 +176,51 @@ impl RouteScanner._detect_collisions(routes: list[RouteEntry]) -> None {
     }
 }
 
-impl RouteScanner._route_exports_for(
-    file_path: Path
-) -> tuple[((str | None), (str | None))] {
-    if self.route_exports_of is None {
+impl resolve_route_exports(module_path: Path) -> tuple[((str | None), (str | None))] {
+    import from jaclang { JacRuntime as Jac }
+    program = Jac.program;
+    if program is None {
         return (None, None);
     }
-    return self.route_exports_of(file_path);
+    try {
+        mod = program.compile(str(module_path.resolve()));
+    } except Exception {
+        return (None, None);
+    }
+    if mod is None {
+        return (None, None);
+    }
+    manifest = mod.gen.client_manifest;
+    page_name = manifest.page_export if manifest else None;
+    layout_name = manifest.layout_export if manifest else None;
+    if page_name is None and layout_name is None {
+        (page_name, layout_name) = _route_exports_from_ast(mod);
+    }
+    return (page_name, layout_name);
 }
 
-impl RouteScanner._is_layout_file(
-    file_path: Path, layout_export: (str | None)
-) -> bool {
-    if self.route_exports_of is None {
-        return file_path.stem == self.LAYOUT_FILENAME;
+impl _route_exports_from_ast(mod: any) -> tuple[((str | None), (str | None))] {
+    import jaclang.jac0core.unitree as uni;
+    page_name: (str | None) = None;
+    layout_name: (str | None) = None;
+    try {
+        abilities = mod.get_all_sub_nodes(uni.Ability);
+    } except Exception {
+        return (None, None);
     }
-    return layout_export is not None;
-}
-
-impl RouteScanner._is_route_file(file_path: Path, page_export: (str | None)) -> bool {
-    if self.route_exports_of is None {
-        return file_path.stem != self.LAYOUT_FILENAME
-        and not any(
-            suffix in file_path.name for suffix in self.LEGACY_PLACEMENT_SUFFIXES
-        );
+    for nd in abilities {
+        if nd.is_method or not isinstance(nd.signature, uni.FuncSignature) {
+            continue;
+        }
+        rt = nd.signature.return_type;
+        if not isinstance(rt, uni.Name) or nd.name_ref is None {
+            continue;
+        }
+        if rt.value == 'JsxPage' and page_name is None {
+            page_name = nd.name_ref.sym_name;
+        } elif rt.value == 'JsxLayout' and layout_name is None {
+            layout_name = nd.name_ref.sym_name;
+        }
     }
-    return page_export is not None;
+    return (page_name, layout_name);
 }

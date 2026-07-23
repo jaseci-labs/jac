@@ -198,3 +198,32 @@ test "dynamic index and catch-all urls still derive from the filename" {
         );
     }
 }
+
+
+"""A page and a layout whose paths sanitize to the same JS identifier are a
+build error - caught across routes and layouts, keyed on the return type."""
+test "a page and a layout that sanitize to the same identifier raise ClientBundleError" {
+    import from jaclang.runtimelib.client_bundle { ClientBundleError }
+    with TemporaryDirectory() as tmp {
+        proj = Path(tmp);
+        _write(
+            proj,
+            "pages/admin-layout.jac",
+            "def:pub View() -> JsxPage { return <div>admin</div>; }",
+        );
+        _write(
+            proj,
+            "pages/admin/layout.jac",
+            "def:pub Shell() -> JsxLayout { return <Outlet />; }",
+        );
+        scanner = RouteScanner(proj, route_exports_of=_route_exports_from_source);
+        raised = False;
+        try {
+            scanner.scan();
+        } except ClientBundleError as err {
+            raised = True;
+            assert "PagesAdminLayout" in str(err);
+        }
+        assert raised , "expected a ClientBundleError on page/layout identifier collision";
+    }
+}
