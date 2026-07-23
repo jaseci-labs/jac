@@ -151,7 +151,6 @@ impl PyastGenPass._is_native_ext_module -> bool {
 
 impl PyastGenPass.flatten_import_level(level: int) -> int {
     import os;
-    import from jaclang.jac0core.ext_registry { INIT_FILES }
     if level != 1 {
         return level;
     }
@@ -159,13 +158,26 @@ impl PyastGenPass.flatten_import_level(level: int) -> int {
     if not mod_path {
         return level;
     }
-    mod_dir = os.path.dirname(os.path.abspath(mod_path));
-    for init_name in `list(INIT_FILES) + ['__init__.py'] {
-        if os.path.isfile(os.path.join(mod_dir, init_name)) {
+    try {
+        import from pathlib { Path }
+        import from jaclang.project.config { get_config_for_path }
+        mod_dir = os.path.dirname(os.path.abspath(mod_path));
+        cfg = get_config_for_path(Path(mod_dir));
+        if (cfg is None) or (cfg.project_root is None) {
             return level;
         }
+        entry = cfg.project.entry_point;
+        if not entry {
+            return level;
+        }
+        entry_abs = os.path.abspath(os.path.join(str(cfg.project_root), entry));
+        if os.path.abspath(mod_path) == entry_abs {
+            return 0;
+        }
+    } except Exception {
+        return level;
     }
-    return 0;
+    return level;
 }
 
 

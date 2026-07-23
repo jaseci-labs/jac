@@ -1,0 +1,4 @@
+[project]
+name = "entry_relative_import"
+entry-point = "relimport_entry.jac"
+kind = "cli"
