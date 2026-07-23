@@ -274,7 +274,11 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def populate_client_manifest(nd: uni.Module) -> None;
     def exit_sub_tag(nd: uni.SubTag[uni.T]) -> None;
     def exit_import(nd: uni.Import) -> None;
-    def _generate_sv_import_stubs(nd: uni.Import) -> None;
+    def _partition_client_import_items(nd: uni.Import) -> (tuple[list, list] | None);
+    def _generate_sv_import_stubs(
+        nd: uni.Import, items: (Sequence[uni.ModuleItem] | None) = None
+    ) -> None;
+
     def _sv_import_item_is_type(nd: uni.Import, item: uni.ModuleItem) -> bool;
     def _record_sv_backend(nd: uni.Import) -> None;
     def _emit_boundary_type_stubs(nd: uni.Module) -> list;

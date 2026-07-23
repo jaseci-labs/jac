@@ -138,6 +138,53 @@ test "sv import placement is inferred while boundary fact stays" {
     assert '__jacCallFunction("fetch_items"' in js , "sv import in client placement generates RPC stub";
 }
 
+test "plain client import of a server endpoint bridges over rpc" {
+    mod = compile_fixture("infer_import_bridge_client.jac", cgen=True);
+    js = mod.gen.js;
+    assert 'infer_import_bridge_service' not in js , (
+        "plain import of a server module must not emit a dead ES import; got:\n" + js
+    );
+    assert '__jacCallFunction("fetch_msg"' in js , (
+        "client call to an imported def:pub becomes RPC; got:\n" + js
+    );
+}
+
+test "plain client import of a server-only helper is a codegen error" {
+    prog = JacProgram();
+    mod = prog.compile(os.path.join(FIXTURE_DIR, "infer_import_dead_client.jac"));
+    dead_errs = [
+        e
+        for e in prog.errors_had
+        if e.code is not None and e.code.code == 'E5082'
+    ];
+    assert len(dead_errs) == 1 , (
+        f"expected one E5082, got {[str(e) for e in prog.errors_had]}"
+    );
+    assert 'local_helper' in str(dead_errs[0]);
+    assert 'infer_import_bridge_service' not in (mod.gen.js or '') , (
+        "dead specifier must not be emitted alongside the diagnostic"
+    );
+}
+
+test "jac check flags a dead client import without codegen" {
+    import from jaclang.jac0core.compile_options { CompileOptions }
+    prog = JacProgram();
+    prog.compile(
+        os.path.join(FIXTURE_DIR, "infer_import_dead_client.jac"),
+        options=CompileOptions(no_cgen=True, type_check=True)
+    );
+    dead_errs = [
+        e
+        for e in prog.errors_had
+        if e.code is not None and e.code.code == 'E5082'
+    ];
+    assert len(dead_errs) == 1 , (
+        f"expected one E5082 from the check sched, got {[
+            str(e) for e in prog.errors_had
+        ]}"
+    );
+}
+
 test "locals shadowing client names do not pull" {
     mod = compile_fixture("infer_shadowing.jac");
     assert stamp_of(mod, "styled") == 'client' , "real use of npm import pulls client";
