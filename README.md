@@ -65,8 +65,6 @@ jac start     # builds the frontend + wasm, serves on http://localhost:8000
 
 Open <http://localhost:8000> and scroll. Sign the guestbook -- it's backed by walkers writing to a real graph that **persists automatically, no database to set up**. Spawn a walker that traverses that graph live, play a native-compiled shooter running in the browser as WebAssembly, and poke at a full social app embedded as a single component. One language, one codebase, all the way down.
 
-> Don't want to install anything? Open the [**Jac Playground**](https://playground.jaseci.org) in your browser.
->
 > Prebuilt binaries ship for **macOS and Linux**; on Windows, use WSL (a native PowerShell installer is coming soon). See the [installation guide](https://docs.jaseci.org/quick-guide/install/) for versions, upgrading, and IDE setup.
 
 ## Why Jac exists
@@ -192,7 +190,13 @@ Mars, J. (2026). *A Synechic and Topokinetic Programming Language*. Zenodo. http
 
 ## For AI agents
 
-Jac is designed for humans and AI to build together, and that includes your coding agent. The lowest-effort setup is no setup: point your agent at the `jac` CLI and tell it to figure it out. The binary is self-documenting -- `jac guide` prints curated reference guides on every corner of the language, and one command extracts them as Agent Skills your agent can load directly:
+Jac is designed for humans and AI to build together, and that includes your coding agent. The lowest-effort setup is no setup: point your agent at the `jac` CLI and tell it to figure it out. A first prompt like this is genuinely enough:
+
+```text
+Build me a <your app idea> in Jac. The `jac` binary is installed and self documenting with `jac guide`.
+```
+
+The binary is self-documenting -- `jac guide` prints curated reference guides on every corner of the language, and one command extracts them as Agent Skills your agent can load directly:
 
 ```bash
 jac guide --export ~/.claude/skills
