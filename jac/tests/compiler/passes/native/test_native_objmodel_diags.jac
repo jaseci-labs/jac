@@ -280,6 +280,31 @@ test "undeclared field store through an any-typed receiver gets the sealed-layou
 }
 
 # ---------------------------------------------------------------------------
+# Phase 3: the checker's earliest diagnostic teaches the design constraint
+# ---------------------------------------------------------------------------
+
+test "E1030 on a typed receiver in native code carries the sealed-layout help" {
+    src = write_module(
+        "objmodel_e1030.na.jac",
+        ARCH_PRELUDE + (
+            "with entry {\n"
+            "    p = P();\n"
+            "    p.y = 5;\n"
+            "}\n"
+        )
+    );
+    prog = JacProgram();
+    prog.compile(file_path=src, type_check=True);
+    hits = alerts_with_code(prog, "E1030");
+    assert hits , f"expected checker E1030, got: {fmt_errors(prog)}";
+    blob = alert_blob(hits);
+    assert "has" in blob and "native" in blob.lower() , (
+        f"native-context E1030 must teach the sealed-layout design (declare "
+        f"with `has`), got: {blob}"
+    );
+}
+
+# ---------------------------------------------------------------------------
 # Diagnostic contract: E5093 is "never, on purpose" -- not "not yet"
 # ---------------------------------------------------------------------------
 

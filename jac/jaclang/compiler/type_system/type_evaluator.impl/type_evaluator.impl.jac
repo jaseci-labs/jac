@@ -794,7 +794,8 @@ impl TypeEvaluator._get_type_of_expression_core(
                                 E1030,
                                 expr.right,
                                 base_type=str(lookup_type),
-                                attr=expr.right.value
+                                attr=expr.right.value,
+                                help_text=self._sealed_attr_help(expr.right.value)
                             );
                         }
                     }
@@ -991,7 +992,8 @@ impl TypeEvaluator._get_type_of_expression_core(
                                 E1030,
                                 expr.right,
                                 base_type=str(base_type),
-                                attr=expr.right.value
+                                attr=expr.right.value,
+                                help_text=self._sealed_attr_help(expr.right.value)
                             );
                         }
                     }
@@ -2769,6 +2771,20 @@ impl TypeEvaluator._in_native_context -> bool {
         return False;
     }
     return is_native_module(mod.loc.mod_path);
+}
+
+impl TypeEvaluator._sealed_attr_help(attr: str) -> (str | None) {
+    if not self._in_native_context() {
+        return None;
+    }
+    return (
+        f"In native code this boundary is sealed by design: archetype "
+        f"layouts are fixed at compile time (each field is a `has` struct "
+        f"slot), so attributes cannot be added or discovered at runtime. "
+        f"If '{attr}' should exist, declare it on the archetype "
+        f"(`has {attr}: <type>;`); otherwise fix the name or move the "
+        f"dynamic code to a @sv/Python context."
+    );
 }
 
 impl TypeEvaluator._is_typing_special_form(ty: TypeBase, name: str) -> bool {

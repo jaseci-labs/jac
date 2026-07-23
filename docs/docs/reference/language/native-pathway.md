@@ -501,6 +501,77 @@ Collections are represented as LLVM struct types:
 | Method override (virtual dispatch) | Subclass methods override parent via vtables |
 | Chained access | `obj.inner.field`, `obj.inner.method()` |
 
+### Object Model: Static Layout by Design
+
+Native archetypes deliberately keep their object model **static**:
+
+- **Fields are fixed struct slots.** Every `has` declaration becomes a slot at
+  a fixed offset in a C-style struct. A field access compiles to a single
+  load/store at a known offset -- no hash lookup, no dictionary, no descriptor
+  protocol.
+- **Methods are direct (or vtable) calls.** Method dispatch is resolved at
+  compile time; single inheritance with overrides lowers through a vtable.
+- **There is no per-instance `__dict__`.** An instance is exactly its declared
+  slots. Nothing can be added, removed, or rebound at runtime.
+
+This is the contract that makes native field access cost the same as C struct
+access. Dynamic Python object-model idioms are therefore rejected **by
+design** -- supporting them would cost exactly the performance the native
+pathway exists to provide. This is a permanent boundary, not a missing
+feature.
+
+**What is rejected (E5093):**
+
+| Construct | Why | Native alternative |
+|-----------|-----|--------------------|
+| `setattr(p, name, v)` / `getattr(p, name)` / `hasattr(p, name)` with a **runtime** name | Attribute cannot resolve to a slot at compile time | Direct field access, or a `dict` |
+| `setattr`/`getattr`/`hasattr` with a literal name that is **not** a declared field | Layout is sealed; fields cannot be added | Declare it: `has name: <type>;` |
+| `delattr(p, "x")` / `del p.x` | Slots always exist; unbinding is unrepresentable | `has x: int | None;` and assign `None`, or use a sentinel |
+| `p.__dict__` / `vars(p)` / `globals()` / `locals()` | No namespace dict exists to reflect over | Access fields directly |
+| `p.__class__ = R` | The class fixes layout and dispatch at compile time | Construct a new `R(...)` |
+| `P.attr = value` (class-object mutation / monkey-patching) | Methods and class state are resolved at compile time | `def` / `static has` on the archetype |
+| `type("Q", (), {})` | Runtime class fabrication needs a dynamic object model | Declare the archetype statically |
+| Member stores through an `any`-typed receiver | No statically known layout to store into | Type the receiver with its archetype |
+
+**What still works -- literal-name reflection is not dynamic.** A reflection
+builtin whose name argument is a string literal naming a declared `has` field
+is statically resolvable, so it lowers to the equivalent plain field
+operation at zero cost, with Python-congruent semantics:
+
+```jac
+obj P { has x: int = 7; }
+
+with entry {
+    p = P();
+    setattr(p, "x", 41);        # exactly p.x = 41
+    v = getattr(p, "x");        # exactly p.x
+    w = getattr(p, "nope", 9);  # undeclared literal + default -> the default (9)
+    b = hasattr(p, "x");        # compile-time constant True
+}
+```
+
+`p.__class__.__name__` and `type(p).__name__` also lower (to the archetype's
+static name) -- reading the *identity* of a class is static; mutating it is
+not.
+
+**How rejections are reported.** Three diagnostic codes divide the space, so
+you can always tell *why* something failed:
+
+| Code | Meaning | Will it ever work? |
+|------|---------|--------------------|
+| `E5090` | Not **yet** implemented on the native pathway | Possibly -- it's a capability gap |
+| `E5092` | Within the capability set, but this specific shape failed to lower | Restructure the shape, or report a bug |
+| `E5093` | Dynamic object-model construct, rejected **by design** | Never -- use the static alternative the help text names |
+
+Every construct in the rejection table produces `E5093` at compile time --
+never a silent no-op, and never a generic failure. The checker's earlier
+`E1030` ("no attribute") also explains the sealed-layout design when it fires
+in native code.
+
+Note that the `class` keyword itself is **not** rejected: class-style
+archetypes whose code is statically resolvable lower to the same IR as `obj`.
+The boundary is the *behavior*, not the keyword.
+
 ### Exception Handling
 
 | Feature | Example |

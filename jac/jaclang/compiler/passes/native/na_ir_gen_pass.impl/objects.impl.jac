@@ -2197,18 +2197,13 @@ impl NaIRGenPass._codegen_field_assign(
 }
 
 impl NaIRGenPass._emit_member_store_reject(
-    anchor: uni.UniNode,
-    type_name: (str | None),
-    field_name: (str | None),
-    kind: str
+    anchor: uni.UniNode, type_name: (str | None), field_name: (str | None), kind: str
 ) -> None {
     if field_name is None {
         self.emit(E5092, node_override=anchor, kind=kind, name="<field>");
         return;
     }
-    _fidx = self.struct_field_indices.get(type_name)
-        if type_name is not None
-        else None;
+    _fidx = self.struct_field_indices.get(type_name) if type_name is not None else None;
     if _fidx is not None and field_name not in _fidx {
         self._emit_sealed_field_reject(anchor, type_name, field_name, kind);
         return;
@@ -2405,9 +2400,7 @@ impl NaIRGenPass._emit_reflection_builtin(
             }
             result = self._codegen_field_access(obj_val, attr_name, type_name);
             if result is None and len(self.errors_had) == _rb_errs {
-                self.emit(
-                    E5092, node_override=nd, kind="builtin call", name=func_name
-                );
+                self.emit(E5092, node_override=nd, kind="builtin call", name=func_name);
             }
             return result;
         }

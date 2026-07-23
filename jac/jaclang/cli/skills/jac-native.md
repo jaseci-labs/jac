@@ -65,6 +65,7 @@ The stdlib table is for **host** binaries. On `--target wasm32` there is no libc
 
 ## Gotchas (all verified against the current compiler)
 
+- **The object model is static by design (E5093).** Archetype fields are fixed struct slots (`has` declarations), methods are direct/vtable calls, and there is no per-instance `__dict__`. Dynamic idioms - `setattr`/`getattr`/`hasattr` with a runtime name, `delattr`/`del p.x`, `vars(p)`/`p.__dict__`/`globals()`/`locals()`, `p.__class__ = R`, `P.attr = v` monkey-patching, 3-arg `type()` - are compile errors (`E5093`, permanent, not a roadmap gap). Literal-name reflection on a declared field *does* lower (`setattr(p, "x", 1)` == `p.x = 1`; `getattr(p, "nope", d)` yields `d`; `hasattr(p, "x")` folds to `True`), and `p.__class__.__name__`/`type(p).__name__` give the static class name.
 - `print(some_list)` / `print(some_dict)` emits garbage bytes or nothing - print elements in a loop or as f-string scalars. `print(True)` prints `1`; enum members print as their int value; floats print printf-style (`4.000000`).
 - **`"x" in list[str]` always returns False** (pointer compare, even for identical literals). `in` works for `list[int]` and for substring-in-str. Loop with `==` instead (see `has_flag` above).
 - **A lambda that captures a local variable compiles silently and computes garbage.** Non-capturing expression lambdas happen to work, but the safe rule is: no lambdas in native code - pass named functions. (Calling a function received through an `any` param is a compile error.)

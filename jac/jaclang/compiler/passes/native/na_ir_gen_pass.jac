@@ -698,18 +698,22 @@ obj NaIRGenPass(ModuleCodegenPass) {
         value: ir.Value,
         loc_node: uni.UniNode
     ) -> None;
+
     def _emit_sealed_field_reject(
         anchor: uni.UniNode, type_name: (str | None), field_name: str, kind: str
     ) -> None;
+
     def _emit_member_store_reject(
         anchor: uni.UniNode,
         type_name: (str | None),
         field_name: (str | None),
         kind: str
     ) -> None;
+
     def _emit_reflection_builtin(
         nd: uni.FuncCall, func_name: str
     ) -> (ir.Value | None);
+
     def _emit_key_comparison(
         b: ir.IRBuilder,
         key_type: ir.Type,

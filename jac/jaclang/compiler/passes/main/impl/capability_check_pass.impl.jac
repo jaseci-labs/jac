@@ -271,9 +271,9 @@ impl objmodel_call_violation(nd: uni.FuncCall) -> (tuple | None) {
             return (nd, "builtin call", fname, _NATIVE_OBJMODEL_DELATTR_HELP);
         }
         if fname in ("setattr", "getattr", "hasattr") {
-            if _has_kw or (
-                len(params_l) >= 2
-                and reflection_literal_attr_name(params_l[1]) is None
+            if _has_kw
+            or (
+                len(params_l) >= 2 and reflection_literal_attr_name(params_l[1]) is None
             ) {
                 return (nd, "builtin call", fname, _NATIVE_OBJMODEL_DYNNAME_HELP);
             }
@@ -283,7 +283,11 @@ impl objmodel_call_violation(nd: uni.FuncCall) -> (tuple | None) {
             return (nd, "builtin call", fname, _NATIVE_OBJMODEL_NAMESPACE_HELP);
         }
         if fname == "type" {
-            _pos = [p for p in params_l if not isinstance(p, uni.KWPair)];
+            _pos = [
+                p
+                for p in params_l
+                if not isinstance(p, uni.KWPair)
+            ];
             if len(_pos) >= 2 {
                 return (nd, "builtin call", fname, _NATIVE_OBJMODEL_TYPE_HELP);
             }
@@ -698,9 +702,7 @@ impl native_capability_violations(mod: uni.Module) -> list {
     }
     normalized: list = [];
     for v in out {
-        normalized.append(
-            v if len(v) == 5 else (v[0], v[1], v[2], v[3], E5090)
-        );
+        normalized.append(v if len(v) == 5 else (v[0], v[1], v[2], v[3], E5090));
     }
     return normalized;
 }

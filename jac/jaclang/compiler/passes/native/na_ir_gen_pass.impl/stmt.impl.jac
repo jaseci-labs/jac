@@ -176,9 +176,7 @@ impl NaIRGenPass._codegen_delete(nd: uni.DeleteStmt) -> None {
         _edge_h = self._codegen_expr(target_expr);
         if (_disc_fn is not None) and (_edge_h is not None) {
             _disc_argtys = _disc_fn.function_type.args;
-            self.builder.call(
-                _disc_fn, [self._coerce_type(_edge_h, _disc_argtys[0])]
-            );
+            self.builder.call(_disc_fn, [self._coerce_type(_edge_h, _disc_argtys[0])]);
             return;
         }
         if len(self.errors_had) == _del_errs {
