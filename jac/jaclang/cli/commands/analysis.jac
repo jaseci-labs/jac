@@ -186,7 +186,7 @@ def format(
             "install",
             typ=bool,
             default=False,
-            help="Install a git pre-commit hook that runs this command"
+            help="Install git pre-commit + commit-msg hooks"
         ),
         Arg.create(
             "force",
@@ -199,10 +199,10 @@ def format(
     examples=[
         ("jac precommit", "Format (lintfix) and check the whole project"),
         ("jac precommit --staged", "Run on staged '.jac' files only"),
-        ("jac precommit --install", "Install a .git/hooks/pre-commit hook"),
+        ("jac precommit --install", "Install the pre-commit + commit-msg hooks"),
         (
             "jac precommit --install --force",
-            "Replace an existing hook (kept as pre-commit.bak)"
+            "Replace existing hooks (kept as .bak backups)"
         ),
 
     ],

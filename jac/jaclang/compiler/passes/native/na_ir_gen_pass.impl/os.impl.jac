@@ -1,3 +1,64 @@
+impl NaIRGenPass._emit_os_environ_call(
+    name: str, nd: uni.FuncCall
+) -> (ir.Value | None) {
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    params = nd.params or [];
+
+    if name == "get" {
+        return self._emit_os_call("getenv", nd);
+    }
+
+    if name == "pop" {
+        if not params {
+            return None;
+        }
+        nameval = self._codegen_expr(params[0]);
+        if nameval is None {
+            return None;
+        }
+        getenv_fn = self._get_or_declare_extern("getenv", i8p, [i8p]);
+        cur = self.builder.call(getenv_fn, [nameval], name="environ.pop.cur");
+        func = self.builder.function;
+        null_bb = func.append_basic_block(name="envpop.null");
+        ok_bb = func.append_basic_block(name="envpop.ok");
+        merge_bb = func.append_basic_block(name="envpop.merge");
+        is_null = self.builder.icmp_signed(
+            "==", cur, ir.Constant(i8p, None), name="envpop.isnull"
+        );
+        self.builder.cbranch(is_null, null_bb, ok_bb);
+
+        self.builder.position_at_end(null_bb);
+        null_res: ir.Value = ir.Constant(i8p, None);
+        if len(params) >= 2 {
+            _default_val = self._codegen_expr(params[1]);
+            if _default_val is not None
+            and isinstance(_default_val.type, ir.PointerType) {
+                null_res = self._coerce_type(_default_val, i8p);
+
+                self._emit_take_ref(null_res, op="environ_pop_default", loc="");
+            }
+        }
+        self.builder.branch(merge_bb);
+        null_end = self.builder.block;
+
+        self.builder.position_at_end(ok_bb);
+        copied = self._rc_strdup(cur, name="environ.pop.str");
+        unset_fn = self._get_or_declare_extern("unsetenv", i32, [i8p]);
+        self.builder.call(unset_fn, [nameval], name="environ.pop.unset");
+        self.builder.branch(merge_bb);
+        ok_end = self.builder.block;
+
+        self.builder.position_at_end(merge_bb);
+        phi = self.builder.phi(i8p, name="environ.pop.res");
+        phi.add_incoming(null_res, null_end);
+        phi.add_incoming(copied, ok_end);
+        return phi;
+    }
+
+    return None;
+}
+
 impl NaIRGenPass._emit_os_call(name: str, nd: uni.FuncCall) -> (ir.Value | None) {
     i8 = ir.IntType(8);
     i8p = ir.IntType(8).as_pointer();

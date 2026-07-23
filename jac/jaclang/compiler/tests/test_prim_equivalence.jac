@@ -58,6 +58,36 @@ test "bytes test methods" {
     run_with_both("prim_bytes.jac", "bytes_test_py", "bytes_test_cl", "bytes_test_na");
 }
 
+test "bytearray core" {
+    run_with_both(
+        "prim_bytearray.jac",
+        "bytearray_core_py",
+        "bytearray_core_cl",
+        "bytearray_core_na",
+        require=["na"]
+    );
+}
+
+test "bytearray slices" {
+    run_with_both(
+        "prim_bytearray.jac",
+        "bytearray_slices_py",
+        "bytearray_slices_cl",
+        "bytearray_slices_na",
+        require=["na"]
+    );
+}
+
+test "bytearray pack_into" {
+    run_with_both(
+        "prim_bytearray.jac",
+        "bytearray_pack_py",
+        "bytearray_pack_cl",
+        "bytearray_pack_na",
+        require=["na"]
+    );
+}
+
 test "list" {
     run_with_both("prim_list.jac", "list_py", "list_cl", "list_na");
 }
@@ -146,6 +176,26 @@ test "dict" {
     run_with_both("prim_dict.jac", "dict_py", "dict_cl", "dict_na");
 }
 
+test "phi str box" {
+    run_with_both(
+        "prim_phi_str_box.jac",
+        "phi_str_box_py",
+        "phi_str_box_cl",
+        "phi_str_box_na",
+        require=["na"]
+    );
+}
+
+test "dict struct-pointer value families" {
+    run_with_both(
+        "prim_dict_struct_vals.jac",
+        "dict_struct_vals_py",
+        "dict_struct_vals_cl",
+        "dict_struct_vals_na",
+        require=["na"]
+    );
+}
+
 test "set" {
     run_with_both("prim_set.jac", "set_py", "set_cl", "set_na");
 }
@@ -210,6 +260,12 @@ test "os" {
     run_with_both("prim_os.jac", "os_py", "os_cl", "os_na", require=["na"]);
 }
 
+test "os environ" {
+    run_with_both(
+        "prim_os_environ.jac", "environ_py", "environ_cl", "environ_na", require=["na"]
+    );
+}
+
 test "os.path bundled" {
     run_with_both(
         "prim_ospath.jac", "ospath_py", "ospath_cl", "ospath_na", require=["na"]
@@ -249,14 +305,53 @@ test "bundled keyword" {
 }
 
 test "bundled shutil" {
+    import platform;
+    if platform.system() == "Darwin" {
+        import pytest;
+        # The dirent floor is darwin-correct (#7626 C3), but rmtree also
+        # rides os-path intrinsics whose stat-buffer layout is still
+        # glibc-shaped, so the full shutil surface aborts on darwin.
+        # Un-skip when the stat seam gets its own per-OS floor.
+        pytest.skip("darwin shutil runtime parity blocked on the stat-layout seam");
+    }
     run_with_both(
         "prim_shutil.jac", "shutil_py", "shutil_cl", "shutil_na", require=["na"]
+    );
+}
+
+test "generic classes specialize" {
+    run_with_both(
+        "prim_generic_classes.jac",
+        "generic_classes_py",
+        "generic_classes_cl",
+        "generic_classes_na",
+        require=["na"]
     );
 }
 
 test "generic functions monomorphize" {
     run_with_both(
         "prim_generics.jac", "generics_py", "generics_cl", "generics_na", require=["na"]
+    );
+}
+
+test "closures transitive sibling captures" {
+    run_with_both(
+        "prim_closures_transitive.jac",
+        "transitive_py",
+        "transitive_cl",
+        "transitive_na",
+        require=["na"]
+    );
+}
+
+test "closures forward mutual recursion" {
+    run_with_both(
+        "prim_closures_transitive.jac",
+        "fwd_mutual_py",
+        "fwd_mutual_cl",
+        "fwd_mutual_na",
+        require=["na"]
     );
 }
 

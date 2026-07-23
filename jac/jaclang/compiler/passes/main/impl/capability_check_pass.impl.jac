@@ -386,7 +386,7 @@ impl native_capability_violations(mod: uni.Module) -> list {
 
             if isinstance(nd, uni.UnaryExpr)
             and isinstance(nd.op, uni.Token)
-            and nd.op.name in (Tok.STAR_MUL, Tok.STAR_POW)
+            and nd.op.name == Tok.STAR_POW
             and isinstance(nd.parent, uni.FuncCall)
             and nd in (nd.parent.params or []) {
                 out.append(
@@ -447,6 +447,13 @@ impl native_capability_violations(mod: uni.Module) -> list {
             and (nd.target.type is not None)
             and nd.target.type.is_any_type() {
                 _fld = nd.right.value;
+                if (
+                    _fld == "environ"
+                    and isinstance(nd.target, uni.Name)
+                    and nd.target.value == "os"
+                ) {
+                    continue;
+                }
                 out.append(
                     (
                         nd,
@@ -468,18 +475,17 @@ impl native_capability_violations(mod: uni.Module) -> list {
             if isinstance(nd, uni.EdgeRefTrailer) and nd.chain {
                 _chain = nd.chain;
                 _ci = 0 if isinstance(_chain[0], uni.EdgeOpRef) else 1;
-                _shape_ok = (_ci < len(_chain))
-                and isinstance(_chain[_ci], uni.EdgeOpRef);
-                if _shape_ok {
+                _hops = 0;
+                while (_ci < len(_chain)) and isinstance(_chain[_ci], uni.EdgeOpRef) {
+                    _hops += 1;
                     _ci += 1;
                     if (_ci < len(_chain))
                     and isinstance(_chain[_ci], uni.FilterCompr)
-                    and (_chain[_ci].f_type is not None)
-                    and (not _chain[_ci].compares) {
+                    and (_chain[_ci].f_type is not None) {
                         _ci += 1;
                     }
-                    _shape_ok = _ci == len(_chain);
                 }
+                _shape_ok = (_hops > 0) and (_ci == len(_chain));
                 if not _shape_ok {
                     out.append(
                         (
@@ -487,13 +493,14 @@ impl native_capability_violations(mod: uni.Module) -> list {
                             "expression",
                             "EdgeRefTrailer",
                             (
-                                "native lowers only a single-hop edge reference "
-                                "(`[origin -->]` / `[here ->:Edge:->]`) with an "
-                                "optional trailing node-type filter (`[?:Node]`). "
-                                "Multi-hop chains (`[here -->-->]`) and value-compare "
-                                "filters (`[?:Node(x > 1)]`) are not yet supported; "
-                                "split the traversal into single hops or move it to "
-                                "@sv."
+                                "native lowers edge references as one or more hops "
+                                "(`[origin --> ...]` / `[here ->:Edge:-> ...]`), each "
+                                "with an optional node-type filter (`[?:Node]`, "
+                                "optionally with field predicates `[?:Node, x > 1]`). "
+                                "A compare-only filter inside a chain needs a type "
+                                "filter naming the element archetype first; other "
+                                "shapes are not yet supported - restructure the "
+                                "traversal or move it to @sv."
                             )
                         )
                     );

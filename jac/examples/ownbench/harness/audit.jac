@@ -36,7 +36,7 @@ def mode_flags(mode: str) -> list[str] {
 
 """Compile one cell with IR dumping and count the RC machinery."""
 def audit(kernel: str, mode: str) -> dict {
-    src = BENCH / "kernels" / f"{kernel}.na.jac";
+    src = BENCH / "kernels" / f"{kernel}.jac";
     out = BENCH / "bin" / f"audit_{kernel}_{mode}";
     out.parent.mkdir(exist_ok=True);
     ll = BENCH / "results" / f"{kernel}_{mode}.ll";

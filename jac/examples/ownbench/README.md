@@ -1,7 +1,7 @@
 # ownbench
 
 Benchmark suite for Jac's memory-management research: the gradual
-ownership experiments ("the ownership dial") and the topology-aligned
+borrow checking experiments ("the ownership dial") and the topology-aligned
 region experiments share one tree, one measurement discipline, and one
 differential-identity oracle.
 

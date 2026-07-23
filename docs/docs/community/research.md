@@ -13,7 +13,7 @@ contributes, and how to cite the project.
 The formal model behind `node`, `edge`, and `walker`: programs expressed as
 mobile computation traversing a persistent typed topology, with abilities
 dispatched by arrival. This is the paradigm the
-[Graphs & Walkers tutorial](../tutorials/language/osp.md) teaches by example
+[Object-Spatial Programming tutorial](../tutorials/language/osp.md) teaches by example
 and the [OSP reference](../reference/language/osp.md) specifies; the paper
 gives it a precise semantics and situates it against actors, mobile agents,
 and vertex-centric graph processing.
@@ -46,7 +46,7 @@ of the fragmented stack, the formal definition of the continuity property,
 the object-spatial calculus, and the design space of languages that share
 these properties -- is in preparation, along with companion papers. The
 practitioner's distillation of that material lives in the docs at
-[The Ideas Behind Jac](../quick-guide/ideas-behind-jac.md).
+[The Two Ideas](../quick-guide/ideas-behind-jac.md).
 
 ## Citing Jac
 
@@ -61,5 +61,5 @@ Jaseci letter for the runtime lineage.
 The project welcomes research collaborations -- language design, type
 systems, distributed runtimes, and human-factors studies of the paradigm are
 all live areas (several open problems are sketched at the end of
-[The Ideas Behind Jac](../quick-guide/ideas-behind-jac.md)). Reach out on
+[The Two Ideas](../quick-guide/ideas-behind-jac.md)). Reach out on
 [Discord](https://discord.gg/6j3QNdtcN6) or open a discussion on GitHub.

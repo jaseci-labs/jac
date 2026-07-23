@@ -176,7 +176,7 @@ Handles `jac.toml` configuration parsing, dependency resolution, capability conf
 
 ## Built-in Subsystems
 
-Features that once shipped as separate plugin packages now live inside `jaclang` core and are called directly. There is no plugin system, no entry-point discovery, and no external plugin support -- see [Plugins (Removed)](../reference/plugin-authoring.md) for the removal details. What each subsystem adds, and where it lives:
+Features that once shipped as separate plugin packages now live inside `jaclang` core and are called directly. There is no plugin system, no entry-point discovery, and no external plugin support. What each subsystem adds, and where it lives:
 
 | Subsystem | What it adds |
 |--------|-------------|
@@ -264,7 +264,7 @@ GitHub Actions workflows in `.github/workflows/`:
 | `nightly.yml` | Cron canaries: notes-app CEF smoke and the live-release installer check |
 | `deploy-docs.yml` | Deploy docs site to production |
 
-Pre-commit hooks run formatting and linting on every commit locally. See `.pre-commit-config.yaml` for the full hook list.
+Local git hooks come from `jac precommit --install`: a pre-commit hook that formats and lints staged `.jac` files, and a commit-msg hook that blocks AI co-author attribution. Markdown lint and the em-dash ban run on every PR via pre-commit.ci (`.pre-commit-config.yaml`).
 
 ---
 

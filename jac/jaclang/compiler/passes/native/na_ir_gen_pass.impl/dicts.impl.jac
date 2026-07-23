@@ -47,6 +47,23 @@ impl NaIRGenPass._dict_key_spec(key_type: ir.Type) -> tuple {
     return ("i64", 0);
 }
 
+impl NaIRGenPass._dict_val_spec(val_type: ir.Type) -> str {
+    if isinstance(val_type, ir.DoubleType) {
+        return "f64";
+    }
+    if self?.jacval_type and val_type == self.jacval_type {
+        return "jacval";
+    }
+    if isinstance(val_type, ir.PointerType) {
+        _pointee = val_type.pointee;
+        if isinstance(_pointee, ir.IdentifiedStructType) and _pointee.name {
+            return "ptr_" + str(_pointee.name).replace(".", "_");
+        }
+        return "ptr";
+    }
+    return "i64";
+}
+
 impl NaIRGenPass._emit_dict_helpers(
     key_type_name: str,
     val_type_name: str,
@@ -446,24 +463,27 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
     _own_dk = self._dict_key_of(nd);
     use_jacval = _own_dk is not None and _own_dk.endswith(":jacval");
 
-    key_type = first_key.type;
-    (key_type_name, key_size) = self._dict_key_spec(key_type);
-    if use_jacval {
-        val_type = self.jacval_type;
-        val_type_name = "jacval";
+    if _own_dk is not None and not use_jacval and _own_dk in self.dict_helpers {
+        dict_key = _own_dk;
+        helpers = self.dict_helpers[dict_key];
+        key_type = helpers["key_type"];
+        val_type = helpers["val_type"];
     } else {
-        val_type = first_val.type;
-        val_type_name = "i64";
-        if isinstance(val_type, ir.DoubleType) {
-            val_type_name = "f64";
-        } elif isinstance(val_type, ir.PointerType) {
-            val_type_name = "ptr";
+        key_type = first_key.type;
+        (key_type_name, key_size) = self._dict_key_spec(key_type);
+        if use_jacval {
+            val_type = self.jacval_type;
+            val_type_name = "jacval";
+        } else {
+            val_type = first_val.type;
+            val_type_name = self._dict_val_spec(val_type);
         }
+        dict_key = f"{key_type_name}:{val_type_name}";
+        self._emit_dict_helpers(
+            key_type_name, val_type_name, key_type, val_type, key_size
+        );
+        helpers = self.dict_helpers[dict_key];
     }
-    dict_key = f"{key_type_name}:{val_type_name}";
-
-    self._emit_dict_helpers(key_type_name, val_type_name, key_type, val_type, key_size);
-    helpers = self.dict_helpers[dict_key];
 
     _dict_new_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
@@ -475,10 +495,14 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
         if nd.loc
         else 0}";
 
-    first_store_val = self._box_to_jacval(first_val) if use_jacval else first_val;
+    first_store_val = (
+        self._box_to_jacval(first_val)
+            if use_jacval
+            else self._coerce_type(first_val, val_type)
+    );
     self._rc_call_with_ctx(
         helpers["set"],
-        [dict_val, first_key, first_store_val],
+        [dict_val, self._coerce_type(first_key, key_type), first_store_val],
         op="dict_init",
         loc=_dinit_loc
     );

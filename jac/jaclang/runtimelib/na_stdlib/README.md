@@ -29,11 +29,11 @@ bundled one. A bundled module links through the existing cross-module machinery
 - **`json.na.jac`** (#6940 Phase 1) -- a recursive-descent `loads` over boxed
   `any` (dict/list/str/int/float/bool/None) plus a `dumps` serializer matching
   CPython's default `(', ', ': ')` separators and insertion-ordered keys.
-  Two documented divergences: `dumps` of a bare float uses the native
-  `str(float)` (`%g`), not CPython's shortest-round-trip repr (parity is gated on
-  the Ryu float repr, #6940 Phase 0.3); and only the control set + JSON
-  metacharacters are escaped, so congruence holds for ASCII payloads
-  (`ensure_ascii` of non-ASCII is a follow-up).
+  One documented divergence: only the control set + JSON metacharacters are
+  escaped, so congruence holds for ASCII payloads (`ensure_ascii` of
+  non-ASCII is a follow-up). (`dumps` of floats now matches CPython: native
+  `str(float)` produces the shortest-round-trip repr -- #6940 Phase 0.3,
+  pinned byte-for-byte against CPython in the native suite.)
 - **`datetime.na.jac`** (#6940 Phase 1 / #6951) -- a UTC `datetime` and
   `timezone` pair. `timezone.utc` is a class attribute and `datetime.now` /
   `datetime.fromtimestamp` are class-level constructors, riding the native
@@ -136,8 +136,9 @@ bundled one. A bundled module links through the existing cross-module machinery
   C0 controls (0x00-0x1f) and DEL (0x7f). SCOPE: **single-line output only** --
   CPython wraps representations longer than `width=80` across lines, so any
   object whose repr exceeds one line diverges (width-driven wrapping not
-  implemented); string dict keys; no floats (the `json` `str(float)` `%g`
-  divergence); bytes > 0x7f pass through unescaped, so *unicode* non-printables
+  implemented); string dict keys; floats print with CPython's
+  shortest-round-trip repr (#6940 Phase 0.3, so the old `%g` divergence is
+  gone); bytes > 0x7f pass through unescaped, so *unicode* non-printables
   (e.g. U+00A0, U+200B) are NOT `\uXXXX`-escaped as CPython would -- congruent
   for ASCII and printable-unicode payloads. Out-of-scope value types: `set`
   raises `ValueError("pprint: unsupported value type on native")` instead of

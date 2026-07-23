@@ -66,7 +66,57 @@ impl NaIRGenPass._codegen_bound_args(
             and isinstance(param.op, uni.Token)
             and param.op.name in (Tok.STAR_MUL, Tok.STAR_POW)
         ) {
-            _unpack_names.append(param.op.value);
+            if param.op.name == Tok.STAR_POW {
+                _unpack_names.append(param.op.value);
+                continue;
+            }
+            _tv = self._codegen_expr(param.operand);
+            _tt = _tv.type if _tv is not None else None;
+            _tup_ptr = (
+                _tv is not None
+                and isinstance(_tt, ir.PointerType)
+                and isinstance(_tt.pointee, ir.LiteralStructType)
+            );
+            _tup_val = _tv is not None and isinstance(_tt, ir.LiteralStructType);
+            _is_list_sp = False;
+            if _tv is not None and not _tup_ptr and isinstance(_tt, ir.PointerType) {
+                for (_sln, _slt) in self.list_types.items() {
+                    if _slt.as_pointer() == _tt {
+                        _is_list_sp = True;
+                        break;
+                    }
+                }
+            }
+            if _tup_ptr or _tup_val {
+                _sp32 = ir.IntType(32);
+                _tup_elems = _tt.pointee.elements if _tup_ptr else _tt.elements;
+                for (_ei, _et) in enumerate(_tup_elems) {
+                    if _tup_ptr {
+                        _ep = self.builder.gep(
+                            _tv,
+                            [ir.Constant(_sp32, 0), ir.Constant(_sp32, _ei)],
+                            name=f"spread.{_ei}"
+                        );
+                        _ev = self.builder.load(_ep, name=f"spread.v.{_ei}");
+                    } else {
+                        _ev = self.builder.extract_value(
+                            _tv, _ei, name=f"spread.v.{_ei}"
+                        );
+                    }
+                    if isinstance(_ev.type, ir.PointerType) {
+                        self._emit_rc_retain(_ev, op="spread_elem", loc="");
+                        self._mark_owned(_ev);
+                    }
+                    positional.append(("spread.val", _ev));
+                }
+                if _tup_ptr and self._is_owned(_tv) {
+                    self._emit_rc_release_simple(_tv, op="spread_tuple", loc="");
+                }
+            } elif _is_list_sp {
+                positional.append(("spread.list.val", _tv));
+            } else {
+                _unpack_names.append(param.op.value);
+            }
         } else {
             positional.append(param);
         }
@@ -77,7 +127,7 @@ impl NaIRGenPass._codegen_bound_args(
             node_override=nd,
             kind="call argument unpacking",
             name=", ".join(_unpack_names),
-            help_text="Unpacking arguments at a native call site is not lowered yet; pass the elements explicitly or move the call to a @sv/Python context."
+            help_text="Only tuple spreads (static arity) and list spreads into a variadic callee lower natively; `**` unpacking and spreads of other types are not lowered - pass the elements explicitly or move the call to a @sv/Python context."
         );
     }
 
@@ -86,6 +136,20 @@ impl NaIRGenPass._codegen_bound_args(
 
     if callee_sig is None {
         for p in positional {
+            if isinstance(p, tuple) and p and p[0] == "spread.val" {
+                args.append(p[1]);
+                continue;
+            }
+            if isinstance(p, tuple) and p and p[0] == "spread.list.val" {
+                self.emit(
+                    E5092,
+                    node_override=nd,
+                    kind="call argument unpacking",
+                    name="*",
+                    help_text="A list spread has no static arity, so it cannot fill fixed parameters; spread a tuple instead, or make the callee variadic."
+                );
+                continue;
+            }
             v = self._codegen_expr(p);
             if v is not None {
                 args.append(v);
@@ -100,12 +164,22 @@ impl NaIRGenPass._codegen_bound_args(
     }
 
     sig_params = callee_sig.get_parameters();
+    _self_skip = 0;
+    if (
+        self_offset > 0
+        and sig_params
+        and sig_params[0].name
+        and sig_params[0].name.value == "self"
+    ) {
+        sig_params = sig_params[1:];
+        _self_skip = 1;
+    }
     _has_pack = (callee_sig.varargs is not None) or (callee_sig.kwargs is not None);
     if _has_pack and func.function_type.var_arg {
         _has_pack = False;
     }
     if _has_pack {
-        _chk = self_offset + len(callee_sig.posonly_params or []) + len(
+        _chk = self_offset - _self_skip + len(callee_sig.posonly_params or []) + len(
             callee_sig.params or []
         );
         if callee_sig.varargs is not None {
@@ -167,7 +241,22 @@ impl NaIRGenPass._codegen_bound_args(
                     chosen = None;
                 }
             }
-            val = self._codegen_expr(chosen) if chosen is not None else None;
+            if isinstance(chosen, tuple) and chosen and chosen[0] == "spread.val" {
+                val = chosen[1];
+            } elif isinstance(chosen, tuple)
+            and chosen
+            and chosen[0] == "spread.list.val" {
+                self.emit(
+                    E5092,
+                    node_override=nd,
+                    kind="call argument unpacking",
+                    name="*",
+                    help_text="A list spread has no static arity, so it cannot fill fixed parameters; spread a tuple instead, or make the callee variadic."
+                );
+                val = None;
+            } else {
+                val = self._codegen_expr(chosen) if chosen is not None else None;
+            }
             if val is not None {
                 args.append(val);
             } else {
@@ -176,7 +265,19 @@ impl NaIRGenPass._codegen_bound_args(
         }
 
         for pix in range(len(sig_params), len(positional)) {
-            v = self._codegen_expr(positional[pix]);
+            _extra_p = positional[pix];
+            if isinstance(_extra_p, tuple)
+            and _extra_p
+            and _extra_p[0] == "spread.val" {
+                args.append(_extra_p[1]);
+                continue;
+            }
+            if isinstance(_extra_p, tuple)
+            and _extra_p
+            and _extra_p[0] == "spread.list.val" {
+                continue;
+            }
+            v = self._codegen_expr(_extra_p);
             if v is not None {
                 args.append(v);
             }
@@ -200,7 +301,22 @@ impl NaIRGenPass._codegen_bound_args(
                     chosen = None;
                 }
             }
-            val = self._codegen_expr(chosen) if chosen is not None else None;
+            if isinstance(chosen, tuple) and chosen and chosen[0] == "spread.val" {
+                val = chosen[1];
+            } elif isinstance(chosen, tuple)
+            and chosen
+            and chosen[0] == "spread.list.val" {
+                self.emit(
+                    E5092,
+                    node_override=nd,
+                    kind="call argument unpacking",
+                    name="*",
+                    help_text="A list spread has no static arity, so it cannot fill fixed parameters; spread a tuple instead, or make the callee variadic."
+                );
+                val = None;
+            } else {
+                val = self._codegen_expr(chosen) if chosen is not None else None;
+            }
             if val is not None {
                 args.append(val);
             } else {
@@ -232,7 +348,22 @@ impl NaIRGenPass._codegen_bound_args(
                     chosen = None;
                 }
             }
-            val = self._codegen_expr(chosen) if chosen is not None else None;
+            if isinstance(chosen, tuple) and chosen and chosen[0] == "spread.val" {
+                val = chosen[1];
+            } elif isinstance(chosen, tuple)
+            and chosen
+            and chosen[0] == "spread.list.val" {
+                self.emit(
+                    E5092,
+                    node_override=nd,
+                    kind="call argument unpacking",
+                    name="*",
+                    help_text="A list spread has no static arity, so it cannot fill fixed parameters; spread a tuple instead, or make the callee variadic."
+                );
+                val = None;
+            } else {
+                val = self._codegen_expr(chosen) if chosen is not None else None;
+            }
             if val is not None {
                 args.append(val);
             } else {
@@ -262,8 +393,12 @@ impl NaIRGenPass._codegen_bound_args(
                     node_override=nd,
                     kind="function",
                     name=f"{_nc_name} (captured '{_cname}' not in the calling frame)",
-                    help_text="A capturing nested function can only be called from the frame that defines its captures. Pass the value as an explicit parameter instead."
+                    help_text="A capturing nested function can only be called from a frame that defines or forwards its captures. Pass the value as an explicit parameter instead."
                 );
+
+                while len(args) < len(func.args) {
+                    args.append(self._default_arg_fallback(func.args[len(args)].type));
+                }
                 return args;
             }
             if _cmode == "ptr" {
@@ -329,11 +464,68 @@ impl NaIRGenPass._codegen_varargs_list(
         helpers["new"], [], op="new", loc=_loc, name="varargs.new"
     );
     for e in extras {
-        v = self._codegen_expr(e);
-        if v is None {
-            self.emit(
-                E5092, node_override=e, kind="expression", name="variadic argument"
+        if isinstance(e, tuple) and e and e[0] == "spread.list.val" {
+            _src = e[1];
+            _src_h = None;
+            for (_sn, _slt) in self.list_types.items() {
+                if _slt.as_pointer() == _src.type {
+                    _src_h = self.list_helpers.get(_sn);
+                    break;
+                }
+            }
+            if _src_h is None {
+                self.emit(
+                    E5092,
+                    node_override=nd,
+                    kind="call argument unpacking",
+                    name="*",
+                    help_text="The spread list's element type did not resolve to a registered native list; annotate it with a lowerable element type."
+                );
+                continue;
+            }
+            i64 = ir.IntType(64);
+            _cp_fn = self.builder.function;
+            _cp_loop = _cp_fn.append_basic_block("spread.loop");
+            _cp_body = _cp_fn.append_basic_block("spread.body");
+            _cp_done = _cp_fn.append_basic_block("spread.done");
+            _cp_len = self.builder.call(_src_h["len"], [_src], name="spread.len");
+            _cp_pre = self.builder.block;
+            self.builder.branch(_cp_loop);
+            self._builder = ir.IRBuilder(_cp_loop);
+            _cp_i = self.builder.phi(i64, name="spread.i");
+            _cp_i.add_incoming(ir.Constant(i64, 0), _cp_pre);
+            self.builder.cbranch(
+                self.builder.icmp_unsigned(">=", _cp_i, _cp_len, name="spread.atend"),
+                _cp_done,
+                _cp_body
             );
+            self._builder = ir.IRBuilder(_cp_body);
+            _cp_e = self.builder.call(_src_h["get"], [_src, _cp_i], name="spread.elem");
+            _cp_e2 = self._coerce_type(_cp_e, helpers["elem_type"]);
+            self._rc_call_with_ctx(
+                helpers["append"], [lv, _cp_e2], op="list_init", loc=_loc
+            );
+            _cp_i1 = self.builder.add(_cp_i, ir.Constant(i64, 1), name="spread.i1");
+            _cp_i.add_incoming(_cp_i1, self.builder.block);
+            self.builder.branch(_cp_loop);
+            self._builder = ir.IRBuilder(_cp_done);
+            if isinstance(_src.type, ir.PointerType) and self._is_owned(_src) {
+                self._emit_rc_release_simple(_src, op="spread_list", loc=_loc);
+            }
+            continue;
+        }
+        if isinstance(e, tuple) and e and e[0] == "spread.val" {
+            v = e[1];
+        } else {
+            v = self._codegen_expr(e);
+            if v is None {
+                self.emit(
+                    E5092, node_override=e, kind="expression", name="variadic argument"
+                );
+                continue;
+            }
+        }
+        if v is None {
             continue;
         }
         _orig = v;
@@ -873,6 +1065,17 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
 
+        if func_name == "bytearray" and not (nd.params or []) {
+            _ba_empty = self._dispatch_builtin(
+                "bytearray", [], kwargs=self._split_call_kwargs(nd), kw_node=nd
+            );
+            if _ba_empty is not None {
+                return _ba_empty;
+            }
+            self._emit_unsupported_builtin_call(nd, func_name);
+            return None;
+        }
+
         if func_name in (
             "ord",
             "int",
@@ -969,6 +1172,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                     self.llvm_module, stdin_type, name=stdin_name
                 );
                 stdin_global.linkage = "external";
+                if "windows" in str(self.llvm_module.triple or "") {
+                    stdin_global.storage_class = "dllimport";
+                }
                 self.extern_funcs[stdin_name] = stdin_global;
             }
             stdin_var = self.extern_funcs[stdin_name];
@@ -1205,6 +1411,15 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
 
+        if func_name in self.global_vars {
+            _gvar = self.global_vars[func_name];
+            _gloaded = self.builder.load(_gvar, name=f"fptr.{func_name}");
+            _gclos_name = self._closure_struct_of(_gloaded.type);
+            if _gclos_name is not None {
+                return self._codegen_closure_call(nd, _gloaded, _gclos_name);
+            }
+        }
+
         if _call_kind != "builtin" {
             self.emit(E5092, node_override=nd, kind="function", name=func_name);
         }
@@ -1305,6 +1520,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
     result = self.builder.call(func, coerced, name=f"call.{func_name}");
+    if func_name in self.clib_extern_names {
+        result = self._clib_sext_ret(func_name, result);
+    }
 
     self._release_owned_args(release_args, op="call_arg");
 

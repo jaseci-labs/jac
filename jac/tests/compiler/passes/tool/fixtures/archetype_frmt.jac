@@ -17,7 +17,7 @@ obj Anchor(ArchetypeProtocol) {
 async walker my_ws_stream {
     has action: str = "";
 
-    can start with `root entry {
+    can start with Root entry {
         report {"ok": True};
     }
 }

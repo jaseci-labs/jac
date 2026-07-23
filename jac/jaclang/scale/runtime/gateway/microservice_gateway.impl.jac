@@ -568,6 +568,9 @@ impl MicroserviceGateway.setup -> FastAPI {
         )
     );
 
+    import from jaclang.scale.observability.factory { UtilityFactory }
+    self._metrics = UtilityFactory.create_metrics('prometheus', mon_cfg);
+
     import from jaclang.scale.runtime.context.tracing {
         install_tracing,
         start_server_span,
@@ -698,6 +701,11 @@ impl MicroserviceGateway.setup -> FastAPI {
                     time.time() - start
                 );
             }
+            if gw._metrics is not None and gw._metrics.is_enabled() {
+                gw._metrics.record_request(
+                    request.method, path, resp.status_code, time.time() - start
+                );
+            }
             return resp;
         } finally {
             end_span(span);
@@ -774,18 +782,17 @@ impl MicroserviceGateway.start -> None {
 
 impl MicroserviceGateway._install_admin_api -> None {
     import from jaclang.scale.jserver.jfast_api { JFastApiServer }
-    import from jaclang.scale.webhook.webhook { ApiKeyManager }
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
 
     self.server = JFastApiServer(app=self.app);
 
     self.user_manager = Jac.get_user_manager(base_path=self.base_path);
     self.server.set_user_manager(self.user_manager);
-    self._api_key_manager = ApiKeyManager();
 
     self.register_admin_endpoints();
     self.register_logs_endpoints();
     self.register_llm_telemetry_endpoints();
+    self.register_workloads_endpoints();
 
     self.register_traces_endpoints();
     self.register_ops_endpoints();
@@ -804,7 +811,7 @@ impl MicroserviceGateway._install_admin_api -> None {
 
     logger.info(
         "Admin JSON API installed on gateway "
-        "(/admin/login, /admin/me, /admin/users, /admin/logs/*, ...)"
+        "(/admin/login, /admin/me, /admin/users, /admin/workloads/*, /admin/logs/*, ...)"
     );
     logger.info(
         "Gateway-owned identity installed "

@@ -704,7 +704,7 @@ impl NaIRGenPass._codegen_list_slice(
 
     self.builder.position_at_end(loop_done);
 
-    return new_list;
+    return self._mark_owned(new_list);
 }
 
 impl NaIRGenPass._codegen_string_slice(
@@ -1080,6 +1080,9 @@ impl NaIRGenPass._emit_sys_stream(stream: str) -> (ir.Value | None) {
     if libc_name not in self.extern_funcs {
         libc_gv = ir.GlobalVariable(self.llvm_module, i8p, name=libc_name);
         libc_gv.linkage = "external";
+        if "windows" in str(self.llvm_module.triple or "") {
+            libc_gv.storage_class = "dllimport";
+        }
         self.extern_funcs[libc_name] = libc_gv;
     }
     libc_gv = self.extern_funcs[libc_name];

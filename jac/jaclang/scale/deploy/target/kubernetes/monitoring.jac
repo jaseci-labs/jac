@@ -32,12 +32,14 @@ obj MonitoringDeployer {
         namespace: str,
         apps_v1: Any,
         core_v1: Any,
-        provider: ClusterProvider
+        provider: ClusterProvider,
+        scrape_target_service: str = ""
     ) {
         prometheus_name = f"{app_name}-prometheus";
         ksm_name = f"{app_name}-kube-state-metrics";
         ne_name = f"{app_name}-node-exporter";
         service_port = provider.prometheus_scrape_port(self.k8s_config.container_port);
+        scrape_target = scrape_target_service or f"{app_name}-service";
 
         scrape_config = (
             "global:\n"
@@ -46,7 +48,7 @@ obj MonitoringDeployer {
             "scrape_configs:\n"
             f"  - job_name: '{app_name}'\n"
             "    static_configs:\n"
-            f"      - targets: ['{app_name}-service:{service_port}']\n"
+            f"      - targets: ['{scrape_target}:{service_port}']\n"
             "    metrics_path: '/metrics'\n"
             "    basic_auth:\n"
             f"      username: '{self.k8s_config.admin_username}'\n"
@@ -2055,7 +2057,8 @@ obj MonitoringDeployer {
         namespace: str,
         apps_v1: Any,
         core_v1: Any,
-        provider: ClusterProvider
+        provider: ClusterProvider,
+        scrape_target_service: str = ""
     ) -> None {
         if not self.k8s_config.monitoring_enabled {
             return;
@@ -2065,7 +2068,9 @@ obj MonitoringDeployer {
             self._deploy_kube_state_metrics(app_name, namespace, apps_v1, core_v1);
             self._deploy_node_exporter(app_name, namespace, apps_v1, core_v1);
         }
-        self._deploy_prometheus(app_name, namespace, apps_v1, core_v1, provider);
+        self._deploy_prometheus(
+            app_name, namespace, apps_v1, core_v1, provider, scrape_target_service
+        );
         if self.k8s_config.tracing_enabled {
             self._deploy_tempo(app_name, namespace, apps_v1, core_v1);
         }

@@ -162,24 +162,33 @@ def pytest_collect_file(
     # run under bun via a separate collector, not this Python one.
     under_test_root = not explicit and _under_test_root(file_path, parent.config)
 
-    # Client (cl) test files run their `test` blocks under bun, not Python.
-    # test_*.cl.jac / *.test.cl.jac -> dedicated client collector.
-    if reg.is_client_module(name):
-        if explicit or name.startswith("test_") or reg.is_client_test(name):
+    name_test = (
+        (name.startswith("test_") and reg.is_jac(name))
+        or reg.is_test(name)
+        or reg.is_client_test(name)
+    )
+    if not (explicit or name_test or under_test_root):
+        return None
+
+    # Client test modules run their `test` blocks under bun, not Python. The
+    # module's codespace decides the collector: an explicit .cl.jac suffix or
+    # inferred client placement (npm string imports / JSX) both route to bun.
+    if _module_is_client(file_path):
+        if explicit or name_test:
             return ClJacFile.from_parent(parent, path=file_path)
         return None
 
-    # Collect test_*.jac (pytest convention), *.test.jac (Jac convention), and
-    # any .jac file under a declared [test] root directory.
-    if (
-        explicit
-        or under_test_root
-        or (name.startswith("test_") and reg.is_jac(name))
-        or reg.is_test(name)
-    ):
-        return JacFile.from_parent(parent, path=file_path)
+    return JacFile.from_parent(parent, path=file_path)
 
-    return None
+
+def _module_is_client(file_path: Path) -> bool:
+    """True when the module at *file_path* lives in the client codespace."""
+    try:
+        from jaclang.runtimelib.cl_test_runner import module_is_client
+
+        return bool(module_is_client(str(file_path)))
+    except Exception:
+        return False
 
 
 # ---------------------------------------------------------------------------

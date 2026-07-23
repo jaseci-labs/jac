@@ -1,8 +1,6 @@
 # `jac ninja`
 
-Nothing to see here, perhaps you can go back and learn about something else.
-
-<div style="height: 1400vh;" aria-hidden="true"></div>
+(You found the dojo.)
 
 `jac ninja` opens a complete, jac-native code editor that is **already inside the `jac` binary**. There is nothing to install, nothing to configure, and no plugin manager to babysit -- the editor, the Jac parser, and the Jac language server are literally the same file on disk.
 

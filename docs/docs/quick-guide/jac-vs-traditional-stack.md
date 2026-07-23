@@ -1,6 +1,6 @@
-# Jac vs Traditional Stack: A Side-by-Side Comparison
+# One App, Two Stacks
 
-A traditional full-stack web application requires separate projects, frameworks, and glue code -- a Python backend, a React frontend, an ORM, API route definitions, and serialization logic. In Jac, you write all of this in a single file: nodes are your data model, walkers are your API endpoints, and a `cl { }` block (or `.cl.jac` file) holds your UI components. This comparison builds the same Todo app both ways so you can see the difference.
+This page makes the argument of [Why Jac Exists](why-jac.md) by counting. We build the same Todo app twice: once on a traditional stack (a Python backend, a React frontend, an ORM, API route definitions, and serialization logic, spread across separate projects), and once in Jac, where nodes are the data model, walkers and `def:pub` functions are the API, and a `cl { }` block holds the UI. Every artifact the traditional stack needs and Jac does not is *glue*: code whose sole purpose is to carry meaning across a *discontinuity*. The totals are at the bottom.
 
 ---
 
@@ -472,5 +472,6 @@ This is the practical meaning of Jac's design bet: not that boundaries
 disappear, but that every boundary crossing lands inside the reach of the
 compiler -- across tiers, as this page shows, and equally across the package
 ecosystems (PyPI, npm, C) a real application draws on, which enter through a
-plain `import` instead of a wrapper. The property has a name, *synechic*,
-and the full argument is on [The Ideas Behind Jac](ideas-behind-jac.md).
+plain `import` instead of a wrapper. The property has a name, *synechic*.
+[Why Jac Exists](why-jac.md) carries the diagnosis this page just measured,
+and [The Two Ideas](ideas-behind-jac.md) carries the full argument.

@@ -1,6 +1,6 @@
 # Comprehensions & Filters
 
-**In this part:**
+**On this page:**
 
 - [Standard Comprehensions](#standard-comprehensions) - List, dict, set, generator
 - [Filter Comprehensions](#filter-comprehensions) - The `[?...]` operator on collections

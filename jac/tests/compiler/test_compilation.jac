@@ -47,18 +47,31 @@ test "arith precedence" {
     import from builtins { compile as pycompile, exec as pyexec }
     import io;
     import sys;
-    prog = JacProgram().compile(
-        use_str="with entry {print(4-5-4);}", file_path="test.jac"
-    );
-    old = sys.stdout;
-    buf = io.StringIO();
-    sys.stdout = buf;
-    try {
-        pyexec(pycompile(prog.gen.py_ast[0], "test.jac", "exec"));
-    } finally {
-        sys.stdout = old;
+    import from jaclang.project.config {
+        JacConfig,
+        CheckConfig,
+        LintConfig,
+        set_config
     }
-    assert buf.getvalue() == "-5\n";
+    # Isolate from the repo jac.toml (`select = ["all"]`), which enables the
+    # opt-in no-print rule (E3012) that would reject the print used below.
+    set_config(JacConfig(check=CheckConfig(lint=LintConfig(select=["default"]))));
+    try {
+        prog = JacProgram().compile(
+            use_str="with entry {print(4-5-4);}", file_path="test.jac"
+        );
+        old = sys.stdout;
+        buf = io.StringIO();
+        sys.stdout = buf;
+        try {
+            pyexec(pycompile(prog.gen.py_ast[0], "test.jac", "exec"));
+        } finally {
+            sys.stdout = old;
+        }
+        assert buf.getvalue() == "-5\n";
+    } finally {
+        set_config(None);
+    }
 }
 
 test "double format issue" {

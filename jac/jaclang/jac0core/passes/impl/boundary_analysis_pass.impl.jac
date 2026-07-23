@@ -522,7 +522,12 @@ impl BoundaryAnalysisPass._find_archetype(
 impl BoundaryAnalysisPass.enter_ability(
     self: BoundaryAnalysisPass, nd: uni.Ability
 ) -> None {
-    if (nd.sym_name and isinstance(nd.signature, uni.FuncSignature)) {
+    if (
+        nd.sym_name
+        and isinstance(nd.signature, uni.FuncSignature)
+        and nd.find_parent_of_type(uni.Ability) is None
+        and nd.find_parent_of_type(uni.LambdaExpr) is None
+    ) {
         nd_cc = nd.code_context;
         if nd_cc == uni.CodeContext.NATIVE {
             ctx = InteropContext.NATIVE;
@@ -550,6 +555,19 @@ impl BoundaryAnalysisPass.enter_ability(
 impl BoundaryAnalysisPass.enter_func_call(
     self: BoundaryAnalysisPass, nd: uni.FuncCall
 ) -> None {
+    if (
+        isinstance(nd.target, uni.Name)
+        and nd.target.sym is not None
+        and nd.target.sym.decl is not None
+    ) {
+        _decl_ab = nd.target.sym.decl.find_parent_of_type(uni.Ability);
+        if (
+            _decl_ab is not None
+            and _decl_ab.find_parent_of_type(uni.Ability) is not None
+        ) {
+            return;
+        }
+    }
     func_name = None;
     if isinstance(nd.target, uni.Name) {
         func_name = nd.target.value;
@@ -858,6 +876,7 @@ impl BoundaryAnalysisPass._collect_boundary_type(
         _ak = arch_node.arch_kind;
         kind = _ak if _ak in ("node", "walker") else "obj";
         fields: list[tuple[(str, str)]] = [];
+        fdefaults: dict[(str, Any)] = {};
         nested: list[str] = [];
 
         if arch_node.body {
@@ -889,11 +908,21 @@ impl BoundaryAnalysisPass._collect_boundary_type(
                         }
                     }
                     fields.append((field_name, field_type));
+                    if hv.value is not None {
+                        (rep, val) = self._literal_default(hv.value);
+                        if rep {
+                            fdefaults[field_name] = val;
+                        }
+                    }
                 }
             }
         }
         info = BoundaryTypeInfo(
-            name=type_name, kind=kind, fields=fields, nested_types=nested
+            name=type_name,
+            kind=kind,
+            fields=fields,
+            field_defaults=fdefaults,
+            nested_types=nested
         );
         manifest.boundary_types[type_name] = info;
 
@@ -941,6 +970,66 @@ impl BoundaryAnalysisPass._collect_boundary_type(
         manifest.boundary_types[type_name] = info;
         return;
     }
+}
+
+impl BoundaryAnalysisPass._literal_default(
+    self: BoundaryAnalysisPass, expr: any
+) -> tuple[(bool, any)] {
+    if isinstance(expr, uni.Null) {
+        return (True, None);
+    }
+    if isinstance(expr, (uni.Bool, uni.Int, uni.Float)) {
+        return (True, expr.lit_value);
+    }
+    if isinstance(expr, uni.MultiString) {
+        for part in expr.strings {
+            if not isinstance(part, uni.String) {
+                return (False, None);
+            }
+        }
+    }
+    if isinstance(expr, (uni.String, uni.MultiString)) {
+        val = expr.lit_value;
+        return (True, val) if isinstance(val, str) else (False, None);
+    }
+    if (
+        isinstance(expr, uni.UnaryExpr)
+        and expr.op.value == '-'
+        and isinstance(expr.operand, (uni.Int, uni.Float))
+    ) {
+        return (True, -expr.operand.lit_value);
+    }
+    if isinstance(expr, (uni.ListVal, uni.TupleVal)) {
+        items = [];
+        for v in (expr.values or []) {
+            (rep, val) = self._literal_default(v);
+            if not rep {
+                return (False, None);
+            }
+            items.append(val);
+        }
+        return (True, items);
+    }
+    if isinstance(expr, uni.DictVal) {
+        entries = {};
+        for kv in expr.kv_pairs {
+            if not isinstance(kv, uni.KVPair) or kv.key is None {
+                return (False, None);
+            }
+            if isinstance(kv.key, uni.Name) {
+                (krep, kval) = (True, kv.key.value);
+            } else {
+                (krep, kval) = self._literal_default(kv.key);
+            }
+            (vrep, vval) = self._literal_default(kv.value);
+            if (not krep or not vrep or not isinstance(kval, str)) {
+                return (False, None);
+            }
+            entries[kval] = vval;
+        }
+        return (True, entries);
+    }
+    return (False, None);
 }
 
 impl BoundaryAnalysisPass.after_pass(self: BoundaryAnalysisPass) -> None {
@@ -998,7 +1087,7 @@ impl BoundaryAnalysisPass.after_pass(self: BoundaryAnalysisPass) -> None {
     has_client = False;
     if self.ir_in and self.ir_in.body {
         for item in self.ir_in.body {
-            if isinstance(item, uni.ClientBlock) {
+            if isinstance(item, uni.ClientBlock) or item.in_client_context() {
                 has_client = True;
                 break;
             }
@@ -1006,9 +1095,11 @@ impl BoundaryAnalysisPass.after_pass(self: BoundaryAnalysisPass) -> None {
     }
     if has_client and self.ir_in and self.ir_in.body {
         for item in self.ir_in.body {
-            if isinstance(item, uni.Archetype) and not item.in_client_context() {
-                self._collect_boundary_type(item.sym_name, None);
-            } elif isinstance(item, uni.Enum) and not item.in_client_context() {
+            if (
+                isinstance(item, (uni.Archetype, uni.Enum))
+                and not item.in_client_context()
+                and not item.in_native_context()
+            ) {
                 self._collect_boundary_type(item.sym_name, None);
             }
         }

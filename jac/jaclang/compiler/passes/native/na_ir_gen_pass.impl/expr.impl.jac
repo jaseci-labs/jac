@@ -541,6 +541,13 @@ impl NaIRGenPass._codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None) {
                     right, op="binop_rhs", loc=getattr(right, 'jac_loc', '')
                 );
             }
+        } elif op in (Tok.PLUS, Tok.STAR_MUL) and self._is_owned(result) {
+            for _lt in self.list_types.values() {
+                if result.type == _lt.as_pointer() {
+                    self._release_owned_operands(left, right, op="binop_list");
+                    break;
+                }
+            }
         }
     }
     return result;
@@ -644,6 +651,7 @@ impl NaIRGenPass._codegen_kernel_spawn(
             self._coerce_type(_starts, _argtys[3])
         ]
     );
+    self._emit_rc_release_simple(_starts, op="spawn_starts", loc="");
     return walker_val;
 }
 
@@ -704,6 +712,32 @@ impl NaIRGenPass._codegen_compare_link(
         }
         if right.type == self.jacval_type and isinstance(_left_node, uni.Null) {
             return self._jacval_is_none(right, _none_negate);
+        }
+    }
+
+    if op in (Tok.KW_IS, Tok.KW_ISN, Tok.EE, Tok.NE) {
+        _on_negate = op in (Tok.KW_ISN, Tok.NE);
+        _o_right = right_node.expr
+            if isinstance(right_node, uni.CfgExpr)
+            else right_node;
+        _o_left = left_node.expr if isinstance(left_node, uni.CfgExpr) else left_node;
+        _opt_side: (ir.Value | None) = None;
+        if self._opt_payload_of(left.type) is not None
+        and isinstance(_o_right, uni.Null) {
+            _opt_side = left;
+        } elif self._opt_payload_of(right.type) is not None
+        and isinstance(_o_left, uni.Null) {
+            _opt_side = right;
+        }
+        if _opt_side is not None {
+            _otag = self.builder.extract_value(_opt_side, 0, name="opt.cmp.tag");
+            _ocmp = self.builder.icmp_signed(
+                "!=" if _on_negate else "==",
+                _otag,
+                ir.Constant(ir.IntType(8), 0),
+                name="opt.cmp.none"
+            );
+            return self.builder.zext(_ocmp, ir.IntType(64), name="opt.cmp.i64");
         }
     }
 

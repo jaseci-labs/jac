@@ -1,6 +1,6 @@
 # Foundation
 
-**In this part:**
+**On this page:**
 
 - [Introduction](#introduction) - What is Jac, principles, comparison to Python
 - [Getting Started](#getting-started) - Installation, first program, CLI basics
@@ -19,7 +19,7 @@
 
 ### 1 What is Jac?
 
-Jac is an AI-native full-stack programming language with Python-like syntax that compiles to Python bytecode, JavaScript, and native machine code (C-ABI compatible). It introduces Object-Spatial Programming (OSP) and novel constructs for AI-integrated programming (such as `by llm()`), providing a unified language for backend, frontend, and AI development with full access to the PyPI, npm, and native ecosystems.
+Jac is a full-stack programming language with Python-like syntax that compiles to Python bytecode, JavaScript, and native machine code (C-ABI compatible). It is *synechic* (one continuous, compiler-checked medium across tiers, ecosystems, and toolchains) and *topokinetic* (computation moves through a topology of data, realized as Object-Spatial Programming), with meaning-typed constructs for AI-integrated programming (such as `by llm()`). One language serves backend, frontend, native, and AI development with full access to the PyPI, npm, and native ecosystems. The two properties are defined in [The Two Ideas](../../quick-guide/ideas-behind-jac.md).
 
 ```jac
 with entry {
@@ -31,11 +31,11 @@ with entry {
 
 | Principle | Description |
 |-----------|-------------|
-| **AI-Native** | LLMs as first-class citizens through Meaning Typed Programming |
-| **Full-Stack** | Backend and frontend in one unified language |
-| **Multi-Target** | Compiles to Python bytecode, JS, and native machine code -- full PyPI, npm, and native ecosystem access |
+| **Meaning-Typed** | LLMs as first-class citizens: prompts derived from names, types, and `sem` |
+| **Synechic** | Backend, frontend, and native code in one continuous, compiler-checked medium |
+| **Multi-Ecosystem** | Compiles to Python bytecode, JS, and native machine code -- full PyPI, npm, and native ecosystem access |
 | **Object-Spatial** | Graph-based domain modeling with mobile walkers |
-| **Cloud-Native** | One-command deployment with automatic scaling |
+| **Scale-Invariant** | Same program text at every deployment scale, one-command deployment |
 | **Human & AI Friendly** | Readable structure for both humans and AI models |
 
 ### 3 Designed for Humans and AI
@@ -268,6 +268,121 @@ with entry:__main__ {
 
 ---
 
+## Common Gotchas
+
+### 1. Semicolons Required
+
+```jac
+# Wrong - missing semicolons
+# x = 5
+# print(x)
+
+# Correct
+with entry {
+    x = 5;
+    print(x);
+}
+```
+
+### 2. Braces Required for Blocks
+
+```jac
+# Wrong (Python style) - won't parse
+# if condition:
+#     do_something()
+
+# Correct
+def do_something() -> None {
+    print("done");
+}
+
+with entry {
+    condition = True;
+    if condition {
+        do_something();
+    }
+}
+```
+
+### 3. Type Annotations Required
+
+```jac
+# Wrong - missing type annotations
+# def add(a, b) {
+#     return a + b;
+# }
+
+# Correct
+def add(a: int, b: int) -> int {
+    return a + b;
+}
+```
+
+### 4. `has` vs Local Variables
+
+```jac
+obj Example {
+    has field: int = 0;  # Instance variable (with 'has')
+
+    def method() {
+        local = 5;  # Local variable (no 'has')
+        self.field = local;
+    }
+}
+```
+
+### 5. Walker `visit` is Queued
+
+```jac
+node Item { has name: str = ""; }
+
+walker Example {
+    can traverse with Item entry {
+        print("Visiting");
+        visit [-->];  # Nodes queued, visited AFTER this method
+        print("This prints before visiting children");
+    }
+}
+```
+
+To match every node regardless of type, use the anonymous form `can traverse with entry { ... }` -- there is no built-in `Node` catch-all trigger.
+
+### 6. `report` vs `return`
+
+```jac
+node Item { has value: int = 0; }
+
+walker Example {
+    can collect with Item entry {
+        report here.value;  # Continues execution
+        visit [-->];        # Still runs
+
+        return;             # Would stop the walker here
+    }
+}
+```
+
+Walker abilities don't carry an arrow-return type annotation -- `report` accumulates results on the walker's `reports` list, and `return` (with no value) ends the current ability.
+
+### 7. Assignment to a `glob` Rebinds It
+
+There is no `global`/`nonlocal` statement -- a bare assignment (including `+=`) inside a function binds to the nearest enclosing binding, so it modifies a module-level `glob` directly. Shadow with a typed declaration when you want a fresh local instead:
+
+```jac
+glob counter: int = 0;
+
+def increment -> None {
+    counter += 1;  # Rebinds the glob -- no declaration needed
+}
+
+def local_count -> None {
+    counter: int = 100;  # Typed declaration = new local; the glob is untouched
+    counter += 1;
+}
+```
+
+---
+
 ## Learn More
 
 **Tutorials:**
@@ -281,5 +396,5 @@ with entry:__main__ {
 - [Variables and Scope](variables-and-scope.md) - Scoping, rebinding, and shadowing rules
 - [Operators](operators.md) - Full operator reference and precedence
 - [Control Flow](control-flow.md) - Conditionals, loops, pattern matching
-- [Part II: Functions & Objects](functions-objects.md) - Classes, methods, inheritance
+- [Functions & Objects](functions-objects.md) - Classes, methods, inheritance
 - [Native Compilation](native-pathway.md) - Compile Jac to native machine code via LLVM

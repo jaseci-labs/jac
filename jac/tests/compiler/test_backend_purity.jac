@@ -42,7 +42,7 @@ glob FORBIDDEN: dict[str, str] = {
      # at sites where the declaration IS the fact.
      SANCTIONED: dict[tuple, tuple] = {
          ("ecmascript/impl/esast_gen_pass.impl.jac", "symbol_utils"): (
-             3,
+             5,
              "collect_field_names/symbol_owner_archetype - symbol-FACT "
              "readers over an already-resolved walker symbol; and "
              "ability_of_symbol, the shared central helper (deduped from a "
@@ -50,7 +50,13 @@ glob FORBIDDEN: dict[str, str] = {
              "module's exported ability at sv-import client-stub generation. "
              "The former classify_call fallback is deleted (#7418): "
              "call_kind is stamped authoritatively by the required "
-             "inference schedule"
+             "inference schedule. Plus two client-boundary reads (#7632): "
+             "resolve_import_source_module (the delegated body of the "
+             "former local _resolve_source_module, now shared with "
+             "StaticAnalysisPass) and the classify/report helpers in "
+             "_partition_client_import_items - both consume the SOURCE "
+             "module's stamped code_context and declaration surface, "
+             "facts that exist on no local-tree node"
          ),
          ("ecmascript/impl/esast_gen_pass.impl.jac", ".lookup("): (
              2,
@@ -62,10 +68,11 @@ glob FORBIDDEN: dict[str, str] = {
              "the consumed fact, not a resolved type"
          ),
          ("ecmascript/impl/esast_gen_pass.impl.jac", "type_tag.tag"): (
-             7,
+             9,
              "declaration-surface name reads: param/field type-name maps "
-             "for interop payloads and Ref[...] head detection - the "
-             "declared NAME is the consumed fact, not a resolved type"
+             "for interop payloads, Ref[...] head detection, and the W6005 "
+             "Callable-over-RPC guard on endpoint params - the declared "
+             "annotation is the consumed fact, not a resolved type"
          ),
          ("native/na_ir_gen_pass.impl/stmt.impl.jac", "symbol_utils"): (
              1,
@@ -75,13 +82,17 @@ glob FORBIDDEN: dict[str, str] = {
              "resolution"
          ),
          ("native/na_ir_gen_pass.impl/generics.impl.jac", "type_tag.tag"): (
-             1,
-             "generic-template declared-annotation fallback in "
-             "_solve_generic_call: the primary fact is the ability symbol's "
-             "central FunctionType (name_ref.type), but a bundled/imported "
-             "template compiled symtab_ir_only has no stamped FunctionType, "
-             "and for an uninstantiated template the declared annotation IS "
-             "the fact - there is no per-callsite resolved type to consume"
+             3,
+             "generic-template declared-annotation reads where the "
+             "declaration IS the fact: (1) the _solve_generic_call fallback "
+             "(a bundled/imported template compiled symtab_ir_only has no "
+             "stamped FunctionType, and an uninstantiated template has no "
+             "per-callsite resolved type to consume); (2)+(3) "
+             "_instantiate_generic_for_target (#7626 A5) matches the "
+             "template's declared TypeVar param annotations against the "
+             "binding's concrete Callable annotation to derive the "
+             "monomorphization solution - the template is uninstantiated, "
+             "so the declared annotations are the only TypeVar surface"
          ),
          ("native/na_ir_gen_pass.impl/calls.impl.jac", "symbol_utils"): (
              2,
@@ -114,13 +125,17 @@ glob FORBIDDEN: dict[str, str] = {
              "declaration-surface read during archetype field lowering"
          ),
          ("native/na_ir_gen_pass.impl/stmt.impl.jac", "type_tag.tag"): (
-             5,
+             7,
              "surface-shape dispatch on declared annotation forms "
-             "(assessed train 4: legitimately kept); plus the "
+             "(assessed train 4: legitimately kept); the "
              "escaping-closure value-hint guard (#7593 item 12), a "
              "presence-only test that fires when NO annotation is "
              "declared - the declaration surface's absence is the "
-             "consumed fact, not a re-derived type"
+             "consumed fact, not a re-derived type; plus the generic-"
+             "as-value hook (#7626 A5): a presence test and a handoff of "
+             "the annotation NODE to _instantiate_generic_for_target, "
+             "which needs the declared Callable annotation itself (the "
+             "template is uninstantiated, so no resolved type exists)"
          ),
 
      };
@@ -132,6 +147,9 @@ def scan_backends -> dict {
     counts: dict = {};
     for backend in ("ecmascript", "native") {
         for src in sorted((passes_root / backend).rglob("*.jac")) {
+            if not src.is_file() {
+                continue;
+            }
             rel = src.relative_to(passes_root).as_posix();
             lines = src.read_text(encoding="utf-8", errors="replace").splitlines();
             for (name, rx) in compiled.items() {

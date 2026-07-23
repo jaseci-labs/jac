@@ -501,8 +501,8 @@ Controls the base images used for the application pod and init containers. Overr
 
 ```toml
 [scale.kubernetes]
-python_image = "python:3.11-slim"
-busybox_image = "busybox:1.35"
+python_image = "python:3.12-slim"
+busybox_image = "busybox:1.36"
 ```
 
 ---
@@ -1067,15 +1067,15 @@ A **Pod Logs** dashboard is added to Grafana automatically, with two panels: log
 | Alloy | DaemonSet | Per node; reads host `/var/log/pods` (read-only) |
 | Grafana | Deployment + Service, NodePort/NLB via Ingress | `/grafana` on the app's external endpoint |
 
-> **Storage caveat.** Loki uses `emptyDir` in v0. A Loki pod restart drops in-flight chunks. Persistent storage modes (PVC, S3-compatible object storage) land in M-14.c.
+> **Storage caveat.** Loki uses `emptyDir` in v0. A Loki pod restart drops in-flight chunks. Persistent storage modes (PVC, S3-compatible object storage) are planned.
 
 <!-- -->
 
-> **Trace correlation.** Microservice mode already propagates `X-Trace-Id` (K-12). Lines from every service touched by one request carry the same trace id; grep for it in Grafana with `{namespace="<ns>"} |~ "trace=<id>"`. Structured-JSON emission with `trace_id` as a first-class queryable field ships in M-14.b.
+> **Trace correlation.** Microservice mode already propagates `X-Trace-Id`. Lines from every service touched by one request carry the same trace id; grep for it in Grafana with `{namespace="<ns>"} |~ "trace=<id>"`. Structured-JSON emission with `trace_id` as a first-class queryable field is planned.
 
 <!-- -->
 
-> **Multi-tenant note.** Alloy's ClusterRole reads pods cluster-wide and the default Pod Logs dashboard query is `{namespace=~".+"}`, so anyone with Grafana access sees logs from every namespace -- change the default Grafana password and only enable on clusters where that exposure is acceptable. Persistent multi-tenancy lands in M-14.c.
+> **Multi-tenant note.** Alloy's ClusterRole reads pods cluster-wide and the default Pod Logs dashboard query is `{namespace=~".+"}`, so anyone with Grafana access sees logs from every namespace -- change the default Grafana password and only enable on clusters where that exposure is acceptable. Persistent multi-tenancy is planned.
 
 ---
 

@@ -329,6 +329,17 @@ if ! curl -fsS "http://localhost:${GATEWAY_LOCAL_PORT}/health" >/dev/null; then
 fi
 echo "  /health OK"
 
+echo "=== client bundle served at / ==="
+# A fleet that silently skips the client build still passes every pod and
+# health check while / serves a JSON 404 - assert the gateway serves HTML.
+ROOT_BODY=$(curl -fsS --max-time 10 "http://localhost:${GATEWAY_LOCAL_PORT}/" || true)
+if ! echo "${ROOT_BODY}" | grep -qi "<script"; then
+    echo "FAIL: / did not serve the client bundle (headless fleet). Body head:" >&2
+    echo "${ROOT_BODY}" | head -c 300 >&2
+    exit 1
+fi
+echo "  / serves the client"
+
 _t "health OK"
 echo "=== verify per-service routing ==="
 # 503 from the gateway means upstream service unreachable; 404/405 means

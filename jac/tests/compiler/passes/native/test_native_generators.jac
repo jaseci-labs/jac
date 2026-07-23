@@ -161,19 +161,44 @@ test "generator: yield inside try, exception raised and caught across resumes" {
     assert f(1) == 8 , "1, boom caught, 3, 4";
 }
 
-test "generator guardrail: yield inside finally is a structured error" {
-    prog = compile_na_inline(
-        "yield_in_finally",
-        "def g(n: int) -> Iterator[int] {\n"
-        "    try {\n"
-        "        yield n;\n"
-        "    } finally {\n"
-        "        yield n + 1;\n"
-        "    }\n"
-        "}\n"
-    );
-    assert has_error_code(prog, "E5092") , (
-        f"expected E5092 for yield inside finally, got: "
-        f"{[str(e) for e in prog.errors_had]}"
-    );
+test "generator: yield inside finally resumes through both continuations" {
+    # #7626 A6: the finally region records its pending continuation in a
+    # frame slot, so suspending inside it is legal. Full iteration yields
+    # the try value then the finally value (CPython parity).
+    (eng, _) = compile_native("generators_finally.na.jac");
+    f = get_func(eng, "sum_yf", ctypes.c_int64, ctypes.c_int64);
+    assert f(5) == 11 , "yields 5 then 6";
+    assert f(10) == 21 , "yields 10 then 11";
+}
+
+test "generator: abandoning a yield-in-finally stream drops the frame safely" {
+    (eng, _) = compile_native("generators_finally.na.jac");
+    f = get_func(eng, "first_yf", ctypes.c_int64, ctypes.c_int64);
+    assert f(10) == 10 , "early return abandons the stream without crashing";
+}
+
+test "generator: capturing lambda escaping inside a generator frame" {
+    # #7626 A2: closure cells for generator locals are allocated in the
+    # creation fn and their handles live in frame slots, so a lambda can
+    # escape as a value inside a generator body.
+    (eng, _) = compile_native("generators_closures.na.jac");
+    f = get_func(eng, "sum_gen_scaled", ctypes.c_int64, ctypes.c_int64);
+    assert f(3) == 9 , "g(1)+g(2) with k=3: 3+6";
+    assert f(0) == 0;
+}
+
+test "generator: plain param after a captured param keeps its own value" {
+    # Cell-promoted params leave param_slots, so the creation fn must map
+    # remaining plain params by their ORIGINAL signature index -- not by
+    # enumeration order -- or `base` here would be stored from k's arg.
+    (eng, _) = compile_native("generators_closures.na.jac");
+    f = get_func(eng, "sum_gen_mixed", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
+    assert f(3, 10) == 63 , "g(10)+g(11) with k=3: 30+33";
+    assert f(0, 5) == 0;
+}
+
+test "generator: capturing lambda as a map callback inside a generator" {
+    (eng, _) = compile_native("generators_closures.na.jac");
+    f = get_func(eng, "sum_gen_mapped", ctypes.c_int64, ctypes.c_int64);
+    assert f(10) == 36 , "11+12+13";
 }

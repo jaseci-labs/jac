@@ -28,7 +28,7 @@ def validate(files: list[str]) -> int {
             continue;
         }
         if not PATTERN.match(path.name) {
-            print(
+            print(  # jac:ignore[no-print]
                 f"ERROR: Invalid fragment filename: {filepath}\n"
                 "       Expected format: <PR_number>.<category>.md\n"
                 f"       Valid categories: {', '.join(sorted(VALID_CATEGORIES))}\n"

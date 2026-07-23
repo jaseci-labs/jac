@@ -1,6 +1,6 @@
 # Types and Values
 
-**In this part:**
+**On this page:**
 
 - [Builtin Types](#1-builtin-types) - The core scalar and collection types
 - [Type Annotations](#2-type-annotations) - Required annotations, ambient names, `import type`, gradual typing
