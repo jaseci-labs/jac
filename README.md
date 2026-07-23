@@ -438,7 +438,6 @@ jac start main.jac --scale   # cloud: Kubernetes with Redis, MongoDB, load balan
 
 Your program text does not change with the shape of its deployment: this is **scale invariance**, and the `scale` subsystem that delivers it ships inside the binary. `--scale` builds the images, provisions Redis and MongoDB, and deploys to Kubernetes with health checks. You write no Dockerfile and no YAML, and what stays in your code is only the physics: latency, failure, and cost surface as typed semantics. [Deploy & scale →](https://docs.jaseci.org/reference/plugins/jac-scale/)
 
-
 ## What's in this repo
 
 This is the Jaseci monorepo, home to everything that makes Jac work:
