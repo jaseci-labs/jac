@@ -1,8 +1,4 @@
 def _carries_topology_index(anchor: Anchor) -> bool {
-    # A root NodeAnchor whose topology-index blob can't be reconstructed from the
-    # edge anchors, so an edge-list-delta on it must invalidate cross-pod. Relies
-    # on set_topology_index never resetting the blob to None once set; a future
-    # path that clears it must invalidate explicitly.
     return isinstance(anchor, NodeAnchor) and anchor.topology_index_data is not None;
 }
 
@@ -136,8 +132,6 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
                         str(intent.anchor.id), self._l1_id
                     );
                 } elif _carries_topology_index(intent.anchor) {
-                    # Edge-list-delta on a root: invalidate + broadcast so other
-                    # pods drop their stale GTI and reload the fresh index from L3.
                     self.l2.invalidate(intent.anchor.id);
                     cast(RedisBackend, self.l2).publish_invalidation(
                         str(intent.anchor.id), self._l1_id
