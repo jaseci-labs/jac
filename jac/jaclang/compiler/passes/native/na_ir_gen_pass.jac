@@ -6,9 +6,9 @@ import from jaclang.jac0core.diagnostics {
     E2018,
     E5026,
     E5060,
-    E5090,
     E5091,
     E5092,
+    E5093,
     E9002
 }
 import from jaclang.jac0core.osp_model { OspAnalysis, OspModel, stable_osp_tag }
@@ -273,6 +273,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_test(nd: uni.Test) -> None;
     def _codegen_body(stmts: (list | tuple)) -> None;
     def _codegen_stmt(nd: uni.UniNode) -> None;
+    def _codegen_delete(nd: uni.DeleteStmt) -> None;
     def _codegen_return(nd: uni.ReturnStmt) -> None;
     def _codegen_if(nd: uni.IfStmt) -> None;
     def _codegen_switch(nd: uni.SwitchStmt) -> None;
@@ -690,6 +691,29 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> (ir.Value | None);
 
     def _codegen_field_assign(target: uni.AtomTrailer, value: ir.Value) -> None;
+    def _emit_field_store(
+        obj_val: ir.Value,
+        type_name: str,
+        field_name: str,
+        value: ir.Value,
+        loc_node: uni.UniNode
+    ) -> None;
+
+    def _emit_sealed_field_reject(
+        anchor: uni.UniNode, type_name: (str | None), field_name: str, kind: str
+    ) -> None;
+
+    def _emit_member_store_reject(
+        anchor: uni.UniNode,
+        type_name: (str | None),
+        field_name: (str | None),
+        kind: str
+    ) -> None;
+
+    def _emit_reflection_builtin(
+        nd: uni.FuncCall, func_name: str
+    ) -> (ir.Value | None);
+
     def _emit_key_comparison(
         b: ir.IRBuilder,
         key_type: ir.Type,

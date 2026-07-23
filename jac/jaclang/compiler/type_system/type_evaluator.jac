@@ -296,6 +296,7 @@ obj TypeEvaluator {
     def is_none_type(ty: TypeBase) -> bool;
     def _is_strict_site(nd: uni.UniNode) -> bool;
     def _in_native_context -> bool;
+    def _sealed_attr_help(attr: str) -> (str | None);
     def is_typevar_class(ty: TypeBase) -> bool;
     def is_paramspec_class(ty: TypeBase) -> bool;
     def is_type_var_tuple_class(ty: TypeBase) -> bool;

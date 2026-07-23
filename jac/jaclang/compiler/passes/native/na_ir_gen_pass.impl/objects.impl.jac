@@ -2187,17 +2187,70 @@ impl NaIRGenPass._codegen_field_assign(
         or field_name not in field_indices
     ) {
         if len(self.errors_had) == _fa_errs {
-            self.emit(
-                E5092,
-                node_override=target,
-                kind="field assignment",
-                name=(field_name or "<field>")
+            self._emit_member_store_reject(
+                target, type_name, field_name, "field assignment"
             );
         }
         return;
     }
+    self._emit_field_store(obj_val, type_name, field_name, value, target);
+}
+
+impl NaIRGenPass._emit_member_store_reject(
+    anchor: uni.UniNode, type_name: (str | None), field_name: (str | None), kind: str
+) -> None {
+    if field_name is None {
+        self.emit(E5092, node_override=anchor, kind=kind, name="<field>");
+        return;
+    }
+    _fidx = self.struct_field_indices.get(type_name) if type_name is not None else None;
+    if _fidx is not None and field_name not in _fidx {
+        self._emit_sealed_field_reject(anchor, type_name, field_name, kind);
+        return;
+    }
+    if _fidx is None {
+        self.emit(
+            E5093,
+            node_override=anchor,
+            kind=kind,
+            name=field_name,
+            help_text=(
+                "A native member store needs the receiver's archetype layout "
+                "at compile time, and this receiver's static type could not "
+                "be resolved to a native archetype (an `any`-typed receiver "
+                "has no layout to store into -- there is no per-instance "
+                "dict fallback by design). Type the receiver with its "
+                "archetype and declare the field with `has`, or move the "
+                "code to a @sv/Python context."
+            )
+        );
+        return;
+    }
+    self.emit(E5092, node_override=anchor, kind=kind, name=field_name);
+}
+
+impl NaIRGenPass._emit_field_store(
+    obj_val: ir.Value,
+    type_name: str,
+    field_name: str,
+    value: ir.Value,
+    loc_node: uni.UniNode
+) -> None {
+    if isinstance(obj_val.type, ir.IntType) and (type_name in self.struct_types) {
+        obj_val = self.builder.inttoptr(
+            obj_val, self.struct_types[type_name].as_pointer(), name="osp.handle.ptr"
+        );
+    }
+    target_struct = self.struct_types.get(type_name);
+    if target_struct is not None
+    and isinstance(obj_val.type, ir.PointerType)
+    and obj_val.type.pointee is not target_struct {
+        obj_val = self.builder.bitcast(
+            obj_val, target_struct.as_pointer(), name=f"narrow.{type_name}"
+        );
+    }
     field_types = self.struct_field_types.get(type_name);
-    idx = field_indices[field_name];
+    idx = self.struct_field_indices[type_name][field_name];
     ftype = field_types[field_name];
 
     _vt_struct = type_name in self.clib_vtable_structs;
@@ -2218,21 +2271,156 @@ impl NaIRGenPass._codegen_field_assign(
     );
 
     if isinstance(ftype, ir.PointerType) and not _vt_struct {
-        self._emit_take_ref(
-            value,
-            op="field_set",
-            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{target.loc.first_line
-                if target.loc
-                else 0}"
-        );
+        _fs_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{loc_node.loc.first_line
+            if loc_node.loc
+            else 0}";
+        self._emit_take_ref(value, op="field_set", loc=_fs_loc);
         old_field_val = self.builder.load(field_ptr, name=f"field.{field_name}.old");
-        self._emit_rc_release_simple(
-            old_field_val,
-            op="field_set",
-            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{target.loc.first_line
-                if target.loc
-                else 0}"
-        );
+        self._emit_rc_release_simple(old_field_val, op="field_set", loc=_fs_loc);
     }
     self.builder.store(value, field_ptr);
+}
+
+impl NaIRGenPass._emit_sealed_field_reject(
+    anchor: uni.UniNode, type_name: (str | None), field_name: str, kind: str
+) -> None {
+    _tn = f"archetype '{type_name}'" if type_name is not None else "the archetype";
+    self.emit(
+        E5093,
+        node_override=anchor,
+        kind=kind,
+        name=field_name,
+        help_text=(
+            f"Native archetype layouts are sealed at compile time: "
+            f"'{field_name}' is not a declared field of {_tn}, and fields "
+            f"cannot be added at runtime. Declare it in the archetype "
+            f"(`has {field_name}: <type>;`), or move the dynamic code to a "
+            f"@sv/Python context."
+        )
+    );
+}
+
+impl NaIRGenPass._emit_reflection_builtin(
+    nd: uni.FuncCall, func_name: str
+) -> (ir.Value | None) {
+    import from jaclang.compiler.passes.main.capability_check_pass {
+        _NATIVE_OBJMODEL_DELATTR_HELP,
+        _NATIVE_OBJMODEL_DYNNAME_HELP,
+        reflection_literal_attr_name
+    }
+    if func_name == "delattr" {
+        self.emit(
+            E5093,
+            node_override=nd,
+            kind="builtin call",
+            name=func_name,
+            help_text=_NATIVE_OBJMODEL_DELATTR_HELP
+        );
+        return None;
+    }
+    params_l = list(nd.params or []);
+    _has_kw = any([isinstance(p, uni.KWPair) for p in params_l]);
+    _max_args = 3 if func_name == "getattr" else 2;
+    if func_name == "setattr" {
+        _max_args = 3;
+    }
+    _min_args = 3 if func_name == "setattr" else 2;
+    if _has_kw or len(params_l) < _min_args or len(params_l) > _max_args {
+        self.emit(
+            E5093,
+            node_override=nd,
+            kind="builtin call",
+            name=func_name,
+            help_text=_NATIVE_OBJMODEL_DYNNAME_HELP
+        );
+        return None;
+    }
+    attr_name = reflection_literal_attr_name(params_l[1]);
+    if attr_name is None {
+        self.emit(
+            E5093,
+            node_override=nd,
+            kind="builtin call",
+            name=func_name,
+            help_text=_NATIVE_OBJMODEL_DYNNAME_HELP
+        );
+        return None;
+    }
+    _rb_errs = len(self.errors_had);
+    obj_val = self._codegen_expr(params_l[0]);
+    type_name: (str | None) = self._struct_name_of(params_l[0]);
+    if type_name is None and obj_val is not None {
+        type_name = self._infer_type_name(obj_val);
+    }
+    field_indices = self.struct_field_indices.get(type_name)
+        if type_name is not None
+        else None;
+    if obj_val is None or field_indices is None {
+        if len(self.errors_had) == _rb_errs {
+            self.emit(
+                E5093,
+                node_override=nd,
+                kind="builtin call",
+                name=func_name,
+                help_text=(
+                    "Reflection builtins lower natively only when the receiver "
+                    "is an archetype whose layout is statically known; this "
+                    "receiver's type could not be resolved to a native "
+                    "archetype. Use direct field access on a typed archetype, "
+                    "or move the code to a @sv/Python context."
+                )
+            );
+        }
+        return None;
+    }
+    _declared = attr_name in field_indices;
+    if func_name == "hasattr" {
+        if isinstance(obj_val.type, ir.PointerType) and self._is_owned(obj_val) {
+            self._emit_rc_release_simple(obj_val, op="reflect_recv", loc="");
+        }
+        if _declared {
+            return ir.Constant(ir.IntType(1), 1);
+        }
+        self._emit_sealed_field_reject(nd, type_name, attr_name, "field reference");
+        return None;
+    }
+    if func_name == "getattr" {
+        default_val: (ir.Value | None) = None;
+        if len(params_l) == 3 {
+            default_val = self._codegen_required(params_l[2]);
+            if default_val is None {
+                return None;
+            }
+        }
+        if _declared {
+            if default_val is not None
+            and isinstance(default_val.type, ir.PointerType)
+            and self._is_owned(default_val) {
+                self._emit_rc_release_simple(default_val, op="reflect_dflt", loc="");
+            }
+            result = self._codegen_field_access(obj_val, attr_name, type_name);
+            if result is None and len(self.errors_had) == _rb_errs {
+                self.emit(E5092, node_override=nd, kind="builtin call", name=func_name);
+            }
+            return result;
+        }
+        if default_val is not None {
+            if isinstance(obj_val.type, ir.PointerType) and self._is_owned(obj_val) {
+                self._emit_rc_release_simple(obj_val, op="reflect_recv", loc="");
+            }
+            return default_val;
+        }
+        self._emit_sealed_field_reject(nd, type_name, attr_name, "field reference");
+        return None;
+    }
+    value = self._codegen_required(params_l[2]);
+    if not _declared {
+        self._emit_sealed_field_reject(nd, type_name, attr_name, "field assignment");
+        return None;
+    }
+    if value is None {
+        return None;
+    }
+    self._emit_field_store(obj_val, type_name, attr_name, value, nd);
+    return ir.Constant(ir.IntType(8).as_pointer(), None);
 }

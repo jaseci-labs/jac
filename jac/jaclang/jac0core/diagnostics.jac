@@ -1356,6 +1356,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Native lowering failed for {kind} '{name}'",
          help="The construct is within the native capability set, but this specific shape (its types, values, or runtime bindings) could not be lowered by NaIRGenPass. Adjust the shape, add type annotations, or move the code to a non-native context. Statically-known unsupported constructs are reported as E5090 by the capability check instead."
      ),
+     E5093 = _err(
+         "E5093",
+         Category.CODEGEN,
+         "Dynamic object-model {kind} '{name}' is not supported in native code by design",
+         help="Native archetypes have a static layout: every field is a fixed struct slot declared with `has`, and methods are direct (or vtable) calls -- there is no per-instance dict to mutate at runtime. Dynamic object-model constructs (monkey patching, computed attribute names, `__dict__`, class-object mutation) are deliberately rejected: supporting them would cost exactly the performance the native pathway exists to provide. This is a permanent design boundary, not a missing feature (E5090) or a lowering gap (E5092). Declare the data as `has` fields, or move the dynamic code to a @sv/Python context."
+     ),
      E5080 = _err(
          "E5080",
          Category.CODEGEN,
