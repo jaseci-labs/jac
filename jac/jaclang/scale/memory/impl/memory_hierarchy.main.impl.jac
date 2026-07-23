@@ -20,7 +20,7 @@ impl ScaleTieredMemory._refresh_super_root_template(applied: list) -> None {
     } except Exception {
         return;
     }
-    _publish_super_root_template(snapshot);
+    _publish_super_root_template(snapshot, allow_equal_version=True);
 }
 
 impl ScaleTieredMemory.postinit -> None {

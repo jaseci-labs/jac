@@ -305,9 +305,6 @@ impl JacAPIServerCore.start(
 
     self._print_startup_banner(dev, no_client);
 
-    import from jaclang.scale.memory.memory_hierarchy { _reset_super_root_template }
-    _reset_super_root_template();
-
     if on_ready {
         on_ready(self.port);
     }

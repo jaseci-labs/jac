@@ -46,23 +46,23 @@ def _get_db_config -> dict {
     return get_scale_config().get_database_config();
 }
 
-def _publish_super_root_template(snapshot: any) -> None {
+def _publish_super_root_template(
+    snapshot: any, allow_equal_version: bool = False
+) -> None {
     import from jaclang.jac0core.constructs { NodeAnchor }
     if not isinstance(snapshot, NodeAnchor) {
         return;
     }
     with _super_root_template_lock {
         latest = _process_cache.get('system_root');
-        if isinstance(latest, NodeAnchor) and latest.version >= snapshot.version {
-            return;
+        if isinstance(latest, NodeAnchor) {
+            stale = latest.version > snapshot.version
+            or (not allow_equal_version and latest.version == snapshot.version);
+            if stale {
+                return;
+            }
         }
         _process_cache['system_root'] = snapshot;
-    }
-}
-
-def _reset_super_root_template {
-    with _super_root_template_lock {
-        _process_cache.pop('system_root', None);
     }
 }
 
