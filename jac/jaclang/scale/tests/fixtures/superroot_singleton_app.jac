@@ -1,14 +1,14 @@
 """Fixture: concurrent find-or-create of a singleton on the shared system root.
 
-App pattern from issue #7605: every request resolves the system root by its
-well-known id, looks up a singleton Hub under it, and creates one when
-absent. The module-level bootstrap runs in system context at import time and
-grants public WRITE on the system root so unauthenticated request walkers
-may attach children — the same bootstrap shape production apps use for
-shared singletons. Only public builtins are used (jobj / grant / commit).
+App pattern from issue #7605. Module import runs in system context, where
+`root` IS the system root: the bootstrap captures its id, grants public
+WRITE so request walkers may attach children, and commits. Request walkers
+(which run on the guest root) then resolve the system root by the captured
+id and race to find-or-create the singleton. Only public builtins are used
+(jid / jobj / grant / commit).
 """
 
-glob SYSTEM_ROOT_ID = "00000000-0000-0000-0000-000000000000";
+glob SYSTEM_ROOT_ID: str = "";
 
 node Hub {
     has label: str = "singleton";
@@ -42,6 +42,7 @@ walker:pub count_hubs {
 }
 
 with entry {
-    grant(jobj(id=SYSTEM_ROOT_ID), level=WritePerm);
+    SYSTEM_ROOT_ID = jid(root);
+    grant(root, level=WritePerm);
     commit();
 }
