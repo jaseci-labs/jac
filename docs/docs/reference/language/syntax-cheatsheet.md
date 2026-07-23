@@ -1473,24 +1473,23 @@ cl {
 # ============================================================
 # Routing (File-Based)
 # ============================================================
-# pages/index.jac          -> /
-# pages/about.jac          -> /about
-# pages/users/[id].jac     -> /users/:id  (dynamic param)
-# pages/[...notFound].jac  -> *            (catch-all)
-# pages/(auth)/layout.jac  -> route group  (no URL segment)
-# pages/layout.jac         -> root layout
+# pages/index.jac            -> /
+# pages/about.jac            -> /about
+# pages/users/[id].jac       -> /users/:id  (dynamic param)
+# pages/[...notFound].jac    -> *           (catch-all)
+# pages/(auth)/dashboard.jac -> /dashboard  (route group: no URL segment)
+# pages/layout.jac           -> root layout (filename is convention)
 
-# Page files export a `page` function inside a `cl { }` block:
-# cl {
-#     def:pub Home() -> JsxPage { ... }
-# }
+# A route is any export returning JsxPage; a layout returns JsxLayout.
+# Both are ambient builtin types (no import). Export name and filename
+# are free -- the filename only decides the URL. Exports returning
+# JsxElement are not routes (co-located components need no special name).
+# def:pub Home() -> JsxPage { ... }
 
-# Layout files use <Outlet /> for child routes:
-# cl import from "@jac/runtime" { Outlet }
-# cl {
-#     def:pub Shell() -> JsxLayout {
-#         return <><nav>...</nav><Outlet /></>;
-#     }
+# Layouts use <Outlet /> for child routes:
+# import from "@jac/runtime" { Outlet }
+# def:pub Shell() -> JsxLayout {
+#     return <><nav>...</nav><Outlet /></>;
 # }
 
 
