@@ -155,11 +155,12 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
     self._post_apply(apply_report);
     self.changes.clear();
 
+    self._refresh_super_root_template(apply_report.applied);
+
     if (conflict := apply_report.primary_conflict()) {
         raise conflict;
     }
 
-    self._refresh_super_root_template(apply_report.applied);
     self._mark_committed(anchor);
 }
 
