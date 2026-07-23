@@ -950,25 +950,8 @@ impl EsastGenPass.exit_index_slice(nd: uni.IndexSlice) -> None {
 }
 
 impl EsastGenPass._resolve_source_module(nd: uni.Import) -> (uni.Module | None) {
-    if not nd.from_loc {
-        return None;
-    }
-    import from pathlib { Path }
-    resolved_path = nd.from_loc.resolve_relative_path();
-    abs_path = str(Path(resolved_path).resolve());
-    source_mod = self.prog.mod.hub.get(resolved_path)
-    or self.prog.mod.hub.get(abs_path);
-    if source_mod {
-        return source_mod;
-    }
-    if Path(resolved_path).exists() {
-        source_mod = self.prog.compile(
-            resolved_path, no_cgen=True, type_check=False, symtab_ir_only=True
-        );
-        self.prog.mod.hub[abs_path] = source_mod;
-        return source_mod;
-    }
-    return None;
+    import from jaclang.compiler.symbol_utils { resolve_import_source_module }
+    return resolve_import_source_module(self.prog, nd);
 }
 
 impl EsastGenPass._record_sv_backend(nd: uni.Import) -> None {
@@ -1025,7 +1008,28 @@ impl EsastGenPass._return_type_includes_jsx_element(rt: uni.Expr) -> bool {
             or self._return_type_includes_jsx_element(rt.right)
         );
     }
-    return isinstance(rt, uni.Name) and rt.value == 'JsxElement';
+    return isinstance(rt, uni.Name)
+    and rt.value in ('JsxElement', 'JsxPage', 'JsxLayout');
+}
+
+impl EsastGenPass._return_type_route_role(rt: uni.Expr) -> (str | None) {
+    if (
+        isinstance(rt, uni.BinaryExpr)
+        and isinstance(rt.op, uni.Token)
+        and rt.op.name == Tok.BW_OR
+    ) {
+        left_role = self._return_type_route_role(rt.left);
+        return left_role or self._return_type_route_role(rt.right);
+    }
+    if isinstance(rt, uni.Name) {
+        if rt.value == 'JsxPage' {
+            return 'page';
+        }
+        if rt.value == 'JsxLayout' {
+            return 'layout';
+        }
+    }
+    return None;
 }
 
 impl EsastGenPass._component_pascal_name(nd: uni.Ability) -> (str | None) {
@@ -3743,7 +3747,14 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
     if (nd.code_context == CodeContext.CLIENT and not nd.is_method) {
         self.client_manifest.has_client = True;
         is_pub = nd.access and (nd.access.tag.name == Tok.KW_PUB);
-        if is_pub {
+        route_role: (str | None) = None;
+        if (
+            isinstance(nd.signature, uni.FuncSignature)
+            and nd.signature.return_type is not None
+        ) {
+            route_role = self._return_type_route_role(nd.signature.return_type);
+        }
+        if is_pub or route_role {
             name = nd.name_ref.sym_name;
             self.client_manifest.exports.append(name);
             if (
@@ -3761,6 +3772,12 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
             ]
                 if isinstance(nd.signature, uni.FuncSignature)
                 else [];
+            if route_role == 'page' and self.client_manifest.page_export is None {
+                self.client_manifest.page_export = name;
+            } elif route_role == 'layout'
+            and self.client_manifest.layout_export is None {
+                self.client_manifest.layout_export = name;
+            }
         }
     }
     component_call_abi = self._component_call_abi(nd);
@@ -4488,7 +4505,17 @@ impl EsastGenPass.exit_archetype(nd: uni.Archetype) -> None {
         and (nd.name.sym_name in self._osp_arch_set())
         and (nd.arch_kind is not None)
     );
-    if (((nd.arch_type.name == Tok.KW_OBJECT) or is_local_osp_arch) and has_members) {
+    is_shared_boundary_arch = (
+        (nd.name is not None) and (nd.name.sym_name in self.shared_arch_names)
+    );
+    if (
+        (
+            (nd.arch_type.name == Tok.KW_OBJECT)
+            or is_local_osp_arch
+            or is_shared_boundary_arch
+        )
+        and has_members
+    ) {
         constructor_stmts: list[es.Statement] = [];
         props_param = self.sync_loc(
             es.AssignmentPattern(
@@ -4642,7 +4669,20 @@ impl EsastGenPass.exit_import(nd: uni.Import) -> None {
         }
         return;
     }
+    emit_items: list = list(nd.items);
     if (nd.from_loc and nd.items) {
+        partition = self._partition_client_import_items(nd);
+        if partition is not None {
+            (emit_items, bridged_items) = partition;
+            if bridged_items {
+                self._generate_sv_import_stubs(nd, bridged_items);
+                self._record_sv_backend(nd);
+            }
+            if not emit_items {
+                nd.gen.es_ast = None;
+                return;
+            }
+        }
         resolved_path = nd.from_loc.resolve_relative_path();
         import_key = nd.from_loc.dot_path_str;
         self.client_manifest.imports[import_key] = resolved_path;
@@ -4682,7 +4722,7 @@ impl EsastGenPass.exit_import(nd: uni.Import) -> None {
         list[
             es.ImportSpecifier | es.ImportDefaultSpecifier | es.ImportNamespaceSpecifier
         ] = [];
-    for item in nd.items {
+    for item in emit_items {
         if isinstance(item, uni.ModuleItem) {
             if isinstance(item.name, uni.Name) {
                 imported = self.sync_loc(
@@ -4736,12 +4776,45 @@ impl EsastGenPass.exit_import(nd: uni.Import) -> None {
     nd.gen.es_ast = None;
 }
 
-impl EsastGenPass._generate_sv_import_stubs(nd: uni.Import) -> None {
+impl EsastGenPass._partition_client_import_items(
+    nd: uni.Import
+) -> (tuple[list, list] | None) {
+    import from jaclang.compiler.symbol_utils {
+        ClientImportVerdict,
+        classify_client_import_item,
+        is_client_boundary_import,
+        report_dead_client_import
+    }
+    if not is_client_boundary_import(nd) {
+        return None;
+    }
+    source_mod = self._resolve_source_module(nd);
+    if source_mod is None {
+        return None;
+    }
+    kept: list = [];
+    bridged: list = [];
+    for item in nd.items {
+        verdict = classify_client_import_item(source_mod, item);
+        if verdict == ClientImportVerdict.BRIDGED {
+            bridged.append(item);
+        } elif verdict == ClientImportVerdict.DEAD {
+            report_dead_client_import(self, nd, item);
+        } else {
+            kept.append(item);
+        }
+    }
+    return (kept, bridged);
+}
+
+impl EsastGenPass._generate_sv_import_stubs(
+    nd: uni.Import, items: (Sequence[uni.ModuleItem] | None) = None
+) -> None {
     import from jaclang.compiler.symbol_utils { ability_of_symbol }
 
     source_mod: uni.Module | None = self._resolve_source_module(nd);
     stubs: list[es.Statement] = [];
-    for item in nd.items {
+    for item in (items if items is not None else nd.items) {
         if not isinstance(item, uni.ModuleItem)
         or not isinstance(item.name, uni.Name) {
             continue;
@@ -4880,13 +4953,28 @@ impl EsastGenPass.populate_client_manifest(nd: uni.Module) -> None {
     }
 }
 
+impl EsastGenPass._es_json_literal(value: any) -> any {
+    if isinstance(value, list) {
+        return es.ArrayExpression(elements=[self._es_json_literal(v) for v in value]);
+    }
+    if isinstance(value, dict) {
+        return es.ObjectExpression(
+            properties=[
+                es.Property(
+                    key=es.Literal(value=k), value=self._es_json_literal(v), kind='init'
+                ) for (k, v) in value.items()
+            ]
+        );
+    }
+    return es.Literal(value=value);
+}
+
 impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement] {
     manifest = nd.gen.interop_manifest;
     if not manifest.boundary_types {
         return [];
     }
     stubs: list[es.Statement] = [];
-    osp_archs = self._osp_arch_set();
 
     osp_class_map: dict[str, es.ClassDeclaration] = {};
     for item in self._merge_module_bodies(nd) {
@@ -4899,7 +4987,6 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
         }
     }
     for (type_name, info) in manifest.boundary_types.items() {
-        is_osp = type_name in osp_archs;
         if info.kind == "enum" {
             enum_props: list[es.Property] = [];
             for (member_name, member_val) in info.enum_members {
@@ -4940,6 +5027,9 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
             field_types = {f[0]: f[1] for f in info.fields};
             ctor_stmts: list[es.Statement] = [];
             for fname in field_names {
+                fallback = self._es_json_literal(info.field_defaults[fname])
+                    if fname in info.field_defaults
+                    else es.Literal(value=None);
                 assign = es.ExpressionStatement(
                     expression=es.AssignmentExpression(
                         operator='=',
@@ -4962,7 +5052,7 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
                                 property=es.Identifier(name=fname),
                                 computed=False
                             ),
-                            alternate=es.Literal(value=None)
+                            alternate=fallback
                         )
                     )
                 );
@@ -5457,55 +5547,49 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
                 static=False,
                 computed=False
             );
-            if is_osp {
-                osp_class = osp_class_map.get(type_name);
-                if osp_class is not None {
-                    if info.kind == "node" {
-                        for member in osp_class.body.body {
-                            if (
-                                isinstance(member, es.MethodDefinition)
-                                and (member.kind == "constructor")
-                            ) {
-                                member.value.body.body.append(
-                                    es.IfStatement(
-                                        test=es.CallExpression(
-                                            callee=es.MemberExpression(
-                                                object=es.Identifier(name='props'),
-                                                property=es.Identifier(
-                                                    name='hasOwnProperty'
-                                                ),
+            osp_class = osp_class_map.get(type_name);
+            if osp_class is not None {
+                if info.kind == "node" {
+                    for member in osp_class.body.body {
+                        if (
+                            isinstance(member, es.MethodDefinition)
+                            and (member.kind == "constructor")
+                        ) {
+                            member.value.body.body.append(
+                                es.IfStatement(
+                                    test=es.CallExpression(
+                                        callee=es.MemberExpression(
+                                            object=es.Identifier(name='props'),
+                                            property=es.Identifier(
+                                                name='hasOwnProperty'
+                                            ),
+                                            computed=False
+                                        ),
+                                        arguments=[es.Literal(value='_jac_id')]
+                                    ),
+                                    consequent=es.ExpressionStatement(
+                                        expression=es.AssignmentExpression(
+                                            operator='=',
+                                            left=es.MemberExpression(
+                                                object=es.ThisExpression(),
+                                                property=es.Identifier(name='_jac_id'),
                                                 computed=False
                                             ),
-                                            arguments=[es.Literal(value='_jac_id')]
-                                        ),
-                                        consequent=es.ExpressionStatement(
-                                            expression=es.AssignmentExpression(
-                                                operator='=',
-                                                left=es.MemberExpression(
-                                                    object=es.ThisExpression(),
-                                                    property=es.Identifier(
-                                                        name='_jac_id'
-                                                    ),
-                                                    computed=False
-                                                ),
-                                                right=es.MemberExpression(
-                                                    object=es.Identifier(name='props'),
-                                                    property=es.Identifier(
-                                                        name='_jac_id'
-                                                    ),
-                                                    computed=False
-                                                )
+                                            right=es.MemberExpression(
+                                                object=es.Identifier(name='props'),
+                                                property=es.Identifier(name='_jac_id'),
+                                                computed=False
                                             )
-                                        ),
-                                        alternate=None
-                                    )
-                                );
-                            }
+                                        )
+                                    ),
+                                    alternate=None
+                                )
+                            );
                         }
                     }
-                    osp_class.body.body.append(from_wire_def);
-                    osp_class.body.body.append(to_wire_def);
                 }
+                osp_class.body.body.append(from_wire_def);
+                osp_class.body.body.append(to_wire_def);
             } else {
                 class_body = es.ClassBody(body=[ctor_def, from_wire_def, to_wire_def]);
                 class_decl = es.ClassDeclaration(

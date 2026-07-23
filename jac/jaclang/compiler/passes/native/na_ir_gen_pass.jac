@@ -229,6 +229,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         region_log_dtor_fn: (ir.Function | None) = None,
         region_drop_fn: (ir.Function | None) = None,
         osp_anchor_alloc_fn: (ir.Function | None) = None,
+        region_handle_of_fn: (ir.Function | None) = None,
         region_stack: list = [],
         region_handle_vars: set[str] = set(),
         region_anon_count: int = 0,
@@ -310,6 +311,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         nested_captures: dict[str, tuple] = {},
         generator_fns: dict[str, uni.Ability] = {},
         generic_fns: dict[str, uni.Ability] = {},
+        _generic_methods: dict[str, uni.Ability] = {},
         _mono_fns: dict[str, ir.Function] = {},
         _mono_solution: (dict | None) = None,
         _mono_mangle_map: (dict | None) = None,
@@ -322,8 +324,11 @@ obj NaIRGenPass(ModuleCodegenPass) {
         _closure_sig_keys: dict[str, str] = {},
         _closure_cell_structs: dict[str, str] = {},
         closure_thunks: dict[str, ir.Function] = {},
-        _closure_uid: int = 0;
+        _closure_uid: int = 0,
+        _opt_struct_types: dict[str, ir.Type] = {};
 
+    def _jac_optional_type(payload: ir.Type) -> ir.Type;
+    def _opt_payload_of(t: ir.Type) -> (ir.Type | None);
     def _scan_closure_escapes(nd: uni.UniNode, body: (list | tuple)) -> None;
     def _closure_sig_struct(fnty: ir.FunctionType) -> tuple;
     def _closure_struct_of(val_type: ir.Type) -> (str | None);
@@ -356,6 +361,22 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _instantiate_generic(nd: uni.FuncCall, func_name: str) -> (ir.Function | None);
     def _stamp_mono_fn(
         ability: uni.Ability, spec_name: str, memo_key: str
+    ) -> (ir.Function | None);
+
+    def _instantiate_generic_method(
+        nd: uni.FuncCall, owner_arch: str, method_name: str
+    ) -> (ir.Function | None);
+
+    def _instantiate_generic_for_target(
+        func_name: str, tag_node: uni.UniNode
+    ) -> (ir.Function | None);
+
+    def _stamp_mono_method(
+        ability: uni.Ability,
+        arch_name: str,
+        method_name: str,
+        spec_name: str,
+        memo_key: str
     ) -> (ir.Function | None);
 
     def _find_source_ability(mod_name: str, func_name: str) -> (uni.Ability | None);
@@ -442,6 +463,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> tuple[(ir.Value, ir.Value)];
 
     def _emit_binary_op(op: str, left: ir.Value, right: ir.Value) -> (ir.Value | None);
+    def _emit_arch_dunder_binop(
+        op: str, left: ir.Value, right: ir.Value
+    ) -> (ir.Value | None);
+
     def _emit_comparison(
         op: str, left: ir.Value, right: ir.Value, is_float: bool
     ) -> (ir.Value | None);
@@ -600,6 +625,11 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_report(nd: uni.ReportStmt) -> None;
     def _codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None);
     def _codegen_edge_ref_trailer(nd: uni.EdgeRefTrailer) -> (ir.Value | None);
+    def _emit_osp_predicate_filter(
+        src: ir.Value, arch_name: str, compares: list[uni.CompareExpr], nd: uni.UniNode
+    ) -> (ir.Value | None);
+
+    def _elem_arch_name_of(expr: (uni.UniNode | None)) -> (str | None);
     def _osp_visit_targets(target: uni.UniNode) -> (ir.Value | None);
     def _osp_generic_edge -> (ir.Value | None);
     def _spawn_operand_name(nd: uni.UniNode) -> (str | None);
@@ -867,6 +897,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> None;
 
     def _register_globals(module: uni.Module) -> None;
+    def _register_entry_globals(module: uni.Module) -> None;
     def _codegen_global_vars(nd: uni.GlobalVars) -> None;
     def _infer_global_init_type(value_node: uni.UniNode) -> (ir.Type | None);
     def _codegen_const_expr(
@@ -997,6 +1028,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         func: ir.Function, func_name: str, args: list[ir.Value]
     ) -> (ir.Value | None);
 
+    def _clib_sext_ret(func_name: str, result: ir.Value) -> ir.Value;
     def _llvm_type_str(ty: ir.Type) -> str;
     def _export_native_layout -> None;
     def _normalize_type_key(key: str) -> str;

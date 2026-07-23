@@ -1,4 +1,4 @@
-site_name: Jac - AI-Native Full-Stack Development
+site_name: Jac - One Language, Whole Stack, No Glue
 site_url: https://docs.jaseci.org
 repo_url: https://github.com/Jaseci-Labs/jaseci
 edit_uri: edit/main/docs/docs
@@ -17,9 +17,11 @@ nav:
   - Start Here:
       - What & Why:
           - What is Jac: "quick-guide/index.md"
-          - Why Jac vs a Traditional Stack: "quick-guide/jac-vs-traditional-stack.md"
+          - Why Jac: "quick-guide/why-jac.md"
+          - The Two Ideas: "quick-guide/ideas-behind-jac.md"
           - Core Concepts: "quick-guide/what-makes-jac-different.md"
-          - The Ideas Behind Jac: "quick-guide/ideas-behind-jac.md"
+          - One App, Two Stacks: "quick-guide/jac-vs-traditional-stack.md"
+          - Vocabulary: "quick-guide/vocabulary.md"
           - Install: "quick-guide/install.md"
           - One Binary, Build Anything: "quick-guide/one-binary.md"
       - Build Anything: "quick-guide/project-kinds.md"
@@ -35,7 +37,7 @@ nav:
       - Language Fundamentals:
           - New to Programming?: "tutorials/language/coding_primer.md"
           - Jac Fundamentals: "tutorials/language/basics.md"
-          - Graphs & Walkers: "tutorials/language/osp.md"
+          - Object-Spatial Programming: "tutorials/language/osp.md"
           - Debugging: "tutorials/language/debugging.md"
       - Build to Learn — AI Day Planner: "tutorials/first-app/build-ai-day-planner.md"
       - Full-Stack Tutorials:
@@ -81,13 +83,11 @@ nav:
           - Concurrency: "reference/language/concurrency.md"
           - Comprehensions & Filters: "reference/language/advanced.md"
           - Walker Patterns: "reference/language/walker-responses.md"
-          - Ownership & Borrowing: "reference/language/ownership-borrowing.md"
-          - Ownership Checker Specification: "reference/language/ownership-checker-spec.md"
-          - Appendices: "reference/language/appendices.md"
+          - Gradual Borrow Checking: "reference/language/ownership-borrowing.md"
           - Syntax Cheatsheet: "reference/language/syntax-cheatsheet.md"
       - Native Compilation: "reference/language/native-pathway.md"
       - Capabilities & Plugins:
-          - byLLM (AI, built-in): "reference/plugins/byllm.md"
+          - byLLM (Meaning Types, built-in): "reference/plugins/byllm.md"
           - Scale (Deploy, built-in):
               - Overview: "reference/plugins/jac-scale.md"
               - HTTP API & Walkers: "reference/plugins/jac-scale-http.md"
@@ -109,7 +109,7 @@ nav:
           - Errors & Warnings: "reference/diagnostics.md"
           - Code Organization: "reference/code-organization.md"
           - Testing: "reference/testing.md"
-          - nothing to see here: "reference/ninja.md"
+          - Jac Ninja Editor: "reference/ninja.md"
 
   - Community:
       - Contributing: "community/contributing.md"
@@ -120,15 +120,10 @@ nav:
       - Jac Playground: https://playground.jaseci.org/cl/app
       - Release Notes:
           - Jaclang: "community/release_notes/jaclang.md"
-          - byLLM: "community/release_notes/byllm.md"
-          - jac-client: "community/release_notes/jac-client.md"
-          - jac-desktop: "community/release_notes/jac-desktop.md"
-          - jac-scale: "community/release_notes/jac-scale.md"
-          - jac-plugins: "community/release_notes/jac-plugins.md"
-          - jac-mcp: "community/release_notes/jac-mcp.md"
 
   - Internals:
       - Abstractions Inventory: "internals/abstractions.md"
+      - Ownership Checker Specification: "internals/ownership-checker-spec.md"
       - Import Patterns: "internals/jac_import_patterns.md"
       - UniIR Nodes: "internals/uniir_node.md"
       - Compiler Architecture: "internals/compiler_architecture.md"
@@ -151,13 +146,10 @@ theme:
     - content.code.copy
     - content.action.edit
     - content.action.view
-    - navigation.instant: false
     - navigation.tracking
     - navigation.tabs
     - navigation.path
     - navigation.footer
-    # - navigation.expand
-    # - navigation.sections
     - navigation.top
   icon:
     admonition:
@@ -192,7 +184,6 @@ markdown_extensions:
           class: mermaid
   - pymdownx.tasklist:
       custom_checkbox: true
-  - pymdownx.arithmatex:
   - pymdownx.emoji:
       emoji_index: !!python/name:material.extensions.emoji.twemoji
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
@@ -200,12 +191,9 @@ markdown_extensions:
   - pymdownx.blocks.caption
   - attr_list
   - md_in_html
-  - attr_list
   - admonition
   - pymdownx.details
-  - pymdownx.superfences
   - tables
-  - mkdocs_graphviz
 
   - toc:
         permalink: "#"
@@ -216,130 +204,20 @@ extra_css:
 
 extra:
   generator: false
-  social:
-    - icon: fontawesome/brands/mastodon
-      link: https://fosstodon.org/@squidfunk
   analytics:
     provider: google
     property: G-PLSMBEBC20
-copyright: Copyright &copy; 2025 Jac Hackers Everwhere
+copyright: Copyright &copy; 2026 Jac Hackers Everywhere
 
+# The runnable-code stack (Pyodide, Monaco, viz.js, run-code.js) is injected
+# per-page by overrides/main.html for pages with `runnable_blocks: true`.
 extra_javascript:
-  - assets/mathjax-config.js
-  - https://unpkg.com/viz.js@2.1.2/viz.js
-  - https://unpkg.com/viz.js@2.1.2/full.render.js
-  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
-  - https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pyodide.js
-  - https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.js
-  - https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs/loader.min.js
-  - js/jac.monarch.js
-  - js/run-code.js
   - js/feedback.js
   - js/logo.js
 
 plugins:
   - search
   - open-in-new-tab
-  - mkdocs-video:
-      is_video: True
-      video_autoplay: True
-      # video_loop: True
-      video_controls: False
-  - redirects:
-      redirect_maps:
-        # Main landing page
-        index.md: quick-guide/index.md
-
-        # README.md contribution guide link
-        internals/contrib.md: community/contributing.md
-
-        # Old Quick Guide section redirects
-        getting-started/index.md: quick-guide/index.md
-        quick-guide/hello-world.md: quick-guide/install.md
-        quick-guide/first-graph.md: quick-guide/what-makes-jac-different.md
-        quick-guide/thinking-in-graphs.md: quick-guide/what-makes-jac-different.md
-        quick-guide/first-app.md: tutorials/first-app/build-ai-day-planner.md
-        quick-guide/first-fullstack-ai-app.md: tutorials/first-app/build-ai-day-planner.md
-        cli/index.md: reference/cli/index.md
-        configuration/index.md: reference/config/index.md
-
-        # Old Learn section redirects to new Tutorials
-        learn/installation.md: quick-guide/install.md
-        learn/quickstart.md: tutorials/language/osp.md
-        learn/tour.md: quick-guide/index.md
-
-        # byLLM redirects
-        learn/jac-byllm/quickstart.md: tutorials/ai/quickstart.md
-        learn/jac-byllm/with_llm.md: reference/plugins/byllm.md
-        learn/jac-byllm/usage.md: reference/plugins/byllm.md
-        learn/jac-byllm/agentic_ai.md: tutorials/ai/agentic.md
-
-        # Language reference redirects
-        learn/jac-ref/index.md: reference/language/foundation.md
-        learn/jac-ref/foundation.md: reference/language/foundation.md
-        learn/jac-ref/functions-objects.md: reference/language/functions-objects.md
-        learn/jac-ref/osp.md: reference/language/osp.md
-        learn/jac-ref/full-stack.md: reference/plugins/jac-client.md
-        learn/jac-ref/ai-integration.md: reference/plugins/byllm.md
-        learn/jac-ref/concurrency.md: reference/language/concurrency.md
-        learn/jac-ref/advanced.md: reference/language/advanced.md
-        learn/jac-ref/ecosystem.md: reference/index.md
-        learn/jac-ref/deployment.md: reference/plugins/jac-scale.md
-        learn/jac-ref/appendices.md: reference/language/appendices.md
-
-        # Contributor Hub redirects
-        communityhub/breaking_changes.md: community/breaking-changes.md
-        communityhub/release_notes/jaclang.md: community/release_notes/jaclang.md
-        communityhub/release_notes/byllm.md: community/release_notes/byllm.md
-        communityhub/release_notes/jac-client.md: community/release_notes/jac-client.md
-        communityhub/release_notes/jac-scale.md: community/release_notes/jac-scale.md
-
-        # Legacy content redirects
-        learn/library_mode.md: reference/language/library-mode.md
-        learn/superset_python.md: reference/language/python-integration.md
-
-        # Deleted duplicate tutorials → Reference redirects
-        tutorials/language/mixing-jac-python.md: reference/language/python-integration.md
-        tutorials/language/library-mode.md: reference/language/library-mode.md
-        tutorials/language/testing.md: reference/testing.md
-        tutorials/ai/ai-tools.md: reference/index.md
-
-        # Removed redundant tutorials → Day Planner redirects
-        tutorials/first-app/part1-todo-app.md: tutorials/first-app/build-ai-day-planner.md
-        tutorials/first-app/part2-ai-features.md: tutorials/first-app/build-ai-day-planner.md
-        tutorials/first-app/part3-multi-user.md: tutorials/first-app/build-ai-day-planner.md
-        tutorials/fullstack/todo-app.md: tutorials/first-app/build-ai-day-planner.md
-
-        # Removed orphaned pages → nearest equivalent
-        quick-guide/next-steps.md: community/faq.md
-        reference/language/index.md: reference/language/foundation.md
-        tutorials/roadmap.md: quick-guide/index.md
-        community/top_contributors.md: community/contributing.md
-        community/contributors.md: community/contributing.md
-
-        # Documentation restructure redirects
-        quick-guide/syntax-cheatsheet.md: reference/language/syntax-cheatsheet.md
-        quick-guide/import-anything.md: reference/import-anything.md
-        quick-guide/agent-skills-and-mcp.md: reference/agent-skills-and-mcp.md
-        quick-guide/faq.md: community/faq.md
-        full-docs-guide.md: reference/index.md
-        reference/tools/mcp.md: reference/mcp.md
-        quick-guide/mcp.md: reference/mcp.md
-
-        # Nav reorganization - merged pages redirects
-        reference/language/ai-integration.md: reference/plugins/byllm.md
-        reference/language/full-stack.md: reference/plugins/jac-client.md
-        reference/language/deployment.md: reference/plugins/jac-scale.md
-        reference/language/graph-operations.md: reference/language/osp.md
-        reference/language/ecosystem.md: reference/index.md
-        reference/plugins/index.md: reference/index.md
-        tutorials/index.md: reference/index.md
-
-        # Internals promoted to top-level tab
-        community/internals/jac_import_patterns.md: internals/jac_import_patterns.md
-        community/internals/uniir_node.md: internals/uniir_node.md
-        community/internals/jsx_client_serv_design.md: internals/compiler_architecture.md
-        internals/jsx_client_serv_design.md: internals/compiler_architecture.md
 
 hooks:
   - scripts/handle_jac_compile_data.py

@@ -7,6 +7,7 @@ import from c { def opendir(path: str) -> int;  }
 import from c { def readdir(dirp: int) -> int;  }
 import from c { def closedir(dirp: int) -> i32;  }
 import from c { def strdup(s: int) -> str;  }
+import from _dirent_native { dirent_name }
 
 
 def:pub which(cmd: str) -> (str | None) {
@@ -81,7 +82,7 @@ def:pub rmtree(path: str) {
         if ent == 0 {
             break;
         }
-        nm = strdup(ent + 19);
+        nm = dirent_name(ent);
         if nm == "." or nm == ".." {
             continue;
         }

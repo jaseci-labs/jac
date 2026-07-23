@@ -29,7 +29,7 @@ import from pathlib { Path }
 
 glob BENCH = Path(str(__file__)).resolve().parent.parent,
      MODES = ["rc", "cycles"],
-     TRANSFER_SIZES = ["100", "1000", "10000", "100000"],
+     TRANSFER_SIZES = ["100", "1000", "10000", "100000", "1000000"],
      TRANSFER_SIZES_QUICK = ["100", "1000"];
 
 """Compile `src` under a gc mode; exit loudly on failure."""
@@ -49,7 +49,7 @@ def run_once(binary: Path, args: list[str]) -> dict {
         ["/usr/bin/time", "-v", str(binary)] + args,
         capture_output=True,
         text=True,
-        timeout=600,
+        timeout=1800,
     );
     if r.returncode != 0 {
         sys.exit(f"run failed rc={r.returncode}: {binary} {' '.join(args)}");
@@ -160,14 +160,14 @@ def main(opts: dict) {
 
     rgraph_args = ["50", "20"] if opts["quick"] else ["200", "500"];
     bare_src = make_bare(
-        BENCH / "kernels" / "reg_graph.na.jac", BENCH / "bin" / "reg_graph_bare.na.jac"
+        BENCH / "kernels" / "reg_graph.jac", BENCH / "bin" / "reg_graph_bare.jac"
     );
     results["reg_graph"] = {};
     for cfg in ["acyclic", "cyclic"] {
         back = "0" if cfg == "acyclic" else "10";
         cells: dict = {};
         for (variant, src) in [
-            ("region", BENCH / "kernels" / "reg_graph.na.jac"),
+            ("region", BENCH / "kernels" / "reg_graph.jac"),
             ("bare", bare_src),
 
         ] {
@@ -199,7 +199,7 @@ def main(opts: dict) {
     wdigs: set = set();
     for mode in MODES {
         out = BENCH / "bin" / f"reg_wspawn_{mode}";
-        compile_src(BENCH / "kernels" / "reg_wspawn.na.jac", mode, out);
+        compile_src(BENCH / "kernels" / "reg_wspawn.jac", mode, out);
         cell = measure(out, wspawn_args, inv);
         results["reg_wspawn"][mode] = cell;
         wdigs.add(cell["digest"]);
@@ -216,14 +216,23 @@ def main(opts: dict) {
     }
 
     sizes = TRANSFER_SIZES_QUICK if opts["quick"] else TRANSFER_SIZES;
-    treps = "5" if opts["quick"] else "20";
     out = BENCH / "bin" / "reg_transfer_cycles";
-    compile_src(BENCH / "kernels" / "reg_transfer.na.jac", "cycles", out);
+    compile_src(BENCH / "kernels" / "reg_transfer.jac", "cycles", out);
     results["reg_transfer"] = {};
     for size in sizes {
+        if opts["quick"] {
+            treps = "5";
+            tinv = inv;
+        } elif int(size) <= 100000 {
+            treps = "20";
+            tinv = inv;
+        } else {
+            treps = "5";
+            tinv = max(3, inv // 3);
+        }
         row: dict = {};
         for strategy in ["move", "copy", "serial"] {
-            cell = measure(out, [strategy, size, treps], inv);
+            cell = measure(out, [strategy, size, treps], tinv);
             row[strategy] = cell;
             print(
                 f"reg_transfer n={size:>7s} {strategy:6s} "
@@ -241,7 +250,7 @@ def main(opts: dict) {
     }
 
     out = BENCH / "bin" / "reg_overhead_cycles";
-    compile_src(BENCH / "kernels" / "reg_overhead.na.jac", "cycles", out);
+    compile_src(BENCH / "kernels" / "reg_overhead.jac", "cycles", out);
     ok_args = ["200000"] if opts["quick"] else ["2000000"];
     cell = measure(out, ok_args, max(3, inv // 3));
     results["reg_overhead"] = cell;

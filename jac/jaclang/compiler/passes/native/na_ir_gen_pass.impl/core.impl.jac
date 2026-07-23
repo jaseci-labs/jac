@@ -119,6 +119,7 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
 
     self._register_imported_struct_types();
     self._register_globals(self.ir_in);
+    self._register_entry_globals(self.ir_in);
 
     self._register_archetypes(self.ir_in);
 

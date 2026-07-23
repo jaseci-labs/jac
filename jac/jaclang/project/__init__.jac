@@ -49,6 +49,13 @@ import from jaclang.project.pyvenv {
     remove_venv_from_path,
     is_venv_in_path
 }
+import from jaclang.project.tool_paths {
+    jac_global_prefix,
+    node_bin_dir,
+    node_root,
+    python_global_site,
+    python_project_site
+}
 import from jaclang.project.capabilities {
     Capability,
     CapabilityClosure,

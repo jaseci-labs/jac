@@ -1,6 +1,6 @@
-# Part VI: Concurrency
+# Concurrency
 
-**In this part:**
+**On this page:**
 
 - [Async/Await](#asyncawait) - Async functions, async walkers, async for
 - [Concurrent Expressions](#concurrent-expressions) - flow/wait for parallel tasks
@@ -212,4 +212,4 @@ In practice, many applications use both: `async/await` for the I/O layer served 
 **Related Reference:**
 
 - [Control Flow](control-flow.md) - Conditionals, loops, pattern matching
-- [Part V: AI Integration](../plugins/byllm.md) - Async LLM calls
+- [byLLM Reference](../plugins/byllm.md) - Async LLM calls
