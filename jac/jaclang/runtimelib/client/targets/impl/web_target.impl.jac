@@ -1,7 +1,7 @@
 import os;
 import types;
 import from pathlib { Path }
-import from typing { Optional }
+import from typing { Optional, cast }
 import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
 
 glob DEFAULT_FUNCTION_NAME = "app",
@@ -27,13 +27,15 @@ impl WebTarget.dev(
         _ClientHmrHandler,
         ensure_watchdog_common,
         prepare_vite_dev_compilation,
-        stop_dev_watcher
+        stop_dev_watcher,
+        terminate_dev_processes
     }
 
     api_p = api_port if api_port > 0 else port + 1;
 
     hot_watcher: any = None;
-    (bundler, compiler) = prepare_vite_dev_compilation(project_dir, entry_file);
+    (prepared, compiler) = prepare_vite_dev_compilation(project_dir, entry_file);
+    bundler = cast(ViteBundler, prepared);
     bundler.create_vite_config(entry_file, is_dev=True, api_port=api_p);
 
     try {
@@ -56,12 +58,7 @@ impl WebTarget.dev(
                 process.wait();
             } except KeyboardInterrupt {
                 console.print("\n  Stopping dev server...", style="muted");
-                process.terminate();
-                try {
-                    process.wait(timeout=5);
-                } except Exception {
-                    process.kill();
-                }
+                terminate_dev_processes([process]);
             }
         }
     } finally {
