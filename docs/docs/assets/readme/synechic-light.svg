@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="880" height="448" viewBox="0 0 880 448" role="img" aria-label="Diagram: a conventional stack is three separate programs joined by hand across unchecked seams, each pulling its own ecosystem through its own installer, so a rename fails in production; Jac is one continuous checked medium across frontend, backend, and native, importing the same ecosystems through a plain import, so the same rename is a compile error">
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="448" viewBox="0 0 880 448" role="img" aria-label="Diagram: a conventional stack is three separate programs joined by hand across unchecked boundaries, each pulling its own ecosystem through its own installer, so a rename fails in production; Jac is one continuous checked medium across frontend, backend, and native, importing the same ecosystems through a plain import, so the same rename is a compile error">
   <style>
     .sans { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
     .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; }

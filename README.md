@@ -65,7 +65,7 @@ Install the self-contained `jac` binary. No Python, pip, Node, or C toolchain re
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 ```
 
-Then clone and run [**this_is_jac**](https://github.com/jaseci-labs/this_is_jac), a showcase site built entirely in Jac:
+Then clone and run [**this_is_jac**](https://github.com/jaseci-labs/this_is_jac), a showcase technology demo built entirely in Jac:
 
 ```bash
 git clone https://github.com/jaseci-labs/this_is_jac
@@ -74,15 +74,15 @@ jac install   # first run: pulls python + npm deps
 jac start     # builds the frontend + wasm, serves on http://localhost:8000
 ```
 
-Open <http://localhost:8000> and scroll.
+This one application demonstrates every claim above: a guestbook served by walkers and persisted to a real graph with no database, a walker traversing that graph live on screen, one module importing PyPI, npm, and C-ABI libraries at once, a function body delegated to an LLM with `by llm()`, an analytics microservice pulled in by `sv import`, one native shooter compiled both to machine code and to in-browser WebAssembly, and the whole littleX social app embedded as a single component writing to the same graph. All in one typechecked, contiguous, synechic codebase.
 
 > Prebuilt binaries ship for **macOS and Linux**; on Windows, use WSL (a native PowerShell installer is coming soon). See the [installation guide](https://docs.jaseci.org/quick-guide/install/) for versions, upgrading, and IDE setup.
 
 ## Why Jac exists
 
-Open the repository of any well-built product and count what a maintainer must read: TypeScript, Python, SQL, and shell where the logic lives; JSX and CSS for presentation; JSON, TOML, YAML, Dockerfile, HCL, and dotenv for configuration. Twelve notations, five package ecosystems, two lockfiles. Nobody chose that. It is what precipitates when every architectural seam is also a change of language, type system, package manager, and serialization format.
+Open the repository of any well-built product and count what a maintainer must read: TypeScript, Python, SQL, and shell where the logic lives; JSX and CSS for presentation; JSON, TOML, YAML, Dockerfile, HCL, and dotenv for configuration. Twelve notations, five package ecosystems, two lockfiles. Nobody chose that. It is what precipitates when every architectural boundary is also a change of language, type system, package manager, and serialization format.
 
-The deeper cost isn't the reading; it's that **no compiler can see across any of those seams**. Rename one field and TypeScript checks the frontend, Python checks the backend, and *nothing* checks the wire format, the ORM mapping, the OpenAPI document, or the prompt template between them. The whole-program type checker of the modern stack is `grep`. That is where bugs pool, and it's why teams staff a specialist per boundary: the org chart is a picture of the glue.
+The deeper cost isn't the reading; it's that **no compiler can see across any of those boundaries**. Rename one field and TypeScript checks the frontend, Python checks the backend, and *nothing* checks the wire format, the ORM mapping, the OpenAPI document, or the prompt template between them. The whole-program type checker of the modern stack is `grep`. That is where bugs pool, and it's why teams staff a specialist per boundary: the org chart is a picture of the glue.
 
 <details>
 <summary><strong>The four-copy record (what one field costs in a conventional stack)</strong></summary>
@@ -124,25 +124,29 @@ Four copies, three type systems, and one landmine: the fourth copy renames `disp
 
 None of this is required by computation. The pattern traces to two silent assumptions in the 1945 report that defined the stored-program computer: that *computation is stationary* (the site of processing is fixed, and data travels to it), and that *the machine is the program's world* (a program's semantics end at the edge of its process, so frontend and backend, managed and native, script and service are separate programs, joined by hand). Both were engineering defaults for a machine with one memory. Seventy years of habit made them look like laws. Jac is one bet against each.
 
+### Jac is synechic
+
 <div align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/docs/assets/readme/synechic-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="docs/docs/assets/readme/synechic-light.svg">
-    <img alt="A conventional stack is three separate programs (TypeScript frontend, Python backend, C native) joined by hand across unchecked JSON and FFI seams, so renaming a field ships a stale copy that fails in production; Jac is one continuous checked medium spanning cl, sv, and na tiers, importing npm, PyPI, and the C world directly, with one compiler seeing both sides of every call, so the same rename is a compile error" src="docs/docs/assets/readme/synechic-light.svg" width="880">
+    <img alt="A conventional stack is three separate programs (TypeScript frontend, Python backend, C native) joined by hand across unchecked JSON and FFI boundaries, so renaming a field ships a stale copy that fails in production; Jac is one continuous checked medium spanning cl, sv, and na tiers, importing npm, PyPI, and the C world directly, with one compiler seeing both sides of every call, so the same rename is a compile error" src="docs/docs/assets/readme/synechic-light.svg" width="880">
   </picture>
 </div>
 
-**Against the second assumption, Jac is synechic** (from the Greek *synecheia*, continuity): one continuous, checked medium across ecosystems, tiers, and toolchains. One language spans frontend, backend, and native code, and inherits each one's ecosystem (PyPI, npm, the C world) through a plain `import`, so one compiler sees both sides of every call: rename a field and every stale use (server, client, or native) is a **compile error**, not a production incident. Building the first production synechic language is the whole point of Jac.
+**Against the second assumption, Jac is synechic** (from the Greek *synecheia*, continuity): one continuous, checked medium across ecosystems, tiers, and toolchains. One language spans frontend, backend, and native code, and inherits each one's ecosystem (PyPI, npm, the C world) through a plain `import`, so one compiler sees both sides of every call. Rename a field and every stale use (server, client, or native) is a **compile error**, not a production incident. Building the first production synechic language is the whole point of Jac.
+
+Hand-written glue (serializers, route tables, ORM models, API clients) is most of a conventional codebase, and it is where bugs pool, because it is the code no compiler sees. A continuous medium attacks both facts: the compiler generates that layer instead of a human writing it, so it cannot drift, and what is no longer written is the ~5x reduction claimed above. [One App, Two Stacks](https://docs.jaseci.org/quick-guide/jac-vs-traditional-stack/) records the side-by-side count.
 
 <div align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/docs/assets/readme/gradual-borrow-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="docs/docs/assets/readme/gradual-borrow-light.svg">
-    <img alt="In a conventional stack, outgrowing the garbage collector means rewriting the hot path in Rust or C++ across an FFI seam; Jac's gradual borrow checking is one continuum in one language, from fully managed code through own and borrow annotations to enforced zero-RC native artifacts, with a checked membrane mediating every value that crosses between the regimes" src="docs/docs/assets/readme/gradual-borrow-light.svg" width="880">
+    <img alt="In a conventional stack, outgrowing the garbage collector means rewriting the hot path in Rust or C++ across an FFI boundary; Jac's gradual borrow checking is one continuum in one language, from fully managed code through own and borrow annotations to enforced zero-RC native artifacts, with a checked membrane mediating every value that crosses between the regimes" src="docs/docs/assets/readme/gradual-borrow-light.svg" width="880">
   </picture>
 </div>
 
-That continuity runs all the way down. The deepest seam in computing is the one between managed and systems languages -- today, when the hot path outgrows the garbage collector, the answer is a second language, an FFI boundary, and a rewrite. Jac renders that divide as **gradual borrow checking**: unannotated code keeps fully managed semantics, `own` and `&`/`&mut` opt individual declarations into moves, borrows, and deterministic destruction, a checked boundary (the **membrane**) mediates every value that crosses between the regimes, and full adoption reaches native artifacts with **no reference counting and no collector**. The divide becomes a gradient walked by degrees, never a cliff crossed by starting over. [Gradual borrow checking →](https://docs.jaseci.org/reference/language/ownership-borrowing/)
+The same continuity extends to the deepest discontinuity in computing, the divide between managed and systems languages. Today, when the hot path outgrows the garbage collector, the answer is a second language, an FFI boundary, and a rewrite. Jac replaces that divide with **gradual borrow checking**: unannotated code keeps fully managed semantics, and `own` and `&`/`&mut` opt individual declarations into moves, borrows, and deterministic destruction. A checked boundary (the **membrane**) mediates every value that crosses between the regimes, and full adoption reaches native artifacts with **no reference counting and no collector**. The divide is a gradient walked by degrees, never crossed. [Gradual borrow checking →](https://docs.jaseci.org/reference/language/ownership-borrowing/)
 
 <details>
 <summary><strong>The gradient in code (opt in one declaration at a time)</strong></summary>
@@ -165,6 +169,8 @@ The checker tracks only what you tag, so `node`, `edge`, and `walker` stay fully
 
 </details>
 
+### Jac is topokinetic
+
 <div align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/docs/assets/readme/topokinetic-dark.svg">
@@ -175,7 +181,7 @@ The checker tracks only what you tag, so `node`, `edge`, and `walker` stay fully
 
 **Against the first assumption, Jac is topokinetic** (from the Greek *topos*, place, and *kinesis*, motion): the moving locus of computation is a language construct. In Jac's Object-Spatial Programming, data lives as a persistent topology of nodes and edges, and **walkers** carry computation through it, dispatched by arrival. Whatever is reachable from `root` persists: persistence is a predicate, not an event, and the database dissolves into the language.
 
-The two properties compound, and the dissolved database is the proof: continuity without motion still calls a store outside the language's semantics, and motion without continuity is a graph paradigm marooned in one process. Jac is the first language that is both. And the boundaries that *are* physics stay visible on purpose: a cross-tier call is `async` because the network is real, write conflicts surface as typed errors, and sharing data across users takes an explicit `grant`. Jac deletes the paperwork, not the physics.
+The two properties compound, and the dissolved database is the proof: continuity without motion still calls a store outside the language's semantics, and motion without continuity is a graph paradigm confined to one process. Jac is the first language that is both. The boundaries that *are* physics stay visible on purpose: a cross-tier call is `async` because the network is real, write conflicts surface as typed errors, and sharing data across users takes an explicit `grant`. Jac deletes the paperwork, not the physics.
 
 The full argument can be found in "the ninja book": [*A Synechic and Topokinetic Programming Language*](https://zenodo.org/records/21498692) develops both language classes and the theory, design and implementation underlying Jac. ([DOI: 10.5281/zenodo.21498692](https://doi.org/10.5281/zenodo.21498692)).
 
