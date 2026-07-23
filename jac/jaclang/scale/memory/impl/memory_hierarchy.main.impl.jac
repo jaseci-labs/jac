@@ -1,3 +1,8 @@
+def _carries_topology_index(anchor: Anchor) -> bool {
+    return isinstance(anchor, NodeAnchor) and anchor.topology_index_data is not None;
+}
+
+
 impl ScaleTieredMemory._refresh_super_root_template(applied: list) -> None {
     import from jaclang.jac0core.constant { Constants as Con }
     sr_id = UUID(Con.SUPER_ROOT_UUID);
@@ -6,6 +11,7 @@ impl ScaleTieredMemory._refresh_super_root_template(applied: list) -> None {
     }
     _publish_super_root_from_store(self.l3, sr_id);
 }
+
 
 impl ScaleTieredMemory.postinit -> None {
     self.__mem__ = {};
@@ -132,6 +138,11 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
                     );
                 } elif intent.anchor.id not in self_broadcasting {
                     self.l2.put(intent.anchor);
+                    cast(RedisBackend, self.l2).publish_invalidation(
+                        str(intent.anchor.id), self._l1_id
+                    );
+                } elif _carries_topology_index(intent.anchor) {
+                    self.l2.invalidate(intent.anchor.id);
                     cast(RedisBackend, self.l2).publish_invalidation(
                         str(intent.anchor.id), self._l1_id
                     );
