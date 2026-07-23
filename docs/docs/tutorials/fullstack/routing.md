@@ -68,7 +68,7 @@ myapp/
 
 ### Basic Page
 
-A page is any export that returns `JsxPage`; a layout returns `JsxLayout`. `JsxPage` and `JsxLayout` are ambient builtin types, no import needed. Route membership comes from the return type alone -- the export name and the filename are free, and the filename only decides the URL. A component that returns `JsxElement` is not a route, so helpers can live alongside pages with no special naming:
+A page is any export that returns `JsxPage`; a layout returns `JsxLayout`. `JsxPage` and `JsxLayout` are ambient builtin types, no import needed. Route membership comes from the return type alone -- the export name and the filename are free, and the filename only decides the URL. Because the URL comes from the filename, a file defines at most one page and one layout: if several exports return `JsxPage`, only the first is used, so keep one page export per file. A component that returns `JsxElement` is not a route, so helpers can live alongside pages with no special naming:
 
 ```jac
 # pages/about.jac

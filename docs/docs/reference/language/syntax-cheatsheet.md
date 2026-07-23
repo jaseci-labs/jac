@@ -1482,8 +1482,9 @@ cl {
 
 # A route is any export returning JsxPage; a layout returns JsxLayout.
 # Both are ambient builtin types (no import). Export name and filename
-# are free -- the filename only decides the URL. Exports returning
-# JsxElement are not routes (co-located components need no special name).
+# are free -- the filename only decides the URL. One page export per
+# file (extra JsxPage exports are ignored); exports returning JsxElement
+# are not routes (co-located components need no special name).
 # def:pub Home() -> JsxPage { ... }
 
 # Layouts use <Outlet /> for child routes:
