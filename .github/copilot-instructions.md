@@ -19,10 +19,10 @@ Run tests through the binary's bundled runner (`JAC_TEST_JOBS=auto` runs them in
 cd jac && JAC_TEST_JOBS=auto jac test tests
 ```
 
-Run pre-commit checks (formatting, linting):
+Run the formatting/lint gate (same checks the git hook runs):
 
 ```bash
-pre-commit run --all-files
+jac precommit
 ```
 
 ## Package-Specific Notes
