@@ -33,10 +33,6 @@ impl TypeEvaluator._resolve_jsx_component_type(
         return None;
     }
 
-    if (not component_name[0].isupper() and not self._is_mobui_module(name)) {
-        return None;
-    }
-
     sym: uni.Symbol | None = None;
     if isinstance(first_part, uni.Name) and first_part.sym {
         sym = first_part.sym;
@@ -69,6 +65,14 @@ impl TypeEvaluator._get_intrinsic_props_type(tag_name: str) -> types.ClassType |
 }
 
 impl TypeEvaluator._resolve_intrinsic_jsx_tag(part: uni.Name, tag_name: str) -> None {
+    if part.sym is not None {
+        sym_type = self.get_type_of_symbol(part.sym);
+        if isinstance(sym_type, types.FunctionType) {
+            self.get_type_of_expression(part);
+            return;
+        }
+    }
+
     registry = self.prefetch.jsx_intrinsic_elements_class if self.prefetch else None;
     if registry is not None {
         member = self._lookup_class_member(registry, tag_name);
@@ -104,9 +108,10 @@ impl TypeEvaluator._validate_jsx_props(
             self._validate_component_jsx_props(expr, tag_name, func_type=func_type);
         }
     } else {
-        is_component = tag_name and tag_name[0].isupper();
+        func_type = self._resolve_jsx_component_type(expr.name);
+        is_component = func_type is not None or (tag_name and tag_name[0].isupper());
         if is_component {
-            self._validate_component_jsx_props(expr, tag_name);
+            self._validate_component_jsx_props(expr, tag_name, func_type=func_type);
         } else {
             self._validate_intrinsic_jsx_props(expr, tag_name);
         }

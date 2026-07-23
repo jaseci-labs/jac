@@ -5492,6 +5492,30 @@ test "mobui_project_lowercase_component_no_w1050" {
     );
 }
 
+test "web_project_lowercase_component_no_w1050" {
+    # Issue #6825: in a web project, an in-scope lowercase component must not
+    # produce W1050 ('Unknown intrinsic JSX element'); classification is by
+    # scope resolution, not by the first letter's case. A genuinely unknown
+    # lowercase host tag must still be flagged.
+    path = os.path.join(CHECKER_FIXTURES, "checker_jsx_lowercase_component_web.jac");
+    program = JacProgram();
+    program.compile(
+        path,
+        options=CompileOptions(
+            type_check=True, project_kind="web", project_root=CHECKER_FIXTURES
+        )
+    );
+    w1050 = [
+        w
+        for w in program.warnings_had
+        if w.code and w.code.code == "W1050"
+    ];
+    msgs = "\n".join(w.msg for w in w1050);
+    assert "<myWidget>" not in msgs , f"<myWidget> is in scope and must not be flagged:\n{msgs}";
+    assert "<blepblorp>" in msgs , f"Expected W1050 for unknown host tag <blepblorp>:\n{msgs}";
+    assert len(w1050) == 1 , f"Expected exactly 1 W1050 (blepblorp), got {len(w1050)}:\n{msgs}";
+}
+
 test "mobui_kind_does_not_leak_outside_project_root" {
     # Regression: a consumer's project_kind="mobui" must not reach files
     # outside the project root. The real failure was client_runtime.cl.jac
