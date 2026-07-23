@@ -43,4 +43,5 @@ obj ExecutionContext {
     def get_root -> Root;
     async def _aget_anchor(anchor_id: str) -> NodeAnchor;
     async def aset_user_root(root_id: str) -> None;
+    async def arefresh_system_root -> None;
 }
