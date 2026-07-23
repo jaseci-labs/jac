@@ -420,19 +420,22 @@ impl JacAPIServerWorkloads.admin_workloads_list(
         svc_rps = _index_by(
             prom_query(
                 'sum by (service)(rate({__name__=~".+_gateway_requests_total"}[1m]))'
-            ),
+            )
+            or [],
             'service'
         );
         svc_err = _index_by(
             prom_query(
                 'sum by (service)(rate({__name__=~".+_gateway_requests_total",outcome=~"5xx|err"}[1m]))'
-            ),
+            )
+            or [],
             'service'
         );
         svc_p95 = _index_by(
             prom_query(
                 'histogram_quantile(0.95, sum by (service, le)(rate({__name__=~".+_gateway_request_duration_seconds_bucket"}[5m])))'
-            ),
+            )
+            or [],
             'service'
         );
     } else {
