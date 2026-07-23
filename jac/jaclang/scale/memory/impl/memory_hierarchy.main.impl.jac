@@ -1,26 +1,10 @@
 impl ScaleTieredMemory._refresh_super_root_template(applied: list) -> None {
     import from jaclang.jac0core.constant { Constants as Con }
     sr_id = UUID(Con.SUPER_ROOT_UUID);
-    if sr_id not in applied {
+    if sr_id not in applied or self.l3 is None {
         return;
     }
-    anchor = self.__mem__.get(sr_id);
-    if not isinstance(anchor, NodeAnchor) {
-        return;
-    }
-
-    current = _process_cache.get('system_root');
-    if isinstance(current, NodeAnchor) and current.version > anchor.version {
-        return;
-    }
-    try {
-        snapshot = Serializer.deserialize(
-            Serializer.serialize(anchor, include_type=True)
-        );
-    } except Exception {
-        return;
-    }
-    _publish_super_root_template(snapshot, allow_equal_version=True);
+    _publish_super_root_from_store(self.l3, sr_id);
 }
 
 impl ScaleTieredMemory.postinit -> None {

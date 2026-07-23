@@ -46,21 +46,42 @@ def _get_db_config -> dict {
     return get_scale_config().get_database_config();
 }
 
-def _publish_super_root_template(
-    snapshot: any, allow_equal_version: bool = False
-) -> None {
+def _publish_super_root_template(snapshot: any) -> None {
     import from jaclang.jac0core.constructs { NodeAnchor }
     if not isinstance(snapshot, NodeAnchor) {
         return;
     }
     with _super_root_template_lock {
         latest = _process_cache.get('system_root');
-        if isinstance(latest, NodeAnchor) {
-            stale = latest.version > snapshot.version
-            or (not allow_equal_version and latest.version == snapshot.version);
-            if stale {
-                return;
+        if isinstance(latest, NodeAnchor) and latest.version >= snapshot.version {
+            return;
+        }
+        _process_cache['system_root'] = snapshot;
+    }
+}
+
+def _publish_super_root_from_store(store: any, sr_id: UUID) -> None {
+    with _super_root_template_lock {
+        try {
+            store_cache = store?.__mem__;
+            if isinstance(store_cache, dict) {
+                store_cache.pop(sr_id, None);
             }
+            row = store.get(sr_id);
+            snapshot = Serializer.deserialize(
+                Serializer.serialize(row, include_type=True)
+            )
+                if isinstance(row, NodeAnchor)
+                else None;
+        } except Exception {
+            return;
+        }
+        if not isinstance(snapshot, NodeAnchor) {
+            return;
+        }
+        latest = _process_cache.get('system_root');
+        if isinstance(latest, NodeAnchor) and latest.version > snapshot.version {
+            return;
         }
         _process_cache['system_root'] = snapshot;
     }
