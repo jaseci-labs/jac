@@ -12,7 +12,8 @@ def _independent_super_root(template: any) -> any {
 impl JScaleExecutionContext.init(self: JScaleExecutionContext) -> None {
     import from jaclang.scale.memory.memory_hierarchy {
         ScaleTieredMemory,
-        _process_cache
+        _process_cache,
+        _publish_super_root_template
     }
     import from jaclang.jac0core.constructs { NodeAnchor, PermissionDenied, Root }
 
@@ -37,9 +38,7 @@ impl JScaleExecutionContext.init(self: JScaleExecutionContext) -> None {
             self.mem.put(system_root_anchor);
         }
         # Warm template is a detached snapshot, never this request's live anchor.
-        if (snapshot := _independent_super_root(system_root_anchor)) is not None {
-            _process_cache['system_root'] = snapshot;
-        }
+        _publish_super_root_template(_independent_super_root(system_root_anchor));
     }
 
     self.system_root = system_root_anchor;

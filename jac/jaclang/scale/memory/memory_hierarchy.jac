@@ -46,6 +46,20 @@ def _get_db_config -> dict {
     return get_scale_config().get_database_config();
 }
 
+def _publish_super_root_template(snapshot: any) -> None {
+    import from jaclang.jac0core.constructs { NodeAnchor }
+    if not isinstance(snapshot, NodeAnchor) {
+        return;
+    }
+    with _super_root_template_lock {
+        latest = _process_cache.get('system_root');
+        if isinstance(latest, NodeAnchor) and latest.version > snapshot.version {
+            return;
+        }
+        _process_cache['system_root'] = snapshot;
+    }
+}
+
 obj RedisBackend(CacheMemory) {
     has redis_url: (str | None) = None,
         redis_client: (Any | None) = None,
