@@ -66,9 +66,9 @@ test "gate: --scale never takes the local path" {
     assert should_enter_local_ms(None, False, True, True) == False;
 }
 
-test "scan_markers reads sv-import targets and the to-sv self-declaration" {
+test "scan_markers reads sv-import targets and the sv-block self-declaration" {
     m = scan_markers(
-        "sv import from cart_app { view_cart }\nto sv:\ndef:pub f() -> int { return 1; }\n",
+        "sv import from cart_app { view_cart }\nsv {\ndef:pub f() -> int { return 1; }\n}\n",
         "orders_app.jac"
     );
     assert m is not None;
@@ -84,7 +84,7 @@ test "scan_markers detects the `sv { ... }` block form as a service" {
 
 test "scan_markers ignores sv-import text living only in a docstring" {
     m = scan_markers(
-        "\"\"\"Docs: `sv import from cart_app { x }` and `to sv:` are mentioned.\"\"\"\nwith entry { print(1); }\n",
+        "\"\"\"Docs: `sv import from cart_app { x }` and `sv { }` are mentioned.\"\"\"\nwith entry { print(1); }\n",
         "main.jac"
     );
     assert m is not None;
@@ -92,9 +92,9 @@ test "scan_markers ignores sv-import text living only in a docstring" {
     assert m.is_service == False;
 }
 
-test "scan_markers: a plain import under a to-sv section is not an sv target" {
+test "scan_markers: a plain import inside an sv block is not an sv target" {
     m = scan_markers(
-        "to sv:\nimport from helpers { h }\ndef:pub g() -> int { return 1; }\n",
+        "sv {\nimport from helpers { h }\ndef:pub g() -> int { return 1; }\n}\n",
         "svc.jac"
     );
     assert m is not None;
@@ -110,17 +110,41 @@ test "scan_markers returns multiple sv-import targets" {
     assert sorted(m.sv_import_targets) == ["cart_app", "products_app"];
 }
 
-test "discover finds to-sv files and sv-import targets" {
+test "discover registers .sv.jac services under their logical module stem" {
+    # base_stem applies to all variant suffixes (.sv/.cl/.na.jac), not only .sv.jac.
     tmp = tempfile.mkdtemp();
-    (Path(tmp) / "main.jac").write_text("to cl:\nimport from .frontend { app }\n");
+    (Path(tmp) / "main.jac").write_text("with entry { print(1); }\n");
+    (Path(tmp) / "products_app.sv.jac").write_text(
+        "sv {\ndef:pub list_products -> list { return []; }\n}\n"
+    );
+
+    try {
+        routes = discover_sv_services(str(Path(tmp) / "main.jac"));
+
+        assert routes == {"products_app": "/products"} , (
+            f".sv.jac service must register as logical stem products_app, got: {routes}"
+        );
+
+        files = discover_sv_service_files(str(Path(tmp) / "main.jac"));
+        assert files.get("products_app") == "products_app.sv.jac" , (
+            f".sv.jac service file must map to products_app.sv.jac, got: {files}"
+        );
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "discover finds sv-block files and sv-import targets" {
+    tmp = tempfile.mkdtemp();
+    (Path(tmp) / "main.jac").write_text("cl {\nimport from .frontend { app }\n}\n");
     (Path(tmp) / "products_app.jac").write_text(
-        "to sv:\ndef:pub list_products -> list { return []; }\n"
+        "sv {\ndef:pub list_products -> list { return []; }\n}\n"
     );
     (Path(tmp) / "cart_app.jac").write_text(
-        "to sv:\ndef:pub view_cart -> dict { return {}; }\n"
+        "sv {\ndef:pub view_cart -> dict { return {}; }\n}\n"
     );
     (Path(tmp) / "orders_app.jac").write_text(
-        "sv import from cart_app { view_cart }\nto sv:\ndef:pub create_order -> dict { return {}; }\n"
+        "sv import from cart_app { view_cart }\nsv {\ndef:pub create_order -> dict { return {}; }\n}\n"
     );
 
     routes = discover_sv_services(str(Path(tmp) / "main.jac"));
@@ -137,8 +161,8 @@ test "discover finds to-sv files and sv-import targets" {
 test "discover excludes the entry module itself" {
     tmp = tempfile.mkdtemp();
 
-    (Path(tmp) / "main.jac").write_text("to sv:\nsv import from worker_app { run }\n");
-    (Path(tmp) / "worker_app.jac").write_text("to sv:\ndef:pub run -> None {}\n");
+    (Path(tmp) / "main.jac").write_text("sv {\nsv import from worker_app { run }\n}\n");
+    (Path(tmp) / "worker_app.jac").write_text("sv {\ndef:pub run -> None {}\n}\n");
 
     routes = discover_sv_services(str(Path(tmp) / "main.jac"));
 
@@ -148,7 +172,91 @@ test "discover excludes the entry module itself" {
     shutil.rmtree(tmp);
 }
 
-test "discover detects sv-import-only targets even without a local to-sv file" {
+test "discover excludes variant-suffix entry module from routes" {
+    tmp = tempfile.mkdtemp();
+    (Path(tmp) / "main.sv.jac").write_text(
+        "sv {\nsv import from worker_app { run }\n}\n"
+    );
+    (Path(tmp) / "worker_app.jac").write_text("sv {\ndef:pub run -> None {}\n}\n");
+
+    try {
+        routes = discover_sv_services(str(Path(tmp) / "main.sv.jac"));
+        assert "main" not in routes , (
+            f"entry stem must use base_stem so main.sv.jac is excluded, got: {routes}"
+        );
+        assert routes == {"worker_app": "/worker"};
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "discover prefers matching codespace when stem paths collide" {
+    tmp = tempfile.mkdtemp();
+    (Path(tmp) / "main.jac").write_text("sv import from foo { bar }\n");
+    (Path(tmp) / "foo.jac").write_text("def helper() -> int { return 1; }\n");
+    (Path(tmp) / "foo.sv.jac").write_text("def:pub bar() -> int { return 2; }\n");
+
+    try {
+        files = discover_sv_service_files(str(Path(tmp) / "main.jac"));
+        assert files.get("foo") == "foo.sv.jac" , (
+            f"import-only target must prefer server codespace on stem collision, got: {files}"
+        );
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "discover prefers sv-block file when stem paths collide" {
+    tmp = tempfile.mkdtemp();
+    (Path(tmp) / "main.jac").write_text("sv import from foo { bar }\n");
+    (Path(tmp) / "foo.jac").write_text("sv {\ndef:pub bar() -> int { return 1; }\n}\n");
+    (Path(tmp) / "foo.sv.jac").write_text("def:pub other() -> int { return 2; }\n");
+
+    try {
+        files = discover_sv_service_files(str(Path(tmp) / "main.jac"));
+        assert files.get("foo") == "foo.jac" , (
+            f"sv-block owner must win stem collision over plain variant file, got: {files}"
+        );
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "discover prefers plain module over impl annex on stem collision" {
+    tmp = tempfile.mkdtemp();
+    (Path(tmp) / "main.jac").write_text("sv import from foo { bar }\n");
+    (Path(tmp) / "foo.jac").write_text("def:pub bar() -> int { return 1; }\n");
+    (Path(tmp) / "foo.impl.jac").write_text("def impl_helper() -> int { return 2; }\n");
+
+    try {
+        files = discover_sv_service_files(str(Path(tmp) / "main.jac"));
+        assert files.get("foo") == "foo.jac" , (
+            f"plain module must win stem collision over impl annex, got: {files}"
+        );
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "discover prefers server codespace when two service files collide" {
+    tmp = tempfile.mkdtemp();
+    (Path(tmp) / "main.jac").write_text("sv import from foo { bar }\n");
+    (Path(tmp) / "foo.jac").write_text("sv {\ndef:pub bar() -> int { return 1; }\n}\n");
+    (Path(tmp) / "foo.sv.jac").write_text(
+        "sv {\ndef:pub bar() -> int { return 2; }\n}\n"
+    );
+
+    try {
+        files = discover_sv_service_files(str(Path(tmp) / "main.jac"));
+        assert files.get("foo") == "foo.sv.jac" , (
+            f"server codespace must win when both files declare sv blocks, got: {files}"
+        );
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "discover detects sv-import-only targets even without a local sv-block file" {
     tmp = tempfile.mkdtemp();
     (Path(tmp) / "main.jac").write_text("sv import from remote_app { f }\n");
 
@@ -175,7 +283,7 @@ test "discover ignores sv-import text that lives only in docstrings" {
     tmp = tempfile.mkdtemp();
 
     (Path(tmp) / "main.jac").write_text(
-        "\"\"\"Docs: use `sv import from cart_app` to ...\nto sv: is also documented here.\n\"\"\"\nwith entry { print(1); }\n"
+        "\"\"\"Docs: use `sv import from cart_app` to ...\nsv { } is also documented here.\n\"\"\"\nwith entry { print(1); }\n"
     );
 
     routes = discover_sv_services(str(Path(tmp) / "main.jac"));
@@ -196,7 +304,7 @@ test "discover finds a service living in a subdir of the same project" {
     sub = tmp / "littlex";
     sub.mkdir();
     (sub / "social_graph.jac").write_text(
-        "to sv:\ndef:pub setup_profile -> int { return 1; }\n"
+        "sv {\ndef:pub setup_profile -> int { return 1; }\n}\n"
     );
     try {
         routes = discover_sv_services(str(tmp / "main.jac"));
@@ -216,14 +324,14 @@ test "discover treats a nested jac.toml as a separate-project boundary" {
     embedded = tmp / "embedded";
     embedded.mkdir();
     (embedded / "social_graph.jac").write_text(
-        "to sv:\ndef:pub setup_profile -> int { return 1; }\n"
+        "sv {\ndef:pub setup_profile -> int { return 1; }\n}\n"
     );
 
     other = tmp / "other_app";
     other.mkdir();
     (other / "jac.toml").write_text("[project]\nname = \"other\"\n");
     (other / "orders_app.jac").write_text(
-        "to sv:\ndef:pub list_orders -> int { return 1; }\n"
+        "sv {\ndef:pub list_orders -> int { return 1; }\n}\n"
     );
     try {
         routes = discover_sv_services(str(tmp / "main.jac"));
@@ -245,7 +353,7 @@ test "discover prunes build/vendor dirs" {
     vendored = tmp / "node_modules" / "pkg";
     vendored.mkdir(parents=True);
     (vendored / "ghost_app.jac").write_text(
-        "to sv:\ndef:pub run -> int { return 1; }\n"
+        "sv {\ndef:pub run -> int { return 1; }\n}\n"
     );
     try {
         routes = discover_sv_services(str(tmp / "main.jac"));
@@ -262,11 +370,11 @@ test "discover_sv_service_files maps a subdir service to its real relative path"
     tmp = Path(tempfile.mkdtemp());
     (tmp / "jac.toml").write_text("[project]\nname = \"app\"\n");
     (tmp / "main.jac").write_text("with entry { print(1); }\n");
-    (tmp / "analytics.jac").write_text("to sv:\ndef:pub stats -> int { return 1; }\n");
+    (tmp / "analytics.jac").write_text("sv {\ndef:pub stats -> int { return 1; }\n}\n");
     sub = tmp / "littlex";
     sub.mkdir();
     (sub / "social_graph.jac").write_text(
-        "to sv:\ndef:pub setup_profile -> int { return 1; }\n"
+        "sv {\ndef:pub setup_profile -> int { return 1; }\n}\n"
     );
     try {
         files = discover_sv_service_files(str(tmp / "main.jac"));
@@ -291,20 +399,117 @@ test "a subdir service discovered only via sv import resolves to its file" {
     (sub / "social_graph.jac").write_text(
         "def:pub setup_profile -> int { return 1; }\n"
     );
-    (sub / "frontend.cl.jac").write_text(
-        "sv import from .social_graph { setup_profile }\n"
-    );
+    (sub / "api.jac").write_text("sv import from .social_graph { setup_profile }\n");
     try {
         files = discover_sv_service_files(str(tmp / "main.jac"));
         assert files.get("social_graph") == os.path.join(
             "littlex", "social_graph.jac"
         ) , (
-            f"an sv-import target with no `to sv:` marker of its own must "
+            f"an sv-import target with no `sv {{ }}` marker of its own must "
             f"still resolve to its real file, got: {files}"
         );
     } finally {
         shutil.rmtree(str(tmp), ignore_errors=True);
     }
+}
+
+test "scan_markers ignores sv imports in a .cl.jac client module" {
+    m = scan_markers(
+        "sv import from social_graph { setup_profile }\n", "frontend.cl.jac"
+    );
+    assert m is not None;
+    assert m.sv_import_targets == [];
+}
+
+test "scan_markers ignores sv imports inside a cl block" {
+    m = scan_markers(
+        "cl {\nsv import from social_graph { setup_profile }\n}\n", "main.jac"
+    );
+    assert m is not None;
+    assert m.sv_import_targets == [];
+}
+
+test "a client-only sv import does not trigger service discovery" {
+    tmp = Path(tempfile.mkdtemp());
+    (tmp / "jac.toml").write_text("[project]\nname = \"app\"\n");
+    (tmp / "main.jac").write_text("with entry { print(1); }\n");
+    (tmp / "util_svc.jac").write_text("def:pub helper -> int { return 1; }\n");
+    pages = tmp / "pages";
+    pages.mkdir();
+    (pages / "Home.cl.jac").write_text(
+        "sv import from ..util_svc { helper }\ndef:pub Home -> None {\n    helper();\n}\n"
+    );
+    try {
+        routes = discover_sv_services(str(tmp / "main.jac"));
+        assert routes == {} , (
+            f"client-side sv import must not flip on microservice mode, got: {routes}"
+        );
+        assert should_enter_local_ms(None, False, False, bool(routes)) == False;
+    } finally {
+        shutil.rmtree(str(tmp), ignore_errors=True);
+    }
+}
+
+test "a cl-block sv import does not trigger service discovery" {
+    tmp = Path(tempfile.mkdtemp());
+    (tmp / "jac.toml").write_text("[project]\nname = \"app\"\n");
+    (tmp / "main.jac").write_text(
+        "cl {\nsv import from util_svc { helper }\n}\nwith entry { print(1); }\n"
+    );
+    (tmp / "util_svc.jac").write_text("def:pub helper -> int { return 1; }\n");
+    try {
+        routes = discover_sv_services(str(tmp / "main.jac"));
+        assert routes == {} , (
+            f"cl-block sv import must not flip on microservice mode, got: {routes}"
+        );
+    } finally {
+        shutil.rmtree(str(tmp), ignore_errors=True);
+    }
+}
+
+test "a dotted sv-import target resolves to the service module stem" {
+    # A server-side bridge that does not sit in the service's own directory
+    # addresses it with a dotted target; discovery is keyed by module stem, so
+    # the dotted form must be reduced or it registers a phantom service.
+    import os;
+    tmp = Path(tempfile.mkdtemp());
+    (tmp / "jac.toml").write_text("[project]\nname = \"app\"\n");
+    (tmp / "main.jac").write_text("with entry { print(1); }\n");
+    svc = tmp / "services";
+    svc.mkdir();
+    (svc / "ideServer.jac").write_text("def:pub ping -> int { return 1; }\n");
+    bridge = tmp / "apps";
+    bridge.mkdir();
+    (bridge / "bridge.jac").write_text("sv import from services.ideServer { ping }\n");
+    try {
+        files = discover_sv_service_files(str(tmp / "main.jac"));
+        assert files.get("ideServer") == os.path.join("services", "ideServer.jac") , (
+            "dotted sv-import target must resolve to the real service file, "
+            f"got: {files}"
+        );
+        routes = discover_sv_services(str(tmp / "main.jac"));
+        assert "services.ideServer" not in routes , (
+            "the dotted form must not register a phantom service/route, "
+            f"got: {routes}"
+        );
+        assert routes.get("ideServer") == "/ideServer" , (
+            f"expected a clean /ideServer route, got: {routes}"
+        );
+    } finally {
+        shutil.rmtree(str(tmp), ignore_errors=True);
+    }
+}
+
+test "sv_target_stem reduces dotted, path and suffixed import targets" {
+    import from jaclang.scale.runtime.discovery.discovery { sv_target_stem }
+
+    assert sv_target_stem("ideServer") == "ideServer";
+    assert sv_target_stem("services.ideServer") == "ideServer";
+    assert sv_target_stem("a.b.c.deepSvc") == "deepSvc";
+    # String-path targets must not degrade to the file extension.
+    assert sv_target_stem("services/ideServer.jac") == "ideServer";
+    assert sv_target_stem("./services/ideServer") == "ideServer";
+    assert sv_target_stem("ideServer.sv.jac") == "ideServer";
 }
 
 test "resolve_service_files falls back to <name>.jac for import-only routes" {

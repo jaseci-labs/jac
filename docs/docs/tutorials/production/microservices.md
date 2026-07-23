@@ -1,5 +1,7 @@
 # Microservices with `sv import`
 
+> **Concept:** [Scale invariance](../../reference/plugins/jac-scale.md#the-scale-invariance-contract): monolith and service mesh are deployment shapes of the same program text.
+
 A Jac codebase can run as a single monolith or as several independently-deployed microservices, with no source changes between the two. The trick is the `sv import` keyword: when both the importer and the importee are server-context modules, the compiler generates an HTTP client stub for the imported symbol instead of pulling the provider into the consumer's process. Calls become RPCs over the wire, but the source still reads like a normal import. Both `def:pub` functions and `walker:pub` archetypes are supported -- functions translate to `POST /function/<name>`, walkers to `POST /walker/<name>` plus a return-side rehydration that hands the consumer back a real walker instance with `reports` populated.
 
 This tutorial walks through splitting a tiny app into two services, running the whole thing from one command, watching the round-trip happen over real HTTP, and then covers testing and multi-host production deployment.
@@ -378,7 +380,7 @@ Output (default, card view):
 
 ```text
 === jac scale plan: dry-run ===
-Cluster:    minikube    Namespace: my-app
+Cluster:    <active-kube-context>    Namespace: my-app
 check: no errors or warnings
 
 Microservices (3)
@@ -409,6 +411,8 @@ Totals
 
 To see the raw YAML manifests, re-run with --show-yaml
 ```
+
+Note the `__gateway__` entry above has `replicas: 1` and no HPA line -- that's the framework default, and it is a single point of failure for all external traffic. See [Gateway High Availability](../../reference/plugins/jac-scale-kubernetes.md#gateway-high-availability) for why, and how to configure a second replica.
 
 The summary line at the top tells you whether the plan is deployable:
 

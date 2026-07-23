@@ -22,45 +22,51 @@ jac install --shadcn dialog table badge select tabs
 jac remove --shadcn dialog
 ```
 
-`jac install --shadcn` is bundled and offline (no network). It writes `components/ui/<name>.cl.jac`, auto-installs any peer components, and creates `lib/utils.cl.jac` with `cn()` if missing. The add-name is the kebab-case registry name (`dropdown-menu`, `alert-dialog`, `input-group`, `input-otp`, ...).
+`jac install --shadcn` is bundled and offline (no network). It writes `components/ui/<name>.jac`, auto-installs any peer components, and creates `lib/utils.jac` with `cn()` if missing. The add-name on the command line is the kebab-case registry name (`dropdown-menu`, `alert-dialog`, `input-group`, `input-otp`, ...), but the file it writes is the **underscored** form (`dropdown_menu.jac`) - a hyphen is invalid in a Jac module name.
 
 ## Import patterns
 
-**Always quote the module path, and keep the hyphens.** Installed files keep their hyphenated registry names (`dropdown-menu.cl.jac`, `alert-dialog.cl.jac`, `otp-input.cl.jac`). An **unquoted** dotted import of a hyphenated name is a **parse error** (`Unexpected token '-'`); converting the hyphen to an underscore (`dropdown_menu`) silently resolves to nothing (`Module not found` warning, component is undefined at runtime). Quoting always works - even for single-word names - so quote every UI-primitive import.
+**Import the underscored file name.** `jac install --shadcn dropdown-menu` writes `dropdown_menu.jac` - the installer converts the hyphen to an underscore because a hyphen is the minus operator and cannot appear in a Jac module name. So import the underscore: `import from .ui.dropdown_menu { ... }`. No quoting needed, since `_` is a valid identifier character. **Never write the hyphen in an import** - both forms fail: unquoted (`.ui.dropdown-menu`) is a **parse error** (`Unexpected token '-'`), and quoted (`".ui.dropdown-menu"`) passes `jac check` but the compiler emits `./ui/dropdown-menu.js`, which never matches the underscored file, so the build fails with `Could not resolve`.
 
 ```jac
 # From a composite in components/ (the usual place for your components)
-import from ".ui.button" { Button }
-import from ".ui.card" { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
-import from ".ui.dropdown-menu" {
+import from .ui.button { Button }
+import from .ui.card { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
+import from .ui.dropdown_menu {
     DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem
 }
-import from ".ui.dialog" { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter }
-import from ".ui.table" { Table, TableHeader, TableBody, TableRow, TableHead, TableCell }
+import from .ui.dialog { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter }
+import from .ui.table { Table, TableHeader, TableBody, TableRow, TableHead, TableCell }
 
 # cn() utility - always from lib/utils, never from @jac/runtime
-import from "..lib.utils" { cn }
+import from ..lib.utils { cn }
 
-# npm packages (icons etc.) - always cl import, always a quoted bare-package string
-cl import from "@hugeicons/react" { HugeiconsIcon }
-cl import from "@hugeicons/core-free-icons" { SearchIcon, Add01Icon, Cancel01Icon, Menu01Icon }
+# npm packages - the string-path import is itself the client seed (no marker needed),
+# always QUOTED: a hyphen, @, or / is a parse error unquoted, so `react-dom` /
+# `class-variance-authority` need quotes too, not just @-scoped names. (Only local
+# dotted paths above - `.ui.X`, `.lib.utils` - may drop the quotes.)
+import from "@hugeicons/react" { HugeiconsIcon }
+import from "@hugeicons/core-free-icons" { Search01Icon, Add01Icon, Cancel01Icon, Menu01Icon }
 ```
 
 **Leading dots are relative to the importing file's folder** (1 dot = current folder, each extra dot goes up one). Pick the prefix from where your file lives:
 
 | Your file | UI primitive | `cn` (lib/utils) |
 |-----------|-------------|------------------|
-| `components/EventCard.cl.jac` | `".ui.button"` | `"..lib.utils"` |
-| `components/pages/EventsPage.cl.jac` | `"..ui.button"` | `"...lib.utils"` |
-| project root `main.jac` (use `cl import`) | `".components.ui.button"` | `".lib.utils"` |
+| `components/EventCard.jac` | `.ui.button` | `..lib.utils` |
+| `pages/dashboard.jac` (file-based route) | `..components.ui.button` | `..lib.utils` |
+| `pages/(auth)/dashboard.jac` (route group) | `...components.ui.button` | `...lib.utils` |
+| project root `main.jac` (entry module) | `.components.ui.button` | `.lib.utils` |
 
-In a `.cl.jac` file plain `import` is already client-context (no `cl` needed). In a top-level `.jac` entry file (like `main.jac`) prefix with `cl import` to mark the client import.
+**A `pages/` file is not inside `components/`.** From within `components/`, `ui/` is a subfolder, so the prefix is `.ui.X`. From a sibling directory like `pages/`, you go up to the project root and back down into `components/`, so the prefix is `..components.ui.X` - and one MORE dot for each `pages/` subfolder (a route group like `(auth)/` counts as a folder). Undercounting (e.g. `.components.ui.card` from `pages/login.jac`) silently fails the client bundle with `Could not resolve`, not `jac check`.
 
-Do **not** check a `components/ui/*.cl.jac` primitive with `jac check` directly - they use a `...lib.utils` relative import that only resolves as part of the build. Validate your work by checking your composite or the entry file instead.
+Client placement is inferred - a module with an npm import or JSX compiles client, so a plain `import` needs no `cl` marker, whether in a component file or a top-level entry file like `main.jac`.
+
+Do **not** check a `components/ui/*.jac` primitive with `jac check` directly - they use a `...lib.utils` relative import that only resolves as part of the build. Validate your work by checking your composite or the entry file instead.
 
 ## Component selection
 
-Most filenames are the kebab-case of the component (`alert-dialog` → import `".ui.alert-dialog"`). The one mismatch: `jac install --shadcn input-otp` installs as `otp-input.cl.jac` and exports `InputOTP`.
+Most file names are the underscored registry name (`jac install --shadcn alert-dialog` → file `alert_dialog.jac` → import `.ui.alert_dialog`). The one stem mismatch: `jac install --shadcn input-otp` installs as `otp_input.jac` (import `.ui.otp_input`) and exports `InputOTP`.
 
 | Need | Component(s) |
 |------|-------------|
@@ -69,13 +75,13 @@ Most filenames are the kebab-case of the component (`alert-dialog` → import `"
 | Multi-line text | `Textarea` |
 | Dropdown select | `Select` + `SelectTrigger` + `SelectContent` + `SelectGroup` + `SelectItem` + `SelectValue` |
 | Searchable dropdown | `Combobox` + `ComboboxInput` + `ComboboxContent` + `ComboboxItem` (file `combobox`) |
-| Native `<select>` | `NativeSelect` + `NativeSelectOption` (file `native-select`) |
+| Native `<select>` | `NativeSelect` + `NativeSelectOption` (file `native_select`) |
 | Toggle / check | `Switch`, `Checkbox`, `RadioGroup` + `RadioGroupItem` |
 | Single toggle button | `Toggle` |
-| 2–5 option toggle | `ToggleGroup` + `ToggleGroupItem` (file `toggle-group`; never a Button loop) |
+| 2 to 5 option toggle | `ToggleGroup` + `ToggleGroupItem` (file `toggle_group`; never a Button loop) |
 | Form field layout | `Field` + `FieldLabel` (never raw div with `space-y-*`) |
 | Form group / fieldset | `FieldGroup`, `FieldSet`, `FieldLegend` |
-| Input with prefix/suffix | `InputGroup` + `InputGroupAddon` + `InputGroupInput` (file `input-group`) |
+| Input with prefix/suffix | `InputGroup` + `InputGroupAddon` + `InputGroupInput` (file `input_group`) |
 | Data table | `Table` + `TableHeader` + `TableBody` + `TableRow` + `TableHead` + `TableCell` |
 | Data card | `Card` + `CardHeader` + `CardTitle` (+ optional `CardDescription`, `CardContent`, `CardFooter`) |
 | Status label | `Badge` |
@@ -86,13 +92,13 @@ Most filenames are the kebab-case of the component (`alert-dialog` → import `"
 | Modal | `Dialog` + `DialogTrigger` + `DialogContent` + `DialogHeader` + `DialogTitle` |
 | Side panel | `Sheet` + `SheetTrigger` + `SheetContent` + `SheetHeader` + `SheetTitle` |
 | Bottom drawer | `Drawer` |
-| Confirmation | `AlertDialog` + `AlertDialogTrigger` + `AlertDialogContent` + `AlertDialogTitle` + `AlertDialogAction` + `AlertDialogCancel` (file `alert-dialog`) |
-| Dropdown menu | `DropdownMenu` + `DropdownMenuTrigger` + `DropdownMenuContent` + `DropdownMenuGroup` + `DropdownMenuItem` (file `dropdown-menu`) |
-| Right-click menu | `ContextMenu` + `ContextMenuTrigger` + `ContextMenuContent` + `ContextMenuGroup` + `ContextMenuItem` (file `context-menu`) |
+| Confirmation | `AlertDialog` + `AlertDialogTrigger` + `AlertDialogContent` + `AlertDialogTitle` + `AlertDialogAction` + `AlertDialogCancel` (file `alert_dialog`) |
+| Dropdown menu | `DropdownMenu` + `DropdownMenuTrigger` + `DropdownMenuContent` + `DropdownMenuGroup` + `DropdownMenuItem` (file `dropdown_menu`) |
+| Right-click menu | `ContextMenu` + `ContextMenuTrigger` + `ContextMenuContent` + `ContextMenuGroup` + `ContextMenuItem` (file `context_menu`) |
 | Horizontal menu bar | `Menubar` + `MenubarMenu` + `MenubarTrigger` + `MenubarContent` + `MenubarItem` |
 | Tooltip | `Tooltip` + `TooltipTrigger` + `TooltipContent` |
 | Floating panel | `Popover` + `PopoverTrigger` + `PopoverContent` |
-| Hover detail card | `HoverCard` + `HoverCardTrigger` + `HoverCardContent` (file `hover-card`) |
+| Hover detail card | `HoverCard` + `HoverCardTrigger` + `HoverCardContent` (file `hover_card`) |
 | Loading skeleton | `Skeleton` |
 | Loading spinner | `Spinner` |
 | Empty state | `Empty` + `EmptyHeader` + `EmptyMedia` + `EmptyTitle` + `EmptyDescription` + `EmptyContent` |
@@ -102,19 +108,19 @@ Most filenames are the kebab-case of the component (`alert-dialog` → import `"
 | Date picker | `Calendar` |
 | Slider | `Slider` |
 | Chart | `Chart` (wraps Recharts) |
-| Scrollable container | `ScrollArea` + `ScrollBar` (file `scroll-area`) |
-| Fixed aspect box | `AspectRatio` (file `aspect-ratio`) |
+| Scrollable container | `ScrollArea` + `ScrollBar` (file `scroll_area`) |
+| Fixed aspect box | `AspectRatio` (file `aspect_ratio`) |
 | Divider | `Separator` |
 | Command palette | `Command` + `CommandInput` + `CommandList` + `CommandItem` |
-| Grouped buttons | `ButtonGroup` + `ButtonGroupSeparator` (file `button-group`) |
+| Grouped buttons | `ButtonGroup` + `ButtonGroupSeparator` (file `button_group`) |
 | App shell navigation | `Sidebar` (⚠ never pass `className` to `Sidebar*` sub-components - className spread bug; wrap with `<div>` instead) |
-| Top navigation | `NavigationMenu` + `NavigationMenuList` + `NavigationMenuItem` + `NavigationMenuTrigger` + `NavigationMenuContent` (file `navigation-menu`) |
+| Top navigation | `NavigationMenu` + `NavigationMenuList` + `NavigationMenuItem` + `NavigationMenuTrigger` + `NavigationMenuContent` (file `navigation_menu`) |
 | Expandable section | `Collapsible` + `CollapsibleTrigger` + `CollapsibleContent` |
 | Drag-resize panels | `Resizable` + `ResizablePanelGroup` + `ResizablePanel` + `ResizableHandle` |
 | Page navigation | `Pagination` + `PaginationContent` + `PaginationItem` + `PaginationPrevious` + `PaginationNext` |
 | Image/content carousel | `Carousel` + `CarouselContent` + `CarouselItem` + `CarouselPrevious` + `CarouselNext` |
 | Keyboard key display | `Kbd` |
-| One-time password input | `InputOTP` + `InputOTPGroup` + `InputOTPSlot` + `InputOTPSeparator` (add `input-otp`, file `otp-input`) |
+| One-time password input | `InputOTP` + `InputOTPGroup` + `InputOTPSlot` + `InputOTPSeparator` (add `input-otp`, file `otp_input`) |
 | Generic list item | `Item` |
 
 ## Composition rules
@@ -129,7 +135,7 @@ Violations cause accessibility errors or runtime white screens.
 - **`AlertDialog` requires both `AlertDialogAction` and `AlertDialogCancel`** in the footer.
 - **`ButtonGroup` uses nested `<ButtonGroup>` for gaps** between sections; `<ButtonGroupSeparator>` for subtle 1px dividers only.
 - **`Field` + `FieldLabel` for form fields** - never raw `<div className="flex flex-col gap-2">` with a plain `<label>`.
-- **`Tooltip` must be wrapped in `<TooltipProvider>`** - usually at app root or `Layout.cl.jac`.
+- **`Tooltip` must be wrapped in `<TooltipProvider>`** - usually at app root or `Layout.jac`.
 
 ## Styling rules
 
@@ -143,15 +149,39 @@ Load `jac-cl-styling` for full conditional class patterns and cn() usage.
 
 ## Icon pattern
 
+⚠ **Never guess an icon name.** The package exports ~5,500 icons and most are
+number-suffixed, so the obvious name is usually wrong: there is no `SearchIcon`,
+`DocumentIcon`, `FolderIcon`, `PlusIcon`, or `TrendUpIcon`. A wrong name is NOT a
+compile error - `jac check` and the build both pass, and it fails only when the
+page loads, with `SyntaxError: ... does not provide an export named 'DocumentIcon'`.
+Use a name from the table below, or list the real ones:
+
+```bash
+ls .jac/client/node_modules/@hugeicons/core-free-icons/dist/esm/ | grep -v '\.map' | grep -i '^chart'
+```
+
+| Need | Icon (verified) |
+|---|---|
+| home / menu / back / forward | `Home01Icon`, `Menu01Icon`, `ArrowLeft01Icon`, `ArrowRight01Icon`, `ArrowUpRight01Icon` |
+| add / edit / delete / close | `Add01Icon` (or `PlusSignIcon`), `Edit01Icon`, `Delete01Icon`, `Cancel01Icon` |
+| search / filter / download / upload | `Search01Icon`, `FilterIcon`, `Download01Icon`, `Upload01Icon` |
+| success / warning / info | `CheckmarkCircle01Icon`, `Alert01Icon`, `InformationCircleIcon` |
+| file / folder / message / mail | `File01Icon`, `Folder01Icon`, `Message01Icon`, `Mail01Icon` |
+| calendar / clock | `Calendar1Icon`, `Clock1Icon` (single digit, NOT `01`) |
+| user / settings / logout / bell | `UserIcon`, `Settings01Icon`, `Logout01Icon`, `Notification01Icon` |
+| chart / analytics / dashboard / money | `ChartIcon`, `Analytics01Icon`, `DashboardSquare01Icon`, `DollarCircleIcon` |
+| star / eye / lock / sparkle | `StarIcon`, `EyeIcon`, `LockIcon`, `SparklesIcon` |
+| overflow menu | `MoreVerticalIcon`, `MoreHorizontalIcon` |
+
 ```jac
-import from ".ui.button" { Button, buttonVariants }
-import from ".ui.dropdown-menu" { DropdownMenuTrigger }
-cl import from "@hugeicons/react" { HugeiconsIcon }
-cl import from "@hugeicons/core-free-icons" { Add01Icon, SearchIcon, MoreVerticalIcon }
+import from .ui.button { Button, buttonVariants }
+import from .ui.dropdown_menu { DropdownMenuTrigger }
+import from "@hugeicons/react" { HugeiconsIcon }
+import from "@hugeicons/core-free-icons" { Add01Icon, Search01Icon, MoreVerticalIcon }
 
 # Inline icon
 def:pub InlineIconExample() -> JsxElement {
-    return <HugeiconsIcon icon={SearchIcon} strokeWidth={2} className="size-4" />;
+    return <HugeiconsIcon icon={Search01Icon} strokeWidth={2} className="size-4" />;
 }
 
 # Icon-only button
@@ -327,8 +357,8 @@ import from ".ui.table" { Table, TableHeader, TableBody, TableRow, TableHead, Ta
 import from ".ui.dialog" { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle }
 import from ".ui.spinner" { Spinner }
 import from "..lib.utils" { cn }
-cl import from "@hugeicons/react" { HugeiconsIcon }
-cl import from "@hugeicons/core-free-icons" { Add01Icon }
+import from "@hugeicons/react" { HugeiconsIcon }
+import from "@hugeicons/core-free-icons" { Add01Icon }
 
 def:pub EventListPage() -> JsxElement {
     has events: list[dict] = [];   # type the element (use the sv import-ed view type); a bare `list` loses element typing -> E1032 on field access
@@ -385,10 +415,10 @@ def:pub EventListPage() -> JsxElement {
 ## Rules
 
 - **Scan `components/ui/` first; if a primitive is missing, `jac install --shadcn <name>` - never hand-write it.** The starter ships only `button` + `card`; add the rest on demand.
-- **Quote every UI-primitive import path and keep the hyphens.** `import from ".ui.dropdown-menu" { ... }`. Unquoted hyphens are a parse error; underscores resolve to nothing.
+- **Import the underscored file name.** `import from .ui.dropdown_menu { ... }` - the installer writes `dropdown_menu.jac`, so the hyphen becomes an underscore. Never write the hyphen: unquoted is a parse error, quoted builds to `./ui/dropdown-menu.js` and fails to resolve.
 - **Import path = dots relative to your file's folder.** From `components/`: `".ui.<name>"` and `"..lib.utils"`. See the location table above.
 - **`cn()` always from `lib/utils`**, never from `@jac/runtime`. It's pre-implemented - don't recreate it.
-- **Build high-level components in `components/`** (e.g., `EventCard.cl.jac`, `EventsPage.cl.jac`) that compose the primitives. Never add page logic to `components/ui/` files, and never edit those files - they're managed by the registry.
+- **Build high-level components in `components/`** (e.g., `EventCard.jac`, `EventsPage.jac`) that compose the primitives. Never add page logic to `components/ui/` files, and never edit those files - they're managed by the registry.
 - **Theme with `jac retheme`, not by editing `global.css`** (a retheme overwrites it). Don't recreate or hand-edit `jac.toml`'s `[jac-shadcn]`/`[dependencies.npm]` - `jac install`/`jac retheme` manage them.
 
 ## Peer dependency chains
@@ -435,15 +465,16 @@ Consolidated quick-reference. See Import patterns and component selection sectio
 
 **Never edit files in `components/ui/`** - Managed by `jac install --shadcn` and `jac remove --shadcn`. Manual edits are silently overwritten on next run.
 
-**Import paths must be quoted strings.** Unquoted hyphens cause a parse error. Underscores in the module path silently resolve to nothing.
+**Import the underscored file name; hyphens never work.**
 
 ```
-import from ".ui.dropdown-menu" { DropdownMenu }   # correct - quoted, hyphenated
-import from .ui.dropdown-menu { DropdownMenu }      # WRONG - unquoted, parse error
-import from ".ui.dropdown_menu" { DropdownMenu }    # WRONG - underscore, resolves to nothing
+import from .ui.dropdown_menu { DropdownMenu }      # correct - matches the installed file
+import from ".ui.dropdown_menu" { DropdownMenu }    # also fine - quoting is optional for _ names
+import from .ui.dropdown-menu { DropdownMenu }       # WRONG - unquoted hyphen is a parse error
+import from ".ui.dropdown-menu" { DropdownMenu }     # WRONG - builds ./ui/dropdown-menu.js, no such file
 ```
 
-**File name vs import path:** `jac install --shadcn dropdown-menu` installs as `dropdown-menu.cl.jac`. The import path uses the same hyphenated name: `import from ".ui.dropdown-menu"`. Do not convert hyphens to underscores in either the filename or the import path.
+**File name vs command name:** `jac install --shadcn dropdown-menu` (kebab command) installs `dropdown_menu.jac` (underscored file). The import path uses the underscored file name: `import from .ui.dropdown_menu`.
 
 ## See also
 

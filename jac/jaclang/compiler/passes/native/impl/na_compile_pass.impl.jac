@@ -126,6 +126,16 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
             module.gen.llvm_ir = mod;
         }
 
+        _needs_fmt_kernel = (manifest is not None)
+        and ("fmt_kernel" in manifest.native_transitive_sources);
+        if (not _needs_fmt_kernel) and self._references_undefined_fmt_kernel(mod) {
+            _needs_fmt_kernel = True;
+        }
+        if _needs_fmt_kernel {
+            self._link_fmt_kernel(mod);
+            module.gen.llvm_ir = mod;
+        }
+
         import os as _os;
         _opt_level = int(_os.environ.get("JAC_OPT_LEVEL", "2"));
 
@@ -307,6 +317,9 @@ impl NativeCompilePass._compile_and_link_native_imports(
     _compiler_fp = _comp_h.hexdigest()[:8];
 
     linked_modules: dict = {};
+    if module.loc {
+        linked_modules[os.path.realpath(module.loc.mod_path)] = None;
+    }
 
     symbol_origins: dict = {};
 
@@ -455,24 +468,6 @@ impl NativeCompilePass._compile_and_link_native_imports(
             import from jaclang.jac0core.compile_options { CompileOptions }
             import_options = CompileOptions(skip_native_engine=True, type_check=False);
             try {
-                import re as _own_re;
-                with open(real_path, "r") as _src_f {
-                    _src_txt = _src_f.read();
-                }
-                _owned_seen: set[str] = set();
-                for _def_m in _own_re.finditer(
-                    r"\bdef(?::[A-Za-z_, ]+)?\s+([A-Za-z_]\w*)\s*\(", _src_txt
-                ) {
-                    _owned_seen.add(_def_m.group(1));
-                }
-                for _glob_m in _own_re.finditer(
-                    r"(?:\bglob|,)\s*([A-Za-z_]\w*)\s*:", _src_txt
-                ) {
-                    _owned_seen.add(_glob_m.group(1));
-                }
-                meta.owned_symbols = list(_owned_seen);
-            } except Exception { }
-            try {
                 imported_ir = self.prog.compile(
                     file_path=full_path, options=import_options
                 );
@@ -484,6 +479,30 @@ impl NativeCompilePass._compile_and_link_native_imports(
                 self.emit(E5024, path=full_path, error="No LLVM IR generated");
                 continue;
             }
+            _owned_seen: set[str] = set();
+            for _ab in imported_ir.get_all_sub_nodes(uni.Ability) {
+                _ab_name = _ab.name_ref.sym_name if _ab.name_ref else None;
+                if _ab_name {
+                    _owned_seen.add(_ab_name);
+                    _encl_arch = _ab.find_parent_of_type(uni.Archetype);
+                    if _encl_arch is not None and _encl_arch.name {
+                        _owned_seen.add(f"{_encl_arch.name.value}.{_ab_name}");
+                    }
+                }
+            }
+            for _gvs in imported_ir.get_all_sub_nodes(uni.GlobalVars) {
+                for _asgn in _gvs.assignments {
+                    _tgts = _asgn.target
+                        if isinstance(_asgn.target, (list, tuple))
+                        else [(_asgn.target)];
+                    for _tgt in _tgts {
+                        if isinstance(_tgt, uni.Name) {
+                            _owned_seen.add(_tgt.value);
+                        }
+                    }
+                }
+            }
+            meta.owned_symbols = sorted(_owned_seen);
             imported_llvm_str_raw = str(imported_ir.gen.llvm_ir);
             meta.clib_paths = imported_ir.gen._clib_paths or [];
             meta.clib_symbol_lib = imported_ir.gen._clib_symbol_lib or {};
@@ -751,6 +770,81 @@ impl NativeCompilePass._link_osp_kernel(main_mod: object) -> None {
     ir_str = ir_str.replace("@__jac_glob_init", "@__jac_glob_init_osp_kernel");
     ir_str = ir_str.replace(
         'name: "__jac_glob_init"', 'name: "__jac_glob_init_osp_kernel"'
+    );
+    try {
+        kmod = llvm.parse_assembly(ir_str);
+        kmod.verify();
+        main_mod.link_in(kmod);
+    } except Exception as _e {
+        ;
+    }
+}
+
+glob _FMT_KERNEL_IR_CACHE: list = [];
+
+def _compile_fmt_kernel_ir -> (str | None) {
+    if _FMT_KERNEL_IR_CACHE {
+        return _FMT_KERNEL_IR_CACHE[0];
+    }
+    import os;
+    import shutil;
+    import tempfile;
+    import jaclang;
+    import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.compiler.passes.native.na_ir_gen_pass {
+        _write_native_fmt_source
+    }
+
+    _core = os.path.join(os.path.dirname(jaclang.__file__), "jac0core");
+    tmp_dir = tempfile.mkdtemp();
+    na_copy = os.path.join(tmp_dir, "fmt_kernel.na.jac");
+    ir_str = None;
+    try {
+        _write_native_fmt_source(_core, na_copy);
+        prog = JacProgram();
+        m = prog.compile(na_copy);
+        if (m is not None) and m?.gen and (m.gen.llvm_ir is not None) {
+            ir_str = str(m.gen.llvm_ir);
+        }
+    } except Exception {
+        ir_str = None;
+    } finally {
+        shutil.rmtree(tmp_dir, ignore_errors=True);
+    }
+    if ir_str is not None {
+        _FMT_KERNEL_IR_CACHE.append(ir_str);
+    }
+    return ir_str;
+}
+
+impl NativeCompilePass._references_undefined_fmt_kernel(main_mod: object) -> bool {
+    try {
+        for _fn in main_mod.functions {
+            if _fn.is_declaration
+            and (
+                _fn.name.startswith("jac_fmt_")
+                or _fn.name.startswith("_jac_fmt_")
+                or _fn.name == "__jac_glob_init_fmt_kernel"
+            ) {
+                return True;
+            }
+        }
+    } except Exception {
+        return False;
+    }
+    return False;
+}
+
+impl NativeCompilePass._link_fmt_kernel(main_mod: object) -> None {
+    ir_str = _compile_fmt_kernel_ir();
+    if ir_str is None {
+        return;
+    }
+
+    ir_str = ir_str.replace('@"__jac_glob_init"', '@"__jac_glob_init_fmt_kernel"');
+    ir_str = ir_str.replace("@__jac_glob_init", "@__jac_glob_init_fmt_kernel");
+    ir_str = ir_str.replace(
+        'name: "__jac_glob_init"', 'name: "__jac_glob_init_fmt_kernel"'
     );
     try {
         kmod = llvm.parse_assembly(ir_str);

@@ -100,8 +100,6 @@ def:pub clear_shopping_list -> dict[str, bool] {
     return {"cleared": True};
 }
 
-to cl:
-
 import "./styles.css";
 
 """Single task row -- presentational; toggle and delete are passed in."""
@@ -169,8 +167,8 @@ def:pub TasksColumn -> JsxElement {
                 <input
                     class="input"
                     value={task_text}
-                    onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
-                    onKeyPress={lambda e: KeyboardEvent { if e.key == "Enter" {
+                    onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
+                    onKeyPress={lambda (e: KeyboardEvent) { if e.key == "Enter" {
                         add_new_task();
                     }}}
                     placeholder="What needs to be done today?"
@@ -242,8 +240,8 @@ def:pub ShoppingColumn -> JsxElement {
                 <input
                     class="input"
                     value={meal_text}
-                    onChange={lambda e: ChangeEvent { meal_text = e.target.value; }}
-                    onKeyPress={lambda e: KeyboardEvent { if e.key == "Enter" {
+                    onChange={lambda (e: ChangeEvent) { meal_text = e.target.value; }}
+                    onKeyPress={lambda (e: KeyboardEvent) { if e.key == "Enter" {
                         generate_meal_list();
                     }}}
                     placeholder="Describe a meal, e.g. 'chicken stir fry for 4'"

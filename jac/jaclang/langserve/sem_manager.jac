@@ -10,9 +10,9 @@ glob logger = logging.getLogger("jaclang.langserve.sem_manager");
 obj SemTokManager {
     has ir: uni.Module,
         target_path: (str | None) = None,
-        sem_tokens: List[int] by postinit,
+        sem_tokens: List[int] postinit,
         static_sem_tokens:
-            List[Tuple[(lspt.Position, int, int, uni.AstSymbolNode)]] by postinit;
+            List[Tuple[(lspt.Position, int, int, uni.AstSymbolNode)]] postinit;
 
     def postinit -> None;
     def collect_resolved_nodes(ir: uni.Module) -> list;

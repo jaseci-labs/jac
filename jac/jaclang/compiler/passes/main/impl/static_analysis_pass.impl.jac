@@ -10,6 +10,7 @@ impl StaticAnalysisPass.transform(ir_in: uni.Module) -> uni.Module {
     self._check_unreachable_code(self.ir_in);
     self._check_semantic_patterns(self.ir_in);
     self._check_redundant_imports(self.ir_in);
+    self._check_client_imports(self.ir_in);
     return ir_in;
 }
 
@@ -86,6 +87,10 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
 
         import builtins;
         if name_nd.value in dir(builtins) or name_nd.value in ("self", "super") {
+            continue;
+        }
+
+        if mod.parent_scope and name_nd.value in mod.parent_scope.names_in_scope {
             continue;
         }
 
@@ -224,6 +229,7 @@ impl StaticAnalysisPass._check_unreachable_code(mod: uni.Module) -> None {
         uni.ElseStmt,
         uni.ElseIf,
         uni.WhileStmt,
+        uni.ForeverStmt,
         uni.InForStmt,
         uni.IterForStmt
     ];
@@ -352,6 +358,31 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: uni.Module) -> None {
                 arch_type=(nd.arch_kind or nd.arch_type.value),
                 name=nd.name.value
             );
+        }
+    }
+}
+
+impl StaticAnalysisPass._check_client_imports(mod: uni.Module) -> None {
+    import from jaclang.compiler.symbol_utils {
+        ClientImportVerdict,
+        classify_client_import_item,
+        is_client_boundary_import,
+        report_dead_client_import,
+        resolve_import_source_module
+    }
+    for nd in mod.get_all_sub_nodes(typ=uni.Import) {
+        if not is_client_boundary_import(nd) {
+            continue;
+        }
+        source_mod = resolve_import_source_module(self.prog, nd);
+        if source_mod is None {
+            continue;
+        }
+        for item in nd.items {
+            verdict = classify_client_import_item(source_mod, item);
+            if verdict == ClientImportVerdict.DEAD {
+                report_dead_client_import(self, nd, item);
+            }
         }
     }
 }

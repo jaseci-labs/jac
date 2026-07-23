@@ -36,10 +36,13 @@ __all__ = [
     "Root",
     "GenericEdge",
     "JsxElement",
+    "JsxPage",
+    "JsxLayout",
     "OPath",
     "DSFunc",
     "EdgeDir",
     "LLMModel",
+    "Region",
     # Fixed-width numeric types
     "i8",
     "u8",
@@ -107,13 +110,33 @@ class Root(Node):
 
 class GenericEdge(Edge): ...
 
-class JsxElement:
+# Route marker types for the client file-based router. A `pages/` module whose
+# public export returns `JsxPage` is a route; one returning `JsxLayout` is a
+# layout. `JsxElement` is assignable to both, so a component body returning JSX
+# satisfies a `-> JsxPage` / `-> JsxLayout` signature; the distinct annotation is
+# what marks the export as a route/layout (the name of the export is free).
+class JsxPage:
+    tag: object
+    props: dict[str, object]
+    children: list[object]
+
+class JsxLayout:
+    tag: object
+    props: dict[str, object]
+    children: list[object]
+
+class JsxElement(JsxPage, JsxLayout):
     tag: object
     props: dict[str, object]
     children: list[object]
 
 class OPath: ...
 class DSFunc: ...
+
+# First-class region handle: an ownable, sendable, escape-checked allocation
+# extent opened by `in <handle> { ... }`. On managed backends the handle is a
+# no-op; native codegen gives it arena semantics.
+class Region: ...
 
 class EdgeDir:
     OUT: int
@@ -174,6 +197,10 @@ def printgraph(
 ) -> str: ...
 def restspec(**specs: object) -> Callable[..., Any]: ...
 def schedule(**kwargs: object) -> Callable[..., Any]: ...
+
+_ManagedT = TypeVar("_ManagedT")
+
+def managed(x: _ManagedT) -> _ManagedT: ...
 
 # Returns a sentinel object that the JSX flattener turns into raw HTML
 # (`dangerouslySetInnerHTML` on jac-client, `innerHTML` on bare-serve).

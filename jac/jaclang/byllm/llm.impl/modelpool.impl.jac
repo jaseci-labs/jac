@@ -1,16 +1,13 @@
-"""ModelPool implementation — in-process LiteLLM Router for fallback and load-balancing."""
 import from typing { Generator }
 import concurrent.futures;
 import asyncio;
 
-"""Initialize the ModelPool by building a LiteLLM Router in-process."""
 impl ModelPool.postinit -> None {
     import from litellm { Router }
     if not self.models {
         raise ValueError("ModelPool requires at least one model.");
     }
-    # Apply jac.toml [byllm.fallback] defaults for any field the user did not set.
-    # None sentinels in the has-fields distinguish "user supplied" from "config default".
+
     _fallback_cfg = _byllm_config.get_fallback_config();
     if self.strategy is None {
         self.strategy = _fallback_cfg.get('strategy', 'fallback');
@@ -84,12 +81,6 @@ impl ModelPool.postinit -> None {
     );
 }
 
-"""Resolve ctx_window for a ModelPool.
-
-Explicit overrides (call_params > self.ctx_window > config) take priority.
-When none are set, takes the minimum across pool members so we never
-over-fill the most constrained model in the pool.
-"""
 impl ModelPool._get_ctx_window(call_params: dict) -> int {
     override = int(
         call_params.get("ctx_window")
@@ -111,37 +102,18 @@ impl ModelPool._get_ctx_window(call_params: dict) -> int {
 }
 
 
-"""Make a direct model call without streaming via the LiteLLM Router.
-
-For most strategies, router.completion() works synchronously. For
-cost-based-routing, LiteLLM's sync get_available_deployment() has no handler
-for that strategy — deployment selection only exists on the async path via
-lowestcost_logger.async_get_available_deployments(). We run acompletion()
-in a ThreadPoolExecutor so it is safe inside frameworks with an existing
-event loop (FastAPI, Jupyter) — asyncio.run() always gets a fresh loop in
-a dedicated thread.
-"""
 impl ModelPool.model_call_no_stream(params: dict) -> dict {
     if self.strategy == "cost-based-routing" {
-        coro = self._router.acompletion(**params);  # type: ignore
+        coro = self._router.acompletion(**params);
         response: dict;
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool {
-            response = pool.submit(asyncio.run, coro).result();  # type: ignore
+            response = pool.submit(asyncio.run, coro).result();
         }
         return response;
     }
-    return self._router.completion(**params);  # type: ignore
+    return self._router.completion(**params);
 }
 
-"""Make a streaming model call via the LiteLLM Router.
-
-cost-based-routing uses acompletion() via ThreadPoolExecutor for the same
-reason as model_call_no_stream. All other strategies use router.completion().
-
-For fallback strategy, we call Router._completion() per model with
-fallbacks=[] to work around a recursive infinite loop in the Router's
-stream_with_fallbacks().
-"""
 impl ModelPool.model_call_with_stream(params: dict) -> Generator[str, None, None] {
     if self.strategy == "cost-based-routing" {
         async def _collect_stream -> list {
@@ -153,11 +125,10 @@ impl ModelPool.model_call_with_stream(params: dict) -> Generator[str, None, None
             return chunks;
         }
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool {
-            return pool.submit(asyncio.run, _collect_stream()).result();  # type: ignore
+            return pool.submit(asyncio.run, _collect_stream()).result();
         }
     }
-    # Fallback strategy: call Router._completion() per model with fallbacks=[]
-    # to prevent the recursive stream_with_fallbacks infinite loop.
+
     if self.strategy == "fallback" {
         model_names: list = self._fallback_model_names;
         router = self._router;
@@ -184,9 +155,7 @@ impl ModelPool.model_call_with_stream(params: dict) -> Generator[str, None, None
                     logger.warning(
                         f"ModelPool streaming fallback: {name} failed — {exc}"
                     );
-                    # If any chunks were already sent to the caller, re-raise.
-                    # Falling back now would concatenate a partial response from
-                    # this model with a full response from the next — corrupted output.
+
                     if yielded or idx >= len(model_names) - 1 {
                         raise;
                     }
@@ -195,5 +164,5 @@ impl ModelPool.model_call_with_stream(params: dict) -> Generator[str, None, None
         }
         return _fallback_gen();
     }
-    return self._router.completion(stream=True, **params);  # type: ignore
+    return self._router.completion(stream=True, **params);
 }

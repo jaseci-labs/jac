@@ -13,11 +13,6 @@
 #   --uninstall   Remove Jac
 #   --help        Print usage
 #
-# Scale and the MCP server ship built into jac (the jaclang.scale /
-# jaclang.cli.mcp plugins); only scale's third-party deps install on demand.
-# Other plugins (byllm) install separately once `jac` is on PATH:
-#   jac install byllm
-#
 # Examples:
 #   curl -fsSL ... | bash                          # Latest jac binary
 #   curl -fsSL ... | bash -s -- --version 2.3.1    # Specific version
@@ -59,6 +54,17 @@ need_cmd() {
     fi
 }
 
+# GitHub API requests: authenticate when GITHUB_TOKEN/GH_TOKEN is set, since
+# unauthenticated calls share a per-IP rate limit that CI runners exhaust.
+api_curl() {
+    local token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+    if [[ -n "$token" ]]; then
+        curl -fsSL -H "Authorization: Bearer ${token}" "$@"
+    else
+        curl -fsSL "$@"
+    fi
+}
+
 # --- Usage ---
 
 usage() {
@@ -83,12 +89,6 @@ EXAMPLES:
 
     # Specific version
     curl -fsSL ... | bash -s -- --version 2.3.1
-
-PLUGINS:
-    Scale and the MCP server ship built into jac (jaclang.scale /
-    jaclang.cli.mcp). Once 'jac' is on PATH, install the other plugins with the
-    binary's own installer:
-        jac install byllm
 EOF
 }
 
@@ -200,7 +200,7 @@ ensure_on_path() {
 
 get_latest_version() {
     local response
-    response=$(curl -fsSL "${GITHUB_API}/releases/latest" 2>/dev/null) || {
+    response=$(api_curl "${GITHUB_API}/releases/latest" 2>/dev/null) || {
         err "Failed to query GitHub API for latest release."
         err "Check your internet connection or specify a version with --version."
         exit 1
@@ -222,7 +222,7 @@ get_latest_version() {
 resolve_jaclang_version_from_release() {
     local release_tag="$1"
     local response
-    response=$(curl -fsSL "${GITHUB_API}/releases/tags/v${release_tag}" 2>/dev/null) || {
+    response=$(api_curl "${GITHUB_API}/releases/tags/v${release_tag}" 2>/dev/null) || {
         err "Failed to query GitHub API for release v${release_tag}."
         exit 1
     }
@@ -323,13 +323,9 @@ install_binary() {
         info "Jac installed successfully!"
         info ""
         info "Performing initial setup, this may take a moment..."
-        jac --version 2>/dev/null || true
-        info ""
-        info "Get started:"
-        info "  jac --help"
-        info ""
-        info "Scale (deployment) and the MCP server ship built in; add other plugins when needed:"
-        info "  jac install byllm"
+        # No stderr redirect: the launcher narrates its one-time extract
+        # (payload read, sha256, live percent) on stderr -- show it.
+        jac || true
         info ""
     else
         warn "Binary installed to ${INSTALL_DIR}/jac but 'jac' is not on PATH."

@@ -12,17 +12,17 @@ curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/ins
 
 This installs the self-contained `jac` binary -- no Python, pip, or uv required.
 
-Verify your installation meets the minimum requirements:
+Verify your installation:
 
 ```bash
 jac --version
 ```
 
-The `jac --version` output shows the binary version. Check that the minimum is met (byLLM, the full-stack client framework, and the `scale` subsystem all ship inside the binary, so there are no separate versions for them):
+The `jac --version` output shows the binary version (byLLM, the full-stack client framework, and the `scale` subsystem all ship inside the binary, so there are no separate versions for them):
 
-| Package | Minimum Version |
-|---------|----------------|
-| jaclang | 0.11.0 |
+| Package | Version |
+|---------|---------|
+| jaclang | Any current release; check with `jac --version` |
 
 **Local AI Model:** Parts 5+ use AI features. The tutorial defaults to a local model -- Google Gemma 4 E4B running in-process via `llama.cpp` -- so **no API key is required**. Install the local-model dependency once:
 
@@ -48,7 +48,7 @@ The tutorial is split into seven parts. Each builds on the last:
 
 ## Part 1: Your First Lines of Jac
 
-Before building anything complex, it's important to get comfortable with Jac's syntax. Jac is a programming language whose compiler can generate Python bytecode, ES JavaScript, and native binaries. Its design is rooted in Python, so if you have Python experience, much of Jac will feel familiar -- but there are deliberate differences: curly braces replace indentation for block scoping, semicolons terminate statements, and the language has built-in support for graphs, AI, and full-stack web development. **The goal** of this section is to give you a solid foundation in the basics so that everything that follows feels natural.
+Jac is a programming language whose compiler can generate Python bytecode, ES JavaScript, and native binaries. Its design is rooted in Python, so if you have Python experience much of Jac will feel familiar, with deliberate differences: curly braces replace indentation for block scoping, semicolons terminate statements, and the language has built-in support for graphs, AI, and full-stack web development. This part covers the syntax this project needs; depth lives in [Jac Fundamentals](../language/basics.md).
 
 **Hello, World**
 
@@ -66,14 +66,11 @@ Run it:
 jac hello.jac
 ```
 
-In Jac, any free-floating code in a module must live inside a `with entry { }` block. These blocks execute when you run a `.jac` file as a script, and also at the point it's imported -- similar to top-level code in Python. The reason Jac requires this explicit demarcation is an important design principle: code that runs once on module load is a common source of subtle bugs in larger programs. By making it visually distinct, Jac ensures you're always intentional about side effects at the module level.
-
-!!! info "Why `with entry`?"
-    Python was originally designed as a replacement for bash, and its initial version didn't even have import statements. Jac slightly discourages mistakes stemming from free-floating module code by making it an intentional, visible choice in the language.
+In Jac, any free-floating code in a module must live inside a `with entry { }` block. These blocks execute when you run a `.jac` file as a script, and also at the point it's imported, like top-level code in Python. Jac makes module-level code an explicit, visible choice so side effects on import are always intentional.
 
 **Variables and Types**
 
-Understanding Jac's type system is essential for everything that follows, especially the AI features in later parts. Jac has four basic scalar types: `str`, `int`, `float`, and `bool`. You can optionally annotate a variable's type, or let Jac infer it from the assigned value:
+Jac has four basic scalar types: `str`, `int`, `float`, and `bool`. You can optionally annotate a variable's type, or let Jac infer it from the assigned value:
 
 ```jac
 with entry {
@@ -99,7 +96,7 @@ Jac supports **f-strings** for string interpolation (just like Python), **commen
 
 **Functions**
 
-Functions in Jac use the familiar `def` keyword. A key difference from Python is that both parameters and return values require type annotations. This strictness pays off later -- when you delegate functions to an LLM in Part 5, the type signatures become the specification that guides the AI's output:
+Functions use the familiar `def` keyword. Unlike Python, both parameters and return values require type annotations. This strictness pays off in Part 5, where type signatures become the specification that guides the AI's output:
 
 ```jac
 def greet(name: str) -> str {
@@ -116,11 +113,11 @@ with entry {
 }
 ```
 
-Functions that don't return a value can omit the return type annotation entirely -- the `-> None` annotation is optional since functions without a return statement implicitly return `None`.
+Functions without a return statement implicitly return `None`; the `-> None` annotation is optional.
 
 **Control Flow**
 
-Jac uses curly braces `{}` for all blocks, which means indentation is purely cosmetic -- there's no significant whitespace. This is a deliberate departure from Python that eliminates an entire class of formatting bugs:
+Jac uses curly braces `{}` for all blocks, so indentation is purely cosmetic:
 
 ```jac
 def check_time(hour: int) -> str {
@@ -159,82 +156,11 @@ with entry {
 }
 ```
 
-Jac provides two constructs for branching on values. **`switch`/`case`** is for classic simple value matching. Like C, cases fall through to subsequent cases -- use `return`, `break`, or another control-flow statement to exit a case before the next one runs:
-
-```jac
-def categorize(fruit: str) -> str {
-    switch fruit {
-        case "apple":
-            return "pome";
-        case "banana" | "plantain":
-            return "berry";
-        default:
-            return "unknown";
-    }
-}
-```
-
-In the example above, each case ends with `return`, so the function exits before the next case runs. If you want to stay inside `switch` and just stop fall-through, use `break`.
-
-**`match`/`case`**, on the other hand, is for Python-style structural pattern matching -- use it when you need to destructure values or match more complex patterns:
-
-```jac
-def describe(value: any) -> str {
-    match value {
-        case 0:
-            return "zero";
-        case 1 | 2 | 3:
-            return "small number";
-        case _:
-            return "something else";
-    }
-}
-```
-
-It really shines when you destructure structured data:
-
-```jac
-def describe_point(point: tuple) -> str {
-    match point {
-        case (0, 0):
-            return "origin";
-        case (x, 0):
-            return f"on x-axis at {x}";
-        case (0, y):
-            return f"on y-axis at {y}";
-        case (x, y):
-            return f"at ({x}, {y})";
-        case _:
-            return "not a point";
-    }
-}
-```
+Jac also provides `switch`/`case` for value branching and Python-style `match`/`case` for structural pattern matching. This project doesn't need either; [Jac Fundamentals](../language/basics.md) covers both.
 
 **Classes and Objects**
 
-Since Jac's design is based on Python, it supports Python-style classes directly with the `class` keyword. This is a good starting point if you're coming from Python, but pay attention to what comes after -- Jac offers a better alternative:
-
-```jac
-class Animal {
-
-    # __init__ works here too
-    def init(self: Animal, name: str, sound: str) {
-        self.name = name;
-        self.sound = sound;
-    }
-
-    def speak(self: Animal) -> str {
-        return f"{self.name} says {self.sound}!";
-    }
-}
-
-with entry {
-    dog = Animal("Rex", "Woof");
-    print(dog.speak());  # Rex says Woof!
-}
-```
-
-This works, but notice the boilerplate: you must write `self` in every method signature, and the `init` method manually assigns each parameter to an instance variable. This repetitive pattern is exactly the kind of ceremony that slows down development. Jac addresses this with **`obj`** -- a first-class construct where fields declared with `has` are automatically initialized (like a dataclass), and `self` is implicitly available in methods without being listed in parameters.
+Jac supports Python-style classes with the `class` keyword (explicit `self` in every method signature, a manual `init` that assigns each parameter). This tutorial uses Jac's **`obj`** instead: fields declared with `has` are automatically initialized (like a dataclass), and `self` is implicitly available in methods without being listed in parameters.
 
 !!! note "Why `obj`?"
     Python's `dataclass` decorator was an admission that traditional classes have too much boilerplate for simple data types. Jac's `obj` builds this idea into the language itself. For a deeper dive, see [Dataclasses: Python's Admission That Classes Are Broken](https://www.mars.ninja/blog/2025/10/25/dataclasses-and-jac-objects/).
@@ -255,21 +181,20 @@ with entry {
 }
 ```
 
-Take a moment to compare the two versions. With `obj`, you don't write `self` in method signatures -- it's always available inside the body. Fields listed in `has` become constructor parameters automatically, so there's no `init` method to write for simple cases. This isn't just syntactic sugar -- it's a design philosophy: the less ceremony around data types, the more clearly your code expresses its intent. Throughout this tutorial, we'll use `obj` for plain data types and `node` (introduced in Part 2) for data that lives in the graph.
+Fields listed in `has` become constructor parameters automatically, so there's no `init` method to write for simple cases. Throughout this tutorial, we'll use `obj` for plain data types and `node` (introduced in Part 2) for data that lives in the graph.
 
 **What You Learned**
 
 - **`with entry { }`** -- program entry point
 - **Types**: `str`, `int`, `float`, `bool`
 - **`def`** -- function declaration with typed parameters and return types
-- **Control flow**: `if` / `elif` / `else`, `for`, `while`, `switch`, `match` -- all with braces
-- **`class`** -- Python-style classes with explicit `self`
+- **Control flow**: `if` / `elif` / `else`, `for`, `while` -- all with braces
 - **`obj`** -- Jac data types with `has` fields and implicit `self`
 - **`#`** -- line comments (`#* block comments *#`)
 - **f-strings** -- string interpolation with `f"...{expr}..."`
 - **Ternary** -- `value if condition else other`
 
-For a quick reference of all Jac syntax, see the [Syntax Cheatsheet](../../quick-guide/syntax-cheatsheet.md).
+For a quick reference of all Jac syntax, see the [Syntax Cheatsheet](../../reference/language/syntax-cheatsheet.md).
 
 !!! example "Try It Yourself"
     Write a `plan_day` function that takes a list of task names and an `hour: int`, and returns a formatted string like `"Good morning! Today's tasks: Buy groceries, Go running"`. Use `check_time` for the greeting and a `for` loop to build the task list.
@@ -278,7 +203,7 @@ For a quick reference of all Jac syntax, see the [Syntax Cheatsheet](../../quick
 
 ## Part 2: Modeling Data with Nodes
 
-In most programming languages, data lives in one of a few places: local variables, object instances in memory, or rows in a database. Each has trade-offs -- variables are temporary, objects require manual serialization to persist, and databases demand configuration, schemas, and query languages. Jac introduces a fundamentally different option: **nodes** that live in a **graph** and persist automatically. There's no database to set up, no ORM to configure, and no SQL to write. **The goal** of this section is to help you understand graphs as a first-class citizen of the language and see how the traditional database layer can disappear entirely.
+Jac stores application data as **nodes** that live in a **graph** and persist automatically: no database to set up, no ORM to configure, no SQL to write. This part covers the graph features the day planner needs; the thinking behind the model lives in [Object-Spatial Programming](../language/osp.md).
 
 **What is a Node?**
 
@@ -291,30 +216,26 @@ node Task {
 }
 ```
 
-The syntax looks almost identical to an `obj`, but nodes have a crucial additional capability: they can be connected to other nodes with **edges** (also `obj`-style classes), forming a graph. Think about the difference this makes. In traditional programming, objects exist independently in memory -- relationships between them must be maintained manually through references, foreign keys, or join tables. In Jac, relationships are structural. Objects are connected, and those connections form first-class graphs in the language.
+The syntax looks almost identical to an `obj`, but nodes have one additional capability: they can be connected to other nodes with **edges**, forming a graph. Relationships are structural, not bookkeeping you maintain through references, foreign keys, or join tables.
 
 Every node automatically gets a unique identifier from the runtime, accessible via `jid(node)`. You never need to manage IDs manually -- Jac handles this for you. You'll see `jid()` in action starting in Part 3.
 
-This becomes especially powerful when coupled with one more abstraction: the self-referential `root`.
-
 **The Root Node and the Graph**
 
-Every Jac program has a built-in `root` node -- the entry point of the graph. This is a concept worth pausing on, because it's central to how Jac works. Just as `self` in an object method is a self-referential pointer to the *current instance*, `root` is a self-referential pointer to the *current runner* of the program -- whether that's you executing a script or an authenticated user making a request. And like `self`, `root` is ambiently available everywhere; you never import or declare it, it's just there in every code block. Think of it as the top of a tree of everything that should persist:
+Every Jac program has a built-in `root` node, the entry point of the graph. Like `self`, `root` is ambiently available everywhere; you never import or declare it. It points to the *current runner* of the program, whether that's you executing a script or an authenticated user making a request. Think of it as the top of a tree of everything that should persist:
 
 ```mermaid
 graph LR
     root((root))
 ```
 
-Here's the key insight: any node connected to `root` (directly or through a chain of edges) is **persistent** -- it survives across requests, program runs, and server restarts. You don't configure a database or write SQL; connecting a node to `root` *is* the declaration that it should be saved. This is a fundamentally different model from traditional persistence, where you explicitly serialize data to a database. In Jac, persistence is a property of graph connectivity. Nodes that are *not* reachable from `root` behave like regular objects -- they live in memory for the duration of the current execution and are then garbage collected, though you can still connect them to other nodes for utility while they exist.
+The key rule: any node connected to `root` (directly or through a chain of edges) is **persistent** -- it survives across requests, program runs, and server restarts. Connecting a node to `root` *is* the declaration that it should be saved. Nodes that are *not* reachable from `root` behave like regular objects: they live in memory for the duration of the current execution and are then garbage collected.
 
-When your app serves multiple users, each user gets their **own isolated `root`**. User A's tasks and User B's tasks live in completely separate graphs -- same code, isolated data, enforced by the runtime. Connections *between* user graphs are possible when explicitly created, but by default each user's `root` is a private, independent entry point. We'll see this in action in [Part 6](#part-6-authentication-and-multi-file-organization) when we add authentication.
-
-Now that you understand the concept, let's see it in practice by creating nodes and connecting them with edges.
+When your app serves multiple users, each user gets their **own isolated `root`** -- same code, isolated data, enforced by the runtime. We'll see this in action in [Part 6](#part-6-authentication-and-multi-file-organization) when we add authentication.
 
 **Creating and Connecting Nodes**
 
-The `++>` operator creates a node and connects it to an existing node with an edge. This single operator does what would typically require multiple steps in traditional code: instantiating an object, saving it to a database, and creating a foreign key relationship:
+The `++>` operator creates a node and connects it to an existing node with an edge:
 
 ```jac
 node Task {
@@ -354,7 +275,7 @@ print(task.title);  # "Buy groceries"
 
 **Filter Comprehensions**
 
-Before querying the graph, it's worth learning a Jac feature that works on *any* collection of objects, not just graph queries: **filter comprehensions**. Understanding this distinction is important -- filter comprehensions are a general-purpose tool that happens to work beautifully with graph queries. The `[?...]` syntax filters a list by field conditions, and `[?:Type]` filters by type:
+Before querying the graph, one more tool: **filter comprehensions**, which work on *any* collection of objects, not just graph queries. The `[?...]` syntax filters a list by field conditions, and `[?:Type]` filters by type:
 
 ```jac
 obj Dog { has name: str, age: int; }
@@ -381,11 +302,9 @@ with entry {
 }
 ```
 
-This works on any list of objects -- not just graph queries. That's important for what comes next.
-
 **Querying the Graph**
 
-Now here's where the two concepts come together. The `[-->]` syntax gives you a list of connected nodes -- and because filter comprehensions work on any list, they apply to graph queries seamlessly:
+The `[-->]` syntax gives you a list of connected nodes, and because filter comprehensions work on any list, they apply to graph queries seamlessly:
 
 ```jac
 with entry {
@@ -407,7 +326,7 @@ with entry {
 }
 ```
 
-`[root-->]` reads as "all nodes connected *from* root." The `[?:Task]` filter keeps only nodes of type `Task`. Notice the elegance of this design: there's nothing special about graph queries. `[-->]` returns a plain list, and `[?...]` filters it, using the same mechanism it uses on any collection. This composability -- where general-purpose features combine naturally -- is a recurring theme in Jac.
+`[root-->]` reads as "all nodes connected *from* root." It returns a plain list, and `[?:Task]` filters it with the same mechanism used on any collection.
 
 Other directions work too:
 
@@ -494,12 +413,12 @@ With the fundamentals of Jac syntax and graph data in place, you're now ready to
 **Create the Project**
 
 ```bash
-jac create day-planner --use web-static
+jac create day-planner --kind web-static
 cd day-planner
 ```
 
 !!! note "Bun required"
-    The `--use web-static` template requires [Bun](https://bun.sh) for frontend bundling. If Bun isn't installed, `jac create` will offer to install it automatically.
+    The `--kind web-static` template requires [Bun](https://bun.sh) for frontend bundling. If Bun isn't installed, `jac create` will offer to install it automatically.
 
 You can delete the scaffolded `main.jac` and the `components/` directory -- you'll replace them with the code below. Also create an empty `styles.css` file next to `main.jac` (we'll fill it in Part 4).
 
@@ -737,17 +656,17 @@ Before building the UI, you need to understand **lambdas** -- Jac's anonymous fu
 <!-- jac-skip -->
 ```jac
 # Lambda with typed parameters
-double = lambda x: int -> int { return x * 2; };
+double = lambda (x: int) -> int { return x * 2; };
 
 # Lambda with no parameters
 say_hi = lambda -> str { return "hi"; };
 ```
 
-The syntax is `lambda params -> return_type { body }`. In JSX, you'll use them inline to handle user events:
+The syntax is `lambda (params) -> return_type { body }`. In JSX, you'll use them inline to handle user events:
 
 <!-- jac-skip -->
 ```jac
-onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
+onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
 ```
 
 **Transparent Server Calls**
@@ -814,8 +733,8 @@ cl def:pub app -> JsxElement {
                 <input
                     class="input"
                     value={task_text}
-                    onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
-                    onKeyPress={lambda e: KeyboardEvent {
+                    onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
+                    onKeyPress={lambda (e: KeyboardEvent) {
                         if e.key == "Enter" { add_new_task(); }
                     }}
                     placeholder="What needs to be done today?"
@@ -873,8 +792,8 @@ cl def:pub app -> JsxElement {
                 <input
                     class="input"
                     value={task_text}
-                    onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
-                    onKeyPress={lambda e: KeyboardEvent {
+                    onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
+                    onKeyPress={lambda (e: KeyboardEvent) {
                         if e.key == "Enter" { add_new_task(); }
                     }}
                     placeholder="What needs to be done today?"
@@ -907,7 +826,7 @@ cl def:pub app -> JsxElement {
 There are several important patterns to understand in this code:
 
 - **List comprehensions** transform and filter lists inline (e.g., `[expr for t in tasks]`, `[t for t in tasks if cond]`). These are the same Python-style comprehensions you may already know, and they're essential for working with reactive state.
-- **Replacing items** in a list uses `[updated if jid(t) == id else t for t in tasks]`. Since `toggle_task` returns the updated `Task` object directly, you can swap it in place -- crucial for immutable state updates.
+- **Replacing items** in a list uses `[updated if jid(t) == id else t for t in tasks]`. Since `toggle_task` returns the updated `Task` object directly, you can swap it in place, which is exactly what immutable state updates require.
 - **`tasks + [task]`** creates a new list with the item appended, rather than mutating the existing list. This immutability is important because the reactive system needs to detect that the list has changed.
 - **`async`** marks methods that call the server, since network calls are inherently asynchronous.
 
@@ -1009,8 +928,8 @@ h1 { text-align: center; margin-bottom: 24px; color: #333; }
                     <input
                         class="input"
                         value={task_text}
-                        onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
-                        onKeyPress={lambda e: KeyboardEvent {
+                        onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
+                        onKeyPress={lambda (e: KeyboardEvent) {
                             if e.key == "Enter" { add_new_task(); }
                         }}
                         placeholder="What needs to be done today?"
@@ -1062,7 +981,7 @@ That last point deserves emphasis. You didn't write any code to save data or loa
 - **`cl import`** -- load CSS (or npm packages) in the browser
 - **`cl def:pub app -> JsxElement`** -- the main UI component
 - **`has`** (in components) -- reactive state that triggers re-renders on change
-- **`lambda`** -- anonymous functions: `lambda params -> type { body }`
+- **`lambda`** -- anonymous functions: `lambda (params) -> type { body }`
 - **`can with entry`** -- lifecycle hook that runs on component mount
 - **`await func()`** -- transparent server calls from the client (no HTTP code)
 - **`async`** -- marks functions that perform asynchronous operations
@@ -1138,7 +1057,7 @@ Before using AI, you need a way to constrain its output. An **enum** defines a f
 enum Category { WORK, PERSONAL, SHOPPING, HEALTH, FITNESS, OTHER }
 ```
 
-This is a crucial concept: the enum constrains the AI to return *exactly one* of these predefined values. Without it, an LLM might return "shopping", "Shopping", "groceries", or "grocery shopping" -- all meaning the same thing but impossible to handle consistently in code. The enum eliminates that ambiguity entirely, making AI output as predictable as any other function return value.
+This is the central concept: the enum constrains the AI to return *exactly one* of these predefined values. Without it, an LLM might return "shopping", "Shopping", "groceries", or "grocery shopping" -- all meaning the same thing but impossible to handle consistently in code. The enum eliminates that ambiguity entirely, making AI output as predictable as any other function return value.
 
 !!! tip "Typed-base enums"
     For cases where you want enum members to behave as a primitive type, use `enum X: T { ... }`. `enum Status: str { OK = "ok", FAIL = "fail" }` makes members real `str` instances (no `.value` needed); `enum Code: int { ... }` does the same for `int`. Plain `enum` (used here) stays the right choice when the member identity matters more than the underlying value.
@@ -1350,8 +1269,8 @@ cl def:pub app -> JsxElement {
                         <input
                             class="input"
                             value={task_text}
-                            onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
-                            onKeyPress={lambda e: KeyboardEvent {
+                            onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
+                            onKeyPress={lambda (e: KeyboardEvent) {
                                 if e.key == "Enter" { add_new_task(); }
                             }}
                             placeholder="What needs to be done today?"
@@ -1387,8 +1306,8 @@ cl def:pub app -> JsxElement {
                         <input
                             class="input"
                             value={meal_text}
-                            onChange={lambda e: ChangeEvent { meal_text = e.target.value; }}
-                            onKeyPress={lambda e: KeyboardEvent {
+                            onChange={lambda (e: ChangeEvent) { meal_text = e.target.value; }}
+                            onKeyPress={lambda (e: KeyboardEvent) {
                                 if e.key == "Enter" { generate_meal_list(); }
                             }}
                             placeholder="Describe a meal, e.g. 'chicken stir fry for 4'"
@@ -1515,8 +1434,8 @@ cl def:pub TasksColumn -> JsxElement {
                 <input
                     class="input"
                     value={task_text}
-                    onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
-                    onKeyPress={lambda e: KeyboardEvent {
+                    onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
+                    onKeyPress={lambda (e: KeyboardEvent) {
                         if e.key == "Enter" { add_new_task(); }
                     }}
                     placeholder="What needs to be done today?"
@@ -1596,8 +1515,8 @@ cl def:pub ShoppingColumn -> JsxElement {
                 <input
                     class="input"
                     value={meal_text}
-                    onChange={lambda e: ChangeEvent { meal_text = e.target.value; }}
-                    onKeyPress={lambda e: KeyboardEvent {
+                    onChange={lambda (e: ChangeEvent) { meal_text = e.target.value; }}
+                    onKeyPress={lambda (e: KeyboardEvent) {
                         if e.key == "Enter" { generate_meal_list(); }
                     }}
                     placeholder="Describe a meal, e.g. 'chicken stir fry for 4'"
@@ -1852,8 +1771,8 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
                     <input
                         class="input"
                         value={task_text}
-                        onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
-                        onKeyPress={lambda e: KeyboardEvent {
+                        onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
+                        onKeyPress={lambda (e: KeyboardEvent) {
                             if e.key == "Enter" { add_new_task(); }
                         }}
                         placeholder="What needs to be done today?"
@@ -1923,8 +1842,8 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
                     <input
                         class="input"
                         value={meal_text}
-                        onChange={lambda e: ChangeEvent { meal_text = e.target.value; }}
-                        onKeyPress={lambda e: KeyboardEvent {
+                        onChange={lambda (e: ChangeEvent) { meal_text = e.target.value; }}
+                        onKeyPress={lambda (e: KeyboardEvent) {
                             if e.key == "Enter" { generate_meal_list(); }
                         }}
                         placeholder="Describe a meal, e.g. 'chicken stir fry for 4'"
@@ -1962,8 +1881,8 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
     }
     ```
 
-!!! info "Style note: the reference example uses `to cl:` / `to sv:`"
-    The matching example at [`jac/examples/day_planner/basic/`](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/examples/day_planner/basic) groups all client-side declarations under a `to cl:` section header instead of prefixing each with `cl`. The two styles are equivalent -- `to cl:` is just a way to flip the *default* context for everything that follows. You'll learn that mechanism formally in Part 6.
+!!! info "Style note: the reference example groups client code in a `cl { }` block"
+    The matching example at [`jac/examples/day_planner/basic/`](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/examples/day_planner/basic) groups all client-side declarations inside a single `cl { ... }` block instead of prefixing each with `cl`. The two styles are equivalent -- a `cl { ... }` block tags every declaration inside its braces for the client codespace. You'll learn more about blocks in Part 6.
 
 ```bash
 jac start main.jac  # or: jac start
@@ -1984,7 +1903,7 @@ Open [http://localhost:8000](http://localhost:8000). The app now has two columns
 4. **Type "chicken stir fry for 4"** in the meal planner and click Generate -- a structured shopping list appears with quantities, units, costs, and carb flags
 5. **Restart the server** -- everything persists (both tasks and shopping list)
 
-The AI can only pick from the enum values you defined -- `Category` for tasks, `Unit` for ingredients. This is the key takeaway of this part: **Jac's type system constrains the LLM's output automatically**. You don't write prompt engineering logic or output parsers. The types *are* the constraints.
+The AI can only pick from the enum values you defined -- `Category` for tasks, `Unit` for ingredients. This is the key takeaway of this part: **Jac's type system constrains the LLM's output automatically**. You don't write prompt-assembly logic or output parsers. The types *are* the constraints.
 
 !!! tip "Visualize the graph"
     Visit [http://localhost:8000/graph](http://localhost:8000/graph) to see both `Task` and `ShoppingItem` nodes connected to `root`. After generating a shopping list, you'll see the graph grow with ingredient nodes alongside your tasks.
@@ -2084,26 +2003,26 @@ sv import from ..main { Task, get_tasks, add_task, toggle_task, delete_task }
 
 The `sv` prefix means "server import." You also use it to bring server `node` types into client code, so `TaskItem(task: Task)` can be typed end-to-end. The `..main` is a relative import: `..` means "parent directory," because components live one folder below `main.jac` -- the same convention Python uses.
 
-**`to cl:` section headers**
+**`cl { }` and `sv { }` blocks**
 
-Sometimes you want both server and client code in the same file -- typically the entry point, where one server-side `def:pub app` just renders the client app. Section headers do that:
+Sometimes you want both server and client code in the same file -- typically the entry point, where one client-side `app` component just renders the imported client app while the server code lives alongside it. Braced blocks do that:
 
 ```jac
-to cl:
+cl {
+    import from frontend { app as ClientApp }
 
-import from frontend { app as ClientApp }
-
-def:pub app -> JsxElement {
-    return
-        <ClientApp/>;
+    def:pub app -> JsxElement {
+        return
+            <ClientApp/>;
+    }
 }
 
-to sv:
-
-# Back to server-side: nodes, AI delegations, endpoints live here.
+sv {
+    # Server-side: nodes, AI delegations, endpoints live here.
+}
 ```
 
-Everything between `to cl:` and the next `to sv:` runs in the browser; everything else runs on the server. Section headers and the `cl`/`sv` prefixes you saw in Part 4 are two ways to do the same thing -- prefixes are good for the occasional client thing in a server file, section headers are good when most of the file goes one way.
+Everything inside the `cl { ... }` block runs in the browser; everything inside `sv { ... }` runs on the server. Braced blocks and the `cl`/`sv` prefixes you saw in Part 4 are two ways to do the same thing -- prefixes are good for the occasional client thing in a server file, blocks are good when a whole region of the file goes one way.
 
 **Optional: splitting one big component into declaration + implementation**
 
@@ -2155,7 +2074,7 @@ When `isLoggedIn` flips from `False` to `True`, this ability fires automatically
 Create a new project for the authenticated version:
 
 ```bash
-jac create day-planner-auth --use web-static
+jac create day-planner-auth --kind web-static
 cd day-planner-auth
 ```
 
@@ -2168,123 +2087,123 @@ All the complete files are in the collapsible sections below. Create each file, 
     ```jac
     """AI Day Planner -- authenticated, multi-file version."""
 
-    to cl:
+    cl {
+        import from frontend { app as ClientApp }
 
-    import from frontend { app as ClientApp }
-
-    def:pub app -> JsxElement {
-        return
-            <ClientApp />;
+        def:pub app -> JsxElement {
+            return
+                <ClientApp />;
+        }
     }
 
-    to sv:
+    sv {
+        # --- Enums ---
 
-    # --- Enums ---
+        enum Category { WORK, PERSONAL, SHOPPING, HEALTH, FITNESS, OTHER }
 
-    enum Category { WORK, PERSONAL, SHOPPING, HEALTH, FITNESS, OTHER }
+        enum Unit { PIECE, LB, OZ, CUP, TBSP, TSP, BUNCH }
 
-    enum Unit { PIECE, LB, OZ, CUP, TBSP, TSP, BUNCH }
+        # --- AI Types ---
 
-    # --- AI Types ---
+        obj Ingredient {
+            has name: str,
+                quantity: float,
+                unit: Unit,
+                cost: float,
+                carby: bool;
+        }
 
-    obj Ingredient {
-        has name: str,
-            quantity: float,
-            unit: Unit,
-            cost: float,
-            carby: bool;
-    }
+        sem Ingredient.cost = "Estimated cost in USD";
+        sem Ingredient.carby = "True if this ingredient is high in carbohydrates";
 
-    sem Ingredient.cost = "Estimated cost in USD";
-    sem Ingredient.carby = "True if this ingredient is high in carbohydrates";
+        def categorize(title: str) -> Category by llm();
+        sem categorize = "Categorize a task based on its title";
 
-    def categorize(title: str) -> Category by llm();
-    sem categorize = "Categorize a task based on its title";
+        def generate_shopping_list(meal_description: str) -> list[Ingredient] by llm();
+        sem generate_shopping_list = "Generate a shopping list of ingredients needed for a described meal";
 
-    def generate_shopping_list(meal_description: str) -> list[Ingredient] by llm();
-    sem generate_shopping_list = "Generate a shopping list of ingredients needed for a described meal";
+        # --- Data Nodes ---
 
-    # --- Data Nodes ---
+        node Task {
+            has title: str,
+                done: bool = False,
+                category: str = "other";
+        }
 
-    node Task {
-        has title: str,
-            done: bool = False,
-            category: str = "other";
-    }
+        node ShoppingItem {
+            has name: str,
+                quantity: float,
+                unit: str,
+                cost: float,
+                carby: bool;
+        }
 
-    node ShoppingItem {
-        has name: str,
-            quantity: float,
-            unit: str,
-            cost: float,
-            carby: bool;
-    }
+        # --- Task Endpoints ---
 
-    # --- Task Endpoints ---
+        """Add a task with AI categorization."""
+        def:priv add_task(title: str) -> Task {
+            category = str(categorize(title)).split(".")[-1].lower();
+            task = root ++> Task(title=title, category=category);
+            return task;
+        }
 
-    """Add a task with AI categorization."""
-    def:priv add_task(title: str) -> Task {
-        category = str(categorize(title)).split(".")[-1].lower();
-        task = root ++> Task(title=title, category=category);
-        return task;
-    }
+        """Get all tasks."""
+        def:priv get_tasks -> list[Task] {
+            return [root-->][?:Task];
+        }
 
-    """Get all tasks."""
-    def:priv get_tasks -> list[Task] {
-        return [root-->][?:Task];
-    }
-
-    """Toggle a task's done status."""
-    def:priv toggle_task(id: str) -> Task | None {
-        for task in [root-->][?:Task] {
-            if jid(task) == id {
-                task.done = not task.done;
-                return task;
+        """Toggle a task's done status."""
+        def:priv toggle_task(id: str) -> Task | None {
+            for task in [root-->][?:Task] {
+                if jid(task) == id {
+                    task.done = not task.done;
+                    return task;
+                }
             }
+            return None;
         }
-        return None;
-    }
 
-    """Delete a task."""
-    def:priv delete_task(id: str) -> dict[str, str] {
-        for task in [root-->][?:Task] {
-            if jid(task) == id {
-                del task;
-                return {"deleted": id};
+        """Delete a task."""
+        def:priv delete_task(id: str) -> dict[str, str] {
+            for task in [root-->][?:Task] {
+                if jid(task) == id {
+                    del task;
+                    return {"deleted": id};
+                }
             }
+            return {};
         }
-        return {};
-    }
 
-    # --- Shopping List Endpoints ---
+        # --- Shopping List Endpoints ---
 
-    """Generate a shopping list from a meal description."""
-    def:priv generate_list(meal: str) -> list[ShoppingItem] {
-        for item in [root-->][?:ShoppingItem] {
-            del item;
+        """Generate a shopping list from a meal description."""
+        def:priv generate_list(meal: str) -> list[ShoppingItem] {
+            for item in [root-->][?:ShoppingItem] {
+                del item;
+            }
+            ingredients = generate_shopping_list(meal);
+            for ing in ingredients {
+                root ++> ShoppingItem(
+                    name=ing.name, quantity=ing.quantity,
+                    unit=str(ing.unit).split(".")[-1].lower(),
+                    cost=ing.cost, carby=ing.carby
+                );
+            }
+            return [root-->][?:ShoppingItem];
         }
-        ingredients = generate_shopping_list(meal);
-        for ing in ingredients {
-            root ++> ShoppingItem(
-                name=ing.name, quantity=ing.quantity,
-                unit=str(ing.unit).split(".")[-1].lower(),
-                cost=ing.cost, carby=ing.carby
-            );
-        }
-        return [root-->][?:ShoppingItem];
-    }
 
-    """Get the current shopping list."""
-    def:priv get_shopping_list -> list[ShoppingItem] {
-        return [root-->][?:ShoppingItem];
-    }
-
-    """Clear the shopping list."""
-    def:priv clear_shopping_list -> dict[str, bool] {
-        for item in [root-->][?:ShoppingItem] {
-            del item;
+        """Get the current shopping list."""
+        def:priv get_shopping_list -> list[ShoppingItem] {
+            return [root-->][?:ShoppingItem];
         }
-        return {"cleared": True};
+
+        """Clear the shopping list."""
+        def:priv clear_shopping_list -> dict[str, bool] {
+            for item in [root-->][?:ShoppingItem] {
+                del item;
+            }
+            return {"cleared": True};
+        }
     }
     ```
 
@@ -2426,7 +2345,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                             <input
                                 type="text"
                                 value={username}
-                                onChange={lambda e: ChangeEvent { username = e.target.value; }}
+                                onChange={lambda (e: ChangeEvent) { username = e.target.value; }}
                                 placeholder="Enter username"
                                 class="auth-input"
                             />
@@ -2436,7 +2355,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                             <input
                                 type="password"
                                 value={password}
-                                onChange={lambda e: ChangeEvent { password = e.target.value; }}
+                                onChange={lambda (e: ChangeEvent) { password = e.target.value; }}
                                 placeholder="Enter password"
                                 class="auth-input"
                             />
@@ -2545,7 +2464,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                     <input
                         class="input"
                         value={taskText}
-                        onChange={lambda e: ChangeEvent { taskText = e.target.value; }}
+                        onChange={lambda (e: ChangeEvent) { taskText = e.target.value; }}
                         onKeyPress={handleKeyPress}
                         placeholder="What needs to be done today?"
                     />
@@ -2658,7 +2577,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                     <input
                         class="input"
                         value={mealText}
-                        onChange={lambda e: ChangeEvent { mealText = e.target.value; }}
+                        onChange={lambda (e: ChangeEvent) { mealText = e.target.value; }}
                         onKeyPress={handleKeyPress}
                         placeholder="e.g. 'chicken stir fry for 4'"
                     />
@@ -2818,7 +2737,7 @@ Step back and consider what you've built: a **complete, fully functional applica
 - **`import from "@jac/runtime"`** -- import Jac's built-in client-side utilities
 - **Component files** -- each component in its own `.cl.jac` file; the whole file is client-side, no `cl` prefixes needed
 - **`sv import from ..main { ... }`** -- bring server functions and node types into client files; the `..` is a relative import to the parent directory
-- **`to cl:`** / **`to sv:`** -- section headers that switch the default context for everything that follows, until the next `to X:` header or end of file
+- **`cl { }`** / **`sv { }`** -- braced blocks that tag a whole region of a file for the client or server codespace
 - **`can with [deps] entry`** -- dependency-triggered abilities (re-run when state changes); useful when the component owning the dependency stays mounted
 - **Optional: declaration/implementation split** -- `.cl.jac` for state + render tree, `.impl.jac` for `impl Component.method { ... }` bodies; reach for it only when a single component is too long to read top-to-bottom
 
@@ -2829,11 +2748,7 @@ Step back and consider what you've built: a **complete, fully functional applica
 
 ## Part 7: Object-Spatial Programming with Walkers
 
-Your day planner is complete -- tasks persist in the graph, AI categorizes them, and you can generate shopping lists. Everything works using `def:priv` functions that directly manipulate graph nodes. So why learn another approach?
-
-This final part introduces Jac's most distinctive feature: **Object-Spatial Programming (OSP)**. It represents a fundamentally different way of thinking about code. In traditional programming, functions *reach into* data structures to read and modify them. In OSP, you create **walkers** -- mobile units of computation that *travel through* the graph -- and **abilities** -- logic that triggers automatically when a walker arrives at a node. Instead of functions that know about the entire graph, you have agents that move to data and react to what they find.
-
-This section reimplements the day planner's backend using walkers. The app behavior stays identical -- the purpose here is purely educational: to teach you a paradigm that becomes increasingly valuable as your graphs grow deeper and more complex.
+Your day planner is complete -- tasks persist in the graph, AI categorizes them, and you can generate shopping lists, all through `def:priv` functions that directly manipulate graph nodes. This final part reimplements the same backend with Jac's most distinctive feature: **Object-Spatial Programming (OSP)**, where **walkers** (mobile units of computation) travel through the graph and **abilities** fire as they arrive at nodes. The paradigm itself is covered in [Object-Spatial Programming](../language/osp.md); here you apply it to the app. The behavior stays identical, and the approach becomes increasingly valuable as your graphs grow deeper and more complex.
 
 **What is a Walker?**
 
@@ -2851,8 +2766,6 @@ graph LR
     classDef walker stroke-width:3px,stroke-dasharray:none
     classDef ability stroke-width:2px,stroke-dasharray:3 3
 ```
-
-A helpful mental model: think of a walker like a robot moving through a building. At each room (node), it can look around (`here`), check its own clipboard (`self`), move to connected rooms (`visit`), and write down findings (`report`). The building doesn't change -- only the robot's position and what it does at each stop.
 
 The core keywords:
 
@@ -2968,7 +2881,7 @@ Three abilities work together:
 
 Notice `reports: list[list[Task]] = []` -- because `report self.results` reports a whole `list[Task]` in one go, the outer type is `list[list[Task]]`. This is the pattern you saw introduced above.
 
-A key insight here: the walker's `has results: list[Task] = []` state **persists across the entire traversal**. Unlike a local variable in a function call, walker state survives as the walker moves from node to node. This is what makes the accumulator pattern work -- the walker builds up its result set incrementally as it visits each node. And because the results are typed `Task` objects, the client receives them with all fields accessible via dot notation -- no manual dict construction needed.
+Walker state persists across the entire traversal, which is what makes the accumulator pattern work. And because the results are typed `Task` objects, the client receives them with all fields accessible via dot notation.
 
 Compare this to the function version:
 
@@ -2978,14 +2891,14 @@ def:priv get_tasks -> list[Task] {
 }
 ```
 
-For this simple, flat graph, the function version is clearly more concise. So when do walkers earn their keep? They shine when the graph is deeper. Imagine tasks containing subtasks, subtasks containing notes, and notes linking to related resources. A walker naturally recurses through the whole structure with `visit [-->]` at each level -- no nested loops, no recursive function calls, just "visit connected nodes" repeated at each depth.
+For this simple, flat graph, the function version is more concise. Walkers earn their keep as graphs get deeper (tasks containing subtasks containing notes): `visit [-->]` at each level recurses through the whole structure with no nested loops or recursive calls. [Object-Spatial Programming](../language/osp.md) develops this in depth.
 
 !!! warning "Common issue"
     If walker reports come back empty, make sure you have `visit [-->]` to send the walker to connected nodes, and that the node type in `with X entry` matches your graph structure.
 
 **Node Abilities**
 
-So far, all abilities have been defined on the **walker** (e.g., `can collect with Task entry`). But Jac offers an alternative: abilities can also live on the **node** itself. This is an important architectural choice to understand:
+Abilities can also live on the **node** instead of the walker:
 
 ```jac
 node Task {
@@ -2999,9 +2912,7 @@ node Task {
 }
 ```
 
-When a `ListTasks` walker visits a `Task` node, the node's `respond` ability fires automatically. Inside a node ability, **`visitor`** refers to the visiting walker (so you can access `visitor.results`).
-
-Both patterns achieve the same result. The design question is: where does the logic naturally belong? **Walker-side abilities** make sense when the logic is about the *traversal* -- how to navigate, what to collect, when to stop. **Node-side abilities** make sense when the logic is about the *data* -- how a node should present itself, what it should do when visited. In practice, you'll often mix both approaches within the same application.
+When a `ListTasks` walker visits a `Task` node, the node's `respond` ability fires automatically. Inside a node ability, **`visitor`** refers to the visiting walker (so you can access `visitor.results`). Walker-side abilities suit logic about the traversal; node-side abilities suit logic about the data. [Object-Spatial Programming](../language/osp.md) covers the trade-offs.
 
 **visit and disengage**
 
@@ -3015,7 +2926,7 @@ visit [-->] else {         # Fallback if no nodes to visit
 };
 ```
 
-**`disengage`** stops the walker immediately -- this is an optimization for cases where you've found what you're looking for and don't need to visit the remaining nodes:
+**`disengage`** stops the walker immediately once you've found what you're looking for:
 
 ```jac
 walker ToggleTask {
@@ -3033,8 +2944,6 @@ walker ToggleTask {
     }
 }
 ```
-
-Without `disengage`, the walker would continue visiting every remaining node unnecessarily.
 
 `DeleteTask` follows the same pattern, but omits `reports` because it only reports a status dict:
 
@@ -3058,7 +2967,7 @@ Reporting plain dicts is fine for simple status responses where no typed data ne
 
 **Multi-Step Traversals**
 
-The `GenerateShoppingList` walker demonstrates the real power of OSP -- performing multiple operations in a single graph traversal. Read this carefully, because the execution order is subtle and important:
+The `GenerateShoppingList` walker performs multiple operations in a single graph traversal. Read this carefully, because the execution order is subtle:
 
 ```jac
 walker GenerateShoppingList {
@@ -3088,7 +2997,7 @@ walker GenerateShoppingList {
 
 Here's the key to understanding this walker: when `visit [-->]` runs, it doesn't immediately move the walker. Instead, it **queues** all connected nodes for traversal **after the current ability body completes**. So the rest of `generate` runs first -- creating new `ShoppingItem` nodes and building the result list. Then, once the ability body finishes, the walker traverses to the queued nodes. If any of those are `ShoppingItem` nodes that existed *before* this ability ran, the `clear_old` ability fires and deletes them.
 
-Compare this to the function version, where you needed an explicit loop to clear old items before generating new ones. The walker version expresses the same intent more declaratively: "when I encounter a ShoppingItem, delete it." The cleanup logic is separated from the generation logic, making each piece easier to reason about independently.
+In the function version you needed an explicit loop to clear old items before generating new ones; here the cleanup lives in its own ability, separate from the generation logic.
 
 The remaining shopping walkers follow familiar patterns:
 
@@ -3118,7 +3027,7 @@ walker ClearShoppingList {
 
 **Spawning Walkers from the Frontend**
 
-Now that you understand how walkers work on the server, let's connect them to the frontend. In the `def:priv` version, the frontend called server functions directly with `await add_task(title)`. With walkers, the frontend **spawns** them instead -- a different syntax but the same transparent client-server communication.
+In the `def:priv` version, the frontend called server functions directly with `await add_task(title)`. With walkers, the frontend **spawns** them instead -- a different syntax but the same transparent client-server communication.
 
 **`sv import`** brings server walkers into client code:
 
@@ -3143,7 +3052,7 @@ result = root spawn AddTask(title=task_text.strip());
 new_task = result.reports[0];  # A typed Task object
 ```
 
-The key pattern: **`root spawn Walker(params)`** creates a walker and starts it at root. The walker traverses the graph, and whatever it `report`s ends up in `result.reports`. Since the walker reports typed `Task` objects, the client receives them with full field access -- `new_task.title`, `new_task.done`, `new_task.category` all work directly.
+Since the walker reports typed `Task` objects, the client receives them with full field access -- `new_task.title`, `new_task.done`, `new_task.category` all work directly.
 
 !!! tip "Guard against empty reports"
     A walker that visits no matching nodes returns an empty `result.reports`. When you fetch a list, prefer the safe form:
@@ -3162,7 +3071,7 @@ Just as `def:priv` gave functions per-user isolation, walkers can be marked with
 - **`walker AddTask`** -- public, anyone can spawn it
 - **`walker:priv AddTask`** -- private, requires authentication
 
-When you use `walker:priv`, the walker runs on the authenticated user's **own private root node**. User A's tasks are completely invisible to User B -- same code, isolated data, enforced by the runtime. The complete walker version below uses `:priv` on all walkers, combined with the authentication you learned in Part 6.
+When you use `walker:priv`, the walker runs on the authenticated user's **own private root node**, giving the same per-user isolation as `def:priv`. The complete walker version below uses `:priv` on all walkers, combined with the authentication you learned in Part 6.
 
 **The Complete Walker Version**
 
@@ -3178,7 +3087,7 @@ When you use `walker:priv`, the walker runs on the authenticated user's **own pr
 To try the walker-based version, create a new project:
 
 ```bash
-jac create day-planner-v2 --use web-static
+jac create day-planner-v2 --kind web-static
 cd day-planner-v2
 ```
 
@@ -3207,162 +3116,162 @@ The three files that change are in the collapsible sections below. Copy the unch
     ```jac
     """AI Day Planner -- walker-based version with OSP."""
 
-    to cl:
+    cl {
+        import from frontend { app as ClientApp }
 
-    import from frontend { app as ClientApp }
-
-    def:pub app -> JsxElement {
-        return
-            <ClientApp />;
-    }
-
-    to sv:
-
-    # --- Enums ---
-
-    enum Category { WORK, PERSONAL, SHOPPING, HEALTH, FITNESS, OTHER }
-
-    enum Unit { PIECE, LB, OZ, CUP, TBSP, TSP, BUNCH }
-
-    # --- AI Types ---
-
-    obj Ingredient {
-        has name: str,
-            quantity: float,
-            unit: Unit,
-            cost: float,
-            carby: bool;
-    }
-
-    sem Ingredient.cost = "Estimated cost in USD";
-    sem Ingredient.carby = "True if this ingredient is high in carbohydrates";
-
-    def categorize(title: str) -> Category by llm();
-    sem categorize = "Categorize a task based on its title";
-
-    def generate_shopping_list(meal_description: str) -> list[Ingredient] by llm();
-    sem generate_shopping_list = "Generate a shopping list of ingredients needed for a described meal";
-
-    # --- Data Nodes ---
-
-    node Task {
-        has title: str,
-            done: bool = False,
-            category: str = "other";
-    }
-
-    node ShoppingItem {
-        has name: str,
-            quantity: float,
-            unit: str,
-            cost: float,
-            carby: bool;
-    }
-
-    # --- Task Walkers ---
-
-    walker:priv AddTask {
-        has title: str,
-            reports: list[Task] = [];
-
-        can create with Root entry {
-            category = str(categorize(self.title)).split(".")[-1].lower();
-            new_task = here ++> Task(title=self.title, category=category);
-            report new_task;
+        def:pub app -> JsxElement {
+            return
+                <ClientApp />;
         }
     }
 
-    walker:priv ListTasks {
-        has results: list[Task] = [],
-            reports: list[list[Task]] = [];
+    sv {
+        # --- Enums ---
 
-        can start with Root entry {
-            visit [-->];
+        enum Category { WORK, PERSONAL, SHOPPING, HEALTH, FITNESS, OTHER }
+
+        enum Unit { PIECE, LB, OZ, CUP, TBSP, TSP, BUNCH }
+
+        # --- AI Types ---
+
+        obj Ingredient {
+            has name: str,
+                quantity: float,
+                unit: Unit,
+                cost: float,
+                carby: bool;
         }
 
-        can collect with Task entry {
-            self.results.append(here);
+        sem Ingredient.cost = "Estimated cost in USD";
+        sem Ingredient.carby = "True if this ingredient is high in carbohydrates";
+
+        def categorize(title: str) -> Category by llm();
+        sem categorize = "Categorize a task based on its title";
+
+        def generate_shopping_list(meal_description: str) -> list[Ingredient] by llm();
+        sem generate_shopping_list = "Generate a shopping list of ingredients needed for a described meal";
+
+        # --- Data Nodes ---
+
+        node Task {
+            has title: str,
+                done: bool = False,
+                category: str = "other";
         }
 
-        can done with Root exit {
-            report self.results;
+        node ShoppingItem {
+            has name: str,
+                quantity: float,
+                unit: str,
+                cost: float,
+                carby: bool;
         }
-    }
 
-    walker:priv ToggleTask {
-        has task_id: str,
-            reports: list[Task] = [];
+        # --- Task Walkers ---
 
-        can search with Root entry { visit [-->]; }
+        walker:priv AddTask {
+            has title: str,
+                reports: list[Task] = [];
 
-        can toggle with Task entry {
-            if jid(here) == self.task_id {
-                here.done = not here.done;
-                report here;
-                disengage;
+            can create with Root entry {
+                category = str(categorize(self.title)).split(".")[-1].lower();
+                new_task = here ++> Task(title=self.title, category=category);
+                report new_task;
             }
         }
-    }
 
-    walker:priv DeleteTask {
-        has task_id: str;
+        walker:priv ListTasks {
+            has results: list[Task] = [],
+                reports: list[list[Task]] = [];
 
-        can search with Root entry { visit [-->]; }
+            can start with Root entry {
+                visit [-->];
+            }
 
-        can remove with Task entry {
-            if jid(here) == self.task_id {
+            can collect with Task entry {
+                self.results.append(here);
+            }
+
+            can done with Root exit {
+                report self.results;
+            }
+        }
+
+        walker:priv ToggleTask {
+            has task_id: str,
+                reports: list[Task] = [];
+
+            can search with Root entry { visit [-->]; }
+
+            can toggle with Task entry {
+                if jid(here) == self.task_id {
+                    here.done = not here.done;
+                    report here;
+                    disengage;
+                }
+            }
+        }
+
+        walker:priv DeleteTask {
+            has task_id: str;
+
+            can search with Root entry { visit [-->]; }
+
+            can remove with Task entry {
+                if jid(here) == self.task_id {
+                    del here;
+                    report {"deleted": self.task_id};
+                    disengage;
+                }
+            }
+        }
+
+        # --- Shopping List Walkers ---
+
+        walker:priv GenerateShoppingList {
+            has meal_description: str,
+                reports: list[list[ShoppingItem]] = [];
+
+            can generate with Root entry {
+                visit [-->];
+                ingredients = generate_shopping_list(self.meal_description);
+                for ing in ingredients {
+                    here ++> ShoppingItem(
+                        name=ing.name,
+                        quantity=ing.quantity,
+                        unit=str(ing.unit).split(".")[-1].lower(),
+                        cost=ing.cost,
+                        carby=ing.carby
+                    );
+                }
+                report [here-->][?:ShoppingItem];
+            }
+
+            can clear_old with ShoppingItem entry {
                 del here;
-                report {"deleted": self.task_id};
-                disengage;
             }
         }
-    }
 
-    # --- Shopping List Walkers ---
+        walker:priv GetShoppingList {
+            has items: list[ShoppingItem] = [],
+                reports: list[list[ShoppingItem]] = [];
 
-    walker:priv GenerateShoppingList {
-        has meal_description: str,
-            reports: list[list[ShoppingItem]] = [];
+            can collect with Root entry { visit [-->]; }
 
-        can generate with Root entry {
-            visit [-->];
-            ingredients = generate_shopping_list(self.meal_description);
-            for ing in ingredients {
-                here ++> ShoppingItem(
-                    name=ing.name,
-                    quantity=ing.quantity,
-                    unit=str(ing.unit).split(".")[-1].lower(),
-                    cost=ing.cost,
-                    carby=ing.carby
-                );
+            can gather with ShoppingItem entry {
+                self.items.append(here);
             }
-            report [here-->][?:ShoppingItem];
+
+            can done with Root exit { report self.items; }
         }
 
-        can clear_old with ShoppingItem entry {
-            del here;
-        }
-    }
+        walker:priv ClearShoppingList {
+            can collect with Root entry { visit [-->]; }
 
-    walker:priv GetShoppingList {
-        has items: list[ShoppingItem] = [],
-            reports: list[list[ShoppingItem]] = [];
-
-        can collect with Root entry { visit [-->]; }
-
-        can gather with ShoppingItem entry {
-            self.items.append(here);
-        }
-
-        can done with Root exit { report self.items; }
-    }
-
-    walker:priv ClearShoppingList {
-        can collect with Root entry { visit [-->]; }
-
-        can clear with ShoppingItem entry {
-            del here;
-            report {"cleared": True};
+            can clear with ShoppingItem entry {
+                del here;
+                report {"cleared": True};
+            }
         }
     }
     ```
@@ -3422,7 +3331,7 @@ The three files that change are in the collapsible sections below. Copy the unch
                     <input
                         class="input"
                         value={taskText}
-                        onChange={lambda e: ChangeEvent { taskText = e.target.value; }}
+                        onChange={lambda (e: ChangeEvent) { taskText = e.target.value; }}
                         onKeyPress={handleKeyPress}
                         placeholder="What needs to be done today?"
                     />
@@ -3513,7 +3422,7 @@ The three files that change are in the collapsible sections below. Copy the unch
                     <input
                         class="input"
                         value={mealText}
-                        onChange={lambda e: ChangeEvent { mealText = e.target.value; }}
+                        onChange={lambda (e: ChangeEvent) { mealText = e.target.value; }}
                         onKeyPress={handleKeyPress}
                         placeholder="e.g. 'chicken stir fry for 4'"
                     />

@@ -1,6 +1,6 @@
-# Part II: Functions and Objects
+# Functions and Objects
 
-**In this part:**
+**On this page:**
 
 - [Functions and Abilities](#functions-and-abilities) - Function declaration, parameters, abilities
 - [Object-Oriented Programming](#object-oriented-programming) - Objects, inheritance, enums
@@ -8,7 +8,7 @@
 
 ---
 
-This part covers Jac's approach to functions and object-oriented programming. Jac uses `def` for standalone functions and `can` for methods (called "abilities") on objects. The key difference from Python: `has` declarations make your data model explicit, and `impl` blocks let you separate interface from implementation.
+This part covers Jac's approach to functions and object-oriented programming. Jac uses `def` for functions and methods, and `can` for event-triggered abilities on archetypes. The key difference from Python: `has` declarations make your data model explicit, and `impl` blocks let you separate interface from implementation.
 
 ## Functions and Abilities
 
@@ -189,7 +189,7 @@ walker ListItems {
 }
 ```
 
-> See [Part III: OSP](osp.md) for complete walker and ability documentation.
+> See [Object-Spatial Programming](osp.md) for complete walker and ability documentation.
 
 ### 5 Methods
 
@@ -305,33 +305,39 @@ with entry {
 
 ### 7 Lambda Expressions
 
-```jac
-# Simple lambda (note spacing around type annotations)
-glob add = lambda a: int , b: int -> int : a + b;
+Lambda parameters are parenthesized and the body is always braced; a
+zero-parameter lambda may omit the parens entirely (`lambda { 42; }`). A body
+that is a single expression statement is the **implicit return**
+(`lambda (x: int) { x + 1; }` returns `x + 1`); a multi-statement body uses an
+explicit `return` (with no `return`, it returns `None`).
 
-# Lambda with block
-glob process = lambda x: int -> int {
+```jac
+# Simple lambda -- single expression statement is the implicit return
+glob add = lambda (a: int, b: int) -> int { a + b; };
+
+# Lambda with a multi-statement block (explicit return)
+glob process = lambda (x: int) -> int {
     result = x * 2;
     result += 1;
     return result;
 };
 
-# Lambda without parameters
-glob get_value = lambda : 42;
+# Lambda without parameters (parens optional when there are none)
+glob get_value = lambda { 42; };
 
 # Lambda with return type only
-glob get_default = lambda -> int : 100;
+glob get_default = lambda -> int { 100; };
 
 # Lambda with default parameters
-glob power = lambda x: int = 2 , y: int = 3 : x ** y;
+glob power = lambda (x: int = 2, y: int = 3) { x ** y; };
 
 # Using lambdas
 glob numbers = [1, 2, 3, 4, 5];
-glob squared = list(map(lambda x: int : x ** 2, numbers));
-glob evens = list(filter(lambda x: int : x % 2 == 0, numbers));
+glob squared = list(map(lambda (x: int) { x ** 2; }, numbers));
+glob evens = list(filter(lambda (x: int) { x % 2 == 0; }, numbers));
 
 # Lambda returning lambda (closure -- see callout below)
-glob make_adder = lambda x: int : (lambda y: int : x + y);
+glob make_adder = lambda (x: int) { lambda (y: int) { x + y; }; };
 glob add_five = make_adder(5);  # add_five(10) returns 15
 ```
 
@@ -339,7 +345,7 @@ glob add_five = make_adder(5);  # add_five(10) returns 15
     A lambda (or nested `def`) captures variables from its enclosing scope, producing a *closure*. Each call to the outer function creates a fresh binding, so independently configured callables don't share state:
 
     ```jac
-    glob make_adder = lambda x: int : (lambda y: int : x + y);
+    glob make_adder = lambda (x: int) { lambda (y: int) { x + y; }; };
 
     with entry {
         add_five = make_adder(5);
@@ -359,7 +365,7 @@ An *Immediately Invoked Function Expression* defines a function and calls it in 
 
 ```jac
 with entry {
-    result = (lambda x: int -> int : x * 2)(5);   # result = 10
+    result = (lambda (x: int) -> int { x * 2; })(5);   # result = 10
 }
 ```
 
@@ -381,7 +387,7 @@ with entry {
 ```jac
 with entry {
     adder = (def make_adder(x: int) {
-        return lambda y: int : x + y;
+        return lambda (y: int) { x + y; };
     })(10);
 
     print(adder(5));   # 15
@@ -397,7 +403,7 @@ obj Counter {
     def get -> int  { return self.count; }
 }
 
-glob make_counter = lambda start: int -> Counter : Counter(count=start);
+glob make_counter = lambda (start: int) -> Counter { Counter(count=start); };
 
 with entry {
     c = make_counter(10);
@@ -412,13 +418,13 @@ with entry {
 !!! tip "Coming from JavaScript?"
     | JS idiom | Jac equivalent |
     |---|---|
-    | `x => x + 1` | `lambda x: int : x + 1` |
-    | `() => ({a: 1})` | `lambda : {"a": 1}` |
+    | `x => x + 1` | `lambda (x: int) { x + 1; }` |
+    | `() => ({a: 1})` | `lambda { {"a": 1}; }` |
     | `(() => 42)()` | `(def () -> int { return 42; })()` |
-    | `x => y => x + y` | `lambda x: int : (lambda y: int : x + y)` |
+    | `x => y => x + y` | `lambda (x: int) { lambda (y: int) { x + y; }; }` |
     | anonymous `class { ... }` | not supported -- declare a named `obj` and return instances |
 
-    Jac lambdas require type annotations on parameters and a space before the body colon (`lambda x: int : x + 1`).
+    Jac lambdas require type annotations on parameters and a braced body; a bare trailing expression is the implicit return (`lambda (x: int) { x + 1; }`).
 
 ### 9 Decorators
 
@@ -428,7 +434,7 @@ def decorator(func: object) -> object {
 }
 
 def decorator_with_args(arg1: object, arg2: object) -> object {
-    return lambda func: object: func;
+    return lambda (func: object) { func; };
 }
 
 @decorator
@@ -476,7 +482,7 @@ The same tags mean *member encapsulation* on a `has`/`def` declared inside an ar
     with entry {
         print(greet("World"));
         print(add(3, 4));
-        print(apply(lambda x: int, y: int -> int { return x * y; }, 5, 6));
+        print(apply(lambda (x: int, y: int) -> int { return x * y; }, 5, 6));
     }
     ```
 
@@ -484,11 +490,11 @@ The same tags mean *member encapsulation* on a `has`/`def` declared inside an ar
 
 ## Object-Oriented Programming
 
-Jac uses `obj` instead of `class` to define types (though `class` is also supported for Python compatibility). The key differences from Python: fields are declared with `has` at the top of the definition, methods use `can` instead of `def`, and there's no explicit `__init__` -- the constructor is generated automatically from `has` declarations.
+Jac uses `obj` instead of `class` to define types (though `class` is also supported for Python compatibility). The key differences from Python: fields are declared with `has` at the top of the definition, and there's no explicit `__init__` -- the constructor is generated automatically from `has` declarations.
 
 ### 1 Objects (Classes)
 
-Objects are Jac's basic unit of data and behavior. Use `obj` for general-purpose types. For graph-based programming, use `node`, `edge`, or `walker` instead (see Part III: OSP).
+Objects are Jac's basic unit of data and behavior. Use `obj` for general-purpose types. For graph-based programming, use `node`, `edge`, or `walker` instead (see [Object-Spatial Programming](osp.md)).
 
 !!! note "When to use `obj` vs `class`"
     Jac's `obj` enforces stricter semantics than Python's `class` -- fields are declared upfront with `has`, constructors are auto-generated, and the structure is designed to be portable across codespaces (server, client, native). This strictness is intentional: it enables the compiler to target multiple execution environments from the same source code.
@@ -553,15 +559,15 @@ with entry {
 }
 ```
 
-#### Initialization with `by postinit`
+#### Initialization with `postinit`
 
-If an attribute's value depends on other fields or requires complex calculation during setup, use the `by postinit` modifier and define a `postinit` method.
+If an attribute's value depends on other fields or requires complex calculation during setup, use the `postinit` field modifier and define a `postinit` method.
 
 ```jac
 obj Rectangle {
     has width: float,
         height: float;
-    has area: float by postinit;
+    has area: float postinit;
 
     def postinit() {
         self.area = self.width * self.height;
@@ -698,7 +704,7 @@ with entry {
 | `enum X: str { A = "a" }` | `class X(StrEnum)` |
 | `enum X: T { A = T(...) }` | `class X(T, Enum)` (mixin) |
 
-The mixin form is useful when members must carry behavior or state from a custom type:
+Prefer the `: int` / `: str` forms above for the common case. The mixin form over a custom `obj`/`class` base is a thin wrapper over Python's `class X(T, Enum)` and behaves **surprisingly**: the value you assign to a member is passed to the base's constructor rather than transparently proxied, so a member does *not* expose the wrapped instance's attributes the way you might expect.
 
 ```jac
 obj Box {
@@ -706,10 +712,18 @@ obj Box {
 }
 
 enum Crate: Box {
-    SMALL = Box(),
-    LARGE = Box()
+    SMALL = Box(size=1),
+    LARGE = Box(size=9)
+}
+
+with entry {
+    # Surprising: not the int 1
+    print(Crate.SMALL.size);    # Box(size=1)
+    print(Crate.SMALL.value);   # Box(size=Box(size=1))
 }
 ```
+
+Reach for the mixin form only when `T` itself subclasses a primitive; for members that should carry rich state, use a plain `enum` whose members map to real `obj` instances, or store the data on the members some other way.
 
 ### 5 Enums with Inline Python
 
@@ -908,6 +922,8 @@ impl Calculator.multiply {
 
 A single logical module can be split across *variant files* that target different execution contexts. Variant suffixes are `.sv.jac` (server), `.cl.jac` (client), and `.na.jac` (native). All files sharing the same base name are automatically discovered and compiled together.
 
+Variant files are an *explicit* placement mechanism, and for the client side they are optional: the compiler infers client placement from client-only syntax (JSX, npm imports) in plain `.jac` files, so splitting a module into `.cl.jac` variants is a style choice rather than a requirement. Native placement is likewise inferred when code uses an extern C surface: an import whose braces declare C-ABI functions (e.g. `import from raylib { def InitWindow(w: i32, h: i32, title: str) -> None; }`) seeds native placement for itself and the declarations that use it. For pure native-compatible code with no such FFI seed, the `.na.jac` variant (or an `na {}` block) remains how native code is declared.
+
 **Head module precedence:** `.jac` > `.sv.jac` > `.cl.jac` > `.na.jac`. The highest-precedence file that exists on disk becomes the *head module*; all lower-precedence variants are attached as variant annexes. If no plain `.jac` file exists, the next available variant acts as head.
 
 ```
@@ -1049,5 +1065,5 @@ with entry {
 
 **Related Reference:**
 
-- [Part I: Foundation](foundation.md) - Variables, types, control flow
-- [Part III: OSP](osp.md) - Nodes, edges, walkers
+- [Types and Values](types-and-values.md), [Variables and Scope](variables-and-scope.md), [Control Flow](control-flow.md) - The language core
+- [Object-Spatial Programming](osp.md) - Nodes, edges, walkers

@@ -463,6 +463,34 @@ test "dev section parsing" {
     assert as_int.dev.test_jobs == "0";
 }
 
+test "parse build native_closure_cap" {
+    config_mod._config = None;
+    cfg = JacConfig.from_toml_str("\n[build]\nnative_closure_cap = 8\n");
+    assert cfg.build.native_closure_cap == 8;
+
+    config_mod._config = None;
+    base = JacConfig.from_toml_str("\n[build]\ntypecheck = true\n");
+    assert base.build.native_closure_cap == 256;
+
+    config_mod._config = None;
+    bad = JacConfig.from_toml_str("\n[build]\nnative_closure_cap = 0\n");
+    assert bad.build.native_closure_cap == 256 , "invalid cap falls back to default";
+}
+
+test "closure cap override resolves through effective_native_closure_cap" {
+    import from jaclang.jac0core.codeinfo {
+        set_native_closure_cap,
+        effective_native_closure_cap
+    }
+    set_native_closure_cap(3);
+    try {
+        assert effective_native_closure_cap() == 3;
+    } finally {
+        set_native_closure_cap(0);
+    }
+    assert effective_native_closure_cap() == 256;
+}
+
 test "parse full config" {
     config_mod._config = None;
     toml_str = "\n[project]\nname = \"full-project\"\nversion = \"1.2.3\"\ndescription = \"A full project\"\nauthors = [\"Jane Doe <jane@example.com>\"]\nlicense = \"MIT\"\nentry-point = \"app.jac\"\n\n[dependencies]\nnumpy = \">=1.24.0\"\npandas = \">=2.0.0\"\n\n[run]\nsession = \"my_session\"\nmain = false\ncache = false\n\n[build]\ntypecheck = true\n\n[test]\ndirectory = \"tests\"\nverbose = true\nfail_fast = true\nmax_failures = 5\n\n[serve]\nport = 9000\n\n[cache]\nenabled = false\ndir = \".cache\"\n\n[scripts]\nstart = \"jac run app.jac\"\nlint = \"jac lint . --fix\"\n\n[byllm]\ndefault_model = \"gpt-4\"\ntemperature = 0.7\n\n[environments.development]\n[environments.development.serve]\nport = 3000\n\n[environments.production]\n[environments.production.serve]\nport = 8000\n";
@@ -1764,6 +1792,79 @@ jaclang = ">=0.15.2"
         # save() must not leave behind a stray empty [plugins] table.
         assert "plugins" not in parsed , "empty [plugins] table must not be emitted";
         assert parsed["dependencies"]["rich"] == ">=13.0.0";
+    }
+}
+
+test "save preserves comments when adding a dependency" {
+    # save() must perform a surgical edit of jac.toml: adding one dependency
+    # may not delete user comments, reorder keys, or touch unrelated lines.
+    config_mod._config = None;
+    commented_toml = """# Top-level note about this project.
+[project]
+name = "repro"
+version = "0.1.0"  # keep in sync with git tags
+
+[dependencies]
+# Pinned <5.0.0 deliberately: bcrypt 5.x breaks our password hashes.
+# DO NOT BUMP without migrating the hash format first.
+bcrypt = ">=4.0.0,<5.0.0"
+""";
+    with TemporaryDirectory() as tmpdir {
+        toml_path = Path(tmpdir) / "jac.toml";
+        toml_path.write_text(commented_toml);
+        cfg = JacConfig.load(toml_path);
+        cfg.add_dependency("httpx", "~=0.28");
+        cfg.save();
+        saved = toml_path.read_text();
+        assert "# Top-level note about this project." in saved , (
+            "full-line comments must survive save()"
+        );
+        assert "# keep in sync with git tags" in saved , (
+            "inline trailing comments must survive save()"
+        );
+        assert "# DO NOT BUMP without migrating the hash format first." in saved , (
+            "comments inside [dependencies] must survive save()"
+        );
+        assert 'bcrypt = ">=4.0.0,<5.0.0"' in saved , (
+            "untouched dependency lines must be preserved verbatim"
+        );
+        parsed = tomllib.loads(saved);
+        assert parsed["dependencies"]["httpx"] == "~=0.28";
+        assert parsed["dependencies"]["bcrypt"] == ">=4.0.0,<5.0.0";
+    }
+}
+
+test "save preserves comments when removing a dependency" {
+    # Removing one dependency must delete only that key's line; every comment
+    # and unrelated line stays byte-for-byte intact.
+    config_mod._config = None;
+    commented_toml = """[project]
+name = "repro"
+version = "0.1.0"
+
+[dependencies]
+# httpx stays on 0.28 until the retry middleware is ported.
+httpx = "~=0.28"
+# bcrypt 5.x breaks our password hashes.
+bcrypt = ">=4.0.0,<5.0.0"
+
+[dev-dependencies]
+# pytest 9 drops the plugin API we rely on.
+pytest = ">=8.0.0,<9.0.0"
+""";
+    with TemporaryDirectory() as tmpdir {
+        toml_path = Path(tmpdir) / "jac.toml";
+        toml_path.write_text(commented_toml);
+        cfg = JacConfig.load(toml_path);
+        assert cfg.remove_dependency("httpx");
+        cfg.save();
+        saved = toml_path.read_text();
+        assert "# bcrypt 5.x breaks our password hashes." in saved;
+        assert "# pytest 9 drops the plugin API we rely on." in saved;
+        assert 'bcrypt = ">=4.0.0,<5.0.0"' in saved;
+        assert 'pytest = ">=8.0.0,<9.0.0"' in saved;
+        parsed = tomllib.loads(saved);
+        assert "httpx" not in parsed["dependencies"];
     }
 }
 

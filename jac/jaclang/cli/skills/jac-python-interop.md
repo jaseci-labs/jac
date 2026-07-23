@@ -95,7 +95,7 @@ spawn(w, root())
 print(w.names)
 ```
 
-Library-mode basics: archetypes subclass `Node` / `Edge` / `Walker` / `Obj`, abilities are `@on_entry` methods, `connect(a, b)` ≈ `a ++> b`, `spawn(walker, node)` ≈ `node spawn walker`. **`root` is a function in library mode** (`root()`), the opposite of `.jac` source where bare `root` is the keyword and `root()` warns W0062.
+Library-mode basics: archetypes subclass `Node` / `Edge` / `Walker` / `Obj`, abilities are `@on_entry` methods, `connect(a, b)` ≈ `a ++> b`, `spawn(walker, node)` ≈ `node spawn walker`. **`root` is a function in library mode** (`root()`), the opposite of `.jac` source where bare `root` is the keyword and `root()` is a hard error (E0049).
 
 `jac tool jac2py file.jac` prints the equivalent library-mode Python - the fastest way to learn the `jaclang.lib` API or to hand a module to a Python-only team.
 
@@ -105,7 +105,7 @@ Library-mode basics: archetypes subclass `Node` / `Edge` / `Walker` / `Obj`, abi
 - **`import:py` does not exist** - plain `import numpy as np;` is the Python-import syntax. See `jac-core-cheatsheet`.
 - Brace imports take no trailing `;` (`import from x { y }`); module imports do (`import x;`).
 - Don't reach into `jaclang.jac0core.jaclib` (what generated code uses internally) - the public, stable surface is `jaclang.lib`.
-- In native (`.na.jac`) code the rules differ - only a Python-congruent stdlib subset is available and unsupported imports fail at compile time; see `jac-native`.
+- In native code the rules differ - only a Python-congruent stdlib subset is available and unsupported imports fail at compile time; see `jac-native`.
 
 ## See also
 

@@ -1,4 +1,5 @@
 import logging;
+import threading;
 import from dataclasses { fields, is_dataclass, MISSING }
 import from datetime { date, datetime, time }
 import from enum { Enum }
@@ -29,11 +30,15 @@ import from jaclang.jac0core.constructs {
 }
 
 glob logger = logging.getLogger(__name__),
-     FINGERPRINT_LENGTH: int = 16;
+     FINGERPRINT_LENGTH: int = 16,
+     _MAX_WARNED_CLASS_KEYS: int = 1024;
 
 obj Serializer {
     static has _registry: dict[str, type] = {},
-        _aliases: dict[str, str] = {};
+        _aliases: dict[str, str] = {},
+        _warned_class_keys: set[str] = set(),
+        _warn_dedup_saturated: bool = False,
+        _warn_lock: any = threading.Lock();
 
     static def register(cls: type) -> None;
     static def register_alias(old_name: str, cls: type) -> None;
@@ -68,6 +73,8 @@ obj Serializer {
     static def _deserialize_value(val: object) -> object;
     static def _deserialize_jac_ref(data: dict[str, object]) -> (object | None);
     static def _get_class(module_name: str, class_name: str) -> (type | None);
+    static def _should_warn_once(scope: str, key: str) -> bool;
+    static def _reset_warn_cache -> None;
     static def _id_to_stub(anchor_cls: type, id_str: str) -> (object | None);
     static def _deserialize_anchor(data: dict[str, object]) -> (object | None);
     static def _deserialize_permission(data: object) -> object;
@@ -83,13 +90,12 @@ obj Serializer {
 }
 
 glob _register_hook: object = Archetype._subclass_hooks.append(
-         lambda cls: type :
-             Serializer.register(cls)
-                 if (
-                     not cls.__module__.startswith('jaclang.')
-                     or cls.__module__.startswith('jaclang.scale.')
-                 )
-                 else None
+         lambda (cls: type) { Serializer.register(cls)
+             if (
+                 not cls.__module__.startswith('jaclang.')
+                 or cls.__module__.startswith('jaclang.scale.')
+             )
+             else None; }
      ),
      _register_root: object = Serializer.register(cast(type, Root)),
      _register_generic_edge: object = Serializer.register(cast(type, GenericEdge));

@@ -2170,8 +2170,8 @@ test "jac check nowarn flag suppresses warnings" {
     # Should still exit with code 0
     assert result == 0 , "check should exit with code 0 when warnings are suppressed";
 
-    # Should show PASSED status
-    assert "PASSED" in combined , "should show PASSED when warnings are suppressed";
+    # Should show ok status
+    assert "ok" in combined , "should show ok when warnings are suppressed";
 
     # Should NOT show detailed warning messages
     assert "defined but never used" not in combined , "should not display warning details when nowarn=True";
@@ -2242,6 +2242,55 @@ test "jac check disable_error_code warns on unknown diagnostics" {
         "unknown codes should produce an explicit warning"
     );
     assert "E9999" in combined , "unknown warning should use canonical code casing";
+}
+
+test "jac check native-census flag maps to check arg" {
+    parser = get_registry().finalize();
+    (args, _) = parser.parse_known_args(
+        ["check", fixture_path("warnings_only.jac"), "--native-census"]
+    );
+    assert getattr(args, "native_census", False) == True , (
+        "kebab flag should map to native_census dest"
+    );
+}
+
+test "jac check native census ranks module outcomes" {
+    with tempfile.TemporaryDirectory() as td {
+        with open(os.path.join(td, "pure.jac"), "w") as f {
+            f.write("def add(a: int, b: int) -> int {\n    return a + b;\n}\n");
+        }
+        with open(os.path.join(td, "demote.jac"), "w") as f {
+            f.write(
+                "obj Widget {\n    has size: int = 0;\n\n    def render -> str {\n" + "        return \"ok\";\n    }\n}\n\ndef build -> str {\n" + "    w: any = Widget();\n    return w.render();\n}\n"
+            );
+        }
+        with open(os.path.join(td, "blocked.jac"), "w") as f {
+            f.write(
+                "node Item {\n    has label: str = \"\";\n}\n\n" + "def pin(label: str) -> int {\n    root ++> Item(label=label);\n" + "    return 1;\n}\n"
+            );
+        }
+        (captured_stdout, captured_stderr, old_stdout, old_stderr) = _capture_output();
+        _reset_config();
+        try {
+            result = analysis.check([td], native_census=True);
+            combined = captured_stdout.getvalue() + captured_stderr.getvalue();
+        } finally {
+            _restore_output(old_stdout, old_stderr);
+            set_config(None);
+            _reset_config();
+        }
+        assert "native census" in combined.lower() , "census header missing";
+        assert "E5092" in combined , (
+            "demoted module must be ranked by its first error code"
+        );
+        assert "demote.jac" in combined , "demoted module path missing";
+        assert "blocked.jac" in combined , "server module path missing";
+        assert "pure.jac" in combined , "native module path missing";
+        assert "root access (persistent graph)" in combined , (
+            "server reason strings must be real signal labels"
+        );
+        assert result == 0 , "census demotions must not flip exit code";
+    }
 }
 
 test "lexer does not hang on unterminated jsx" {
@@ -2318,9 +2367,11 @@ test "jir_registry is up to date" {
 test "jac check reports errors for files inside jaclang source tree" {
     # Regression: _resolve_program routed jaclang-internal files to
     # internal_program, so errors were invisible to the caller's JacProgram.
-    # force_target_program=True (set by jac check) fixes this.
+    # force_target_program=True (set by jac check) fixes this. The fixture
+    # is deliberately ill-typed so this test never depends on an incidental
+    # compiler bug in a shared fixture.
     internal_fixture = os.path.join(
-        JAC_ROOT, "jaclang", "compiler", "tests", "fixtures", "prim_float.jac"
+        JAC_ROOT, "jaclang", "compiler", "tests", "fixtures", "always_type_error.jac"
     );
     captured_stdout = io.StringIO();
     captured_stderr = io.StringIO();
@@ -2340,8 +2391,8 @@ test "jac check reports errors for files inside jaclang source tree" {
 
     combined = stdout + stderr;
 
-    # prim_float.jac has type errors (unary + returns Unknown) — check must
-    # report them even though the file lives inside the jaclang package.
+    # always_type_error.jac is deliberately ill-typed — check must report
+    # its errors even though the file lives inside the jaclang package.
     assert result == 1 , (
         "jac check should report errors for jaclang-internal files, "
         f"but returned exit code {result}. Output:\n{combined}"
@@ -2491,7 +2542,11 @@ test "jir reload preserves FuncCall callee_decl and call_kind" {
                 "def caller(x: int) -> int { return helper(x) + helper(x); }\n"
             );
         }
-        mod = JacProgram().compile(file_path=src);
+        import from jaclang.jac0core.compile_options { CompileOptions }
+        mod = JacProgram().compile(
+            file_path=src,
+            options=CompileOptions(type_check=False, default_codespace='server')
+        );
         fresh = mod.get_all_sub_nodes(uni.FuncCall);
         assert len(fresh) >= 2 , f"expected FuncCalls in fresh AST, got {len(fresh)}";
         for fc in fresh {

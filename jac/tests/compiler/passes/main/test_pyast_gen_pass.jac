@@ -329,18 +329,25 @@ test "iife fixture executes" {
     }
 }
 
-test "string literal import requires cl" {
+test "string literal import infers cl but rejects sv pin" {
     code = """import from "react-dom" { render }""";
     prog = JacProgram();
     prog.compile(file_path="test.jac", use_str=code);
-    assert prog.errors_had;
-    error_messages = [str(e) for e in prog.errors_had];
+    assert not prog.errors_had , (
+        f"Unmarked string import should infer client placement, got: {[
+            str(e) for e in prog.errors_had
+        ]}"
+    );
+
+    pinned = """sv { import from "react-dom" { render } }""";
+    prog2 = JacProgram();
+    prog2.compile(file_path="test_pinned.jac", use_str=pinned);
+    assert prog2.errors_had;
+    error_messages = [str(e) for e in prog2.errors_had];
     assert any(
         "String literal imports" in msg and "client (cl) imports" in msg
         for msg in error_messages
-    ) , (
-        f"Expected error about string literal imports requiring cl, got: {error_messages}"
-    );
+    ) , (f"Expected error for server-pinned string import, got: {error_messages}");
 }
 
 test "string literal import works with cl" {
@@ -359,7 +366,7 @@ test "match case empty wildcard body compiles" {
 with entry {
     x = 42;
     match x {
-        case 1: print("one");
+        case 1: _ = "one";
         case _:;
     }
 }
@@ -542,4 +549,36 @@ test "import type wraps in TYPE_CHECKING and resolves circular imports" {
             sys.path.remove(FIXTURES);
         }
     }
+}
+
+test "byte-string multistring lit_value returns bytes without crashing" {
+    # Adjacent byte-string literals form one MultiString node whose parts'
+    # lit_value are bytes. The getter must join homogeneously and return
+    # bytes, not raise TypeError (issue #7363). A plain str multistring
+    # must still return str.
+    code = """
+with entry {
+    b = b"ab" b"cd";
+    s = "ab" "cd";
+}
+""";
+    prog = JacProgram();
+    mod = prog.compile(file_path="test_multistring_bytes.jac", use_str=code);
+    assert not prog.errors_had , (
+        "byte-string multistring should compile cleanly, "
+        f"got: {[str(e) for e in prog.errors_had]}"
+    );
+    found: list[uni.MultiString] = [];
+    def collect(nd: uni.UniNode) {
+        if isinstance(nd, uni.MultiString) {
+            found.append(nd);
+        }
+        for k in nd.kid {
+            collect(k);
+        }
+    }
+    collect(mod);
+    values = [m.lit_value for m in found];
+    assert b"abcd" in values , f"expected bytes b'abcd' in {values}";
+    assert "abcd" in values , f"expected str 'abcd' in {values}";
 }

@@ -22,15 +22,13 @@ jac create myapp --use ./my-template/   # from a local template DIRECTORY
 jac create myapp --use ./local.jacpack  # from a local jacpack archive
 jac create --use https://.../t.jacpack  # from a URL
 jac create --use jac-shadcn             # shadcn variant of web-app (built into jaclang)
-jac create --list_jacpacks              # list available kinds and named variants
+jac create --list                       # list available kinds and named variants
 jac create myapp --force                # overwrite an existing dir / reinit
 ```
 
 Without a project name, `jac create` initializes the **current directory** and names the project after it (like `cargo init` / `uv init`). Pass a name to create a subdirectory instead (`jac create myapp`).
 
 `--kind` and `--use` are mutually exclusive: `--kind` picks a built-in kind template; `--use` loads a custom template (path / URL) or a named variant.
-
-**The flag is `--list_jacpacks` (underscore), not `--list-jacpacks`** - the hyphen form is rejected with `unrecognized arguments`.
 
 ## Project kinds and what each scaffolds
 
@@ -39,14 +37,14 @@ Without a project name, `jac create` initializes the **current directory** and n
 | `--kind` | Provider | `jac run` does | Entry-point |
 |---|---|---|---|
 | `cli` *(default)* | core | execute the script | `main.jac` |
-| `cli-native` | core | native-compile + run (JIT) | `main.na.jac` |
-| `native-binary` | core | build a binary into `dist/` | `main.na.jac` |
-| `native-lib` | core | build a `.so`/`.dylib`/`.dll` | `main.na.jac` |
+| `cli-native` | core | native-compile + run (JIT) | `main.jac` |
+| `native-binary` | core | build a binary into `dist/` | `main.jac` |
+| `native-lib` | core | build a `.so`/`.dylib`/`.dll` | `main.jac` |
 | `service` | core | serve headless API (no client) | `main.sv.jac` |
 | `service-mesh` | core | serve microservice | `main.sv.jac` |
 | `py-package` | core | build a wheel into `dist/` | `lib.jac` |
 | `js-package` | core | build an npm tarball into `dist/` | `lib.jac` |
-| `web-app` | core | serve app (dev mode) | `main.jac` + `.sv`/`.cl` |
+| `web-app` | core | serve app (dev mode) | `main.jac` + `.sv` |
 | `web-static` | core | serve client-only page | `main.jac` |
 | `mobile` | core | build the mobile app | `main.jac` |
 | `desktop` | core | run the OS-webview app | `main.jac` |
@@ -55,7 +53,7 @@ Named variants (selected with `--use`, not `--kind`) layer on a kind:
 
 | `--use <variant>` | Kind | Provider | What it adds |
 |---|---|---|---|
-| `jac-shadcn` | web-app | jaclang (built-in) | shadcn `components/ui/`, `lib/utils.cl.jac` (`cn()`), themed `global.css`, `[jac-shadcn]` block |
+| `jac-shadcn` | web-app | jaclang (built-in) | shadcn `components/ui/`, `lib/utils.jac` (`cn()`), themed `global.css`, `[jac-shadcn]` block |
 
 The `cli` template's `main.jac` is a minimal `with entry { ... }` stub - it does **not** pre-wire endpoints; use `--kind service` for a server, or add `node`/`walker:pub` declarations yourself (see `jac-sv-endpoints`).
 
@@ -104,7 +102,7 @@ description = "My custom project template"
 ```
 
 ```
-jac create --list_jacpacks             # registered templates and kinds
+jac create --list                      # registered kinds and named variants
 jac create --pack ./my-template/       # bundle dir -> mytemplate.jacpack (--pack_output for a custom path)
 jac create app --use ./my-template/    # use directly, no packing needed
 jac create app --use mytemplate.jacpack

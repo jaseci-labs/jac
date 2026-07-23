@@ -207,7 +207,6 @@ impl AstTool.pass_template -> str {
     output = 'import jaclang.jac0core.unitree as ast\nfrom jaclang.jac0core.passes import Pass\n\nclass SomePass(Pass):\n';
     """Emit to output.""";
     def emit(to_append: str) {
-        nonlocal output;
         output += '\n    ' + to_append;
     }
     for cls in self.ast_classes {
@@ -284,7 +283,8 @@ impl AstTool.init -> None {
         )
     ];
     self.ast_classes = sorted(
-        uni_node_classes, key=lambda cls: any : source_code.find(f"class {cls.name}")
+        uni_node_classes,
+        key=lambda (cls: any) { source_code.find(f"class {cls.name}"); }
     );
 }
 

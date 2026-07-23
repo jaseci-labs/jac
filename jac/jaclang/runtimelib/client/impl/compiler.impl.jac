@@ -28,21 +28,20 @@ impl ViteCompiler.compile_and_bundle(
 }
 
 impl ViteCompiler._emit_na_wasm(self: ViteCompiler, module_path: Path) -> None {
-    import re;
     import from jaclang.jac0core.ext_registry { is_native_module }
-    try {
-        src = module_path.read_text(encoding='utf-8');
-    } except (FileNotFoundError, OSError) {
-        return;
+    import from jaclang.jac0core.constant { CodeContext }
+    import from jaclang { JacRuntime as Jac }
+    has_na = is_native_module(module_path.name);
+    if not has_na {
+        compiled = Jac.program.mod.hub.get(str(module_path.resolve()));
+        if compiled is None {
+            console.warning(
+                f"'{module_path.name}' not found in the compile hub; cannot " + "check for inferred-native code, so no wasm will be emitted " + "for it (explicit .na.jac modules are unaffected)."
+            );
+            return;
+        }
+        has_na = compiled.declares_codespace(CodeContext.NATIVE);
     }
-    has_na = bool(
-        re.search(r'(^|[\s;}])na\s*\{', src)
-        or re.search(r'(^|\n)\s*to\s+na\s*:', src)
-        or re.search(
-            r'(^|[\s;])na\s+(def|can|impl|obj|node|walker|glob|class|enum)\b', src
-        )
-        or is_native_module(module_path.name)
-    );
     if not has_na {
         return;
     }
@@ -147,6 +146,7 @@ impl ViteCompiler.compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[s
         raise ClientBundleError('Runtime path not set');
     }
     import from jaclang.runtimelib.runtime_source { resolve_client_runtime_cl_path }
+    import from jaclang.runtimelib.client_surface { prepend_active_runtime_globals }
     runtime_utils_path = Path(resolve_client_runtime_cl_path());
     (runtimeutils_js, mod, runtimeutils_manifest) = self.jac_compiler.compile_module(
         runtime_utils_path
@@ -167,6 +167,7 @@ impl ViteCompiler.compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[s
         core_specifier = './jaclang/runtimelib/client_runtime_core.js';
         if core_specifier in runtimeutils_js {
             (core_js, core_mod, _) = self.jac_compiler.compile_module(core_path);
+            core_js = prepend_active_runtime_globals(core_js);
             runtimeutils_js = runtimeutils_js.replace(
                 core_specifier, './client_runtime_core.js'
             );

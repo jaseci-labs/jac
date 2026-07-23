@@ -264,6 +264,8 @@ jobs:
   # satisfy branch protection); it restores the same binary cache itself.
   jac-check:
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v5
         with:
@@ -323,6 +325,8 @@ jobs:
         run: jac --version
 
       - name: Run jac fmt (check formatting)
+        id: fmt
+        continue-on-error: true
         run: |
           set -euo pipefail
           if [ "${{ steps.changes.outputs.mode }}" = "scoped" ]; then
@@ -343,6 +347,61 @@ jobs:
             # own sample .jac files), and a bare `find .` walks those too.
             git ls-files -z '*.jac' | grep -zv -E '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$|_syntax_err\.jac$)' | xargs -0 --no-run-if-empty jac fmt --check --lintfix
           fi
+
+      # When the format check fails on a same-repo PR, run the fixer on the PR
+      # head branch and push the result, mirroring what pre-commit.ci does for
+      # the hooks it can run (it cannot run jac, so jac fmt is autofixed here).
+      # NOTE: pushes made with the default GITHUB_TOKEN deliberately do NOT
+      # trigger new workflow runs (GitHub's loop protection), so the pushed fix
+      # only re-runs CI automatically when a JAC_AUTOFIX_TOKEN repo secret (a
+      # fine-grained PAT or GitHub App token with contents: write) is
+      # configured. Without it the fix still lands on the branch, but the
+      # checks on the new commit must be started manually (or by the next
+      # push). Fork PRs are skipped: no writable token exists for them.
+      - name: Push jac fmt autofix to the PR branch
+        if: |
+          steps.fmt.outcome == 'failure' &&
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          AUTOFIX_TOKEN: ${{ secrets.JAC_AUTOFIX_TOKEN }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --quiet origin "$HEAD_REF"
+          # Loop breaker: if the head commit is already an autofix and the
+          # check still failed, the formatter is unstable -- do not ping-pong.
+          if git log -1 --format=%s FETCH_HEAD | grep -q '^style: jac fmt autofix'; then
+            echo "::warning::Head commit is already an autofix commit but the check still failed; not pushing again."
+            exit 0
+          fi
+          git checkout -B "$HEAD_REF" FETCH_HEAD
+          FILES="$(grep -vE '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
+          if [ -z "$FILES" ]; then
+            echo "No formattable .jac files to fix."
+            exit 0
+          fi
+          printf '%s\n' "$FILES" | tr '\n' '\0' \
+            | xargs -0 --no-run-if-empty jac fmt --lintfix || true
+          if git diff --quiet; then
+            echo "Fixer produced no changes on the head branch; nothing to push."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "style: jac fmt autofix"
+          if [ -n "$AUTOFIX_TOKEN" ]; then
+            git remote set-url origin \
+              "https://x-access-token:${AUTOFIX_TOKEN}@github.com/${{ github.repository }}.git"
+          fi
+          git push origin "HEAD:$HEAD_REF"
+          echo "::notice::Pushed jac fmt autofix to $HEAD_REF; the new commit's CI run supersedes this one."
+
+      - name: Fail if formatting was not clean
+        if: steps.fmt.outcome == 'failure'
+        run: |
+          echo "::error::jac fmt --check --lintfix failed for this commit (an autofix was pushed to the branch if this is a same-repo PR)."
+          exit 1
 
       - name: Verify jir_registry.jac is up to date
         run: |
@@ -607,6 +666,50 @@ jobs:
       run: |
         jac test jac/tests/compiler/passes/native/test_shared_lib.jac
         jac test jac/tests/compiler/passes/native/test_exec_link.jac
+
+    - name: Run bundled-stdlib equivalence pins (darwin, #7626 C3)
+      env:
+        JAC_TEST_JOBS: "0"
+        # os.path + textwrap + keyword are pure-compute na modules that must
+        # agree on darwin; the shutil pin self-skips there until the stat
+        # seam gets a per-OS floor (see test_prim_equivalence.jac).
+        PYTEST_ADDOPTS: -k "shutil or path or textwrap or keyword"
+      run: jac test jac/jaclang/compiler/tests/test_prim_equivalence.jac
+
+  # aarch64 cross lane (#7626 C1): cross-compile with the in-house ELF linker
+  # (MOVW_UABS relocation family) + arch-parameterized vendored musl, run the
+  # binaries under qemu-user. This was the native suite's last environmental
+  # skip: without qemu + cross libc the #6366 runtime tests never execute.
+  test-native-aarch64:
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Install qemu-user and aarch64 cross libc
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends qemu-user-static libc6-arm64-cross
+
+    - name: Set up jac (build the binary)
+      uses: ./.github/actions/setup-jac
+
+    - name: Vendor cross musl (aarch64)
+      working-directory: jac
+      run: zig build -Dno-ninja vendor-musl-linux-aarch64 --summary all
+
+    - name: Run aarch64 cross tests under qemu
+      env:
+        JAC_TEST_JOBS: "0"
+        PYTEST_ADDOPTS: -k aarch64
+        # The sealed CI binary's pkg_root only bundles host-arch musl; point
+        # the static-link search at the repo-vendored cross runtime.
+        JAC_NATIVE_MUSL_DIR: ${{ github.workspace }}/jac/.pbs-build/linux-aarch64/musl/lib
+      run: jac test jac/tests/compiler/passes/native/test_native_gen_pass.jac
 
   # Launcher unit tests: trailer codec + `.jab`-overlay round-trip
   # (append / detect / materialize-steps-over-overlay / graft). runtime.zig is
@@ -1014,8 +1117,12 @@ jobs:
         echo "| **Trigger** | \`${{ github.event_name }}\` |" >> $GITHUB_STEP_SUMMARY
 
   # Real-app microservice e2e on kind (not microk8s) so it runs on the fast blacksmith runner, whose minimal kernel lacks the ipset modules microk8s' calico needs. PR-only on core changes; not a required check.
+  # Two pod-base legs: `slim` = the plain python default; `official-image` =
+  # an image built from THIS PR's binary via docker/jaclang.Dockerfile, which
+  # exercises the baked-runtime path (container-local cache site, checksum
+  # binary reuse) that only exists on jaseci/jaclang bases.
   k8s-real-e2e:
-    name: microservice e2e (k8s)
+    name: microservice e2e (k8s, ${{ matrix.base }})
     needs: [changes, build-jac]
     if: >-
       github.event_name != 'push' &&
@@ -1023,6 +1130,10 @@ jobs:
       !contains(github.event.pull_request.labels.*.name, 'skip-k8s')
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        base: [slim, official-image]
     env:
       # Ship the jac binary built from THIS PR (the build-jac artifact) to the
       # pods via channel LOCAL, so the e2e validates the code under test rather
@@ -1059,7 +1170,7 @@ jobs:
             "aiohttp>=3.9.0,<4.0.0" "sqlalchemy>=2.0.0,<3.0.0" \
             "email-validator>=2.3.0,<3.0.0" "python-dotenv>=1.2.1,<2.0.0" \
             "pymongo>=4.15.4,<5.0.0" "redis>=7.1.0,<8.0.0" \
-            "kubernetes>=34.1.0,<35.0.0" "docker>=7.1.0,<8.0.0" \
+            "kubernetes>=34.1.0,<35.0.0" "docker>=7.1.0,<8.0.0" "humanize>=4.0.0" \
             --global
 
       - name: Set up kind cluster
@@ -1094,18 +1205,26 @@ jobs:
 
       - name: Verify pod DNS + egress (fail fast)
         run: |
-          kubectl run netcheck --image=busybox:1.36 --restart=Never --command -- \
-            sh -c 'nslookup deb.debian.org && wget -q --spider http://deb.debian.org/ && echo NETCHECK_OK'
-          if ! kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/netcheck --timeout=150s; then
-            echo "::error::Pod networking/egress is broken on this runner (DNS or CNI), so no app pod can bootstrap."
+          # kind can report the control plane ready before kube-dns accepts traffic.
+          kubectl -n kube-system rollout status deploy/coredns --timeout=180s
+          for attempt in 1 2 3; do
+            kubectl delete pod netcheck --ignore-not-found --wait=true
+            kubectl run netcheck --image=busybox:1.36 --restart=Never --command -- \
+              sh -c 'nslookup deb.debian.org && wget -q --spider http://deb.debian.org/ && echo NETCHECK_OK'
+            if kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/netcheck --timeout=60s; then
+              kubectl logs netcheck
+              kubectl delete pod netcheck --ignore-not-found
+              exit 0
+            fi
             kubectl logs netcheck || true
-            kubectl describe pod netcheck || true
-            kubectl get pods -n kube-system -o wide || true
-            kubectl delete pod netcheck --ignore-not-found
-            exit 1
-          fi
-          kubectl logs netcheck
+            echo "WARN: netcheck attempt ${attempt} failed; retrying..."
+            sleep 5
+          done
+          echo "::error::Pod networking/egress is broken on this runner (DNS or CNI), so no app pod can bootstrap."
+          kubectl describe pod netcheck || true
+          kubectl get pods -n kube-system -o wide || true
           kubectl delete pod netcheck --ignore-not-found
+          exit 1
 
       - name: Deploy ingress-nginx + metrics-server (kind, best-effort)
         continue-on-error: true
@@ -1127,6 +1246,16 @@ jobs:
           kubectl cluster-info
           kubectl get nodes
           kubectl get pods -A
+
+      - name: Build the official base image from this PR's binary (official-image leg)
+        if: matrix.base == 'official-image'
+        run: |
+          mkdir -p /tmp/imgctx/amd64
+          cp "$JAC_SCALE_BINARY_PATH" /tmp/imgctx/amd64/jac
+          docker build --build-arg TARGETARCH=amd64 \
+              -f docker/jaclang.Dockerfile -t jaclang-e2e:pr /tmp/imgctx
+          kind load docker-image jaclang-e2e:pr --name jac
+          echo "E2E_POD_BASE_IMAGE=jaclang-e2e:pr" >> "$GITHUB_ENV"
 
       - name: Run K8s microservice real-app e2e
         env:
@@ -1196,6 +1325,11 @@ jobs:
           fi
 
       - name: "install: download + run the binary"
+        env:
+          # install.sh authenticates its GitHub API calls when a token is set;
+          # shared runners (macOS especially) exhaust the unauthenticated
+          # per-IP rate limit.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash scripts/install.sh
 
       - name: "install: verify jac"
@@ -1221,3 +1355,56 @@ jobs:
             exit 1
           fi
           echo "PASS: jac removed"
+
+  # Aggregate gate. GitHub has no "require all checks" branch-protection toggle
+  # -- you can only enumerate individual contexts, and anything you forget to
+  # list silently stops blocking merges. This job depends on EVERY other job so
+  # branch protection can require this ONE context ("Everything Passed") and get
+  # true "all checks passed" behavior. Maintenance note: GitHub Actions has no
+  # wildcard for `needs`, so a NEW job must still be added to the `needs:` list
+  # below by hand -- forgetting silently drops it from the gate. That list is the
+  # only place to update, though; the required-checks set in repo settings never
+  # changes again.
+  #
+  # `always()` so the gate runs even when an upstream job fails, is skipped, or
+  # the run is cancelled -- otherwise a failed dependency would just skip the
+  # gate, and a skipped required check counts as passing under branch protection
+  # (the trap the per-job `needs` comments above already call out). The gate then
+  # fails iff any dependency ended in `failure` or `cancelled`; `skipped` (a job
+  # path-filtered out on a PR) and `success` are both accepted.
+  everything-passed:
+    name: Everything Passed
+    if: always()
+    needs:
+      - changes
+      - build-jac
+      - test-compiler
+      - test-runtime
+      - jac-check
+      - contribution-checks
+      - test-solid-and-desktop
+      - test-client
+      - test-packages-and-docs
+      - test-native-macos
+      - test-launcher
+      - test-cef-build
+      - test-scale
+      - test-scale-k8s
+      - test-pypi-build
+      - k8s-real-e2e
+      - installer-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any dependency failed or was cancelled
+        if: >-
+          contains(needs.*.result, 'failure') ||
+          contains(needs.*.result, 'cancelled')
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "::error::One or more CI jobs failed or were cancelled; blocking merge."
+          echo "Per-job results:"
+          echo "$RESULTS"
+          exit 1
+      - name: All required jobs passed (or were skipped)
+        run: echo "Everything passed. ✅"

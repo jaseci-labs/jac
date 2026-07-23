@@ -23,17 +23,17 @@ glob logger = logging.getLogger(__name__),
      ];
 
 obj Memory {
-    def is_available -> bool abs;
-    def get(id: UUID) -> (Anchor | None) abs;
-    def put(anchor: Anchor) -> None abs;
-    def delete(id: UUID) -> None abs;
-    def close -> None abs;
-    def `has(id: UUID) -> bool abs;
+    def is_available -> bool abst;
+    def get(id: UUID) -> (Anchor | None) abst;
+    def put(anchor: Anchor) -> None abst;
+    def delete(id: UUID) -> None abst;
+    def close -> None abst;
+    def `has(id: UUID) -> bool abst;
     def query(
         filter: (Callable[[Anchor], bool] | None) = None
-    ) -> Generator[Anchor, None, None] abs;
+    ) -> Generator[Anchor, None, None] abst;
 
-    def get_roots -> Generator[Root, None, None] abs;
+    def get_roots -> Generator[Root, None, None] abst;
     def find(
         ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> Generator[Anchor, None, None];
@@ -42,11 +42,11 @@ obj Memory {
         ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> (Anchor | None);
 
-    def commit(anchor: (Anchor | None) = None) -> None abs;
+    def commit(anchor: (Anchor | None) = None) -> None abst;
     def abort -> None;
     def quarantine_ref(referrer: (Anchor | None), stub: Anchor) -> None;
     def is_recoverable_quarantine(id: UUID) -> bool;
-    def get_mem -> dict[UUID, Anchor] abs;
+    def get_mem -> dict[UUID, Anchor] abst;
     def capabilities -> set[str];
     def execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None];
     async def aget(id: UUID) -> (Anchor | None);
@@ -57,31 +57,31 @@ obj Memory {
 }
 
 obj CacheMemory(Memory) {
-    def exists(id: UUID) -> bool abs;
-    def put_if_exists(anchor: Anchor) -> bool abs;
-    def invalidate(id: UUID) -> None abs;
+    def exists(id: UUID) -> bool abst;
+    def put_if_exists(anchor: Anchor) -> bool abst;
+    def invalidate(id: UUID) -> None abst;
 }
 
 obj PersistentMemory(Memory) {
-    def apply(changeset: ChangeSet) -> ApplyReport abs;
-    def inspect_summary -> dict abs;
-    def list_quarantined(limit: int = 50) -> list abs;
-    def show_quarantined(id_prefix: str) -> (dict | None) abs;
-    def recover_one(id_prefix: str) -> tuple abs;
-    def recover_all -> tuple abs;
-    def list_aliases -> list abs;
-    def add_alias(old_name: str, new_name: str) -> None abs;
-    def remove_alias(old_name: str) -> bool abs;
+    def apply(changeset: ChangeSet) -> ApplyReport abst;
+    def inspect_summary -> dict abst;
+    def list_quarantined(limit: int = 50) -> list abst;
+    def show_quarantined(id_prefix: str) -> (dict | None) abst;
+    def recover_one(id_prefix: str) -> tuple abst;
+    def recover_all -> tuple abst;
+    def list_aliases -> list abst;
+    def add_alias(old_name: str, new_name: str) -> None abst;
+    def remove_alias(old_name: str) -> bool abst;
     def quarantine_dangling(
         missing_id: UUID, referrer_id: (UUID | None), kind: str
-    ) -> None abs;
+    ) -> None abst;
 
-    def is_recoverable_quarantine(id: UUID) -> bool abs;
-    def fsck(repair: bool = False) -> dict abs;
+    def is_recoverable_quarantine(id: UUID) -> bool abst;
+    def fsck(repair: bool = False) -> dict abst;
 }
 
 obj VolatileMemory(Memory) {
-    has __mem__: dict[UUID, Anchor] by postinit;
+    has __mem__: dict[UUID, Anchor] postinit;
 
     def postinit -> None;
     def is_available -> bool;
@@ -107,10 +107,10 @@ obj LocalCacheMemory(VolatileMemory, CacheMemory) {
 
 obj SqliteMemory(PersistentMemory) {
     has path: str,
-        __mem__: dict[UUID, Anchor] by postinit,
-        __conn__: (sqlite3.Connection | None) by postinit,
-        __lock__: threading.RLock by postinit,
-        l3_fetch_count: int by postinit;
+        __mem__: dict[UUID, Anchor] postinit,
+        __conn__: (sqlite3.Connection | None) postinit,
+        __lock__: threading.RLock postinit,
+        l3_fetch_count: int postinit;
 
     def postinit -> None;
     def _ensure_connection -> None;
@@ -149,9 +149,9 @@ obj SqliteMemory(PersistentMemory) {
 obj TieredMemory(VolatileMemory) {
     has base_path: (str | None) = None,
         target_path: (str | None) = None,
-        l2: (CacheMemory | None) by postinit,
-        l3: (PersistentMemory | None) by postinit,
-        changes: ChangeSet by postinit,
+        l2: (CacheMemory | None) postinit,
+        l3: (PersistentMemory | None) postinit,
+        changes: ChangeSet postinit,
         use_cache: bool = False;
 
     def get_l3_fetch_count -> int;

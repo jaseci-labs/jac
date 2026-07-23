@@ -1243,12 +1243,6 @@ impl Lexer.scan_operator -> Token {
             TokenKind.CARROW_BI, "<++>", start_line, start_col, start_pos
         );
     }
-    if self.match_string(":nl:") {
-        return self.make_token(
-            TokenKind.NONLOCAL_OP, ":nl:", start_line, start_col, start_pos
-        );
-    }
-
     if self.match_string("<--") {
         return self.make_token(
             TokenKind.ARROW_L, "<--", start_line, start_col, start_pos
@@ -1293,16 +1287,6 @@ impl Lexer.scan_operator -> Token {
     if self.match_string(":+>") {
         return self.make_token(
             TokenKind.CARROW_R_P2, ":+>", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string(":typ:") {
-        return self.make_token(
-            TokenKind.TYPE_OP_ALIAS, ":typ:", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string(":g:") {
-        return self.make_token(
-            TokenKind.GLOBAL_OP, ":g:", start_line, start_col, start_pos
         );
     }
     if self.match_string("...") {
@@ -1439,14 +1423,6 @@ impl Lexer.scan_operator -> Token {
         return self.make_token(
             TokenKind.MOD_EQ, "%=", start_line, start_col, start_pos
         );
-    }
-    if self.match_string("&&") {
-        return self.make_token(
-            TokenKind.KW_AND, "&&", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("||") {
-        return self.make_token(TokenKind.KW_OR, "||", start_line, start_col, start_pos);
     }
     if self.match_string("&=") {
         return self.make_token(

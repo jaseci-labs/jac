@@ -1,5 +1,7 @@
 # byLLM Quickstart
 
+> **Concept:** [Meaning types](../../reference/plugins/byllm.md): the prompt is derived from your names, types, and `sem` annotations, so delegating logic to a model is a typed language feature.
+
 byLLM is Jac's AI integration framework that lets you delegate function implementations to large language models. Instead of writing the logic yourself, you declare a function's signature -- its name, parameter names and types, and return type -- and end it with `by llm()`. The compiler uses these semantics to construct a prompt, calls the LLM at runtime, and validates the response against your declared return type.
 
 This is what Jac calls **Meaning-Typed Programming (MTP)**: the idea that a well-named function signature already describes what the function should do, and an LLM can infer the implementation from that meaning. It works because `translate_to_spanish(text: str) -> str` already tells the LLM everything it needs to know.
@@ -174,7 +176,7 @@ byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) under the hood, giv
 === "Anthropic"
     ```toml
     [byllm.model]
-    default_model = "claude-sonnet-4-6"
+    default_model = "anthropic/claude-sonnet-4-6"
     ```
     ```bash
     export ANTHROPIC_API_KEY="sk-ant-..."
@@ -209,7 +211,7 @@ You can also override the model per-file when needed:
 
 ```jac
 import from jaclang.byllm.lib { Model }
-glob llm = Model(model_name="gpt-4o");  # overrides the builtin for this file
+glob llm = Model(model_name="anthropic/claude-sonnet-4-6");  # overrides the builtin for this file
 ```
 
 For model name formats, configuration options, and 100+ additional providers (Azure, AWS Bedrock, Vertex AI, Groq, etc.), see the [byLLM Reference](../../reference/plugins/byllm.md#supported-providers) and [LiteLLM documentation](https://docs.litellm.ai/docs/providers).

@@ -5,20 +5,20 @@ impl navigate(path: str) -> None {
 
 impl __createJacSchema(zodLib: any) -> any {
     handler = {
-        "apply": lambda target: any , thisArg: any , argumentsList: any -> any { return zodLib.object.apply(
+        "apply": lambda (target: any, thisArg: any, argumentsList: any) -> any { return zodLib.object.apply(
             zodLib, argumentsList
         ); },
-        "get": lambda target: any , prop: any , receiver: any -> any { return zodLib[
+        "get": lambda (target: any, prop: any, receiver: any) -> any { return zodLib[
             prop
         ]; }
     };
 
-    dummyFunc = lambda schema: any -> any { return zodLib.object(schema); };
+    dummyFunc = lambda (schema: any) -> any { return zodLib.object(schema); };
     return Reflect.construct(Proxy, [dummyFunc, handler]);
 }
 
 impl __getApiBaseUrl -> str {
-    return globalThis.__JAC_API_BASE_URL__ || "";
+    return globalThis.__JAC_API_BASE_URL__ or "";
 }
 
 impl __getEndpointEffects -> dict {
@@ -201,6 +201,11 @@ impl __doFuncFetch(function_name: str, args: dict) -> any {
     if globalThis.__JAC_NATIVE__ and globalThis.__jac_invoke {
         response = await __nativeInvoke("function", function_name, "", args);
         if not response["ok"] {
+            if response["status"] == 401 {
+                __removeLocalStorage("jac_token");
+                window.location.reload();
+                return {};
+            }
             raise Exception(
                 f"Function {function_name} failed: {__nativeErrorMsg(response)}"
             );
@@ -227,6 +232,11 @@ impl __doFuncFetch(function_name: str, args: dict) -> any {
         {"method": "POST", "headers": headers, "body": JSON.stringify(args)}
     );
     if not response.ok {
+        if response.status == 401 {
+            __removeLocalStorage("jac_token");
+            window.location.reload();
+            return {};
+        }
         error_text = await response.text();
         raise Exception(f"Function {function_name} failed: {error_text}");
     }
@@ -433,7 +443,7 @@ impl jacLogout -> None {
     if broker {
         try {
             fetch(f"{broker}/session", {"method": "DELETE"}).catch(
-                lambda e: any { console.warn(
+                lambda (e: any) { console.warn(
                     "[jac-client] broker session clear failed:", e
                 ); }
             );
@@ -470,7 +480,7 @@ impl __jacDesktopBroker -> str {
 
 impl __jacSleep(ms: int) -> None {
     await Reflect.construct(
-        Promise, [lambda resolve: any { setTimeout(resolve, ms); }]
+        Promise, [lambda (resolve: any) { setTimeout(resolve, ms); }]
     );
 }
 
@@ -578,7 +588,7 @@ impl __jacInstallErrorHandlers -> None {
 
     window.addEventListener(
         "error",
-        lambda event: any { __jacReportError(
+        lambda (event: any) { __jacReportError(
             event.message or "Unknown error",
             event.error.stack if event.error else "",
             event.filename or "",
@@ -588,7 +598,7 @@ impl __jacInstallErrorHandlers -> None {
 
     window.addEventListener(
         "unhandledrejection",
-        lambda event: any {
+        lambda (event: any) {
             reason = event.reason;
             message = "";
             stack = "";
@@ -603,7 +613,7 @@ impl __jacInstallErrorHandlers -> None {
     );
 }
 
-impl ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement {
+impl ErrorFallback(error: any, resetErrorBoundary: any) -> JsxElement {
     return
         <div
             role="alert"
@@ -648,10 +658,10 @@ impl ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement {
 
                     }}
                 >
-                    {error.error.message}
+                    {error.message}
                 </pre>
                 <button
-                    onClick={lambda { error.resetErrorBoundary(); }}
+                    onClick={lambda { resetErrorBoundary(); }}
                     style={{
                         backgroundColor: "#2563eb",
                         color: "#fff",

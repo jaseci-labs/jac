@@ -1,6 +1,8 @@
 import from collections.abc { Sequence }
+import from pathlib { Path }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.constant { Tokens as Tok, SymbolType }
+import from jaclang.jac0core.constant { CodeContext, Tokens as Tok, SymbolType }
+import from jaclang.jac0core.diagnostics { E5082 }
 
 enum CallKind {
     METHOD = "method",
@@ -8,6 +10,18 @@ enum CallKind {
     BUILTIN = "builtin",
     CLIB = "clib",
     FUNCTION = "function"
+}
+
+def is_builtin_region_name(nm: object) -> bool {
+    if not isinstance(nm, uni.Name) or nm.sym_name != "Region" {
+        return False;
+    }
+    if nm.sym is None or nm.sym.decl is None {
+        return True;
+    }
+    _loc = nm.sym.decl.loc;
+    _mp = _loc.mod_path if _loc is not None else "";
+    return isinstance(_mp, str) and _mp.endswith(".pyi");
 }
 
 def resolve_expr_symbol(
@@ -90,11 +104,7 @@ def classify_call(nd: uni.FuncCall) -> CallKind {
     return CallKind.FUNCTION;
 }
 
-def ability_of_symbol(sym: (uni.Symbol | None)) -> (uni.Ability | None) {
-    if sym is None or not sym.defn {
-        return None;
-    }
-    defn_node = sym.defn[0];
+def _ability_of_defn(defn_node: uni.UniNode) -> (uni.Ability | None) {
     if isinstance(defn_node, uni.Ability) {
         return defn_node;
     }
@@ -102,6 +112,24 @@ def ability_of_symbol(sym: (uni.Symbol | None)) -> (uni.Ability | None) {
         return defn_node.parent;
     }
     return None;
+}
+
+def ability_of_symbol(sym: (uni.Symbol | None)) -> (uni.Ability | None) {
+    if sym is None or not sym.defn {
+        return None;
+    }
+    decl = _ability_of_defn(sym.defn[0]);
+
+    if decl is not None and str(decl.loc.mod_path).endswith(".pyi") {
+        for alt in sym.defn {
+            alt_decl = _ability_of_defn(alt);
+            if alt_decl is not None
+            and not str(alt_decl.loc.mod_path).endswith(".pyi") {
+                return alt_decl;
+            }
+        }
+    }
+    return decl;
 }
 
 def symbol_owner_archetype(sym: uni.Symbol) -> (uni.Archetype | None) {
@@ -418,4 +446,112 @@ def collect_method_names(arch: uni.Archetype) -> set[str] {
         }
     }
     return names;
+}
+
+enum ClientImportVerdict {
+    CLIENT = "client",
+    BRIDGED = "bridged",
+    DEAD = "dead",
+    UNKNOWN = "unknown"
+}
+
+def is_client_boundary_import(nd: uni.Import) -> bool {
+    return (
+        nd.code_context == CodeContext.CLIENT
+        and not nd.is_sv_marked
+        and not nd.is_typed
+        and not nd.is_virtual_jac
+        and nd.from_loc is not None
+        and bool(nd.items)
+        and nd.from_loc.resolve_relative_path().endswith('.jac')
+    );
+}
+
+def resolve_import_source_module(prog: any, nd: uni.Import) -> (uni.Module | None) {
+    if not nd.from_loc {
+        return None;
+    }
+    resolved_path = nd.from_loc.resolve_relative_path();
+    abs_path = str(Path(resolved_path).resolve());
+    source_mod = prog.mod.hub.get(resolved_path) or prog.mod.hub.get(abs_path);
+    if source_mod {
+        return source_mod;
+    }
+    if Path(resolved_path).exists() {
+        source_mod = prog.compile(
+            resolved_path, no_cgen=True, type_check=False, symtab_ir_only=True
+        );
+        prog.mod.hub[abs_path] = source_mod;
+        return source_mod;
+    }
+    return None;
+}
+
+def _import_item_owner_decl(
+    source_mod: uni.Module, item: uni.ModuleItem
+) -> (uni.ContextAwareNode | None) {
+    if not isinstance(item.name, uni.Name) {
+        return None;
+    }
+    sym = source_mod.lookup(item.name.sym_name);
+    if sym is None or sym.decl is None {
+        return None;
+    }
+    cur: (uni.UniNode | None) = sym.decl;
+    while cur is not None and not isinstance(cur, uni.Module) {
+        if isinstance(cur, uni.ContextAwareNode) {
+            return cur;
+        }
+        cur = cur.parent;
+    }
+    return None;
+}
+
+def classify_client_import_item(
+    source_mod: uni.Module, item: object
+) -> ClientImportVerdict {
+    if not isinstance(item, uni.ModuleItem) {
+        return ClientImportVerdict.UNKNOWN;
+    }
+    owner = _import_item_owner_decl(source_mod, item);
+    if owner is None or isinstance(owner, uni.Import) {
+        return ClientImportVerdict.UNKNOWN;
+    }
+    if owner.code_context == CodeContext.CLIENT {
+        return ClientImportVerdict.CLIENT;
+    }
+    if isinstance(owner, uni.Ability) {
+        if (
+            not owner.is_method
+            and owner.access is not None
+            and owner.access.tag.name == Tok.KW_PUB
+        ) {
+            return ClientImportVerdict.BRIDGED;
+        }
+        return ClientImportVerdict.DEAD;
+    }
+    if isinstance(owner, (uni.Archetype, uni.Enum, uni.TypeAlias)) {
+        return ClientImportVerdict.BRIDGED;
+    }
+    return ClientImportVerdict.DEAD;
+}
+
+def report_dead_client_import(
+    reporter: any, nd: uni.Import, item: uni.ModuleItem
+) -> None {
+    name = item.name.sym_name
+        if isinstance(item.name, uni.Name)
+        else str(item.name.value);
+    module_name = nd.from_loc.dot_path_str if nd.from_loc is not None else '';
+    for e in reporter.prog.errors_had {
+        if (
+            e.code is E5082
+            and e.loc.mod_path == item.loc.mod_path
+            and e.loc.first_line == item.loc.first_line
+            and e.loc.col_start == item.loc.col_start
+        ) {
+            return;
+        }
+    }
+    reporter.emit(E5082, node_override=item, name=name, module=module_name);
 }

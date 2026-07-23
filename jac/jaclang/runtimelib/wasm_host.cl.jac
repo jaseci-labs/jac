@@ -49,16 +49,16 @@ def _clock_gettime(st: any, clk: int, ts: int) -> int {
 def:pub make_jac_host(sh: any) -> dict {
     st = _HostState(sh=sh);
     return {
-        "write": lambda fd: int , ptr: int , n: int {
+        "write": lambda (fd: int, ptr: int, n: int) {
             bytes_view = new(Uint8Array, st.sh.mem.buffer, ptr, n);
             _emit(st, fd, new(TextDecoder).decode(bytes_view));
             return n;
         },
-        "fflush": lambda f: int {
+        "fflush": lambda (f: int) {
             _flush_all(st);
             return 0;
         },
-        "exit": lambda code: int {
+        "exit": lambda (code: int) {
             _flush_all(st);
             raise Error("na wasm module called exit(" + String(code) + ")");
         },
@@ -66,30 +66,30 @@ def:pub make_jac_host(sh: any) -> dict {
             _flush_all(st);
             raise Error("na wasm module called abort()");
         },
-        "getenv": lambda p: int { return 0; },
-        "fopen": lambda p: int , m: int { return 0; },
-        "fclose": lambda f: int { return -1; },
-        "fread": lambda b: int , sz: int , n: int , f: int { return BigInt(0); },
-        "fwrite": lambda b: int , sz: int , n: int , f: int { return BigInt(0); },
-        "fgets": lambda b: int , n: int , f: int { return 0; },
-        "ftell": lambda f: int { return BigInt(-1); },
-        "fseek": lambda f: int , o: int , w: int { return -1; },
-        "getdelim": lambda lp: int , np: int , d: int , f: int { return BigInt(-1); },
+        "getenv": lambda (p: int) { return 0; },
+        "fopen": lambda (p: int, m: int) { return 0; },
+        "fclose": lambda (f: int) { return -1; },
+        "fread": lambda (b: int, sz: int, n: int, f: int) { return BigInt(0); },
+        "fwrite": lambda (b: int, sz: int, n: int, f: int) { return BigInt(0); },
+        "fgets": lambda (b: int, n: int, f: int) { return 0; },
+        "ftell": lambda (f: int) { return BigInt(-1); },
+        "fseek": lambda (f: int, o: int, w: int) { return -1; },
+        "getdelim": lambda (lp: int, np: int, d: int, f: int) { return BigInt(-1); },
         "getpid": lambda { return 1; },
-        "getcwd": lambda b: int , n: int { return 0; },
-        "system": lambda c: int { return -1; },
-        "chdir": lambda p: int { return -1; },
-        "rmdir": lambda p: int { return -1; },
-        "unlink": lambda p: int { return -1; },
-        "mkdir": lambda p: int , m: int { return -1; },
-        "rename": lambda a: int , b: int { return -1; },
-        "realpath": lambda p: int , r: int { return 0; },
-        "access": lambda p: int , m: int { return -1; },
-        "stat": lambda p: int , s: int { return -1; },
-        "clock_gettime": lambda clk: int , ts: int { return _clock_gettime(
+        "getcwd": lambda (b: int, n: int) { return 0; },
+        "system": lambda (c: int) { return -1; },
+        "chdir": lambda (p: int) { return -1; },
+        "rmdir": lambda (p: int) { return -1; },
+        "unlink": lambda (p: int) { return -1; },
+        "mkdir": lambda (p: int, m: int) { return -1; },
+        "rename": lambda (a: int, b: int) { return -1; },
+        "realpath": lambda (p: int, r: int) { return 0; },
+        "access": lambda (p: int, m: int) { return -1; },
+        "stat": lambda (p: int, s: int) { return -1; },
+        "clock_gettime": lambda (clk: int, ts: int) { return _clock_gettime(
             st, clk, ts
         ); },
-        "nanosleep": lambda req: int , rem: int { return 0; }
+        "nanosleep": lambda (req: int, rem: int) { return 0; }
     };
 }
 

@@ -182,8 +182,10 @@ impl add_shadcn_components(config: any, component_names: list) -> bool {
     existing: set = set();
     if ui_dir.exists() {
         for f in ui_dir.iterdir() {
-            if f.suffix == ".jac" and f.name.endswith(".cl.jac") {
-                existing.add(f.name.replace(".cl.jac", "").replace("_", "-"));
+            if f.name.endswith(".jac") {
+                existing.add(
+                    f.name.replace(".cl.jac", "").replace(".jac", "").replace("_", "-")
+                );
             }
         }
     }
@@ -224,7 +226,7 @@ impl add_shadcn_components(config: any, component_names: list) -> bool {
             continue;
         }
 
-        filename = str(comp_data.get("file", name + ".cl.jac")).replace("-", "_");
+        filename = str(comp_data.get("file", name + ".jac")).replace("-", "_");
         content = str(comp_data.get("content", ""));
         out_path = ui_dir / filename;
         with open(out_path, "w") as f {
@@ -246,15 +248,15 @@ impl add_shadcn_components(config: any, component_names: list) -> bool {
         console.print("\n  Updated jac.toml [dependencies.npm]", style="muted");
     }
 
-    utils_path = ui_dir.parent.parent / "lib" / "utils.cl.jac";
+    utils_path = ui_dir.parent.parent / "lib" / "utils.jac";
     if not utils_path.exists() {
         utils_path.parent.mkdir(parents=True, exist_ok=True);
         with open(utils_path, "w") as f {
             f.write(
-                'cl import from "clsx" { clsx }\ncl import from "tailwind-merge" { twMerge }\n\ndef:pub cn(*inputs: any) -> str {\n    return twMerge(clsx(inputs));\n}\n'
+                'import from "clsx" { clsx }\nimport from "tailwind-merge" { twMerge }\n\ndef:pub cn(*inputs: any) -> str {\n    return twMerge(clsx(inputs));\n}\n'
             );
         }
-        console.print("  + Created lib/utils.cl.jac", style="green");
+        console.print("  + Created lib/utils.jac", style="green");
     }
 
     if added {
@@ -284,11 +286,17 @@ impl remove_shadcn_components(config: any, component_names: list) -> bool {
     for name in component_names {
         comp = components_meta.get(name);
         filename = str(
-            comp["file"] if comp and "file" in comp else (name + ".cl.jac")
+            comp["file"] if comp and "file" in comp else (name + ".jac")
         ).replace(
             "-", "_"
         );
         filepath = ui_dir / filename;
+        if not filepath.exists() {
+            legacy = ui_dir / filename.replace(".jac", ".cl.jac");
+            if legacy.exists() {
+                filepath = legacy;
+            }
+        }
         if filepath.exists() {
             filepath.unlink();
             removed.append(name);

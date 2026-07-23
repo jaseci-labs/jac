@@ -199,7 +199,7 @@ test "the process toolbox runs shell commands and jac_check" {
     arm(proj, events);
 
     assert "HELLO_FROM_TOOL" in ai.agent.proc.run_command("echo HELLO_FROM_TOOL");
-    assert "PASSED" in ai.agent.proc.jac_check("model.jac");
+    assert "ok" in ai.agent.proc.jac_check("model.jac");
 
     shutil.rmtree(proj, ignore_errors=True);
 }
@@ -258,7 +258,7 @@ test "the renderer turns an event stream into the live view and turn tallies" {
         StreamEv(event_type="steps_done", data={})
     ];
     res: dict = {};
-    out = capturing(lambda : res.update(ai.agent.view.render_stream(stream)));
+    out = capturing(lambda { res.update(ai.agent.view.render_stream(stream)); });
 
     # Tallies: one write, one read, one run; the write armed turn_wrote.
     assert res["n_write"] == 1 , res;
@@ -310,7 +310,7 @@ test "a scripted MockLLM drives the AgentSession walker through its phases" {
         }
     );
 
-    out = capturing(lambda : AgentSessionSpawn(proj));
+    out = capturing(lambda { AgentSessionSpawn(proj); });
 
     # The Build phase wrote the file through the real file tool.
     assert Path(feat).exists() , out;

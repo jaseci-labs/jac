@@ -84,10 +84,6 @@ class StorageFactory {
         storage_type = StorageFactory.default_storage_type();
 
         if storage_type == StorageType.LOCAL {
-            # Honor an explicitly-passed base_path over the project config; only
-            # fall back to config when the caller left the default. This keeps
-            # store(base_path=X) returning X while store() still picks up the
-            # [storage] base_path from jac.toml.
             if base_path == "./storage" and jac_config and jac_config.storage {
                 base_path = jac_config.storage.base_path;
                 create_dirs = jac_config.storage.create_dirs;

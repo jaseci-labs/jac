@@ -79,6 +79,7 @@ def check_src(src: str, search_dir: str) -> JacProgram {
             sys.path.remove(search_dir);
         }
         importlib.invalidate_caches();
+        sys.modules.pop("untyped_client", None);
     }
 }
 
@@ -114,7 +115,6 @@ test "foreign-Any singleton from an untyped third-party call checks clean" {
         "glob _conn: (dict[str, int] | None) = None;\n"
         "\n"
         "def get_conn -> dict[str, int] {\n"
-        "    global _conn;\n"
         "    if _conn is None {\n"
         "        _conn = untyped_client.connect();\n"
         "    }\n"

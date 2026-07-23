@@ -48,7 +48,6 @@ impl JacAPIServerCore.postinit -> None {
         self.server = JFastApiServer();
     }
     self.server.set_user_manager(self.user_manager);
-    self._api_key_manager = ApiKeyManager();
     self.server.app.add_middleware(
         CORSMiddleware,
         allow_origins=['*'],
@@ -334,7 +333,7 @@ impl JacAPIServerCore._print_startup_banner(dev: bool, no_client: bool) -> None 
 
     console.print_urls(urls);
     console.print();
-    console.print("  🚀 Server ready", style="bold green");
+    console.print("  Server ready", style="bold green");
 }
 
 impl JacAPIServerCore._configure_openapi_security -> None {
@@ -667,8 +666,7 @@ impl JacAPIServerCore._setup_scheduler -> None {
             JacScaleScheduler.instance().stop(drain=False);
         }
     }
-    # Starlette removed the `add_event_handler` method; append to the underlying
-    # on_shutdown list directly (present across old and new Starlette).
+
     self.server.app.router.on_shutdown.append(_shutdown_scheduler);
 }
 

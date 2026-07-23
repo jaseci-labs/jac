@@ -73,7 +73,6 @@ invocation is a full CLI startup, so the cache saves 8 subprocess spawns
 per run.
 """
 def _compile_runtime_to_js -> str {
-    global _compiled_runtime_js;
     if _compiled_runtime_js is not None {
         return _compiled_runtime_js;
     }

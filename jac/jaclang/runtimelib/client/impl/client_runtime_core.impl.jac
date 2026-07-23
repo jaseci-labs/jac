@@ -21,14 +21,14 @@ async def _awaitPlatformReady {
 
 impl __createJacSchema(zodLib: any) -> any {
     handler = {
-        "apply": lambda target: any , thisArg: any , argumentsList: any -> any { return zodLib.object.apply(
+        "apply": lambda (target: any, thisArg: any, argumentsList: any) -> any { return zodLib.object.apply(
             zodLib, argumentsList
         ); },
-        "get": lambda target: any , prop: any , receiver: any -> any { return zodLib[
+        "get": lambda (target: any, prop: any, receiver: any) -> any { return zodLib[
             prop
         ]; }
     };
-    dummyFunc = lambda schema: any -> any { return zodLib.object(schema); };
+    dummyFunc = lambda (schema: any) -> any { return zodLib.object(schema); };
     return Reflect.construct(Proxy, [dummyFunc, handler]);
 }
 
@@ -174,6 +174,14 @@ impl __doFuncFetch(function_name: str, args: dict) -> any {
         {"method": "POST", "headers": headers, "body": JSON.stringify(args)}
     );
     if not response.ok {
+        if response.status == 401 {
+            globalThis.__jacRemoveLocalStorage__("jac_token");
+            handler = globalThis.__jacHandleWalkerUnauthorized__;
+            if handler {
+                handler();
+            }
+            return {};
+        }
         error_text = await response.text();
         raise Exception(f"Function {function_name} failed: {error_text}");
     }
@@ -321,12 +329,13 @@ impl jacSignup(
             error_data = JSON.parse(error_text);
             return {
                 "success": False,
+                "status": response.status,
                 "error": error_data["error"]
                     if error_data["error"] != None
                     else "Signup failed"
             };
         } except Exception {
-            return {"success": False, "error": error_text};
+            return {"success": False, "status": response.status, "error": error_text};
         }
     }
 }

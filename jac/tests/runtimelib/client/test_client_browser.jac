@@ -89,7 +89,7 @@ test "auto cache dedupes reader and invalidates on write" {
                     ping_requests: list = [];
                     page.on(
                         "request",
-                        lambda req: any { "/walker/ping_server" in req.url
+                        lambda (req: any) { "/walker/ping_server" in req.url
                         and ping_requests.append(req.url); },
                     );
                     _goto(page, base, "/");

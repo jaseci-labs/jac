@@ -64,7 +64,7 @@ cl {
 !!! warning "`children` must have a default value"
     The prop validator counts only JSX **attributes** toward matched parameters -- nested content does *not* count. A `children` parameter with no default is therefore treated as a *required* prop, and any call site that passes another attribute fails with `error[E1102]: Component 'Card' requires prop 'children'`. Always declare it as `children: any = None`.
 
-There is no `ReactNode`-style union type in Jac, and a children value can be an element, a string, a number, or a list of those -- so `any` is the honest type for a `children` parameter. The parameter type governs only how you use `children` inside the body; it is never checked against the nested content.
+There is no `ReactNode`-style union type in Jac, and a children value can be an element, a string, a number, or a list of those -- so `any` is the accurate type for a `children` parameter. The parameter type governs only how you use `children` inside the body; it is never checked against the nested content.
 
 **`{name}` attribute shorthand:** when a prop's value is a variable of the same name, `<Card {title} {onClose} />` is sugar for `<Card title={title} onClose={onClose} />`. Each shorthand attribute is still validated per-prop against the component signature. This is distinct from the `{**props}` spread (above), which forwards an entire object instead of a single named attribute.
 
@@ -224,7 +224,7 @@ cl {
         return <input
             type="text"
             value={query}
-            onChange={lambda e: ChangeEvent { query = e.target.value; }}
+            onChange={lambda (e: ChangeEvent) { query = e.target.value; }}
             placeholder="Search..."
         />;
     }
@@ -244,15 +244,15 @@ cl {
             print(f"Login: {username}");
         }
 
-        return <form onSubmit={lambda e: FormEvent { handle_submit(e); }}>
+        return <form onSubmit={lambda (e: FormEvent) { handle_submit(e); }}>
             <input
                 value={username}
-                onChange={lambda e: ChangeEvent { username = e.target.value; }}
+                onChange={lambda (e: ChangeEvent) { username = e.target.value; }}
             />
             <input
                 type="password"
                 value={password}
-                onChange={lambda e: ChangeEvent { password = e.target.value; }}
+                onChange={lambda (e: ChangeEvent) { password = e.target.value; }}
             />
             <button type="submit">Login</button>
         </form>;
@@ -351,7 +351,7 @@ cl {
 
 ### `for` and `while` loops
 
-`for it in items { <Row item={it} /> }` inside a slot lowers to a `JS` `for` loop that pushes each `<Row>` to the element's children -- not a comprehension over a `.map()`. Same shape for the `for x = 0 to n by 1 { ... }` form and for `while`.
+`for it in items { <Row item={it} /> }` inside a slot lowers to a `JS` `for` loop that pushes each `<Row>` to the element's children -- not a comprehension over a `.map()`. Same shape for the C-style `for x = 0; x < n; x += 1 { ... }` form and for `while`.
 
 ```jac
 cl {
@@ -658,7 +658,7 @@ for the full contract.
 | JSX element | `<div className="x">content</div>` |
 | Expression | `{expression}` |
 | Click handler | `onClick={lambda -> None { ... }}` |
-| Input handler | `onChange={lambda e: ChangeEvent { ... }}` |
+| Input handler | `onChange={lambda (e: ChangeEvent) { ... }}` |
 | List rendering | `{[<li>{x}</li> for x in items]}` |
 | Conditional | `{("A" if condition else "B")}` |
 | Children | `def:pub Card(children: any = None) { ... }` then `{children}` |
