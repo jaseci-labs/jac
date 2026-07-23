@@ -46,8 +46,7 @@ def _get_db_config -> dict {
     return get_scale_config().get_database_config();
 }
 
-def _publish_super_root_template(snapshot: any) -> None {
-    import from jaclang.jac0core.constructs { NodeAnchor }
+def _publish_super_root_template(snapshot: (NodeAnchor | None)) -> None {
     if not isinstance(snapshot, NodeAnchor) {
         return;
     }
@@ -60,7 +59,7 @@ def _publish_super_root_template(snapshot: any) -> None {
     }
 }
 
-def _publish_super_root_from_store(store: any, sr_id: UUID) -> None {
+def _publish_super_root_from_store(store: PersistentMemory, sr_id: UUID) -> None {
     with _super_root_template_lock {
         try {
             store_cache = store?.__mem__;

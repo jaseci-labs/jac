@@ -1,4 +1,4 @@
-def _independent_super_root(template: any) -> any {
+impl _independent_super_root(template: (NodeAnchor | None)) -> (NodeAnchor | None) {
     import from jaclang.jac0core.constructs { NodeAnchor }
     import from jaclang.runtimelib.serializer { Serializer }
     if not isinstance(template, NodeAnchor) {
