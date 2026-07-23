@@ -115,7 +115,54 @@ Four copies, three type systems, and one landmine: the fourth copy renames `disp
 
 None of this is required by computation. The pattern traces to two silent assumptions in the 1945 report that defined the stored-program computer: that *computation is stationary* (the site of processing is fixed, and data travels to it), and that *the machine is the program's world* (a program's semantics end at the edge of its process, so frontend and backend, managed and native, script and service are separate programs, joined by hand). Both were engineering defaults for a machine with one memory. Seventy years of habit made them look like laws. Jac is one bet against each.
 
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/docs/assets/readme/synechic-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/docs/assets/readme/synechic-light.svg">
+    <img alt="A conventional stack is three separate programs (TypeScript frontend, Python backend, C native) joined by hand across unchecked JSON and FFI seams, so renaming a field ships a stale copy that fails in production; Jac is one continuous checked medium spanning cl, sv, and na tiers, importing npm, PyPI, and the C world directly, with one compiler seeing both sides of every call, so the same rename is a compile error" src="docs/docs/assets/readme/synechic-light.svg" width="880">
+  </picture>
+</div>
+
 **Against the second assumption, Jac is synechic** (from the Greek *synecheia*, continuity): one continuous, checked medium across ecosystems, tiers, and toolchains. One language spans frontend, backend, and native code, and inherits each one's ecosystem (PyPI, npm, the C world) through a plain `import`, so one compiler sees both sides of every call: rename a field and every stale use (server, client, or native) is a **compile error**, not a production incident. Building the first production synechic language is the whole point of Jac.
+
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/docs/assets/readme/gradual-borrow-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/docs/assets/readme/gradual-borrow-light.svg">
+    <img alt="In a conventional stack, outgrowing the garbage collector means rewriting the hot path in Rust or C++ across an FFI seam; Jac's gradual borrow checking is one continuum in one language, from fully managed code through own and borrow annotations to enforced zero-RC native artifacts, with a checked membrane mediating every value that crosses between the regimes" src="docs/docs/assets/readme/gradual-borrow-light.svg" width="880">
+  </picture>
+</div>
+
+That continuity runs all the way down. The deepest seam in computing is the one between managed and systems languages -- today, when the hot path outgrows the garbage collector, the answer is a second language, an FFI boundary, and a rewrite. Jac renders that divide as **gradual borrow checking**: unannotated code keeps fully managed semantics, `own` and `&`/`&mut` opt individual declarations into moves, borrows, and deterministic destruction, a checked boundary (the **membrane**) mediates every value that crosses between the regimes, and full adoption reaches native artifacts with **no reference counting and no collector**. The divide becomes a gradient walked by degrees, never a cliff crossed by starting over. [Gradual borrow checking →](https://docs.jaseci.org/reference/language/ownership-borrowing/)
+
+<details>
+<summary><strong>The gradient in code (opt in one declaration at a time)</strong></summary>
+
+<br>
+
+```jac
+obj Buffer { has n: int = 0; }
+
+with entry {
+    a: own Buffer = Buffer();   # this declaration opts in; the rest of the file is untouched
+    v: &Buffer = &a;            # shared borrow of the owner
+    a.n = 5;                    # error[E1303]: cannot mutate 'a' while a shared borrow of it is live
+    b = a;                      # moves the value out of 'a'
+    print(a);                   # error[E1301]: use of 'a' after it was moved
+}
+```
+
+The checker tracks only what you tag, so `node`, `edge`, and `walker` stay fully managed and the borrow rules never have to reason about the graph. When a module opts in fully, the native pathway compiles it with no RC and no collector in the artifact: systems-language machine code from the same language that serves your web app.
+
+</details>
+
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/docs/assets/readme/topokinetic-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/docs/assets/readme/topokinetic-light.svg">
+    <img alt="A conventional stack keeps the program stationary while data commutes to it over query and write-back round trips, and persistence is a commit call you must remember to fire; in Jac data lives as a persistent topology of nodes and edges, a walker carries computation through the graph dispatched by arrival, everything reachable from root persists while unreachable nodes do not, and the database dissolves into the language" src="docs/docs/assets/readme/topokinetic-light.svg" width="880">
+  </picture>
+</div>
 
 **Against the first assumption, Jac is topokinetic** (from the Greek *topos*, place, and *kinesis*, motion): the moving locus of computation is a language construct. In Jac's Object-Spatial Programming, data lives as a persistent topology of nodes and edges, and **walkers** carry computation through it, dispatched by arrival. Whatever is reachable from `root` persists: persistence is a predicate, not an event, and the database dissolves into the language.
 
