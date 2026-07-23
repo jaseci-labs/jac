@@ -452,8 +452,6 @@ impl native_capability_violations(mod: uni.Module) -> list {
                     and isinstance(nd.target, uni.Name)
                     and nd.target.value == "os"
                 ) {
-                    # os.environ lowers natively (environ get/pop calls and
-                    # []= assignment route through the os intrinsics).
                     continue;
                 }
                 out.append(

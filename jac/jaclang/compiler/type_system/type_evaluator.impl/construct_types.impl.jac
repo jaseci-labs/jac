@@ -120,9 +120,6 @@ impl TypeEvaluator._extract_tuple_element_type(
         and cls.private.type_args
         and self._tuple_has_variadic_arg(cls)
     ) {
-        # Homogeneous `tuple[T, ...]`: the ellipsis slot is stored as an
-        # Unknown type-arg, so positional lookup would leak strict Unknown
-        # for every index past 0. Any index has element type T.
         return self._convert_to_instance(cls.private.type_args[0]);
     }
     if cls.private.type_args and idx < len(cls.private.type_args) {

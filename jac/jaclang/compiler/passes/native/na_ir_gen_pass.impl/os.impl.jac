@@ -6,8 +6,6 @@ impl NaIRGenPass._emit_os_environ_call(
     params = nd.params or [];
 
     if name == "get" {
-        # os.environ.get(key[, default]) has exactly getenv's contract:
-        # found -> owned copy of the value, missing -> default (or None).
         return self._emit_os_call("getenv", nd);
     }
 

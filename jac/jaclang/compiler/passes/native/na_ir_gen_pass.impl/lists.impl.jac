@@ -306,7 +306,6 @@ impl NaIRGenPass._codegen_index(
     self._emit_runtime_raise(is_oob, "IndexError", "list index out of range");
     _got = self.builder.call(helpers["get"], [target_val, index_val], name="list.get");
     if elem_type_name == "u8" {
-        # bytearray elements are unsigned bytes read back as ints.
         return self.builder.zext(_got, i64, name="ba.get.zext");
     }
     return _got;

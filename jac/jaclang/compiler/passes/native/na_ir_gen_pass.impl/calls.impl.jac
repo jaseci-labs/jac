@@ -171,8 +171,6 @@ impl NaIRGenPass._codegen_bound_args(
         and sig_params[0].name
         and sig_params[0].name.value == "self"
     ) {
-        # A bound call already supplies the receiver in slot 0; a class-style
-        # callee's explicit `self` param must not consume a positional arg.
         sig_params = sig_params[1:];
         _self_skip = 1;
     }
@@ -397,10 +395,7 @@ impl NaIRGenPass._codegen_bound_args(
                     name=f"{_nc_name} (captured '{_cname}' not in the calling frame)",
                     help_text="A capturing nested function can only be called from a frame that defines or forwards its captures. Pass the value as an explicit parameter instead."
                 );
-                # Pad the remaining capture params so the call still
-                # type-checks: the module is already demoting on the E5092
-                # above, and a short arg list would crash the IR builder
-                # instead of reporting it.
+
                 while len(args) < len(func.args) {
                     args.append(self._default_arg_fallback(func.args[len(args)].type));
                 }

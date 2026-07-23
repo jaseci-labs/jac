@@ -565,9 +565,6 @@ impl BoundaryAnalysisPass.enter_func_call(
             _decl_ab is not None
             and _decl_ab.find_parent_of_type(uni.Ability) is not None
         ) {
-            # The callee is a fn nested inside another fn: it is frame-local
-            # and can never be an interop boundary, so a same-named fn from
-            # the other codespace must not capture this call as a caller.
             return;
         }
     }

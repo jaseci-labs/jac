@@ -21,9 +21,6 @@ impl NaIRGenPass._native_archetypes(module: uni.Module) -> list[uni.Archetype] {
     return [
         a
         for a in result.values()
-        # Generic archetypes (`class Emitter[V, C]`) are templates: they are
-        # never instantiated directly, so nothing lowers for them. Subclasses
-        # that fix the type args lower as ordinary archetypes.
         if not a.type_params
     ];
 }
@@ -427,8 +424,6 @@ impl NaIRGenPass._forward_declare_method(arch_name: str, method: uni.Ability) ->
         and _m_params[0].name
         and _m_params[0].name.value == "self"
     ) {
-        # Class-style methods declare `self` explicitly; the leading struct
-        # pointer already carries it, so it must not become a second param.
         _m_params = _m_params[1:];
     }
 
@@ -512,8 +507,6 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
         and _body_params[0].name
         and _body_params[0].name.value == "self"
     ) {
-        # The explicit `self` of a class-style method is arg0, already bound
-        # to the `self` local above.
         _body_params = _body_params[1:];
     }
     for (i, p) in enumerate(_body_params) {

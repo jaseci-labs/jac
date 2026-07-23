@@ -3323,9 +3323,6 @@ impl NativeDictEmitter.emit_get(
     result.add_incoming(val, found_bb);
     result.add_incoming(default_val, notfound_bb);
     if isinstance(val_type, ir.PointerType) {
-        # The stored slot keeps its reference; the caller's binding is
-        # released at scope exit, so it must own one too (retain is
-        # null-safe, and a no-op for static/sentinel allocations).
         if p.rc_retain_fn is None {
             p._emit_rc_helpers();
         }
@@ -6033,8 +6030,6 @@ impl NativeBuiltinEmitter.emit_bytes(
     i64 = ir.IntType(64);
     val = args[0];
     if ("u8" in p.list_types and val.type == p.list_types["u8"].as_pointer()) {
-        # bytes(bytearray): freeze by copying the raw buffer. The builtin
-        # dispatcher releases the owned source arg itself.
         _src = p._bytearray_src_of(val);
         if _src is not None {
             return p._bytes_from_raw(_src[0], _src[1]);
@@ -6105,12 +6100,10 @@ impl NativeBuiltinEmitter.emit_bytearray(
     }
     src = p._bytearray_src_of(a0);
     if src is not None {
-        # The builtin dispatcher releases the owned source arg itself.
         b.call(fns["extend_raw"], [buf, src[0], src[1]], name="");
         return buf;
     }
-    # bytearray([ints...]): reuse the list->bytes conversion loop, then copy
-    # the frozen intermediate into the buffer and drop it.
+
     _bv = self.emit_bytes(ctx, [a0]);
     if _bv is not None and p._is_bytes_value(_bv) {
         _bsrc = p._bytearray_src_of(_bv);

@@ -121,7 +121,6 @@ impl NaIRGenPass._dict_key_of(expr: (uni.UniNode | None)) -> (str | None) {
 }
 
 impl NaIRGenPass._list_spec_of(expr: (uni.UniNode | None)) -> (str | None) {
-    # bytearray shares the List.u8 layout, so list machinery serves it.
     return self._spec_of(expr, ("list", "bytearray"), self.list_types);
 }
 

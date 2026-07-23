@@ -438,9 +438,6 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
                     }
                     if result is not None
                     and not self.evaluator.assign_type(result, left_type) {
-                        # `x op= y` rebinds x to the operator's result; it is
-                        # that result, not y itself, that must fit the target
-                        # (bytearray += bytes is fine, int += 0.5 is not).
                         self.emit(E1001, actual=str(result), expected=str(left_type));
                     }
                 }

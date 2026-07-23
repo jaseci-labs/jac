@@ -1577,7 +1577,6 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 and target_expr.right?.is_range
                 and target_expr.right?.slices
             ) {
-                # bytearray[a:b] = <bytes|bytearray>: python splice semantics.
                 _ba_sl = target_expr.right.slices[0];
                 _ba_start = (
                     self._codegen_expr(_ba_sl.start)
@@ -1760,10 +1759,6 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         and "u8" in self.list_types
                         and current.type == self.list_types["u8"].as_pointer()
                     ) {
-                        # bytearray += bytes|bytearray extends in place. The
-                        # raw rhs keeps its own layout (a bytes rhs bitcast to
-                        # the buffer type would be misread), so source from
-                        # `value`, never `coerced`.
                         _ba_aug_src = self._bytearray_src_of(value);
                         if _ba_aug_src is not None {
                             _ba_aug_fns = self._bytearray_runtime_fns();

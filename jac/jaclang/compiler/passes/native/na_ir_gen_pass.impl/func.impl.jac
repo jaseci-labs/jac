@@ -519,9 +519,6 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
     }
     body = ModuleCodegenPass.unwrap_body(nd);
 
-    # A frame's sibling nested fns are prototyped together (with a fixpoint
-    # over transitive sibling captures) the first time any of them lowers,
-    # so forward and mutually-recursive sibling calls resolve.
     _pre = self._nested_predecl.get(nd);
     if _pre is None {
         self._predeclare_nested_siblings(nd);
@@ -548,12 +545,6 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
             cap_order.append(fv_name);
             cap_modes[fv_name] = "ptr" if fv_name in rebound else "val";
         }
-        # Transitive sibling captures: a nested fn that calls an
-        # already-lowered capturing sibling must capture (and forward) that
-        # sibling's cells too, even when it never touches them textually. A
-        # var any callee holds by pointer stays a pointer through the whole
-        # chain, so writes land in the defining frame rather than in a stale
-        # per-frame copy.
         for _nm in nd.get_all_sub_nodes(typ=uni.Name) {
             _sib_entry = self.nested_captures.get(_nm.value);
             if _sib_entry is None {
@@ -707,7 +698,7 @@ impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
             and _st.name_ref
             and (_st.signature is None or isinstance(_st.signature, uni.FuncSignature))
             and not self._ability_is_generator(_st)
-            and not getattr(_st, "type_params", None)
+            and not _st?.type_params
             and _st not in self._nested_predecl
         ) {
             sibs.append(_st);
@@ -745,9 +736,6 @@ impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
                 continue;
             }
             if _sym.sym_type in (SymbolType.ABILITY, SymbolType.TEST) {
-                # Fn names (including the fn's own declaration name, which
-                # get_enclosing_captures always reports) resolve through
-                # func_symtab and the sibling fixpoint, not value capture.
                 continue;
             }
             if (_sym.sym_name in self.local_vars or _sym.parent_tab is _frame) {
@@ -768,8 +756,7 @@ impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
         }
         _sib_refs[s] = _rf;
     }
-    # Fixpoint: every sibling forwards the full capture set of every sibling
-    # it references, so mutually-recursive parser-style families converge.
+
     _changed = True;
     while _changed {
         _changed = False;
@@ -793,10 +780,7 @@ impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
     for s in sibs {
         _sname = s.name_ref.sym_name;
         _ssig = s.signature;
-        # A capture of a local that has no slot yet (declared between def
-        # statements) can still be prototyped from its checker type -- except
-        # cell vars, whose slot shape only exists once materialized. Those
-        # siblings defer to their own def statement (the pre-existing flow).
+
         _defer = False;
         _cap_types: dict = {};
         for _cn in _cap_order[s] {

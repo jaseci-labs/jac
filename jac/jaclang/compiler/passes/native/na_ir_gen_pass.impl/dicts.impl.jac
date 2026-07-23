@@ -57,10 +57,6 @@ impl NaIRGenPass._dict_val_spec(val_type: ir.Type) -> str {
     if isinstance(val_type, ir.PointerType) {
         _pointee = val_type.pointee;
         if isinstance(_pointee, ir.IdentifiedStructType) and _pointee.name {
-            # Pointer-valued dicts must not share one "ptr" helper family:
-            # the family's LLVM signature is built from the first value type
-            # it sees, and a second dict with a different struct pointee then
-            # feeds mismatched pointers into it (llvmlite TypeError).
             return "ptr_" + str(_pointee.name).replace(".", "_");
         }
         return "ptr";
@@ -468,10 +464,6 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
     use_jacval = _own_dk is not None and _own_dk.endswith(":jacval");
 
     if _own_dk is not None and not use_jacval and _own_dk in self.dict_helpers {
-        # The checker knows this literal's dict type: use the family lowered
-        # from the declared key/value types and coerce every pair into it,
-        # instead of trusting the first value's LLVM type (which mis-selects
-        # the family when several pointer-valued dicts share a module).
         dict_key = _own_dk;
         helpers = self.dict_helpers[dict_key];
         key_type = helpers["key_type"];

@@ -1,12 +1,3 @@
-"""Native bytearray runtime (#7626 C7).
-
-A bytearray lowers as the `List.u8` container family: {i64 len, i64 cap,
-i8* data} with the standard list new/append/get/set/len helpers and RC
-release. This file adds the byte-buffer-specific runtime fns (reserve,
-raw extend, slice splice), the method dispatch, and struct.pack_into.
-Reads zero-extend (bytes are unsigned); writes truncate.
-"""
-
 impl NaIRGenPass._ensure_bytearray_type -> ir.Type {
     self._emit_list_helpers("u8", ir.IntType(8));
     return self.list_types["u8"].as_pointer();
@@ -25,7 +16,6 @@ impl NaIRGenPass._bytearray_runtime_fns -> dict {
     memmove_fn = self._get_or_declare_extern("memmove", i8p, [i8p, i8p, i64]);
     memset_fn = self._get_or_declare_extern("memset", i8p, [i8p, i32, i64]);
 
-    # __bytearray_reserve(buf, need): double capacity until it fits.
     res_fnty = ir.FunctionType(ir.VoidType(), [ba_ptr, i64]);
     res_fn = ir.Function(self.llvm_module, res_fnty, name="__bytearray_reserve");
     res_fn.linkage = "private";
@@ -48,8 +38,7 @@ impl NaIRGenPass._bytearray_runtime_fns -> dict {
     b.cbranch(fits, done_bb, grow_bb);
     b = ir.IRBuilder(grow_bb);
     len_v = b.load(len_p, name="len");
-    # A fresh container can start at cap 0; doubling 0 stays 0, so bump to a
-    # non-zero floor before the standard grow doubles it.
+
     is_zero = b.icmp_signed("==", cap_v, ir.Constant(i64, 0), name="cap.zero");
     floored = b.select(is_zero, ir.Constant(i64, 4), cap_v, name="cap.floor");
     b.store(floored, cap_p);
@@ -58,11 +47,6 @@ impl NaIRGenPass._bytearray_runtime_fns -> dict {
     b = ir.IRBuilder(done_bb);
     b.ret_void();
 
-    # __bytearray_extend_raw(buf, src, n): append n raw bytes. The source
-    # may alias the buffer itself (b.extend(b), b += b): growth can move the
-    # data, so an in-buffer source is re-derived from its offset after the
-    # reserve. The copied region [off, off+n) lies within the old length and
-    # the destination starts at len, so the regions never overlap.
     ext_fnty = ir.FunctionType(ir.VoidType(), [ba_ptr, i8p, i64]);
     ext_fn = ir.Function(self.llvm_module, ext_fnty, name="__bytearray_extend_raw");
     ext_fn.linkage = "private";
@@ -95,9 +79,6 @@ impl NaIRGenPass._bytearray_runtime_fns -> dict {
     b.store(e_need, e_len_p);
     b.ret_void();
 
-    # __bytearray_setslice(buf, start, stop, src, n): python splice
-    # semantics -- the [start:stop) span is replaced by the n src bytes,
-    # shifting the tail when the lengths differ.
     ss_fnty = ir.FunctionType(ir.VoidType(), [ba_ptr, i64, i64, i8p, i64]);
     ss_fn = ir.Function(self.llvm_module, ss_fnty, name="__bytearray_setslice");
     ss_fn.linkage = "private";
@@ -116,14 +97,13 @@ impl NaIRGenPass._bytearray_runtime_fns -> dict {
     s_len_p = b.gep(s_buf, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.p");
     s_data_p = b.gep(s_buf, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="data.p");
     s_len = b.load(s_len_p, name="len");
-    # Snapshot the source: it may alias this buffer (b[a:c] = b), and both
-    # the reserve and the tail shift below would mutate it mid-splice.
+
     malloc_fn = self._get_or_declare_extern("malloc", i8p, [i64]);
     free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
     s_tmp = b.call(malloc_fn, [s_n], name="src.snap");
     b.call(memcpy_fn, [s_tmp, s_src, s_n]);
     s_src = s_tmp;
-    # clamp negatives/overruns to python slice semantics on a known-len buf
+
     zero = ir.Constant(i64, 0);
     st_neg = b.icmp_signed("<", s_start, zero, name="st.neg");
     st_adj = b.select(st_neg, b.add(s_start, s_len), s_start, name="st.adj");
@@ -170,7 +150,6 @@ impl NaIRGenPass._bytearray_runtime_fns -> dict {
 }
 
 impl NaIRGenPass._bytearray_src_of(val: ir.Value) -> (tuple | None) {
-    # Returns (data i8*, len i64) for a bytes or bytearray value.
     if self._is_bytes_value(val) {
         return (self._bytes_data_ptr(val), self._bytes_len_val(val));
     }
