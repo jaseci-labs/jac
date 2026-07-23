@@ -818,7 +818,7 @@ impl JacModule.jac_import(
         if (override_name == '__main__') {
             import from jaclang.meta_importer { JacMetaImporter }
             finder = JacMetaImporter();
-            spec = finder.find_spec(module_name, None);
+            spec: any = finder.find_spec(module_name, None);
             if (
                 spec and spec.origin and spec.origin.endswith('.jac') and (lng == 'py')
             ) {
@@ -848,12 +848,19 @@ impl JacModule.jac_import(
                 module = types.ModuleType('__main__');
                 sys.modules['__main__'] = module;
             }
+            if not spec.submodule_search_locations {
+                spec = importlib.util.spec_from_file_location(
+                    '__main__',
+                    spec.origin,
+                    loader=spec.loader,
+                    submodule_search_locations=[os.path.abspath(caller_dir)]
+                );
+            }
             module.__file__ = spec.origin;
             module.__name__ = '__main__';
             module.__spec__ = spec;
-            if spec.submodule_search_locations {
-                module.__path__ = spec.submodule_search_locations;
-            }
+            module.__path__ = spec.submodule_search_locations;
+            module.__package__ = spec.parent;
             JacRuntimeInterface.load_module('__main__', module);
 
             if (spec.origin and spec.origin.endswith('.py')) {
@@ -872,7 +879,36 @@ impl JacModule.jac_import(
             module = importlib.reload(sys.modules[module_name]);
             JacRuntimeInterface.load_module(module_name, module, force=True);
         } else {
-            module = importlib.import_module(module_name);
+            try {
+                module = importlib.import_module(module_name);
+            } except ImportError as imp_err {
+                if (
+                    (lng != 'jac')
+                    or ('.' in module_name)
+                    or isinstance(imp_err, ModuleNotFoundError)
+                    or ('no known parent package' not in str(imp_err))
+                ) {
+                    raise;
+                }
+                import from jaclang.meta_importer { JacMetaImporter }
+                entry_spec: any = JacMetaImporter().find_spec(module_name, None);
+                if not (entry_spec and entry_spec.origin) {
+                    raise;
+                }
+                if not entry_spec.submodule_search_locations {
+                    entry_spec.submodule_search_locations = [
+                        os.path.abspath(caller_dir)
+                    ];
+                }
+                module = importlib.util.module_from_spec(entry_spec);
+                sys.modules[module_name] = module;
+                try {
+                    entry_spec.loader.exec_module(module);
+                } except Exception {
+                    sys.modules.pop(module_name, None);
+                    raise imp_err;
+                }
+            }
             JacRuntimeInterface.load_module(
                 module_name, module, force=bool(reload_module)
             );

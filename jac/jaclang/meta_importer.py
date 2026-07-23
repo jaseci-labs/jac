@@ -225,16 +225,8 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
             for suffix in ext_registry.MODULE_SUFFIXES:
                 module_file = candidate_path + suffix
                 if os.path.isfile(module_file):
-                    # Anchor a top-level file to its own directory so leading-dot
-                    # imports resolve; dotted modules keep their real parent.
-                    search_locations = (
-                        [os.path.dirname(module_file)] if path is None else None
-                    )
                     return importlib.util.spec_from_file_location(
-                        fullname,
-                        module_file,
-                        loader=self,
-                        submodule_search_locations=search_locations,
+                        fullname, module_file, loader=self
                     )
 
         return None
