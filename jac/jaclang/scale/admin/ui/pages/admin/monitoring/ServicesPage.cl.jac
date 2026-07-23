@@ -69,7 +69,13 @@ cl {
             isLoading = False;
         }
 
-        useEffect(lambda { loadAll(); }, []);
+        useEffect(
+            lambda {
+                loadAll();
+                return;
+            },
+            []
+        );
 
         useEffect(
             lambda -> any {

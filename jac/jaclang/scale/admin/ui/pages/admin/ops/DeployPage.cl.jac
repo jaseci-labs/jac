@@ -54,7 +54,13 @@ def:pub DeployPage -> JsxElement {
         loadedOnce = True;
     }
 
-    useEffect(lambda { load(); }, []);
+    useEffect(
+        lambda {
+            load();
+            return;
+        },
+        []
+    );
 
     # ---- helpers (return strings, never JSX) -------------------------
     def rolloutCls(status: str) -> str {

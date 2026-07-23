@@ -80,7 +80,13 @@ def:pub MetricsPage -> JsxElement {
         isLoading = False;
     }
 
-    useEffect(lambda { loadMetrics(); }, []);
+    useEffect(
+        lambda {
+            loadMetrics();
+            return;
+        },
+        []
+    );
 
     useEffect(
         lambda -> any {
