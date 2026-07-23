@@ -5687,3 +5687,18 @@ test "bare_list_flow_inference" {
         )}";
     }
 }
+
+test "callable_decorator_preserves_signature" {
+    # Issue #7463: a decorator whose return type is a bare/gradual `Callable`
+    # (`-> Callable` or a `Callable[[Callable], Callable]` factory) must not
+    # erase the decorated function's parameter names/counts. Keyword and
+    # positional calls to the decorated function must bind without false
+    # E1052 / E1051 diagnostics.
+    path = os.path.join(CHECKER_FIXTURES, "checker_callable_decorator_kwarg.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , "Expected no errors for calls to Callable-decorated functions, got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+}
