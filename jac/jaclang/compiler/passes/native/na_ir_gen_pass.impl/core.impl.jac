@@ -712,6 +712,29 @@ impl NaIRGenPass._walk_imported_module_types(imported_mod: uni.Module) -> None {
 }
 
 impl NaIRGenPass._walk_imported_module_abilities(imported_mod: uni.Module) -> None {
+    _imp_layout = imported_mod.gen.native_layout;
+    if _imp_layout is not None {
+        for _imp_arch in ModuleCodegenPass.iter_context_stmts(imported_mod) {
+            if not isinstance(_imp_arch, uni.Archetype)
+            or _imp_arch.body is None
+            or _imp_arch.name is None {
+                continue;
+            }
+            _ia_name = _imp_arch.name.value;
+            for _imp_stmt in _imp_arch.body {
+                if (
+                    isinstance(_imp_stmt, uni.Ability)
+                    and _imp_stmt.name_ref
+                    and isinstance(_imp_stmt.signature, uni.FuncSignature)
+                ) {
+                    _im_full = f"{_ia_name}.{_imp_stmt.name_ref.sym_name}";
+                    if _im_full not in _imp_layout.methods {
+                        self._native_skipped_methods.add(_im_full);
+                    }
+                }
+            }
+        }
+    }
     for stmt in ModuleCodegenPass.iter_context_stmts(imported_mod) {
         if (
             isinstance(stmt, uni.ContextAwareNode)
@@ -742,24 +765,10 @@ impl NaIRGenPass._forward_declare_archetype_methods(arch: uni.Archetype) -> None
     if aname is None or arch.body is None {
         return;
     }
-    _imp_layout = None;
-    _arch_mod = arch.find_parent_of_type(uni.Module);
-    if _arch_mod is not None and _arch_mod is not self.ir_in {
-        _imp_layout = _arch_mod.gen.native_layout;
-    }
     for stmt in arch.body {
         if isinstance(stmt, uni.Ability) {
             if stmt.signature is not None
             and isinstance(stmt.signature, uni.FuncSignature) {
-                _m_name = stmt.name_ref.sym_name if stmt.name_ref else None;
-                if (
-                    _imp_layout is not None
-                    and _m_name is not None
-                    and f"{aname}.{_m_name}" not in _imp_layout.methods
-                ) {
-                    self._native_skipped_methods.add(f"{aname}.{_m_name}");
-                    continue;
-                }
                 self._forward_declare_method(aname, stmt);
             } elif isinstance(stmt.signature, uni.EventSignature)
             and (arch.arch_kind is not None) {

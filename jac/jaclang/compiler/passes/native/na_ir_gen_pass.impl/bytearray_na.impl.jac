@@ -210,7 +210,11 @@ impl NaIRGenPass._dispatch_bytearray_method(
 }
 
 impl NaIRGenPass._emit_struct_pack_into(
-    nd: uni.FuncCall, params: list, fields: list, total: int, little: bool
+    nd: uni.FuncCall,
+    params: list,
+    fields: list[tuple[str, int, bool]],
+    total: int,
+    little: bool
 ) -> (ir.Value | None) {
     if len(params) < 3 {
         return None;

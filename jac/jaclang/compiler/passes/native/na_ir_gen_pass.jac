@@ -832,7 +832,11 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> (ir.Value | None);
 
     def _emit_struct_pack_into(
-        nd: uni.FuncCall, params: list, fields: list, total: int, little: bool
+        nd: uni.FuncCall,
+        params: list,
+        fields: list[tuple[str, int, bool]],
+        total: int,
+        little: bool
     ) -> (ir.Value | None);
 
     def _emit_struct_pack(

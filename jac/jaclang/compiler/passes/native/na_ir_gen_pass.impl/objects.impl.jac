@@ -410,6 +410,9 @@ impl NaIRGenPass._forward_declare_method(arch_name: str, method: uni.Ability) ->
     if full_name in self.method_funcs {
         return;
     }
+    if full_name in self._native_skipped_methods {
+        return;
+    }
     sig = method.signature;
     struct_type = self.struct_types.get(arch_name);
     if struct_type is None or sig is None {
