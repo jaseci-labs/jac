@@ -58,7 +58,7 @@ You typically don't need to modify this file until you add dependencies or custo
 
 ### [project]
 
-Project metadata. Runtime fields (`entry-point`, `jac-version`) are used by `jac run` and `jac start`. Publishing fields (`license`, `readme`, `keywords`, `requires-python`, `authors`, `maintainers`, and `[project.include]`) are used by `jac build --as wheel` when building a distributable wheel. All publishing fields are optional -- a project that is never published only needs `name`.
+Project metadata. `entry-point` drives `jac run`. `jac-version` pins the Jac toolchain the project targets: `jac create` stamps it automatically, and `jac start --scale` uses it to select the pod runtime (see [jac-version](#jac-version) below). Publishing fields (`license`, `readme`, `keywords`, `requires-python`, `authors`, `maintainers`, and `[project.include]`) are used by `jac build --as wheel` when building a distributable wheel. All publishing fields are optional -- a project that is never published only needs `name`.
 
 ```toml
 [project]
@@ -67,7 +67,7 @@ version = "1.0.0"
 description = "My Jac application"
 entry-point = "main.jac"
 kind = "service"   # drives `jac run` (omit to infer from the entry-point)
-jac-version = ">=0.15.0"
+jac-version = "==0.34.3"   # stamped by `jac create`; widen to `>=`, `<=`, or a range
 
 # Publishing metadata -- only needed to run `jac build --as wheel`
 license = "MIT"
@@ -89,7 +89,7 @@ repository = "https://github.com/user/repo"
 | `description` | string | One-line summary (also shown on PyPI) |
 | `entry-point` | string | Main file for `jac run` (default: `main.jac`) |
 | `kind` | string | Project kind that drives `jac run` dispatch (execute / serve / build). Empty = inferred from the entry-point codespace. One of: `cli`, `cli-native`, `native-binary`, `native-lib`, `service`, `service-mesh`, `py-package`, `js-package`, `web-app`, `web-static`, `desktop`, `mobile` |
-| `jac-version` | string | Required Jac compiler version |
+| `jac-version` | string | Jac toolchain version the project targets, as a PEP 440-style specifier. `jac create` stamps `==<current>`; at `jac start --scale` the pod runtime binary and base image are chosen to satisfy it, falling back to the latest release when nothing published matches. See [jac-version](#jac-version). |
 | `license` | string | SPDX license identifier (e.g. `"MIT"`) |
 | `readme` | string | Path to README file (default: `README.md`) |
 | `requires-python` | string | Minimum Python version (e.g. `">=3.12"`) |
@@ -99,6 +99,24 @@ repository = "https://github.com/user/repo"
 | `urls` | table | Links shown on PyPI (declared under `[project.urls]`) |
 
 > **Note:** `authors` and `maintainers` also accept a plain string form (`authors = ["Your Name"]`), but the `{ name, email }` table form is recommended -- it is what published packages' `jac.toml` files use and what PyPI renders. See [`[project.include]`](#projectinclude) for controlling which files land in the wheel.
+
+#### jac-version
+
+`jac-version` records which Jac toolchain the project targets, written as a PEP 440-style specifier. Since the `jac` toolchain does not guarantee backward compatibility across versions (breaking changes ship as clean breaks), `jac create` stamps the **exact** version you created the project with:
+
+```toml
+jac-version = "==0.34.3"
+```
+
+You can widen or move it by editing the value -- `>=0.34.3`, `<=0.34.3`, `>=0.34,<0.35`, `~=0.34.3`, or a bare `0.34.3` (same as `==`).
+
+At deploy time (`jac start --scale`), the pin selects the **pod runtime**: the deployer downloads the released `jac` binary and base image that satisfy `jac-version` and ships them to the pods, so the app runs on the toolchain it was built against -- not on whatever `latest` happens to be. Resolution rules:
+
+- **Exact pin** (`==X` / `X`) -> the `vX` release, if published.
+- **Range** -> the newest published release that satisfies it.
+- **Nothing matches** (unset, unsatisfiable, or that release lacks the pod's CPU arch) -> falls back to the latest published release.
+
+The pin is honored only on the default (stable) channel; the `[dev]`, `[experimental]`, and `JAC_SCALE_BINARY_PATH` (local) channels select the pod binary by their own rules and ignore it.
 
 ---
 

@@ -183,6 +183,7 @@ impl create(
     import copy;
     render_config = copy.deepcopy(tmpl.config);
     _stamp_kind(render_config, tmpl.kind);
+    _stamp_jac_version(render_config);
 
     toml_content = _render_config_to_toml(render_config, project_name);
     with open(toml_path, "w", encoding="utf-8") as f {
@@ -280,6 +281,18 @@ def _stamp_kind(config: dict, kind: str) -> None {
     }
     if not proj.get("kind") {
         proj["kind"] = kind;
+    }
+}
+
+def _stamp_jac_version(config: dict) -> None {
+    proj = config.get("project");
+    if not isinstance(proj, dict) {
+        proj = {};
+        config["project"] = proj;
+    }
+    if not proj.get("jac-version") {
+        import from jaclang.cli.cli { jac_version }
+        proj["jac-version"] = f"=={jac_version()}";
     }
 }
 

@@ -368,7 +368,7 @@ test "BinaryInjector unpacks AND seeds both the app .jab and the toolchain bundl
 glob _fake_urls: dict = {};
 
 
-def _fake_admin_dist_urls(channel: str) -> tuple[str, str] {
+def _fake_admin_dist_urls(channel: str, version: str = "") -> tuple[str, str] {
     return (_fake_urls["url"], _fake_urls["url"] + ".sha256");
 }
 
@@ -455,7 +455,7 @@ test "local channel never downloads the admin console" {
 }
 
 
-def _dist_url_but_no_checksum(channel: str) -> tuple[str, str] {
+def _dist_url_but_no_checksum(channel: str, version: str = "") -> tuple[str, str] {
     return (_fake_urls["url"], "");
 }
 
