@@ -716,7 +716,7 @@ test "enable tls raises when no domain configured" {
     assert raised , "enable_tls should raise when no domain is configured";
 }
 
-test "deploy with domain set stores domain in annotation not ingress host rule" {
+test "deploy with domain set renders host plus catch-all rules and stores domain annotation" {
     k8s_config = KubernetesConfig(
         domain="app.example.com", cert_manager_email="user@example.com"
     );
@@ -745,15 +745,17 @@ test "deploy with domain set stores domain in annotation not ingress host rule" 
     assert mock_networking_v1.create_namespaced_ingress.called , "ingress should be created on first deploy";
     created_body = mock_networking_v1.create_namespaced_ingress.call_args[1]["body"];
 
-    rule = created_body["spec"]["rules"][0];
-    assert "host" not in rule , "ingress rule must not set host before TLS is enabled";
+    rules = created_body["spec"]["rules"];
+    assert len(rules) == 2 , "domain app must render a host rule plus a catch-all";
+    assert rules[0].get("host") == "app.example.com" , "first rule must bind the domain host so redeploys keep the TLS cert served (#7707)";
+    assert "host" not in rules[1] , "catch-all rule must keep the raw load-balancer hostname serving before DNS/TLS";
 
     annotations = created_body["metadata"]["annotations"];
     assert annotations.get("jac-scale/domain") == "app.example.com" , "domain must be stored in jac-scale/domain annotation for --enable-tls";
     assert annotations.get("jac-scale/cert-email") == "user@example.com" , "cert_manager_email must be stored in jac-scale/cert-email annotation for --enable-tls";
 }
 
-test "redis ingress rule must not set host before TLS is enabled" {
+test "redis ingress with domain renders host plus catch-all rules" {
     k8s_config = KubernetesConfig(
         domain="app.example.com", cert_manager_email="user@example.com"
     );
@@ -784,8 +786,10 @@ test "redis ingress rule must not set host before TLS is enabled" {
         1
     ]["body"];
 
-    redis_rule = redis_created_body["spec"]["rules"][0];
-    assert "host" not in redis_rule , "Redis ingress rule must not set host before TLS is enabled";
+    redis_rules = redis_created_body["spec"]["rules"];
+    assert len(redis_rules) == 2 , "domain app must render a host rule plus a catch-all";
+    assert redis_rules[0].get("host") == "app.example.com" , "first Redis rule must bind the domain host (#7707)";
+    assert "host" not in redis_rules[1] , "catch-all Redis rule must keep raw load-balancer access";
 }
 
 test "redis insight cache dashboard spec is correctly built" {
