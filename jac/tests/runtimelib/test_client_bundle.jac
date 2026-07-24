@@ -170,3 +170,90 @@ test "dev config wires the layered dev-status bridge; build config does not" {
         assert "jacDevStatus" not in build_content;
     }
 }
+
+"""Lay out a build dir the way `bun install` does: the real package plus the
+`node_modules/.bin/vite` shim, which carries Vite's `#!/usr/bin/env node`
+shebang."""
+def _stub_vite_install(build_dir: Path) {
+    bin_dir = build_dir / "node_modules" / "vite" / "bin";
+    bin_dir.mkdir(parents=True);
+    entry = bin_dir / "vite.js";
+    entry.write_text("#!/usr/bin/env node\nconsole.log('vite-stub ok');\n");
+    entry.chmod(0o755);
+    (bin_dir.parent / "package.json").write_text(
+        '{"name": "vite", "version": "0.0.0", "bin": {"vite": "bin/vite.js"}}'
+    );
+    shim_dir = build_dir / "node_modules" / ".bin";
+    shim_dir.mkdir(parents=True);
+    (shim_dir / "vite").symlink_to("../vite/bin/vite.js");
+}
+
+test "vite builds run under bun with no node on PATH" {
+    import os;
+    import subprocess;
+    import sys;
+    import tempfile;
+    import pytest;
+    import from jaclang.runtimelib.client { get_bun }
+    import from jaclang.runtimelib.client.vite_bundler { _build_vite_command }
+
+    if sys.platform == "win32" {
+        pytest.skip("shebang dispatch is POSIX-only");
+    }
+    if get_bun() is None {
+        pytest.skip("bun is required but could not be located/installed");
+    }
+    with tempfile.TemporaryDirectory() as tmp {
+        build_dir = Path(tmp) / "client";
+        build_dir.mkdir();
+        _stub_vite_install(build_dir);
+        # Jac provisions bun and never provisions node, so a client build has to
+        # work on a machine that has no node at all.
+        empty_dir = Path(tmp) / "empty-path";
+        empty_dir.mkdir();
+        env = dict(os.environ);
+        env["PATH"] = str(empty_dir);
+        result = subprocess.run(
+            _build_vite_command(build_dir, ["build"]),
+            cwd=build_dir,
+            env=env,
+            capture_output=True,
+            text=True
+        );
+        assert result.returncode == 0 , (
+            f"vite build needs node on PATH: {result.stderr or result.stdout}"
+        );
+        assert "vite-stub ok" in result.stdout;
+    }
+}
+
+test "vite commands address vite's js entry, not the bunx shim" {
+    import tempfile;
+    import pytest;
+    import from jaclang.runtimelib.client { get_bun }
+    import from jaclang.runtimelib.client.vite_bundler {
+        _build_vite_command,
+        _build_vite_dev_command
+    }
+
+    if get_bun() is None {
+        pytest.skip("bun is required but could not be located/installed");
+    }
+    with tempfile.TemporaryDirectory() as tmp {
+        build_dir = Path(tmp) / "client";
+        build_dir.mkdir();
+        _stub_vite_install(build_dir);
+        build_cmd = _build_vite_command(build_dir, ["build", "--config", "c.js"]);
+        # `bun x vite` hands off to the .bin shim and its node shebang; naming
+        # the entry keeps the run inside bun.
+        assert "x" not in build_cmd;
+        assert build_cmd[1].endswith("vite.js");
+        assert build_cmd[2:] == ["build", "--config", "c.js"];
+        dev_cmd = _build_vite_dev_command(
+            build_dir, Path("configs/vite.dev.config.js"), 3000
+        );
+        assert "x" not in dev_cmd;
+        assert dev_cmd[1].endswith("vite.js");
+        assert "--port" in dev_cmd;
+    }
+}
