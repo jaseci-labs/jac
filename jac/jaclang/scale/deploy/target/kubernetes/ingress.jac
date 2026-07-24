@@ -399,6 +399,44 @@ obj IngressDeployer {
         }
     }
 
+    def _tls_annotations(domain: str) -> dict {
+        return {
+            'cert-manager.io/issuer': 'letsencrypt-prod',
+            'nginx.ingress.kubernetes.io/ssl-redirect': 'true',
+            'nginx.ingress.kubernetes.io/force-ssl-redirect': 'true',
+            'jac-scale/domain': domain
+        };
+    }
+
+    def _tls_spec(app_name: str, domain: str) -> dict {
+        return {'tls': [{'hosts': [domain], 'secretName': f"{app_name}-tls"}]};
+    }
+
+    """Domain enable_tls has bound this ingress to, or '' when TLS is not
+    enabled. Keyed on the fields only enable_tls writes (spec.tls / the
+    ssl-redirect annotations), never on domain presence alone: the config
+    carries the domain before enable_tls runs, and binding the rule host
+    that early would cut off pre-TLS access through the catch-all rule."""
+    def _live_tls_domain(ingress_name: str, namespace: str, networking_v1: any) -> str {
+        try {
+            live = networking_v1.read_namespaced_ingress(
+                name=ingress_name, namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                return '';
+            }
+            raise;
+        }
+        ann = live.metadata.annotations or {};
+        tls_enabled = bool(live.spec.tls)
+        or (ann.get('nginx.ingress.kubernetes.io/ssl-redirect') == 'true');
+        if not tls_enabled {
+            return '';
+        }
+        return str(self.k8s_config.domain or ann.get('jac-scale/domain', ''));
+    }
+
     def _deploy_ingress_resource(
         app_name: str,
         namespace: str,
@@ -429,11 +467,18 @@ obj IngressDeployer {
             );
         }
 
+        tls_domain: str = '';
+        if not self.k8s_config.shared_ingress {
+            tls_domain = self._live_tls_domain(ingress_name, namespace, networking_v1);
+        }
+
         if self.k8s_config.shared_ingress {
             main_rule: dict = {
                 'host': self.k8s_config.domain,
                 'http': {'paths': paths}
             };
+        } elif tls_domain {
+            main_rule: dict = {'host': tls_domain, 'http': {'paths': paths}};
         } else {
             main_rule: dict = {'http': {'paths': paths}};
         }
@@ -479,11 +524,17 @@ obj IngressDeployer {
         if self.k8s_config.cert_manager_email {
             ingress_annotations['jac-scale/cert-email'] = self.k8s_config.cert_manager_email;
         }
+        if tls_domain {
+            ingress_annotations.update(self._tls_annotations(tls_domain));
+        }
 
         for (k, v) in self.k8s_config.shared_ingress_annotations.items() {
             ingress_annotations[str(k)] = str(v);
         }
         main_spec: dict = {'ingressClassName': ingress_class, 'rules': [main_rule]};
+        if tls_domain {
+            main_spec.update(self._tls_spec(app_name, tls_domain));
+        }
 
         cert_manager_managed = (
             'cert-manager.io/cluster-issuer' in self.k8s_config.shared_ingress_annotations
@@ -595,8 +646,21 @@ obj IngressDeployer {
                     'host': self.k8s_config.domain,
                     'http': {'paths': redis_paths}
                 };
+            } elif tls_domain {
+                redis_rule: dict = {'host': tls_domain, 'http': {'paths': redis_paths}};
             } else {
                 redis_rule: dict = {'http': {'paths': redis_paths}};
+            }
+
+            if tls_domain {
+                redis_ingress_annotations.update(self._tls_annotations(tls_domain));
+            }
+            redis_spec: dict = {
+                'ingressClassName': ingress_class,
+                'rules': [redis_rule]
+            };
+            if tls_domain {
+                redis_spec.update(self._tls_spec(app_name, tls_domain));
             }
 
             redis_ingress = {
@@ -608,7 +672,7 @@ obj IngressDeployer {
                     'labels': {'app': app_name, 'managed': 'jac-scale'},
                     'annotations': redis_ingress_annotations
                 },
-                'spec': {'ingressClassName': ingress_class, 'rules': [redis_rule]}
+                'spec': redis_spec
             };
             try {
                 networking_v1.patch_namespaced_ingress(
@@ -853,7 +917,7 @@ obj IngressDeployer {
             name=ingress_name, namespace=namespace
         );
         ann = ingress.metadata.annotations or {};
-        domain = ann.get('jac-scale/domain', '') or self.k8s_config.domain;
+        domain = str(ann.get('jac-scale/domain', '') or self.k8s_config.domain);
         cert_email = ann.get('jac-scale/cert-email', '')
         or self.k8s_config.cert_manager_email;
 
@@ -872,13 +936,8 @@ obj IngressDeployer {
             app_name, namespace, cert_email, core_v1, apps_v1, custom_api
         );
 
-        tls_annotations = {
-            'cert-manager.io/issuer': 'letsencrypt-prod',
-            'nginx.ingress.kubernetes.io/ssl-redirect': 'true',
-            'nginx.ingress.kubernetes.io/force-ssl-redirect': 'true',
-            'jac-scale/domain': domain
-        };
-        tls_spec = {'tls': [{'hosts': [domain], 'secretName': tls_secret_name}]};
+        tls_annotations = self._tls_annotations(domain);
+        tls_spec = self._tls_spec(app_name, domain);
 
         api_client = client.ApiClient();
         current_ingress = networking_v1.read_namespaced_ingress(
@@ -914,10 +973,8 @@ obj IngressDeployer {
                 rule['host'] = domain;
                 updated_redis_rules.append(rule);
             }
-            redis_tls_spec = {
-                'tls': [{'hosts': [domain], 'secretName': tls_secret_name}],
-                'rules': updated_redis_rules
-            };
+            redis_tls_spec = self._tls_spec(app_name, domain);
+            redis_tls_spec['rules'] = updated_redis_rules;
             networking_v1.patch_namespaced_ingress(
                 name=redis_ingress_name,
                 namespace=namespace,

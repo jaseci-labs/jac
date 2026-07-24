@@ -724,6 +724,7 @@ test "deploy with domain set stores domain in annotation not ingress host rule" 
 
     mock_networking_v1 = unittest.mock.MagicMock();
 
+    mock_networking_v1.read_namespaced_ingress.side_effect = ApiException(status=404);
     mock_networking_v1.patch_namespaced_ingress.side_effect = ApiException(status=404);
 
     mock_core_v1 = unittest.mock.MagicMock();
@@ -761,6 +762,7 @@ test "redis ingress rule must not set host before TLS is enabled" {
 
     mock_networking_v1 = unittest.mock.MagicMock();
 
+    mock_networking_v1.read_namespaced_ingress.side_effect = ApiException(status=404);
     mock_networking_v1.patch_namespaced_ingress.side_effect = ApiException(status=404);
 
     mock_core_v1 = unittest.mock.MagicMock();
