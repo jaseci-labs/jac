@@ -4,6 +4,36 @@ import site;
 import from pathlib { Path }
 
 
+def _project_venv_site_packages -> str {
+    directory = os.getcwd();
+    while True {
+        toml = os.path.join(directory, "jac.toml");
+        if os.path.isfile(toml) {
+            venv = os.path.join(directory, ".jac", "venv");
+            lib = os.path.join(venv, "lib");
+            if os.path.isdir(lib) {
+                for entry in sorted(os.listdir(lib)) {
+                    cand = os.path.join(lib, entry, "site-packages");
+                    if entry.startswith("python") and os.path.isdir(cand) {
+                        return cand;
+                    }
+                }
+            }
+            win = os.path.join(venv, "Lib", "site-packages");
+            if os.path.isdir(win) {
+                return win;
+            }
+            return "";
+        }
+        parent = os.path.dirname(directory);
+        if parent == directory {
+            return "";
+        }
+        directory = parent;
+    }
+}
+
+
 def _dev_roots_from_env -> dict[str, str] {
     roots: dict[str, str] = {};
     dev_src = os.environ.get("JAC_DEV_SOURCE");
@@ -91,6 +121,20 @@ def desktop_app_runtime_env(base: any = None) -> dict[str, str] {
     env.setdefault("GDK_BACKEND", "x11");
     env.setdefault("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     env.setdefault("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+    site_pkgs = _project_venv_site_packages();
+    if site_pkgs {
+        existing = env.get("JAC_DESKTOP_DEPS", "");
+        if existing {
+            parts = [site_pkgs] + [
+                p
+                for p in existing.split(os.pathsep)
+                if p and p != site_pkgs
+            ];
+            env["JAC_DESKTOP_DEPS"] = os.pathsep.join(parts);
+        } else {
+            env["JAC_DESKTOP_DEPS"] = site_pkgs;
+        }
+    }
     return env;
 }
 

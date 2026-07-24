@@ -1,6 +1,6 @@
 import os;
 import from pathlib { Path }
-import from jaclang.runtimelib.client_bundle { ClientBundleError }
+
 
 class JacClientPluginConfig {
     static def get_plugin_metadata -> dict[str, any] {
@@ -143,80 +143,31 @@ def _load_template(template_name: str) -> dict[str, any] | None {
 }
 
 def _post_create_client(project_path: Path, project_name: str) -> None {
-    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
     import from jaclang.cli.console { console }
     import from jaclang.runtimelib.client { get_bun }
 
     console.print();
-    if get_bun() is None {
-        console.warning("Bun is required for client development");
+    if os.environ.get("JAC_CLIENT_SKIP_NPM_INSTALL") {
         console.print(
-            "  After installing Bun, run: jac install --npm\n", style="muted"
+            "\n  ⏭ Skipping dependency installation (JAC_CLIENT_SKIP_NPM_INSTALL is set)",
+            style="muted"
+        );
+        console.print(
+            "  Run 'jac install' when ready to install Python and npm packages.\n",
+            style="muted"
+        );
+        return;
+    }
+
+    if get_bun() is None {
+        console.warning(
+            "Bun was not found; npm packages may be skipped during create-time install."
+        );
+        console.print(
+            "  Install Bun (https://bun.sh), then re-run: jac install\n", style="muted"
         );
         return;
     }
 
     console.print("  ✔ Bun is installed", style="success");
-
-    if os.environ.get("JAC_CLIENT_SKIP_NPM_INSTALL") {
-        console.print(
-            "\n  ⏭ Skipping package installation (JAC_CLIENT_SKIP_NPM_INSTALL is set)",
-            style="muted"
-        );
-        console.print(
-            "  Run 'jac install --npm' when ready to install packages.\n", style="muted"
-        );
-        return;
-    }
-
-    console.print();
-
-    try {
-        toml_path = project_path / "jac.toml";
-        if not toml_path.exists() {
-            console.error("Warning: jac.toml not found, skipping package installation");
-            return;
-        }
-
-        bundler = ViteBundler(project_path);
-        bundler.create_package_json(project_name=project_name);
-
-        client_dir = bundler._get_client_dir();
-        client_dir.mkdir(parents=True, exist_ok=True);
-
-        configs_package_json = client_dir / 'configs' / 'package.json';
-        if not configs_package_json.exists() {
-            console.error(
-                "Warning: package.json was not generated, skipping package installation"
-            );
-            return;
-        }
-
-        bun = get_bun();
-        if not bun {
-            console.warning("Bun is required but could not be found or installed.");
-            console.print(
-                "  💡 Install manually: https://bun.sh\n"
-                "  💡 You can install packages later with: jac install --npm\n",
-                style="muted"
-            );
-            return;
-        }
-
-        try {
-            bundler.install_packages(force=True);
-        } except ClientBundleError as e {
-            console.warning(f"Failed to install packages: {e}");
-            console.print(
-                "  💡 You can install packages later with: jac install --npm\n",
-                style="muted"
-            );
-        }
-    } except Exception as e {
-        console.warning(f"Could not install default packages: {e}");
-        console.print(
-            "  💡 You can install packages later with: jac install --npm\n",
-            style="muted"
-        );
-    }
 }

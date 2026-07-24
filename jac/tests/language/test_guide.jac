@@ -20,6 +20,7 @@ import from jaclang.cli.guide_store {
     guide_group,
     grouped_guides
 }
+import from jaclang.project.config { JacConfig, get_explicit_config, set_config }
 import from jaclang.project.template_registry { initialize_template_registry }
 
 """Absolute path to a file in the language test fixtures directory."""
@@ -350,11 +351,27 @@ def check_guide_block(code: str) -> tuple[int, str] {
     old_err = sys.stderr;
     sys.stdout = out;
     sys.stderr = err;
+    # xdist workers can inherit an explicit `select = ["all"]` config from
+    # compiler lint tests; `get_config_for_path` returns that for /tmp guide
+    # snippets and enables no-print. Reset to default lint for this check only.
+    prev_explicit = get_explicit_config();
+    set_config(JacConfig());
     try {
         # nowarn: guide examples may warn (unresolved @jac/runtime imports in
         # standalone .cl.jac, etc.) -- only hard errors should fail a guide.
-        rc = analysis.check([path], print_errs=True, nowarn=True);
+        # no-print: examples intentionally use print() for readable output.
+        rc = analysis.check(
+            [path],
+            print_errs=True,
+            nowarn=True,
+            disable_error_code=["no-print", "E3012"]
+        );
     } finally {
+        if prev_explicit is not None {
+            set_config(prev_explicit);
+        } else {
+            set_config(None);
+        }
         sys.stdout = old_out;
         sys.stderr = old_err;
         os.remove(path);

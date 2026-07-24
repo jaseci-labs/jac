@@ -56,7 +56,7 @@ glob registry = get_registry();
             "skip",
             typ=bool,
             default=False,
-            help="Skip npm package installation (when creating client kinds: web-app/web-static/mobile)"
+            help="Skip dependency installation (Python + npm); run 'jac install' later"
         ),
         Arg.create(
             "style",

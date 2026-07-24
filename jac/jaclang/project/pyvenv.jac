@@ -38,52 +38,165 @@ def make_git_spec(git_url: str, branch: str = "") -> str {
 
 
 def _seed_build_backend(target: Path, verbose: bool = False) {
-    import subprocess;
-    cmd = pip_command(
-        venv_python(target), ["install", "--upgrade", "pip", "setuptools", "wheel"]
+    (rc, _, err) = run_pip(
+        target, ["install", "--upgrade", "pip", "setuptools", "wheel"], verbose
     );
-    try {
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300);
-        if result.returncode != 0 and verbose {
-            console.print(
-                f"Warning: could not seed build backend in venv: {result.stderr.strip()}"
-            );
+    if rc != 0 and verbose {
+        console.print(f"Warning: could not seed build backend in venv: {err.strip()}");
+    }
+}
+
+
+def _raise_ensurepip_unavailable(err: str) {
+    raise RuntimeError(
+        "Failed to create virtual environment: ensurepip is not available.\n"
+        "On Debian/Ubuntu, install it with: sudo apt install python3-venv\n"
+        "On Fedora/RHEL: sudo dnf install python3-libs\n" + (
+            f"\n{err.strip()}" if err.strip() else ""
+        )
+    );
+}
+
+
+def _bootstrap_venv_pip(target: Path) {
+    import subprocess;
+    result = subprocess.run(
+        [venv_python(target), "-m", "ensurepip", "--upgrade"],
+        capture_output=True,
+        text=True,
+    );
+    if result.returncode != 0 {
+        err_msg = (result.stderr or result.stdout or "").lower();
+        if "ensurepip" in err_msg or "no module named" in err_msg {
+            _raise_ensurepip_unavailable(result.stderr or result.stdout or "");
         }
-    } except Exception as e {
-        if verbose {
-            console.print(f"Warning: could not seed build backend in venv: {e}");
+        raise RuntimeError(
+            result.stderr.strip()
+            or result.stdout.strip()
+            or "ensurepip bootstrap failed"
+        );
+    }
+}
+
+
+def _create_venv_with_interpreter(interpreter: str, target: Path) {
+    import subprocess;
+
+    result = subprocess.run(
+        [interpreter, "-m", "venv", str(target)], capture_output=True, text=True,
+    );
+    if result.returncode != 0 {
+        err_msg = (result.stderr or result.stdout or "").lower();
+        if "ensurepip" in err_msg or "no module named" in err_msg {
+            _raise_ensurepip_unavailable(result.stderr or result.stdout or "");
+        }
+        raise RuntimeError(
+            result.stderr.strip() or result.stdout.strip() or "venv creation failed"
+        );
+    }
+    _bootstrap_venv_pip(target);
+}
+
+
+def _bundled_runtime_python -> str | None {
+    import os;
+    import sys;
+    if not os.environ.get("JAC_STANDALONE") {
+        return None;
+    }
+    if sys.platform == "win32" {
+        prefix_dir = Path(sys.prefix);
+        for name in [
+            f"python{sys.version_info.major}{sys.version_info.minor}.exe",
+            "python.exe",
+
+        ] {
+            cand = prefix_dir / name;
+            if cand.is_file() {
+                return str(cand);
+            }
+        }
+        return None;
+    }
+    bin_dir = Path(sys.prefix) / "bin";
+    versioned = f"python{sys.version_info.major}.{sys.version_info.minor}";
+    for name in [versioned, "python3", "python"] {
+        cand = bin_dir / name;
+        if cand.is_file() {
+            return str(cand);
         }
     }
+    return None;
+}
+
+
+def _venv_create_interpreter -> str | None {
+    return _bundled_runtime_python();
+}
+
+
+def _is_fused_venv(venv_dir: Path) -> bool {
+    import sys;
+    py = Path(venv_python(venv_dir));
+    if not py.exists() {
+        return False;
+    }
+    try {
+        return py.resolve() == Path(sys.executable).resolve();
+    } except OSError {
+        return False;
+    }
+}
+
+
+def _venv_needs_recreate(venv_dir: Path) -> bool {
+    pyvenv_cfg = venv_dir / "pyvenv.cfg";
+    python_path = Path(venv_python(venv_dir));
+    if not pyvenv_cfg.exists() or not python_path.exists() {
+        return True;
+    }
+    return _is_fused_venv(venv_dir);
 }
 
 
 def ensure_venv(venv_dir: Path, verbose: bool = False) {
     import venv;
     import sys;
+    import shutil;
     def _create_venv(target: Path) {
-        builder = venv.EnvBuilder(with_pip=True, symlinks=(sys.platform != "win32"));
-        try {
-            builder.create(str(target));
-        } except Exception as e {
-            err_msg = str(e).lower();
-            if "ensurepip" in err_msg or "no module named" in err_msg {
-                raise RuntimeError(
-                    "Failed to create virtual environment: ensurepip is not available.\n"
-                    "On Debian/Ubuntu, install it with: sudo apt install python3-venv\n"
-                    "On Fedora/RHEL: sudo dnf install python3-libs"
-                ) from e;
+        interpreter = _venv_create_interpreter();
+        if interpreter is not None {
+            _create_venv_with_interpreter(interpreter, target);
+        } else {
+            builder = venv.EnvBuilder(
+                with_pip=True, symlinks=(sys.platform != "win32")
+            );
+            try {
+                builder.create(str(target));
+            } except Exception as e {
+                err_msg = str(e).lower();
+                if "ensurepip" in err_msg or "no module named" in err_msg {
+                    raise RuntimeError(
+                        "Failed to create virtual environment: ensurepip is not available.\n"
+                        "On Debian/Ubuntu, install it with: sudo apt install python3-venv\n"
+                        "On Fedora/RHEL: sudo dnf install python3-libs"
+                    ) from e;
+                }
+                raise;
             }
-            raise;
         }
         _seed_build_backend(target, verbose);
     }
     if venv_dir.exists() {
-        pyvenv_cfg = venv_dir / "pyvenv.cfg";
-        python_path = Path(venv_python(venv_dir));
-        if not pyvenv_cfg.exists() or not python_path.exists() {
-            import shutil;
+        if _venv_needs_recreate(venv_dir) {
             if verbose {
-                console.print(f"Recreating corrupted venv at {venv_dir}");
+                if _is_fused_venv(venv_dir) {
+                    console.print(
+                        f"Recreating fused venv at {venv_dir} with bundled CPython"
+                    );
+                } else {
+                    console.print(f"Recreating corrupted venv at {venv_dir}");
+                }
             }
             shutil.rmtree(venv_dir);
             _create_venv(venv_dir);
@@ -112,7 +225,7 @@ def run_pip(
         console.print(f"Running: {' '.join(cmd)}");
     }
     try {
-        result = subprocess.run(cmd, capture_output=True, text=True);
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300);
         return (result.returncode, result.stdout, result.stderr);
     } except Exception as e {
         return (1, "", str(e));
