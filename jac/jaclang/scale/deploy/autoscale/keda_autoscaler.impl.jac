@@ -306,6 +306,7 @@ impl KEDAAutoscaler.destroy_collection{
         ("keda.sh", "v1alpha1", "triggerauthentications"),
         ("http.keda.sh", "v1beta1", "interceptorroutes")
     ] {
+        tolerated = [404, 422, 403] if group == "http.keda.sh" else [404, 422];
         try {
             items = api.list_namespaced_custom_object(
                 group=group,
@@ -325,13 +326,13 @@ impl KEDAAutoscaler.destroy_collection{
                         name=item_name
                     );
                 } except ApiException as e {
-                    if e.status not in [404, 422] {
+                    if e.status not in tolerated {
                         raise;
                     }
                 }
             }
         } except ApiException as e {
-            if e.status not in [404, 422] {
+            if e.status not in tolerated {
                 raise;
             }
         }
