@@ -198,7 +198,47 @@ runs:
           cp jaclang/compiler/passes/native/llvm/libjacllvm.* .shim-build/
           SHIM_ARG=(-Dshim-bin=".shim-build/$(ls .shim-build | head -1)")
         fi
-        zig build "${SHIM_ARG[@]}" --summary all
+        # zig build intermittently dies from a transient Zig 0.16.0 stdlib panic
+        # in mkpayload's threaded file copy of the jaclang source tree (integer
+        # overflow in std/Io/Threaded.zig::fileWriteFilePositional -> signal
+        # ABRT). It is non-deterministic -- the identical source builds clean on
+        # retry and across sibling jobs in the same run -- and the payload step
+        # is self-cleaning (mkpayload deleteTree's its .work dir up front and
+        # zig's incremental cache stays disabled via use-cache:false above), so
+        # re-running the whole `zig build` is safe. Retry only when the failure
+        # matches that transient signature, so a genuine compile error fails fast
+        # instead of burning build minutes on a known-doomed rebuild.
+        build_log="$RUNNER_TEMP/jac-build.log"
+        mkdir -p "$RUNNER_TEMP"
+        attempts=0
+        max_attempts=3
+        last_status=0
+        transient=0
+        set +e
+        until [ "$attempts" -ge "$max_attempts" ]; do
+          attempts=$((attempts + 1))
+          echo "::group::zig build (attempt $attempts/$max_attempts)"
+          zig build "${SHIM_ARG[@]}" --summary all 2>&1 | tee "$build_log"
+          last_status=${PIPESTATUS[0]}
+          echo "::endgroup::"
+          if [ "$last_status" -eq 0 ]; then break; fi
+          if grep -Eq 'thread [0-9]+ panic:|terminated with signal|std/Io/Threaded\.zig|integer overflow' "$build_log"; then
+            transient=1
+            remaining=$((max_attempts - attempts))
+            echo "::warning::zig build attempt $attempts hit a transient stdlib panic; retrying ($remaining attempt(s) left)"
+            continue
+          fi
+          break
+        done
+        set -e
+        if [ "$last_status" -ne 0 ]; then
+          if [ "$transient" -eq 1 ]; then
+            echo "::error::zig build failed after $attempts attempt(s) with transient stdlib panics; see collapsed group(s) above."
+          else
+            echo "::error::zig build failed on attempt $attempts; see log above."
+          fi
+        fi
+        exit "$last_status"
 
     # Seed the shared binary cache from main only (see the note by the restore
     # step). Saved after the build so both the binary and the materialized

@@ -13,6 +13,8 @@ impl JacProgram.init(
 
     self._hub_cache_times: dict[str, float] = {};
 
+    self._hub_bytecode_fingerprint: dict[str, str] = {};
+
     self._dependents: dict[str, set[str]] = {};
 
     self._track_dependencies: bool = False;
@@ -24,33 +26,40 @@ impl JacProgram.init(
 
 impl JacProgram.hub_cache_stamp(self: JacProgram, resolved_path: str) -> None {
     import time;
+    import from jaclang.jac0core.jir {
+        compute_input_fingerprints,
+        bytecode_fingerprint_digest
+    }
     self._hub_cache_times[resolved_path] = time.time();
+    fingerprints = compute_input_fingerprints(resolved_path);
+    self._hub_bytecode_fingerprint[resolved_path] = bytecode_fingerprint_digest(
+        fingerprints
+    );
 }
 
 impl JacProgram.is_hub_entry_fresh(self: JacProgram, resolved_path: str) -> bool {
     import os;
-    import from jaclang.jac0core.bccache {
-        discover_annex_files,
-        discover_variant_files
+    import from jaclang.jac0core.jir {
+        bytecode_mtime_paths,
+        compute_input_fingerprints,
+        bytecode_fingerprint_digest
     }
     cached_at = self._hub_cache_times.get(resolved_path);
     if cached_at is None {
         return True;
     }
     try {
-        if os.path.getmtime(resolved_path) > cached_at {
-            return False;
-        }
-
-        for related in discover_annex_files(resolved_path) {
+        for related in bytecode_mtime_paths(resolved_path) {
             if os.path.getmtime(related) > cached_at {
                 return False;
             }
         }
-        for related in discover_variant_files(resolved_path) {
-            if os.path.getmtime(related) > cached_at {
-                return False;
-            }
+        stored = self._hub_bytecode_fingerprint.get(resolved_path);
+        if stored is not None {
+            current = bytecode_fingerprint_digest(
+                compute_input_fingerprints(resolved_path)
+            );
+            return stored == current;
         }
         return True;
     } except OSError {
@@ -132,6 +141,9 @@ impl JacProgram.invalidate_module(self: JacProgram, resolved_path: str) -> None 
     if resolved_path in self._hub_cache_times {
         del (self._hub_cache_times[resolved_path], );
     }
+    if resolved_path in self._hub_bytecode_fingerprint {
+        del (self._hub_bytecode_fingerprint[resolved_path], );
+    }
 
     if resolved_path in self._native_cache {
         del (self._native_cache[resolved_path], );
@@ -191,12 +203,16 @@ impl JacProgram.release_compile_closure(
 
     retained_stubs: dict = {};
     retained_times: dict[str, float] = {};
+    retained_fps: dict[str, str] = {};
     if keep_stubs {
         for path in self.mod.hub.keys() {
             if path.endswith(".pyi") {
                 retained_stubs[path] = self.mod.hub[path];
                 if path in self._hub_cache_times {
                     retained_times[path] = self._hub_cache_times[path];
+                }
+                if path in self._hub_bytecode_fingerprint {
+                    retained_fps[path] = self._hub_bytecode_fingerprint[path];
                 }
             }
         }
@@ -205,6 +221,8 @@ impl JacProgram.release_compile_closure(
     self.mod.hub.update(retained_stubs);
     self._hub_cache_times.clear();
     self._hub_cache_times.update(retained_times);
+    self._hub_bytecode_fingerprint.clear();
+    self._hub_bytecode_fingerprint.update(retained_fps);
     self._dependents.clear();
     self.type_evaluator = None;
     self.errors_had.clear();

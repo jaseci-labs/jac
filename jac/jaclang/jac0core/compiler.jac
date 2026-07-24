@@ -19,6 +19,9 @@ import from jaclang.jac0core.jir {
     is_module_cache_valid,
     jir_matches_source,
     compute_module_key,
+    compute_input_fingerprints,
+    compute_module_key_from_fingerprints,
+    module_cache_sections,
     cache_mode,
     read_bytecode_only,
     read_sections,
@@ -873,7 +876,7 @@ obj JacCompiler {
     ) -> None;
 
     def _get_precompiled_jir_bytecode(
-        full_target: str, allow_unsealed: bool = True
+        full_target: str, allow_unsealed: bool = True, module_key: (str | None) = None
     ) -> (bytes | None);
 
     def _sealed_jir_data(full_target: str) -> (tuple[bytes, str] | None);
