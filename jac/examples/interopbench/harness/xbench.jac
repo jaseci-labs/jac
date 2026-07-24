@@ -31,8 +31,51 @@ import from common {
 
 glob BENCH = Path(str(__file__)).resolve().parent.parent,
      HARNESS = BENCH / "harness",
-     EXPERIMENTAL_KERNELS: set[str] = {"xop_svc_split", "xop_feed", "xop_wasm_call", },
+     EXPERIMENTAL_KERNELS: set[str] = {
+         "xop_svc_split",
+         "xop_feed",
+         "xop_feed_payload",
+         "xop_wasm_call",
+
+     },
      CATALOG: dict[str, dict[str, object]] = {
+         "xop_feed_payload": {
+             "scenario": "payload-cardinality sweep: loopback sv-to-sv RPC returning list[N] ints vs in-process, fit t(N)=t0+b*N",
+             "kernel_dir": "kernels/xop_feed_payload",
+             "provider": "feedbatch.jac",
+             "provider_module": "feedbatch",
+             "variants": ["direct", "rpc"],
+             "reference": "direct",
+             "sizes": {
+                 "p1": ["1", "20"],
+                 "p10": ["10", "20"],
+                 "p50": ["50", "20"],
+                 "p100": ["100", "20"],
+                 "p250": ["250", "20"],
+                 "p500": ["500", "20"],
+                 "p1000": ["1000", "20"],
+                 "p2000": ["2000", "20"],
+                 "p5000": ["5000", "20"],
+                 "p10000": ["10000", "20"],
+                 "p20000": ["20000", "20"],
+                 "p30000": ["30000", "20"],
+                 "p40000": ["40000", "20"],
+                 "p50000": ["50000", "20"],
+                 "p75000": ["75000", "20"],
+                 "p100000": ["100000", "20"],
+
+             },
+             "metrics": ["per_call_ns"],
+             "command_adapter": "sv_microservice_driver",
+             "timing_source": "kernel_perf_counter_ns",
+             "variant_timing_source": {
+                 "direct": "kernel_perf_counter_ns",
+                 "rpc": "kernel_perf_counter_ns",
+
+             },
+             "rss_scope": "not_recorded",
+
+         },
          "xop_svc_split": {
              "scenario": "serial loopback sv-to-sv RPC floor vs in-process dispatch",
              "kernel_dir": "kernels/xop_svc_split",

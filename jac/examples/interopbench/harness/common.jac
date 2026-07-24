@@ -131,10 +131,11 @@ def aggregate_runs(runs: list[dict[str, object]]) -> dict[str, object] {
     }
     times: list[int] = [run["ns"] as int for run in runs];
     metric_medians: dict[str, int] = {};
+    metric_samples: dict[str, list[int]] = {};
     for key in metric_keys {
-        metric_medians[key] = int(
-            statistics.median([(run["metrics"] as dict[str, int])[key] for run in runs])
-        );
+        raw: list[int] = [(run["metrics"] as dict[str, int])[key] for run in runs];
+        metric_samples[key] = raw;
+        metric_medians[key] = int(statistics.median(raw));
     }
     return {
         "samples": len(times),
@@ -146,6 +147,8 @@ def aggregate_runs(runs: list[dict[str, object]]) -> dict[str, object] {
         "canonical_digest": canonical,
         "digest": runs[0]["digest"] as str,
         "metrics": metric_medians,
+        "samples_ns": times,
+        "metric_samples": metric_samples,
 
     };
 }

@@ -1,0 +1,1071 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{url}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.16}
+\usepackage[hidelinks]{hyperref}
+
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\um}{\ensuremath{\times}}
+
+\begin{document}
+
+\title{JacInteropBench: Characterizing the Marshalled Boundaries of a
+Multi-Target Compiler with a Differential-Identity Oracle}
+
+\author{\IEEEauthorblockN{Anonymous Author(s)}
+\IEEEauthorblockA{\textit{Jaseci Labs} \\
+\texttt{interopbench@jaseci.org}}}
+
+\maketitle
+
+\begin{abstract}
+Modern applications are polyglot by construction: logic in Python,
+presentation in JavaScript, and hot paths in native or WebAssembly code, stitched
+together across process, language, and serialization boundaries that no single
+compiler can see through. Jac is a \emph{synechic} language that compiles one
+Python-like syntax to Python bytecode, JavaScript, and native machine code, and
+therefore owns both sides of every cross-tier call. Owning both sides makes the
+cost of a boundary a first-class, measurable property of the language rather than
+an emergent property of hand-written glue. We present \textbf{JacInteropBench}, a
+microbenchmark suite that characterizes the \emph{marshalled} boundaries of this
+compiler---where a call becomes an RPC, an FFI thunk, or a WebAssembly
+import/export and every crossing value is serialized. The suite organizes ten
+measured kernels across two harness families (in-process native bridges and
+cross-runtime hosts), anchored by two named free floors, and pairs every
+marshalled cell with an exact reference twin that runs the same deterministic
+operation without the crossing. Its load-bearing contribution is not a headline
+speedup but a \emph{differential-identity oracle}: byte-identical digests across
+each twin group are a correctness and compiler-regression witness, gated in
+continuous integration, while timing is reported strictly as ``this microprogram,
+at this size, on this machine.'' On a 16-core x86\_64 host, an
+eight-point work sweep separates the two coefficients that a single size
+conflates: execution placement is a $\approx$$42\times$ per-iteration
+\emph{slope} ($4.4$ vs.\ $184$\,ns/iter, \code{na} vs.\ \code{sv}), while the
+\code{native$\rightarrow$server} callback crossing is a fixed
+$\approx$$5.4$\,\textmu s per-call \emph{intercept}---so its headline
+$1.17\times$ ratio is a constant seen at one small size and decays to
+$1.01\times$ once the callee does real work. A complementary payload sweep over the same loopback RPC, from $1$ to $100{,}000$
+returned elements, resolves the crossing into a $\approx$$19$\,ms fixed cost plus
+a $934$\,ns/element serialization slope (95\% bootstrap CI $912$--$999$)---$3.1\times$ the in-process list's
+$298$\,ns/element---with byte-identical digests at every size, and directly
+observes that slope overtake the fixed cost at $N\approx21{,}000$. We further report
+low-nanosecond \code{C}-ABI foreign-call costs and, at median-of-seven with
+reported spread, cross-runtime floors of $10$--$213\times$ the direct dispatch
+they replace. The
+oracle is not Jac-specific: twin-anchored differential identity is
+adoptable by any toolchain that generates both sides of a boundary---gRPC
+codegen, the WebAssembly component model, or a polyglot VM---and here receives a
+complete instantiation.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Workload characterization, language interoperability, foreign function interface,
+WebAssembly, RPC, microbenchmarking, differential testing
+\end{IEEEkeywords}
+
+\section{Introduction}
+
+Open any well-built product and count the languages a maintainer must read:
+Python and SQL where the data lives, TypeScript and JSX at the edge, C or Rust in
+the hot path, and a layer of JSON, protobuf, and OpenAPI documents wiring them
+together. Every architectural seam is also a change of language, type system, and
+serialization format, and \emph{no compiler can see across any of them}. The
+whole-program type checker of the modern stack is \code{grep}.
+
+Jac~\cite{jac} is a bet against that arrangement. It compiles one clean,
+Python-like syntax to Python bytecode (its \emph{server}, or \code{sv},
+codespace), to JavaScript (its \emph{client}, or \code{cl}, codespace), and to
+native machine code and WebAssembly (its \emph{native}, or \code{na}, codespace),
+with the entire PyPI, npm, and C ecosystems reachable through a plain
+\code{import}. We call this property \emph{synechic} (from the Greek
+\emph{synecheia}, continuity): one continuous, statically checked medium across
+ecosystems and tiers, so that renaming a field breaks every stale use---server,
+client, or native---at compile time rather than in production.
+
+Continuity does not delete the boundaries that are physics. A cross-tier call is
+still an RPC because the network is real; a native call still crosses an FFI ABI;
+a browser kernel still crosses a WebAssembly import table. What synechic
+compilation changes is \emph{who owns the crossing}: the compiler emits both
+sides, so the cost of each boundary becomes a measurable, attributable property
+of the language rather than an emergent property of hand-written glue. That
+measurability is an opportunity and an obligation. If Jac claims that its
+\code{\_to\_wire}/\code{\_\_from\_wire} marshalling is cheap, that its
+\code{NativeListView} is zero-copy, that its \code{C} struct-by-value ABI is
+correct, and that its WebAssembly exports are fast, then each claim needs a
+number behind it and a regression guard around it. Before this work, none did.
+
+Jac already ships \code{ownbench}, a microbenchmark suite for the \emph{free}
+\code{na$\rightarrow$na} boundary and the memory-management dial (ownership,
+regions, GC). Everything \code{ownbench} measures stays inside one runtime. It
+never exercises a marshalled crossing. \textbf{JacInteropBench} is the
+complementary suite: one benchmark scenario per boundary kernel, an
+\code{ns=}-plus-digest output contract, a Jac-native harness, a
+differential-identity oracle, and continuous-integration regression gating,
+extended from \code{ownbench}'s single-runtime discipline to the six marshalled
+cells of Jac's interop matrix.
+
+This makes Jac the \emph{experimental system}, not the result. The question we
+characterize is: \emph{what are the performance characteristics of application
+workloads that cross browser, managed-runtime, and native-code boundaries, and
+what does owning both sides of every crossing let a compiler measure that
+hand-written glue hides?} We treat each boundary as a distinct workload class
+with a distinct dominant cost (Table~\ref{tab:profiles}), and we hold the
+\emph{language} fixed while varying the \emph{boundary}---the inverse of a
+cross-language benchmark game, which holds the problem fixed and varies the
+language.
+
+We make three contributions:
+
+\begin{enumerate}
+  \item \textbf{A boundary taxonomy and kernel map} (Section~\ref{sec:matrix})
+  that decomposes Jac's cross-codespace surface into ten measured kernels across
+  two harness families plus two named free floors, and pairs each boundary with
+  its dominant cost and the compiler strategy that cost enables.
+  \item \textbf{A twin-anchored differential-identity methodology}
+  (Section~\ref{sec:method}) in which every marshalled cell names an exact
+  reference twin, byte-identical canonical digests witness semantic equivalence
+  and compiler regressions, and timing is reported only within an explicitly
+  bounded scope of valid conclusions.
+  \item \textbf{A characterization} (Section~\ref{sec:results}) of native-bridge
+  and cross-runtime boundary costs on a commodity x86\_64 host, including an
+  eight-point work sweep and a sixteen-point payload sweep that decompose per-call
+  time into a crossing intercept and an execution (or serialization) slope,
+  together with a frank threats-to-validity account
+  (Section~\ref{sec:threats}) that states exactly what each number does and does
+  not license.
+\end{enumerate}
+
+\section{Background: The Interop Matrix}
+\label{sec:matrix}
+
+Jac programs are partitioned into three \emph{codespaces}---server (\code{sv},
+Python bytecode), client (\code{cl}, JavaScript), and native (\code{na}, machine
+code / WebAssembly)---plus the ambient \code{C} and Python (\code{py})
+ecosystems reachable by import. A call within one codespace is \emph{free}: no
+value is serialized. A call \emph{between} codespaces, or out to \code{C} or the
+browser, is \emph{marshalled}: it becomes an RPC, an FFI thunk, or a WebAssembly
+import/export, and every value that crosses is serialized and reconstructed on
+the far side. Figure~\ref{fig:overview} shows the surface: which edges the
+compiler emits for free, and which it must marshal---and thus must be measured.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  font=\small,
+  space/.style={draw, rounded corners, minimum width=15mm, minimum height=8mm,
+                align=center, thick},
+  ambient/.style={draw, dashed, rounded corners, minimum width=13mm,
+                  minimum height=7mm, align=center},
+  free/.style={-{Latex}, thick},
+  marsh/.style={-{Latex}, thick, dotted},
+]
+\node[space] (sv) at (0,0) {\code{sv}\\\scriptsize Python};
+\node[space] (cl) at (-2.6,-2.2) {\code{cl}\\\scriptsize JS};
+\node[space] (na) at (2.6,-2.2) {\code{na}\\\scriptsize native/wasm};
+\node[ambient] (py) at (-2.6,1.4) {\code{py}\\\scriptsize PyPI};
+\node[ambient] (c)  at (2.6,1.4)  {\code{C}\\\scriptsize libs};
+
+% free edges (solid)
+\draw[free, {Latex}-{Latex}] (sv) -- (py) node[midway,left=-1pt] {\scriptsize free};
+\draw[free, {Latex}-{Latex}] (na) to[out=-50,in=-90,looseness=8]
+  node[below=-1pt] {\scriptsize free} (na);
+
+% marshalled edges (dotted)
+\draw[marsh, {Latex}-{Latex}] (sv) -- (na)
+  node[midway,right=1pt] {\scriptsize JIT / \code{na\{\}} / FFI};
+\draw[marsh, {Latex}-{Latex}] (cl) -- (sv)
+  node[midway,left=1pt] {\scriptsize HTTP+JSON};
+\draw[marsh, {Latex}-{Latex}] (cl) -- (na)
+  node[midway,below] {\scriptsize wasm};
+\draw[marsh, {Latex}-{Latex}] (na) -- (c)
+  node[midway,right=-1pt] {\scriptsize FFI ABI};
+\draw[marsh, {Latex}-{Latex}] (sv) to[out=60,in=120,looseness=8]
+  node[above] {\scriptsize RPC ($\mu$svc)} (sv);
+\end{tikzpicture}
+\caption{Jac's codespaces and ambient ecosystems. Solid arrows are
+\emph{free} in-codespace calls (nothing serialized); dotted arrows are the
+\emph{marshalled} boundaries JacInteropBench characterizes---each becomes an
+RPC, an FFI thunk, or a WebAssembly import/export.}
+\label{fig:overview}
+\end{figure}
+
+\begin{table}[t]
+\caption{Boundary $\rightarrow$ kernel map. Prefix \code{iop\_*} = in-process
+native bridge (family~1), \code{xop\_*} = cross-runtime (family~2),
+\code{base\_*} = a named free floor. The ``real-world stand-in'' column names
+each kernel's design target and analogue; as implemented the enabled cells are
+synthetic microprograms, so that column is \emph{aspirational}---though the
+callee-work sweep (Section~\ref{sec:sweep}) and the \code{xop\_feed\_payload}
+payload sweep (Section~\ref{sec:payload}) now realize the two scaling axes.}
+\label{tab:map}
+\centering
+\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+Boundary & Wire & Kernel(s) & Real-world stand-in \\
+\midrule
+\code{sv}$\rightarrow$\code{sv} & free & \code{base\_call} & Python-call floor \\
+\code{sv}$\leftrightarrow$\code{py} & free & \code{base\_pyimport} & NumPy/sklearn floor \\
+\code{sv}$\rightarrow$\code{na} & JIT & \code{iop\_call} & Python calls native \\
+\code{na}$\rightarrow$\code{sv} & \code{na\{\}} & \code{iop\_cb} & native calls back \\
+\code{sv}$\leftrightarrow$\code{na} & JIT & \code{iop\_symmetric} & placement dial \\
+\code{na}$\leftrightarrow$\code{C} & FFI ABI & \code{iop\_ffi\_scalar} & libm \\
+& & \code{iop\_ffi\_struct} & raylib, SQLite \\
+& & \code{iop\_ffi\_vtable} & CEF callbacks \\
+\code{sv}$\rightarrow$\code{sv} & HTTP+JSON & \code{xop\_svc\_split} & billing fan-out \\
+& HTTP+JSON \code{[N]} & \code{xop\_feed\_payload} & typed feed payload \\
+\code{cl}$\leftrightarrow$\code{sv} & HTTP+JSON & \code{xop\_feed} & littleX feed \\
+\code{cl}$\rightarrow$\code{na} & wasm export & \code{xop\_wasm\_call} & PolyBench in browser \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:map} lists the surface. The split into two harness families is not
+cosmetic: it follows from what a boundary requires of the measurement harness. A
+native bridge lives \emph{inside} one process---an in-process JIT or an
+ahead-of-time native binary---so a command adapter can drive it directly. A
+cross-runtime boundary requires a \emph{second} runtime---a live Jac server, a
+generated JavaScript client, a Node WebAssembly host---so a host adapter must own
+that runtime's lifecycle: allocate a port, start it, poll readiness, capture
+logs, reset state between variants, and terminate-then-kill in every exit path.
+The two families share one parsing, aggregation, and oracle module
+(\code{common.jac}) but keep their build and host lifecycles separate.
+
+Table~\ref{tab:profiles} is the conceptual spine of the characterization: it
+names, per boundary, the \emph{dominant cost} a workload pays and the compiler
+strategy that cost licenses. It is a taxonomy, not a measured policy---we do not
+yet implement automatic strategy selection---but it states what a synechic
+compiler is positioned to decide once each cost is measured, and it organizes
+which cost each kernel in Table~\ref{tab:map} is designed to expose.
+
+\begin{table}[t]
+\caption{Boundary cost profiles. The dominant cost defines the workload class;
+the enabled strategy is what owning both sides of the crossing lets a compiler
+choose. Strategy selection is design-implication (Section~\ref{sec:implications}),
+not a measured result.}
+\label{tab:profiles}
+\centering
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+Boundary & Dominant cost & Enabled strategy \\
+\midrule
+\code{cl}$\rightarrow$\code{sv} & network + JSON ser. & batch / migrate / cache \\
+\code{sv}$\leftrightarrow$\code{na} & FFI transition + marshal & inline vs.\ copied thunk \\
+\code{na}$\rightarrow$\code{sv} & callback + runtime entry & hoist / amortize round trip \\
+\code{sv}$\rightarrow$\code{sv} & RPC + placement & co-locate vs.\ split \\
+\code{na}$\leftrightarrow$\code{C} & ABI class (register/\code{byval}) & pass-by-value vs.\ pointer \\
+\code{cl}$\rightarrow$\code{na} & wasm import + BigInt copy & keep compute in-runtime \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Methodology}
+\label{sec:method}
+
+\subsection{The kernel contract}
+
+Every kernel obeys a load-bearing output contract inherited from \code{ownbench}
+and extended for boundary crossings. Each invocation prints exactly one non-empty
+\emph{canonical digest} line, exactly one effective \code{ns=$\langle$integer$\rangle$}
+timing line, and zero or more unique integer \code{m:$\langle$key$\rangle$=$\langle$value$\rangle$}
+metric lines. The parser strips both \code{ns=} and \code{m:} lines before
+comparing digests, and rejects missing or multiple timing lines, duplicate
+metrics, a changing metric-key set, or a nondeterministic digest.
+
+Determinism is enforced by construction: fixed linear-congruential-generator
+(LCG) seeds, sorted iteration, fresh or reset state per variant, and no clocks,
+generated identifiers, transport envelopes, or object addresses in the digest.
+Each run selects exactly one named work size, so a single run reports per-call or
+per-batch time \emph{at that size only}. Invocations within a run are interleaved
+per variant (paired sampling) so that machine drift hits both sides of a
+comparison evenly.
+
+\subsection{The differential-identity oracle}
+
+The suite's central discipline is that \emph{identity is never checked against a
+generic floor}. Every marshalled cell names an exact reference twin that runs the
+same operation over the same deterministic input without the crossing. The
+\code{free} variant of \code{iop\_call} runs an LCG checksum in ordinary
+\code{sv}; the \code{bridge} variant runs the identical checksum inside a
+\code{na\{\}} block. Both must emit the byte-identical canonical digest
+\code{call:263997602}. When they do, three facts are witnessed simultaneously:
+the marshalling preserved semantics, the native code path is functionally
+equivalent to the server path, and no compiler change silently perturbed either.
+This is the load-bearing contribution. A speedup is interesting; a
+byte-identical digest across a marshalled seam, checked on every commit, is a
+guarantee.
+
+The oracle's reach is best seen in one number. The same deterministic LCG
+checksum, \code{263997602}, is reproduced byte-for-byte across six kernels
+spanning every wire in the suite---\code{sv} and \code{na} execution
+(\code{iop\_call}, \code{iop\_symmetric}), a native$\rightarrow$server callback
+(\code{iop\_cb}), two HTTP+JSON RPC paths (\code{xop\_feed},
+\code{xop\_svc\_split}), and a \code{wasm32} export (\code{xop\_wasm\_call}).
+One workload, six runtimes and transports, one canonical value: that identity is
+the correctness claim the whole suite is built to defend.
+
+Concretely, the continuous-integration gate (\code{ci\_bridges.sh}) runs the
+enabled kernels at small sizes, filters out both \code{ns=} and \code{m:} lines,
+and asserts canonical-digest identity across each declared twin group plus a set
+of named structural invariants (Section~\ref{sec:audit}). \emph{Timing values
+never gate CI.} A regression is a semantic divergence or a broken structural
+invariant, never a slow number on a noisy runner. The same scalar pair also
+lives as a standalone compiler regression test
+(\code{test\_interopbench\_bridges.jac}) that invokes both paths through
+\code{python -m jaclang run} and asserts digest identity, with no GNU-time,
+NumPy, C-compiler, Node, server, or WebAssembly prerequisite.
+
+\subsection{Structural audits}
+\label{sec:audit}
+
+Beyond digest identity, the suite records named \emph{structural} facts about the
+generated code (\code{interop\_audit.json}). Manifest/wrapper audits are enabled
+for the two mixed-JIT scalar cells (\code{iop\_call}, \code{iop\_cb}); the FFI
+cells' IR/ABI assertions live in the compiler's existing owner tests
+(\code{test\_abi\_lib}, \code{test\_native\_gen\_pass}) rather than in this
+suite. For \code{iop\_call}, the audit
+asserts the \code{InteropManifest} exports exactly \code{native\_checksum} and no
+imports, that the generated Python wrapper contains exactly one
+\code{get\_function\_address('native\_checksum')} lookup and one matching
+\code{ctypes.CFUNCTYPE} signature, and that the pure-\code{sv} baseline
+(\code{sv\_checksum}) generates \emph{no} native binding. For \code{iop\_cb}, it
+additionally asserts one native import (\code{sv\_callback\_checksum}) and its
+\code{\_\_jac\_interop\_py\_funcs\_\_} registration. These are compiler-drift
+sentinels: they fail loudly if a codegen change adds a stray ctypes stub or
+drops a trampoline, catching regressions that a purely behavioral oracle would
+miss. Table~\ref{tab:audit} shows the concrete asserted facts; all matched on the
+measured build.
+
+\begin{table}[t]
+\caption{Structural-audit facts (\code{interop\_audit.json}), expected =
+actual on the measured build. Enabled for the two mixed-JIT scalar cells.}
+\label{tab:audit}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Cell & Asserted fact & Count \\
+\midrule
+\code{iop\_call} & \code{native\_exports}=\{\code{native\_checksum}\} & 1 \\
+                 & \code{get\_function\_address} lookup & 1 \\
+                 & \code{ctypes.CFUNCTYPE} signature & 1 \\
+                 & baseline \code{sv\_checksum} native bindings & 0 \\
+\midrule
+\code{iop\_cb}   & \code{native\_imports}=\{\code{sv\_callback\_checksum}\} & 1 \\
+                 & \code{\_\_jac\_interop\_py\_funcs\_\_} reg. & 1 \\
+                 & baseline \code{sv\_direct\_checksum} bindings & 0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Provenance and spread}
+
+Results are schema version~2. Every document carries a \code{provenance} block
+(host, platform, machine, CPU count, Python version, UTC capture time) so a
+number is never quoted without the machine it came from. Each cell records
+\code{samples}, \code{median\_ns}, \code{min\_ns}, \code{max\_ns},
+\code{stdev\_ns}, and \code{iqr\_ns}. What is deliberately \emph{not} computed:
+confidence intervals, ratio uncertainty, or an outlier policy---spread is
+reported, not gated. Results also label \code{command\_adapter},
+\code{timing\_source}, and \code{rss\_scope}; cross-runtime cells that cannot
+share a clock label \code{timing\_source} \emph{per variant} rather than stamping
+one label over a mixed pair.
+
+\section{Kernels}
+\label{sec:kernels}
+
+\paragraph{Family~1: native bridges (\code{iop\_*})}
+\code{iop\_call} is the vertical slice: one mixed source runs a deterministic
+scalar LCG checksum in \code{sv} (\code{free}) and in \code{na\{\}}
+(\code{bridge}). It is an \emph{execution-placement} benchmark---the ratio blends
+the \code{sv$\rightarrow$na} crossing with native-vs-server execution speed, not
+isolated boundary cost. \code{iop\_cb} isolates the crossing: both variants run
+the work in \code{sv}, and only the \code{bridge} path adds a
+native$\rightarrow$server callback round trip, making it the cleanest boundary
+cell. \code{iop\_symmetric} sweeps all four placements (\code{sv\_local},
+\code{sv\_to\_na}, \code{na\_local}, \code{na\_to\_sv}) over identical callee
+work. The three \code{iop\_ffi\_*} kernels exercise the \code{na$\leftrightarrow$C}
+ABI through a deterministic \code{C} fixture: \code{iop\_ffi\_scalar} churns
+\code{libm} \code{sqrt}; \code{iop\_ffi\_struct} passes
+\code{\_Static\_assert}ed 4/12/16/24/44-byte structs by value across System~V
+INTEGER and MEMORY classes; \code{iop\_ffi\_vtable} has \code{C} invoke a Jac
+callback through a \code{\_\_clibcb} trampoline.
+
+\paragraph{Family~2: cross-runtime (\code{xop\_*})}
+\code{xop\_svc\_split} places an \code{sv import from billing} between two
+loopback \code{jac start} deployments, with direct in-process dispatch as its
+twin. \code{xop\_feed\_payload} uses the same loopback \code{sv$\rightarrow$sv}
+seam but varies the returned \code{list[$N$]} cardinality rather than callee work,
+isolating a per-element serialization slope (Section~\ref{sec:payload}).
+\code{xop\_feed} drives a scalar provider through a generated JavaScript
+client over HTTP+JSON. \code{xop\_wasm\_call} compiles an integer kernel to
+\code{wasm32} and invokes it from a Node host, against a native bridge as
+reference. As Section~\ref{sec:threats} details, the scalar cross-runtime cells
+are honest \emph{floors}, not microservice or same-source native-vs-wasm
+measurements; \code{xop\_feed\_payload} adds the one payload-scaling curve.
+
+\section{Results}
+\label{sec:results}
+
+All numbers below were captured on host \code{zaitop}: Linux~6.18 x86\_64,
+16~cores, CPython~3.14.6. Single-size tables use the small work size
+(\code{args = 200, 20}); Section~\ref{sec:sweep} sweeps eight callee-work sizes
+and Section~\ref{sec:payload} sixteen payload cardinalities. Family-1 reports the
+median of five interleaved invocations, family-2 the median of seven (five to nine for
+the payload sweep). Every cell's variants produced byte-identical canonical
+digests---the oracle passed for all ten measured kernels at every size.
+
+\subsection{Native bridges}
+
+Table~\ref{tab:bridges} reports the family-1 results, anchored by the named
+free floor \code{base\_call}: a bare \code{sv$\rightarrow$sv} call over the same
+LCG leaf measures $34{,}853$\,ns/call at this size and emits the same
+\code{call:263997602} digest as the rest of the suite. So \code{iop\_call}'s
+$36{,}365$\,ns \code{free} reference is essentially the bare \code{sv}-call floor
+plus noise---the \code{sv$\rightarrow$na} comparisons below are against a real
+floor, not inflated server code. (The companion \code{sv$\leftrightarrow$py}
+floor \code{base\_pyimport} is defined but requires NumPy in the \code{jac}
+runtime environment, which this host does not provision; we report it as
+env-gated rather than fabricate a number.) Three findings stand out.
+
+\emph{Native execution is fast, but that is placement, not boundary cost.}
+\code{iop\_call} runs the LCG $8.5\times$ faster inside \code{na\{\}}
+($4{,}282$\,ns/call) than in \code{sv} ($36{,}365$\,ns/call), and
+\code{iop\_symmetric}'s \code{na\_local} floor ($1{,}140$\,ns/call) is $31\times$
+below its \code{sv\_local} twin. These ratios are dominated by how fast each
+runtime executes the kernel, not by what the crossing costs.
+
+\emph{The crossing itself is cheap.} \code{iop\_cb}, which holds execution in
+\code{sv} and adds only a native$\rightarrow$server callback round trip, costs
+$40{,}466$\,ns/call against a $34{,}513$\,ns/call reference---a $1.17\times$
+ratio, i.e.\ the round trip adds roughly $17\%$. Over the five samples the two
+distributions do not overlap (reference \code{max} $721{,}184 <$ bridge
+\code{min} $754{,}811$\,ns), and the min/max-bracketed ratio runs
+$1.05$--$1.23\times$; the effect is real, and we quote it with that range rather
+than as a bare point. This is the suite's cleanest statement of pure boundary
+overhead.
+
+\emph{The C ABI is close to free for scalars and callbacks---but not zero.} The
+integer per-call metric (\code{m:per\_ffi\_call\_ns}) floors both FFI scalar and
+trampoline costs to $2$--$3$\,ns, which understates a real sub-nanosecond
+premium visible in the batch medians: \code{iop\_ffi\_vtable}'s
+\code{C$\rightarrow$Jac} trampoline adds $11.9\%$ to batch wall time
+($11{,}599$ vs.\ $10{,}363$\,ns over the same call count), and
+\code{iop\_ffi\_scalar}'s \code{sqrt} adds $21.5\%$ over its arithmetic reference
+($12{,}243$ vs.\ $10{,}077$). The trampoline is cheap, not free; we read it off
+the batch wall time, not the quantized per-call integer. Struct-by-value is
+where marshalling shows plainly: \code{iop\_ffi\_struct} makes ten \code{C} calls
+per outer call across five heterogeneous shapes, averaging $15$\,ns per foreign
+call---an average across INTEGER- and MEMORY-class shapes, not a per-shape cost,
+and the reason its batch median ($616{,}582$\,ns) sits $6.8\times$ above the
+computed reference.
+
+\emph{Run-to-run variance is placement-dependent, not crossing-dependent.} The
+sharpest workload observation in the family-1 data is in the dispersion, not the
+medians. Every \code{sv}-resident variant is noisy---\code{iop\_call} free
+\code{stdev} $24{,}307$\,ns, \code{na\_to\_sv} $46{,}539$, \code{iop\_cb} bridge
+$37{,}081$---while every \code{na}-resident variant is nearly silent:
+\code{iop\_call} bridge \code{stdev} $894$, \code{na\_local} $374$, and the
+\code{iop\_ffi\_*} reference cells $15$--$196$\,ns. Run-to-run jitter tracks
+\emph{where the work executes} across roughly $1.5$ orders of magnitude: CPython
+scheduling, not the marshalled seam, dominates variance. This is why paired,
+interleaved sampling matters---it puts that CPython jitter on both sides of every
+comparison evenly. We report \code{min}/\code{max}/\code{stdev}/\code{iqr} per
+cell and gate on none of them (Section~\ref{sec:method}); the native-path ratios
+above are read off medians whose spread ($<3\%$ IQR) is small enough not to
+swallow them.
+
+\begin{table}[t]
+\caption{Family~1 native bridges. Median wall time and the kernel's own
+per-call metric (\code{ns}). Digests identical within every cell.}
+\label{tab:bridges}
+\centering
+\small
+\setlength{\tabcolsep}{4.5pt}
+\begin{tabular}{@{}llrr@{}}
+\toprule
+Cell & Variant & Median (ns) & per-call (ns) \\
+\midrule
+\code{iop\_call} & free (\code{sv} ref) & 727{,}310 & 36{,}365 \\
+                 & bridge (\code{na})   & 85{,}648  & 4{,}282 \\
+\midrule
+\code{iop\_cb}   & free (\code{sv} ref)        & 690{,}274 & 34{,}513 \\
+                 & bridge (\code{sv}$\to$\code{na}$\to$\code{sv}) & 809{,}333 & 40{,}466 \\
+\midrule
+\code{iop\_symmetric} & sv\_local & 713{,}816 & 35{,}690 \\
+                      & sv\_to\_na & 92{,}160 & 4{,}608 \\
+                      & na\_local  & 22{,}818 & 1{,}140 \\
+                      & na\_to\_sv & 778{,}104 & 38{,}905 \\
+\midrule
+\code{iop\_ffi\_scalar} & ref (int math)   & 10{,}077 & 2 \\
+                        & ffi (\code{sqrt}) & 12{,}243 & 3 \\
+\midrule
+\code{iop\_ffi\_struct} & ref (computed)   & 90{,}482  & 2 \\
+                        & ffi (struct ABI) & 616{,}582 & 15 \\
+\midrule
+\code{iop\_ffi\_vtable} & ref (direct Jac)      & 10{,}363 & 2 \\
+                        & ffi (\code{C}$\to$Jac) & 11{,}599 & 2 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Cross-tool FFI baseline}
+\label{sec:xtool}
+
+A per-foreign-call cost is only interpretable against a comparand. The
+\code{iop\_ffi\_scalar} kernel calls \code{libm}'s \code{sqrt} from Jac's native
+codespace; Jac's mixed-JIT path emits a \code{ctypes.CFUNCTYPE} thunk
+(Section~\ref{sec:audit}), so the natural controlled A/B is the \emph{same} libm
+\code{sqrt}, over the \emph{same} deterministic loop, called from Python's own
+two standard FFI mechanisms---\code{ctypes} and \code{cffi}---plus each side's
+no-FFI arithmetic floor. Every variant reconstructs the byte-identical digest
+\code{sqrt:402000}: the differential-identity oracle now spans \emph{toolchains},
+not just codespaces, so ctypes, cffi, and Jac-native are provably computing one
+value from the same foreign calls.
+
+Table~\ref{tab:xtool} reports median per-foreign-call cost (medians over five
+samples; per-call cost is essentially flat in $n$ because each \code{sqrt} is
+$O(1)$). Jac's native FFI ($3.1$\,ns) is $\mathbf{102\times}$ cheaper than
+\code{cffi} ($314$\,ns) and $\mathbf{153\times}$ cheaper than \code{ctypes}
+($475$\,ns) for the identical foreign call---and, strikingly, $12\times$ cheaper
+than \emph{pure Python arithmetic with no FFI at all} ($39$\,ns). This is the
+paper's one cross-tool result, and it is deliberately scoped: it compares
+Jac-native FFI against the Python-side FFI mechanisms Jac's own bridge emits, on
+one libm scalar. It is \emph{not} a comparison against pybind11, PyO3, or a
+hand-written C extension---those need matched kernels and per-system warm-up and
+are the subject of the deferred verdict paper (Section~\ref{sec:related}).
+
+\begin{table}[t]
+\caption{Cross-tool FFI: same \code{libm} \code{sqrt}, same loop, same digest
+\code{sqrt:402000}, median per foreign call (ns), $n{=}200$. Jac-native vs.\ the
+Python FFI mechanisms its own bridge emits.}
+\label{tab:xtool}
+\centering
+\small
+\begin{tabular}{@{}llr@{}}
+\toprule
+Toolchain & Path & ns/call \\
+\midrule
+Jac \code{na} & FFI (\code{sqrt})      & $3.1$ \\
+Jac \code{na} & ref (no FFI)           & $2.5$ \\
+Python \code{cffi}   & FFI (\code{sqrt}) & $314$ \\
+Python \code{ctypes} & FFI (\code{sqrt}) & $475$ \\
+Python & ref (no FFI)                  & $39$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Cross-runtime}
+
+Table~\ref{tab:xruntime} reports the family-2 results, now medians of
+\emph{seven} interleaved invocations per variant with reported spread---enough to
+replace the earlier single-warm-up floors with ranged estimates, though still
+short of stable V8 tiering. The marshalled crossings are two-plus orders of
+magnitude more expensive than the direct dispatch they replace, as physics
+demands: a loopback HTTP+JSON RPC (\code{xop\_svc\_split}) costs $135\times$ its
+in-process twin and a generated-client feed (\code{xop\_feed}) $213\times$ its
+direct provider call, while a \code{wasm32} export (\code{xop\_wasm\_call}) is
+$10\times$ a native bridge under an asymmetric host loop. The crossing-side IQRs
+are wide ($11$--$14\%$; e.g.\ \code{xop\_feed} client $\pm18.7$\,M\,ns on a
+$148$\,M\,ns median), so we still read these as order-of-magnitude \emph{floors},
+not precise ratios---and they remain the least apples-to-apples comparisons in
+the suite, since the two sides do not share a clock (each carries its own
+\code{timing\_source}). Every cross-runtime cell's digests were byte-identical
+across all seven samples.
+
+\begin{table}[t]
+\caption{Family~2 cross-runtime. Direct twin vs.\ marshalled crossing, median
+of \emph{seven} interleaved invocations; \code{[min, max]} in brackets. Timing
+sources differ per variant (see text); crossing-side spread is wide, so ratios
+are order-of-magnitude floors.}
+\label{tab:xruntime}
+\centering
+\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Cell & Direct med.\ (ns) & Crossing med.\ (ns) & Ratio \\
+\midrule
+\code{xop\_feed}      & 696{,}877 & 148{,}257{,}648 & $213\times$ \\
+\code{xop\_svc\_split} & 689{,}606 & 93{,}013{,}026  & $135\times$ \\
+\code{xop\_wasm\_call} & 16{,}910  & 170{,}557       & $10\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Separating fixed cost from callee work}
+\label{sec:sweep}
+
+A single work size cannot tell a fixed per-call crossing cost apart from
+per-iteration execution cost. To separate them we sweep the callee work
+parameter across eight sizes ($w\in\{25,\dots,3200\}$ LCG iterations/call at
+$40$ calls, five timed samples per point through the same \code{jac run} adapter)
+and fit each variant's per-call time to
+$t(w)\approx t_0 + s\cdot w$. The intercept $t_0$ is the per-call
+boundary/dispatch cost independent of callee work; the slope $s$ is the
+per-iteration execution cost. All fits are near-perfect lines
+($R^2\ge0.999$ for every \code{sv}-resident series; Table~\ref{tab:fits}).
+
+Two facts fall straight out. First, \emph{slope is bimodal by placement}:
+\code{na}-resident execution runs at $\approx$$4.4$\,ns/iter
+(\code{iop\_call} bridge, \code{na\_local}, \code{sv\_to\_na}) while
+\code{sv}-resident execution runs at $\approx$$184$\,ns/iter---a
+$\approx$$42\times$ gap that is a property of \emph{where the work runs}, not of
+the crossing. Second, and more decisively, \emph{the callback boundary is a
+constant, not a percentage}. In \code{iop\_cb} the \code{free} and \code{bridge}
+slopes are statistically identical ($182.2$ vs.\ $183.5$\,ns/iter, within
+$0.7\%$): the two variants do the same work, so their fitted lines are parallel
+and separated by a fixed intercept gap of $\approx$$5.37$\,\textmu s---the pure
+per-call callback cost. That constant is exactly why the headline
+\code{iop\_cb} ratio decays as work grows (Figure~\ref{fig:decay}): from
+$1.73\times$ at $w{=}25$ through $1.12\times$ at $w{=}200$ down to $1.01\times$
+at $w{=}3200$. The much-quoted ``$1.17\times$'' is not a property of the
+boundary; it is a fixed $5.4$\,\textmu s cost measured at one small size, and it
+vanishes into the noise once the callee does real work. \code{iop\_symmetric}
+makes the decomposition visible in one cell: \code{sv\_to\_na} runs at the
+\emph{native} slope ($4.42$) yet carries a $\approx$$3.2$\,\textmu s crossing
+intercept, so entering \code{na} pays a one-time per-call toll and then executes
+$42\times$ faster per iteration---precisely the trade a placement decision must
+weigh.
+
+\begin{table}[t]
+\caption{Linear fits $t(w)=t_0+s\cdot w$ of per-call time (ns) vs.\ callee work,
+eight sizes. $t_0$ is the per-call boundary/dispatch intercept, $s$ the
+per-iteration execution slope. Absolute $t_0$ is an extrapolation (small
+negative values are low-work loop curvature); the load-bearing quantity is the
+intercept \emph{gap} between twinned variants (see text). For \code{iop\_call} and \code{iop\_cb},
+\code{free} executes in \code{sv} and \code{bridge} in \code{na}; the
+$\approx$$4.4$ vs.\ $\approx$$184$\,ns/it slopes read off the executing
+codespace. The lone low $R^2$ ($.912$, \code{iop\_call} bridge) is the
+native path measured near the timer noise floor: at $\approx$$4.6$\,ns/it the
+slope is real but low-SNR, and it is corroborated by three independent
+\code{na}-resident series ($4.63/4.42/4.44$), so no single fit is load-bearing.}
+\label{tab:fits}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}llrrr@{}}
+\toprule
+Cell & Variant & $t_0$ (ns) & $s$ (ns/it) & $R^2$ \\
+\midrule
+\code{iop\_call} & free    & $-312$ & $86.69$  & $.9997$ \\
+                 & bridge  & $461$  & $4.63$   & $.912$  \\
+\midrule
+\code{iop\_cb}   & free    & $-901$ & $182.18$ & $1.000$ \\
+                 & bridge  & $4471$ & $183.53$ & $.9998$ \\
+\midrule
+\code{iop\_symmetric} & sv\_local  & $-387$  & $183.82$ & $1.000$ \\
+                      & sv\_to\_na & $3184$  & $4.42$   & $.9998$ \\
+                      & na\_local  & $123$   & $4.44$   & $1.000$ \\
+                      & na\_to\_sv & $-1408$ & $188.49$ & $.9999$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{semilogxaxis}[
+  width=\columnwidth, height=4.4cm,
+  log basis x=2,
+  xlabel={callee work $w$ (LCG iterations/call)},
+  ylabel={\code{iop\_cb} ratio},
+  xtick={25,100,400,1600}, xticklabels={25,100,400,1600},
+  ymin=0.95, ymax=1.8,
+  ytick={1.0,1.2,1.4,1.6},
+  grid=both, grid style={gray!20},
+  tick label style={font=\scriptsize}, label style={font=\footnotesize},
+  every axis plot/.append style={thick},
+]
+\addplot[mark=*,mark size=1.3pt,blue!70!black] coordinates {
+  (25,1.732)(50,1.396)(100,1.286)(200,1.121)(400,1.102)(800,1.052)(1600,1.050)(3200,1.010)
+};
+\addplot[dashed,gray] coordinates {(25,1.0)(3200,1.0)};
+\node[anchor=north east,font=\scriptsize] at (axis cs:3200,1.0) {no-cost (1.0)};
+\end{semilogxaxis}
+\end{tikzpicture}
+\caption{The \code{iop\_cb} bridge/reference ratio decays toward $1.0$ as callee
+work grows, because the callback crossing is a \emph{fixed} $\approx$$5.4$\,\textmu s
+per-call cost (Table~\ref{tab:fits}), not a proportional overhead. The
+$1.17\times$ headline is this constant seen at one small size.}
+\label{fig:decay}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{loglogaxis}[
+  width=\columnwidth, height=5cm,
+  log basis x=2,
+  xlabel={callee work $w$ (iterations/call)},
+  ylabel={per-call time (ns)},
+  xtick={25,100,400,1600}, xticklabels={25,100,400,1600},
+  legend pos=north west, legend style={font=\tiny, fill opacity=0.8},
+  legend cell align=left,
+  tick label style={font=\scriptsize}, label style={font=\footnotesize},
+  every axis plot/.append style={thick, mark size=1.1pt},
+]
+\addplot[mark=*,red!70!black] coordinates {
+  (25,4714)(50,9123)(100,17638)(200,35522)(400,71527)(800,148424)(1600,294560)(3200,587219)};
+\addplot[mark=triangle*,orange!85!black] coordinates {
+  (25,5206)(50,9632)(100,18564)(200,35180)(400,74398)(800,147026)(1600,295930)(3200,604403)};
+\addplot[mark=square*,blue!70!black] coordinates {
+  (25,3405)(50,3426)(100,3519)(200,4034)(400,5007)(800,6666)(1600,10273)(3200,17348)};
+\addplot[mark=diamond*,teal!70!black] coordinates {
+  (25,223)(50,347)(100,594)(200,1014)(400,1931)(800,3633)(1600,7175)(3200,14344)};
+\legend{sv\_local,na\_to\_sv,sv\_to\_na,na\_local}
+\end{loglogaxis}
+\end{tikzpicture}
+\caption{\code{iop\_symmetric}'s four placements. The two \code{sv}-executing
+variants (\code{sv\_local}, \code{na\_to\_sv}) share the steep $\approx$$184$\,ns/it
+slope; the two \code{na}-executing variants (\code{sv\_to\_na}, \code{na\_local})
+share the shallow $\approx$$4.4$\,ns/it slope. \code{sv\_to\_na} sits a constant
+$\approx$$3.2$\,\textmu s \emph{above} \code{na\_local}---that vertical offset is
+the crossing intercept. Slope is placement; the offset is the boundary.}
+\label{fig:placement}
+\end{figure}
+
+\subsection{Payload-cardinality scaling}
+\label{sec:payload}
+
+The family-1 sweep varies \emph{callee work} at fixed payload; the complementary
+axis---\emph{payload size} at fixed work---is what turns a cross-runtime floor
+into a per-element serialization curve. \code{xop\_feed\_payload} sweeps it: a
+loopback \code{sv$\rightarrow$sv} RPC (\code{rpc}) and its in-process twin
+(\code{direct}) each return a \code{list[$N$]} of \code{int} from the same
+provider, with $N$ swept across sixteen sizes from $1$ to $100{,}000$ elements at a
+fixed $20$ calls. Both sides run the identical \code{feed\_batch} LCG generator,
+so at every $N$ the returned lists are byte-identical: the oracle passed at all
+sixteen sizes (Table~\ref{tab:payload}), extending the differential-identity
+witness across five orders of magnitude of payload and confirming the wire
+round-trip preserves the list exactly.
+
+Both paths fit $t(N)\approx t_0 + s\cdot N$ per call, but with opposite dominant
+terms. The \code{direct} path is a near-perfect line of slope $s=298$\,ns/element
+(95\% CI $296$--$299$, $R^2>0.9999$ over the whole range): building an
+$N$-element list in-process costs essentially just per-element construction, with
+no fixed floor to speak of. The \code{rpc} path is the mirror image---a
+$\approx$$19$\,ms fixed per-call cost dominates at small $N$, and the per-element
+serialization slope is buried beneath it until the payload grows large. Over the
+full range the \code{rpc} fit is $s=934$\,ns/element (95\% CI $912$--$999$) on a
+$\approx$$19$\,ms floor ($R^2=0.995$); the earlier sweep, which stopped at
+$N{=}20{,}000$---essentially at break-even (below)---could only extrapolate this
+slope, but the extended range now measures it directly, and cleanly: restricting
+to the post-crossing band ($N\ge30{,}000$) gives $s=899$\,ns/element
+(95\% CI $865$--$932$) on a $\approx$$22$\,ms floor at $R^2=0.9995$. That is the
+result: \emph{crossing the RPC boundary costs $\approx$$3.1\times$ per element
+what the in-process list costs} ($934$ vs.\ $298$\,ns/element)---the
+JSON-encode/HTTP/decode marshalling tax laid bare as a slope, exactly the quantity
+the family-1 method isolates, now measured on payload rather than work. The
+consequence is visible in the ratio column of Table~\ref{tab:payload}: it
+collapses from $27{,}000\times$ at $N{=}1$ to $3.7\times$ at $N{=}100{,}000$---the
+inverse of the \code{iop\_cb} decay. There a fixed boundary was amortized by
+growing \emph{work}; here a fixed RPC floor is amortized by growing \emph{payload},
+while the direct twin it is measured against grows linearly.
+
+Crucially, the crossing is now \emph{observed}, not inferred, and reported with
+bootstrap confidence intervals rather than bare spread (percentile bootstrap,
+$B{=}10^4$: paired round resampling for ratios, a pairs bootstrap over sweep points
+for fit coefficients). The break-even payload at which the serialization term
+equals the fixed cost is $N\approx21{,}000$ elements---almost exactly where the
+earlier sweep stopped, which is why it could not see past the floor---and the
+extended sweep measures $N$ nearly five times beyond it: at $N{=}100{,}000$ the
+slope term ($\approx$$93$\,ms) is $\approx$$4.8\times$ the $\approx$$19$\,ms fixed
+cost, so the crossing is firmly \emph{slope-dominated}. This inverts the earlier
+reading---bounded at $20{,}000$, the crossing looked fixed-cost-dominated
+throughout and the slope was a second-order extrapolation---and replaces it: the
+loopback RPC is a fixed-cost floor at small payloads that hands off to a
+serialization curve at large ones, with the handoff directly witnessed. The
+confidence intervals put numbers on what was previously only
+``order-of-magnitude'': the full-range slope is $934$\,ns/element (CI $912$--$999$,
+a $\pm$$5\%$ interval), tightening to $865$--$932$ in the clean post-crossing
+regime, while the per-point crossing medians stay wide at small $N$ (the $N{=}1$
+\code{rpc}/\code{direct} ratio spans $23{,}600$--$31{,}700$). That small-$N$ width
+is the fixed-cost floor's noise, not the slope's: the \code{rpc} medians are
+non-monotone only for $N\le500$ and become strictly monotone from $N{=}1000$
+onward---exactly where the slope emerges.
+
+\begin{table}[t]
+\caption{\code{xop\_feed\_payload}: per-call time returning a \code{list[$N$]}
+over a loopback \code{sv$\rightarrow$sv} RPC vs.\ in-process, $N$ swept $1$ to
+$100{,}000$ at $20$ calls, median of nine interleaved invocations. Every
+row's \code{direct} and \code{rpc} canonical digests were byte-identical
+($\checkmark$). \code{direct} fits $298$\,ns/element ($R^2{>}.9999$); \code{rpc}
+fits a $\approx$$19$\,ms fixed cost plus a $934$\,ns/element serialization slope
+(95\% CI $912$--$999$, $R^2{=}.995$), the slope directly observed to overtake the
+fixed cost at $N\approx21{,}000$. Bootstrap CIs for every cell are in the released
+\code{payload\_sweep\_results.json}.}
+\label{tab:payload}
+\centering
+\small
+\begin{tabular}{@{}rrrrc@{}}
+\toprule
+$N$ & \code{direct} (\textmu s) & \code{rpc} (ms) & rpc/direct & dig. \\
+\midrule
+1      & $0.69$   & $18.9$ & $27{,}480\times$ & $\checkmark$ \\
+10     & $3.54$   & $19.7$ & $5{,}568\times$  & $\checkmark$ \\
+50     & $15.5$   & $17.0$ & $1{,}095\times$  & $\checkmark$ \\
+100    & $30.1$   & $20.2$ & $673\times$      & $\checkmark$ \\
+250    & $74.1$   & $16.1$ & $217\times$      & $\checkmark$ \\
+500    & $149$    & $17.7$ & $119\times$      & $\checkmark$ \\
+1000   & $299$    & $18.3$ & $61\times$       & $\checkmark$ \\
+2000   & $597$    & $23.1$ & $39\times$       & $\checkmark$ \\
+5000   & $1{,}495$ & $28.8$ & $19\times$      & $\checkmark$ \\
+10000  & $2{,}969$ & $29.3$ & $10\times$      & $\checkmark$ \\
+20000  & $5{,}931$ & $40.2$ & $7\times$       & $\checkmark$ \\
+30000  & $8{,}889$ & $48.0$ & $5\times$       & $\checkmark$ \\
+40000  & $11{,}822$ & $58.4$ & $5\times$      & $\checkmark$ \\
+50000  & $14{,}810$ & $66.6$ & $5\times$      & $\checkmark$ \\
+75000  & $22{,}319$ & $88.7$ & $4\times$      & $\checkmark$ \\
+100000 & $29{,}888$ & $111.6$ & $3.7\times$   & $\checkmark$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{loglogaxis}[
+  width=\columnwidth, height=5cm,
+  log basis x=10,
+  xlabel={returned payload $N$ (elements/call)},
+  ylabel={per-call time (ns)},
+  legend pos=south east, legend style={font=\tiny, fill opacity=0.8},
+  legend cell align=left,
+  tick label style={font=\scriptsize}, label style={font=\footnotesize},
+  every axis plot/.append style={thick, mark size=1.1pt},
+]
+\addplot[mark=*,red!70!black] coordinates {
+  (1,18933410)(10,19694205)(50,17019635)(100,20249846)(250,16068756)(500,17661349)(1000,18301284)(2000,23105189)(5000,28830003)(10000,29305711)(20000,40151207)(30000,47962922)(40000,58414764)(50000,66608500)(75000,88694946)(100000,111592625)};
+\addplot[mark=square*,blue!70!black] coordinates {
+  (1,689)(10,3537)(50,15544)(100,30078)(250,74120)(500,148883)(1000,299409)(2000,597080)(5000,1494784)(10000,2969337)(20000,5931120)(30000,8889142)(40000,11821696)(50000,14810078)(75000,22318661)(100000,29888315)};
+\legend{rpc (crossing),direct (in-process)}
+\end{loglogaxis}
+\end{tikzpicture}
+\caption{Payload-cardinality sweep, $N{=}1$ to $100{,}000$. \code{direct} is a
+clean slope-$1$ line ($298$\,ns/element); \code{rpc} is a flat $\approx$$19$\,ms
+floor that rises once the $934$\,ns/element serialization term climbs above it,
+directly crossing break-even at $N\approx21{,}000$. The two curves converge as
+$N$ grows---the crossing's fixed cost amortizes over a larger payload while the
+in-process twin grows linearly---and by $N{=}100{,}000$ the crossing is
+slope-dominated ($\approx$$4.8\times$ the fixed cost).}
+\label{fig:payload}
+\end{figure}
+
+\section{Threats to Validity}
+\label{sec:threats}
+
+The differential-identity and structural-audit layers are the load-bearing
+parts, and they are strong: byte-identical digests across every twin group and
+matching manifest/wrapper facts are real correctness and compiler-regression
+witnesses. The \emph{performance} layer is narrower than the kernel names
+suggest, and we state its limits plainly.
+
+\emph{Placement vs.\ boundary.} At a single size, \code{iop\_call} and
+\code{iop\_symmetric} conflate \emph{which runtime runs the work} with crossing
+cost. The size sweep (Section~\ref{sec:sweep}) separates the two---slope is
+execution, intercept is crossing---but the separation is a linear extrapolation:
+absolute intercepts are noisy (some slightly negative), so we quote only the
+robust intercept \emph{gap} between twinned variants and the intercept of the
+\code{sv\_to\_na} crossing, never a bare single-variant $t_0$.
+
+\emph{FFI floors are not pure ABI.} \code{iop\_ffi\_scalar} includes two numeric
+conversions per iteration; \code{iop\_ffi\_struct}'s $15$\,ns is an
+\emph{average} across five struct shapes and must be split by shape before any
+per-ABI-class claim.
+
+\emph{Cross-runtime cells are floors, not workloads.} \code{xop\_feed} is a
+\emph{sequential scalar} generated-client floor---no typed feed records and no
+serialization-scaling measurement on that cell; it is not a HyperProtoBench-style
+curve, and it measures a minimal custom \code{fetch} shim, not the shipped
+\code{@jac/runtime}. The payload-scaling axis it lacks is supplied by the
+separate \code{xop\_feed\_payload} sweep (Section~\ref{sec:payload}), which does
+grow $N$ to $100{,}000$ elements over a loopback RPC; that cell in turn stays on a
+\code{sv$\rightarrow$sv} loopback rather than a generated cross-language client,
+so the two remain complementary floors rather than one production feed.
+\code{xop\_wasm\_call} compares a Python-loop$\rightarrow$native-bridge against a
+JavaScript-loop$\rightarrow$wasm-export---\emph{not} the same source built native
+and wasm under equal host loops.
+
+\emph{One machine; both axes now swept, payload gated by CIs.} The family-1 mixed-JIT
+cells are swept across eight callee-work sizes and fit to a fixed-cost intercept
+plus an execution slope (Section~\ref{sec:sweep}); the complementary
+\emph{payload-bytes} axis, once future work, is now measured by
+\code{xop\_feed\_payload} across sixteen cardinalities to $100{,}000$ elements
+(Section~\ref{sec:payload}), separating the loopback RPC's $\approx$$19$\,ms fixed
+cost from its $934$\,ns/element serialization slope. That cell is now gated by
+bootstrap confidence intervals ($B{=}10^4$ percentile): the slope CI is
+$912$--$999$\,ns/element and the crossing is directly observed to cross break-even
+at $N\approx21{,}000$ and reach $\approx$$4.8\times$ slope-dominance by
+$N{=}100{,}000$. One caveat remains: the per-point crossing medians are wide at
+small $N$ (the $N{=}1$ ratio CI spans $23{,}600$--$31{,}700$), noise that lives in
+the fixed-cost floor, not the slope. Family-2
+scalar floors are median-of-seven with reported spread rather than a single
+warm-up, but seven Node invocations still do not guarantee stable V8 tiering and
+their crossing-side IQRs are wide. Outside the payload cell, results are one
+machine and report spread without confidence intervals. None of these should be published as general Jac interop
+overhead, realistic feeds, production microservices, or native-vs-wasm results.
+
+We regard this candor as a feature. A benchmark suite for a language whose thesis
+is measurable interop earns trust by naming exactly what each number licenses,
+and by gating regressions on the facts it can defend (semantics and structure)
+rather than the ones it cannot (absolute time on a shared runner).
+
+\section{Design Implications}
+\label{sec:implications}
+
+The characterization is a means, not an end. Its purpose is to make the cost of
+each boundary a quantity a compiler can \emph{act on}. Because a synechic
+compiler owns both sides of every crossing, it already knows each call's
+direction, static payload shape, and call-site frequency at compile time---the
+exact inputs Table~\ref{tab:profiles} keys on. What the numbers here begin to
+supply is the missing term: the per-crossing cost against which a placement or
+marshalling decision pays off.
+
+Three implications follow. The first two the sweep now quantifies; the third
+remains a hypothesis. \emph{(i)~Placement is a slope; the crossing is an
+intercept.} The sweep (Section~\ref{sec:sweep}) shows the two are literally
+separable coefficients of one line: execution placement is a
+$\approx$$42\times$ \emph{slope} difference ($4.4$ vs.\ $184$\,ns/iter) while the
+crossing is a fixed \emph{intercept} ($\approx$$5.4$\,\textmu s for the
+\code{iop\_cb} callback, $\approx$$3.2$\,\textmu s to enter \code{na}). A
+compiler can therefore choose placement on callee slope alone once the intercept
+is known small---and it can compute the exact break-even, which our fits make
+concrete: entering \code{na} costs the $\approx$$3.2$\,\textmu s intercept and
+saves $\approx$$179$\,ns/iter ($184$ minus $4.4$), so \emph{crossing into native
+pays for itself above $\approx$$18$ iterations of callee work per call}. Below
+that, stay in \code{sv}; above it, cross---a threshold computable at compile time
+from the call's static work estimate. \emph{(ii)~The $\mu$s-vs-ns gap
+sets a batching threshold.} A loopback RPC costs $10^{7}$--$10^{8}$\,ns per call
+while an in-process dispatch costs $\sim$$10^{5}$; the break-even call count
+above which batching or computation-migration wins is the ratio Table~%
+\ref{tab:xruntime} brackets ($\sim$$10^2$). Applying the intercept/slope method
+to \emph{payload} rather than work makes the two terms concrete
+(Section~\ref{sec:payload}): the loopback RPC resolves into a $\approx$$19$\,ms
+fixed cost plus a $934$\,ns/element serialization slope---$3.1\times$ the
+in-process list's $298$\,ns/element---so a compiler that knows a call's static
+payload cardinality can compute both when the crossing amortizes (large $N$) and
+what each additional element on the wire will cost. \emph{(iii)~ABI class is a codegen choice,
+not a constant.} The
+$2$\,ns scalar vs.\ $15$\,ns struct-by-value gap is exactly the register-vs-%
+\code{byval} distinction a compiler resolves per call signature. The decision
+tree these imply---direct FFI, copied FFI, batched FFI, RPC, or migrate the
+computation into the target codespace---is the natural next system contribution;
+this paper supplies its measurement substrate and leaves the selector itself as
+future work.
+
+\section{Related Work}
+\label{sec:related}
+
+The Computer Language Benchmarks Game~\cite{clbg} and PolyBench~\cite{polybench}
+compare language \emph{implementations} on shared kernels; JacInteropBench instead
+holds the language fixed and varies the \emph{boundary}, so its unit is one Jac
+program crossing one marshalled seam, not two languages solving one problem.
+gRPC's benchmark methodology~\cite{grpc} separates fixed per-call cost from
+per-byte work---the intercept/slope decomposition we implement over callee work
+for the family-1 cells (Section~\ref{sec:sweep}) and over payload cardinality for
+\code{xop\_feed\_payload} (Section~\ref{sec:payload}), which resolves a loopback
+RPC into a $\approx$$19$\,ms fixed cost and a $934$\,ns/element serialization
+slope, observed to cross break-even at $N\approx21{,}000$. HyperProtoBench~\cite{hyperproto} characterizes serialization at scale;
+our payload sweep is a minimal instance of that payload-growing axis, still on a
+loopback \code{sv$\rightarrow$sv} seam rather than realistic proto messages. TechEmpower~\cite{techempower} defines realistic web-endpoint
+workloads that a future \code{xop\_crud} would slice. The manually engineered interop these boundaries replace has its own
+tooling---\code{ctypes} and CFFI, pybind11~\cite{pybind11} and
+PyO3~\cite{pyo3} for Python$\leftrightarrow$native, FastAPI and generated
+OpenAPI clients for \code{cl}$\rightarrow$\code{sv}. A differential comparison
+against these---same computation, same data representation, Jac-generated
+crossing vs.\ hand-written glue---is the axis that would turn our
+\emph{characterization} into a \emph{verdict} on compiler-generated interop. We
+deliberately do not run it here: the honest contribution of this paper is the
+twin-anchored oracle and the intra-Jac cost profiles, and a cross-system
+comparison demands its own controls (identical kernels, matched marshalling,
+per-system warm-up) to avoid attributing implementation differences to the
+mechanism. It is the headline of the follow-on paper, not a claim we smuggle
+into this one. Within Jac, \code{ownbench}
+covers the free single-runtime boundary and the memory-management dial; this suite
+is its marshalled-boundary complement, sharing its output contract, oracle
+discipline, and compiler-regression role. The GraalVM/Truffle line~\cite{graal} is the closest prior ``one runtime, many
+languages'' interoperability work, but it measures a shared managed VM's
+polyglot call layer; JacInteropBench instead measures a compiler that lowers
+\emph{to distinct runtimes} (Python bytecode, JavaScript, native/wasm) and so
+must characterize genuinely heterogeneous boundaries. Our \code{xop\_wasm\_call}
+caveat is precisely the confound Jangda et al.~\cite{jangda} isolate at scale
+(wasm vs.\ native under matched host loops), which is why we report ours as an
+asymmetric floor rather than a codegen verdict. On statistics, we follow the
+spirit of rigorous performance evaluation~\cite{georges,renaissance} by
+reporting full spread per cell, while deliberately declining confidence
+intervals at $n{=}5$/$n{=}7$ rather than computing ones the sample cannot
+support---and gating regressions on semantics, not time. To our knowledge no
+established suite targets ``Python $\leftrightarrow$ WebAssembly
+$\leftrightarrow$ native in one language,'' because until synechic compilation
+there was no single language spanning those runtimes to measure.
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+Synechic compilation turns interop cost from an emergent property of hand-written
+glue into a measurable property of one compiler. JacInteropBench is the
+instrument for that measurement: ten measured kernels across two harness
+families plus two named floors, each marshalled cell anchored to an exact
+reference twin, a differential-identity oracle and structural audits gated in CI,
+and provenance-stamped timing reported only within an explicitly bounded scope.
+On commodity x86\_64 hardware an eight-point work sweep resolves per-call time
+into a fixed crossing intercept ($\approx$$5.4$\,\textmu s for the callback
+boundary, $\approx$$3.2$\,\textmu s to enter \code{na}) and a placement slope
+($\approx$$42\times$, \code{na} vs.\ \code{sv})---so the $1.17\times$ callback
+headline is a constant that decays to $1.01\times$ as the callee does real work---%
+and a sixteen-point payload sweep to $N{=}100{,}000$ resolves the loopback RPC into a
+$\approx$$19$\,ms fixed cost plus a $934$\,ns/element serialization slope
+(95\% bootstrap CI $912$--$999$),
+$3.1\times$ its in-process twin and directly observed to overtake the fixed cost
+at $N\approx21{,}000$. We add low-nanosecond \code{C}-ABI foreign-call
+costs, placement-dependent run-to-run variance spanning $1.5$ orders of magnitude,
+and median-of-seven cross-runtime floors of $10$--$213\times$. The suite's most
+durable output is not any single ratio but the guarantee that every crossing stays
+byte-identical to its in-language reference on every commit. Future work fits the
+remaining shape---the payload method carried onto a typed cross-language
+\code{xop\_feed} feed, plus concurrency and RPS on
+\code{xop\_crud} and an arm64 C-ABI runner---each landing behind the same
+twin-anchored, regression-gated contract.
+
+\begin{thebibliography}{9}
+\bibitem{jac} Jaseci Labs, ``The Jac Programming Language,''
+\url{https://github.com/jaseci-labs/jaseci}, 2026.
+\bibitem{clbg} I.\ Gouy, ``The Computer Language Benchmarks Game,''
+\url{https://benchmarksgame-team.pages.debian.net/benchmarksgame/}.
+\bibitem{polybench} L.-N.\ Pouchet, ``PolyBench/C: The Polyhedral Benchmark
+Suite,'' \url{https://web.cse.ohio-state.edu/~pouchet.2/software/polybench/}.
+\bibitem{grpc} gRPC Authors, ``gRPC Performance Benchmarking,''
+\url{https://grpc.io/docs/guides/benchmarking/}.
+\bibitem{hyperproto} A.\ Kolesnikov et al., ``HyperProtoBench: A Realistic
+Protocol Buffer Serialization Benchmark,'' Google, 2020.
+\bibitem{techempower} TechEmpower, ``Web Framework Benchmarks,''
+\url{https://www.techempower.com/benchmarks/}.
+\bibitem{pybind11} W.\ Jakob, J.\ Rhinelander, and D.\ Moldovan, ``pybind11---%
+Seamless operability between C++11 and Python,''
+\url{https://github.com/pybind/pybind11}, 2017.
+\bibitem{pyo3} PyO3 Project, ``PyO3: Rust bindings for Python,''
+\url{https://github.com/PyO3/pyo3}.
+\bibitem{jangda} A.\ Jangda, B.\ Powers, E.\ D.\ Berger, and A.\ Guha, ``Not So
+Fast: Analyzing the Performance of WebAssembly vs.\ Native Code,'' in
+\emph{USENIX ATC}, 2019.
+\bibitem{graal} M.\ Grimmer, C.\ Seaton, R.\ Schatz, T.\ W\"urthinger, and
+H.\ M\"ossenb\"ock, ``High-performance Cross-language Interoperability in a
+Multi-language Runtime,'' in \emph{DLS}, 2015.
+\bibitem{georges} A.\ Georges, D.\ Buytaert, and L.\ Eeckhout,
+``Statistically Rigorous Java Performance Evaluation,'' in \emph{OOPSLA}, 2007.
+\bibitem{renaissance} A.\ Prokopec et al., ``Renaissance: Benchmarking Suite
+for Parallel Applications on the JVM,'' in \emph{PLDI}, 2019.
+\end{thebibliography}
+
+\end{document}
