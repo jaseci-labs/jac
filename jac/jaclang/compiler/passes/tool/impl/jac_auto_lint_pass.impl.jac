@@ -2493,11 +2493,17 @@ impl JacAutoLintPass._strip_noise(nd: uni.Module) -> None {
     }
 
     if not self._is_suppressed(W3050) and nd.source.comments {
+        kept: list = [];
+        suppression_lines = nd.source.inline_suppressions;
         for comment in list(nd.source.comments) {
+            if comment.line_no in suppression_lines {
+                kept.append(comment);
+                continue;
+            }
             self.emit(W3050, node_override=comment);
         }
         if not self.report_only {
-            nd.source.comments = [];
+            nd.source.comments = kept;
         }
     }
 
