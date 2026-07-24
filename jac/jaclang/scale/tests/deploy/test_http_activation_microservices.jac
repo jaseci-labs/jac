@@ -48,6 +48,64 @@ test "service with http_activation disabled or unset returns None" {
     assert b._get_http_activation_config("other_svc") is None;
 }
 
+test "per-service http_activation inherits unset keys from [scale.kubernetes.http_activation]" {
+    b = MicroserviceManifestBuilder(
+        k8s_config=KubernetesConfig(
+            app_name="t",
+            namespace="t-ns",
+            http_activation={"concurrency_target": 10, "polling_interval": 15}
+        ),
+        microservices_config={
+            "services": {
+                "billing_ops": {
+                    "http_activation": {"enabled": True, "target_port": 8080}
+                }
+            }
+        },
+        dry_run=True
+    );
+    cfg = b._get_http_activation_config("billing_ops");
+    assert cfg is not None;
+    assert cfg["target_port"] == 8080;
+    assert cfg["concurrency_target"] == 10;
+    assert cfg["polling_interval"] == 15;
+}
+
+test "per-service http_activation overrides [scale.kubernetes.http_activation] on shared keys" {
+    b = MicroserviceManifestBuilder(
+        k8s_config=KubernetesConfig(
+            app_name="t",
+            namespace="t-ns",
+            http_activation={"enabled": True, "concurrency_target": 10}
+        ),
+        microservices_config={
+            "services": {
+                "billing_ops": {
+                    "http_activation": {"enabled": True, "concurrency_target": 5}
+                }
+            }
+        },
+        dry_run=True
+    );
+    cfg = b._get_http_activation_config("billing_ops");
+    assert cfg["concurrency_target"] == 5;
+}
+
+test "a service without its own http_activation block does not inherit enabled from the top-level default" {
+    b = MicroserviceManifestBuilder(
+        k8s_config=KubernetesConfig(
+            app_name="t",
+            namespace="t-ns",
+            http_activation={
+                "enabled": True, "target_port": 8080, "concurrency_target": 10
+            }
+        ),
+        microservices_config={"services": {"other_svc": {}}},
+        dry_run=True
+    );
+    assert b._get_http_activation_config("other_svc") is None;
+}
+
 
 # --- Section B: apply_http_activations_for_bundle (per-service apply loop) --
 test "apply_http_activations_for_bundle calls apply_http_activation only for the enabled service, targeting its own Service" {

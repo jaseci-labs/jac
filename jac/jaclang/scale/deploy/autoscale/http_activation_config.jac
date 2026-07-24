@@ -165,14 +165,15 @@ def apply_http_activation_for_target(
 }
 
 # Deploy-path teardown counterpart to apply_http_activation_for_target above.
-# destroy_http_activation is already 404-safe per-resource, so this is safe
-# to call unconditionally whenever the config says HTTP activation should
-# exist - no need to first check whether apply ever actually succeeded.
+# Deliberately unconditional, with no config parameter: gating on the
+# *current* config would skip cleanup for a resource that was created while
+# http_activation was enabled but later got disabled or removed from
+# jac.toml, orphaning the InterceptorRoute/ScaledObject. destroy_http_
+# activation is already 404-safe per-resource, so calling it unconditionally
+# is always safe, mirroring how the base autoscaler's own destroy() call is
+# unconditional at its call site.
 def destroy_http_activation_for_target(
-    cfg: dict[str, any], scale_target_name: str, namespace: str, keda: KEDAAutoscaler
-) -> None {
-    if not cfg.get("enabled", False) {
-        return;
-    }
+    scale_target_name: str, namespace: str, keda: KEDAAutoscaler
+) {
     keda.destroy_http_activation(scale_target_name, namespace);
 }
