@@ -537,3 +537,23 @@ test "destroy_collection still raises on a 403 listing ScaledObjects, since keda
     }
     assert raised , "A 403 on the core keda.sh group is not tolerated, unlike http.keda.sh";
 }
+
+test "destroy_collection with best_effort=True also tolerates a 403 on the core keda.sh group" {
+    # A deployment whose base autoscaler_engine is "hpa" never had a reason
+    # to be granted keda.sh RBAC at all: unlike a keda-engine deployment,
+    # nothing here guarantees that group is even installed for it, let
+    # alone permissioned. The caller that sweeps KEDA resources anyway (to
+    # catch orphaned HTTP-activation resources on an hpa-engine deployment)
+    # opts into this wider tolerance explicitly, rather than it being the
+    # default for every caller.
+    mock_api = unittest.mock.MagicMock();
+    mock_api.list_namespaced_custom_object.side_effect = ApiException(status=403);
+    keda = KEDAAutoscaler(_custom_api=mock_api, _v2_api=unittest.mock.MagicMock());
+    raised = False;
+    try {
+        keda.destroy_collection("staging", "managed=jac-scale", best_effort=True);
+    } except ApiException {
+        raised = True;
+    }
+    assert not raised , "best_effort=True must tolerate a 403 on every resource group";
+}

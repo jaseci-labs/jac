@@ -306,7 +306,9 @@ impl KEDAAutoscaler.destroy_collection{
         ("keda.sh", "v1alpha1", "triggerauthentications"),
         ("http.keda.sh", "v1beta1", "interceptorroutes")
     ] {
-        tolerated = [404, 422, 403] if group == "http.keda.sh" else [404, 422];
+        tolerated = [404, 422, 403]
+            if (group == "http.keda.sh" or best_effort)
+            else [404, 422];
         try {
             items = api.list_namespaced_custom_object(
                 group=group,
