@@ -88,7 +88,7 @@ test "per-service http_activation overrides [scale.kubernetes.http_activation] o
     assert cfg["concurrency_target"] == 5;
 }
 
-test "a service without its own http_activation block does not inherit enabled from the top-level default" {
+test "a service with no http_activation block still inherits enabled from the top-level default" {
     b = MicroserviceManifestBuilder(
         k8s_config=KubernetesConfig(
             app_name="t",
@@ -102,7 +102,23 @@ test "a service without its own http_activation block does not inherit enabled f
         microservices_config={"services": {"other_svc": {}}},
         dry_run=True
     );
-    assert b._get_http_activation_config("other_svc") is None;
+    cfg = b._get_http_activation_config("other_svc");
+    assert cfg is not None;
+    assert cfg["target_port"] == 8080;
+    assert cfg["concurrency_target"] == 10;
+}
+
+test "a service can explicitly opt out with enabled=false even when the top-level default is enabled" {
+    b = MicroserviceManifestBuilder(
+        k8s_config=KubernetesConfig(
+            app_name="t", namespace="t-ns", http_activation={"enabled": True}
+        ),
+        microservices_config={
+            "services": {"opted_out": {"http_activation": {"enabled": False}}}
+        },
+        dry_run=True
+    );
+    assert b._get_http_activation_config("opted_out") is None;
 }
 
 

@@ -743,11 +743,11 @@ obj MicroserviceManifestBuilder {
     def _get_http_activation_config(svc_name: str) -> dict[str, any] | None {
         svc: dict[str, any] = self._service_config(svc_name);
         per_service: dict[str, any] = svc.get("http_activation", {});
-        if not per_service.get("enabled", False) {
-            return None;
-        }
         merged: dict[str, any] = dict(self.k8s_config.http_activation);
         merged.update(per_service);
+        if not merged.get("enabled", False) {
+            return None;
+        }
         return merged;
     }
 
