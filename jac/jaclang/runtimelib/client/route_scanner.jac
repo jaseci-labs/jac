@@ -72,9 +72,6 @@ def describe_unmigrated_pages(pages_dir: Path, routed_files: list[Path]) -> list
             } except OSError {
                 continue;
             }
-            if re.search(_ROUTE_TYPE_RE, source) {
-                continue;
-            }
             is_layout = f.stem == 'layout';
             for hit in re.finditer(_JSX_ELEMENT_EXPORT_RE, source) {
                 kind = 'JsxLayout'

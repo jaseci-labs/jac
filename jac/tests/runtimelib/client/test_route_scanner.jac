@@ -366,3 +366,27 @@ test "unmigrated layout is pointed at JsxLayout" {
         assert "JsxLayout" in joined , "a layout file must be pointed at JsxLayout";
     }
 }
+
+
+"""Whether a file resolved is decided by the injected route set, not by scanning
+its text: a `-> JsxPage` mention in a comment (or a private, unregistered helper)
+must not suppress the warning for a genuinely unmigrated export in that file."""
+test "a JsxPage mention in text does not suppress an unmigrated export" {
+    with TemporaryDirectory() as tmp {
+        proj = Path(tmp);
+        routed = _write(
+            proj,
+            "pages/users.jac",
+            "def:pub Users() -> JsxPage { return <div>u</div>; }",
+        );
+        _write(
+            proj,
+            "pages/about.jac",
+            "# TODO: def About() -> JsxPage\ndef:pub About() -> JsxElement { return <div>a</div>; }",
+        );
+        lines = describe_unmigrated_pages(proj / "pages", [routed]);
+        joined = "\n".join(lines);
+        assert "about.jac" in joined , "a JsxPage mention in a comment must not suppress the warning";
+        assert "'About'" in joined , "the unmigrated export must still be named";
+    }
+}
