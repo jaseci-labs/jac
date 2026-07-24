@@ -77,7 +77,35 @@ def _http_get_bytes(url: str) -> bytes {
 }
 
 
-def download_release_binary(channel: str, arch: str) -> bytes {
+def _release_meta(repo: str, version: str) -> dict[str, any] {
+    if version {
+        api = f"https://api.github.com/repos/{repo}/releases/tags/v{version}";
+    } else {
+        api = f"https://api.github.com/repos/{repo}/releases/latest";
+    }
+    try {
+        return json.loads(_http_get_bytes(api).decode("utf-8"));
+    } except HTTPError as e {
+        import from jaclang.scale.config.dev_config { BINARY_PATH_ENV }
+        if version and e.code == 404 {
+            raise RuntimeError(
+                f"No published release is tagged v{version} at "
+                f"https://github.com/{repo}/releases; check the pinned version."
+            );
+        }
+        if version and e.code in (403, 429) {
+            raise RuntimeError(
+                f"GitHub rate-limited the release lookup ({e.code}); retry "
+                "shortly, or download the release binary and set "
+                f"{BINARY_PATH_ENV}."
+            );
+        }
+        raise;
+    }
+}
+
+
+def download_release_binary(channel: str, arch: str, version: str = "") -> bytes {
     repo = "jaseci-labs/jaseci";
     suffix = f"-linux-{arch}";
     binary_url = "";
@@ -86,6 +114,10 @@ def download_release_binary(channel: str, arch: str) -> bytes {
     if channel == "experimental" {
         channel = "dev";
     }
+    if channel in ("dev", "local") {
+        version = "";
+    }
+    descr = f"pinned v{version}" if version else channel;
 
     if channel == "local" {
         import from jaclang.scale.config.dev_config { BINARY_PATH_ENV }
@@ -112,8 +144,7 @@ def download_release_binary(channel: str, arch: str) -> bytes {
         binary_url = f"{base}/jac-dev{suffix}";
         checksum_url = f"{binary_url}.sha256";
     } else {
-        api = f"https://api.github.com/repos/{repo}/releases/latest";
-        meta = json.loads(_http_get_bytes(api).decode("utf-8"));
+        meta = _release_meta(repo, version);
         for asset in meta.get("assets", []) {
             name = str(asset.get("name", ""));
             url = str(asset.get("browser_download_url", ""));
@@ -129,7 +160,7 @@ def download_release_binary(channel: str, arch: str) -> bytes {
         if not binary_url {
             tag = meta.get("tag_name", "latest");
             raise RuntimeError(
-                f"No `jac-*{suffix}` asset on the {channel} release ({tag}). The "
+                f"No `jac-*{suffix}` asset on the {descr} release ({tag}). The "
                 f"node arch may be unpublished; set JAC_NODE_ARCH or check "
                 f"https://github.com/{repo}/releases."
             );
@@ -140,14 +171,14 @@ def download_release_binary(channel: str, arch: str) -> bytes {
         return _fetch_verified_asset(
             binary_url,
             checksum_url,
-            _binary_cache_path(channel, arch),
-            f"{channel} jac binary"
+            _binary_cache_path(channel, arch, version),
+            f"{descr} jac binary"
         );
     } except HTTPError as e {
         if e.code == 404 {
             raise RuntimeError(
                 f"No `jac-*{suffix}` binary published for this arch on the "
-                f"{channel} release; set JAC_NODE_ARCH or check "
+                f"{descr} release; set JAC_NODE_ARCH or check "
                 f"https://github.com/{repo}/releases."
             );
         }
@@ -194,7 +225,7 @@ def _fetch_verified_asset(
         }
         try {
             cache_file.parent.mkdir(parents=True, exist_ok=True);
-            tmp = cache_file.with_suffix(f".{os.getpid()}.tmp");
+            tmp = cache_file.with_name(f"{cache_file.name}.{os.getpid()}.tmp");
             tmp.write_bytes(payload);
             tmp.rename(cache_file);
         } except Exception as e {
@@ -211,20 +242,33 @@ glob OFFICIAL_IMAGE: str = "jaseci/jaclang";
 def resolve_pod_base_image(
     project_dir: str, configured: str, probe: bool = True
 ) -> str {
-    if configured {
-        return configured;
-    }
-    fallback = "python:3.12-slim";
     import from jaclang.scale.config.dev_config {
         resolve_dev_channel,
         resolve_experimental_pr,
+        resolve_pinned_version,
+        peek_pin,
         Channel
     }
+    if configured {
+        (pin, source) = peek_pin(project_dir);
+        if pin and not configured.startswith(OFFICIAL_IMAGE) {
+            logger.warning(
+                f"[scale.kubernetes] python_image is set, so the {source} pin "
+                "does not choose the pod base image; the pinned binary still "
+                "ships and overwrites the image's own jac."
+            );
+        }
+        return configured;
+    }
+    fallback = "python:3.12-slim";
     channel = resolve_dev_channel(project_dir);
     if channel == Channel.LOCAL {
         return fallback;
     }
-    if channel == Channel.EXPERIMENTAL {
+    version = resolve_pinned_version(project_dir);
+    if version {
+        tag = version;
+    } elif channel == Channel.EXPERIMENTAL {
         pr = resolve_experimental_pr(project_dir);
         if not pr {
             logger.warning(
@@ -249,7 +293,35 @@ def resolve_pod_base_image(
         raw = _http_get_bytes(
             f"https://hub.docker.com/v2/repositories/{OFFICIAL_IMAGE}/tags/{tag}"
         );
-    } except Exception {
+    } except HTTPError as e {
+        if version and e.code == 404 {
+            logger.warning(
+                f"No official image is published for jac {version} (versioned "
+                f"images start at 0.32.0); pods use {fallback} and install the "
+                "pinned binary on boot."
+            );
+            return fallback;
+        }
+        if version {
+            logger.warning(
+                f"Could not probe Docker Hub for {image} ({e}); keeping the "
+                "versioned tag for this deploy."
+            );
+            return image;
+        }
+        logger.info(
+            f"Official base image {image} is not published or not reachable; "
+            f"pods use {fallback}."
+        );
+        return fallback;
+    } except Exception as e {
+        if version {
+            logger.warning(
+                f"Could not probe Docker Hub for {image} ({e}); keeping the "
+                "versioned tag for this deploy."
+            );
+            return image;
+        }
         logger.info(
             f"Official base image {image} is not published or not reachable; "
             f"pods use {fallback}."
@@ -282,13 +354,20 @@ def _scale_cache_root -> Path {
 }
 
 
-def _binary_cache_path(channel: str, arch: str) -> Path {
-    return _scale_cache_root() / f"jac-{channel}-linux-{arch}";
+def _cache_slug(channel: str, version: str) -> str {
+    return version or channel;
 }
 
 
-def _admin_dist_cache_path(channel: str) -> Path {
-    return _scale_cache_root() / f"jac-{channel}-admin-dist.tar.gz";
+def _binary_cache_path(channel: str, arch: str, version: str = "") -> Path {
+    return _scale_cache_root() / f"jac-{_cache_slug(channel, version)}-linux-{arch}";
+}
+
+
+def _admin_dist_cache_path(channel: str, version: str = "") -> Path {
+    return (
+        _scale_cache_root() / f"jac-{_cache_slug(channel, version)}-admin-dist.tar.gz"
+    );
 }
 
 
@@ -310,7 +389,7 @@ def pack_binary_bytes(binary_bytes: bytes) -> bytes {
 }
 
 
-def _admin_dist_urls(channel: str) -> tuple[str, str] {
+def _admin_dist_urls(channel: str, version: str = "") -> tuple[str, str] {
     repo = "jaseci-labs/jaseci";
     suffix = "-admin-dist.tar.gz";
     if channel == "dev" {
@@ -320,8 +399,7 @@ def _admin_dist_urls(channel: str) -> tuple[str, str] {
     if channel == "local" {
         return ("", "");
     }
-    api = f"https://api.github.com/repos/{repo}/releases/latest";
-    meta = json.loads(_http_get_bytes(api).decode("utf-8"));
+    meta = _release_meta(repo, version);
     dist_url = "";
     checksum_url = "";
     for asset in meta.get("assets", []) {
@@ -340,14 +418,26 @@ def _admin_dist_urls(channel: str) -> tuple[str, str] {
 }
 
 
-def download_admin_dist(channel: str) -> bytes | None {
+def download_admin_dist(channel: str, version: str = "") -> bytes | None {
     try {
-        (dist_url, checksum_url) = _admin_dist_urls(channel);
+        (dist_url, checksum_url) = _admin_dist_urls(channel, version);
         if not dist_url {
+            if version {
+                logger.warning(
+                    f"The v{version} release publishes no admin console asset; "
+                    "the gateway builds the console on boot."
+                );
+            }
             return None;
         }
 
         if not checksum_url {
+            if version {
+                raise RuntimeError(
+                    f"The v{version} release publishes an admin console asset "
+                    "with no checksum; refusing to stage it unverified."
+                );
+            }
             logger.warning(
                 f"No checksum published for the {channel} admin console; "
                 "skipping the download so nothing unverified is staged."
@@ -357,20 +447,25 @@ def download_admin_dist(channel: str) -> bytes | None {
         return _fetch_verified_asset(
             dist_url,
             checksum_url,
-            _admin_dist_cache_path(channel),
-            f"{channel} admin console"
+            _admin_dist_cache_path(channel, version),
+            f"pinned v{version} admin console"
+                if version
+                else f"{channel} admin console"
         );
     } except Exception as e {
+        if version {
+            raise;
+        }
         logger.warning(f"Could not download the admin console asset ({e}).");
         return None;
     }
 }
 
 
-def stage_admin_dist(project_dir: str, channel: str) -> bool {
+def stage_admin_dist(project_dir: str, channel: str, version: str = "") -> bool {
     dest = Path(project_dir) / ".jac" / "admin";
     try {
-        payload = download_admin_dist(channel);
+        payload = download_admin_dist(channel, version);
         if payload is None {
             return False;
         }
@@ -384,6 +479,12 @@ def stage_admin_dist(project_dir: str, channel: str) -> bool {
         }
         if not (tmp / "index.html").is_file() {
             shutil.rmtree(str(tmp));
+            if version {
+                raise RuntimeError(
+                    f"The v{version} admin console asset has no index.html; "
+                    "refusing to stage it."
+                );
+            }
             logger.warning("Admin console asset has no index.html; not staging it.");
             return False;
         }
@@ -395,6 +496,9 @@ def stage_admin_dist(project_dir: str, channel: str) -> bool {
         logger.info("Staged the downloaded admin console into the app bundle.");
         return True;
     } except Exception as e {
+        if version {
+            raise;
+        }
         logger.warning(
             f"Could not stage the admin console ({e}); the gateway builds it on boot."
         );

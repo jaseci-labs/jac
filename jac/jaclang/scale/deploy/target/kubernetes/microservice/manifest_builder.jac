@@ -82,6 +82,7 @@ obj MicroserviceManifestBuilder {
         project_dir: str = "",
         _bundle_object_key: str = "",
         _toolchain_object_key: str = "",
+        _runtime_version: str = "",
         microservices_config: dict[str, any] = {},
         dry_run: bool = False;
 
@@ -119,6 +120,7 @@ obj MicroserviceManifestBuilder {
         );
         injector: PvcInjector = selection[0];
         self._toolchain_object_key = str(selection[1]);
+        self._runtime_version = str(getattr(injector, "version", ""));
         return injector;
     }
 
@@ -910,7 +912,7 @@ obj MicroserviceManifestBuilder {
             runtime_container_env
         }
         container["workingDir"] = APP_MOUNT_PATH;
-        env_list.extend(runtime_container_env());
+        env_list.extend(runtime_container_env(self._runtime_version));
         if shared_mounts {
             container["volumeMounts"] = shared_mounts;
         }

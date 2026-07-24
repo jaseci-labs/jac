@@ -25,20 +25,41 @@ Pods run a prebuilt `jac` binary that carries the jaclang runtime (including the
 
 | Channel | Selected by | Binary shipped |
 |---------|-------------|----------------|
-| **stable** | no `[dev]` stanza in `jac.toml` (default) | Latest published release |
+| **stable** | no other stanza or env set (default) | Latest published release |
+| **pinned** | `[scale-runtime] version = "X.Y.Z"` or `JAC_SCALE_VERSION` | That exact published release |
 | **dev** | a `[dev]` stanza in `jac.toml` | Rolling `dev` prerelease (main HEAD) |
+| **experimental** | `[experimental] pr = <N>` in `jac.toml` | The `dev` binary; pods run the PR's `jaseci/jaclang:experimental-<N>` image |
 | **local** | `JAC_SCALE_BINARY_PATH` set | The exact binary at that path |
 
-Both `stable` and `dev` download the binary from [GitHub Releases](https://github.com/jaseci-labs/jaseci/releases) and run it as-is - there is no source overlay.
+Every downloading channel fetches from [GitHub Releases](https://github.com/jaseci-labs/jaseci/releases) and runs the binary as-is - there is no source overlay.
 
-**Local binary (`JAC_SCALE_BINARY_PATH`).** Point this environment variable at a `jac` binary you built (or an air-gapped mirror) and the deploy ships that exact file to pods instead of downloading a release. It takes precedence over the `[dev]` stanza:
+**Version pinning (`[scale-runtime]`).** Pin the pod runtime to a specific published release - including an earlier one, to roll back off a regressed `latest`:
+
+```toml
+[scale-runtime]
+version = "0.34.2"
+```
+
+or, for a one-off deploy (wins over the toml pin):
+
+```bash
+JAC_SCALE_VERSION=0.34.2 jac start app.jac --scale
+```
+
+One pin moves everything version-bearing together: the runtime binary and the admin console asset resolve from `releases/tags/v<version>`, the pod base image becomes `jaseci/jaclang:<version>`, and downloads cache in a version-scoped slot. The deploy output names the pinned release, and pinned pods carry a `JAC_SCALE_RUNTIME_VERSION` container env you can read back with `kubectl`.
+
+Precedence, highest first: `JAC_SCALE_BINARY_PATH` (the pin is ignored with a warning), `JAC_SCALE_VERSION`, `[scale-runtime] version`, `[experimental]`, `[dev]`. A jac.toml that commits both `[scale-runtime]` and `[experimental]` is a hard error; the env pin overrides `[experimental]` with a warning instead, so an exported variable never breaks an unrelated project. The pin must live in `jac.toml` itself - `jac.local.toml` and `[environments.*]` overlays are not consulted.
+
+Supported pins are the current minor and one back; older pins are rejected at resolve time (they predate the current app-sealing flow - ship one via `JAC_SCALE_BINARY_PATH` if you must). Versioned base images exist from 0.32.0 onward; a pin whose image is missing falls back to the plain Python base with a warning and installs the pinned binary on boot.
+
+**Local binary (`JAC_SCALE_BINARY_PATH`).** Point this environment variable at a `jac` binary you built (or an air-gapped mirror) and the deploy ships that exact file to pods instead of downloading a release. It takes precedence over every other channel:
 
 ```bash
 export JAC_SCALE_BINARY_PATH=/path/to/jac
 jac start app.jac --scale
 ```
 
-Use this for air-gapped clusters, to pin an exact build, or to deploy a binary you compiled locally. The driver checksum-caches downloaded release binaries per channel, so an unchanged `stable`/`dev` deploy does not re-download on every run.
+Use this for air-gapped clusters or binaries you compiled locally; to hold a published release, prefer the `[scale-runtime]` pin above. The driver checksum-caches downloaded release binaries per channel (and per version for pinned deploys), so an unchanged deploy does not re-download on every run.
 
 ---
 
@@ -540,25 +561,9 @@ additional_packages = ["xz-utils", "zstd"]
 
 ---
 
-### Jaseci Source Pinning (Experimental)
+### Jaseci Source Pinning (Inert)
 
-When using `--experimental` mode, the Jaseci plugin packages (byllm and friends) are installed from the GitHub repository instead of PyPI. Pin a specific branch or commit for reproducible builds. (The jaclang runtime itself -- which includes the `scale` subsystem -- always comes from the pod's `jac` binary base image, so it is never installed from PyPI in either mode.)
-
-**Defaults:**
-
-| TOML Key  | Default | Description |
-|-----------|---------|-------------|
-| `jaseci_repo_url` | `https://github.com/jaseci-labs/jaseci.git` | GitHub repository to install Jaseci packages from |
-| `jaseci_branch` | `main` | Repository branch to install from |
-| `jaseci_commit` | None | Specific commit SHA - leave empty for latest of the branch |
-
-**To change in `jac.toml`:**
-
-```toml
-[scale.kubernetes]
-jaseci_branch = "develop"
-jaseci_commit = "a1b2c3d4"
-```
+> **These keys are parsed but honored by no deploy path.** `jaseci_repo_url`, `jaseci_branch`, `jaseci_commit`, and `install_jaseci` round-trip through the config loader and are consumed by nothing; the `--experimental` mode they reference is not a `jac start` flag. To control which jac runtime pods run, use the `[scale-runtime]` version pin described under [Runtime Binary](#runtime-binary). These keys are slated for removal.
 
 ---
 
@@ -566,9 +571,9 @@ jaseci_commit = "a1b2c3d4"
 
 Pin specific PyPI versions for genuine third-party Jaseci plugin packages installed inside the pod. Use `"none"` to skip a package entirely.
 
-> The pod's base image provides the `jac` binary, which is the jaclang runtime -- so jaclang (and the built-in subsystems that ship inside core: `scale`, the client/frontend framework, byLLM, and the MCP server) is host-provided and is never pinned or `pip install`ed here. Only genuine third-party plugins below are installed into the pod.
+> **This section pins third-party PyPI plugins, not the jac runtime.** To pin the runtime version pods run, use the `[scale-runtime]` pin under [Runtime Binary](#runtime-binary).
 >
-> **Note:** `jaclang` is no longer on PyPI, so the pod image must install the `jac` binary (e.g. via the install script). The cluster deploy code is being migrated to this model; until then, deploys that expect a PyPI `jaclang` will not resolve.
+> The pod's base image provides the `jac` binary, which is the jaclang runtime -- so jaclang (and the built-in subsystems that ship inside core: `scale`, the client/frontend framework, byLLM, and the MCP server) is host-provided and is never pinned or `pip install`ed here. Only genuine third-party plugins below are installed into the pod.
 
 **Defaults:** all packages default to `"latest"` from PyPI.
 
@@ -905,9 +910,11 @@ Instead, a deploy:
    the cluster on a PVC.
 2. Runs a bootstrap initContainer that unpacks the bundle and installs the
    pinned `jac` runtime into a shared volume.
-3. Starts every pod on a stock base image -- `jaseci/jaclang:latest` (or
-   `:dev` on the dev channel), falling back to `python:3.12-slim` when that tag
-   is unreachable.
+3. Starts every pod on a stock base image matching the runtime channel (see the
+   channel table under [Runtime Binary](#runtime-binary)) -- `jaseci/jaclang:latest`
+   for stable, `:<version>` for a pinned deploy, `:dev` or `:experimental-<N>` for
+   those channels -- falling back to `python:3.12-slim` when the tag is
+   unreachable.
 
 Override the base image with `python_image` if you need your own:
 
@@ -917,7 +924,9 @@ python_image = "my-registry/my-base:1.2.3"
 ```
 
 That image only has to provide the interpreter; your code still arrives via the
-bundle, not baked into the image.
+bundle, not baked into the image. Note that `python_image` selects the container
+image only -- the injected runtime binary (latest, or the `[scale-runtime]` pin)
+still ships and overwrites the image's own `jac` unless the two are identical.
 
 !!! note
     Earlier releases shipped a Docker build-and-push pipeline. It was removed,

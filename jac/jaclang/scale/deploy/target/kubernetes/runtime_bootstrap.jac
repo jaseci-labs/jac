@@ -118,11 +118,15 @@ def runtime_path -> str {
 }
 
 
-def runtime_container_env -> list[dict[str, str]] {
-    return [
+def runtime_container_env(version: str = "") -> list[dict[str, str]] {
+    env = [
         {"name": "HOME", "value": JAC_HOME},
         {"name": "PATH", "value": runtime_path()}
     ];
+    if version {
+        env.append({"name": "JAC_SCALE_RUNTIME_VERSION", "value": version});
+    }
+    return env;
 }
 
 

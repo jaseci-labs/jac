@@ -11,11 +11,14 @@ import unittest.mock;
 import from pathlib { Path }
 import from types { SimpleNamespace }
 import jaclang.scale.injector.binary as binary_mod;
+import jaclang.scale.config.dev_config as dev_config_mod;
 import from jaclang.scale.config.dev_config {
     resolve_dev_channel,
     resolve_experimental_pr,
+    resolve_pinned_version,
     Channel,
-    BINARY_PATH_ENV
+    BINARY_PATH_ENV,
+    VERSION_ENV
 }
 import from jaclang.scale.injector.binary {
     pack_binary_bytes,
@@ -368,7 +371,7 @@ test "BinaryInjector unpacks AND seeds both the app .jab and the toolchain bundl
 glob _fake_urls: dict = {};
 
 
-def _fake_admin_dist_urls(channel: str) -> tuple[str, str] {
+def _fake_admin_dist_urls(channel: str, version: str = "") -> tuple[str, str] {
     return (_fake_urls["url"], _fake_urls["url"] + ".sha256");
 }
 
@@ -455,13 +458,15 @@ test "local channel never downloads the admin console" {
 }
 
 
-def _dist_url_but_no_checksum(channel: str) -> tuple[str, str] {
+def _dist_url_but_no_checksum(channel: str, version: str = "") -> tuple[str, str] {
+    _fake_urls["calls"] = int(_fake_urls.get("calls", 0)) + 1;
     return (_fake_urls["url"], "");
 }
 
 
 test "no published checksum refuses to stage without touching the network" {
     _fake_urls["url"] = "http://127.0.0.1:1/jac-x-admin-dist.tar.gz";
+    _fake_urls["calls"] = 0;
     with unittest.mock.patch.object(
         binary_mod, "_admin_dist_urls", _dist_url_but_no_checksum
     ) {
@@ -471,6 +476,7 @@ test "no published checksum refuses to stage without touching the network" {
             assert not (Path(proj) / ".jac" / "admin").exists();
         }
     }
+    assert _fake_urls["calls"] == 1;
 }
 
 
@@ -634,4 +640,441 @@ test "explicit python_image is never rewritten" {
     } finally {
         binary_mod._http_get_bytes = saved;
     }
+}
+
+
+def _without_version_env(check: any) {
+    saved = os.environ.pop(VERSION_ENV, None);
+    try {
+        check();
+    } finally {
+        os.environ.pop(VERSION_ENV, None);
+        if saved is not None {
+            os.environ[VERSION_ENV] = saved;
+        }
+    }
+}
+
+
+def _with_runner_version(cur: tuple[int, int], check: any) {
+    saved = dev_config_mod._runner_release_version;
+    def _fake -> tuple[int, int] | None {
+        return cur;
+    }
+    dev_config_mod._runner_release_version = _fake;
+    try {
+        check();
+    } finally {
+        dev_config_mod._runner_release_version = saved;
+    }
+}
+
+
+test "[scale-runtime] version pins the stable channel, outranking [dev]" {
+    def check {
+        def go {
+            d = _write_toml(
+                "[project]\nname = \"app\"\n\n[dev]\ntest_jobs = \"auto\"\n\n"
+                "[scale-runtime]\nversion = \"0.34.2\"\n"
+            );
+            assert resolve_dev_channel(d) == Channel.STABLE;
+            assert resolve_pinned_version(d) == "0.34.2";
+        }
+        _with_runner_version((0, 34), go);
+    }
+    _without_version_env(check);
+}
+
+
+test "no pin resolves to an empty version" {
+    def check {
+        d = _write_toml("[project]\nname = \"app\"\n");
+        assert resolve_pinned_version(d) == "";
+    }
+    _without_version_env(check);
+}
+
+
+test "JAC_SCALE_VERSION overrides the toml pin and strips a leading v" {
+    def check {
+        def go {
+            d = _write_toml("[scale-runtime]\nversion = \"0.34.1\"\n");
+            os.environ[VERSION_ENV] = "v0.34.2";
+            try {
+                assert resolve_pinned_version(d) == "0.34.2";
+                assert resolve_dev_channel(d) == Channel.STABLE;
+            } finally {
+                os.environ.pop(VERSION_ENV, None);
+            }
+        }
+        _with_runner_version((0, 34), go);
+    }
+    _without_version_env(check);
+}
+
+
+test "JAC_SCALE_BINARY_PATH outranks any pin" {
+    def check {
+        d = _write_toml("[scale-runtime]\nversion = \"0.34.2\"\n");
+        saved = os.environ.get(BINARY_PATH_ENV);
+        try {
+            os.environ[BINARY_PATH_ENV] = "/some/jac";
+            assert resolve_dev_channel(d) == Channel.LOCAL;
+        } finally {
+            os.environ.pop(BINARY_PATH_ENV, None);
+            if saved is not None {
+                os.environ[BINARY_PATH_ENV] = saved;
+            }
+        }
+    }
+    _without_version_env(check);
+}
+
+
+test "a committed pin plus [experimental] is a hard error" {
+    def check {
+        d = _write_toml(
+            "[scale-runtime]\nversion = \"0.34.2\"\n\n[experimental]\npr = 7494\n"
+        );
+        caught = False;
+        try {
+            resolve_dev_channel(d);
+        } except RuntimeError {
+            caught = True;
+        }
+        assert caught;
+    }
+    _without_version_env(check);
+}
+
+
+test "an env pin overrides [experimental] instead of erroring" {
+    def check {
+        def go {
+            d = _write_toml("[experimental]\npr = 7494\n");
+            os.environ[VERSION_ENV] = "0.34.2";
+            try {
+                assert resolve_dev_channel(d) == Channel.STABLE;
+                assert resolve_pinned_version(d) == "0.34.2";
+            } finally {
+                os.environ.pop(VERSION_ENV, None);
+            }
+        }
+        _with_runner_version((0, 34), go);
+    }
+    _without_version_env(check);
+}
+
+
+test "a malformed pin is rejected before any network call" {
+    def check {
+        d = _write_toml("[scale-runtime]\nversion = \"latest\"\n");
+        caught = False;
+        try {
+            resolve_pinned_version(d);
+        } except RuntimeError as e {
+            caught = True;
+            assert "not a release version" in str(e);
+        }
+        assert caught;
+    }
+    _without_version_env(check);
+}
+
+
+test "pins below the supported window are rejected; newer pins pass" {
+    def check {
+        def go {
+            d = _write_toml("[scale-runtime]\nversion = \"0.32.9\"\n");
+            caught = False;
+            try {
+                resolve_pinned_version(d);
+            } except RuntimeError as e {
+                caught = True;
+                assert "supported window" in str(e);
+            }
+            assert caught;
+            ok = _write_toml("[scale-runtime]\nversion = \"0.33.0\"\n");
+            assert resolve_pinned_version(ok) == "0.33.0";
+            newer = _write_toml("[scale-runtime]\nversion = \"0.35.0\"\n");
+            assert resolve_pinned_version(newer) == "0.35.0";
+        }
+        _with_runner_version((0, 34), go);
+    }
+    _without_version_env(check);
+}
+
+
+test "a pinned version selects the versioned official image" {
+    def check {
+        def go {
+            d = _write_toml("[scale-runtime]\nversion = \"0.34.2\"\n");
+            image = binary_mod.resolve_pod_base_image(d, "", probe=False);
+            assert image == "jaseci/jaclang:0.34.2";
+        }
+        _with_runner_version((0, 34), go);
+    }
+    _without_version_env(check);
+}
+
+
+test "explicit python_image still wins under a pin" {
+    def check {
+        def go {
+            d = _write_toml("[scale-runtime]\nversion = \"0.34.2\"\n");
+            image = binary_mod.resolve_pod_base_image(d, "my-registry/custom:1");
+            assert image == "my-registry/custom:1";
+        }
+        _with_runner_version((0, 34), go);
+    }
+    _without_version_env(check);
+}
+
+
+glob _hub_calls: list[str] = [];
+
+
+def _hub_404(url: str) -> bytes {
+    import from urllib.error { HTTPError }
+    _hub_calls.append(url);
+    raise HTTPError(url, 404, "Not Found", None, None);
+}
+
+
+def _hub_down(url: str) -> bytes {
+    raise RuntimeError("connection timed out");
+}
+
+
+def _hub_digest(url: str) -> bytes {
+    _hub_calls.append(url);
+    return json.dumps({"digest": "sha256:" + ("ab" * 32)}).encode();
+}
+
+
+test "a pinned image missing from the registry falls back to the plain base" {
+    def check {
+        def go {
+            d = _write_toml("[scale-runtime]\nversion = \"0.34.2\"\n");
+            _hub_calls.clear();
+            saved = binary_mod._http_get_bytes;
+            binary_mod._http_get_bytes = _hub_404;
+            try {
+                assert binary_mod.resolve_pod_base_image(d, "") == "python:3.12-slim";
+            } finally {
+                binary_mod._http_get_bytes = saved;
+            }
+            assert any(["/tags/0.34.2" in u for u in _hub_calls]);
+        }
+        _with_runner_version((0, 34), go);
+    }
+    _without_version_env(check);
+}
+
+
+test "a hub probe failure keeps the pinned tag" {
+    def check {
+        def go {
+            d = _write_toml("[scale-runtime]\nversion = \"0.34.2\"\n");
+            saved = binary_mod._http_get_bytes;
+            binary_mod._http_get_bytes = _hub_down;
+            try {
+                image = binary_mod.resolve_pod_base_image(d, "");
+                assert image == "jaseci/jaclang:0.34.2";
+            } finally {
+                binary_mod._http_get_bytes = saved;
+            }
+        }
+        _with_runner_version((0, 34), go);
+    }
+    _without_version_env(check);
+}
+
+
+test "a pinned tag is digest-pinned when the registry publishes one" {
+    def check {
+        def go {
+            d = _write_toml("[scale-runtime]\nversion = \"0.34.2\"\n");
+            _hub_calls.clear();
+            saved = binary_mod._http_get_bytes;
+            binary_mod._http_get_bytes = _hub_digest;
+            try {
+                image = binary_mod.resolve_pod_base_image(d, "");
+                assert image == "jaseci/jaclang@sha256:" + ("ab" * 32);
+            } finally {
+                binary_mod._http_get_bytes = saved;
+            }
+            assert any(["/tags/0.34.2" in u for u in _hub_calls]);
+        }
+        _with_runner_version((0, 34), go);
+    }
+    _without_version_env(check);
+}
+
+
+glob _pin_calls: list[str] = [];
+
+
+def _fake_release_api(url: str) -> bytes {
+    _pin_calls.append(url);
+    return json.dumps({"assets": [], "tag_name": "v0.34.2"}).encode();
+}
+
+
+test "a pinned admin console resolves through releases/tags" {
+    _pin_calls.clear();
+    saved = binary_mod._http_get_bytes;
+    binary_mod._http_get_bytes = _fake_release_api;
+    try {
+        (dist_url, checksum_url) = binary_mod._admin_dist_urls("stable", "0.34.2");
+        assert dist_url == "";
+        assert checksum_url == "";
+    } finally {
+        binary_mod._http_get_bytes = saved;
+    }
+    assert any(["releases/tags/v0.34.2" in u for u in _pin_calls]);
+    assert not any(["releases/latest" in u for u in _pin_calls]);
+}
+
+
+test "a pinned release with no asset for the arch is a loud error" {
+    _pin_calls.clear();
+    saved = binary_mod._http_get_bytes;
+    binary_mod._http_get_bytes = _fake_release_api;
+    caught = False;
+    try {
+        download_release_binary("stable", "x86_64", "0.34.2");
+    } except RuntimeError as e {
+        caught = True;
+        assert "pinned v0.34.2" in str(e);
+    } finally {
+        binary_mod._http_get_bytes = saved;
+    }
+    assert caught;
+    assert any(["releases/tags/v0.34.2" in u for u in _pin_calls]);
+}
+
+
+test "runtime_container_env stamps the pinned version" {
+    env = runtime_container_env("0.34.2");
+    pairs = [(e["name"], e["value"]) for e in env];
+    assert ("JAC_SCALE_RUNTIME_VERSION", "0.34.2") in pairs;
+    assert "HOME" in [e["name"] for e in env];
+    bare = [e["name"] for e in runtime_container_env()];
+    assert "JAC_SCALE_RUNTIME_VERSION" not in bare;
+}
+
+
+def _with_unknown_runner_version(check: any) {
+    saved = dev_config_mod._runner_release_version;
+    def _fake -> tuple[int, int] | None {
+        return None;
+    }
+    dev_config_mod._runner_release_version = _fake;
+    try {
+        check();
+    } finally {
+        dev_config_mod._runner_release_version = saved;
+    }
+}
+
+
+test "an unknown runner version skips the window check" {
+    def check {
+        def go {
+            d = _write_toml("[scale-runtime]\nversion = \"0.1.0\"\n");
+            assert resolve_pinned_version(d) == "0.1.0";
+        }
+        _with_unknown_runner_version(go);
+    }
+    _without_version_env(check);
+}
+
+
+test "an unquoted numeric pin is rejected with the named error" {
+    def check {
+        d = _write_toml("[scale-runtime]\nversion = 0.34\n");
+        caught = False;
+        try {
+            resolve_pinned_version(d);
+        } except RuntimeError as e {
+            caught = True;
+            assert "not a release version" in str(e);
+        }
+        assert caught;
+    }
+    _without_version_env(check);
+}
+
+
+test "a pin naming a nonexistent tag is a loud, specific error" {
+    _hub_calls.clear();
+    saved = binary_mod._http_get_bytes;
+    binary_mod._http_get_bytes = _hub_404;
+    caught = False;
+    try {
+        download_release_binary("stable", "x86_64", "0.34.9");
+    } except RuntimeError as e {
+        caught = True;
+        assert "No published release is tagged v0.34.9" in str(e);
+    } finally {
+        binary_mod._http_get_bytes = saved;
+    }
+    assert caught;
+    assert any(["releases/tags/v0.34.9" in u for u in _hub_calls]);
+}
+
+
+def _dist_with_no_checksum_pinned(channel: str, version: str = "") -> tuple[str, str] {
+    return ("https://example.invalid/jac-0.34.2-admin-dist.tar.gz", "");
+}
+
+
+test "a pinned admin console with no checksum aborts the deploy" {
+    with unittest.mock.patch.object(
+        binary_mod, "_admin_dist_urls", _dist_with_no_checksum_pinned
+    ) {
+        with unittest.mock.patch.object(binary_mod, "_http_get_bytes", _no_http) {
+            proj = tempfile.mkdtemp();
+            caught = False;
+            try {
+                stage_admin_dist(proj, "stable", "0.34.2");
+            } except RuntimeError as e {
+                caught = True;
+                assert "no checksum" in str(e);
+            }
+            assert caught;
+            assert not (Path(proj) / ".jac" / "admin").exists();
+        }
+    }
+}
+
+
+test "a pinned release with no admin console asset stays non-fatal" {
+    _pin_calls.clear();
+    saved = binary_mod._http_get_bytes;
+    binary_mod._http_get_bytes = _fake_release_api;
+    try {
+        proj = tempfile.mkdtemp();
+        assert not stage_admin_dist(proj, "stable", "0.34.2");
+        assert not (Path(proj) / ".jac" / "admin").exists();
+    } finally {
+        binary_mod._http_get_bytes = saved;
+    }
+    assert any(["releases/tags/v0.34.2" in u for u in _pin_calls]);
+}
+
+
+test "select_injector threads the pin into the injector on dry-run" {
+    def check {
+        def go {
+            import jaclang.scale.injector.binary_injector as bi_mod;
+            d = _write_toml("[scale-runtime]\nversion = \"0.34.2\"\n");
+            selection = bi_mod.select_injector("", "app", "ns", d, dry_run=True);
+            assert selection[0].version == "0.34.2";
+            assert selection[0].channel == Channel.STABLE;
+        }
+        _with_runner_version((0, 34), go);
+    }
+    _without_version_env(check);
 }

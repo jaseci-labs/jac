@@ -1048,7 +1048,9 @@ obj KubernetesTarget(DeploymentTarget) {
                 secret_ref_name=secret_ref_name,
                 needs_root=True
             );
-            container_config['env'] = container_config['env'] + runtime_container_env();
+            container_config['env'] = container_config['env'] + runtime_container_env(
+                str(getattr(injector, "version", ""))
+            );
             import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
                 image_pull_policy
             }

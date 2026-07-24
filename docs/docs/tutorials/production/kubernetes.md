@@ -248,8 +248,14 @@ Which `jaseci/jaclang` tag pods boot from is chosen automatically:
 | `jac.toml`                     | Base image                     |
 | ------------------------------ | ------------------------------ |
 | _(default)_                    | `jaseci/jaclang:latest`        |
+| `[scale-runtime]` `version = "0.34.2"` | `jaseci/jaclang:0.34.2` (versioned tags exist from 0.32.0) |
 | `[dev]`                        | `jaseci/jaclang:dev` (main HEAD) |
 | `[experimental]` `pr = <N>`    | `jaseci/jaclang:experimental-<N>` |
+
+The `[scale-runtime]` pin holds pods on a specific published release - the
+rollback lever when `latest` regresses. It moves the runtime binary, the admin
+console, and the base image together, and `JAC_SCALE_VERSION=0.34.2` overrides
+it for a one-off deploy.
 
 The experimental channel runs an open PR's own build in your pods, for trying a
 not-yet-merged change against a real cluster:

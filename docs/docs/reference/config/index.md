@@ -89,7 +89,7 @@ repository = "https://github.com/user/repo"
 | `description` | string | One-line summary (also shown on PyPI) |
 | `entry-point` | string | Main file for `jac run` (default: `main.jac`) |
 | `kind` | string | Project kind that drives `jac run` dispatch (execute / serve / build). Empty = inferred from the entry-point codespace. One of: `cli`, `cli-native`, `native-binary`, `native-lib`, `service`, `service-mesh`, `py-package`, `js-package`, `web-app`, `web-static`, `desktop`, `mobile` |
-| `jac-version` | string | Required Jac compiler version |
+| `jac-version` | string | Declared Jac compiler version (informational; not enforced, and it does not pin the jac-scale pod runtime -- use `[scale-runtime]` for that) |
 | `license` | string | SPDX license identifier (e.g. `"MIT"`) |
 | `readme` | string | Path to README file (default: `README.md`) |
 | `requires-python` | string | Minimum Python version (e.g. `">=3.12"`) |
@@ -491,9 +491,17 @@ signature_header = "X-Webhook-Signature"
 verify_signature = true
 api_key_expiry_days = 365
 
-# Kubernetes version pinning (scale) -- scale, byLLM, the MCP server, and the
+# Pod runtime version pin (scale) -- holds `jac start --scale` deploys on a
+# specific published release instead of the rolling latest. One pin moves the
+# runtime binary, the admin console, and the pod base image together.
+# JAC_SCALE_VERSION=X.Y.Z overrides it for a one-off deploy.
+[scale-runtime]
+version = "0.34.2"
+
+# Third-party plugin pinning (scale) -- scale, byLLM, the MCP server, and the
 # client/desktop framework all ship inside the `jac` binary, so they need no
-# pinning. Use this only to pin a genuine third-party PyPI plugin for the pod image.
+# pinning here (pin the runtime with [scale-runtime] above). Use this only to
+# pin a genuine third-party PyPI plugin for the pod image.
 [scale.kubernetes.plugin_versions]
 my_plugin = "1.2.3"          # pin a version, or "none" to skip, "latest" to track
 ```
