@@ -47,7 +47,58 @@ def _seed_build_backend(target: Path, verbose: bool = False) {
 }
 
 
-def _bundled_runtime_python() -> str | None {
+def _raise_ensurepip_unavailable(err: str) {
+    raise RuntimeError(
+        "Failed to create virtual environment: ensurepip is not available.\n"
+        "On Debian/Ubuntu, install it with: sudo apt install python3-venv\n"
+        "On Fedora/RHEL: sudo dnf install python3-libs\n" + (
+            f"\n{err.strip()}" if err.strip() else ""
+        )
+    );
+}
+
+
+def _bootstrap_venv_pip(target: Path) {
+    import subprocess;
+    result = subprocess.run(
+        [venv_python(target), "-m", "ensurepip", "--upgrade"],
+        capture_output=True,
+        text=True,
+    );
+    if result.returncode != 0 {
+        err_msg = (result.stderr or result.stdout or "").lower();
+        if "ensurepip" in err_msg or "no module named" in err_msg {
+            _raise_ensurepip_unavailable(result.stderr or result.stdout or "");
+        }
+        raise RuntimeError(
+            result.stderr.strip()
+            or result.stdout.strip()
+            or "ensurepip bootstrap failed"
+        );
+    }
+}
+
+
+def _create_venv_with_interpreter(interpreter: str, target: Path) {
+    import subprocess;
+
+    result = subprocess.run(
+        [interpreter, "-m", "venv", str(target)], capture_output=True, text=True,
+    );
+    if result.returncode != 0 {
+        err_msg = (result.stderr or result.stdout or "").lower();
+        if "ensurepip" in err_msg or "no module named" in err_msg {
+            _raise_ensurepip_unavailable(result.stderr or result.stdout or "");
+        }
+        raise RuntimeError(
+            result.stderr.strip() or result.stdout.strip() or "venv creation failed"
+        );
+    }
+    _bootstrap_venv_pip(target);
+}
+
+
+def _bundled_runtime_python -> str | None {
     import os;
     import sys;
     if not os.environ.get("JAC_STANDALONE") {
@@ -58,6 +109,7 @@ def _bundled_runtime_python() -> str | None {
         for name in [
             f"python{sys.version_info.major}{sys.version_info.minor}.exe",
             "python.exe",
+
         ] {
             cand = prefix_dir / name;
             if cand.is_file() {
@@ -78,7 +130,7 @@ def _bundled_runtime_python() -> str | None {
 }
 
 
-def _venv_create_interpreter() -> str | None {
+def _venv_create_interpreter -> str | None {
     return _bundled_runtime_python();
 }
 
@@ -112,31 +164,12 @@ def ensure_venv(venv_dir: Path, verbose: bool = False) {
     import sys;
     import shutil;
     def _create_venv(target: Path) {
-        import subprocess;
         interpreter = _venv_create_interpreter();
         if interpreter is not None {
-            result = subprocess.run(
-                [interpreter, "-m", "venv", str(target), "--with-pip"],
-                capture_output=True,
-                text=True,
-            );
-            if result.returncode != 0 {
-                err_msg = (result.stderr or result.stdout or "").lower();
-                if "ensurepip" in err_msg or "no module named" in err_msg {
-                    raise RuntimeError(
-                        "Failed to create virtual environment: ensurepip is not available.\n"
-                        "On Debian/Ubuntu, install it with: sudo apt install python3-venv\n"
-                        "On Fedora/RHEL: sudo dnf install python3-libs"
-                    );
-                }
-                raise RuntimeError(
-                    result.stderr.strip() or result.stdout.strip() or "venv creation failed"
-                );
-            }
+            _create_venv_with_interpreter(interpreter, target);
         } else {
             builder = venv.EnvBuilder(
-                with_pip=True,
-                symlinks=(sys.platform != "win32")
+                with_pip=True, symlinks=(sys.platform != "win32")
             );
             try {
                 builder.create(str(target));

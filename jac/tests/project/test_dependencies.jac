@@ -286,7 +286,19 @@ test "ensure_venv recreates fused jac-as-python venvs" {
             run.return_value = MagicMock(returncode=0, stdout="", stderr="");
             ensure_venv(venv_dir, verbose=False);
             rm.assert_called_once_with(venv_dir);
-            run.assert_called_once();
+            assert run.call_count == 2 , (
+                "bundled venv create should run venv then ensurepip"
+            );
+            assert run.call_args_list[0].args[0] == [
+                "/fake/rt/python/bin/python3.14",
+                "-m",
+                "venv",
+                str(venv_dir),
+
+            ];
+            assert "--with-pip" not in run.call_args_list[0].args[0];
+            ensurepip_cmd = run.call_args_list[1].args[0];
+            assert ensurepip_cmd[-3:] == ["-m", "ensurepip", "--upgrade"];
         }
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);

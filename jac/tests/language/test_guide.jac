@@ -20,11 +20,7 @@ import from jaclang.cli.guide_store {
     guide_group,
     grouped_guides
 }
-import from jaclang.project.config {
-    JacConfig,
-    get_explicit_config,
-    set_config
-}
+import from jaclang.project.config { JacConfig, get_explicit_config, set_config }
 import from jaclang.project.template_registry { initialize_template_registry }
 
 """Absolute path to a file in the language test fixtures directory."""
