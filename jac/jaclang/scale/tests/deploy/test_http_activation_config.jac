@@ -176,18 +176,18 @@ test "apply_http_activation_for_target is a no-op when disabled or unset" {
     custom_api.create_namespaced_custom_object.assert_not_called();
 }
 
-test "destroy_http_activation_for_target calls destroy_http_activation only when enabled" {
+test "destroy_http_activation_for_target always sweeps both resources, independent of current config" {
+    # Deliberately unconditional: a resource created while http_activation was
+    # enabled must still be cleaned up if the config later disables it or
+    # drops the block entirely, otherwise it is orphaned. destroy_http_
+    # activation is 404-safe per-resource, so calling it unconditionally
+    # (mirroring the base autoscaler's own unconditional destroy() call) is
+    # always safe, whether or not anything was ever actually created.
     mock_api = unittest.mock.MagicMock();
     keda = KEDAAutoscaler(_custom_api=mock_api);
-    destroy_http_activation_for_target(_cfg(), "preview-deployment", "staging", keda);
+    destroy_http_activation_for_target("preview-deployment", "staging", keda);
     delete_calls = mock_api.delete_namespaced_custom_object.call_args_list;
     plurals = [c[1]["plural"] for c in delete_calls];
     assert "interceptorroutes" in plurals;
     assert "scaledobjects" in plurals;
-
-    mock_api.reset_mock();
-    destroy_http_activation_for_target(
-        _cfg(enabled=False), "preview-deployment", "staging", keda
-    );
-    mock_api.delete_namespaced_custom_object.assert_not_called();
 }
