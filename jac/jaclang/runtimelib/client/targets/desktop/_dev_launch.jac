@@ -31,7 +31,6 @@ def _project_venv_site_packages -> str {
         }
         directory = parent;
     }
-    return "";
 }
 
 

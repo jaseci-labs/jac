@@ -25,6 +25,8 @@ import from jaclang.project.pyvenv {
     remove_venv_from_path,
     summarize_pip_failure,
     _adjust_pip_args_for_fused_venv,
+    _find_dist_info_dirs,
+    _is_fused_venv,
     run_pip
 }
 import from jaclang.project.providers {
@@ -243,6 +245,78 @@ test "fused venv pip install rewrites to --target site-packages" {
         );
         assert explicit.count("--target") == 1;
         assert "/elsewhere" in explicit;
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+test "run_pip skips fused rewrite for real-python venvs" {
+    reset_config();
+    (tmp, project_dir) = make_temp_project();
+    try {
+        venv_dir = project_dir / ".jac" / "venv";
+        bin_dir = venv_dir / "bin";
+        bin_dir.mkdir(parents=True, exist_ok=True);
+        (bin_dir / "python").write_text("#!/usr/bin/env python3");
+        (venv_dir / "pyvenv.cfg").write_text("home = /usr/bin\nversion = 3.14.0\n");
+        site = venv_dir / "lib" / "python3.14" / "site-packages";
+        site.mkdir(parents=True, exist_ok=True);
+        assert not _is_fused_venv(venv_dir);
+        with patch("subprocess.run") as run {
+            run.return_value = MagicMock(returncode=0, stdout="", stderr="");
+            run_pip(venv_dir, ["install", "six"], verbose=False);
+        }
+        cmd = run.call_args.args[0];
+        assert "--target" not in cmd;
+        assert str(site) not in cmd;
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+test "run_pip rewrites install for fused jac-as-python venvs" {
+    reset_config();
+    (tmp, project_dir) = make_temp_project();
+    try {
+        venv_dir = project_dir / ".jac" / "venv";
+        bin_dir = venv_dir / "bin";
+        bin_dir.mkdir(parents=True, exist_ok=True);
+        py = bin_dir / "python";
+        try {
+            py.symlink_to(Path(sys.executable));
+        } except OSError {
+            py.write_text(sys.executable);
+        }
+        (venv_dir / "pyvenv.cfg").write_text("home = /usr/bin\nversion = 3.14.0\n");
+        site = venv_dir / "lib" / "python3.14" / "site-packages";
+        site.mkdir(parents=True, exist_ok=True);
+        assert _is_fused_venv(venv_dir);
+        with patch("subprocess.run") as run {
+            run.return_value = MagicMock(returncode=0, stdout="", stderr="");
+            run_pip(venv_dir, ["install", "six"], verbose=False);
+        }
+        cmd = run.call_args.args[0];
+        assert "--target" in cmd;
+        assert str(site) in cmd;
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+test "find dist-info dirs matches name-version directories" {
+    reset_config();
+    tmp = tempfile.mkdtemp(prefix="jac_test_");
+    try {
+        site = Path(tmp) / "site-packages";
+        site.mkdir(parents=True, exist_ok=True);
+        info = site / "mypkg-1.0.0.dist-info";
+        info.mkdir();
+        found = _find_dist_info_dirs(site, "mypkg");
+        assert found == [info];
+        assert _find_dist_info_dirs(site, "other") == [];
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
         reset_config();

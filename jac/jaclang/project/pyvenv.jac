@@ -100,6 +100,45 @@ def _venv_site(venv_dir: Path) -> Path {
 }
 
 
+def _normalised_dist_name(name: str) -> str {
+    return re.sub(r"[-_.]+", "-", name).lower();
+}
+
+
+def _is_fused_venv(venv_dir: Path) -> bool {
+    import sys;
+    py = Path(venv_python(venv_dir));
+    if not py.exists() {
+        return False;
+    }
+    try {
+        return py.resolve() == Path(sys.executable).resolve();
+    } except OSError {
+        return False;
+    }
+}
+
+
+def _find_dist_info_dirs(site: Path, name: str) -> list[Path] {
+    wanted = _normalised_dist_name(name);
+    prefix = wanted + "-";
+    found: list[Path] = [];
+    if not site.is_dir() {
+        return found;
+    }
+    for child in site.iterdir() {
+        if not child.is_dir() or not child.name.endswith(".dist-info") {
+            continue;
+        }
+        base = child.name[:-len(".dist-info")];
+        if _normalised_dist_name(base) == wanted or base.startswith(prefix) {
+            found.append(child);
+        }
+    }
+    return found;
+}
+
+
 def _adjust_pip_args_for_fused_venv(venv_dir: Path, args: list[str]) -> list[str] {
     if not args {
         return args;
@@ -124,7 +163,7 @@ def _adjust_pip_args_for_fused_venv(venv_dir: Path, args: list[str]) -> list[str
 
 def _find_venv_distribution(site: Path, name: str) -> any {
     import importlib.metadata;
-    wanted = re.sub(r"[-_.]+", "-", name).lower();
+    wanted = _normalised_dist_name(name);
     for dist in importlib.metadata.distributions(path=[str(site)]) {
         raw = dist.metadata.get("Name") or "";
         if not raw {
@@ -161,8 +200,15 @@ def _uninstall_from_venv_site(venv_dir: Path, name: str) -> tuple[int, str, str]
         }
     }
     dist_path = Path(str(getattr(dist, "_path", "")));
+    removed_dist_info = False;
     if str(dist_path) != "" and dist_path.exists() {
         shutil.rmtree(dist_path, ignore_errors=True);
+        removed_dist_info = True;
+    }
+    if not removed_dist_info {
+        for info_dir in _find_dist_info_dirs(site, name) {
+            shutil.rmtree(info_dir, ignore_errors=True);
+        }
     }
     msg = f"Successfully uninstalled {name}";
     if removed {
@@ -239,13 +285,16 @@ def run_pip(
         }
         return (1 if missing else 0, "\n".join(chunks), "");
     }
-    adjusted = _adjust_pip_args_for_fused_venv(venv_dir, args);
+    adjusted = args;
+    if _is_fused_venv(venv_dir) {
+        adjusted = _adjust_pip_args_for_fused_venv(venv_dir, args);
+    }
     cmd = pip_command(venv_python(venv_dir), adjusted);
     if verbose {
         console.print(f"Running: {' '.join(cmd)}");
     }
     try {
-        result = subprocess.run(cmd, capture_output=True, text=True);
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300);
         return (result.returncode, result.stdout, result.stderr);
     } except Exception as e {
         return (1, "", str(e));

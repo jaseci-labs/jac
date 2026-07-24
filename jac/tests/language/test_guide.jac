@@ -353,7 +353,10 @@ def check_guide_block(code: str) -> tuple[int, str] {
     try {
         # nowarn: guide examples may warn (unresolved @jac/runtime imports in
         # standalone .cl.jac, etc.) -- only hard errors should fail a guide.
-        rc = analysis.check([path], print_errs=True, nowarn=True);
+        # no-print: examples intentionally use print() for readable output.
+        rc = analysis.check(
+            [path], print_errs=True, nowarn=True, disable_error_code=["no-print"]
+        );
     } finally {
         sys.stdout = old_out;
         sys.stderr = old_err;
