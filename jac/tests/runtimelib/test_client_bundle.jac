@@ -257,3 +257,28 @@ test "vite commands address vite's js entry, not the bunx shim" {
         assert "--port" in dev_cmd;
     }
 }
+
+test "a missing vite install is an error, not a silent bunx fallback" {
+    import tempfile;
+    import pytest;
+    import from jaclang.runtimelib.client { get_bun }
+    import from jaclang.runtimelib.client_bundle { ClientBundleError }
+    import from jaclang.runtimelib.client.vite_bundler { _build_vite_command }
+
+    if get_bun() is None {
+        pytest.skip("bun is required but could not be located/installed");
+    }
+    # install_packages runs before every build, so an unresolvable vite means
+    # that install failed. Falling back to `bun x vite` would paper over it by
+    # reintroducing the node dependency this whole path exists to remove.
+    with tempfile.TemporaryDirectory() as tmp {
+        build_dir = Path(tmp) / "client";
+        build_dir.mkdir();
+        try {
+            _build_vite_command(build_dir, ["build"]);
+            assert False , "expected ClientBundleError when vite is absent";
+        } except ClientBundleError as e {
+            assert "node_modules" in str(e);
+        }
+    }
+}

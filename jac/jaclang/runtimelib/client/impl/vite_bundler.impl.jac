@@ -13,24 +13,19 @@ def _require_bun -> str {
 }
 
 
-def _resolve_vite_entry(build_dir: Path) -> Optional[Path] {
-    for candidate in [
-        build_dir / 'node_modules' / 'vite' / 'bin' / 'vite.js',
-        build_dir / 'node_modules' / '.bin' / 'vite'
-    ] {
-        if candidate.exists() {
-            return candidate;
-        }
-    }
-    return None;
-}
-
-
 def _build_vite_command(build_dir: Path, args: list[str]) -> list[str] {
+    import from jaclang.runtimelib.client.targets.node_tooling_common {
+        resolve_node_tool_entry
+    }
+
     bun = _require_bun();
-    entry = _resolve_vite_entry(build_dir);
+    entry = resolve_node_tool_entry(build_dir, 'vite');
     if entry is None {
-        return [bun, 'x', 'vite'] + args;
+        raise ClientBundleError(
+            f"Vite is not installed under {build_dir / 'node_modules'}. "
+            "Dependencies are installed before every build, so an absent "
+            "vite means that install did not complete."
+        ) from None;
     }
     return [bun, str(entry)] + args;
 }
