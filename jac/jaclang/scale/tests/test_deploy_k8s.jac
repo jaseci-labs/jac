@@ -433,7 +433,7 @@ test "default redis memory limit does not emit a headroom warning" {
     warned = any(
         'redis_memory_limit' in str(call) for call in mock_logger.warning.call_args_list
     );
-    assert not warned , "default 1Gi limit over 200mb maxmemory must not warn";
+    assert not warned , "a maxmemory derived from the pod limit must not warn";
 }
 
 test "redis pod resources propagate from [scale.database] config" {
@@ -495,6 +495,75 @@ test "redis warns when memory limit lacks headroom over maxmemory" {
         'redis_memory_limit' in str(call) for call in mock_logger.warning.call_args_list
     );
     assert warned , "expected a headroom warning when limit <= 2x maxmemory";
+}
+
+def _redis_conf_for(db_config: dict) -> str {
+    fake_config = SimpleNamespace(
+        get_database_config=lambda { db_config; }, get_kubernetes_config=lambda { {}; }
+    );
+    with unittest.mock.patch.object(
+        redis_module, 'get_scale_config', lambda { fake_config; }
+    ) {
+        provider = DatabaseProviderFactory.create(
+            'kubernetes_redis', None, {'app_name': 'test-app'}
+        );
+        return provider.deploy()['configmap']['data']['redis.conf'];
+    }
+}
+
+glob _REDIS_POD_DEFAULTS = {
+         'redis_cpu_request': '100m',
+         'redis_cpu_limit': '500m',
+         'redis_memory_request': '128Mi'
+     };
+
+test "redis maxmemory is derived from the pod memory limit" {
+    conf = _redis_conf_for(
+        _REDIS_POD_DEFAULTS | {'redis_max_memory': None, 'redis_memory_limit': '4Gi'}
+    );
+
+    assert f"maxmemory {int(4 * 1024 ** 3 * 0.7)}" in conf , (
+        "an unset redis_max_memory must scale with redis_memory_limit"
+    );
+}
+
+test "explicit redis_max_memory overrides the derived value" {
+    conf = _redis_conf_for(
+        _REDIS_POD_DEFAULTS | {'redis_max_memory': '700mb', 'redis_memory_limit': '4Gi'}
+    );
+
+    assert 'maxmemory 700mb' in conf;
+}
+
+test "redis eviction policy protects streams by default" {
+    conf = _redis_conf_for(
+        _REDIS_POD_DEFAULTS | {'redis_max_memory': None, 'redis_memory_limit': '1Gi'}
+    );
+
+    assert 'maxmemory-policy volatile-lru' in conf , (
+        "the default policy must leave keys without a TTL, such as event streams, "
+        "out of the eviction pool"
+    );
+}
+
+test "redis eviction policy falls back to allkeys-lru without a cache ttl" {
+    db_config = _REDIS_POD_DEFAULTS | {
+        'redis_max_memory': None,
+        'redis_memory_limit': '1Gi',
+        'redis_default_ttl': 0
+    };
+    mock_logger = unittest.mock.MagicMock();
+
+    with unittest.mock.patch.object(redis_module, 'logger', mock_logger) {
+        conf = _redis_conf_for(db_config);
+    }
+
+    assert 'maxmemory-policy allkeys-lru' in conf , (
+        "volatile-lru with no expiring keys would reject every write"
+    );
+    assert any(
+        'redis_default_ttl' in str(call) for call in mock_logger.warning.call_args_list
+    );
 }
 
 obj FakeNetworkingV1 {

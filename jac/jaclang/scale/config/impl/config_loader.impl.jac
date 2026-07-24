@@ -23,8 +23,8 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'redis_url': None,
             'project_id': None,
             'shelf_db_path': '.jac/data/anchor_store.db',
-            'redis_max_memory': '200mb',
-            'redis_eviction_policy': 'allkeys-lru',
+            'redis_max_memory': None,
+            'redis_eviction_policy': 'volatile-lru',
             'redis_eviction_samples': 5,
             'redis_default_ttl': 3600,
             'redis_max_connections': 20,
@@ -216,8 +216,8 @@ impl JacScaleConfig.get_database_config(self: JacScaleConfig) -> dict[str, any] 
             FIRESTORE_PROJECT_ID_ENV, db_config.get('project_id')
         ),
         'shelf_db_path': db_config.get('shelf_db_path', '.jac/data/anchor_store.db'),
-        'redis_max_memory': db_config.get('redis_max_memory', '200mb'),
-        'redis_eviction_policy': db_config.get('redis_eviction_policy', 'allkeys-lru'),
+        'redis_max_memory': db_config.get('redis_max_memory'),
+        'redis_eviction_policy': db_config.get('redis_eviction_policy', 'volatile-lru'),
         'redis_eviction_samples': int(db_config.get('redis_eviction_samples', 5)),
         'redis_default_ttl': int(db_config.get('redis_default_ttl', 3600)),
         'redis_max_connections': int(db_config.get('redis_max_connections', 20)),
@@ -371,6 +371,7 @@ impl JacScaleConfig.get_events_config(self: JacScaleConfig) -> dict[str, any] {
         'url': events_config.get('url'),
         'consumer_group': events_config.get('consumer_group', 'jac-scale'),
         'serializer': events_config.get('serializer', 'json'),
+        'stream_maxlen': int(events_config.get('stream_maxlen', 10000)),
         'retry': {
             'max_attempts': retry_config.get(
                 'max_attempts', retry_defaults.max_attempts

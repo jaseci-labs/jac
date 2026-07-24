@@ -92,6 +92,21 @@ class JacScalePluginConfig {
                             "default": ".jac/data/anchor_store.db",
                             "description": "File-based storage path for ShelfDB fallback"
                         },
+                        "redis_max_memory": {
+                            "type": "string",
+                            "default": None,
+                            "description": "Redis maxmemory for the jac-scale provisioned Redis. Unset means derive it from redis_memory_limit (70%), so raising the pod limit raises the cap. Set it explicitly (e.g. 700mb) to override, but keep it under that fraction or the pod risks OOMKill from fragmentation and client buffers."
+                        },
+                        "redis_eviction_policy": {
+                            "type": "string",
+                            "default": "volatile-lru",
+                            "description": "Redis maxmemory-policy. The default evicts only keys carrying a TTL, which keeps the regenerable anchor cache evictable while event streams (written without a TTL) survive memory pressure. Requires redis_default_ttl > 0; with no TTL on cache keys the policy falls back to allkeys-lru, since nothing would be evictable and Redis would reject writes."
+                        },
+                        "redis_default_ttl": {
+                            "type": "int",
+                            "default": 3600,
+                            "description": "TTL in seconds applied to cached anchors. 0 disables expiry, which also disables the volatile-lru eviction default."
+                        },
                         "redis_cpu_request": {
                             "type": "string",
                             "default": "100m",
@@ -425,6 +440,11 @@ class JacScalePluginConfig {
                             "type": "string",
                             "default": "json",
                             "description": "Payload serializer: 'json' (default) or 'msgpack' (requires extra)."
+                        },
+                        "stream_maxlen": {
+                            "type": "int",
+                            "default": 10000,
+                            "description": "Approximate cap on entries retained per Redis stream, applied on publish. Bounds the memory a stream can hold since streams are never evicted under the volatile-lru default. 0 disables trimming."
                         },
                         "retry": {
                             "type": "dict",

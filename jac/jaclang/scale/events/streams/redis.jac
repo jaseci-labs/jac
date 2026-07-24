@@ -25,7 +25,10 @@ def _to_str(value: any) -> str {
 }
 
 glob _logger = logging.getLogger(__name__),
-     _CONSUME_ERROR_BACKOFF: float = 0.5;
+     _CONSUME_ERROR_BACKOFF: float = 0.5,
+     _STREAM_MAXLEN_DEFAULT: int = 10000,
+     _NOGROUP_MAX_ATTEMPTS: int = 3,
+     _NOGROUP_RETRY_BACKOFF: float = 0.05;
 
 obj RedisEventStream(EventStreamBroker) {
     has config: dict[str, any] = {},
@@ -35,7 +38,9 @@ obj RedisEventStream(EventStreamBroker) {
         _default_retry: RetryPolicy = RetryPolicy(),
         _stop_event: _ThreadStop = _ThreadStop(),
         _threads: list[Thread] = [],
-        _ensured_groups: set[str] = set();
+        _ensured_groups: set[str] = set(),
+        _stream_maxlen: int = _STREAM_MAXLEN_DEFAULT,
+        _eviction_checked: bool = False;
 
     def postinit {
         try {
@@ -45,6 +50,9 @@ obj RedisEventStream(EventStreamBroker) {
         }
         self._consumer_name = f"{host}-{os.getpid()}-{str(uuid.uuid4())[:8]}";
         self._default_group = self.config.get("consumer_group", "jac-scale");
+        self._stream_maxlen = int(
+            self.config.get("stream_maxlen", _STREAM_MAXLEN_DEFAULT)
+        );
 
         retry_cfg = self.config.get("retry", {});
         defaults = RetryPolicy();
@@ -61,8 +69,43 @@ obj RedisEventStream(EventStreamBroker) {
         if self._client is None {
             url = self.config.get("url");
             self._client = get_redis_client(url);
+            self._warn_on_evictable_streams();
         }
         return self._client;
+    }
+
+    def _eviction_settings -> dict[str, str] {
+        try {
+            raw = self._client.config_get("maxmemory*");
+        } except Exception as e {
+            _logger.debug(f"CONFIG GET maxmemory failed: {e}");
+            return {};
+        }
+        settings = {_to_str(k): _to_str(v) for (k, v) in raw.items()};
+        return {
+            key: settings[key]
+            for key in ("maxmemory", "maxmemory-policy")
+            if key in settings
+        };
+    }
+
+    def _warn_on_evictable_streams -> None {
+        if self._eviction_checked {
+            return;
+        }
+        self._eviction_checked = True;
+        settings = self._eviction_settings();
+        policy = settings.get("maxmemory-policy", "");
+        max_memory = settings.get("maxmemory", "0");
+        if not policy.startswith("allkeys-") or max_memory in ("", "0") {
+            return;
+        }
+        _logger.warning(
+            f"Redis maxmemory-policy is '{policy}' with maxmemory {max_memory}; event "
+            f"streams carry no TTL and can be evicted under memory pressure, dropping "
+            f"undelivered events. Use a 'volatile-*' policy so only expiring cache keys "
+            f"are evicted."
+        );
     }
 
     def _serialize_event(event: Event) -> str {
@@ -81,7 +124,12 @@ obj RedisEventStream(EventStreamBroker) {
     }
 
     def _xadd_payload(stream: str, event: Event) {
-        self._get_client().xadd(stream, {"payload": self._serialize_event(event)});
+        self._get_client().xadd(
+            stream,
+            {"payload": self._serialize_event(event)},
+            maxlen=self._stream_maxlen if self._stream_maxlen > 0 else None,
+            approximate=True
+        );
     }
 
     def _deserialize_event(raw: any) -> Event {
@@ -178,16 +226,27 @@ obj RedisEventStream(EventStreamBroker) {
     def _read_group(
         topic: str, group: str, max_messages: int, block_ms: int, start_from: str
     ) -> any {
-        try {
-            return self._xreadgroup(topic, group, max_messages, block_ms);
-        } except Exception as e {
-            if "NOGROUP" not in str(e) {
-                raise;
+        last_error: Exception | None = None;
+        for attempt in range(_NOGROUP_MAX_ATTEMPTS) {
+            try {
+                return self._xreadgroup(topic, group, max_messages, block_ms);
+            } except Exception as e {
+                if "NOGROUP" not in str(e) {
+                    raise;
+                }
+                last_error = e;
+            }
+            _logger.error(
+                f"Event loss on {topic}: stream or group {group} disappeared "
+                f"(NOGROUP), undelivered events are gone; recreating "
+                f"(attempt {attempt + 1}/{_NOGROUP_MAX_ATTEMPTS})"
+            );
+            self._ensure_group(topic, group, start_from, force=True);
+            if wait_or_stop(self, _NOGROUP_RETRY_BACKOFF) {
+                return None;
             }
         }
-        _logger.warning(f"Consumer group {group} missing for {topic}; recreating");
-        self._ensure_group(topic, group, start_from, force=True);
-        return self._xreadgroup(topic, group, max_messages, block_ms);
+        raise last_error;
     }
 
     def consume(
@@ -313,17 +372,25 @@ obj RedisEventStream(EventStreamBroker) {
         thread.start();
     }
 
+    def _evicted_keys -> int | None {
+        try {
+            return int(self._client.info("stats").get("evicted_keys"));
+        } except Exception as e {
+            _logger.debug(f"INFO stats failed: {e}");
+            return None;
+        }
+    }
+
     def health -> HealthStatus {
         try {
             ok = bool(self._get_client().ping());
-            return HealthStatus(
-                healthy=ok,
-                broker="redis",
-                details={
-                    "consumer_name": self._consumer_name,
-                    "threads": len(self._threads)
-                }
-            );
+            details: dict[str, any] = {
+                "consumer_name": self._consumer_name,
+                "threads": len(self._threads),
+                "evicted_keys": self._evicted_keys()
+            };
+            details.update(self._eviction_settings());
+            return HealthStatus(healthy=ok, broker="redis", details=details);
         } except Exception as e {
             return HealthStatus(
                 healthy=False, broker="redis", details={"error": str(e)}

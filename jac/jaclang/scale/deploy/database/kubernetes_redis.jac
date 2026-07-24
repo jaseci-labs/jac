@@ -8,7 +8,22 @@ import from jaclang.scale.config.config_loader { get_scale_config }
 
 glob logger = logging.getLogger(__name__),
      REDIS_ACLFILE_DIR = '/etc/redis-acl',
-     REDIS_ACLFILE_PATH = '/etc/redis-acl/users.acl';
+     REDIS_ACLFILE_PATH = '/etc/redis-acl/users.acl',
+     REDIS_MAXMEMORY_FRACTION = 0.7,
+     REDIS_MAXMEMORY_FALLBACK = '200mb',
+     REDIS_LOW_MAXMEMORY_FRACTION = 0.35,
+     REDIS_DEFAULT_EVICTION_POLICY = 'volatile-lru',
+     REDIS_DEFAULT_TTL = 3600,
+     REDIS_EVICTION_POLICIES = [
+         'allkeys-lru',
+         'volatile-lru',
+         'allkeys-lfu',
+         'volatile-lfu',
+         'allkeys-random',
+         'volatile-random',
+         'volatile-ttl',
+         'noeviction'
+     ];
 
 obj KubernetesRedisProvider(DatabaseProvider) {
     has target: (DeploymentTarget | None) = None,
@@ -55,67 +70,117 @@ obj KubernetesRedisProvider(DatabaseProvider) {
         return f"redis://{redis_username}:{redis_password}@{host}:{port}/0";
     }
 
+    def _resolve_default_ttl(db_config: dict[str, any]) -> int {
+        try {
+            ttl = int(db_config.get('redis_default_ttl', REDIS_DEFAULT_TTL));
+        } except (ValueError, TypeError) {
+            logger.warning("Invalid redis_default_ttl value. Using 0 (no expiration).");
+            return 0;
+        }
+        if ttl < 0 {
+            logger.warning(
+                f"Redis default TTL {ttl} is negative. Using 0 (no expiration)."
+            );
+            return 0;
+        }
+        return ttl;
+    }
+
+    def _resolve_eviction_samples(db_config: dict[str, any]) -> int {
+        try {
+            samples = int(db_config.get('redis_eviction_samples', 5));
+        } except (ValueError, TypeError) {
+            logger.warning("Invalid eviction samples value. Using default 5.");
+            return 5;
+        }
+        if samples < 1 or samples > 10 {
+            logger.warning(
+                f"Redis eviction samples {samples} out of range [1-10]. Using default 5."
+            );
+            return 5;
+        }
+        return samples;
+    }
+
+    def _resolve_eviction_policy(db_config: dict[str, any], default_ttl: int) -> str {
+        policy = (
+            db_config.get('redis_eviction_policy') or REDIS_DEFAULT_EVICTION_POLICY
+        );
+        if policy not in REDIS_EVICTION_POLICIES {
+            logger.warning(
+                f"Invalid Redis eviction policy '{policy}'. Using "
+                f"'{REDIS_DEFAULT_EVICTION_POLICY}'. Valid options: "
+                f"{', '.join(REDIS_EVICTION_POLICIES)}"
+            );
+            policy = REDIS_DEFAULT_EVICTION_POLICY;
+        }
+        if policy.startswith('volatile-') and default_ttl <= 0 {
+            logger.warning(
+                f"redis_eviction_policy '{policy}' evicts only keys with a TTL, but "
+                f"redis_default_ttl is {default_ttl}, so no key would be evictable and "
+                f"Redis would reject writes once full. Using 'allkeys-lru'; set "
+                f"redis_default_ttl above 0 to keep event streams safe from eviction."
+            );
+            return 'allkeys-lru';
+        }
+        return policy;
+    }
+
+    def _resolve_max_memory(db_config: dict[str, any]) -> str {
+        configured = db_config.get('redis_max_memory');
+        if configured {
+            return str(configured);
+        }
+        memory_limit = str(db_config.get('redis_memory_limit', '1Gi'));
+        limit_bytes = self._parse_size_to_bytes(memory_limit);
+        if limit_bytes is None {
+            logger.warning(
+                f"Could not parse redis_memory_limit '{memory_limit}'; falling back to "
+                f"redis_max_memory {REDIS_MAXMEMORY_FALLBACK}."
+            );
+            return REDIS_MAXMEMORY_FALLBACK;
+        }
+        return str(int(limit_bytes * REDIS_MAXMEMORY_FRACTION));
+    }
+
+    def _warn_on_memory_sizing(db_config: dict[str, any], max_memory: str) -> None {
+        memory_limit = str(db_config.get('redis_memory_limit', '1Gi'));
+        limit_bytes = self._parse_size_to_bytes(memory_limit);
+        max_memory_bytes = self._parse_size_to_bytes(max_memory);
+        if limit_bytes is None or max_memory_bytes is None {
+            return;
+        }
+        if max_memory_bytes > limit_bytes * REDIS_MAXMEMORY_FRACTION {
+            logger.warning(
+                f"redis_max_memory ({max_memory}) exceeds "
+                f"{int(REDIS_MAXMEMORY_FRACTION * 100)}% of redis_memory_limit "
+                f"({memory_limit}); Redis needs headroom for fragmentation and client "
+                f"buffers and may be OOMKilled at runtime. Consider raising "
+                f"redis_memory_limit."
+            );
+        } elif max_memory_bytes < limit_bytes * REDIS_LOW_MAXMEMORY_FRACTION {
+            logger.warning(
+                f"redis_max_memory ({max_memory}) uses under "
+                f"{int(REDIS_LOW_MAXMEMORY_FRACTION * 100)}% of redis_memory_limit "
+                f"({memory_limit}); Redis will evict while the pod sits idle. Unset "
+                f"redis_max_memory to size it from the pod limit automatically."
+            );
+        }
+    }
+
     def _load_redis_config -> str {
         scale_config = get_scale_config();
         db_config = scale_config.get_database_config();
 
-        redis_max_memory = db_config.get('redis_max_memory', '200mb');
-        redis_eviction_policy = db_config.get('redis_eviction_policy', 'allkeys-lru');
-        redis_eviction_samples = db_config.get('redis_eviction_samples', 5);
-        redis_default_ttl = db_config.get('redis_default_ttl', 0);
+        redis_default_ttl = self._resolve_default_ttl(db_config);
+        redis_max_memory = self._resolve_max_memory(db_config);
+        redis_eviction_policy = self._resolve_eviction_policy(
+            db_config, redis_default_ttl
+        );
+        redis_eviction_samples = self._resolve_eviction_samples(db_config);
         redis_enable_keyspace_notifications = db_config.get(
             'redis_enable_keyspace_notifications', False
         );
-
-        valid_policies = [
-            'allkeys-lru',
-            'volatile-lru',
-            'allkeys-lfu',
-            'volatile-lfu',
-            'allkeys-random',
-            'volatile-random',
-            'volatile-ttl',
-            'noeviction'
-        ];
-        if redis_eviction_policy not in valid_policies {
-            logger.warning(
-                f"Invalid Redis eviction policy '{redis_eviction_policy}'. "
-                f"Using default 'allkeys-lru'. Valid options: {', '.join(
-                    valid_policies
-                )}"
-            );
-            redis_eviction_policy = 'allkeys-lru';
-        }
-
-        try {
-            samples = int(redis_eviction_samples);
-            if samples < 1 or samples > 10 {
-                logger.warning(
-                    f"Redis eviction samples {samples} out of range [1-10]. Using default 5."
-                );
-                redis_eviction_samples = 5;
-            } else {
-                redis_eviction_samples = samples;
-            }
-        } except (ValueError, TypeError) {
-            logger.warning(f"Invalid eviction samples value. Using default 5.");
-            redis_eviction_samples = 5;
-        }
-
-        try {
-            ttl = int(redis_default_ttl);
-            if ttl < 0 {
-                logger.warning(
-                    f"Redis default TTL {ttl} is negative. Using 0 (no expiration)."
-                );
-                redis_default_ttl = 0;
-            } else {
-                redis_default_ttl = ttl;
-            }
-        } except (ValueError, TypeError) {
-            logger.warning(f"Invalid TTL value. Using default 0 (no expiration).");
-            redis_default_ttl = 0;
-        }
 
         if redis_enable_keyspace_notifications {
             redis_keyspace_events_line = '\nnotify-keyspace-events Ex';
@@ -231,7 +296,7 @@ obj KubernetesRedisProvider(DatabaseProvider) {
         scale_config = get_scale_config();
         db_config = scale_config.get_database_config();
         k8s_config = scale_config.get_kubernetes_config();
-        redis_default_ttl = db_config.get('redis_default_ttl', 0);
+        redis_default_ttl = self._resolve_default_ttl(db_config);
         redis_enable_keyspace_notifications = db_config.get(
             'redis_enable_keyspace_notifications', False
         );
@@ -240,21 +305,7 @@ obj KubernetesRedisProvider(DatabaseProvider) {
         redis_memory_request = str(db_config['redis_memory_request']);
         redis_memory_limit = str(db_config['redis_memory_limit']);
 
-        redis_max_memory = str(db_config['redis_max_memory']);
-        limit_bytes = self._parse_size_to_bytes(redis_memory_limit);
-        max_memory_bytes = self._parse_size_to_bytes(redis_max_memory);
-        if (
-            limit_bytes is not None
-            and max_memory_bytes is not None
-            and limit_bytes < max_memory_bytes * 2
-        ) {
-            logger.warning(
-                f"redis_memory_limit ({redis_memory_limit}) leaves little headroom "
-                f"over redis_max_memory ({redis_max_memory}); Redis needs roughly 2x "
-                f"maxmemory for BGSAVE fork copy-on-write and may be OOMKilled at "
-                f"runtime. Consider raising redis_memory_limit."
-            );
-        }
+        self._warn_on_memory_sizing(db_config, self._resolve_max_memory(db_config));
 
         redis_username = str(k8s_config.get('redis_username', 'admin'));
         redis_password = str(k8s_config.get('redis_password', 'password'));

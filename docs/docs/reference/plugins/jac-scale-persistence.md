@@ -575,6 +575,7 @@ def drain(broker: EventStreamBroker) -> int {
 | `url` | `null` | Redis URL. If unset, falls back to `[scale.database].redis_url`. If neither is set or the `redis` extra is missing, `LocalEventStream` (in-memory) is used. |
 | `consumer_group` | `jac-scale` | Default consumer group name when `@subscribe` does not specify one. |
 | `serializer` | `json` | Wire format. JSON only. |
+| `stream_maxlen` | `10000` | Approximate cap on entries retained per stream, applied on publish. Bounds stream memory, since streams are excluded from Redis eviction. `0` disables trimming. |
 | `retry.max_attempts` | `3` | Number of delivery attempts before sending to the DLQ topic. |
 | `retry.backoff_seconds` | `[1, 5, 30]` | Backoff delays per attempt index, clamped to the last value. |
 | `retry.dead_letter_suffix` | `.dlq` | Suffix appended to a topic name to form its dead-letter topic. |
@@ -585,6 +586,7 @@ def drain(broker: EventStreamBroker) -> int {
 - **Retry.** A failing handler is retried `retry.max_attempts` times with delays from `retry.backoff_seconds`. The thread sleeps responsively to the broker stop event so shutdowns are not blocked by long backoffs.
 - **Dead-letter topic.** After retry exhaustion, the event is published to `<topic><retry.dead_letter_suffix>` and the original is acked so it is not redelivered indefinitely. The DLQ is a regular topic you can `consume()` like any other.
 - **Drain on shutdown.** On process exit, consumer threads are signaled to stop and joined under a 10-second deadline.
+- **Streams are not cache.** Events carry no TTL, so under the provisioned `volatile-lru` policy Redis evicts only expiring cache keys and a live stream survives memory pressure that would otherwise drop undelivered events. Against a Redis you provision yourself, use a `volatile-*` policy for the same guarantee; the broker warns at startup when it finds an `allkeys-*` policy with a memory cap, and `health()` reports the policy and eviction count.
 
 ### Operational notes
 
