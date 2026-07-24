@@ -490,12 +490,6 @@ secret = "your-webhook-secret-key"
 signature_header = "X-Webhook-Signature"
 verify_signature = true
 api_key_expiry_days = 365
-
-# Kubernetes version pinning (scale) -- scale, byLLM, the MCP server, and the
-# client/desktop framework all ship inside the `jac` binary, so they need no
-# pinning. Use this only to pin a genuine third-party PyPI plugin for the pod image.
-[scale.kubernetes.plugin_versions]
-my_plugin = "1.2.3"          # pin a version, or "none" to skip, "latest" to track
 ```
 
 **Prometheus Metrics (scale):**

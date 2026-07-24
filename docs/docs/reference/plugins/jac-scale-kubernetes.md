@@ -540,48 +540,9 @@ additional_packages = ["xz-utils", "zstd"]
 
 ---
 
-### Jaseci Source Pinning (Experimental)
+### Version Pinning
 
-When using `--experimental` mode, the Jaseci plugin packages (byllm and friends) are installed from the GitHub repository instead of PyPI. Pin a specific branch or commit for reproducible builds. (The jaclang runtime itself -- which includes the `scale` subsystem -- always comes from the pod's `jac` binary base image, so it is never installed from PyPI in either mode.)
-
-**Defaults:**
-
-| TOML Key  | Default | Description |
-|-----------|---------|-------------|
-| `jaseci_repo_url` | `https://github.com/jaseci-labs/jaseci.git` | GitHub repository to install Jaseci packages from |
-| `jaseci_branch` | `main` | Repository branch to install from |
-| `jaseci_commit` | None | Specific commit SHA - leave empty for latest of the branch |
-
-**To change in `jac.toml`:**
-
-```toml
-[scale.kubernetes]
-jaseci_branch = "develop"
-jaseci_commit = "a1b2c3d4"
-```
-
----
-
-### Package Version Pinning
-
-Pin specific PyPI versions for genuine third-party Jaseci plugin packages installed inside the pod. Use `"none"` to skip a package entirely.
-
-> The pod's base image provides the `jac` binary, which is the jaclang runtime -- so jaclang (and the built-in subsystems that ship inside core: `scale`, the client/frontend framework, byLLM, and the MCP server) is host-provided and is never pinned or `pip install`ed here. Only genuine third-party plugins below are installed into the pod.
->
-> **Note:** `jaclang` is no longer on PyPI, so the pod image must install the `jac` binary (e.g. via the install script). The cluster deploy code is being migrated to this model; until then, deploys that expect a PyPI `jaclang` will not resolve.
-
-**Defaults:** all packages default to `"latest"` from PyPI.
-
-**To configure in `jac.toml`:**
-
-```toml
-[scale.kubernetes.plugin_versions]
-# Pin a genuine third-party plugin to an explicit version, or "none" to skip it:
-my_third_party_plugin = "1.2.3"   # Pin an exact PyPI version
-another_plugin        = "none"    # Skip installation entirely
-```
-
-> Scale, the frontend/client framework, byLLM, and the MCP server are all part of `jaclang` core and arrive with the `jac` binary in the pod image, so there is no `jac_scale`, `jac_byllm`, or `jac_mcp` package to pin here -- those subsystems are built into the binary. Use `plugin_versions` only for genuine third-party plugins that are still distributed as separate PyPI packages.
+Runtime version selection is the `[scale-runtime] version` pin added in #7698 (see [Runtime Binary](#runtime-binary)). Scale, the frontend/client framework, byLLM, and the MCP server all ship inside the `jac` binary, so there are no separate packages to pin. The former `jaseci_repo_url` / `jaseci_branch` / `jaseci_commit` / `install_jaseci` and `plugin_versions` keys were parsed but honored by no deploy path and have been removed; a `jac.toml` that still carries them is ignored harmlessly.
 
 ---
 
@@ -1000,7 +961,6 @@ Each microservice entry takes optional per-service overrides under `[scale.micro
 |-------|------|-------------|
 | `replicas` | int | Initial replica count (default 1; HPA can scale higher). |
 | `rpc_timeout` | float (seconds) | Per-service sv-to-sv RPC timeout. Default 10s, fine for CRUD; bump to 120-300s for LLM workers. |
-| `image_tag` | str | Override the image tag for just this service (rare; most apps use the same image and select via `JAC_SV_NAME`). |
 | `env` | dict | Extra env vars merged into the pod spec. `JAC_SV_NAME` and `JAC_SV_*_URL` are protected (cannot be overridden). |
 | `hpa.enabled` | bool | Set to `false` to fix replicas at the configured `replicas` count. Applies to both `"hpa"` and `"keda"` engines. |
 | `hpa.min` / `hpa.max` | int | Autoscaler replica bounds. Applies to both engines. |
