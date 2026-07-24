@@ -341,6 +341,9 @@ def _admin_dist_urls(channel: str) -> tuple[str, str] {
 
 
 def download_admin_dist(channel: str) -> bytes | None {
+    if channel == "experimental" {
+        channel = "dev";
+    }
     try {
         (dist_url, checksum_url) = _admin_dist_urls(channel);
         if not dist_url {
