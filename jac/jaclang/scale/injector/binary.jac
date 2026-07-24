@@ -6,8 +6,9 @@ import logging;
 import shutil;
 import tarfile;
 import from pathlib { Path }
-import from urllib.request { urlopen }
+import from urllib.request { urlopen, Request }
 import from urllib.error { HTTPError }
+import from urllib.parse { urlsplit }
 import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR }
 import from jaclang.runtimelib.utils { release_arch, host_arch }
 
@@ -67,8 +68,24 @@ def node_arch -> str {
 }
 
 
+glob _GITHUB_API_HOST: str = "api.github.com";
+
+
+def _github_api_token -> str {
+    return os.environ.get("GITHUB_TOKEN", "") or os.environ.get("GH_TOKEN", "");
+}
+
+
 def _http_get_bytes(url: str) -> bytes {
-    resp = urlopen(url, timeout=_HTTP_TIMEOUT);
+    req = Request(url);
+    token = _github_api_token();
+    if token {
+        parts = urlsplit(url);
+        if parts.scheme == "https" and parts.hostname == _GITHUB_API_HOST {
+            req.add_unredirected_header("Authorization", f"Bearer {token}");
+        }
+    }
+    resp = urlopen(req, timeout=_HTTP_TIMEOUT);
     try {
         return bytes(resp.read());
     } finally {

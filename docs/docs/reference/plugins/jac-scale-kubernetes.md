@@ -31,6 +31,8 @@ Pods run a prebuilt `jac` binary that carries the jaclang runtime (including the
 
 Both `stable` and `dev` download the binary from [GitHub Releases](https://github.com/jaseci-labs/jaseci/releases) and run it as-is - there is no source overlay.
 
+Release lookups go through the GitHub API, which rate-limits anonymous callers per IP. Set `GITHUB_TOKEN` (or `GH_TOKEN`) on the deploy driver to authenticate them - the token is sent only to `api.github.com`, never to asset downloads or the Docker Hub probe.
+
 **Local binary (`JAC_SCALE_BINARY_PATH`).** Point this environment variable at a `jac` binary you built (or an air-gapped mirror) and the deploy ships that exact file to pods instead of downloading a release. It takes precedence over the `[dev]` stanza:
 
 ```bash
