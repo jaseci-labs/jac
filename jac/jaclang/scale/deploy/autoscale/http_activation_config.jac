@@ -156,6 +156,9 @@ def destroy_http_activation_for_target(
     try {
         keda.destroy_http_activation(scale_target_name, namespace);
     } except ApiException as e {
+        if e.status != 403 {
+            raise;
+        }
         if keda.logger {
             keda.logger.warn(
                 "Failed to clean up HTTP activation resources for "

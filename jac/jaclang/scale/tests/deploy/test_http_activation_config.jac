@@ -212,3 +212,21 @@ test "destroy_http_activation_for_target swallows a permission error instead of 
     }
     assert not raised , "A 403 must not propagate out of destroy_http_activation_for_target";
 }
+
+test "destroy_http_activation_for_target still propagates an unexpected error like a 500" {
+    # Only a 403 is treated as "HTTP Add-on RBAC not provisioned yet" and
+    # swallowed. A 500/502/503 is a genuinely different failure mode (the
+    # API server itself is having trouble, not a permission gap) and must
+    # still surface to the caller instead of silently leaving the
+    # InterceptorRoute/ScaledObject orphaned with no error reported.
+    mock_api = unittest.mock.MagicMock();
+    mock_api.delete_namespaced_custom_object.side_effect = ApiException(status=500);
+    keda = KEDAAutoscaler(_custom_api=mock_api);
+    raised = False;
+    try {
+        destroy_http_activation_for_target("preview-deployment", "staging", keda);
+    } except ApiException {
+        raised = True;
+    }
+    assert raised , "A 500 must propagate out of destroy_http_activation_for_target";
+}
