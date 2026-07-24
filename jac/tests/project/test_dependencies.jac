@@ -104,7 +104,9 @@ test "ensure_venv creates" {
         venv_dir = project_dir / ".jac" / "venv";
         assert not venv_dir.exists();
 
-        with patch("venv.EnvBuilder") as mock_builder_class {
+        with patch(
+            "jaclang.project.pyvenv._venv_create_interpreter", return_value=None
+        ), patch("venv.EnvBuilder") as mock_builder_class {
             mock_builder = MagicMock();
             mock_builder_class.return_value = mock_builder;
             ensure_venv(config.get_venv_dir());
@@ -183,7 +185,9 @@ test "ensure_venv recreates corrupted" {
         venv_dir.mkdir(parents=True, exist_ok=True);
         (venv_dir / "pyvenv.cfg").write_text("home = /usr/bin");
 
-        with patch("venv.EnvBuilder") as mock_builder_class {
+        with patch(
+            "jaclang.project.pyvenv._venv_create_interpreter", return_value=None
+        ), patch("venv.EnvBuilder") as mock_builder_class {
             mock_builder = MagicMock();
             mock_builder_class.return_value = mock_builder;
             ensure_venv(config.get_venv_dir(), verbose=True);
@@ -201,7 +205,9 @@ test "ensure_venv ensurepip missing" {
     try {
         config = JacConfig.load(project_dir / "jac.toml");
 
-        with patch("venv.EnvBuilder") as mock_builder_class {
+        with patch(
+            "jaclang.project.pyvenv._venv_create_interpreter", return_value=None
+        ), patch("venv.EnvBuilder") as mock_builder_class {
             mock_builder = MagicMock();
             mock_builder.create.side_effect = Exception("No module named 'ensurepip'");
             mock_builder_class.return_value = mock_builder;
