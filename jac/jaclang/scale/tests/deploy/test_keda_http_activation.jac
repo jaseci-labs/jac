@@ -439,6 +439,30 @@ test "destroy_http_activation is a no-op for the InterceptorRoute when it is alr
     assert mock_api.delete_namespaced_custom_object.call_count == 2;
 }
 
+test "destroy_http_activation still attempts the ScaledObject delete when the InterceptorRoute delete is forbidden" {
+    # InterceptorRoute lives under http.keda.sh, a separately-permissioned
+    # CRD group from the ScaledObject's keda.sh. A 403 on the first delete
+    # must not skip the second: the ScaledObject may still be cleanly
+    # deletable even when the newer group's RBAC is missing.
+    mock_api = unittest.mock.MagicMock();
+    mock_api.delete_namespaced_custom_object.side_effect = [
+        ApiException(status=403),
+        None
+    ];
+    keda = KEDAAutoscaler(_custom_api=mock_api);
+    raised = False;
+    try {
+        keda.destroy_http_activation("preview-deployment", "staging");
+    } except ApiException {
+        raised = True;
+    }
+    assert raised , "The 403 must still surface to the caller after both deletes are attempted";
+    delete_calls = mock_api.delete_namespaced_custom_object.call_args_list;
+    plurals = [c[1]["plural"] for c in delete_calls];
+    assert "interceptorroutes" in plurals;
+    assert "scaledobjects" in plurals , "ScaledObject delete must still be attempted after the InterceptorRoute delete fails";
+}
+
 test "destroy_collection sweeps InterceptorRoutes alongside ScaledObjects and TriggerAuthentications" {
     mock_api = unittest.mock.MagicMock();
     mock_api.list_namespaced_custom_object.return_value = {
