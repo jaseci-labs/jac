@@ -1893,7 +1893,8 @@ impl TieredMemory.abort -> None {
         if not anchor.persistent or not anchor.is_populated() {
             continue;
         }
-        dirty = anchor.hash == 0;
+        brand_new = anchor.hash == 0;
+        dirty = brand_new;
         if not dirty {
             try {
                 dirty = Serializer._compute_hash(anchor) != anchor.hash;
@@ -1901,14 +1902,15 @@ impl TieredMemory.abort -> None {
                 dirty = True;
             }
         }
-        if dirty {
-            self.__mem__.pop(id, None);
-            if self.l2 {
-                self.l2.invalidate(id);
-            }
-            if self.l3 {
-                self.l3.delete(id);
-            }
+        if not dirty {
+            continue;
+        }
+        self.__mem__.pop(id, None);
+        if self.l2 {
+            self.l2.invalidate(id);
+        }
+        if brand_new and self.l3 {
+            self.l3.delete(id);
         }
     }
 }
