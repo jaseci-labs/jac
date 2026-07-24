@@ -37,10 +37,31 @@ import from jaclang.scale.deploy.autoscale.autoscaler {
     DEFAULT_CPU_UTILIZATION_TARGET,
     DEFAULT_MEMORY_UTILIZATION_TARGET
 }
+import from jaclang.scale.deploy.autoscale.keda_autoscaler { KEDAAutoscaler }
+import from jaclang.scale.deploy.autoscale.http_activation_config {
+    apply_http_activation_for_target
+}
 import from jaclang.scale.deploy.target.kubernetes.monitoring { MonitoringDeployer }
 import from jaclang.scale.config.config_loader { get_scale_config }
 
 glob logger = logging.getLogger(__name__);
+
+# Per-service apply loop shared entry point for the microservices deploy
+# path. Takes the manifest bundle, namespace, and a KEDAAutoscaler as
+# explicit parameters (rather than reaching into `self`) so it stays unit-
+# testable without apply_manifests()'s live-cluster preamble
+# (_load_kube_config, a real reachability check against the API server).
+def apply_http_activations_for_bundle(
+    bundle: dict[str, any], namespace: str, keda: KEDAAutoscaler
+) -> None {
+    for svc_name in bundle.get("http_activations", {}).keys() {
+        k8s_name = k8s_safe_name(svc_name);
+        cfg = dict(bundle.get("http_activations", {}).get(svc_name, {}));
+        apply_http_activation_for_target(
+            cfg, k8s_name, namespace, f"{k8s_name}-service", keda
+        );
+    }
+}
 
 
 obj KubernetesMicroserviceTarget(KubernetesTarget) {
@@ -895,6 +916,10 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             }
         }
 
+        apply_http_activations_for_bundle(
+            bundle, namespace, KEDAAutoscaler(logger=self.logger)
+        );
+
         for (svc_name, pdb_manifest) in bundle.get("pdbs", {}).items() {
             self._apply_or_replace(
                 policy_v1,
@@ -1072,6 +1097,25 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         } except ApiException as e {
             if e.status != 404 {
                 raise;
+            }
+        }
+
+        # HTTP activation always needs the KEDA HTTP Add-on regardless of
+        # autoscaler_engine (a service can run plain HPA for base scaling and
+        # still have HTTP activation enabled independently) - if engine is
+        # "hpa" the sweep above resolves to HPAAutoscaler.destroy_collection,
+        # which knows nothing about interceptorroutes/HTTP ScaledObjects, so
+        # those would otherwise be orphaned on teardown. Skip when engine is
+        # already "keda" to avoid sweeping the same resources twice.
+        if self.k8s_config.autoscaler_engine != "keda" {
+            try {
+                KEDAAutoscaler(logger=self.logger).destroy_collection(
+                    namespace, ms_selector
+                );
+            } except ApiException as e {
+                if e.status != 404 {
+                    raise;
+                }
             }
         }
 
