@@ -50,8 +50,8 @@ class JacByllmPluginConfig {
                     "nested": {
                         "temperature": {
                             "type": "float",
-                            "default": 0.7,
-                            "description": "Model creativity/randomness (0.0-2.0, lower is more deterministic)"
+                            "default": None,
+                            "description": "Model creativity/randomness (0.0-2.0, lower is more deterministic). Unset by default; some models reject non-default values."
                         },
                         "max_tokens": {
                             "type": "int",

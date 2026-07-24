@@ -17,7 +17,9 @@ def get_wind_speed_report(city: str) -> str by MockLLM(
         "verbose": True
     },
 )(
-    tools=[get_live_wind_speed]
+    tools=[get_live_wind_speed],
+    temperature=0.5,
+    max_tokens=256
 );
 
 glob result = get_wind_speed_report("Puttalam");

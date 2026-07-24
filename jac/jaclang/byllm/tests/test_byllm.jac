@@ -98,6 +98,8 @@ test "params format" {
     for key in required_keys {
         assert key in extracted_dict , f"Missing key: {key}";
     }
+    assert extracted_dict["temperature"] == 0.5 , "Explicit call-site temperature should be passed through";
+    assert extracted_dict["max_tokens"] == 256 , "Explicit call-site max_tokens should be passed through";
 
     add_message = extracted_dict["messages"];
     assert add_message[0]["role"] == "system" , "First message should be of role 'system'";
@@ -111,6 +113,61 @@ test "params format" {
     assert add_tool["type"] == "function" , "First tool should be of type 'function'";
     assert add_tool["function"]["name"] == "get_live_wind_speed" , "First tool function should be 'get_live_wind_speed'";
     assert "city" in add_tool["function"]["parameters"]["properties"] , "get_live_wind_speed function should have 'city' parameter";
+}
+
+test "temperature and max_tokens omitted when caller never sets them" {
+    # byLLM must not force a temperature/max_tokens the caller never asked
+    # for: some models (GPT-5/o-series, Claude with extended thinking) 400
+    # on any value other than their own default. Regression test for jac#7687.
+    with unittest.mock.patch.dict(_byllm_llm_mod._call_params_config, {}, clear=True) {
+        model = Model(model_name="gpt-5", api_key="sk-test-key");
+        mt_run = MTRuntime(
+            messages=[],
+            resp_type=str,
+            stream=False,
+            tools=[],
+            call_params={},
+            mtir=None  # type: ignore[arg-type]
+        );
+        params = model.make_model_params(mt_run);
+        assert "temperature" not in params , "temperature should not be forced by default";
+        assert "max_tokens" not in params , "max_tokens should not be forced by default";
+    }
+}
+
+test "explicit call-site temperature and max_tokens are passed through" {
+    with unittest.mock.patch.dict(_byllm_llm_mod._call_params_config, {}, clear=True) {
+        model = Model(model_name="gpt-4o-mini", api_key="sk-test-key");
+        mt_run = MTRuntime(
+            messages=[],
+            resp_type=str,
+            stream=False,
+            tools=[],
+            call_params={},
+            mtir=None  # type: ignore[arg-type]
+        );
+        params = model(temperature=0.4, max_tokens=123).make_model_params(mt_run);
+        assert params["temperature"] == 0.4;
+        assert params["max_tokens"] == 123;
+    }
+}
+
+test "config-level temperature only applies when user configured it" {
+    with unittest.mock.patch.dict(
+        _byllm_llm_mod._call_params_config, {"temperature": 0.9}, clear=True
+    ) {
+        model = Model(model_name="gpt-4o-mini", api_key="sk-test-key");
+        mt_run = MTRuntime(
+            messages=[],
+            resp_type=str,
+            stream=False,
+            tools=[],
+            call_params={},
+            mtir=None  # type: ignore[arg-type]
+        );
+        params = model.make_model_params(mt_run);
+        assert params["temperature"] == 0.9;
+    }
 }
 
 test "image input" {
