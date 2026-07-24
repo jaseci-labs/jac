@@ -184,6 +184,28 @@ test "client fixture generates client bundle" {
     assert "server_only" not in js_code;
 }
 
+test "sv imported walker reaches client endpoint effects manifest" {
+    # An sv-imported walker is a writer endpoint. It must appear in the client
+    # manifest so its calls invalidate cached reads. Before the fix, walkers
+    # were skipped as bare types and only func: effects were copied.
+    fixture = fixture_path("sv_walker_effects_client.cl.jac");
+    prog = JacProgram();
+    ir = prog.compile(file_path=fixture, no_cgen=True, type_check=True);
+    assert not prog.errors_had , (
+        f"Compilation errors in {fixture}: {[str(e) for e in prog.errors_had]}"
+    );
+    es_pass = EsastGenPass(ir_in=ir, prog=prog);
+    effects = es_pass.ir_out.gen.client_manifest.endpoint_effects;
+
+    assert "walker:AddItem" in effects , (
+        f"sv-imported walker missing from client manifest: {effects}"
+    );
+    assert effects["walker:AddItem"]["is_writer"] , (
+        "AddItem mutates the graph -- must ship as a writer"
+    );
+    assert "walker:AddItem" in es_pass.ir_out.gen.js;
+}
+
 # SKIP: es_node_to_dict isinstance checks fail when compiling Jac from
 # within a Jac execution context (dual class loading issue).
 # test "es ast serializes to json" { ... }
