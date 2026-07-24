@@ -860,7 +860,7 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
 }
 
 impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
-    default_temp = _call_params_config.get("temperature", 0.7);
+    default_temp = _call_params_config.get("temperature");
     default_max_tokens = _call_params_config.get("max_tokens");
 
     agent_metadata = {};
@@ -957,11 +957,15 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
         "messages": messages,
         "tools": tools,
         "response_format": mt_run.get_output_schema(),
-        "temperature": self.call_params.get("temperature", default_temp),
         "max_tokens": self.call_params.get("max_tokens", default_max_tokens),
         "metadata": agent_metadata,
 
     };
+
+    resolved_temp = self.call_params.get("temperature", default_temp);
+    if resolved_temp is not None {
+        params["temperature"] = resolved_temp;
+    }
 
     if "tool_choice" in mt_run.call_params {
         params["tool_choice"] = mt_run.call_params["tool_choice"];
