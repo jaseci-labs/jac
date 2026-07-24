@@ -607,10 +607,6 @@ impl check_deployment_status(
             try {
                 response = requests.get(url, timeout=10);
             } except SSLError {
-                # A TLS-enabled ingress redirects the HTTP probe to https
-                # on the NLB hostname, whose cert is issued for the app's
-                # domain, so verification can never pass. Reachability
-                # probe only, retry unverified.
                 response = requests.get(url, timeout=10, verify=False);
             }
             if (response.status_code == 200) {
