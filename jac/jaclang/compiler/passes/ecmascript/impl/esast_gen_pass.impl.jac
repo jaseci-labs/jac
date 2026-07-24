@@ -4864,6 +4864,7 @@ impl EsastGenPass._generate_sv_import_stubs(
         }
 
         if self._sv_import_item_is_type(nd, item) {
+            self._copy_sv_import_walker_effect(item, source_mod);
             continue;
         }
         func_name = item.name.sym_name;
@@ -4982,6 +4983,22 @@ impl EsastGenPass._sv_import_item_is_type(
         if nd.gen.interop_manifest
         else {};
     return item.name.sym_name in boundary_types;
+}
+
+impl EsastGenPass._copy_sv_import_walker_effect(
+    item: uni.ModuleItem, source_mod: uni.Module | None
+) -> None {
+    sym = item.name.sym;
+    if not sym or sym.sym_type != SymbolType.WALKER_ARCH {
+        return;
+    }
+    key = f"walker:{item.name.sym_name}";
+    effect = source_mod.gen.interop_manifest.endpoint_effects.get(key)
+        if source_mod and source_mod.gen.interop_manifest
+        else None;
+    self.client_manifest.endpoint_effects[key] = (
+        effect if effect is not None else {"is_writer": True, "touches": ["*"]}
+    );
 }
 
 impl EsastGenPass.exit_sub_tag(nd: uni.SubTag[uni.T]) -> None {
