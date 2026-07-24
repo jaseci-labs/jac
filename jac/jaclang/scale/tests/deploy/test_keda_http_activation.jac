@@ -463,6 +463,28 @@ test "destroy_http_activation still attempts the ScaledObject delete when the In
     assert "scaledobjects" in plurals , "ScaledObject delete must still be attempted after the InterceptorRoute delete fails";
 }
 
+test "destroy_http_activation surfaces a genuinely unexpected error even when the other delete only hit a tolerable 403" {
+    # If the InterceptorRoute delete hits a 500 (a real server-side problem)
+    # and the ScaledObject delete then hits a 403 (the "RBAC not provisioned
+    # for this newer CRD group yet" case the caller treats as tolerable),
+    # the 500 must still be what propagates. Losing it to a later 403 would
+    # let the caller's "only swallow 403" leniency silently absorb an
+    # unrelated, more serious failure.
+    mock_api = unittest.mock.MagicMock();
+    mock_api.delete_namespaced_custom_object.side_effect = [
+        ApiException(status=500),
+        ApiException(status=403)
+    ];
+    keda = KEDAAutoscaler(_custom_api=mock_api);
+    status = None;
+    try {
+        keda.destroy_http_activation("preview-deployment", "staging");
+    } except ApiException as e {
+        status = e.status;
+    }
+    assert status == 500 , "The 500 from the InterceptorRoute delete must not be masked by the later 403";
+}
+
 test "destroy_collection sweeps InterceptorRoutes alongside ScaledObjects and TriggerAuthentications" {
     mock_api = unittest.mock.MagicMock();
     mock_api.list_namespaced_custom_object.return_value = {
