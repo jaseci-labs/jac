@@ -91,13 +91,17 @@ test "params format" {
         "messages",
         "tools",
         "response_format",
-        "temperature",
         "max_tokens",
 
     ];
     for key in required_keys {
         assert key in extracted_dict , f"Missing key: {key}";
     }
+
+    # Temperature is omitted entirely when the caller never sets one, so the
+    # provider (or an aggregator like OpenRouter) applies its own default
+    # instead of byLLM forcing an unsupported value. See issue #7687.
+    assert "temperature" not in extracted_dict , "temperature must be omitted when unset";
 
     add_message = extracted_dict["messages"];
     assert add_message[0]["role"] == "system" , "First message should be of role 'system'";
@@ -111,6 +115,21 @@ test "params format" {
     assert add_tool["type"] == "function" , "First tool should be of type 'function'";
     assert add_tool["function"]["name"] == "get_live_wind_speed" , "First tool function should be 'get_live_wind_speed'";
     assert "city" in add_tool["function"]["parameters"]["properties"] , "get_live_wind_speed function should have 'city' parameter";
+}
+
+test "temperature passed through when set" {
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    jac_import("llm_params_temp", base_path=FIXTURE_DIR + "/");
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    dict_str = stdout_value[stdout_value.find("{"):stdout_value.rfind("}") + 1];
+    extracted_dict = yaml.safe_load(dict_str);
+
+    assert "temperature" in extracted_dict , "temperature must be present when the caller sets it";
+    assert extracted_dict["temperature"] == 0.3 , f"expected temperature 0.3, got {extracted_dict.get(
+        'temperature'
+    )}";
 }
 
 test "image input" {

@@ -847,8 +847,8 @@ obj MicroserviceManifestBuilder {
         if client_entry {
             gw_prefix = (
                 f'if [ ! -f .jac/client/dist/index.html ]; then '
-                f'jac build "{client_entry}" --client web '
-                f'|| echo "[jac-scale] client build failed; / will 404"; '
+                f'echo "[jac-scale] building client bundle ({client_entry})"; '
+                f'jac build "{client_entry}" --client web; '
                 f'fi; '
             );
         }
