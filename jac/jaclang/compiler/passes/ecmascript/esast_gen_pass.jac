@@ -283,6 +283,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _copy_sv_import_walker_effect(
         item: uni.ModuleItem, source_mod: uni.Module | None
     ) -> None;
+
     def _record_sv_backend(nd: uni.Import) -> None;
     def _emit_boundary_type_stubs(nd: uni.Module) -> list;
     def _es_json_literal(value: any) -> any;

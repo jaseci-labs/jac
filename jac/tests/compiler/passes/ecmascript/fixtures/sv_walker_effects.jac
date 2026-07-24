@@ -9,7 +9,7 @@ node Item {
 }
 
 def:pub list_items -> list[Item] {
-    return [it for it in [root -->[?:Item]]];
+    return [it for it in [root-->[?:Item]]];
 }
 
 walker:pub AddItem {

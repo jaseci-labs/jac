@@ -222,20 +222,27 @@ test "sv imported walker copies precise effects instead of the wildcard default"
     );
 
     sv_import = next(
-        (i for i in ir.get_all_sub_nodes(uni.Import) if i.is_sv_marked), None
+        (
+            i
+            for i in ir.get_all_sub_nodes(uni.Import)
+            if i.is_sv_marked
+        ),
+        None
     );
     assert sv_import is not None , "expected an sv import in the fixture";
     source_mod = resolve_import_source_module(prog, sv_import);
     assert source_mod is not None and source_mod.gen.interop_manifest is not None;
     source_mod.gen.interop_manifest.endpoint_effects["walker:AddItem"] = {
-        "is_writer": True, "touches": ["Item", "Root"]
+        "is_writer": True,
+        "touches": ["Item", "Root"]
     };
 
     es_pass = EsastGenPass(ir_in=ir, prog=prog);
     effects = es_pass.ir_out.gen.client_manifest.endpoint_effects;
-    assert effects["walker:AddItem"] == {"is_writer": True, "touches": ["Item", "Root"]} , (
-        f"precise walker effect not copied verbatim: {effects.get('walker:AddItem')}"
-    );
+    assert effects["walker:AddItem"] == {
+        "is_writer": True,
+        "touches": ["Item", "Root"]
+    } , (f"precise walker effect not copied verbatim: {effects.get('walker:AddItem')}");
 }
 
 # SKIP: es_node_to_dict isinstance checks fail when compiling Jac from
