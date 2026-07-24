@@ -367,7 +367,8 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
                 or (isinstance(target, uni.Name) and target.value == "_")
             );
             if (
-                not is_evolving_reassign
+                nd.aug_op is None
+                and not is_evolving_reassign
                 and not self.evaluator.assign_type(
                     right_type, left_type, strict=self.evaluator._is_strict_site(nd)
                 )
@@ -434,6 +435,10 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
                                 right=str(right_type)
                             );
                         }
+                    }
+                    if result is not None
+                    and not self.evaluator.assign_type(result, left_type) {
+                        self.emit(E1001, actual=str(result), expected=str(left_type));
                     }
                 }
             }

@@ -604,7 +604,11 @@ impl check_deployment_status(
 
     for attempt in range(1, (max_retries + 1)) {
         try {
-            response = requests.get(url, timeout=10);
+            try {
+                response = requests.get(url, timeout=10);
+            } except SSLError {
+                response = requests.get(url, timeout=10, verify=False);
+            }
             if (response.status_code == 200) {
                 return (True, "Successful");
             }

@@ -2894,6 +2894,9 @@ impl NativeListEmitter.emit_pop(
     b.branch(shift_bb);
     b.position_at_start(done_bb);
     b.store(new_len, len_ptr);
+    if is_ptr {
+        p._mark_owned(popped);
+    }
     return popped;
 }
 
@@ -3319,6 +3322,13 @@ impl NativeDictEmitter.emit_get(
     result = b.phi(val_type, name="dget.result");
     result.add_incoming(val, found_bb);
     result.add_incoming(default_val, notfound_bb);
+    if isinstance(val_type, ir.PointerType) {
+        if p.rc_retain_fn is None {
+            p._emit_rc_helpers();
+        }
+        _res_cast = b.bitcast(result, ir.IntType(8).as_pointer(), name="dget.ret.cast");
+        b.call(p.rc_retain_fn, [_res_cast]);
+    }
     return result;
 }
 
@@ -6019,6 +6029,12 @@ impl NativeBuiltinEmitter.emit_bytes(
     i8 = ir.IntType(8);
     i64 = ir.IntType(64);
     val = args[0];
+    if ("u8" in p.list_types and val.type == p.list_types["u8"].as_pointer()) {
+        _src = p._bytearray_src_of(val);
+        if _src is not None {
+            return p._bytes_from_raw(_src[0], _src[1]);
+        }
+    }
     for (lk, lhelpers) in p.list_helpers.items() {
         ltype = p.list_types.get(lk);
         if ltype is not None and val.type == ltype.as_pointer() {
@@ -6054,7 +6070,50 @@ impl NativeBuiltinEmitter.emit_bytes(
 impl NativeBuiltinEmitter.emit_bytearray(
     self, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return self.emit_bytes(ctx, args);
+    p = ctx.pass_ref;
+    b = get_builder(p);
+    i8 = ir.IntType(8);
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    p._ensure_bytearray_type();
+    fns = p._bytearray_runtime_fns();
+    buf = p._rc_call_with_ctx(
+        p.list_helpers["u8"]["new"], [], op="new", loc="", name="ba.new"
+    );
+    if not args {
+        return buf;
+    }
+    a0 = args[0];
+    if isinstance(a0.type, ir.IntType) {
+        n = p._coerce_type(a0, i64);
+        b.call(fns["reserve"], [buf, n], name="");
+        data_p = b.gep(
+            buf, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="ba.z.data.p"
+        );
+        data = b.load(data_p, name="ba.z.data");
+        b.call(fns["memset"], [data, ir.Constant(i32, 0), n], name="");
+        len_p = b.gep(
+            buf, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ba.z.len.p"
+        );
+        b.store(n, len_p);
+        return buf;
+    }
+    src = p._bytearray_src_of(a0);
+    if src is not None {
+        b.call(fns["extend_raw"], [buf, src[0], src[1]], name="");
+        return buf;
+    }
+
+    _bv = self.emit_bytes(ctx, [a0]);
+    if _bv is not None and p._is_bytes_value(_bv) {
+        _bsrc = p._bytearray_src_of(_bv);
+        if _bsrc is not None {
+            b.call(fns["extend_raw"], [buf, _bsrc[0], _bsrc[1]], name="");
+            p._emit_rc_release_simple(_bv, op="ba_ctor_list", loc="");
+            return buf;
+        }
+    }
+    return None;
 }
 
 impl NativeBuiltinEmitter.emit_complex(

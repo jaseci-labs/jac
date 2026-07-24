@@ -144,7 +144,7 @@ impl EsastGenPass.exit_global_vars(nd: uni.GlobalVars) -> None {
     if nd.code_context == CodeContext.CLIENT {
         self.client_manifest.has_client = True;
         is_pub = nd.access and (nd.access.tag.name == Tok.KW_PUB);
-        if is_pub {
+        if is_pub or nd.codespace_dual {
             for assignment in nd.assignments {
                 for target in assignment.target {
                     if (sym_name := target?.sym_name) {
@@ -950,25 +950,30 @@ impl EsastGenPass.exit_index_slice(nd: uni.IndexSlice) -> None {
 }
 
 impl EsastGenPass._resolve_source_module(nd: uni.Import) -> (uni.Module | None) {
-    if not nd.from_loc {
-        return None;
+    import from jaclang.compiler.symbol_utils { resolve_import_source_module }
+    return resolve_import_source_module(self.prog, nd);
+}
+
+impl EsastGenPass._pull_plain_jac_import_client(
+    nd: uni.Import, resolved_path: str
+) -> None {
+    import from jaclang.jac0core.ext_registry { codespace_of }
+    import from jaclang.jac0core.passes.codespace_pull_pass { pull_import_items_client }
+
+    if (
+        nd.is_sv_marked
+        or nd.is_virtual_jac
+        or nd.code_context != CodeContext.CLIENT
+        or not resolved_path.endswith('.jac')
+        or codespace_of(resolved_path) is not None
+    ) {
+        return;
     }
-    import from pathlib { Path }
-    resolved_path = nd.from_loc.resolve_relative_path();
-    abs_path = str(Path(resolved_path).resolve());
-    source_mod = self.prog.mod.hub.get(resolved_path)
-    or self.prog.mod.hub.get(abs_path);
-    if source_mod {
-        return source_mod;
+    source_mod = self._resolve_source_module(nd);
+    if source_mod is None or source_mod is self.ir_in {
+        return;
     }
-    if Path(resolved_path).exists() {
-        source_mod = self.prog.compile(
-            resolved_path, no_cgen=True, type_check=False, symtab_ir_only=True
-        );
-        self.prog.mod.hub[abs_path] = source_mod;
-        return source_mod;
-    }
-    return None;
+    pull_import_items_client(list(nd.items), source_mod, self.prog);
 }
 
 impl EsastGenPass._record_sv_backend(nd: uni.Import) -> None {
@@ -1025,7 +1030,28 @@ impl EsastGenPass._return_type_includes_jsx_element(rt: uni.Expr) -> bool {
             or self._return_type_includes_jsx_element(rt.right)
         );
     }
-    return isinstance(rt, uni.Name) and rt.value == 'JsxElement';
+    return isinstance(rt, uni.Name)
+    and rt.value in ('JsxElement', 'JsxPage', 'JsxLayout');
+}
+
+impl EsastGenPass._return_type_route_role(rt: uni.Expr) -> (str | None) {
+    if (
+        isinstance(rt, uni.BinaryExpr)
+        and isinstance(rt.op, uni.Token)
+        and rt.op.name == Tok.BW_OR
+    ) {
+        left_role = self._return_type_route_role(rt.left);
+        return left_role or self._return_type_route_role(rt.right);
+    }
+    if isinstance(rt, uni.Name) {
+        if rt.value == 'JsxPage' {
+            return 'page';
+        }
+        if rt.value == 'JsxLayout' {
+            return 'layout';
+        }
+    }
+    return None;
 }
 
 impl EsastGenPass._component_pascal_name(nd: uni.Ability) -> (str | None) {
@@ -1621,6 +1647,24 @@ impl EsastGenPass._try_lower_server_rpc_call(
         return None;
     }
     func_name = nd.target.sym_name;
+    if isinstance(ability_node.signature, uni.FuncSignature) {
+        import re;
+        import from jaclang.jac0core.diagnostics { W6005 }
+        _sig = ability_node.signature;
+        for _plist in [_sig.posonly_params, _sig.params or [], _sig.kwonlyargs] {
+            for _p in _plist {
+                if (
+                    _p.type_tag is not None
+                    and _p.type_tag.tag is not None
+                    and re.search(r"\bCallable\b", _p.type_tag.tag.unparse())
+                ) {
+                    self.emit(
+                        W6005, node_override=nd, func=func_name, param=_p.name.sym_name
+                    );
+                }
+            }
+        }
+    }
 
     param_names: list[str] = self._param_names_from_ability(ability_node);
     inline_param_type_map: dict[str, str] = self._param_type_map_from_ability(
@@ -3743,7 +3787,15 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
     if (nd.code_context == CodeContext.CLIENT and not nd.is_method) {
         self.client_manifest.has_client = True;
         is_pub = nd.access and (nd.access.tag.name == Tok.KW_PUB);
-        if is_pub {
+        route_role: (str | None) = None;
+        if (
+            isinstance(nd.signature, uni.FuncSignature)
+            and nd.signature.return_type is not None
+        ) {
+            route_role = self._return_type_route_role(nd.signature.return_type);
+        }
+
+        if is_pub or route_role or nd.codespace_dual {
             name = nd.name_ref.sym_name;
             self.client_manifest.exports.append(name);
             if (
@@ -3761,6 +3813,12 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
             ]
                 if isinstance(nd.signature, uni.FuncSignature)
                 else [];
+            if route_role == 'page' and self.client_manifest.page_export is None {
+                self.client_manifest.page_export = name;
+            } elif route_role == 'layout'
+            and self.client_manifest.layout_export is None {
+                self.client_manifest.layout_export = name;
+            }
         }
     }
     component_call_abi = self._component_call_abi(nd);
@@ -4398,7 +4456,7 @@ impl EsastGenPass.exit_enum(nd: uni.Enum) -> None {
     if nd.code_context == CodeContext.CLIENT {
         self.client_manifest.has_client = True;
         is_pub = nd.access and (nd.access.tag.name == Tok.KW_PUB);
-        if is_pub {
+        if is_pub or nd.codespace_dual {
             self.client_manifest.exports.append(nd.name.sym_name);
         }
     }
@@ -4458,7 +4516,7 @@ impl EsastGenPass.exit_archetype(nd: uni.Archetype) -> None {
     if nd.code_context == CodeContext.CLIENT {
         self.client_manifest.has_client = True;
         is_pub = nd.access and (nd.access.tag.name == Tok.KW_PUB);
-        if is_pub {
+        if is_pub or nd.codespace_dual {
             self.client_manifest.exports.append(nd.name.sym_name);
         }
     }
@@ -4652,8 +4710,23 @@ impl EsastGenPass.exit_import(nd: uni.Import) -> None {
         }
         return;
     }
+    emit_items: list = list(nd.items);
     if (nd.from_loc and nd.items) {
         resolved_path = nd.from_loc.resolve_relative_path();
+
+        self._pull_plain_jac_import_client(nd, resolved_path);
+        partition = self._partition_client_import_items(nd);
+        if partition is not None {
+            (emit_items, bridged_items) = partition;
+            if bridged_items {
+                self._generate_sv_import_stubs(nd, bridged_items);
+                self._record_sv_backend(nd);
+            }
+            if not emit_items {
+                nd.gen.es_ast = None;
+                return;
+            }
+        }
         import_key = nd.from_loc.dot_path_str;
         self.client_manifest.imports[import_key] = resolved_path;
         self.client_manifest.has_client = True;
@@ -4692,7 +4765,7 @@ impl EsastGenPass.exit_import(nd: uni.Import) -> None {
         list[
             es.ImportSpecifier | es.ImportDefaultSpecifier | es.ImportNamespaceSpecifier
         ] = [];
-    for item in nd.items {
+    for item in emit_items {
         if isinstance(item, uni.ModuleItem) {
             if isinstance(item.name, uni.Name) {
                 imported = self.sync_loc(
@@ -4746,12 +4819,45 @@ impl EsastGenPass.exit_import(nd: uni.Import) -> None {
     nd.gen.es_ast = None;
 }
 
-impl EsastGenPass._generate_sv_import_stubs(nd: uni.Import) -> None {
+impl EsastGenPass._partition_client_import_items(
+    nd: uni.Import
+) -> (tuple[list, list] | None) {
+    import from jaclang.compiler.symbol_utils {
+        ClientImportVerdict,
+        classify_client_import_item,
+        is_client_boundary_import,
+        report_dead_client_import
+    }
+    if not is_client_boundary_import(nd) {
+        return None;
+    }
+    source_mod = self._resolve_source_module(nd);
+    if source_mod is None {
+        return None;
+    }
+    kept: list = [];
+    bridged: list = [];
+    for item in nd.items {
+        verdict = classify_client_import_item(source_mod, item);
+        if verdict == ClientImportVerdict.BRIDGED {
+            bridged.append(item);
+        } elif verdict == ClientImportVerdict.DEAD {
+            report_dead_client_import(self, nd, item);
+        } else {
+            kept.append(item);
+        }
+    }
+    return (kept, bridged);
+}
+
+impl EsastGenPass._generate_sv_import_stubs(
+    nd: uni.Import, items: (Sequence[uni.ModuleItem] | None) = None
+) -> None {
     import from jaclang.compiler.symbol_utils { ability_of_symbol }
 
     source_mod: uni.Module | None = self._resolve_source_module(nd);
     stubs: list[es.Statement] = [];
-    for item in nd.items {
+    for item in (items if items is not None else nd.items) {
         if not isinstance(item, uni.ModuleItem)
         or not isinstance(item.name, uni.Name) {
             continue;

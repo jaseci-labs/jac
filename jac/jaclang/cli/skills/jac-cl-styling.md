@@ -3,7 +3,7 @@ name: jac-cl-styling
 description: Styling patterns in Jac - Tailwind v4 setup from scratch, conditional classes, cn() utility with clsx+tailwind-merge, semantic color tokens, and auto-scoped .style.css annex files. Load when adding Tailwind to a project or writing dynamic, theme-aware, or component-scoped styles.
 ---
 
-Everything here applies to any client code - `.cl.jac` files or plain `.jac` components inferred client from their JSX/npm imports (markers like `cl { }` are optional overrides; see `jac-codespaces`).
+Everything here applies to any client code - plain `.jac` components inferred client from their JSX/npm imports (markers are optional overrides; see `jac-codespaces`).
 
 ## Tailwind v4 setup (non-shadcn projects)
 
@@ -25,7 +25,7 @@ lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 @import "tailwindcss";
 ```
 
-Then import it once in the app entry: `import "./assets/main.css";` inside the `cl { }` block of `main.jac` (or at the top of the entry `.cl.jac`). Utility classes (`min-h-screen`, `p-8`, `text-3xl`...) now work in any `className`.
+Then import it once in the app entry: `import "./assets/main.css";` at the top of `main.jac`. Utility classes (`min-h-screen`, `p-8`, `text-3xl`...) now work in any `className`.
 
 ## Scoped CSS (`.style.css` annex)
 
@@ -43,7 +43,7 @@ module -- no import, no global collisions. The compiler hashes each declared
 class and rewrites the matching `className` literals to agree.
 
 ```jac
-# Card.cl.jac
+# Card.jac
 def:pub Card(title: str) -> JsxElement {
     return <div className="card">
         <h2 className="card-title">{title}</h2>
@@ -66,7 +66,7 @@ without conflict.
 
 Rules:
 
-- **Base name must match exactly:** `Card.cl.jac` <-> `Card.style.css`. No `import` -- the compiler pairs and injects `import "./Card.css";` itself.
+- **Base name must match exactly:** `Card.jac` <-> `Card.style.css`. No `import` -- the compiler pairs and injects `import "./Card.css";` itself.
 - **Only declared classes are rewritten.** Undeclared tokens (Tailwind utilities, shadcn classes) pass through untouched, so you can mix scoped + utility classes in one `className`.
 - **`:global(...)`** keeps a selector unscoped -- use it for resets, element selectors, or targeting third-party classes.
 - **Scoped vs global:** use `.style.css` for component-specific classes; use a plain shared `import "./global.css";` (or Tailwind) for app-wide styles.
@@ -100,9 +100,9 @@ def:pub cn(*inputs: any) -> any {
 
 Required in `jac.toml`: `clsx = "*"` and `tailwind-merge = "*"` under `[dependencies.npm]`.
 
-> **jac-shadcn projects**: `lib/utils.cl.jac` already exports `cn()` - use `import from .lib.utils { cn }`. Don't recreate it and don't add these packages to jac.toml (pre-installed).
+> **jac-shadcn projects**: `lib/utils.jac` already exports `cn()` - use `import from .lib.utils { cn }`. Don't recreate it and don't add these packages to jac.toml (pre-installed).
 
-Usage (import `cn` from `lib/utils.cl.jac`, then pass each class as a separate argument):
+Usage (import `cn` from `lib/utils.jac`, then pass each class as a separate argument):
 
 ```
 import from ...lib.utils { cn }

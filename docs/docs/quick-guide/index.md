@@ -125,7 +125,7 @@ The machinery beneath them has names too:
 - **[Meaning types](../reference/plugins/byllm.md)** make the model a typed executor: `by llm()` delegates a function to an LLM, and the prompt is derived from your names, types, and `sem` annotations rather than written by hand.
 - **[Scale invariance](../reference/plugins/jac-scale.md#the-scale-invariance-contract)** keeps semantics fixed from `jac run` to `jac start --scale`: same program text at every deployment scale, with Kubernetes, Redis, and MongoDB provisioned by the runtime.
 - **The [polypiler](one-binary.md)** compiles the whole polyglot application as one unit: its targets are ecosystems rather than instruction sets, and it ships as one self-contained binary.
-- **[Gradual ownership](../reference/language/ownership-borrowing.md)** makes memory discipline a dial rather than a divide: managed semantics by default, ownership adopted one declaration at a time, down to native code with no collector.
+- **[Gradual borrow checking](../reference/language/ownership-borrowing.md)** makes memory discipline a dial rather than a divide: managed semantics by default, ownership adopted one declaration at a time, down to native code with no collector.
 
 ---
 

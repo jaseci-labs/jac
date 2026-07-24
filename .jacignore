@@ -346,6 +346,7 @@ jac/jaclang/compiler/passes/main/jsx_intrinsic_guard_pass.jac
 jac/jaclang/compiler/passes/native/impl/pe_linker.impl.jac
 jac/jaclang/compiler/passes/native/impl/primitives_native.impl.jac
 jac/jaclang/compiler/passes/native/na_ir_gen_pass.impl/bytes.impl.jac
+jac/jaclang/compiler/passes/native/na_ir_gen_pass.impl/bytearray_na.impl.jac
 jac/jaclang/compiler/passes/native/na_ir_gen_pass.impl/clib_abi.impl.jac
 jac/jaclang/compiler/passes/native/na_ir_gen_pass.impl/debug.impl.jac
 jac/jaclang/compiler/passes/native/na_ir_gen_pass.impl/gc_debug.impl.jac
@@ -483,10 +484,8 @@ jac/jaclang/scale/admin/ui/components/tables/DataTable.cl.jac
 jac/jaclang/scale/admin/ui/main.jac
 jac/jaclang/scale/admin/ui/pages/admin/DashboardLayout.cl.jac
 jac/jaclang/scale/admin/ui/pages/admin/logs/LogsPage.cl.jac
-jac/jaclang/scale/admin/ui/pages/admin/monitoring/GraphsPage.cl.jac
 jac/jaclang/scale/admin/ui/pages/admin/monitoring/LLMTracesPage.cl.jac
 jac/jaclang/scale/admin/ui/pages/admin/monitoring/TracesPage.cl.jac
-jac/jaclang/scale/admin/ui/pages/admin/monitoring/WorkloadsPage.cl.jac
 jac/jaclang/scale/admin/ui/pages/admin/ops/DeployPage.cl.jac
 jac/jaclang/scale/admin/ui/pages/admin/ops/NetworkPage.cl.jac
 jac/jaclang/scale/admin/ui/pages/admin/ops/OpsPage.cl.jac

@@ -1451,7 +1451,18 @@ impl NaIRGenPass._apply_scalar_aug_op(
 
 impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
     _rhs_errs_before = len(self.errors_had);
-    value = self._codegen_expr(nd.value) if nd.value else None;
+    value: (ir.Value | None) = None;
+    if (
+        isinstance(nd.value, uni.Name)
+        and nd.value.value in self.generic_fns
+        and nd.type_tag is not None
+        and nd.type_tag.tag is not None
+    ) {
+        value = self._instantiate_generic_for_target(nd.value.value, nd.type_tag.tag);
+    }
+    if value is None {
+        value = self._codegen_expr(nd.value) if nd.value else None;
+    }
 
     if value is None and isinstance(nd.value, uni.FuncCall) {
         func_name = self._get_name(nd.value.target);
@@ -1518,10 +1529,88 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
         }
 
         if isinstance(target_expr, uni.AtomTrailer) and not target_expr.is_attr {
+            _env_sub_t = target_expr.target;
+            if (
+                isinstance(_env_sub_t, uni.AtomTrailer)
+                and _env_sub_t.is_attr
+                and self._get_name(_env_sub_t.target) == "os"
+                and self._get_name(_env_sub_t.right) == "environ"
+                and self?._native_stdlib_modules
+                and "os" in self._native_stdlib_modules
+                and nd.aug_op is None
+                and target_expr.right?.slices
+            ) {
+                _env_slices = target_expr.right.slices or [];
+                _env_key: (ir.Value | None) = None;
+                if _env_slices {
+                    _env_key = self._codegen_expr(_env_slices[0]);
+                    if _env_key is None and _env_slices[0]?.start {
+                        _env_key = self._codegen_expr(_env_slices[0].start);
+                    }
+                }
+                if _env_key is not None and isinstance(value.type, ir.PointerType) {
+                    _i8p_env = ir.IntType(8).as_pointer();
+                    _setenv_fn = self._get_or_declare_extern(
+                        "setenv", ir.IntType(32), [_i8p_env, _i8p_env, ir.IntType(32)]
+                    );
+                    self.builder.call(
+                        _setenv_fn,
+                        [
+                            self._coerce_type(_env_key, _i8p_env),
+                            self._coerce_type(value, _i8p_env),
+                            ir.Constant(ir.IntType(32), 1)
+                        ],
+                        name="environ.setitem"
+                    );
+                    continue;
+                }
+            }
             _idx_errs_before = len(self.errors_had);
             _idx_stored = False;
             idx_target_name = self._get_name(target_expr.target);
             target_val = self._codegen_expr(target_expr.target);
+            if (
+                target_val is not None
+                and nd.aug_op is None
+                and "u8" in self.list_types
+                and target_val.type == self.list_types["u8"].as_pointer()
+                and target_expr.right?.is_range
+                and target_expr.right?.slices
+            ) {
+                _ba_sl = target_expr.right.slices[0];
+                _ba_start = (
+                    self._codegen_expr(_ba_sl.start)
+                        if _ba_sl?.start is not None
+                        else ir.Constant(ir.IntType(64), 0)
+                );
+                _ba_stop = (
+                    self._codegen_expr(_ba_sl.stop)
+                        if _ba_sl?.stop is not None
+                        else ir.Constant(ir.IntType(64), 9223372036854775807)
+                );
+                _ba_src = self._bytearray_src_of(value);
+                if _ba_start is not None
+                and _ba_stop is not None
+                and _ba_src is not None {
+                    _ba_fns = self._bytearray_runtime_fns();
+                    _i64_ba = ir.IntType(64);
+                    self.builder.call(
+                        _ba_fns["setslice"],
+                        [
+                            target_val,
+                            self._coerce_type(_ba_start, _i64_ba),
+                            self._coerce_type(_ba_stop, _i64_ba),
+                            _ba_src[0],
+                            _ba_src[1]
+                        ],
+                        name=""
+                    );
+                    if self._is_owned(value) {
+                        self._emit_rc_release_simple(value, op="ba_setslice", loc="");
+                    }
+                    continue;
+                }
+            }
             if target_val is not None and target_expr.right?.slices {
                 slices = target_expr.right.slices or [];
                 if slices {
@@ -1665,6 +1754,26 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         value = self.builder.fadd(
                             current, coerced, name=f"{var_name}.fadd"
                         );
+                    } elif (
+                        isinstance(current.type, ir.PointerType)
+                        and "u8" in self.list_types
+                        and current.type == self.list_types["u8"].as_pointer()
+                    ) {
+                        _ba_aug_src = self._bytearray_src_of(value);
+                        if _ba_aug_src is not None {
+                            _ba_aug_fns = self._bytearray_runtime_fns();
+                            self.builder.call(
+                                _ba_aug_fns["extend_raw"],
+                                [current, _ba_aug_src[0], _ba_aug_src[1]],
+                                name=""
+                            );
+                            if self._is_owned(value) {
+                                self._emit_rc_release_simple(
+                                    value, op="ba_aug", loc=""
+                                );
+                            }
+                        }
+                        value = current;
                     } elif isinstance(current.type, ir.PointerType) {
                         _aug_str_rhs = coerced;
                         value = self._emit_binary_op(Tok.PLUS, current, _aug_str_rhs);
@@ -2290,21 +2399,32 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             _mk_cell = (
                 var_name in self.closure_cell_vars
                 and var_name not in self.closure_cell_handles
-                and self._gen_ctx is None
             );
             if _mk_cell {
                 alloca = self._emit_closure_cell(var_name, var_type);
             } else {
                 alloca = self._entry_alloca(var_type, var_name);
             }
-            if isinstance(var_type, ir.PointerType) and not _mk_cell {
+            _in_gen_frame = (
+                self._gen_ctx is not None
+                and self.builder.function is self._gen_ctx["resume_fn"]
+            );
+            if isinstance(var_type, ir.PointerType)
+            and not _mk_cell
+            and not _in_gen_frame {
                 _func_e = self.builder.function;
                 _ebb = _func_e.entry_basic_block;
                 _cur_bb = self.builder.block;
                 _entry_instrs = list(_ebb.instructions);
-
-                if len(_entry_instrs) >= 2 {
-                    self.builder.position_before(_entry_instrs[1]);
+                _anchor_idx: (int | None) = None;
+                for (_ei, _einstr) in enumerate(_entry_instrs) {
+                    if _einstr is alloca {
+                        _anchor_idx = _ei;
+                        break;
+                    }
+                }
+                if _anchor_idx is not None and _anchor_idx + 1 < len(_entry_instrs) {
+                    self.builder.position_before(_entry_instrs[_anchor_idx + 1]);
                 } else {
                     self.builder.position_at_end(_ebb);
                 }

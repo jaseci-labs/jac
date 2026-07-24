@@ -1,13 +1,13 @@
 ---
 name: jac-cl-components
-description: Writing a client-side UI component - shape, reactive state, mount effects, props and Callable callbacks, JSX rendering, event handlers. Load when creating or editing any client component file (`.cl.jac`, or plain `.jac` inferred client). Pair with `jac-cl-routing` (multi-page apps), `jac-cl-organization` (architecture & file layout), `jac-cl-auth` (protected pages).
+description: Writing a client-side UI component - shape, reactive state, mount effects, props and Callable callbacks, JSX rendering, event handlers. Load when creating or editing any client component file (a plain `.jac` placed client by its JSX/npm imports; see `jac-codespaces`). Pair with `jac-cl-routing` (multi-page apps), `jac-cl-organization` (architecture & file layout), `jac-cl-auth` (protected pages).
 ---
 
-`.cl.jac` files are client-side Jac - and so is any plain `.jac` declaration carrying JSX or npm imports: client placement is inferred, and the extension/markers are optional explicit overrides (see `jac-codespaces`). Everything in this guide applies to client code however it was placed. A component is a `def:pub` function returning `JsxElement`. State = `has` fields, which compile 1:1 to React `useState` - assign directly (`x = x + 1` re-renders; no `setX(...)` call) but all `useState` semantics apply: writes are async, the closure stays stale until the next render. Mount effects = `async can with entry` (compiles to `useEffect`). Event handlers = `def` methods typed with ambient DOM events (`MouseEvent`, `ChangeEvent`, `FormEvent`, `KeyboardEvent`). No `cl { }` wrapper needed - the extension sets client context.
+A plain `.jac` declaration carrying JSX or npm imports is client-side Jac: client placement is inferred, and the `cl` marker and `.cl` extension are optional explicit overrides (see `jac-codespaces`). Everything in this guide applies to client code however it was placed. A component is a `def:pub` function returning `JsxElement`. State = `has` fields, which compile 1:1 to React `useState` - assign directly (`x = x + 1` re-renders; no `setX(...)` call) but all `useState` semantics apply: writes are async, the closure stays stale until the next render. Mount effects = `async can with entry` (compiles to `useEffect`). Event handlers = `def` methods typed with ambient DOM events (`MouseEvent`, `ChangeEvent`, `FormEvent`, `KeyboardEvent`). No wrapper or marker needed - the JSX or npm import already places the declaration client.
 
 ## This is Jac, not React or JavaScript
 
-A `.cl.jac` component *compiles to* React, but you **write Jac** - Python-with-braces, not JSX/JS. This is the single most common mistake: do not reach for React/JS syntax. Translate every React habit to its Jac form:
+A client component *compiles to* React, but you **write Jac** - Python-with-braces, not JSX/JS. This is the single most common mistake: do not reach for React/JS syntax. Translate every React habit to its Jac form:
 
 | React / JavaScript (WRONG in a `.jac` file) | Jac (correct) |
 |---|---|
@@ -21,7 +21,7 @@ A `.cl.jac` component *compiles to* React, but you **write Jac** - Python-with-b
 | `const`, `let`, `var x = 1` | `x: int = 1;` (typed assignment) |
 | `=== / !==` ; `null` / `undefined` ; `cond ? a : b` | `== / !=` ; `None` ; `a if cond else b` |
 | `items.map(x => <li>{x}</li>)` | `{for x in items { <li>{x}</li> }}` (statement slot) |
-| writing a NEW `.js` / `.jsx` / `.tsx` file | a `.cl.jac` file. (Pre-existing `.tsx` components CAN be imported - `import from "./components/Button" { Button }` - but never author new ones.) |
+| writing a NEW `.js` / `.jsx` / `.tsx` file | a `.jac` client component. (Pre-existing `.tsx` components CAN be imported - `import from "./components/Button" { Button }` - but never author new ones.) |
 
 If you find yourself writing `function`, `=>`, `this.`, `export`, `import React`, or a `.js` file, stop - that is JavaScript. Write the Jac form from the table above.
 
@@ -89,7 +89,7 @@ def:pub Card(title: str, children: any = None) -> JsxElement {
 
 Use the matching type even when you don't read `e`; for an event not in the table, fall back to the base `Event` type.
 
-## Built-in in `.cl.jac` - NEVER import these
+## Built-in in client context - NEVER import these
 
 `JsxElement` (the component return type) and all DOM event types (`MouseEvent`, `ChangeEvent`, `FormEvent`, `KeyboardEvent`, `InputEvent`, `FocusEvent`, base `Event`) are Jac built-ins in client context; `Callable` is ambient as well. None need an import - `import from "@jac/runtime" { JsxElement }` or `import from typing { Callable }` is wrong and can fail the Vite build.
 
@@ -122,7 +122,7 @@ import from react { useEffect }
 
 def fetch_data();
 
-cl def:pub Poller() -> JsxElement {
+def:pub Poller() -> JsxElement {
     useEffect(lambda {
         interval = setInterval(lambda { fetch_data(); }, 5000);
         return lambda { clearInterval(interval); };
@@ -198,7 +198,7 @@ if useParams()["category"] { has_filter = True; }    #   written from render bod
 has_filter: bool = bool(useParams()["category"]);    # CORRECT - plain local
 ```
 
-- **Server RPC import uses `sv import from ..services.X { fn, Types }`** (prefix required). Dot count = how many folders up from THIS file to reach `services/` - for a `components/X.cl.jac` it's 2 dots, for `components/pages/X.cl.jac` it's 3 dots (see `jac-core-cheatsheet` for dot semantics). Plain `import from` to a `.sv.jac` breaks the Vite build. Include obj/node types too - they're needed to type your `has` state (next rule). See `jac-fullstack-patterns`.
+- **Server RPC import uses `sv import from ..services.X { fn, Types }`** (prefix required). Dot count = how many folders up from THIS file to reach `services/` - for a `components/X.jac` it's 2 dots, for `components/pages/X.jac` it's 3 dots (see `jac-core-cheatsheet` for dot semantics). Plain `import from` to a `.sv.jac` breaks the Vite build. Include obj/node types too - they're needed to type your `has` state (next rule). See `jac-fullstack-patterns`.
 - **Always `await` `sv import` calls.** Stubs are `async` functions -- `todos = list_todos()` assigns a `Promise`, not the data → `TypeError: todos is not iterable` at runtime. Two valid async contexts:
 
 ```
@@ -221,7 +221,7 @@ Plain `def handle(e: MouseEvent)` is sync -- `await` inside it emits invalid JS.
 - **Type `has` state with the imported `sv` types - `list[any]` loses the element type.** Store data from `sv import` calls in fields typed with the actual node/obj. Without it, attribute access in loops fails `E1032: Type is Unknown`.
 
 ```
-sv import from ..services.linkedin { Post };   # 2 dots: this file is at components/X.cl.jac; `..` walks up to project root, then into services/
+sv import from ..services.linkedin { Post };   # 2 dots: this file is at components/X.jac; `..` walks up to project root, then into services/
 
 # FRAGILE
 has posts: list[any] = [];           # E1032 on p.title in any loop
@@ -233,7 +233,7 @@ has posts: list[Post] = [];          # `p` in `for p in posts` is typed Post
 - **Call server endpoints POSITIONAL, not kwargs.** `save(a, b)` works; `save(a=a, b=b)` sends empty body → 422. Also: the caller's variable names become the JSON keys - they must match the server parameter names exactly. See `jac-fullstack-patterns`.
 - **JSX ternary is Python-style:** `{X if cond else Y}`. NOT `{cond ? X : Y}` (parse error even inside JSX). Short-circuit also works: `{cond and <X />}`.
 - **Iterate with statement slots, NOT `.map()`.** `items.map(...)` on a Jac list fails E1030 - use `{for x in xs { <li>...</li> }}` (see "Statement slots" above; `enumerate` destructuring needs parens: `for (i, x) in enumerate(items)`). Inline `[<li>...</li> for i in items]` still works for one-liners.
-- **Sorting for display:** client `sorted()` REJECTS an inline `key=lambda` (E1054 "no matching overload"). Use a **named key function** and **rebind** a fresh list (never `.sort()` - it mutates in place and won't re-render). Dict/`any` fields need a cast in the key fn: `def by_total(d: dict) -> float { return d["total"] as float; }` then `ranked = sorted(rows, key=by_total, reverse=True);`. (Inline `key=lambda` works in server `.jac`/`.sv.jac`, but NOT in `.cl.jac`.) Cheapest of all: sort on the server and return ordered data.
+- **Sorting for display:** client `sorted()` REJECTS an inline `key=lambda` (E1054 "no matching overload"). Use a **named key function** and **rebind** a fresh list (never `.sort()` - it mutates in place and won't re-render). Dict/`any` fields need a cast in the key fn: `def by_total(d: dict) -> float { return d["total"] as float; }` then `ranked = sorted(rows, key=by_total, reverse=True);`. (Inline `key=lambda` works in server `.jac`/`.sv.jac`, but NOT in client code.) Cheapest of all: sort on the server and return ordered data.
 - **Number formatting:** `f"{x:.2f}"` (N decimals) and `round(x, 2)` both work in client. A value pulled from a dict/hook subscript is `any`, so cast first: `f"${(amount as float):.2f}"`.
 - **Dict / hook access (`useParams()[k]`, `useLocation()[k]`, generic `[key]`) returns `any` and yields JS `undefined` for missing keys.** Since `undefined !== null` in JS, both `x is None` and `x is not None` MISS undefined - `params["id"] is not None` returns True even when `:id` isn't in the route, and `str(undefined)` produces the literal string `"undefined"`. **Use a truthy check (`if x` / `if not x`) for hook/dict values - it catches both `None` and `undefined`.** The narrowing-friendly `is not None` form is still correct for typed Optionals (`T | None` from `sv import`-ed functions, function params, etc.) where `undefined` can't appear. (Also: `params.get("id")` runtime-fails in the browser since `useParams` returns a plain JS object - always use `[key]`.)
 - **`unsafe_html(x)` opts out of escaping for raw HTML.** Ambient builtin (no import). `{unsafe_html(c.html_blob)}` renders the string as raw HTML via `dangerouslySetInnerHTML` (React) or `innerHTML` (bare-serve). Use ONLY with trusted content - the `unsafe_` prefix is the security-review marker at the call site; never wrap user input or anything that crossed an unsanitized boundary.
@@ -243,7 +243,7 @@ has posts: list[Post] = [];          # `p` in `for p in posts` is typed Post
 
 - **`style` prop takes a `dict[str, object]`, not a CSS string.** `<div style="color: red">` fails E1103. Use inline dict `<div style={{"color": "red"}}>`, or move styling to `className` + a same-basename `.style.css` annex (auto-scoped -- see `jac-cl-styling`).
 - **JSX uses `className`, curly-brace interpolation `{expr}`, camelCase events** (`onClick`, `onChange`).
-- **No `cl { }` / `cl def:pub` wrapper in `.cl.jac` files.** The extension already sets the client context. In mixed-context plain-`.jac` files (**`main.jac`**, **`pages/*.jac`**) the `cl import` + `cl { }` wrappers you will see in examples are the explicit convention; inference also places JSX-bearing declarations client without them (see `jac-codespaces`). Rule of thumb: **wrapper optional in `.jac`, never in `.cl.jac`.**
+- **Client placement is inferred - no wrapper or prefix needed.** A declaration carrying JSX or an npm import compiles client on its own (see `jac-codespaces`); the `cl` block, `cl` prefix, and `.cl` extension are optional explicit overrides, never required to make normal client code client. In mixed-context files (**`main.jac`**, **`pages/*.jac`**) a JSX-bearing `def:pub` is placed client with no marker.
 - **Top-level component name is `def:pub app`** - lowercase. Runtime mounts the literal name. Its signature is set by the routing system: `app()` for manual/single-page, `app(children: any)` that renders `children` for file-based routing. Getting this wrong drops every route with no error - see `jac-cl-routing`.
 - **JSX comments use `{#* ... *#}`.** This is only valid **inside JSX element children** (between any opening and closing tag) - anywhere outside JSX is a parse error (E0001). The JS-style `{/* ... */}` is also a parse error in Jac JSX. `{}` (empty slot) is also a parse error - use `{#* note *#}` for a no-op placeholder. A `#` outside an expression slot is treated as **literal HTML text**, not a comment.
 - **Module `glob`s can hold rich data - including JSX.** `glob _BUILDS: list[dict] = [{"name": "CLI", "icon": <Terminal size={15}/>}];` is a fine home for render-constant tables; iterate them in slots or comprehensions. `glob` is NOT reactive - anything that changes belongs in `has`.

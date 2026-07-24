@@ -1,6 +1,6 @@
-# Gradual Ownership
+# Gradual Borrow Checking
 
-Jac's memory discipline is *gradual ownership*: a continuum within one
+Jac's memory discipline is *gradual borrow checking*: a continuum within one
 language rather than a divide between languages. Unannotated code retains
 fully managed semantics, ownership annotations introduce affine values with
 moves, borrows, deep immutability, and deterministic destruction, adoptable

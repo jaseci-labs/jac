@@ -53,7 +53,7 @@ impl build(
         if gate_rc != 0 {
             console.error(
                 "Build gate failed: the project does not type-check.",
-                hint="Fix the errors above, or bypass once with --no-typecheck."
+                hint="Fix the errors above, or bypass once with --no_typecheck."
             );
             return gate_rc;
         }

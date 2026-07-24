@@ -61,7 +61,13 @@ def:pub LLMTracesPage -> JsxElement {
         }
     }
 
-    useEffect(lambda { loadTraces(); }, []);
+    useEffect(
+        lambda {
+            loadTraces();
+            return;
+        },
+        []
+    );
 
     useEffect(
         lambda -> any {

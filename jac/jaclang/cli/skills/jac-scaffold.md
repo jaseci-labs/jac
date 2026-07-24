@@ -37,14 +37,14 @@ Without a project name, `jac create` initializes the **current directory** and n
 | `--kind` | Provider | `jac run` does | Entry-point |
 |---|---|---|---|
 | `cli` *(default)* | core | execute the script | `main.jac` |
-| `cli-native` | core | native-compile + run (JIT) | `main.na.jac` |
-| `native-binary` | core | build a binary into `dist/` | `main.na.jac` |
-| `native-lib` | core | build a `.so`/`.dylib`/`.dll` | `main.na.jac` |
+| `cli-native` | core | native-compile + run (JIT) | `main.jac` |
+| `native-binary` | core | build a binary into `dist/` | `main.jac` |
+| `native-lib` | core | build a `.so`/`.dylib`/`.dll` | `main.jac` |
 | `service` | core | serve headless API (no client) | `main.sv.jac` |
 | `service-mesh` | core | serve microservice | `main.sv.jac` |
 | `py-package` | core | build a wheel into `dist/` | `lib.jac` |
 | `js-package` | core | build an npm tarball into `dist/` | `lib.jac` |
-| `web-app` | core | serve app (dev mode) | `main.jac` + `.sv`/`.cl` |
+| `web-app` | core | serve app (dev mode) | `main.jac` + `.sv` |
 | `web-static` | core | serve client-only page | `main.jac` |
 | `mobile` | core | build the mobile app | `main.jac` |
 | `desktop` | core | run the OS-webview app | `main.jac` |
@@ -53,7 +53,7 @@ Named variants (selected with `--use`, not `--kind`) layer on a kind:
 
 | `--use <variant>` | Kind | Provider | What it adds |
 |---|---|---|---|
-| `jac-shadcn` | web-app | jaclang (built-in) | shadcn `components/ui/`, `lib/utils.cl.jac` (`cn()`), themed `global.css`, `[jac-shadcn]` block |
+| `jac-shadcn` | web-app | jaclang (built-in) | shadcn `components/ui/`, `lib/utils.jac` (`cn()`), themed `global.css`, `[jac-shadcn]` block |
 
 The `cli` template's `main.jac` is a minimal `with entry { ... }` stub - it does **not** pre-wire endpoints; use `--kind service` for a server, or add `node`/`walker:pub` declarations yourself (see `jac-sv-endpoints`).
 

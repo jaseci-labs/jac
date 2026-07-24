@@ -274,7 +274,11 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def populate_client_manifest(nd: uni.Module) -> None;
     def exit_sub_tag(nd: uni.SubTag[uni.T]) -> None;
     def exit_import(nd: uni.Import) -> None;
-    def _generate_sv_import_stubs(nd: uni.Import) -> None;
+    def _partition_client_import_items(nd: uni.Import) -> (tuple[list, list] | None);
+    def _generate_sv_import_stubs(
+        nd: uni.Import, items: (Sequence[uni.ModuleItem] | None) = None
+    ) -> None;
+
     def _sv_import_item_is_type(nd: uni.Import, item: uni.ModuleItem) -> bool;
     def _record_sv_backend(nd: uni.Import) -> None;
     def _emit_boundary_type_stubs(nd: uni.Module) -> list;
@@ -397,8 +401,10 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _collect_pattern_names(target: uni.UniNode) -> list[tuple[(str, uni.Name)]];
     def exit_assignment(nd: uni.Assignment) -> None;
     def _resolve_source_module(nd: uni.Import) -> (uni.Module | None);
+    def _pull_plain_jac_import_client(nd: uni.Import, resolved_path: str) -> None;
     def _resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None);
     def _return_type_includes_jsx_element(rt: uni.Expr) -> bool;
+    def _return_type_route_role(rt: uni.Expr) -> (str | None);
     def _component_pascal_name(nd: uni.Ability) -> (str | None);
     def _component_call_abi(ability_node: uni.Ability) -> str;
     def _build_props_spread_component_call(

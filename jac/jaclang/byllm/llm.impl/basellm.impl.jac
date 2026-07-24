@@ -860,7 +860,7 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
 }
 
 impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
-    default_temp = _call_params_config.get("temperature", 0.7);
+    default_temp = _call_params_config.get("temperature");
     default_max_tokens = _call_params_config.get("max_tokens");
 
     agent_metadata = {};
@@ -957,11 +957,15 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
         "messages": messages,
         "tools": tools,
         "response_format": mt_run.get_output_schema(),
-        "temperature": self.call_params.get("temperature", default_temp),
         "max_tokens": self.call_params.get("max_tokens", default_max_tokens),
         "metadata": agent_metadata,
 
     };
+
+    resolved_temp = self.call_params.get("temperature", default_temp);
+    if resolved_temp is not None {
+        params["temperature"] = resolved_temp;
+    }
 
     if "tool_choice" in mt_run.call_params {
         params["tool_choice"] = mt_run.call_params["tool_choice"];
@@ -1047,7 +1051,10 @@ def _error_tool_call(call_id: str, tool_name: str, reason: str) -> ToolCall {
 
 
 def _parse_tool_calls(
-    mt_run: MTRuntime, tool_calls_list: list, truncated_ids: set | None = None
+    mt_run: MTRuntime,
+    tool_calls_list: list,
+    truncated_ids: set | None = None,
+    damaged_ids: set | None = None
 ) -> list[ToolCall] {
     parsed: list[ToolCall] = [];
     for tool_call in tool_calls_list {
@@ -1074,6 +1081,19 @@ def _parse_tool_calls(
             );
             continue;
         }
+        if damaged_ids and call_id in damaged_ids {
+            parsed.append(
+                _error_tool_call(
+                    call_id,
+                    tool_name,
+                    "this tool call's arguments arrived malformed and could not be "
+                    "parsed, so they were discarded. The arguments you chose were "
+                    "not the problem and the payload was not too large: send the "
+                    "same call again unchanged"
+                )
+            );
+            continue;
+        }
         try {
             raw_args = (fn?.arguments or "") if fn else "";
             args_json = json.loads(raw_args) if raw_args else {};
@@ -1090,7 +1110,8 @@ def _parse_tool_calls(
 }
 
 
-def _sanitize_tool_calls(message: object) {
+def _sanitize_tool_calls(message: object) -> set {
+    damaged: set = set();
     tool_calls = (message or {}).get("tool_calls") or [];
     for tc in tool_calls {
         fn = tc?.function;
@@ -1099,7 +1120,8 @@ def _sanitize_tool_calls(message: object) {
         }
         raw = fn?.arguments;
         valid = False;
-        if isinstance(raw, str) and raw.strip() {
+        had_args = isinstance(raw, str) and bool(raw.strip());
+        if had_args {
             try {
                 json.loads(raw);
                 valid = True;
@@ -1108,6 +1130,9 @@ def _sanitize_tool_calls(message: object) {
             }
         }
         if not valid {
+            if had_args {
+                damaged.add(str(tc?.id or ""));
+            }
             try {
                 fn.arguments = "{}";
             } except Exception {
@@ -1117,6 +1142,7 @@ def _sanitize_tool_calls(message: object) {
             }
         }
     }
+    return damaged;
 }
 
 
@@ -1168,17 +1194,18 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     if not self.supports_native_tools {
         message = recover_tool_calls(message, [t.get_name() for t in mt_run.tools]);
     }
-    _sanitize_tool_calls(message);
+    damaged_ids = _sanitize_tool_calls(message);
     mt_run.add_message(message);
     output_content: str = message.get("content") or "";
     self.log_info(f"LLM call completed with response: {output_content}");
     finish_reason = str(
         (response.get("choices") or [{}])[0].get("finish_reason") or ""
     );
+
     truncated_ids = _truncated_call_ids(message, finish_reason);
     tool_calls: list[ToolCall] = [];
     tool_calls_list = (message or {}).get("tool_calls") or [];
-    tool_calls = _parse_tool_calls(mt_run, tool_calls_list, truncated_ids);
+    tool_calls = _parse_tool_calls(mt_run, tool_calls_list, truncated_ids, damaged_ids);
 
     output_value = mt_run.parse_response(output_content)
         if not tool_calls_list
@@ -1323,13 +1350,14 @@ impl BaseLLM.dispatch_streaming_with_tools(
         }
         message = recover_tool_calls(message, [t.get_name() for t in mt_run.tools]);
     }
-    _sanitize_tool_calls(message);
+    damaged_ids = _sanitize_tool_calls(message);
     mt_run.add_message(message);
     output_content: str = message.get("content") or "";
+
     truncated_ids = _truncated_call_ids(message, finish_reason);
     tool_calls: list[ToolCall] = [];
     tool_calls_list = (message or {}).get("tool_calls") or [];
-    tool_calls = _parse_tool_calls(mt_run, tool_calls_list, truncated_ids);
+    tool_calls = _parse_tool_calls(mt_run, tool_calls_list, truncated_ids, damaged_ids);
     output_value = mt_run.parse_response(output_content)
         if not tool_calls_list
         else output_content;
@@ -1370,17 +1398,18 @@ impl BaseLLM.adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     if not self.supports_native_tools {
         message = recover_tool_calls(message, [t.get_name() for t in mt_run.tools]);
     }
-    _sanitize_tool_calls(message);
+    damaged_ids = _sanitize_tool_calls(message);
     mt_run.add_message(message);
     output_content: str = message.get("content") or "";
     self.log_info(f"LLM call completed with response: {output_content}");
     finish_reason = str(
         (response.get("choices") or [{}])[0].get("finish_reason") or ""
     );
+
     truncated_ids = _truncated_call_ids(message, finish_reason);
     tool_calls: list[ToolCall] = [];
     tool_calls_list = (message or {}).get("tool_calls") or [];
-    tool_calls = _parse_tool_calls(mt_run, tool_calls_list, truncated_ids);
+    tool_calls = _parse_tool_calls(mt_run, tool_calls_list, truncated_ids, damaged_ids);
     output_value = mt_run.parse_response(output_content)
         if not tool_calls_list
         else output_content;

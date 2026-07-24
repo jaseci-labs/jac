@@ -25,8 +25,8 @@ arbiters; nothing here supersedes them.
 | [**Synechic**](ideas-behind-jac.md#synechic) ★ | A language is synechic if it presents a single continuous semantic medium across conventionally discrete ecosystems, tiers, and toolchains, such that no program point requires glue code, marshaling, or interop scaffolding to cross a substrate boundary. |
 | [**Substrate transparency**](ideas-behind-jac.md#substrate-transparency) ★ | The identity of the underlying runtime, ecosystem, and toolchain at any program point has no bearing on how the program is expressed. |
 | [**Meaning types**](../reference/plugins/byllm.md) ★ | Semantic annotations from which prompts are automatically synthesized, making delegation of program logic to large language models (`by llm()`) a typed language feature rather than string engineering. |
-| [**Gradual ownership**](../reference/language/ownership-borrowing.md) ★ | Memory discipline as a continuum within one language: managed semantics by default, ownership adoptable one declaration at a time, and a checked boundary mediating every value that crosses between the regimes. |
-| [**Ownership dial**](../reference/language/ownership-borrowing.md) | The four-position surface through which gradual ownership is adopted, per module: managed, annotated, enforced, headerless, with guarantees strengthening monotonically. |
+| [**Gradual borrow checking**](../reference/language/ownership-borrowing.md) ★ | Memory discipline as a continuum within one language: managed semantics by default, ownership adoptable one declaration at a time, and a checked boundary mediating every value that crosses between the regimes. |
+| [**Ownership dial**](../reference/language/ownership-borrowing.md) | The four-position surface through which gradual borrow checking is adopted, per module: managed, annotated, enforced, headerless, with guarantees strengthening monotonically. |
 | [**Membrane**](../reference/language/ownership-borrowing.md) | The checked boundary between the owned and managed memory regimes, admitting exactly three crossings: sealing, reboxing, and exceptional abort. |
 
 ## Topokinesis: the theory of motion

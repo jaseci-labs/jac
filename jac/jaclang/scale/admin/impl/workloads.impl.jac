@@ -50,6 +50,45 @@ def _finite(v: list) -> float {
     return val if math.isfinite(val) else 0.0;
 }
 
+def _workload_to_service(name: str) -> str {
+    base = name;
+    for suffix in ['-deployment', '-statefulset', '-daemonset'] {
+        if base.endswith(suffix) {
+            base = base[:len(base) - len(suffix)];
+            break;
+        }
+    }
+    return base.replace('-', '_');
+}
+
+def _metrics_namespace -> str {
+    try {
+        import from jaclang.scale.config.config_loader { get_scale_config }
+        return str(
+            get_scale_config().get_monitoring_config().get('namespace', 'jaclang_scale')
+        );
+    } except Exception { }
+    return 'jaclang_scale';
+}
+
+def _traffic_queries -> dict {
+    if prom_query('count({__name__=~".+_gateway_requests_total"})') {
+        return {
+            'rate': 'sum(rate({__name__=~".+_gateway_requests_total"}[1m]))',
+            'errors': 'sum(rate({__name__=~".+_gateway_requests_total",outcome=~"5xx|err"}[1m]))',
+            'p95': 'histogram_quantile(0.95, sum(rate({__name__=~".+_gateway_request_duration_seconds_bucket"}[5m])) by (le))',
+            'by_service': True
+        };
+    }
+    ns = _metrics_namespace();
+    return {
+        'rate': f'sum(rate({ns}_http_requests_total[1m]))',
+        'errors': f'sum(rate({ns}_http_requests_total{{status_code=~"5.."}}[1m]))',
+        'p95': f'histogram_quantile(0.95, sum(rate({ns}_http_request_duration_seconds_bucket[5m])) by (le))',
+        'by_service': False
+    };
+}
+
 def _scoped(metric: str, ns_filter: str) -> str {
     return f'{metric}{{{ns_filter}}}' if ns_filter else metric;
 }
@@ -204,20 +243,11 @@ impl JacAPIServerWorkloads.admin_workloads_summary(
     );
     nodes_total = int(prom_scalar(prom_query('count(kube_node_info)')));
 
-    request_rate = prom_scalar(
-        prom_query('sum(rate({__name__=~".+_http_requests_total"}[1m]))')
-    );
-    error_rate = prom_scalar(
-        prom_query(
-            'sum(rate({__name__=~".+_http_requests_total",status_code=~"5.."}[1m]))'
-        )
-    );
+    tq = _traffic_queries();
+    request_rate = prom_scalar(prom_query(tq['rate']));
+    error_rate = prom_scalar(prom_query(tq['errors']));
     error_pct = (error_rate / request_rate * 100.0) if request_rate > 0 else 0.0;
-    p95_latency = prom_scalar(
-        prom_query(
-            'histogram_quantile(0.95, sum(rate({__name__=~".+_http_request_duration_seconds_bucket"}[5m])) by (le))'
-        )
-    );
+    p95_latency = prom_scalar(prom_query(tq['p95']));
     return TransportResponse.success(
         data={
             'metrics_available': True,
@@ -382,11 +412,51 @@ impl JacAPIServerWorkloads.admin_workloads_list(
         restarts_by_owner[owner] = restarts_by_owner.get(owner, 0) + int(_finite(v));
     }
 
+    tq = _traffic_queries();
+    svc_rps: dict = {};
+    svc_err: dict = {};
+    svc_p95: dict = {};
+    if tq['by_service'] {
+        svc_rps = _index_by(
+            prom_query(
+                'sum by (service)(rate({__name__=~".+_gateway_requests_total"}[1m]))'
+            )
+            or [],
+            'service'
+        );
+        svc_err = _index_by(
+            prom_query(
+                'sum by (service)(rate({__name__=~".+_gateway_requests_total",outcome=~"5xx|err"}[1m]))'
+            )
+            or [],
+            'service'
+        );
+        svc_p95 = _index_by(
+            prom_query(
+                'histogram_quantile(0.95, sum by (service, le)(rate({__name__=~".+_gateway_request_duration_seconds_bucket"}[5m])))'
+            )
+            or [],
+            'service'
+        );
+    } else {
+        app_key = os.environ.get("K8S_APP_NAME", "").replace('-', '_');
+        if app_key {
+            svc_rps = {app_key: prom_scalar(prom_query(tq['rate']))};
+            svc_err = {app_key: prom_scalar(prom_query(tq['errors']))};
+            svc_p95 = {app_key: prom_scalar(prom_query(tq['p95']))};
+        }
+    }
+
     workloads: list = [];
     for e in entries {
         name = e["name"];
         restarts = restarts_by_owner.get(name, 0);
         status = phase_to_status(e["ready"], e["desired"], restarts);
+        svc = _workload_to_service(name);
+        wl_rps = svc_rps.get(svc, 0.0);
+        wl_err = svc_err.get(svc, 0.0);
+        wl_p95 = svc_p95.get(svc, 0.0);
+        wl_err_pct = (wl_err / wl_rps * 100.0) if wl_rps > 0 else 0.0;
         workloads.append(
             {
                 'name': name,
@@ -397,7 +467,13 @@ impl JacAPIServerWorkloads.admin_workloads_list(
                 'cpu_cores': round(cpu_by_owner.get(name, 0.0), 3),
                 'memory_bytes': int(mem_by_owner.get(name, 0.0)),
                 'restarts_last_hour': restarts,
-                'created': e["created"]
+                'created': e["created"],
+                'traffic': {
+                    'requests_per_sec': round(wl_rps, 2),
+                    'error_rate_pct': round(wl_err_pct, 2),
+                    'p95_latency_ms': round(wl_p95 * 1000.0, 1),
+                    'routed': svc in svc_rps
+                }
             }
         );
     }

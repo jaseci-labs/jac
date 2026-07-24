@@ -1,7 +1,8 @@
-ci:
-  # These hooks shell out to the `jac` binary, which the hosted pre-commit.ci
-  # runner does not have; they run locally and in the Contribution Checks CI.
-  skip: [jac-format, validate-fragments]
+# Manifest for pre-commit.ci only: it lints markdown (with autofix pushed to
+# the PR) and bans em-dashes on every PR. Contributors do not install
+# pre-commit locally; the local git hook is `jac precommit --install`
+# (see CONTRIBUTING.md), and jac formatting in CI is enforced by the
+# Contribution Checks workflow's `jac fmt --check` gate.
 
 exclude: |
     (?x)(
@@ -11,92 +12,16 @@ exclude: |
         ^$
     )
 
-
 repos:
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v6.0.0
-    hooks:
-      - id: check-yaml
-        args: [--allow-multiple-documents, --unsafe]
-      - id: check-json
-      - id: trailing-whitespace
-      - id: mixed-line-ending
-        args: [--fix=lf]
-      - id: end-of-file-fixer
   - repo: https://github.com/DavidAnson/markdownlint-cli2
     rev: v0.22.0
     hooks:
     - id: markdownlint-cli2
       args: [--fix]
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.11
-    hooks:
-      - id: ruff
-        args: [--fix]
-      - id: ruff-format
   - repo: local
     hooks:
-      - id: check-no-binary-files
-        name: Check for binary files
-        entry: Binary files are not allowed
-        language: fail
-        types: [binary]
-        exclude: |
-          (?x)(
-              ^docs/docs/assets/logo\.png$|
-              ^docs/docs/assets/org1_logo\.png$|
-              ^docs/docs/assets/org2_logo\.png$|
-              ^docs/docs/assets/org3_logo\.png$|
-              ^jac/jaclang/byllm/tests/fixtures/SampleVideo_1280x720_2mb\.mp4$|
-              ^jac/jaclang/byllm/tests/fixtures/alan-m-turing\.jpg$|
-              ^jac/jaclang/byllm/tests/fixtures/image\.jpg$|
-              ^jac/jaclang/byllm/tests/fixtures/math_question\.jpg$|
-              ^jac/jaclang/byllm/tests/fixtures/webp_image_of_person\.webp$|
-              ^jac/examples/littleX/assets/littlex-logo\.png$
-          )
-
-      - id: validate-fragments
-        name: Validate release note fragment filenames
-        entry: jac run scripts/validate_fragments.jac
-        language: system
-        files: ^docs/docs/community/release_notes/unreleased/.*\.md$
-        exclude: README\.md
-        require_serial: true
-
       - id: ban-em-dashes
         name: Ban em-dashes (—)
         language: pygrep
         entry: '—'
         types: [markdown]
-
-      - id: no-ai-coauthor
-        name: Block AI co-author attribution
-        language: pygrep
-        entry: '(?i)co-authored-by:.*\b(claude|anthropic|openai|copilot|composer|cursor|gpt|gemini|ai|bot)\b'
-        stages: [commit-msg]
-
-      - id: check-release-notes
-        name: Require release-note fragment for code changes
-        description: |
-          Same check the Contribution Checks CI workflow runs. Catches
-          missing fragments locally on `git push` instead of after the
-          PR opens. Mirrors the script's CI branch (which uses
-          PRE_COMMIT_FROM_REF / PRE_COMMIT_TO_REF that pre-commit sets
-          for the pre-push stage), so behavior locally matches CI.
-          Requires `pre-commit install --hook-type pre-push` once.
-        entry: bash scripts/check-release-notes.sh
-        language: system
-        stages: [pre-push]
-        pass_filenames: false
-        always_run: true
-
-      - id: jac-format
-        name: jac-format
-        description: Format and lint-fix Jac files
-        entry: jac fmt
-        language: system
-        types: [file]
-        args: [--lintfix, --cache]
-        files: \.jac$
-        require_serial: true
-        exclude: (/fixtures/|_err\.jac$|_syntax_err\.jac$|^scripts/|jir_registry\.jac$)

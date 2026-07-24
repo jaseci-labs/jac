@@ -58,6 +58,7 @@ glob NODE_SPECS: tuple = (
                  FieldDesc(name="is_async", kind=2),
                  FieldDesc(name="doc", kind=6),
                  FieldDesc(name="access", kind=6),
+                 FieldDesc(name="codespace_dual", kind=2),
                  FieldDesc(name="name_ref", kind=6),
                  FieldDesc(name="is_override", kind=2),
                  FieldDesc(name="is_static", kind=2),
@@ -116,6 +117,7 @@ glob NODE_SPECS: tuple = (
                  FieldDesc(name="body", kind=5),
                  FieldDesc(name="access", kind=6),
                  FieldDesc(name="decorators", kind=5),
+                 FieldDesc(name="codespace_dual", kind=2),
                  FieldDesc(name="name", kind=4),
                  FieldDesc(name="arch_type", kind=4),
                  FieldDesc(name="base_classes", kind=5),
@@ -434,7 +436,7 @@ glob NODE_SPECS: tuple = (
              is_scope=False,
              is_cfg=False,
              is_name_atom=False,
-             fields=()
+             fields=(FieldDesc(name="codespace_dual", kind=2), )
          ),
          NodeSpec(
              type_idx=35,
@@ -573,6 +575,7 @@ glob NODE_SPECS: tuple = (
                  FieldDesc(name="body", kind=5),
                  FieldDesc(name="access", kind=6),
                  FieldDesc(name="decorators", kind=5),
+                 FieldDesc(name="codespace_dual", kind=2),
                  FieldDesc(name="name", kind=4),
                  FieldDesc(name="value_type", kind=6),
                  FieldDesc(name="base_classes", kind=5)
@@ -753,6 +756,7 @@ glob NODE_SPECS: tuple = (
              fields=(
                  FieldDesc(name="access", kind=6),
                  FieldDesc(name="doc", kind=6),
+                 FieldDesc(name="codespace_dual", kind=2),
                  FieldDesc(name="assignments", kind=5),
                  FieldDesc(name="is_frozen", kind=2)
              )
@@ -803,6 +807,7 @@ glob NODE_SPECS: tuple = (
              is_name_atom=False,
              fields=(
                  FieldDesc(name="doc", kind=6),
+                 FieldDesc(name="codespace_dual", kind=2),
                  FieldDesc(name="decorators", kind=5),
                  FieldDesc(name="target", kind=5),
                  FieldDesc(name="spec", kind=5),
@@ -818,6 +823,7 @@ glob NODE_SPECS: tuple = (
              is_name_atom=False,
              fields=(
                  FieldDesc(name="doc", kind=6),
+                 FieldDesc(name="codespace_dual", kind=2),
                  FieldDesc(name="from_loc", kind=6),
                  FieldDesc(name="items", kind=5),
                  FieldDesc(name="is_absorb", kind=2),
@@ -1190,6 +1196,7 @@ glob NODE_SPECS: tuple = (
              fields=(
                  FieldDesc(name="is_enum_stmt", kind=2),
                  FieldDesc(name="doc", kind=6),
+                 FieldDesc(name="codespace_dual", kind=2),
                  FieldDesc(name="name", kind=6),
                  FieldDesc(name="body", kind=5)
              )
@@ -1503,6 +1510,7 @@ glob NODE_SPECS: tuple = (
              is_name_atom=False,
              fields=(
                  FieldDesc(name="doc", kind=6),
+                 FieldDesc(name="codespace_dual", kind=2),
                  FieldDesc(name="name", kind=4),
                  FieldDesc(name="body", kind=5),
                  FieldDesc(name="description", kind=6),
@@ -1558,6 +1566,7 @@ glob NODE_SPECS: tuple = (
              fields=(
                  FieldDesc(name="doc", kind=6),
                  FieldDesc(name="access", kind=6),
+                 FieldDesc(name="codespace_dual", kind=2),
                  FieldDesc(name="name", kind=4),
                  FieldDesc(name="type_params", kind=5),
                  FieldDesc(name="value", kind=4)

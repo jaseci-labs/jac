@@ -1,6 +1,10 @@
+import from dateutil.parser { parse }  #<-- from Python
+import from "canvas-confetti" { default as confetti }  #<-- from npm
+
 node Todo {
     has title: str,
         category: str = "other",
+        due: str = "",
         priority: int = 0,
         done: bool = False;
 }
@@ -32,7 +36,14 @@ def:pub add_todo(title: str) -> Todo {
     } except Exception {
         category = "other (setup AI key)";
     }
-    todo = Todo(title=title, category=category, priority=priority_score(title));
+    try {
+        due = parse(title, fuzzy=True).strftime("%a %b %d");
+    } except Exception {
+        due = "";
+    }
+    todo = Todo(
+        title=title, category=category, due=due, priority=priority_score(title)
+    );
     root ++> todo;
     return todo;
 }
@@ -54,6 +65,7 @@ def:pub app -> JsxElement {
             todo = await add_todo(text.strip());
             todos = todos + [todo];
             text = "";
+            confetti();
         }
     }
 
@@ -67,7 +79,11 @@ def:pub app -> JsxElement {
             />
             <button onClick={lambda { add(); }}>Add</button>
             {for t in todos {
-                <p key={jid(t)}>[{t.priority}]{t.title} ({t.category})</p>
+                <p key={jid(t)}>
+                    [{t.priority}]{t.title} ({t.category}){" — due " + t.due
+                        if t.due
+                        else ""}
+                </p>
             }}
         </div>;
 }

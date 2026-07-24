@@ -25,8 +25,10 @@ Covers:
   22. _should_parallelize: default OFF, env var, per-call overrides
   23. make_model_params: tool description annotations + finish_tool untagged
   24. make_model_params: scheduling hint injection gating
+  25. Caller contextvars reach tools on every dispatch path, without cross-talk
 """
 
+import contextvars;
 import threading;
 import time;
 import pathlib;
@@ -770,6 +772,95 @@ test "parallel_hint=False suppresses hint even when parallel is on" {
     # Cleanup
     reset_byllm_config();
 }
+
+# ---------------------------------------------------------------------------
+# 25. Caller context reaches tools on every dispatch path
+# ---------------------------------------------------------------------------
+glob _PROBE_VAR: contextvars.ContextVar = contextvars.ContextVar(
+         "byllm_probe", default="<unset>"
+     );
+
+
+def _ctx_probe -> str {
+    return _PROBE_VAR.get();
+}
+
+
+test "tools observe the caller's contextvars on every dispatch path" {
+    # Three paths reach a tool: inline (1 call), the worker pool (2+ calls) and
+    # the _call_sync timeout thread. Only the first inherits context for free.
+    token = _PROBE_VAR.set("caller-value");
+    try {
+        inline = list(
+            dispatch_batch([MockToolCall(tool=_ctx_probe, args={}).to_tool_call()])
+        );
+        assert "caller-value" in inline[0][1].content;
+
+        pooled = list(
+            dispatch_batch(
+                [
+                    MockToolCall(tool=_ctx_probe, args={}).to_tool_call(),
+                    MockToolCall(tool=_ctx_probe, args={}).to_tool_call()
+                ]
+            )
+        );
+        assert len(pooled) == 2;
+        for r in pooled {
+            assert "caller-value" in r[1].content , f"pool lost context: {r[
+                1
+            ].content}";
+        }
+
+        timed = MockToolCall(tool=_ctx_probe, args={}).to_tool_call();
+        timed.tool.timeout_sec = 5.0;
+        result = list(dispatch_batch([timed]));
+        assert "caller-value" in result[0][1].content , (
+            f"timeout thread lost context: {result[0][1].content}"
+        );
+    } finally {
+        _PROBE_VAR.reset(token);
+    }
+}
+
+
+test "concurrent callers do not observe each other's context" {
+    # Batches from different callers share one pool. Each tool runs in its own
+    # copy, so a tool cannot see a peer's context nor write back into its own
+    # caller's.
+    def _ctx_setter -> str {
+        _PROBE_VAR.set("mutated-by-tool");
+        return _PROBE_VAR.get();
+    }
+    def _one_caller(tag: str) -> list {
+        token = _PROBE_VAR.set(tag);
+        try {
+            return [
+                r[1].content
+                for r in dispatch_batch(
+                    [
+                        MockToolCall(tool=_ctx_setter, args={}).to_tool_call(),
+                        MockToolCall(tool=_ctx_probe, args={}).to_tool_call(),
+                        MockToolCall(tool=_ctx_probe, args={}).to_tool_call()
+                    ]
+                )
+            ];
+        } finally {
+            _PROBE_VAR.reset(token);
+        }
+    }
+    with ThreadPoolExecutor(max_workers=4) as pool {
+        futures = [pool.submit(_one_caller, f"tenant-{n}") for n in range(4)];
+        for (n, fut) in enumerate(futures) {
+            seen = fut.result();
+            allowed = {f"tenant-{n}", "mutated-by-tool"};
+            for content in seen {
+                assert content in allowed , f"tenant-{n} saw foreign context: {content}";
+            }
+        }
+    }
+    assert _PROBE_VAR.get() == "<unset>";
+}
+
 
 test "serialize tool names listed in system prompt hint" {
     os.environ.pop("BYLLM_PARALLEL_TOOL_CALLING", None);

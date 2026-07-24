@@ -118,6 +118,7 @@ impl PyastGenPass.enter_node(nd: uni.UniNode) -> None {
         or (
             isinstance(nd, uni.ContextAwareNode)
             and (nd.code_context == CodeContext.CLIENT)
+            and not nd.codespace_dual
             and ((nd.parent is None) or isinstance(nd.parent, uni.Module))
         )
     ) {
@@ -156,6 +157,7 @@ impl PyastGenPass.exit_node(nd: uni.UniNode) -> None {
     if (
         isinstance(nd, uni.ContextAwareNode)
         and (nd.code_context == CodeContext.CLIENT)
+        and not nd.codespace_dual
         and ((nd.parent is None) or isinstance(nd.parent, uni.Module))
     ) {
         return;

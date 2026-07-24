@@ -138,6 +138,72 @@ test "sv import placement is inferred while boundary fact stays" {
     assert '__jacCallFunction("fetch_items"' in js , "sv import in client placement generates RPC stub";
 }
 
+test "plain client import of a server endpoint bridges over rpc" {
+    mod = compile_fixture("infer_import_bridge_client.jac", cgen=True);
+    js = mod.gen.js;
+    assert 'infer_import_bridge_service' not in js , (
+        "plain import of a server module must not emit a dead ES import; got:\n" + js
+    );
+    assert '__jacCallFunction("fetch_msg"' in js , (
+        "client call to an imported def:pub becomes RPC; got:\n" + js
+    );
+}
+
+test "mixed plain import keeps client symbols and bridges endpoints" {
+    mod = compile_fixture("infer_import_mixed_client.jac", cgen=True);
+    js = mod.gen.js;
+    assert 'import { badge } from "./infer_import_mixed_service.js"' in js , (
+        "client symbol must keep a real ES import of the mixed module; got:\n" + js
+    );
+    assert 'import { count_items' not in js and 'count_items } from' not in js , (
+        "bridged endpoint must not appear in the ES import; got:\n" + js
+    );
+    assert '__jacCallFunction("count_items"' in js , (
+        "endpoint from the same import must bridge over RPC; got:\n" + js
+    );
+    assert any(
+        'infer_import_mixed_service' in key for key in mod.gen.client_manifest.imports
+    ) , "mixed module must stay registered in the client bundle imports";
+}
+
+test "plain client import of a server-only helper is a codegen error" {
+    prog = JacProgram();
+    mod = prog.compile(os.path.join(FIXTURE_DIR, "infer_import_dead_client.jac"));
+    dead_errs = [
+        e
+        for e in prog.errors_had
+        if e.code is not None and e.code.code == 'E5082'
+    ];
+    assert len(dead_errs) == 2 , (
+        f"expected one E5082 per dead item on the shared line, got "
+        f"{[str(e) for e in prog.errors_had]}"
+    );
+    assert 'local_helper' in str(dead_errs[0]);
+    assert 'local_helper_two' in str(dead_errs[1]);
+    assert 'infer_import_dead_service' not in (mod.gen.js or '') , (
+        "dead specifier must not be emitted alongside the diagnostic"
+    );
+}
+
+test "jac check flags a dead client import without codegen" {
+    import from jaclang.jac0core.compile_options { CompileOptions }
+    prog = JacProgram();
+    prog.compile(
+        os.path.join(FIXTURE_DIR, "infer_import_dead_client.jac"),
+        options=CompileOptions(no_cgen=True, type_check=True)
+    );
+    dead_errs = [
+        e
+        for e in prog.errors_had
+        if e.code is not None and e.code.code == 'E5082'
+    ];
+    assert len(dead_errs) == 2 , (
+        f"expected both E5082s from the check sched, got {[
+            str(e) for e in prog.errors_had
+        ]}"
+    );
+}
+
 test "locals shadowing client names do not pull" {
     mod = compile_fixture("infer_shadowing.jac");
     assert stamp_of(mod, "styled") == 'client' , "real use of npm import pulls client";
@@ -455,6 +521,91 @@ test "bare import of a cl module stays server under native default" {
     assert mod.decided_codespace == '' , (
         "a .cl.jac sibling is a cl/sv server signal even when its body has no "
         "other signals"
+    );
+}
+
+"""Find a module in a program hub by filename suffix."""
+def hub_module(prog: JacProgram, name_suffix: str) -> object {
+    for (path, m) in prog.mod.hub.items() {
+        if path.endswith(name_suffix) {
+            return m;
+        }
+    }
+    return None;
+}
+
+test "client import pulls a pure markerless module cross-module" {
+    prog = JacProgram();
+    mod = prog.compile(os.path.join(FIXTURE_DIR, "infer_xmod_app.jac"), no_cgen=False);
+    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
+    js = mod.gen.js;
+    assert '__jacCallFunction("register"' not in js , (
+        "accessless helper from a pure module must not bridge over RPC"
+    );
+    assert '__jacCallFunction("tag_count"' not in js , (
+        "accessless helper from a pure module must not bridge over RPC"
+    );
+    assert '__jacCallFunction("server_ping"' in js , (
+        "def:pub stays a server endpoint and bridges over RPC"
+    );
+    util = hub_module(prog, "infer_xmod_util.jac");
+    assert util is not None , "imported module missing from hub";
+    assert stamp_of(util, "register") == 'client' , (
+        "accessless def imported by client code is placed client"
+    );
+    assert stamp_of(util, "tag_count") == 'client';
+    assert stamp_of(util, "_tags") == 'client' , (
+        "glob used by pulled defs follows them client"
+    );
+    assert stamp_of(util, "server_ping") == 'server' , (
+        "def:pub is an endpoint, never relocated by client callers"
+    );
+}
+
+test "cross-module pulled elements dual-emit for the server side" {
+    import ast as py_ast_mod;
+    import from jaclang.runtimelib.client_bundle { _ensure_js_generated }
+    import from jaclang.jac0core.passes { PyastGenPass }
+    prog = JacProgram();
+    prog.compile(os.path.join(FIXTURE_DIR, "infer_xmod_app.jac"), no_cgen=False);
+    util = hub_module(prog, "infer_xmod_util.jac");
+    assert util is not None;
+    for stmt in util.body {
+        if (
+            isinstance(stmt, uni.Ability)
+            and isinstance(stmt.name_ref, uni.Name)
+            and stmt.name_ref.value == "register"
+        ) {
+            assert stmt.codespace_dual , (
+                "cross-module pulled element must keep python emission (dual)"
+            );
+        }
+    }
+    _ensure_js_generated(util, prog);
+    util_js = util.gen.js;
+    assert 'register' in util.gen.client_manifest.exports , (
+        "pulled accessless def must be an ES export of the pulled module"
+    );
+    assert '_tags' in util.gen.client_manifest.globals , (
+        "pulled glob must be an ES export of the pulled module"
+    );
+    assert util_js.strip() , "pulled module must produce client JS";
+    PyastGenPass(ir_in=util, prog=prog);
+    py_src = py_ast_mod.unparse(util.gen.py_ast);
+    assert 'def register' in py_src , (
+        "pulled element must still exist in the python module (dual emit)"
+    );
+    assert '_tags' in py_src , "pulled glob must still exist in the python module";
+}
+
+test "client call to endpoint with function-typed param warns W6005" {
+    prog = JacProgram();
+    prog.compile(os.path.join(FIXTURE_DIR, "infer_rpc_callable.jac"), no_cgen=False);
+    warned = any('W6005' in w.pretty_print() for w in prog.warnings_had);
+    assert warned , (
+        "RPC-bridged call passing a function must warn W6005; got: " + f"{[
+            w.pretty_print().split(chr(10))[0] for w in prog.warnings_had
+        ]}"
     );
 }
 

@@ -28,7 +28,7 @@ The core language -- syntax, types, objects, graphs, concurrency, and native com
 - **[Concurrency](language/concurrency.md)** -- async/await, `flow`/`wait`, parallel operations
 - **[Comprehensions & Filters](language/advanced.md)** -- filter/assign comprehensions, typed filters
 - **[Walker Patterns](language/walker-responses.md)** -- the `.reports` array, response patterns, nested spawning
-- **[Gradual Ownership](language/ownership-borrowing.md)** -- `own`/`imm`/`&`/`&mut` bindings, move checking, `Region` arenas (`in <handle> { }` opens), `def drop` ([checker spec](../internals/ownership-checker-spec.md))
+- **[Gradual Borrow Checking](language/ownership-borrowing.md)** -- `own`/`imm`/`&`/`&mut` bindings, move checking, `Region` arenas (`in <handle> { }` opens), `def drop` ([checker spec](../internals/ownership-checker-spec.md))
 - **[Syntax Cheatsheet](language/syntax-cheatsheet.md)** -- one-page lookup
 - **[Native Compilation](language/native-pathway.md)** -- compiling to native binaries and C-ABI shared libraries; gc modes and zero-RC ownership builds
 

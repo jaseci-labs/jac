@@ -1,7 +1,7 @@
 import os;
 import types;
 import from pathlib { Path }
-import from typing { Optional }
+import from typing { Optional, cast }
 import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
 
 glob DEFAULT_FUNCTION_NAME = "app",
@@ -23,30 +23,46 @@ impl WebTarget.dev(
     entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
 ) -> None {
     import from jaclang.cli.console { console }
+    import from jaclang.runtimelib.client.targets.client_dev_common {
+        _ClientHmrHandler,
+        ensure_watchdog_common,
+        prepare_vite_dev_compilation,
+        stop_dev_watcher,
+        terminate_dev_processes
+    }
 
     api_p = api_port if api_port > 0 else port + 1;
 
-    bundler = ViteBundler(project_dir=project_dir);
-    client_dir = bundler._get_client_dir();
+    hot_watcher: any = None;
+    (prepared, compiler) = prepare_vite_dev_compilation(project_dir, entry_file);
+    bundler = cast(ViteBundler, prepared);
     bundler.create_vite_config(entry_file, is_dev=True, api_port=api_p);
-    if not (client_dir / 'configs' / 'package.json').exists() {
-        bundler.create_package_json();
-    }
-    console.print("\n🌐 Starting web dev server (Vite + HMR)", style="bold");
-    console.print("  Press Ctrl+C to stop\n", style="muted");
-    process = bundler.start_dev_server(port=port, suppress_initial_output=False);
-    if process {
-        try {
-            process.wait();
-        } except KeyboardInterrupt {
-            console.print("\n  Stopping dev server...", style="muted");
-            process.terminate();
+
+    try {
+        if ensure_watchdog_common("the browser") {
+            import from jaclang.runtimelib.watcher { JacFileWatcher }
+
+            hmr_handler = _ClientHmrHandler(
+                compiler=compiler, entry_file=entry_file, project_dir=project_dir
+            );
+            hot_watcher = JacFileWatcher(watch_paths=[str(project_dir.resolve())]);
+            hot_watcher.add_callback(hmr_handler.on_event);
+            hot_watcher.start();
+        }
+
+        console.print("\n🌐 Starting web dev server (Vite + HMR)", style="bold");
+        console.print("  Press Ctrl+C to stop\n", style="muted");
+        process = bundler.start_dev_server(port=port, suppress_initial_output=False);
+        if process {
             try {
-                process.wait(timeout=5);
-            } except Exception {
-                process.kill();
+                process.wait();
+            } except KeyboardInterrupt {
+                console.print("\n  Stopping dev server...", style="muted");
+                terminate_dev_processes([process]);
             }
         }
+    } finally {
+        stop_dev_watcher(hot_watcher);
     }
 }
 

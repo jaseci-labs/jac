@@ -68,11 +68,11 @@ Concretely, substrate transparency is why:
   [One Binary, Build Anything](one-binary.md).
 - **Memory discipline is a dial, not a divide.** The split between managed
   languages and systems languages is a discontinuity like the rest, drawn
-  where memory discipline changes. Jac's *gradual ownership* renders that line
+  where memory discipline changes. Jac's *gradual borrow checking* renders that line
   as a gradient within one checked medium: managed semantics by default,
   ownership adopted one declaration at a time, and a checked boundary
   mediating every value that crosses between the regimes. See
-  [Gradual Ownership](../reference/language/ownership-borrowing.md).
+  [Gradual Borrow Checking](../reference/language/ownership-borrowing.md).
 - **The LLM is a substrate too.** A hand-written prompt is glue: it restates
   your types in prose, nothing checks the restatement, and it silently rots
   when the code moves on. Jac's *meaning types* make the model a declared
