@@ -191,3 +191,24 @@ test "destroy_http_activation_for_target always sweeps both resources, independe
     assert "interceptorroutes" in plurals;
     assert "scaledobjects" in plurals;
 }
+
+test "destroy_http_activation_for_target swallows a permission error instead of aborting the rest of teardown" {
+    # The HTTP Add-on CRD group (http.keda.sh) is installed separately from
+    # core KEDA; a cluster's RBAC may cover keda.sh (which the base
+    # autoscaler already needs) without yet covering this newer group. A 403
+    # here must not stop the Deployment/Service/PVC/ingress/monitoring/
+    # database cleanup that runs after this call in the monolith destroy
+    # path, mirroring the "HTTP Add-on might not be fully available" warn-
+    # and-continue precedent already used by apply_http_activation's
+    # preflight check.
+    mock_api = unittest.mock.MagicMock();
+    mock_api.delete_namespaced_custom_object.side_effect = ApiException(status=403);
+    keda = KEDAAutoscaler(_custom_api=mock_api);
+    raised = False;
+    try {
+        destroy_http_activation_for_target("preview-deployment", "staging", keda);
+    } except ApiException {
+        raised = True;
+    }
+    assert not raised , "A 403 must not propagate out of destroy_http_activation_for_target";
+}
