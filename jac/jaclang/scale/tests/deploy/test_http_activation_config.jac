@@ -1,8 +1,14 @@
+import unittest.mock;
+import from kubernetes.client.exceptions { ApiException }
+import from jaclang.scale.deploy.autoscale.keda_autoscaler { KEDAAutoscaler }
 import from jaclang.scale.deploy.autoscale.http_activation_config {
-    build_http_activation_spec
+    build_http_activation_spec,
+    apply_http_activation_for_target,
+    destroy_http_activation_for_target
 }
 import from jaclang.scale.tests.deploy.http_activation_test_support {
-    default_http_activation_config as _cfg
+    default_http_activation_config as _cfg,
+    mocked_keda_autoscaler as _mocked_keda
 }
 
 
@@ -131,4 +137,57 @@ test "config with neither concurrency_target nor request_rate_target raises a ja
     assert raised , "Expected ValueError when neither concurrency_target nor request_rate_target is set";
     assert "concurrency_target" in error_msg;
     assert "request_rate_target" in error_msg;
+}
+
+
+# --- Section E: apply/destroy wiring helpers (injectable KEDAAutoscaler) ----
+# These back the monolith (kubernetes_target.jac) and microservices
+# (manifest_builder.jac / microservice/target.jac) deploy-path call sites.
+# kubernetes_target.jac's deploy() is a single large method that talks to a
+# real cluster end to end with no isolated seam to unit test (it is only
+# ever exercised against a live cluster, in test_deploy_k8s.jac) - these two
+# functions exist so the HTTP-activation call itself stays testable without
+# that whole method, by taking the KEDAAutoscaler as an explicit parameter.
+test "apply_http_activation_for_target calls apply_http_activation with a correctly-targeted spec when enabled" {
+    (keda, custom_api, _, _) = _mocked_keda();
+    custom_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
+    result = apply_http_activation_for_target(
+        _cfg(), "preview-deployment", "staging", "preview-svc", keda
+    );
+    assert result == True;
+    create_calls = custom_api.create_namespaced_custom_object.call_args_list;
+    assert len(create_calls) == 2;
+    route_body = create_calls[0][1]["body"];
+    assert route_body["spec"]["target"]["service"] == "preview-svc";
+    scaled_obj_body = create_calls[1][1]["body"];
+    assert scaled_obj_body["metadata"]["name"] == keda.http_scaled_object_name_for(
+        "preview-deployment"
+    );
+}
+
+test "apply_http_activation_for_target is a no-op when disabled or unset" {
+    (keda, custom_api, _, _) = _mocked_keda();
+    assert apply_http_activation_for_target(
+        _cfg(enabled=False), "preview-deployment", "staging", "preview-svc", keda
+    ) is None;
+    assert apply_http_activation_for_target(
+        {}, "preview-deployment", "staging", "preview-svc", keda
+    ) is None;
+    custom_api.create_namespaced_custom_object.assert_not_called();
+}
+
+test "destroy_http_activation_for_target calls destroy_http_activation only when enabled" {
+    mock_api = unittest.mock.MagicMock();
+    keda = KEDAAutoscaler(_custom_api=mock_api);
+    destroy_http_activation_for_target(_cfg(), "preview-deployment", "staging", keda);
+    delete_calls = mock_api.delete_namespaced_custom_object.call_args_list;
+    plurals = [c[1]["plural"] for c in delete_calls];
+    assert "interceptorroutes" in plurals;
+    assert "scaledobjects" in plurals;
+
+    mock_api.reset_mock();
+    destroy_http_activation_for_target(
+        _cfg(enabled=False), "preview-deployment", "staging", keda
+    );
+    mock_api.delete_namespaced_custom_object.assert_not_called();
 }

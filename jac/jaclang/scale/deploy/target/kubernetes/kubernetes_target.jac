@@ -659,6 +659,12 @@ obj KubernetesTargetBase(DeploymentTarget) {
             self.k8s_config.autoscaler_engine, self.k8s_config.to_dict(), self.logger
         );
         autoscaler.destroy(autoscaler.resource_name_for(app_name), namespace);
+        destroy_http_activation_for_target(
+            self.k8s_config.http_activation,
+            app_name,
+            namespace,
+            KEDAAutoscaler(logger=self.logger)
+        );
         delete_if_exists(
             apps_v1.delete_namespaced_deployment, app_name, namespace, 'Deployment'
         );
