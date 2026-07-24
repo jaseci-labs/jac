@@ -171,6 +171,7 @@ obj MicroserviceManifestBuilder {
         services: dict[str, dict[str, any]] = {};
         autoscalers: dict[str, dict[str, any]] = {};
         pdbs: dict[str, dict[str, any]] = {};
+        http_activations: dict[str, dict[str, any]] = {};
 
         for (svc_name, pod_spec) in pod_specs.items() {
             deployments[svc_name] = self._build_deployment_manifest(svc_name, pod_spec);
@@ -183,6 +184,10 @@ obj MicroserviceManifestBuilder {
             if pdb is not None {
                 pdbs[svc_name] = pdb;
             }
+            http_activation_cfg = self._get_http_activation_config(svc_name);
+            if http_activation_cfg is not None {
+                http_activations[svc_name] = http_activation_cfg;
+            }
         }
 
         bundle: dict[str, any] = {
@@ -190,6 +195,7 @@ obj MicroserviceManifestBuilder {
             "services": services,
             "autoscalers": autoscalers,
             "pdbs": pdbs,
+            "http_activations": http_activations,
             "pod_specs": pod_specs
         };
 
@@ -732,6 +738,17 @@ obj MicroserviceManifestBuilder {
             ),
             "triggers": raw_triggers
         };
+    }
+
+    def _get_http_activation_config(svc_name: str) -> dict[str, any] | None {
+        svc: dict[str, any] = self._service_config(svc_name);
+        per_service: dict[str, any] = svc.get("http_activation", {});
+        merged: dict[str, any] = dict(self.k8s_config.http_activation);
+        merged.update(per_service);
+        if not merged.get("enabled", False) {
+            return None;
+        }
+        return merged;
     }
 
     def _build_ingress_manifest(ingress_cfg: dict[str, any]) -> dict[str, any] | None {

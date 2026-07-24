@@ -48,6 +48,11 @@ import from jaclang.scale.deploy.autoscale.autoscaler {
     Trigger,
     TriggerAuth
 }
+import from jaclang.scale.deploy.autoscale.keda_autoscaler { KEDAAutoscaler }
+import from jaclang.scale.deploy.autoscale.http_activation_config {
+    apply_http_activation_for_target,
+    destroy_http_activation_for_target
+}
 import time;
 
 obj KubernetesTarget(DeploymentTarget) {
@@ -1216,6 +1221,19 @@ obj KubernetesTarget(DeploymentTarget) {
                 if autoscaler_applied
                 else "Skipped: autoscaler engine not available on cluster";
 
+            activation_applied = apply_http_activation_for_target(
+                self.k8s_config.http_activation,
+                app_name,
+                namespace,
+                f"{app_name}-service",
+                KEDAAutoscaler(logger=self.logger)
+            );
+            if activation_applied is not None {
+                details["apply_http_activation"] = "Successful"
+                    if activation_applied
+                    else "Skipped: HTTP Add-on CRDs not available on cluster";
+            }
+
             monitoring = MonitoringDeployer(self.k8s_config, self.logger);
             monitoring.deploy(app_name, namespace, apps_v1, core_v1, provider);
             details["deploy_monitoring"] = "Successful";
@@ -1465,6 +1483,9 @@ obj KubernetesTarget(DeploymentTarget) {
             self.k8s_config.autoscaler_engine, self.k8s_config.to_dict(), self.logger
         );
         autoscaler.destroy(autoscaler.resource_name_for(app_name), namespace);
+        destroy_http_activation_for_target(
+            app_name, namespace, KEDAAutoscaler(logger=self.logger)
+        );
         delete_if_exists(
             apps_v1.delete_namespaced_deployment, app_name, namespace, 'Deployment'
         );

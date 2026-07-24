@@ -13,50 +13,9 @@ import from jaclang.scale.deploy.autoscale.http_activation {
     HTTPColdStartSpec,
     HTTPTimeoutSpec
 }
-
-# Base HTTPActivationSpec shared by most tests below: a Deployment target on
-# port 8080 with a concurrency=10 trigger. Override only what a given test
-# cares about; pass concurrency=None when testing the metric-required check.
-def _spec(**overrides: any) -> HTTPActivationSpec {
-    defaults = {
-        "name": "preview",
-        "namespace": "default",
-        "scale_target_name": "preview-deployment",
-        "target": HTTPServiceTarget(service="preview-svc", port=8080),
-        "concurrency": HTTPConcurrencyMetric(target_value=10)
-    };
-    if "request_rate" in overrides {
-        defaults.pop("concurrency");
-    }
-    defaults.update(overrides);
-    return HTTPActivationSpec(**defaults);
-}
-
-# KEDAAutoscaler wired to MagicMock clients, with the HTTP Add-on preflight
-# check (list_cluster_custom_object) pre-configured as installed by default.
-# Pass a pre-configured apps_api/core_api/custom_api to control target,
-# Service, or route/ScaledObject existence for a specific test. Returns the
-# mocks alongside the instance since KEDAAutoscaler's api fields are typed
-# `any | None`, which the checker won't let a caller re-narrow after the fact.
-def _mocked_keda(
-    http_addon_installed: bool = True,
-    custom_api: any = None,
-    apps_api: any = None,
-    core_api: any = None
-) -> tuple[KEDAAutoscaler, any, any, any] {
-    KEDAAutoscaler._http_preflight_cache.clear();
-    custom_api = custom_api or unittest.mock.MagicMock();
-    if http_addon_installed {
-        custom_api.list_cluster_custom_object.return_value = {};
-    } else {
-        custom_api.list_cluster_custom_object.side_effect = ApiException(status=404);
-    }
-    apps_api = apps_api or unittest.mock.MagicMock();
-    core_api = core_api or unittest.mock.MagicMock();
-    keda = KEDAAutoscaler(
-        _custom_api=custom_api, _apps_api=apps_api, _core_api=core_api
-    );
-    return (keda, custom_api, apps_api, core_api);
+import from jaclang.scale.tests.deploy.http_activation_test_support {
+    default_http_activation_spec as _spec,
+    mocked_keda_autoscaler as _mocked_keda
 }
 
 
@@ -480,6 +439,52 @@ test "destroy_http_activation is a no-op for the InterceptorRoute when it is alr
     assert mock_api.delete_namespaced_custom_object.call_count == 2;
 }
 
+test "destroy_http_activation still attempts the ScaledObject delete when the InterceptorRoute delete is forbidden" {
+    # InterceptorRoute lives under http.keda.sh, a separately-permissioned
+    # CRD group from the ScaledObject's keda.sh. A 403 on the first delete
+    # must not skip the second: the ScaledObject may still be cleanly
+    # deletable even when the newer group's RBAC is missing.
+    mock_api = unittest.mock.MagicMock();
+    mock_api.delete_namespaced_custom_object.side_effect = [
+        ApiException(status=403),
+        None
+    ];
+    keda = KEDAAutoscaler(_custom_api=mock_api);
+    raised = False;
+    try {
+        keda.destroy_http_activation("preview-deployment", "staging");
+    } except ApiException {
+        raised = True;
+    }
+    assert raised , "The 403 must still surface to the caller after both deletes are attempted";
+    delete_calls = mock_api.delete_namespaced_custom_object.call_args_list;
+    plurals = [c[1]["plural"] for c in delete_calls];
+    assert "interceptorroutes" in plurals;
+    assert "scaledobjects" in plurals , "ScaledObject delete must still be attempted after the InterceptorRoute delete fails";
+}
+
+test "destroy_http_activation surfaces a genuinely unexpected error even when the other delete only hit a tolerable 403" {
+    # If the InterceptorRoute delete hits a 500 (a real server-side problem)
+    # and the ScaledObject delete then hits a 403 (the "RBAC not provisioned
+    # for this newer CRD group yet" case the caller treats as tolerable),
+    # the 500 must still be what propagates. Losing it to a later 403 would
+    # let the caller's "only swallow 403" leniency silently absorb an
+    # unrelated, more serious failure.
+    mock_api = unittest.mock.MagicMock();
+    mock_api.delete_namespaced_custom_object.side_effect = [
+        ApiException(status=500),
+        ApiException(status=403)
+    ];
+    keda = KEDAAutoscaler(_custom_api=mock_api);
+    status = None;
+    try {
+        keda.destroy_http_activation("preview-deployment", "staging");
+    } except ApiException as e {
+        status = e.status;
+    }
+    assert status == 500 , "The 500 from the InterceptorRoute delete must not be masked by the later 403";
+}
+
 test "destroy_collection sweeps InterceptorRoutes alongside ScaledObjects and TriggerAuthentications" {
     mock_api = unittest.mock.MagicMock();
     mock_api.list_namespaced_custom_object.return_value = {
@@ -490,4 +495,65 @@ test "destroy_collection sweeps InterceptorRoutes alongside ScaledObjects and Tr
     delete_calls = mock_api.delete_namespaced_custom_object.call_args_list;
     plurals = [c[1]["plural"] for c in delete_calls];
     assert "interceptorroutes" in plurals;
+}
+
+test "destroy_collection tolerates a 403 listing InterceptorRoutes and still sweeps ScaledObjects/TriggerAuthentications" {
+    # http.keda.sh (InterceptorRoutes) is a separately-permissioned CRD group
+    # from keda.sh (ScaledObjects/TriggerAuthentications), so a caller may
+    # lack access to it even while fully permissioned for core KEDA. That
+    # must not abort the sweep before the other two resource kinds, which
+    # this codebase's own destroy() callers run further cleanup after.
+    mock_api = unittest.mock.MagicMock();
+    def list_side_effect(**kwargs: any) -> any {
+        if kwargs.get("group") == "http.keda.sh" {
+            raise ApiException(status=403);
+        }
+        return {"items": [{"metadata": {"name": "preview-deployment-scaledobject"}}]};
+    }
+    mock_api.list_namespaced_custom_object.side_effect = list_side_effect;
+    keda = KEDAAutoscaler(_custom_api=mock_api, _v2_api=unittest.mock.MagicMock());
+    raised = False;
+    try {
+        keda.destroy_collection("staging", "managed=jac-scale");
+    } except ApiException {
+        raised = True;
+    }
+    assert not raised , "A 403 listing InterceptorRoutes must not abort the sweep";
+    delete_calls = mock_api.delete_namespaced_custom_object.call_args_list;
+    plurals = [c[1]["plural"] for c in delete_calls];
+    assert "scaledobjects" in plurals;
+    assert "triggerauthentications" in plurals;
+}
+
+test "destroy_collection still raises on a 403 listing ScaledObjects, since keda.sh RBAC is expected to already be present" {
+    mock_api = unittest.mock.MagicMock();
+    mock_api.list_namespaced_custom_object.side_effect = ApiException(status=403);
+    keda = KEDAAutoscaler(_custom_api=mock_api, _v2_api=unittest.mock.MagicMock());
+    raised = False;
+    try {
+        keda.destroy_collection("staging", "managed=jac-scale");
+    } except ApiException {
+        raised = True;
+    }
+    assert raised , "A 403 on the core keda.sh group is not tolerated, unlike http.keda.sh";
+}
+
+test "destroy_collection with best_effort=True also tolerates a 403 on the core keda.sh group" {
+    # A deployment whose base autoscaler_engine is "hpa" never had a reason
+    # to be granted keda.sh RBAC at all: unlike a keda-engine deployment,
+    # nothing here guarantees that group is even installed for it, let
+    # alone permissioned. The caller that sweeps KEDA resources anyway (to
+    # catch orphaned HTTP-activation resources on an hpa-engine deployment)
+    # opts into this wider tolerance explicitly, rather than it being the
+    # default for every caller.
+    mock_api = unittest.mock.MagicMock();
+    mock_api.list_namespaced_custom_object.side_effect = ApiException(status=403);
+    keda = KEDAAutoscaler(_custom_api=mock_api, _v2_api=unittest.mock.MagicMock());
+    raised = False;
+    try {
+        keda.destroy_collection("staging", "managed=jac-scale", best_effort=True);
+    } except ApiException {
+        raised = True;
+    }
+    assert not raised , "best_effort=True must tolerate a 403 on every resource group";
 }

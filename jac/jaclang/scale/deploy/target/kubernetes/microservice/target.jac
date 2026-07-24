@@ -37,10 +37,26 @@ import from jaclang.scale.deploy.autoscale.autoscaler {
     DEFAULT_CPU_UTILIZATION_TARGET,
     DEFAULT_MEMORY_UTILIZATION_TARGET
 }
+import from jaclang.scale.deploy.autoscale.keda_autoscaler { KEDAAutoscaler }
+import from jaclang.scale.deploy.autoscale.http_activation_config {
+    apply_http_activation_for_target
+}
 import from jaclang.scale.deploy.target.kubernetes.monitoring { MonitoringDeployer }
 import from jaclang.scale.config.config_loader { get_scale_config }
 
 glob logger = logging.getLogger(__name__);
+
+def apply_http_activations_for_bundle(
+    bundle: dict[str, any], namespace: str, keda: KEDAAutoscaler
+) {
+    for svc_name in bundle.get("http_activations", {}).keys() {
+        k8s_name = k8s_safe_name(svc_name);
+        cfg = dict(bundle.get("http_activations", {}).get(svc_name, {}));
+        apply_http_activation_for_target(
+            cfg, k8s_name, namespace, f"{k8s_name}-service", keda
+        );
+    }
+}
 
 
 obj KubernetesMicroserviceTarget(KubernetesTarget) {
@@ -895,6 +911,10 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             }
         }
 
+        apply_http_activations_for_bundle(
+            bundle, namespace, KEDAAutoscaler(logger=self.logger)
+        );
+
         for (svc_name, pdb_manifest) in bundle.get("pdbs", {}).items() {
             self._apply_or_replace(
                 policy_v1,
@@ -1072,6 +1092,18 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         } except ApiException as e {
             if e.status != 404 {
                 raise;
+            }
+        }
+
+        if self.k8s_config.autoscaler_engine != "keda" {
+            try {
+                KEDAAutoscaler(logger=self.logger).destroy_collection(
+                    namespace, ms_selector, best_effort=True
+                );
+            } except ApiException as e {
+                if e.status != 404 {
+                    raise;
+                }
             }
         }
 
