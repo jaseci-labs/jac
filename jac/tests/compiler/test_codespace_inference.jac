@@ -180,7 +180,7 @@ test "plain client import of a server-only helper is a codegen error" {
     );
     assert 'local_helper' in str(dead_errs[0]);
     assert 'local_helper_two' in str(dead_errs[1]);
-    assert 'infer_import_bridge_service' not in (mod.gen.js or '') , (
+    assert 'infer_import_dead_service' not in (mod.gen.js or '') , (
         "dead specifier must not be emitted alongside the diagnostic"
     );
 }
@@ -521,6 +521,91 @@ test "bare import of a cl module stays server under native default" {
     assert mod.decided_codespace == '' , (
         "a .cl.jac sibling is a cl/sv server signal even when its body has no "
         "other signals"
+    );
+}
+
+"""Find a module in a program hub by filename suffix."""
+def hub_module(prog: JacProgram, name_suffix: str) -> object {
+    for (path, m) in prog.mod.hub.items() {
+        if path.endswith(name_suffix) {
+            return m;
+        }
+    }
+    return None;
+}
+
+test "client import pulls a pure markerless module cross-module" {
+    prog = JacProgram();
+    mod = prog.compile(os.path.join(FIXTURE_DIR, "infer_xmod_app.jac"), no_cgen=False);
+    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
+    js = mod.gen.js;
+    assert '__jacCallFunction("register"' not in js , (
+        "accessless helper from a pure module must not bridge over RPC"
+    );
+    assert '__jacCallFunction("tag_count"' not in js , (
+        "accessless helper from a pure module must not bridge over RPC"
+    );
+    assert '__jacCallFunction("server_ping"' in js , (
+        "def:pub stays a server endpoint and bridges over RPC"
+    );
+    util = hub_module(prog, "infer_xmod_util.jac");
+    assert util is not None , "imported module missing from hub";
+    assert stamp_of(util, "register") == 'client' , (
+        "accessless def imported by client code is placed client"
+    );
+    assert stamp_of(util, "tag_count") == 'client';
+    assert stamp_of(util, "_tags") == 'client' , (
+        "glob used by pulled defs follows them client"
+    );
+    assert stamp_of(util, "server_ping") == 'server' , (
+        "def:pub is an endpoint, never relocated by client callers"
+    );
+}
+
+test "cross-module pulled elements dual-emit for the server side" {
+    import ast as py_ast_mod;
+    import from jaclang.runtimelib.client_bundle { _ensure_js_generated }
+    import from jaclang.jac0core.passes { PyastGenPass }
+    prog = JacProgram();
+    prog.compile(os.path.join(FIXTURE_DIR, "infer_xmod_app.jac"), no_cgen=False);
+    util = hub_module(prog, "infer_xmod_util.jac");
+    assert util is not None;
+    for stmt in util.body {
+        if (
+            isinstance(stmt, uni.Ability)
+            and isinstance(stmt.name_ref, uni.Name)
+            and stmt.name_ref.value == "register"
+        ) {
+            assert stmt.codespace_dual , (
+                "cross-module pulled element must keep python emission (dual)"
+            );
+        }
+    }
+    _ensure_js_generated(util, prog);
+    util_js = util.gen.js;
+    assert 'register' in util.gen.client_manifest.exports , (
+        "pulled accessless def must be an ES export of the pulled module"
+    );
+    assert '_tags' in util.gen.client_manifest.globals , (
+        "pulled glob must be an ES export of the pulled module"
+    );
+    assert util_js.strip() , "pulled module must produce client JS";
+    PyastGenPass(ir_in=util, prog=prog);
+    py_src = py_ast_mod.unparse(util.gen.py_ast);
+    assert 'def register' in py_src , (
+        "pulled element must still exist in the python module (dual emit)"
+    );
+    assert '_tags' in py_src , "pulled glob must still exist in the python module";
+}
+
+test "client call to endpoint with function-typed param warns W6005" {
+    prog = JacProgram();
+    prog.compile(os.path.join(FIXTURE_DIR, "infer_rpc_callable.jac"), no_cgen=False);
+    warned = any('W6005' in w.pretty_print() for w in prog.warnings_had);
+    assert warned , (
+        "RPC-bridged call passing a function must warn W6005; got: " + f"{[
+            w.pretty_print().split(chr(10))[0] for w in prog.warnings_had
+        ]}"
     );
 }
 

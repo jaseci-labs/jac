@@ -69,23 +69,54 @@ def _ref_top_ids(module: uni.Module, elem: uni.UniNode) -> set[int] {
     return refs;
 }
 
-obj CodespacePullPass(Transform[uni.Module, uni.Module]) {
-    has ir_in: uni.Module,
-        prog: any,
-        cancel_token: any = None;
-
-    static has PROVIDES: tuple = ('codespace-pull', );
-
-    def postinit -> None;
-    def transform(ir_in: uni.Module) -> uni.Module;
+def _is_sv_import(elem: uni.UniNode) -> bool {
+    return isinstance(elem, uni.Import) and elem.is_sv_marked;
 }
 
-impl CodespacePullPass.postinit -> None {
-    super.postinit();
+def _named_top_element(target: uni.Module, name: str) -> (uni.UniNode | None) {
+    sym = target.names_in_scope.get(name) if target.names_in_scope else None;
+    decl = sym.decl if sym is not None else None;
+    if decl is None {
+        return None;
+    }
+    return _top_element(target, decl);
 }
 
-impl CodespacePullPass.transform(ir_in: uni.Module) -> uni.Module {
-    module = ir_in;
+def pull_import_items_client(items: list, target: uni.Module, prog: any) {
+    seed_ids: set[int] = set();
+    for item in items {
+        if not (isinstance(item, uni.ModuleItem) and isinstance(item.name, uni.Name)) {
+            continue;
+        }
+        top = _named_top_element(target, item.name.value);
+        if top is not None {
+            seed_ids.add(id(top));
+        }
+    }
+    if seed_ids {
+        run_codespace_pull(target, prog, seed_ref_ids=seed_ids, dual=True);
+    }
+}
+
+def run_codespace_pull(
+    module: uni.Module,
+    prog: any,
+    seed_ref_ids: (set[int] | None) = None,
+    dual: bool = False
+) -> uni.Module {
+    import from jaclang.jac0core.compiler { _stamp_context_element }
+
+    def _stamp(elem: uni.UniNode, ctx: CodeContext) {
+        _stamp_context_element(elem, ctx);
+        if (
+            dual
+            and ctx == CodeContext.CLIENT
+            and isinstance(elem, uni.ContextAwareNode)
+        ) {
+            elem.codespace_dual = True;
+        }
+    }
+
     client_tops: list[uni.UniNode] = [];
     native_tops: list[uni.UniNode] = [];
     inferable: list[uni.UniNode] = [];
@@ -118,23 +149,19 @@ impl CodespacePullPass.transform(ir_in: uni.Module) -> uni.Module {
         }
         inferable.append(stmt);
     }
-    if ((not client_tops and not native_tops) or not inferable) {
+    has_seeds = bool(seed_ref_ids);
+    if ((not client_tops and not native_tops and not has_seeds) or not inferable) {
         return module;
     }
-    import from jaclang.jac0core.compiler { _stamp_context_element }
 
     cl_sources: set[int] = set();
-    cl_ref_ids: set[int] = set();
+    cl_ref_ids: set[int] = set(seed_ref_ids) if seed_ref_ids else set();
     na_sources: set[int] = set();
     na_ref_ids: set[int] = set();
     uses_map: dict[int, set[int]] = {};
     body_refs: dict[int, set[int]] = {};
     for top in module.body {
         body_refs[id(top)] = _ref_top_ids(module, top);
-    }
-
-    def _is_sv_import(elem: uni.UniNode) -> bool {
-        return isinstance(elem, uni.Import) and elem.is_sv_marked;
     }
 
     def _pullable_native(elem: uni.UniNode) -> bool {
@@ -186,11 +213,11 @@ impl CodespacePullPass.transform(ir_in: uni.Module) -> uni.Module {
             continue;
         }
         if in_na {
-            _stamp_context_element(elem, CodeContext.NATIVE);
+            _stamp(elem, CodeContext.NATIVE);
             na_sources.add(id(elem));
             na_ref_ids.update(uses_map[id(elem)]);
         } elif in_cl {
-            _stamp_context_element(elem, CodeContext.CLIENT);
+            _stamp(elem, CodeContext.CLIENT);
             cl_sources.add(id(elem));
             cl_ref_ids.update(uses_map[id(elem)]);
         } else {
@@ -219,14 +246,14 @@ impl CodespacePullPass.transform(ir_in: uni.Module) -> uni.Module {
                 continue;
             }
             if want_na {
-                _stamp_context_element(elem, CodeContext.NATIVE);
+                _stamp(elem, CodeContext.NATIVE);
                 if not _is_sv_import(elem) {
                     na_sources.add(id(elem));
                 }
                 na_ref_ids.update(refs);
                 changed = True;
             } elif want_cl {
-                _stamp_context_element(elem, CodeContext.CLIENT);
+                _stamp(elem, CodeContext.CLIENT);
                 if not _is_sv_import(elem) {
                     cl_sources.add(id(elem));
                 }
@@ -239,4 +266,23 @@ impl CodespacePullPass.transform(ir_in: uni.Module) -> uni.Module {
         inferable = remaining;
     }
     return module;
+}
+
+obj CodespacePullPass(Transform[uni.Module, uni.Module]) {
+    has ir_in: uni.Module,
+        prog: any,
+        cancel_token: any = None;
+
+    static has PROVIDES: tuple = ('codespace-pull', );
+
+    def postinit -> None;
+    def transform(ir_in: uni.Module) -> uni.Module;
+}
+
+impl CodespacePullPass.postinit -> None {
+    super.postinit();
+}
+
+impl CodespacePullPass.transform(ir_in: uni.Module) -> uni.Module {
+    return run_codespace_pull(ir_in, self.prog);
 }

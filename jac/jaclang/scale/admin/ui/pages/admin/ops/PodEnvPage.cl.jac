@@ -52,7 +52,13 @@ def:pub PodEnvPage -> JsxElement {
         loadedOnce = True;
     }
 
-    useEffect(lambda { load(); }, []);
+    useEffect(
+        lambda {
+            load();
+            return;
+        },
+        []
+    );
 
     # Resolve the currently-selected env list (this pod vs a named pod).
     def selectedEnv -> list {

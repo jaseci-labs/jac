@@ -164,12 +164,22 @@ impl NaIRGenPass._codegen_bound_args(
     }
 
     sig_params = callee_sig.get_parameters();
+    _self_skip = 0;
+    if (
+        self_offset > 0
+        and sig_params
+        and sig_params[0].name
+        and sig_params[0].name.value == "self"
+    ) {
+        sig_params = sig_params[1:];
+        _self_skip = 1;
+    }
     _has_pack = (callee_sig.varargs is not None) or (callee_sig.kwargs is not None);
     if _has_pack and func.function_type.var_arg {
         _has_pack = False;
     }
     if _has_pack {
-        _chk = self_offset + len(callee_sig.posonly_params or []) + len(
+        _chk = self_offset - _self_skip + len(callee_sig.posonly_params or []) + len(
             callee_sig.params or []
         );
         if callee_sig.varargs is not None {
@@ -383,8 +393,12 @@ impl NaIRGenPass._codegen_bound_args(
                     node_override=nd,
                     kind="function",
                     name=f"{_nc_name} (captured '{_cname}' not in the calling frame)",
-                    help_text="A capturing nested function can only be called from the frame that defines its captures. Pass the value as an explicit parameter instead."
+                    help_text="A capturing nested function can only be called from a frame that defines or forwards its captures. Pass the value as an explicit parameter instead."
                 );
+
+                while len(args) < len(func.args) {
+                    args.append(self._default_arg_fallback(func.args[len(args)].type));
+                }
                 return args;
             }
             if _cmode == "ptr" {
@@ -1049,6 +1063,17 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 self._emit_unsupported_builtin_call(nd, func_name);
                 return None;
             }
+        }
+
+        if func_name == "bytearray" and not (nd.params or []) {
+            _ba_empty = self._dispatch_builtin(
+                "bytearray", [], kwargs=self._split_call_kwargs(nd), kw_node=nd
+            );
+            if _ba_empty is not None {
+                return _ba_empty;
+            }
+            self._emit_unsupported_builtin_call(nd, func_name);
+            return None;
         }
 
         if func_name in (

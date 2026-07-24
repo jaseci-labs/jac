@@ -68,10 +68,11 @@ glob FORBIDDEN: dict[str, str] = {
              "the consumed fact, not a resolved type"
          ),
          ("ecmascript/impl/esast_gen_pass.impl.jac", "type_tag.tag"): (
-             7,
+             9,
              "declaration-surface name reads: param/field type-name maps "
-             "for interop payloads and Ref[...] head detection - the "
-             "declared NAME is the consumed fact, not a resolved type"
+             "for interop payloads, Ref[...] head detection, and the W6005 "
+             "Callable-over-RPC guard on endpoint params - the declared "
+             "annotation is the consumed fact, not a resolved type"
          ),
          ("native/na_ir_gen_pass.impl/stmt.impl.jac", "symbol_utils"): (
              1,

@@ -144,7 +144,7 @@ impl EsastGenPass.exit_global_vars(nd: uni.GlobalVars) -> None {
     if nd.code_context == CodeContext.CLIENT {
         self.client_manifest.has_client = True;
         is_pub = nd.access and (nd.access.tag.name == Tok.KW_PUB);
-        if is_pub {
+        if is_pub or nd.codespace_dual {
             for assignment in nd.assignments {
                 for target in assignment.target {
                     if (sym_name := target?.sym_name) {
@@ -954,6 +954,28 @@ impl EsastGenPass._resolve_source_module(nd: uni.Import) -> (uni.Module | None) 
     return resolve_import_source_module(self.prog, nd);
 }
 
+impl EsastGenPass._pull_plain_jac_import_client(
+    nd: uni.Import, resolved_path: str
+) -> None {
+    import from jaclang.jac0core.ext_registry { codespace_of }
+    import from jaclang.jac0core.passes.codespace_pull_pass { pull_import_items_client }
+
+    if (
+        nd.is_sv_marked
+        or nd.is_virtual_jac
+        or nd.code_context != CodeContext.CLIENT
+        or not resolved_path.endswith('.jac')
+        or codespace_of(resolved_path) is not None
+    ) {
+        return;
+    }
+    source_mod = self._resolve_source_module(nd);
+    if source_mod is None or source_mod is self.ir_in {
+        return;
+    }
+    pull_import_items_client(list(nd.items), source_mod, self.prog);
+}
+
 impl EsastGenPass._record_sv_backend(nd: uni.Import) -> None {
     import from pathlib { Path }
     if not nd.from_loc {
@@ -1625,6 +1647,24 @@ impl EsastGenPass._try_lower_server_rpc_call(
         return None;
     }
     func_name = nd.target.sym_name;
+    if isinstance(ability_node.signature, uni.FuncSignature) {
+        import re;
+        import from jaclang.jac0core.diagnostics { W6005 }
+        _sig = ability_node.signature;
+        for _plist in [_sig.posonly_params, _sig.params or [], _sig.kwonlyargs] {
+            for _p in _plist {
+                if (
+                    _p.type_tag is not None
+                    and _p.type_tag.tag is not None
+                    and re.search(r"\bCallable\b", _p.type_tag.tag.unparse())
+                ) {
+                    self.emit(
+                        W6005, node_override=nd, func=func_name, param=_p.name.sym_name
+                    );
+                }
+            }
+        }
+    }
 
     param_names: list[str] = self._param_names_from_ability(ability_node);
     inline_param_type_map: dict[str, str] = self._param_type_map_from_ability(
@@ -3754,7 +3794,8 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
         ) {
             route_role = self._return_type_route_role(nd.signature.return_type);
         }
-        if is_pub or route_role {
+
+        if is_pub or route_role or nd.codespace_dual {
             name = nd.name_ref.sym_name;
             self.client_manifest.exports.append(name);
             if (
@@ -4415,7 +4456,7 @@ impl EsastGenPass.exit_enum(nd: uni.Enum) -> None {
     if nd.code_context == CodeContext.CLIENT {
         self.client_manifest.has_client = True;
         is_pub = nd.access and (nd.access.tag.name == Tok.KW_PUB);
-        if is_pub {
+        if is_pub or nd.codespace_dual {
             self.client_manifest.exports.append(nd.name.sym_name);
         }
     }
@@ -4475,7 +4516,7 @@ impl EsastGenPass.exit_archetype(nd: uni.Archetype) -> None {
     if nd.code_context == CodeContext.CLIENT {
         self.client_manifest.has_client = True;
         is_pub = nd.access and (nd.access.tag.name == Tok.KW_PUB);
-        if is_pub {
+        if is_pub or nd.codespace_dual {
             self.client_manifest.exports.append(nd.name.sym_name);
         }
     }
@@ -4671,6 +4712,9 @@ impl EsastGenPass.exit_import(nd: uni.Import) -> None {
     }
     emit_items: list = list(nd.items);
     if (nd.from_loc and nd.items) {
+        resolved_path = nd.from_loc.resolve_relative_path();
+
+        self._pull_plain_jac_import_client(nd, resolved_path);
         partition = self._partition_client_import_items(nd);
         if partition is not None {
             (emit_items, bridged_items) = partition;
@@ -4683,7 +4727,6 @@ impl EsastGenPass.exit_import(nd: uni.Import) -> None {
                 return;
             }
         }
-        resolved_path = nd.from_loc.resolve_relative_path();
         import_key = nd.from_loc.dot_path_str;
         self.client_manifest.imports[import_key] = resolved_path;
         self.client_manifest.has_client = True;

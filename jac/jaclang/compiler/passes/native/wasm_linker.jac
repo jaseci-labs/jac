@@ -6,7 +6,7 @@ glob _PLACEHOLDER: set = {
          "__table_base"
      };
 
-def _rd_uleb(b: bytes, o: int) -> tuple {
+def _rd_uleb(b: bytes, o: int) -> tuple[int, int] {
     r = 0;
     s = 0;
     while True {
@@ -20,7 +20,7 @@ def _rd_uleb(b: bytes, o: int) -> tuple {
     }
 }
 
-def _rd_sleb(b: bytes, o: int) -> tuple {
+def _rd_sleb(b: bytes, o: int) -> tuple[int, int] {
     r = 0;
     s = 0;
     while True {
@@ -83,7 +83,7 @@ def _u32le(v: int) -> bytes {
     return (v & 0xffffffff).to_bytes(4, "little");
 }
 
-def _rd_name(b: bytes, o: int) -> tuple {
+def _rd_name(b: bytes, o: int) -> tuple[str, int] {
     (n, o) = _rd_uleb(b, o);
     return (b[o:o + n].decode("latin1"), o + n);
 }
@@ -111,14 +111,14 @@ def _patch(buf: bytearray, off: int, data: bytes) {
 
 obj WasmObj {
     has b: bytes,
-        types_raw: list = [],
-        imports: list = [],
-        func_types: list = [],
+        types_raw: list[bytes] = [],
+        imports: list[list[any]] = [],
+        func_types: list[int] = [],
         code: bytes = b"",
         data_raw: bytes = b"",
-        symtab: list = [],
-        relocs: list = [],
-        seg_info: list = [];
+        symtab: list[list[any]] = [],
+        relocs: list[list[any]] = [],
+        seg_info: list[tuple[str, int, int]] = [];
 
     def postinit {
         self.types_raw = [];

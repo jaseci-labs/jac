@@ -195,7 +195,8 @@ obj AstAccessNode(UniNode) {
 }
 
 obj ContextAwareNode(UniNode) {
-    has code_context: CodeContext postinit;
+    has code_context: CodeContext postinit,
+        codespace_dual: bool = False;
 
     def postinit -> None;
     def _source_context_token -> (Token | None);

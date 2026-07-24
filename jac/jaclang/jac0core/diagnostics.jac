@@ -1392,6 +1392,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Use of JS-specific property '.{prop}' — use '{alternative}' for cross-codespace portability",
          help="Use Jac common builtins instead of JS-specific properties."
      ),
+     W6005 = _warn(
+         "W6005",
+         Category.CODEGEN,
+         "Client call to server endpoint '{func}' passes function-typed parameter '{param}' — functions cannot cross the RPC boundary",
+         help="A def:pub function in a server-placed module is an HTTP endpoint whose arguments serialize over the wire. Shared client-side logic should drop ':pub' so it is placed in the browser with its callers."
+     ),
      E9001 = _err("E9001", Category.ICE, "ICE: Pass {pass_name} -- {details}"),
      E9002 = _err(
          "E9002",

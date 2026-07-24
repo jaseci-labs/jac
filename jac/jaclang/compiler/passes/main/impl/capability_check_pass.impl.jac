@@ -447,6 +447,13 @@ impl native_capability_violations(mod: uni.Module) -> list {
             and (nd.target.type is not None)
             and nd.target.type.is_any_type() {
                 _fld = nd.right.value;
+                if (
+                    _fld == "environ"
+                    and isinstance(nd.target, uni.Name)
+                    and nd.target.value == "os"
+                ) {
+                    continue;
+                }
                 out.append(
                     (
                         nd,

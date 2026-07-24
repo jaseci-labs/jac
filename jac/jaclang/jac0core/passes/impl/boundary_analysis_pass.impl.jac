@@ -522,7 +522,12 @@ impl BoundaryAnalysisPass._find_archetype(
 impl BoundaryAnalysisPass.enter_ability(
     self: BoundaryAnalysisPass, nd: uni.Ability
 ) -> None {
-    if (nd.sym_name and isinstance(nd.signature, uni.FuncSignature)) {
+    if (
+        nd.sym_name
+        and isinstance(nd.signature, uni.FuncSignature)
+        and nd.find_parent_of_type(uni.Ability) is None
+        and nd.find_parent_of_type(uni.LambdaExpr) is None
+    ) {
         nd_cc = nd.code_context;
         if nd_cc == uni.CodeContext.NATIVE {
             ctx = InteropContext.NATIVE;
@@ -550,6 +555,19 @@ impl BoundaryAnalysisPass.enter_ability(
 impl BoundaryAnalysisPass.enter_func_call(
     self: BoundaryAnalysisPass, nd: uni.FuncCall
 ) -> None {
+    if (
+        isinstance(nd.target, uni.Name)
+        and nd.target.sym is not None
+        and nd.target.sym.decl is not None
+    ) {
+        _decl_ab = nd.target.sym.decl.find_parent_of_type(uni.Ability);
+        if (
+            _decl_ab is not None
+            and _decl_ab.find_parent_of_type(uni.Ability) is not None
+        ) {
+            return;
+        }
+    }
     func_name = None;
     if isinstance(nd.target, uni.Name) {
         func_name = nd.target.value;

@@ -552,6 +552,7 @@ impl JacClientCompiler._scan_and_compile_pages(
     }
     routes = scanner.scan();
     if not routes and not scanner.get_layouts() {
+        self._warn_pages_without_routes(scanner);
         return False;
     }
     self._route_scanner = scanner;
@@ -570,6 +571,17 @@ impl JacClientCompiler._scan_and_compile_pages(
     return True;
 }
 
+impl JacClientCompiler._warn_pages_without_routes(
+    self: JacClientCompiler, scanner: RouteScanner
+) -> None {
+    import from jaclang.runtimelib.client.route_scanner {
+        describe_pages_without_routes
+    }
+    for line in describe_pages_without_routes(scanner.pages_dir) {
+        console.error(line);
+    }
+}
+
 impl JacClientCompiler.rescan_pages(self: JacClientCompiler) -> bool {
     scanner = RouteScanner(self.project_dir, route_exports_of=resolve_route_exports);
     if not scanner.has_pages_dir() {
@@ -577,6 +589,7 @@ impl JacClientCompiler.rescan_pages(self: JacClientCompiler) -> bool {
     }
     routes = scanner.scan();
     if not routes and not scanner.get_layouts() {
+        self._warn_pages_without_routes(scanner);
         return False;
     }
     self._route_scanner = scanner;

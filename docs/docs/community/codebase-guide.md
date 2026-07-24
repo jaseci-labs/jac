@@ -264,7 +264,7 @@ GitHub Actions workflows in `.github/workflows/`:
 | `nightly.yml` | Cron canaries: notes-app CEF smoke and the live-release installer check |
 | `deploy-docs.yml` | Deploy docs site to production |
 
-Pre-commit hooks run formatting and linting on every commit locally. See `.pre-commit-config.yaml` for the full hook list.
+Local git hooks come from `jac precommit --install`: a pre-commit hook that formats and lints staged `.jac` files, and a commit-msg hook that blocks AI co-author attribution. Markdown lint and the em-dash ban run on every PR via pre-commit.ci (`.pre-commit-config.yaml`).
 
 ---
 
