@@ -5,9 +5,11 @@ import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.compiler.passes.ecmascript { EsastGenPass }
 import jaclang.compiler.passes.ecmascript.estree as es;
+import jaclang.jac0core.unitree as uni;
 import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
 import from jaclang.compiler.passes.ecmascript.backends.react { ReactBackend }
 import from jaclang.jac0core.program { JacProgram }
+import from jaclang.compiler.symbol_utils { resolve_import_source_module }
 
 """Signals-style test backend: wraps a reactive read as `name()` so the
 value-read seam (contract §4.1.1) can be audited without a real Solid backend.
@@ -200,10 +202,40 @@ test "sv imported walker reaches client endpoint effects manifest" {
     assert "walker:AddItem" in effects , (
         f"sv-imported walker missing from client manifest: {effects}"
     );
-    assert effects["walker:AddItem"]["is_writer"] , (
-        "AddItem mutates the graph -- must ship as a writer"
+    # Standalone .cl compile has no server boundary analysis, so the source
+    # manifest is empty and the safe writer default applies. Pin its full shape.
+    assert effects["walker:AddItem"] == {"is_writer": True, "touches": ["*"]} , (
+        f"walker default effect wrong: {effects['walker:AddItem']}"
     );
     assert "walker:AddItem" in es_pass.ir_out.gen.js;
+}
+
+test "sv imported walker copies precise effects instead of the wildcard default" {
+    # When the source module already classifies the walker with precise touches,
+    # those must be copied verbatim -- not clobbered by the wildcard fallback,
+    # which would needlessly invalidate every cached reader.
+    fixture = fixture_path("sv_walker_effects_client.cl.jac");
+    prog = JacProgram();
+    ir = prog.compile(file_path=fixture, no_cgen=True, type_check=True);
+    assert not prog.errors_had , (
+        f"Compilation errors in {fixture}: {[str(e) for e in prog.errors_had]}"
+    );
+
+    sv_import = next(
+        (i for i in ir.get_all_sub_nodes(uni.Import) if i.is_sv_marked), None
+    );
+    assert sv_import is not None , "expected an sv import in the fixture";
+    source_mod = resolve_import_source_module(prog, sv_import);
+    assert source_mod is not None and source_mod.gen.interop_manifest is not None;
+    source_mod.gen.interop_manifest.endpoint_effects["walker:AddItem"] = {
+        "is_writer": True, "touches": ["Item", "Root"]
+    };
+
+    es_pass = EsastGenPass(ir_in=ir, prog=prog);
+    effects = es_pass.ir_out.gen.client_manifest.endpoint_effects;
+    assert effects["walker:AddItem"] == {"is_writer": True, "touches": ["Item", "Root"]} , (
+        f"precise walker effect not copied verbatim: {effects.get('walker:AddItem')}"
+    );
 }
 
 # SKIP: es_node_to_dict isinstance checks fail when compiling Jac from
