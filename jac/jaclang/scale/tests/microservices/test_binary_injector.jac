@@ -635,3 +635,145 @@ test "explicit python_image is never rewritten" {
         binary_mod._http_get_bytes = saved;
     }
 }
+
+
+glob _urlopen_reqs: list = [];
+
+
+obj _FakeResp {
+    has payload: bytes = b"{}";
+
+    def read -> bytes {
+        return self.payload;
+    }
+
+    def close { }
+}
+
+
+def _recording_urlopen(req: any, timeout: any = None) -> any {
+    _urlopen_reqs.append(req);
+    return _FakeResp();
+}
+
+
+def _with_token_env(github: (str | None), gh: (str | None), check: any) {
+    saved_github = os.environ.pop("GITHUB_TOKEN", None);
+    saved_gh = os.environ.pop("GH_TOKEN", None);
+    if github is not None {
+        os.environ["GITHUB_TOKEN"] = github;
+    }
+    if gh is not None {
+        os.environ["GH_TOKEN"] = gh;
+    }
+    try {
+        check();
+    } finally {
+        os.environ.pop("GITHUB_TOKEN", None);
+        os.environ.pop("GH_TOKEN", None);
+        if saved_github is not None {
+            os.environ["GITHUB_TOKEN"] = saved_github;
+        }
+        if saved_gh is not None {
+            os.environ["GH_TOKEN"] = saved_gh;
+        }
+    }
+}
+
+
+test "GITHUB_TOKEN is sent to the github api host and nowhere else" {
+    def check {
+        saved = binary_mod.urlopen;
+        binary_mod.urlopen = _recording_urlopen;
+        try {
+            _urlopen_reqs.clear();
+            binary_mod._http_get_bytes(
+                "https://api.github.com/repos/jaseci-labs/jaseci/releases/latest"
+            );
+            binary_mod._http_get_bytes(
+                "https://github.com/jaseci-labs/jaseci/releases/download/dev/jac-dev-linux-x86_64"
+            );
+            binary_mod._http_get_bytes(
+                "https://hub.docker.com/v2/repositories/jaseci/jaclang/tags/latest"
+            );
+            assert _urlopen_reqs[0].get_header("Authorization") == "Bearer tok-123";
+            assert _urlopen_reqs[1].get_header("Authorization") is None;
+            assert _urlopen_reqs[2].get_header("Authorization") is None;
+        } finally {
+            binary_mod.urlopen = saved;
+        }
+    }
+    _with_token_env("tok-123", None, check);
+}
+
+
+test "no token env means no auth header on api requests" {
+    def check {
+        saved = binary_mod.urlopen;
+        binary_mod.urlopen = _recording_urlopen;
+        try {
+            _urlopen_reqs.clear();
+            binary_mod._http_get_bytes(
+                "https://api.github.com/repos/jaseci-labs/jaseci/releases/latest"
+            );
+            assert _urlopen_reqs[0].get_header("Authorization") is None;
+        } finally {
+            binary_mod.urlopen = saved;
+        }
+    }
+    _with_token_env(None, None, check);
+}
+
+
+test "GH_TOKEN is the fallback and GITHUB_TOKEN wins when both are set" {
+    def check_fallback {
+        saved = binary_mod.urlopen;
+        binary_mod.urlopen = _recording_urlopen;
+        try {
+            _urlopen_reqs.clear();
+            binary_mod._http_get_bytes(
+                "https://api.github.com/repos/x/releases/latest"
+            );
+            assert _urlopen_reqs[0].get_header("Authorization") == "Bearer gh-tok";
+        } finally {
+            binary_mod.urlopen = saved;
+        }
+    }
+    _with_token_env(None, "gh-tok", check_fallback);
+    def check_precedence {
+        saved = binary_mod.urlopen;
+        binary_mod.urlopen = _recording_urlopen;
+        try {
+            _urlopen_reqs.clear();
+            binary_mod._http_get_bytes(
+                "https://api.github.com/repos/x/releases/latest"
+            );
+            assert _urlopen_reqs[0].get_header("Authorization") == "Bearer main-tok";
+        } finally {
+            binary_mod.urlopen = saved;
+        }
+    }
+    _with_token_env("main-tok", "gh-tok", check_precedence);
+}
+
+
+test "a lookalike host never gets the token" {
+    def check {
+        saved = binary_mod.urlopen;
+        binary_mod.urlopen = _recording_urlopen;
+        try {
+            _urlopen_reqs.clear();
+            binary_mod._http_get_bytes("https://api.github.com.evil.example/x");
+            binary_mod._http_get_bytes("https://evil.example/api.github.com/x");
+            binary_mod._http_get_bytes("https://api.github.com@evil.example/x");
+            binary_mod._http_get_bytes("http://api.github.com/insecure");
+            assert _urlopen_reqs[0].get_header("Authorization") is None;
+            assert _urlopen_reqs[1].get_header("Authorization") is None;
+            assert _urlopen_reqs[2].get_header("Authorization") is None;
+            assert _urlopen_reqs[3].get_header("Authorization") is None;
+        } finally {
+            binary_mod.urlopen = saved;
+        }
+    }
+    _with_token_env("tok-123", None, check);
+}
