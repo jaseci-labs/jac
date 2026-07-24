@@ -498,7 +498,6 @@ test "destroy_collection sweeps InterceptorRoutes alongside ScaledObjects and Tr
     assert "interceptorroutes" in plurals;
 }
 
-
 # --- Section I: capability discovery -----------------------------------------
 # _capabilities_cache is per-instance (not static), so a freshly constructed
 # KEDAAutoscaler always starts with an empty cache -- no explicit clearing
@@ -793,4 +792,45 @@ test "format_capabilities does not report ready when core KEDA is missing" {
     assert "not ready" in msg.lower() , (
         f"A healthy Add-on with missing core KEDA must not be reported as ready; got: {msg}"
     );
+}
+
+test "destroy_collection tolerates a 403 listing InterceptorRoutes and still sweeps ScaledObjects/TriggerAuthentications" {
+    # http.keda.sh (InterceptorRoutes) is a separately-permissioned CRD group
+    # from keda.sh (ScaledObjects/TriggerAuthentications), so a caller may
+    # lack access to it even while fully permissioned for core KEDA. That
+    # must not abort the sweep before the other two resource kinds, which
+    # this codebase's own destroy() callers run further cleanup after.
+    mock_api = unittest.mock.MagicMock();
+    def list_side_effect(**kwargs: any) -> any {
+        if kwargs.get("group") == "http.keda.sh" {
+            raise ApiException(status=403);
+        }
+        return {"items": [{"metadata": {"name": "preview-deployment-scaledobject"}}]};
+    }
+    mock_api.list_namespaced_custom_object.side_effect = list_side_effect;
+    keda = KEDAAutoscaler(_custom_api=mock_api, _v2_api=unittest.mock.MagicMock());
+    raised = False;
+    try {
+        keda.destroy_collection("staging", "managed=jac-scale");
+    } except ApiException {
+        raised = True;
+    }
+    assert not raised , "A 403 listing InterceptorRoutes must not abort the sweep";
+    delete_calls = mock_api.delete_namespaced_custom_object.call_args_list;
+    plurals = [c[1]["plural"] for c in delete_calls];
+    assert "scaledobjects" in plurals;
+    assert "triggerauthentications" in plurals;
+}
+
+test "destroy_collection still raises on a 403 listing ScaledObjects, since keda.sh RBAC is expected to already be present" {
+    mock_api = unittest.mock.MagicMock();
+    mock_api.list_namespaced_custom_object.side_effect = ApiException(status=403);
+    keda = KEDAAutoscaler(_custom_api=mock_api, _v2_api=unittest.mock.MagicMock());
+    raised = False;
+    try {
+        keda.destroy_collection("staging", "managed=jac-scale");
+    } except ApiException {
+        raised = True;
+    }
+    assert raised , "A 403 on the core keda.sh group is not tolerated, unlike http.keda.sh";
 }
