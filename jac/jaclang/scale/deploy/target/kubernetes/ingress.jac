@@ -365,6 +365,30 @@ obj IngressDeployer {
         return [{'host': domain, 'http': http_block}, {'http': http_block}];
     }
 
+    """Domain for the per-app ingress render: an explicitly configured domain
+    wins; otherwise fall back to the jac-scale/domain annotation enable_tls
+    maintains, so a redeploy driven without the domain in config (it may only
+    ever have been supplied at enable_tls time) keeps the host binding."""
+    def _render_domain(
+        ingress_name: str, namespace: str, networking_v1: any
+    ) -> str {
+        if self.k8s_config.domain {
+            return str(self.k8s_config.domain);
+        }
+        try {
+            live = networking_v1.read_namespaced_ingress(
+                name=ingress_name, namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                return '';
+            }
+            raise;
+        }
+        ann = live.metadata.annotations or {};
+        return str(ann.get('jac-scale/domain', ''));
+    }
+
     def _wait_for_nginx_ready(
         app_name: str, namespace: str, apps_v1: any, max_wait: int = 180
     ) -> None {
@@ -433,13 +457,20 @@ obj IngressDeployer {
             );
         }
 
+        render_domain: str = str(self.k8s_config.domain);
+        if not self.k8s_config.shared_ingress {
+            render_domain = self._render_domain(
+                ingress_name, namespace, networking_v1
+            );
+        }
+
         if self.k8s_config.shared_ingress {
             main_rules: list = [
                 {'host': self.k8s_config.domain, 'http': {'paths': paths}}
             ];
-        } elif self.k8s_config.domain {
+        } elif render_domain {
             main_rules: list = self._domain_rules(
-                {'paths': paths}, self.k8s_config.domain
+                {'paths': paths}, render_domain
             );
         } else {
             main_rules: list = [{'http': {'paths': paths}}];
@@ -480,8 +511,8 @@ obj IngressDeployer {
                 ] = 'true';
             }
         }
-        if self.k8s_config.domain {
-            ingress_annotations['jac-scale/domain'] = self.k8s_config.domain;
+        if render_domain {
+            ingress_annotations['jac-scale/domain'] = render_domain;
         }
         if self.k8s_config.cert_manager_email {
             ingress_annotations['jac-scale/cert-email'] = self.k8s_config.cert_manager_email;
@@ -601,9 +632,9 @@ obj IngressDeployer {
                 redis_rules: list = [
                     {'host': self.k8s_config.domain, 'http': {'paths': redis_paths}}
                 ];
-            } elif self.k8s_config.domain {
+            } elif render_domain {
                 redis_rules: list = self._domain_rules(
-                    {'paths': redis_paths}, self.k8s_config.domain
+                    {'paths': redis_paths}, render_domain
                 );
             } else {
                 redis_rules: list = [{'http': {'paths': redis_paths}}];
