@@ -245,6 +245,96 @@ test "per-field coercion-fallback warning is emitted once per field, not once pe
 }
 
 
+test "aliased-class resolution info is logged once per class, not once per lookup" {
+    buf = io.StringIO();
+    capture = logging.StreamHandler(buf);
+    logger = logging.getLogger("jaclang.runtimelib.serializer");
+    prev_level = logger.level;
+    logger.setLevel(logging.INFO);
+    logger.addHandler(capture);
+    Serializer._reset_warn_cache();
+    try {
+        for _ in range(50) {
+            assert Serializer._get_class("oldmod", "LegacyName") is _AliasedNewName;
+        }
+    } finally {
+        logger.removeHandler(capture);
+        logger.setLevel(prev_level);
+        Serializer._reset_warn_cache();
+    }
+    count = buf.getvalue().count("resolving aliased class");
+    assert count == 1 , f"expected one alias-resolution line, got {count}";
+}
+
+
+test "non-dict archetype warning is logged once, not once per anchor" {
+    blob = {
+        '__type__': 'NodeAnchor',
+        '__module__': 'jaclang.jac0core.archetype',
+        'id': str(uuid4()),
+        'root': None,
+        'persistent': False,
+        'access': {'all': -1, 'roots': {'anchors': {}}},
+        'archetype': 'not-a-dict',
+        'edges': [],
+        'version': 0
+    };
+    buf = io.StringIO();
+    capture = logging.StreamHandler(buf);
+    logger = logging.getLogger("jaclang.runtimelib.serializer");
+    prev_level = logger.level;
+    logger.setLevel(logging.WARNING);
+    logger.addHandler(capture);
+    Serializer._reset_warn_cache();
+    try {
+        for _ in range(50) {
+            assert Serializer.deserialize(blob) is None;
+        }
+    } finally {
+        logger.removeHandler(capture);
+        logger.setLevel(prev_level);
+        Serializer._reset_warn_cache();
+    }
+    count = buf.getvalue().count("archetype field is not a dict");
+    assert count == 1 , f"expected one non-dict warning, got {count}";
+}
+
+
+test "distinct classes do not share a diagnostic slot" {
+    node_blob = {
+        '__type__': 'NodeAnchor',
+        '__module__': 'jaclang.jac0core.archetype',
+        'id': str(uuid4()),
+        'root': None,
+        'persistent': False,
+        'access': {'all': -1, 'roots': {'anchors': {}}},
+        'archetype': 'not-a-dict',
+        'edges': [],
+        'version': 0
+    };
+    edge_blob = dict(node_blob) | {'__type__': 'EdgeAnchor'};
+    buf = io.StringIO();
+    capture = logging.StreamHandler(buf);
+    logger = logging.getLogger("jaclang.runtimelib.serializer");
+    prev_level = logger.level;
+    logger.setLevel(logging.WARNING);
+    logger.addHandler(capture);
+    Serializer._reset_warn_cache();
+    try {
+        assert Serializer.deserialize(node_blob) is None;
+        assert Serializer.deserialize(edge_blob) is None;
+    } finally {
+        logger.removeHandler(capture);
+        logger.setLevel(prev_level);
+        Serializer._reset_warn_cache();
+    }
+    # The two anchor types must not collapse into one process-wide slot: a
+    # warning for one class must never suppress the first warning for another.
+    count = buf.getvalue().count("archetype field is not a dict");
+    assert count == 2 , f"distinct classes shared a warning slot, got {count}";
+}
+
+
 obj _Shrunken(Root) {
     has name: str = "";
 }
