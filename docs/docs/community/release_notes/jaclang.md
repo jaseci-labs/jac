@@ -2,7 +2,13 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.34.4 (Latest Release)
+## jaclang 0.34.5 (Latest Release)
+
+### Bug Fixes
+
+- **Fix: HTTPS survives redeploys of custom-domain apps**: The per-app ingress render dropped the rule host that binds the app's TLS certificate, so every redeploy of a TLS-enabled app served nginx's self-signed fallback certificate until enable_tls was run again. Apps with a configured domain now render a host-bound rule (certificate binding) plus a catch-all rule (raw load-balancer hostname access), and enable_tls produces the same shape, making the ingress idempotent across deploys.
+
+## jaclang 0.34.4
 
 ### New Features
 
