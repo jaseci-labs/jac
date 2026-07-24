@@ -12,6 +12,24 @@ def _require_bun -> str {
     return bun;
 }
 
+
+def _build_vite_command(build_dir: Path, args: list[str]) -> list[str] {
+    import from jaclang.runtimelib.client.targets.node_tooling_common {
+        resolve_node_tool_entry
+    }
+
+    bun = _require_bun();
+    entry = resolve_node_tool_entry(build_dir, 'vite');
+    if entry is None {
+        raise ClientBundleError(
+            f"Vite is not installed under {build_dir / 'node_modules'}. "
+            "Dependencies are installed before every build, so an absent "
+            "vite means that install did not complete."
+        ) from None;
+    }
+    return [bun, str(entry)] + args;
+}
+
 impl ViteBundler._get_client_dir(self: ViteBundler) -> Path {
     try {
         import from jaclang.project.config { get_config }
@@ -1074,15 +1092,17 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
     self.install_packages(install_dir=build_dir, capture_output=True, clean_stale=True);
     if self.config_path {
         try {
-            config_rel = self.config_path.relative_to(build_dir);
-            command = [bun, 'x', 'vite', 'build', '--config', str(config_rel)];
+            config_arg = str(self.config_path.relative_to(build_dir));
         } except ValueError {
-            command = [bun, 'x', 'vite', 'build', '--config', str(self.config_path)];
+            config_arg = str(self.config_path);
         }
+        command = _build_vite_command(build_dir, ['build', '--config', config_arg]);
     } elif entry_file {
         generated_config = self.create_vite_config(entry_file);
         config_rel = generated_config.relative_to(build_dir);
-        command = [bun, 'x', 'vite', 'build', '--config', str(config_rel)];
+        command = _build_vite_command(
+            build_dir, ['build', '--config', str(config_rel)]
+        );
     } else {
         command = [bun, 'run', 'build'];
     }
@@ -1206,9 +1226,12 @@ def _toml_config_from_raw(config_data: dict) -> str {
     return content + '\n' if content else '';
 }
 
-def _build_vite_dev_command(config_rel: Path, port: int, host: str = "") -> list[str] {
-    bun = _require_bun();
-    cmd = [bun, 'x', 'vite', '--config', str(config_rel), '--port', str(port)];
+def _build_vite_dev_command(
+    build_dir: Path, config_rel: Path, port: int, host: str = ""
+) -> list[str] {
+    cmd = _build_vite_command(
+        build_dir, ['--config', str(config_rel), '--port', str(port)]
+    );
     if host {
         cmd.append('--host');
         cmd.append(host);
@@ -1294,7 +1317,7 @@ impl ViteBundler.start_dev_server(
     } except ValueError {
         config_rel = dev_config;
     }
-    command = _build_vite_dev_command(config_rel, port, host=host);
+    command = _build_vite_dev_command(build_dir, config_rel, port, host=host);
 
     self.dev_server_port = port;
     (build_dir / '.dev-port').unlink(missing_ok=True);

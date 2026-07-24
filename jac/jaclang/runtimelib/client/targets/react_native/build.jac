@@ -8,7 +8,7 @@ import from jaclang.cli.console { console }
 import from jaclang.runtimelib.client.targets.build_common { artifact_mtime }
 import from jaclang.runtimelib.client.targets.react_native.common {
     SUBPROCESS_TIMEOUT_BUILD,
-    resolve_node_runner
+    resolve_node_tool
 }
 import from jaclang.runtimelib.client.targets.react_native.html_tag_map {
     supported_rn_html_tags
@@ -492,8 +492,7 @@ def run_expo_prebuild(rn_dir: Path, platform: str = "android") {
             f"Unsupported Expo prebuild platform '{platform}'. Use android or ios."
         );
     }
-    cmd = resolve_node_runner() + [
-        "expo",
+    cmd = resolve_node_tool(rn_dir, "expo") + [
         "prebuild",
         "--platform",
         plat,
@@ -686,8 +685,7 @@ def run_eas_local_build(
     out_dir = rn_dir / "dist";
     out_dir.mkdir(parents=True, exist_ok=True);
     out_file = out_dir / f"{plat}-{mode}-local{ext}";
-    cmd = resolve_node_runner() + [
-        "eas",
+    cmd = resolve_node_tool(rn_dir, "eas") + [
         "build",
         "--platform",
         plat,
@@ -724,8 +722,7 @@ def run_eas_local_build(
 }
 
 def run_eas_update_opt_in(rn_dir: Path, platform: str, branch: str, message: str = "") {
-    cmd = resolve_node_runner() + [
-        "eas",
+    cmd = resolve_node_tool(rn_dir, "eas") + [
         "update",
         "--branch",
         branch,

@@ -91,9 +91,9 @@ def _normalize_mobile_platform(platform: Optional[str] = None) -> str {
 
 def _run_cap_cmd(project_dir: Path, args: list[str], label: str) {
     import from jaclang.runtimelib.client.targets.node_tooling_common {
-        resolve_node_runner
+        resolve_node_tool
     }
-    cmd = resolve_node_runner() + ["cap"] + args;
+    cmd = resolve_node_tool(project_dir, "cap") + args;
     console.print(f"  Running {label}: {' '.join(cmd)}", style="muted");
     subprocess.run(cmd, cwd=project_dir, check=True, capture_output=False);
 }

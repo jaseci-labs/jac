@@ -1387,6 +1387,24 @@ test "W3050 strip-comments removes all comments when selected" {
     assert "Archetype docstring to deslop" in formatted;
 }
 
+test "W3050 strip-comments keeps jac:ignore directives" {
+    input_path = auto_lint_fixture_path("deslop.jac");
+    config = JacConfig();
+    config.check = CheckConfig(lint=LintConfig(select=["default", "strip-comments"]));
+    set_config(config);
+    try {
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+    } finally {
+        set_config(None);
+    }
+    # The parser reads `# jac:ignore[...]` into inline_suppressions, so deleting
+    # one silently re-arms the diagnostic it was suppressing: it is a directive,
+    # not slop.
+    assert "# jac:ignore[E1053]" in formatted;
+    assert "# field comment" not in formatted;
+}
+
 test "W3051 strip-docstrings removes all docstrings when selected" {
     input_path = auto_lint_fixture_path("deslop.jac");
     config = JacConfig();

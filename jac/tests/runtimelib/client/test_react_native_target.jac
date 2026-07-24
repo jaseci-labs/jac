@@ -857,21 +857,36 @@ test "resolve_rn_port_or_next_available skips reserved ports" {
 test "build_expo_start_argv emits expected metro flags" {
     # Pure helper — easy to assert and the surface most likely to drift
     # if someone tweaks the dev loop without rerunning the smoke test.
+    import tempfile;
+    import unittest.mock;
     import from jaclang.runtimelib.client.targets.react_native.dev {
         build_expo_start_argv
     }
 
-    argv = build_expo_start_argv(8081, clear_cache=True);
-    assert "expo" in argv;
+    def _fake_get_bun -> str {
+        return "/opt/jac/_bun/bun";
+    }
+
+    with tempfile.TemporaryDirectory() as tmp {
+        rn_dir = Path(tmp);
+        entry = _stub_node_tool(rn_dir, "expo", "expo");
+        with unittest.mock.patch(
+            "jaclang.runtimelib.client.targets.node_tooling_common.get_bun",
+            side_effect=_fake_get_bun
+        ) {
+            argv = build_expo_start_argv(rn_dir, 8081, clear_cache=True);
+            argv2 = build_expo_start_argv(rn_dir, 9090, clear_cache=False);
+        }
+        # Expo's own JS entry is the argument bun runs; `bun x expo` would
+        # dispatch on the `.bin` shim's node shebang instead.
+        assert argv[:2] == ["/opt/jac/_bun/bun", str(entry.resolve())];
+    }
     assert "start" in argv;
     assert "--port" in argv;
     assert "8081" in argv;
     assert "--clear" in argv;
-    # The bundled-bun runner prefix (`<bun> x`) comes first; expo is the
-    # tool being run, never the executable itself.
-    assert argv.index("expo") >= 1;
+    assert "x" not in argv;
 
-    argv2 = build_expo_start_argv(9090, clear_cache=False);
     assert "9090" in argv2;
     assert "--clear" not in argv2;
 }
@@ -1050,11 +1065,26 @@ test "client config getters expose mobile and react-native tables" {
     }
 }
 
-test "node tooling runs installs and runners on the bundled bun only" {
+"""Lay out a tool the way `bun install` does: the package's real JS entry
+plus the `node_modules/.bin` symlink, which is what carries the
+`#!/usr/bin/env node` shebang."""
+def _stub_node_tool(project_dir: Path, package: str, tool: str) -> Path {
+    bin_dir = project_dir / "node_modules" / package / "bin";
+    bin_dir.mkdir(parents=True, exist_ok=True);
+    entry = bin_dir / f"{tool}.js";
+    entry.write_text("#!/usr/bin/env node\n");
+    entry.chmod(0o755);
+    shim_dir = project_dir / "node_modules" / ".bin";
+    shim_dir.mkdir(parents=True, exist_ok=True);
+    (shim_dir / tool).symlink_to(entry);
+    return entry;
+}
+
+test "node tooling runs installs and tools on the bundled bun only" {
     import tempfile;
     import unittest.mock;
     import from jaclang.runtimelib.client.targets.node_tooling_common {
-        resolve_node_runner,
+        resolve_node_tool,
         run_manifest_install
     }
 
@@ -1075,19 +1105,24 @@ test "node tooling runs installs and runners on the bundled bun only" {
     }
 
     with tempfile.TemporaryDirectory() as tmp {
+        project_dir = Path(tmp);
+        entry = _stub_node_tool(project_dir, "expo", "expo");
         with unittest.mock.patch("subprocess.run", side_effect=_fake_run) {
             with unittest.mock.patch(
                 "jaclang.runtimelib.client.targets.node_tooling_common.get_bun",
                 side_effect=_fake_get_bun
             ) {
-                run_manifest_install(Path(tmp));
-                runner = resolve_node_runner();
+                run_manifest_install(project_dir);
+                runner = resolve_node_tool(project_dir, "expo");
             }
         }
+        # The tool's own JS entry is named, never the `.bin` shim and never
+        # `bun x`: both of those dispatch on the node shebang.
+        assert runner == ["/opt/jac/_bun/bun", str(entry.resolve())];
     }
     # No system tooling is ever probed or used -- bundled bun only.
     assert ["/opt/jac/_bun/bun", "install"] in calls;
-    assert runner == ["/opt/jac/_bun/bun", "x"];
+    assert "x" not in runner;
     for cmd in calls {
         assert cmd[0] != "npm" and cmd[0] != "npx" and cmd[0] != "bunx" , (
             f"system JS tooling must never be invoked, got: {cmd}"
@@ -1095,26 +1130,58 @@ test "node tooling runs installs and runners on the bundled bun only" {
     }
 }
 
-test "node tooling raises actionably when the bundled bun is missing" {
+test "node tooling refuses to run a tool that is not installed locally" {
+    import tempfile;
     import unittest.mock;
     import from jaclang.runtimelib.client.targets.node_tooling_common {
-        resolve_node_runner
+        resolve_node_tool
+    }
+
+    def _fake_get_bun -> str {
+        return "/opt/jac/_bun/bun";
+    }
+
+    # A clean break: with no local install there is nothing bun can run, and
+    # falling back to `bun x` would silently reintroduce the node dependency.
+    with tempfile.TemporaryDirectory() as tmp {
+        with unittest.mock.patch(
+            "jaclang.runtimelib.client.targets.node_tooling_common.get_bun",
+            side_effect=_fake_get_bun
+        ) {
+            try {
+                resolve_node_tool(Path(tmp), "expo");
+                assert False , "expected RuntimeError when the tool is absent";
+            } except RuntimeError as e {
+                assert "expo" in str(e);
+                assert "node_modules" in str(e);
+            }
+        }
+    }
+}
+
+test "node tooling raises actionably when the bundled bun is missing" {
+    import tempfile;
+    import unittest.mock;
+    import from jaclang.runtimelib.client.targets.node_tooling_common {
+        resolve_node_tool
     }
 
     def _no_bun -> None {
         return None;
     }
 
-    with unittest.mock.patch(
-        "jaclang.runtimelib.client.targets.node_tooling_common.get_bun",
-        side_effect=_no_bun
-    ) {
-        try {
-            resolve_node_runner();
-            assert False , "expected RuntimeError when bundled bun is absent";
-        } except RuntimeError as e {
-            assert "fetch-bun" in str(e);
-            assert "JAC_BUN" in str(e);
+    with tempfile.TemporaryDirectory() as tmp {
+        with unittest.mock.patch(
+            "jaclang.runtimelib.client.targets.node_tooling_common.get_bun",
+            side_effect=_no_bun
+        ) {
+            try {
+                resolve_node_tool(Path(tmp), "expo");
+                assert False , "expected RuntimeError when bundled bun is absent";
+            } except RuntimeError as e {
+                assert "fetch-bun" in str(e);
+                assert "JAC_BUN" in str(e);
+            }
         }
     }
 }
@@ -1155,16 +1222,16 @@ test "expo prebuild runs even when native tree and prebuild state exist" {
             json.dumps({"expo": {"plugins": ["expo-camera"]}}), encoding="utf-8"
         );
         with unittest.mock.patch(
-            "jaclang.runtimelib.client.targets.react_native.build.resolve_node_runner",
-            return_value=["npx"]
+            "jaclang.runtimelib.client.targets.react_native.build.resolve_node_tool",
+            return_value=["/opt/jac/_bun/bun", "/expo/bin/cli.js"]
         ), unittest.mock.patch("subprocess.run", side_effect=_fake_run) {
             run_expo_prebuild(rn_dir, "android");
         }
     }
 
     assert [
-        "npx",
-        "expo",
+        "/opt/jac/_bun/bun",
+        "/expo/bin/cli.js",
         "prebuild",
         "--platform",
         "android",
