@@ -47,33 +47,123 @@ def _seed_build_backend(target: Path, verbose: bool = False) {
 }
 
 
+def _bundled_runtime_python() -> str | None {
+    import os;
+    import sys;
+    if not os.environ.get("JAC_STANDALONE") {
+        return None;
+    }
+    if sys.platform == "win32" {
+        prefix_dir = Path(sys.prefix);
+        for name in [
+            f"python{sys.version_info.major}{sys.version_info.minor}.exe",
+            "python.exe",
+        ] {
+            cand = prefix_dir / name;
+            if cand.is_file() {
+                return str(cand);
+            }
+        }
+        return None;
+    }
+    bin_dir = Path(sys.prefix) / "bin";
+    versioned = f"python{sys.version_info.major}.{sys.version_info.minor}";
+    for name in [versioned, "python3", "python"] {
+        cand = bin_dir / name;
+        if cand.is_file() {
+            return str(cand);
+        }
+    }
+    return None;
+}
+
+
+def _venv_create_interpreter() -> str | None {
+    return _bundled_runtime_python();
+}
+
+
+def _is_fused_venv(venv_dir: Path) -> bool {
+    import sys;
+    py = Path(venv_python(venv_dir));
+    if not py.exists() {
+        return False;
+    }
+    try {
+        return py.resolve() == Path(sys.executable).resolve();
+    } except OSError {
+        return False;
+    }
+}
+
+
+def _venv_needs_recreate(venv_dir: Path) -> bool {
+    pyvenv_cfg = venv_dir / "pyvenv.cfg";
+    python_path = Path(venv_python(venv_dir));
+    if not pyvenv_cfg.exists() or not python_path.exists() {
+        return True;
+    }
+    return _is_fused_venv(venv_dir);
+}
+
+
 def ensure_venv(venv_dir: Path, verbose: bool = False) {
     import venv;
     import sys;
+    import shutil;
     def _create_venv(target: Path) {
-        builder = venv.EnvBuilder(with_pip=True, symlinks=(sys.platform != "win32"));
-        try {
-            builder.create(str(target));
-        } except Exception as e {
-            err_msg = str(e).lower();
-            if "ensurepip" in err_msg or "no module named" in err_msg {
+        import subprocess;
+        interpreter = _venv_create_interpreter();
+        if interpreter is not None {
+            result = subprocess.run(
+                [interpreter, "-m", "venv", str(target), "--with-pip"],
+                capture_output=True,
+                text=True,
+            );
+            if result.returncode != 0 {
+                err_msg = (result.stderr or result.stdout or "").lower();
+                if "ensurepip" in err_msg or "no module named" in err_msg {
+                    raise RuntimeError(
+                        "Failed to create virtual environment: ensurepip is not available.\n"
+                        "On Debian/Ubuntu, install it with: sudo apt install python3-venv\n"
+                        "On Fedora/RHEL: sudo dnf install python3-libs"
+                    );
+                }
                 raise RuntimeError(
-                    "Failed to create virtual environment: ensurepip is not available.\n"
-                    "On Debian/Ubuntu, install it with: sudo apt install python3-venv\n"
-                    "On Fedora/RHEL: sudo dnf install python3-libs"
-                ) from e;
+                    result.stderr.strip() or result.stdout.strip() or "venv creation failed"
+                );
             }
-            raise;
+        } else {
+            builder = venv.EnvBuilder(
+                with_pip=True,
+                symlinks=(sys.platform != "win32")
+            );
+            try {
+                builder.create(str(target));
+            } except Exception as e {
+                err_msg = str(e).lower();
+                if "ensurepip" in err_msg or "no module named" in err_msg {
+                    raise RuntimeError(
+                        "Failed to create virtual environment: ensurepip is not available.\n"
+                        "On Debian/Ubuntu, install it with: sudo apt install python3-venv\n"
+                        "On Fedora/RHEL: sudo dnf install python3-libs"
+                    ) from e;
+                }
+                raise;
+            }
         }
         _seed_build_backend(target, verbose);
     }
     if venv_dir.exists() {
-        pyvenv_cfg = venv_dir / "pyvenv.cfg";
-        python_path = Path(venv_python(venv_dir));
-        if not pyvenv_cfg.exists() or not python_path.exists() {
-            import shutil;
+        if _venv_needs_recreate(venv_dir) {
             if verbose {
-                console.print(f"Recreating corrupted venv at {venv_dir}");
+                if _is_fused_venv(venv_dir) {
+                    console.print(
+                        f"Recreating fused venv at {venv_dir} with bundled CPython"
+                    );
+                } else {
+                    console.print(f"Recreating corrupted venv at {venv_dir}");
+                }
             }
             shutil.rmtree(venv_dir);
             _create_venv(venv_dir);
@@ -93,203 +183,11 @@ def ensure_venv(venv_dir: Path, verbose: bool = False) {
 }
 
 
-def _venv_site(venv_dir: Path) -> Path {
-    site = get_venv_site_packages(venv_dir);
-    site.mkdir(parents=True, exist_ok=True);
-    return site;
-}
-
-
-def _normalised_dist_name(name: str) -> str {
-    return re.sub(r"[-_.]+", "-", name).lower();
-}
-
-
-def _is_fused_venv(venv_dir: Path) -> bool {
-    import sys;
-    py = Path(venv_python(venv_dir));
-    if not py.exists() {
-        return False;
-    }
-    try {
-        return py.resolve() == Path(sys.executable).resolve();
-    } except OSError {
-        return False;
-    }
-}
-
-
-def _find_dist_info_dirs(site: Path, name: str) -> list[Path] {
-    wanted = _normalised_dist_name(name);
-    prefix = wanted + "-";
-    found: list[Path] = [];
-    if not site.is_dir() {
-        return found;
-    }
-    for child in site.iterdir() {
-        if not child.is_dir() or not child.name.endswith(".dist-info") {
-            continue;
-        }
-        base = child.name[:-len(".dist-info")];
-        if _normalised_dist_name(base) == wanted or base.startswith(prefix) {
-            found.append(child);
-        }
-    }
-    return found;
-}
-
-
-def _adjust_pip_args_for_fused_venv(venv_dir: Path, args: list[str]) -> list[str] {
-    if not args {
-        return args;
-    }
-    site = str(_venv_site(venv_dir));
-    cmd = args[0];
-    rest = args[1:];
-    if cmd == "install" {
-        if "--target" in rest or "-t" in rest or "--prefix" in rest {
-            return args;
-        }
-        return ["install", "--target", site] + rest;
-    }
-    if cmd in ("list", "freeze") {
-        if "--path" in rest {
-            return args;
-        }
-        return [cmd, "--path", site] + rest;
-    }
-    return args;
-}
-
-def _find_venv_distribution(site: Path, name: str) -> any {
-    import importlib.metadata;
-    wanted = _normalised_dist_name(name);
-    for dist in importlib.metadata.distributions(path=[str(site)]) {
-        raw = dist.metadata.get("Name") or "";
-        if not raw {
-            raw = getattr(dist, "name", "") or "";
-        }
-        if re.sub(r"[-_.]+", "-", str(raw)).lower() == wanted {
-            return dist;
-        }
-    }
-    return None;
-}
-
-
-def _uninstall_from_venv_site(venv_dir: Path, name: str) -> tuple[int, str, str] {
-    import shutil;
-    site = _venv_site(venv_dir);
-    dist = _find_venv_distribution(site, name);
-    if dist is None {
-        return (1, "", f"Package(s) not found: {name}");
-    }
-    removed: list[str] = [];
-    files = dist.files;
-    if files {
-        for rel in files {
-            path = Path(str(dist.locate_file(rel)));
-            try {
-                if path.is_file() or path.is_symlink() {
-                    path.unlink();
-                    removed.append(str(rel));
-                }
-            } except OSError {
-                continue;
-            }
-        }
-    }
-    dist_path = Path(str(getattr(dist, "_path", "")));
-    removed_dist_info = False;
-    if str(dist_path) != "" and dist_path.exists() {
-        shutil.rmtree(dist_path, ignore_errors=True);
-        removed_dist_info = True;
-    }
-    if not removed_dist_info {
-        for info_dir in _find_dist_info_dirs(site, name) {
-            shutil.rmtree(info_dir, ignore_errors=True);
-        }
-    }
-    msg = f"Successfully uninstalled {name}";
-    if removed {
-        msg += f" ({len(removed)} files)";
-    }
-    return (0, msg + "\n", "");
-}
-
-
 def run_pip(
     venv_dir: Path, args: list[str], verbose: bool = False
 ) -> tuple[int, str, str] {
     import subprocess;
-    if args and args[0] == "uninstall" {
-        names = [
-            a
-            for a in args[1:]
-            if a and not a.startswith("-")
-        ];
-        if not names {
-            return (1, "", "No packages specified for uninstall");
-        }
-        outs: list[str] = [];
-        errs: list[str] = [];
-        rc = 0;
-        for name in names {
-            if verbose {
-                console.print(
-                    f"Uninstalling {name} from {get_venv_site_packages(venv_dir)}"
-                );
-            }
-            (code, out, err) = _uninstall_from_venv_site(venv_dir, name);
-            if out {
-                outs.append(out);
-            }
-            if err {
-                errs.append(err);
-            }
-            if code != 0 {
-                rc = code;
-            }
-        }
-        return (rc, "".join(outs), "".join(errs));
-    }
-    if args and args[0] == "show" {
-        names = [
-            a
-            for a in args[1:]
-            if a and not a.startswith("-")
-        ];
-        site = _venv_site(venv_dir);
-        chunks: list[str] = [];
-        missing = False;
-        for name in names {
-            dist = _find_venv_distribution(site, name);
-            if dist is None {
-                missing = True;
-                continue;
-            }
-            meta = dist.metadata;
-            lines = [
-                f"Name: {meta.get('Name', name)}",
-                f"Version: {meta.get('Version', '')}",
-                f"Summary: {meta.get('Summary', '')}",
-                f"Home-page: {meta.get('Home-page', '')}",
-                f"Author: {meta.get('Author', '')}",
-                f"Location: {site}",
-                ""
-            ];
-            chunks.append("\n".join(lines));
-        }
-        if not chunks {
-            return (1, "", "WARNING: Package(s) not found: " + ", ".join(names));
-        }
-        return (1 if missing else 0, "\n".join(chunks), "");
-    }
-    adjusted = args;
-    if _is_fused_venv(venv_dir) {
-        adjusted = _adjust_pip_args_for_fused_venv(venv_dir, args);
-    }
-    cmd = pip_command(venv_python(venv_dir), adjusted);
+    cmd = pip_command(venv_python(venv_dir), args);
     if verbose {
         console.print(f"Running: {' '.join(cmd)}");
     }

@@ -1274,6 +1274,29 @@ fn precompile(io: Io, gpa: Allocator, a: Allocator, parent_env: *std.process.Env
 }
 
 
+/// Stage the relocatable pbs `python3.x` launcher under `python/bin/`. Project
+/// venvs created by the fused `jac` binary use this as their base interpreter.
+fn stagePythonBin(io: Io, a: Allocator, pbs_py_dir: []const u8, stage: []const u8) !void {
+    const py = try resolvePython(io, a, pbs_py_dir);
+    const bare = std.fs.path.basename(py);
+    const bin_dst = try std.fmt.allocPrint(a, "{s}/python/bin", .{stage});
+    try Dir.cwd().createDirPath(io, bin_dst);
+    const dst = try std.fmt.allocPrint(a, "{s}/{s}", .{ bin_dst, bare });
+    try Dir.cwd().copyFile(py, Dir.cwd(), dst, io, .{ .permissions = .fromMode(0o755) });
+    const pbs_bin = try std.fmt.allocPrint(a, "{s}/install/bin", .{pbs_py_dir});
+    const py3_src = try std.fmt.allocPrint(a, "{s}/python3", .{pbs_bin});
+    if (!std.mem.eql(u8, bare, "python3") and fileExists(io, py3_src)) {
+        try Dir.cwd().copyFile(
+            py3_src,
+            Dir.cwd(),
+            try std.fmt.allocPrint(a, "{s}/python3", .{bin_dst}),
+            io,
+            .{ .permissions = .fromMode(0o755) },
+        );
+    }
+    log("==> staged project venv interpreter -> python/bin/{s}", .{bare});
+}
+
 /// Stage the runtime tree: shared libpython + stdlib + the assembled site.
 fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site: []const u8, stage: []const u8, musl_dir: ?[]const u8, wasm_libc_dir: ?[]const u8) !void {
     log("==> staging runtime tree (shared libpython + stdlib + site)", .{});
@@ -1330,6 +1353,11 @@ fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site:
     }
     // The LLVMPY_* shim statically links LLVM (~130 MiB); strip it (best-effort).
     stripBestEffort(io, try std.fmt.allocPrint(a, "{s}/site/jaclang/compiler/passes/native/llvm/{s}", .{ stage, shimFileName() }));
+
+    // Relocatable pbs python launcher for project venv creation. The fused `jac`
+    // binary is not a pip/venv base interpreter; project `.jac/venv` must use
+    // real CPython so `pip install` works without --target shims.
+    try stagePythonBin(io, a, pbs_py_dir, stage);
 
     // Static C-floor archives + CA bundle so an installed binary can static-link
     // a bundled C floor at `nacompile` time, not just dev builds (#6978 0.2).

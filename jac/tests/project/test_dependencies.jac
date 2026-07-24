@@ -24,9 +24,9 @@ import from jaclang.project.pyvenv {
     pip_command,
     remove_venv_from_path,
     summarize_pip_failure,
-    _adjust_pip_args_for_fused_venv,
-    _find_dist_info_dirs,
+    _bundled_runtime_python,
     _is_fused_venv,
+    _venv_create_interpreter,
     run_pip
 }
 import from jaclang.project.providers {
@@ -220,38 +220,24 @@ test "ensure_venv ensurepip missing" {
     }
 }
 
-# ===== Fused-venv pip targeting =====
-test "fused venv pip install rewrites to --target site-packages" {
-    reset_config();
-    (tmp, project_dir) = make_temp_project();
-    try {
-        venv_dir = project_dir / ".jac" / "venv";
-        site = venv_dir / "lib" / "python3.14" / "site-packages";
-        site.mkdir(parents=True, exist_ok=True);
-        adjusted = _adjust_pip_args_for_fused_venv(
-            venv_dir, ["install", "--upgrade", "fastapi>=0.121"]
-        );
-        assert adjusted[0] == "install";
-        assert "--target" in adjusted;
-        assert str(site) in adjusted;
-        assert "fastapi>=0.121" in adjusted;
-        # list/freeze must query the same tree.
-        listed = _adjust_pip_args_for_fused_venv(venv_dir, ["list", "--format=json"]);
-        assert "--path" in listed;
-        assert str(site) in listed;
-        # Respect an explicit --target from the caller.
-        explicit = _adjust_pip_args_for_fused_venv(
-            venv_dir, ["install", "--target", "/elsewhere", "six"]
-        );
-        assert explicit.count("--target") == 1;
-        assert "/elsewhere" in explicit;
-    } finally {
-        shutil.rmtree(tmp, ignore_errors=True);
-        reset_config();
+# ===== Project venv interpreter selection =====
+test "bundled runtime python is None outside standalone" {
+    with patch.dict(os.environ, {}, clear=False) {
+        os.environ.pop("JAC_STANDALONE", None);
+        assert _bundled_runtime_python() is None;
     }
 }
 
-test "run_pip skips fused rewrite for real-python venvs" {
+test "venv create interpreter uses bundled python under standalone" {
+    fake_py = "/fake/rt/python/bin/python3.14";
+    with patch.dict(os.environ, {"JAC_STANDALONE": "1"}, clear=False), patch(
+        "jaclang.project.pyvenv._bundled_runtime_python", return_value=fake_py
+    ) {
+        assert _venv_create_interpreter() == fake_py;
+    }
+}
+
+test "run_pip uses plain pip install without target rewrite" {
     reset_config();
     (tmp, project_dir) = make_temp_project();
     try {
@@ -262,7 +248,6 @@ test "run_pip skips fused rewrite for real-python venvs" {
         (venv_dir / "pyvenv.cfg").write_text("home = /usr/bin\nversion = 3.14.0\n");
         site = venv_dir / "lib" / "python3.14" / "site-packages";
         site.mkdir(parents=True, exist_ok=True);
-        assert not _is_fused_venv(venv_dir);
         with patch("subprocess.run") as run {
             run.return_value = MagicMock(returncode=0, stdout="", stderr="");
             run_pip(venv_dir, ["install", "six"], verbose=False);
@@ -276,11 +261,12 @@ test "run_pip skips fused rewrite for real-python venvs" {
     }
 }
 
-test "run_pip rewrites install for fused jac-as-python venvs" {
+test "ensure_venv recreates fused jac-as-python venvs" {
     reset_config();
     (tmp, project_dir) = make_temp_project();
     try {
-        venv_dir = project_dir / ".jac" / "venv";
+        config = JacConfig.load(project_dir / "jac.toml");
+        venv_dir = config.get_venv_dir();
         bin_dir = venv_dir / "bin";
         bin_dir.mkdir(parents=True, exist_ok=True);
         py = bin_dir / "python";
@@ -290,33 +276,18 @@ test "run_pip rewrites install for fused jac-as-python venvs" {
             py.write_text(sys.executable);
         }
         (venv_dir / "pyvenv.cfg").write_text("home = /usr/bin\nversion = 3.14.0\n");
-        site = venv_dir / "lib" / "python3.14" / "site-packages";
-        site.mkdir(parents=True, exist_ok=True);
         assert _is_fused_venv(venv_dir);
-        with patch("subprocess.run") as run {
+        with patch("shutil.rmtree") as rm, patch("subprocess.run") as run, patch(
+            "jaclang.project.pyvenv.run_pip", return_value=(0, "", "")
+        ), patch(
+            "jaclang.project.pyvenv._venv_create_interpreter",
+            return_value="/fake/rt/python/bin/python3.14"
+        ) {
             run.return_value = MagicMock(returncode=0, stdout="", stderr="");
-            run_pip(venv_dir, ["install", "six"], verbose=False);
+            ensure_venv(venv_dir, verbose=False);
+            rm.assert_called_once_with(venv_dir);
+            run.assert_called_once();
         }
-        cmd = run.call_args.args[0];
-        assert "--target" in cmd;
-        assert str(site) in cmd;
-    } finally {
-        shutil.rmtree(tmp, ignore_errors=True);
-        reset_config();
-    }
-}
-
-test "find dist-info dirs matches name-version directories" {
-    reset_config();
-    tmp = tempfile.mkdtemp(prefix="jac_test_");
-    try {
-        site = Path(tmp) / "site-packages";
-        site.mkdir(parents=True, exist_ok=True);
-        info = site / "mypkg-1.0.0.dist-info";
-        info.mkdir();
-        found = _find_dist_info_dirs(site, "mypkg");
-        assert found == [info];
-        assert _find_dist_info_dirs(site, "other") == [];
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
         reset_config();
@@ -344,8 +315,6 @@ test "PythonProvider install_specs success" {
             assert "install" in call_args;
             assert "--upgrade" in call_args;
             assert "requests>=2.28.0" in call_args;
-            # Provider still passes a plain install; run_pip rewrites it with
-            # --target for the fused jac-as-venv-python case.
             assert "--target" not in call_args;
         }
     } finally {
