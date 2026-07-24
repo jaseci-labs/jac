@@ -68,7 +68,7 @@ myapp/
 
 ### Basic Page
 
-A page is any export that returns `JsxPage` (the name is free); a layout returns `JsxLayout`. `JsxPage` and `JsxLayout` are ambient builtin types, no import needed:
+A page is any export that returns `JsxPage`; a layout returns `JsxLayout`. `JsxPage` and `JsxLayout` are ambient builtin types, no import needed. Route membership comes from the return type alone -- the export name and the filename are free, and the filename only decides the URL. Because the URL comes from the filename, a file defines at most one page and one layout: if several exports return `JsxPage`, only the first is used, so keep one page export per file. A component that returns `JsxElement` is not a route, so helpers can live alongside pages with no special naming:
 
 ```jac
 # pages/about.jac
@@ -79,6 +79,9 @@ def:pub About() -> JsxPage {
     </div>;
 }
 ```
+
+!!! warning "Blank page? Check your return types"
+    If no export under `pages/` returns `JsxPage`, the app mounts without a router and renders a blank page. The client build logs a console error when this happens, with a per-file hint for each export that returns `JsxElement` but should return `JsxPage` or `JsxLayout`.
 
 ### Dynamic Routes with `[param]`
 
@@ -173,7 +176,7 @@ The `(auth)` group automatically wraps pages with authentication checks.
 
 ### Layout Files
 
-Create `layout.jac` to wrap pages with shared UI:
+Any file whose export returns `JsxLayout` becomes the layout for its directory -- naming it `layout.jac` is a convention, not a requirement. A directory can have at most one layout export; a second one is a build error. Layouts wrap the directory's pages with shared UI:
 
 ```jac
 # pages/layout.jac
@@ -360,7 +363,7 @@ def:pub BlogPost() -> JsxElement {
 
 ### Layout Pattern (File-Based)
 
-Create a `layout.jac` file in a route group:
+Add a `JsxLayout` export to a directory (by convention in a file named `layout.jac`):
 
 ```
 

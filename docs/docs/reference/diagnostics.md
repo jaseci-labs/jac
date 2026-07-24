@@ -501,6 +501,39 @@ Emitted during code generation, formatting, and native compilation.
 |------|---------|
 | `E5060` | C library import declaration '{name}' must not have a body |
 
+### Client Code Generation
+
+| Code | Message |
+|------|---------|
+| `E5080` | Argument '{name}' for server function '{func}' is given both positionally and by keyword |
+| `E5081` | Unknown client framework '{framework}' |
+| `E5082` | Client code imports '{name}' from '{module}', but '{name}' has no client-side presence |
+
+`E5082` fires when a plain client import references a server symbol that does not bridge: server `def:pub` endpoints bridge automatically over RPC, so the fix is to make the symbol a `def:pub` endpoint, mark it (or its module) client, or move it into client code.
+
+---
+
+## Client Codespace Warnings (W6xxx)
+
+### Cross-Codespace Portability
+
+Emitted by `CapabilityCheckPass` when code uses JS-specific surface instead of Jac's common primitives, which work across all codespaces (Python, JS, native).
+
+| Code | Message |
+|------|---------|
+| `W6001` | Use of JS-specific global '{name}' -- use '{alternative}' for cross-codespace portability |
+| `W6002` | Use of JS-idiomatic method '.{method}()' -- use '{alternative}' for cross-codespace portability |
+| `W6003` | Use of JS-specific keyword '{name}' -- use '{alternative}' for cross-codespace portability |
+| `W6004` | Use of JS-specific property '.{prop}' -- use '{alternative}' for cross-codespace portability |
+
+### RPC Boundary
+
+| Code | Message |
+|------|---------|
+| `W6005` | Client call to server endpoint '{func}' passes function-typed parameter '{param}' -- functions cannot cross the RPC boundary |
+
+A `def:pub` function in a server-placed module is an HTTP endpoint whose arguments serialize over the wire, so a function-typed argument cannot cross it. Shared client-side logic should drop `:pub` so it is placed in the browser with its callers.
+
 ---
 
 ## Internal Compiler Errors (E9xxx)

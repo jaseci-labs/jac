@@ -752,7 +752,7 @@ myapp/
 | `pages/(auth)/dashboard.jac` | `/dashboard` | Route group (no URL segment) |
 | `pages/layout.jac` | -- | Wraps child routes with `<Outlet />` |
 
-A page is any export that returns `JsxPage` (the name is free); a layout returns `JsxLayout`. `JsxPage` and `JsxLayout` are ambient builtin types, no import needed:
+A page is any export that returns `JsxPage`; a layout returns `JsxLayout`. `JsxPage` and `JsxLayout` are ambient builtin types, no import needed. Route membership comes from the return type alone -- both the export name and the filename are free, and the filename only decides the URL. Because the URL comes from the filename, a file defines at most one page and one layout: if several exports return `JsxPage`, only the first is used, so keep one page export per file. Naming the layout file `layout.jac` is a convention: any file whose export returns `JsxLayout` becomes the layout for its directory, and two layout exports in one directory is a build error. A co-located component that returns `JsxElement` is simply not a route.
 
 ```jac
 # pages/users/[id].jac
@@ -853,7 +853,7 @@ def:pub RootShell() -> JsxLayout {
 }
 
 # pages/dashboard/layout.jac -- nested dashboard layout
-def:pub DashboardLayout() -> JsxElement {
+def:pub DashboardLayout() -> JsxLayout {
     # Child routes render where Outlet is placed
     return <div>
         <Sidebar />
