@@ -517,7 +517,8 @@ impl KEDAAutoscaler.apply_http_activation{
 impl KEDAAutoscaler.destroy_http_activation{
     api = self._custom_api or client.CustomObjectsApi();
 
-    pending_error: (ApiException | None) = None;
+    interceptor_error: (ApiException | None) = None;
+    scaled_object_error: (ApiException | None) = None;
     try {
         api.delete_namespaced_custom_object(
             group="http.keda.sh",
@@ -528,7 +529,7 @@ impl KEDAAutoscaler.destroy_http_activation{
         );
     } except ApiException as e {
         if e.status not in [404, 422] {
-            pending_error = e;
+            interceptor_error = e;
         }
     }
     try {
@@ -541,9 +542,17 @@ impl KEDAAutoscaler.destroy_http_activation{
         );
     } except ApiException as e {
         if e.status not in [404, 422] {
-            pending_error = e;
+            scaled_object_error = e;
         }
     }
+
+    if interceptor_error is not None and interceptor_error.status != 403 {
+        raise interceptor_error;
+    }
+    if scaled_object_error is not None and scaled_object_error.status != 403 {
+        raise scaled_object_error;
+    }
+    pending_error = interceptor_error or scaled_object_error;
     if pending_error is not None {
         raise pending_error;
     }
