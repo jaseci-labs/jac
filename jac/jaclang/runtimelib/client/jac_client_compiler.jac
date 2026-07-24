@@ -100,6 +100,8 @@ class JacClientCompiler {
         self: JacClientCompiler, scanner: RouteScanner
     ) -> None;
 
+    def _warn_unmigrated_pages(self: JacClientCompiler, scanner: RouteScanner) -> None;
+
     def _generate_routes_manifest(self: JacClientCompiler) -> None;
     def _write_source_map(
         self: JacClientCompiler,

@@ -45,6 +45,56 @@ def describe_pages_without_routes(pages_dir: Path) -> list[str] {
     return lines;
 }
 
+def describe_unmigrated_pages(pages_dir: Path, routed_files: list[Path]) -> list[str] {
+    routed: set[Path] = set();
+    for rf in routed_files {
+        try {
+            routed.add(rf.resolve());
+        } except OSError {
+            routed.add(rf);
+        }
+    }
+    lines: list[str] = [];
+    try {
+        for f in sorted(pages_dir.rglob('*.jac')) {
+            if any(suffix in f.name for suffix in _ROUTE_ROLE_SUFFIXES) {
+                continue;
+            }
+            resolved = f;
+            try {
+                resolved = f.resolve();
+            } except OSError { }
+            if resolved in routed {
+                continue;
+            }
+            try {
+                source = f.read_text(encoding='utf-8');
+            } except OSError {
+                continue;
+            }
+            if re.search(_ROUTE_TYPE_RE, source) {
+                continue;
+            }
+            is_layout = f.stem == 'layout';
+            for hit in re.finditer(_JSX_ELEMENT_EXPORT_RE, source) {
+                kind = 'JsxLayout'
+                    if (is_layout or 'layout' in hit.group(1).lower())
+                    else 'JsxPage';
+                lines.append(
+                    f"  {f}: '{hit.group(1)}' returns JsxElement and is not a route" + f" — return {kind} to route it, or leave it if it is a co-located component."
+                );
+            }
+        }
+    } except OSError {
+        return [];
+    }
+    if not lines {
+        return [];
+    }
+    lines.insert(0, f"{pages_dir}: some modules are not registered as routes:");
+    return lines;
+}
+
 obj RouteEntry {
     has path: str,
         component_import: str,

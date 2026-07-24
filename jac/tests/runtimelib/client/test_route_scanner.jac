@@ -21,7 +21,8 @@ import from tempfile { TemporaryDirectory }
 
 import from jaclang.runtimelib.client.route_scanner {
     RouteScanner,
-    describe_pages_without_routes
+    describe_pages_without_routes,
+    describe_unmigrated_pages
 }
 
 
@@ -296,5 +297,72 @@ test "non-legacy zero-route tree gets the headline only" {
         joined = "\n".join(lines);
         assert "blank page" in joined;
         assert "util.jac" not in joined , "non-legacy modules are not called out";
+    }
+}
+
+
+"""When some routes resolve, a JsxElement page that failed to migrate is still
+called out per file - a partial miss is not silent just because siblings route."""
+test "unmigrated JsxElement pages are named when other routes exist" {
+    with TemporaryDirectory() as tmp {
+        proj = Path(tmp);
+        routed = _write(
+            proj,
+            "pages/users.jac",
+            "def:pub Users() -> JsxPage { return <div>u</div>; }",
+        );
+        _write(
+            proj,
+            "pages/about.jac",
+            "def:pub About() -> JsxElement { return <div>a</div>; }",
+        );
+        lines = describe_unmigrated_pages(proj / "pages", [routed]);
+        assert lines , "an unmigrated page must not be silent when siblings route";
+        joined = "\n".join(lines);
+        assert "about.jac" in joined , "the unmigrated file must be named";
+        assert "'About'" in joined , "the export name must be reported";
+        assert "JsxPage" in joined , "the fix must be suggested";
+        assert "users.jac" not in joined , "a resolved route must not be re-reported";
+    }
+}
+
+
+"""A fully migrated tree is quiet: every file resolved, nothing to warn about."""
+test "fully migrated tree yields no unmigrated diagnostic" {
+    with TemporaryDirectory() as tmp {
+        proj = Path(tmp);
+        a = _write(
+            proj,
+            "pages/index.jac",
+            "def:pub Home() -> JsxPage { return <div>h</div>; }",
+        );
+        b = _write(
+            proj,
+            "pages/layout.jac",
+            "def:pub Shell() -> JsxLayout { return <Outlet />; }",
+        );
+        assert describe_unmigrated_pages(proj / "pages", [a, b]) == [];
+    }
+}
+
+
+"""An unmigrated layout file is suggested JsxLayout, not JsxPage."""
+test "unmigrated layout is pointed at JsxLayout" {
+    with TemporaryDirectory() as tmp {
+        proj = Path(tmp);
+        routed = _write(
+            proj,
+            "pages/index.jac",
+            "def:pub Home() -> JsxPage { return <div>h</div>; }",
+        );
+        _write(
+            proj,
+            "pages/layout.jac",
+            "def:pub Shell() -> JsxElement { return <Outlet />; }",
+        );
+        lines = describe_unmigrated_pages(proj / "pages", [routed]);
+        joined = "\n".join(lines);
+        assert "layout.jac" in joined , "the unmigrated layout must be named";
+        assert "JsxLayout" in joined , "a layout file must be pointed at JsxLayout";
     }
 }
