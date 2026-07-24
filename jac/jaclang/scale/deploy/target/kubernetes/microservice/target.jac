@@ -46,14 +46,9 @@ import from jaclang.scale.config.config_loader { get_scale_config }
 
 glob logger = logging.getLogger(__name__);
 
-# Per-service apply loop shared entry point for the microservices deploy
-# path. Takes the manifest bundle, namespace, and a KEDAAutoscaler as
-# explicit parameters (rather than reaching into `self`) so it stays unit-
-# testable without apply_manifests()'s live-cluster preamble
-# (_load_kube_config, a real reachability check against the API server).
 def apply_http_activations_for_bundle(
     bundle: dict[str, any], namespace: str, keda: KEDAAutoscaler
-) -> None {
+) {
     for svc_name in bundle.get("http_activations", {}).keys() {
         k8s_name = k8s_safe_name(svc_name);
         cfg = dict(bundle.get("http_activations", {}).get(svc_name, {}));
@@ -1100,13 +1095,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             }
         }
 
-        # HTTP activation always needs the KEDA HTTP Add-on regardless of
-        # autoscaler_engine (a service can run plain HPA for base scaling and
-        # still have HTTP activation enabled independently) - if engine is
-        # "hpa" the sweep above resolves to HPAAutoscaler.destroy_collection,
-        # which knows nothing about interceptorroutes/HTTP ScaledObjects, so
-        # those would otherwise be orphaned on teardown. Skip when engine is
-        # already "keda" to avoid sweeping the same resources twice.
         if self.k8s_config.autoscaler_engine != "keda" {
             try {
                 KEDAAutoscaler(logger=self.logger).destroy_collection(

@@ -13,14 +13,6 @@ import from jaclang.scale.deploy.autoscale.http_activation {
 import from jaclang.scale.deploy.autoscale.keda_autoscaler { KEDAAutoscaler }
 import from kubernetes.client.exceptions { ApiException }
 
-# Translates a [scale.kubernetes.http_activation] / [scale.microservices.
-# services.NAME.http_activation] config dict into an HTTPActivationSpec, or
-# None when the block is absent/disabled. Raises ValueError with jac.toml-
-# relative messages for the two hard requirements HTTPActivationSpec itself
-# also enforces (KEDAAutoscaler._validate_http_activation_spec), so a config
-# mistake points at the actual jac.toml key instead of an internal type name.
-# Shared by both the monolith (kubernetes_target.jac) and microservices
-# (manifest_builder.jac / microservice/target.jac) deploy paths.
 def build_http_activation_spec(
     cfg: dict[str, any], scale_target_name: str, namespace: str, service_name: str
 ) -> HTTPActivationSpec | None {
@@ -144,13 +136,6 @@ def build_http_activation_spec(
     );
 }
 
-# Deploy-path entry point shared by the monolith (kubernetes_target.jac) and
-# microservices (manifest_builder.jac / microservice/target.jac) apply call
-# sites. Takes the KEDAAutoscaler as an explicit parameter (rather than
-# constructing one internally) so it stays unit-testable with a mocked
-# instance, independent of whatever cluster-facing code calls it. Returns
-# None (skip, nothing to report) when the config is disabled/absent, matching
-# how build_http_activation_spec itself signals "nothing to do."
 def apply_http_activation_for_target(
     cfg: dict[str, any],
     scale_target_name: str,
@@ -165,24 +150,6 @@ def apply_http_activation_for_target(
     return keda.apply_http_activation(spec);
 }
 
-# Deploy-path teardown counterpart to apply_http_activation_for_target above.
-# Deliberately unconditional, with no config parameter: gating on the
-# *current* config would skip cleanup for a resource that was created while
-# http_activation was enabled but later got disabled or removed from
-# jac.toml, orphaning the InterceptorRoute/ScaledObject. destroy_http_
-# activation is already 404-safe per-resource, so calling it unconditionally
-# is always safe, mirroring how the base autoscaler's own destroy() call is
-# unconditional at its call site.
-#
-# A non-404 ApiException (most plausibly a 403) is caught and logged rather
-# than re-raised: the HTTP Add-on CRD group (http.keda.sh) installs
-# separately from core KEDA, so a cluster's RBAC may cover keda.sh (already
-# required for the base autoscaler) without yet covering this newer group.
-# Letting that abort the caller's teardown would skip the Deployment,
-# Service, PVC, ingress, monitoring, and database cleanup that follows it,
-# for a resource kind that may not even be installed. This mirrors the
-# warn-and-continue precedent already used by apply_http_activation's own
-# HTTP Add-on preflight check.
 def destroy_http_activation_for_target(
     scale_target_name: str, namespace: str, keda: KEDAAutoscaler
 ) {
