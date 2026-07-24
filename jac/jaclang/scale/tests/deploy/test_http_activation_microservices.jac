@@ -39,10 +39,7 @@ test "service with http_activation.enabled=true returns the config dict unchange
 
 test "service with http_activation disabled or unset returns None" {
     b = _builder(
-        {
-            "billing_ops": {"http_activation": {"enabled": False}},
-            "other_svc": {}
-        }
+        {"billing_ops": {"http_activation": {"enabled": False}}, "other_svc": {}}
     );
     assert b._get_http_activation_config("billing_ops") is None;
     assert b._get_http_activation_config("other_svc") is None;
@@ -97,7 +94,9 @@ test "a service without its own http_activation block does not inherit enabled f
             app_name="t",
             namespace="t-ns",
             http_activation={
-                "enabled": True, "target_port": 8080, "concurrency_target": 10
+                "enabled": True,
+                "target_port": 8080,
+                "concurrency_target": 10
             }
         ),
         microservices_config={"services": {"other_svc": {}}},
@@ -112,10 +111,7 @@ test "apply_http_activations_for_bundle calls apply_http_activation only for the
     (keda, custom_api, _, _) = _mocked_keda();
     custom_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
     bundle = {
-        "http_activations": {
-            "billing_ops": _cfg(),
-            "other_svc": _cfg(enabled=False)
-        }
+        "http_activations": {"billing_ops": _cfg(), "other_svc": _cfg(enabled=False)}
     };
     apply_http_activations_for_bundle(bundle, "t-ns", keda);
     create_calls = custom_api.create_namespaced_custom_object.call_args_list;
