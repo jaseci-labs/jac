@@ -1,5 +1,8 @@
 """Tests for IngressDeployer's per-app ingress rule rendering."""
 import unittest.mock;
+import from types { SimpleNamespace }
+import from kubernetes.client.exceptions { ApiException }
+import from jaclang.scale.deploy.target.kubernetes { ingress as ingress_module }
 import from jaclang.scale.deploy.target.kubernetes.ingress { IngressDeployer }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
@@ -41,4 +44,72 @@ test "per-app ingress without a domain renders a single catch-all rule" {
     rules = _render_rules("");
     assert len(rules) == 1 , f"expected one catch-all rule, got {rules}";
     assert "host" not in rules[0];
+}
+
+def _run_enable_tls(shared: bool) -> list {
+    cfg = KubernetesConfig(
+        app_name="myapp",
+        namespace="test-ns",
+        domain="example.com",
+        cert_manager_email="a@b.com",
+        shared_ingress=shared,
+        shared_ingress_class=("nginx" if shared else "")
+    );
+    deployer = IngressDeployer(k8s_config=cfg, logger=None);
+    ing = SimpleNamespace(
+        metadata=SimpleNamespace(
+            annotations={
+                "jac-scale/domain": "example.com",
+                "jac-scale/cert-email": "a@b.com"
+            }
+        )
+    );
+    networking_v1 = unittest.mock.MagicMock();
+    networking_v1.read_namespaced_ingress.side_effect = [
+        ing,
+        ing,
+        ApiException(status=404)
+    ];
+    custom_api = unittest.mock.MagicMock();
+    custom_api.get_namespaced_custom_object.return_value = {
+        "status": {"conditions": [{"type": "Ready", "status": "True"}]}
+    };
+    fake_api_client = unittest.mock.MagicMock();
+    fake_api_client.sanitize_for_serialization.return_value = {
+        "spec": {"rules": [{"http": {"paths": [{"path": "/"}]}}]}
+    };
+    with unittest.mock.patch.object(
+        IngressDeployer, "_install_cert_manager", unittest.mock.MagicMock()
+    ) {
+        with unittest.mock.patch.object(
+            ingress_module.client, "ApiClient", lambda { fake_api_client; }
+        ) {
+            deployer.enable_tls(
+                "myapp",
+                "test-ns",
+                networking_v1,
+                custom_api,
+                unittest.mock.MagicMock(),
+                unittest.mock.MagicMock()
+            );
+        }
+    }
+    body = networking_v1.patch_namespaced_ingress.call_args_list[0][1]["body"];
+    return body["spec"]["rules"];
+}
+
+test "enable_tls on a per-app ingress renders host plus catch-all rules" {
+    rules = _run_enable_tls(False);
+    assert len(rules) == 2 , f"expected host rule + catch-all, got {rules}";
+    assert rules[0].get("host") == "example.com";
+    assert "host" not in rules[1];
+}
+
+test "enable_tls on a shared ingress stays host-scoped with no catch-all" {
+    # A catch-all rule on a SHARED controller would swallow other apps'
+    # unmatched traffic, so the shared path must keep exactly one
+    # host-bound rule.
+    rules = _run_enable_tls(True);
+    assert len(rules) == 1 , f"expected a single host-bound rule, got {rules}";
+    assert rules[0].get("host") == "example.com";
 }

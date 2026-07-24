@@ -900,7 +900,12 @@ obj IngressDeployer {
         base_http = existing_rules[0].get('http', {'paths': []})
             if existing_rules
             else {'paths': []};
-        tls_spec['rules'] = self._domain_rules(base_http, domain);
+
+        if self.k8s_config.shared_ingress {
+            tls_spec['rules'] = [{'host': domain, 'http': base_http}];
+        } else {
+            tls_spec['rules'] = self._domain_rules(base_http, domain);
+        }
         networking_v1.patch_namespaced_ingress(
             name=ingress_name,
             namespace=namespace,
@@ -921,9 +926,14 @@ obj IngressDeployer {
             redis_base_http = existing_redis_rules[0].get('http', {'paths': []})
                 if existing_redis_rules
                 else {'paths': []};
+            if self.k8s_config.shared_ingress {
+                redis_rules_patched = [{'host': domain, 'http': redis_base_http}];
+            } else {
+                redis_rules_patched = self._domain_rules(redis_base_http, domain);
+            }
             redis_tls_spec = {
                 'tls': [{'hosts': [domain], 'secretName': tls_secret_name}],
-                'rules': self._domain_rules(redis_base_http, domain)
+                'rules': redis_rules_patched
             };
             networking_v1.patch_namespaced_ingress(
                 name=redis_ingress_name,
