@@ -23,7 +23,12 @@ obj AstKidInfo {
 }
 
 obj UniNodeInfo {
-    has cls: type;
+    has cls: type,
+        name: str = "",
+        doc: (str | None) = None,
+        class_name_snake: str = "",
+        init_sig: (inspect.Signature | None) = None,
+        kids: list[AstKidInfo] = [];
 
     with entry {
         type_map: ClassVar[dict[(str, type)]] = {};
@@ -34,6 +39,8 @@ obj UniNodeInfo {
 }
 
 obj AstTool {
+    has ast_classes: list[UniNodeInfo] = [];
+
     def init -> None;
     def pass_template -> str;
     def py_uni_nodes -> str;

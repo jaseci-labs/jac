@@ -12,7 +12,6 @@ impl ProjectTemplate.to_dict -> dict[str, any] {
 }
 
 impl TemplateRegistry.register(template_info: dict[str, any]) -> None {
-    import from jaclang.project.template_registry { ProjectTemplate }
     name = template_info.get("name");
     if not name {
         raise ValueError("Template must have a 'name' field");
@@ -46,7 +45,6 @@ impl TemplateRegistry.register(template_info: dict[str, any]) -> None {
 }
 
 impl TemplateRegistry.get(name: str) -> ProjectTemplate | None {
-    import from jaclang.project.template_registry { ProjectTemplate }
     return self._templates.get(name);
 }
 
@@ -66,7 +64,6 @@ impl TemplateRegistry.get_by_kind(kind: str) -> ProjectTemplate | None {
 }
 
 impl TemplateRegistry.get_default -> ProjectTemplate {
-    import from jaclang.project.template_registry { ProjectTemplate }
     default_tmpl = self.get_by_kind("cli");
     if default_tmpl is None {
         raise RuntimeError("Default (cli) template not registered");
@@ -113,7 +110,6 @@ impl TemplateRegistry.clear -> None {
 }
 
 impl get_template_registry -> TemplateRegistry {
-    import from jaclang.project.template_registry { TemplateRegistry }
     if _registry is None {
         _registry = TemplateRegistry();
     }
