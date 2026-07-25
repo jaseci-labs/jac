@@ -72,6 +72,28 @@ test "candidate nodes with identical field values are distinct visit targets" {
 }
 
 
+test "multistage routing condenses context once and skips extraction on a parseable choice line" {
+    captured_output = io.StringIO();
+    old_stdout = sys.stdout;
+    sys.stdout = captured_output;
+    try {
+        jac_import("routing_multistage", base_path=FIXTURE_DIR + "/");
+    } finally {
+        sys.stdout = old_stdout;
+    }
+    stdout_value = captured_output.getvalue();
+
+    assert "VISITED:beta" in stdout_value;
+    assert "VISITED:gamma" in stdout_value;
+    assert "VISITED:alpha" not in stdout_value;
+    # Two hops share the same long intent: condensed once, cached on hop two.
+    assert "CONDENSE:1" in stdout_value;
+    assert "REASON:2" in stdout_value;
+    # The trailing 'CHOICE:' line short-circuits the structured extraction call.
+    assert "EXTRACT:0" in stdout_value;
+}
+
+
 test "routing dispatches the LLM call through the call_llm plugin hook" {
     captured_output = io.StringIO();
     old_stdout = sys.stdout;
