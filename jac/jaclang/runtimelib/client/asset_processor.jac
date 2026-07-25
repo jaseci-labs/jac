@@ -2,31 +2,11 @@ import contextlib;
 import shutil;
 import from pathlib { Path }
 import from jaclang.project.config { get_config }
+import from jaclang.runtimelib.client.assets { ASSET_COPY_EXTENSIONS }
 
 class AssetProcessor {
     with entry {
-        ASSET_EXTENSIONS = {
-            '.css',
-            '.scss',
-            '.sass',
-            '.less',
-            '.svg',
-            '.png',
-            '.jpg',
-            '.jpeg',
-            '.gif',
-            '.webp',
-            '.ico',
-            '.woff',
-            '.woff2',
-            '.ttf',
-            '.eot',
-            '.otf',
-            '.mp4',
-            '.webm',
-            '.mp3',
-            '.wav'
-        };
+        ASSET_EXTENSIONS = ASSET_COPY_EXTENSIONS;
     }
 
     def copy_assets(

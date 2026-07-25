@@ -21,6 +21,7 @@ import from jaclang.scale.jserver.jserver {
 import from jaclang.jac0core.runtime { JacRuntime as Jac }
 import from jaclang.runtimelib.server { JacAPIServer as JServer }
 import from jaclang.runtimelib.server { JsonValue }
+import from jaclang.runtimelib.client.assets { AssetResolution, AssetResolver }
 import from jaclang.runtimelib.transport { TransportResponse, Meta }
 import from jaclang.scale.shared.utils { _extract_path_param_names }
 import from jaclang.scale.config.config_loader { get_scale_config }
@@ -218,14 +219,17 @@ obj JacAPIServerScheduler {
 }
 
 obj JacAPIServerStatic {
-    def serve_static_file(file_path: str) -> Response;
+    has _asset_resolver: (AssetResolver | None) = None;
+
+    def asset_resolver -> AssetResolver;
+    def asset_response(resolution: AssetResolution, request: Request) -> Response;
+    def serve_asset(file_path: str, request: Request) -> Response;
     def register_static_file_endpoint -> None;
     def serve_client_js_callback -> Callable[..., Response];
     def register_client_js_endpoint -> None;
     def render_page_callback -> Callable[..., HTMLResponse];
     def render_base_route_callback(app_name: str) -> Callable[..., HTMLResponse];
     def register_page_endpoint -> None;
-    def serve_root_asset(file_path: str) -> Response;
     def register_root_asset_endpoint -> None;
     def register_graph_endpoint -> None;
     def serve_graph_page -> HTMLResponse;

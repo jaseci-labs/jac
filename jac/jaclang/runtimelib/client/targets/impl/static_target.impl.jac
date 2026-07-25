@@ -93,10 +93,9 @@ class _DistRequestHandler(SimpleHTTPRequestHandler) {
     }
 
     def guess_type(self: _DistRequestHandler, path: str) -> str {
-        if str(path).endswith(".wasm") {
-            return "application/wasm";
-        }
-        return super.guess_type(path);
+        import from jaclang.runtimelib.client.assets { ASSET_MEDIA_TYPES }
+        known = ASSET_MEDIA_TYPES.get(Path(str(path)).suffix.lower());
+        return known or super.guess_type(path);
     }
 }
 

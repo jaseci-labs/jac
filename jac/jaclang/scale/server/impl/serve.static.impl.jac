@@ -1,6 +1,5 @@
-import mimetypes;
 import from collections.abc { Callable }
-import from pathlib { Path }
+import from fastapi { Request }
 import from fastapi.responses { HTMLResponse, JSONResponse, Response }
 import from jaclang.scale.jserver.jserver {
     APIParameter,
@@ -10,80 +9,90 @@ import from jaclang.scale.jserver.jserver {
 }
 import from jaclang.jac0core.runtime { JacRuntime as Jac }
 import from jaclang.runtimelib.server { JsonValue }
+import from jaclang.runtimelib.client.assets { AssetResolution, AssetResolver }
 import from jaclang.cli.console { console }
 
-impl JacAPIServerStatic.serve_static_file(file_path: str) -> Response {
-    try {
-        import from jaclang.project.config { find_project_root }
-        base_path_dir = Path(bp_dir)
-            if (bp_dir := Jac.get_context().base_path_dir or Jac.get_base_path_dir())
-            else Path.cwd();
-        project_root_result = find_project_root(base_path_dir);
-        if project_root_result {
-            (base_path, _) = project_root_result;
-        } else {
-            base_path = base_path_dir;
-        }
-        file_name = Path(file_path).name;
-
-        client_build_dist_file = base_path / '.jac' / 'client' / 'dist' / file_path;
-        client_build_dist_file_simple = base_path / '.jac' / 'client' / 'dist' / file_name;
-
-        dist_file = base_path / 'dist' / file_path;
-        dist_file_simple = base_path / 'dist' / file_name;
-
-        assets_file = base_path / 'assets' / file_path;
-        assets_file_simple = base_path / 'assets' / file_name;
-        if file_name.endswith('.css') {
-            if client_build_dist_file.exists() {
-                css_content = client_build_dist_file.read_text(encoding='utf-8');
-                return Response(content=css_content, media_type='text/css');
-            } elif client_build_dist_file_simple.exists() {
-                css_content = client_build_dist_file_simple.read_text(encoding='utf-8');
-                return Response(content=css_content, media_type='text/css');
-            } elif dist_file.exists() {
-                css_content = dist_file.read_text(encoding='utf-8');
-                return Response(content=css_content, media_type='text/css');
-            } elif dist_file_simple.exists() {
-                css_content = dist_file_simple.read_text(encoding='utf-8');
-                return Response(content=css_content, media_type='text/css');
-            } elif assets_file.exists() {
-                css_content = assets_file.read_text(encoding='utf-8');
-                return Response(content=css_content, media_type='text/css');
-            } elif assets_file_simple.exists() {
-                css_content = assets_file_simple.read_text(encoding='utf-8');
-                return Response(content=css_content, media_type='text/css');
-            } else {
-                return Response(
-                    status_code=404,
-                    content='CSS file not found',
-                    media_type='text/plain'
-                );
-            }
-        }
-        for candidate_file in [
-            client_build_dist_file,
-            client_build_dist_file_simple,
-            dist_file,
-            dist_file_simple,
-            assets_file,
-            assets_file_simple
-        ] {
-            if (candidate_file.exists() and candidate_file.is_file()) {
-                file_content = candidate_file.read_bytes();
-                (content_type, _) = mimetypes.guess_type(str(candidate_file));
-                if (content_type is None) {
-                    content_type = 'application/octet-stream';
-                }
-                return Response(content=file_content, media_type=content_type);
-            }
-        }
+impl JacAPIServerStatic.asset_response(
+    resolution: AssetResolution, request: Request
+) -> Response {
+    import from jaclang.runtimelib.client.assets { parse_byte_range }
+    if not resolution.is_served() {
         return Response(
-            status_code=404, content='Static file not found', media_type='text/plain'
+            status_code=resolution.status,
+            content=resolution.message or 'Not found',
+            media_type='text/plain; charset=utf-8',
+            headers={'Cache-Control': 'no-store'}
         );
-    } except Exception as exc {
-        return Response(status_code=500);
     }
+    headers = resolution.headers();
+    headers['Accept-Ranges'] = 'bytes';
+    if resolution.is_fresh(
+        request.headers.get('if-none-match'), request.headers.get('if-modified-since')
+    ) {
+        return Response(status_code=304, headers=headers);
+    }
+    try {
+        payload = resolution.read_bytes();
+    } except OSError as exc {
+        console.print(f"Error reading asset {resolution.path}: {exc}");
+        return Response(
+            status_code=500, content='Internal server error', media_type='text/plain'
+        );
+    }
+    window = parse_byte_range(request.headers.get('range'), len(payload));
+    if window is not None {
+        (start, end) = window;
+        headers['Content-Range'] = f"bytes {start}-{end}/{len(payload)}";
+        return Response(
+            status_code=206,
+            content=payload[start:end + 1],
+            media_type=resolution.media_type,
+            headers=headers
+        );
+    }
+    return Response(content=payload, media_type=resolution.media_type, headers=headers);
+}
+
+impl JacAPIServerStatic.serve_asset(file_path: str, request: Request) -> Response {
+    import from jaclang.runtimelib.client.assets { AssetOutcome, is_reserved_url }
+    url_path = request.url.path;
+    resolution = self.asset_resolver().resolve(url_path, request.url.query);
+    if resolution.outcome != AssetOutcome.NOT_AN_ASSET.value {
+        return self.asset_response(resolution, request);
+    }
+    rel = url_path.lstrip('/');
+    if is_reserved_url(rel, self.asset_resolver().policy.reserved_prefixes) {
+        return Response(status_code=404, content='Not found', media_type='text/plain');
+    }
+    import from jaclang.project.config { get_config }
+    config = get_config();
+    configured_root = config.serve.base_route_app if config else "";
+    base_route_app = self.introspector.resolve_root_app(configured_root);
+    if not base_route_app {
+        return Response(status_code=404, content='Not found', media_type='text/plain');
+    }
+    try {
+        render_payload = self.introspector.render_page(
+            base_route_app, {}, Con.GUEST.value
+        );
+    } except ValueError {
+        return HTMLResponse(content="<h1>404 Not Found</h1>", status_code=404);
+    } except RuntimeError {
+        return HTMLResponse(
+            content="<h1>503 Service Unavailable</h1>", status_code=503
+        );
+    }
+    return HTMLResponse(
+        content=render_payload['html'],
+        status_code=self.introspector.spa_fallback_status(url_path)
+    );
+}
+
+impl JacAPIServerStatic.asset_resolver -> AssetResolver {
+    if self._asset_resolver is None {
+        self._asset_resolver = AssetResolver.build(dev=False);
+    }
+    return self._asset_resolver;
 }
 
 impl JacAPIServerStatic.register_static_file_endpoint -> None {
@@ -91,7 +100,7 @@ impl JacAPIServerStatic.register_static_file_endpoint -> None {
         JEndPoint(
             method=HTTPMethod.GET,
             path='/static/{file_path:path}',
-            callback=self.serve_static_file,
+            callback=self.serve_asset,
             parameters=[
                 APIParameter(
                     name='file_path',
@@ -227,115 +236,12 @@ impl JacAPIServerStatic.render_base_route_callback(
     return callback;
 }
 
-impl JacAPIServerStatic.serve_root_asset(file_path: str) -> Response {
-    allowed_extensions = {
-        '.png',
-        '.jpg',
-        '.jpeg',
-        '.gif',
-        '.webp',
-        '.svg',
-        '.ico',
-        '.woff',
-        '.woff2',
-        '.ttf',
-        '.otf',
-        '.eot',
-        '.mp4',
-        '.webm',
-        '.mp3',
-        '.wav',
-        '.css',
-        '.js',
-        '.json',
-        '.pdf',
-        '.txt',
-        '.xml'
-    };
-    file_ext = Path(file_path).suffix.lower();
-    import from jaclang.project.config { get_config }
-    config = get_config();
-    cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
-    api_prefixes = (f'{cl_route_prefix}/', 'walker/', 'function/', 'user/', 'static/');
-    if (not file_ext or (file_ext not in allowed_extensions)) {
-        configured_root = config.serve.base_route_app if config else "";
-        base_route_app = self.introspector.resolve_root_app(configured_root);
-        if (
-            not file_ext and base_route_app and not file_path.startswith(api_prefixes)
-        ) {
-            try {
-                render_payload = self.introspector.render_page(
-                    base_route_app, {}, Con.GUEST.value
-                );
-                return HTMLResponse(
-                    content=render_payload['html'],
-                    status_code=self.introspector.spa_fallback_status(file_path)
-                );
-            } except ValueError {
-                return HTMLResponse(content="<h1>404 Not Found</h1>", status_code=404);
-            } except RuntimeError {
-                return HTMLResponse(
-                    content="<h1>503 Service Unavailable</h1>", status_code=503
-                );
-            }
-        }
-        return Response(status_code=404, content='Not found', media_type='text/plain');
-    }
-    if file_path.startswith(api_prefixes) {
-        return Response(status_code=404, content='Not found', media_type='text/plain');
-    }
-
-    import from jaclang.project.config { find_project_root }
-    base_path_dir = Path(bp_dir)
-        if (bp_dir := Jac.get_context().base_path_dir or Jac.get_base_path_dir())
-        else Path.cwd();
-    project_root_result = find_project_root(base_path_dir);
-    if project_root_result {
-        (base_path, _) = project_root_result;
-    } else {
-        base_path = base_path_dir;
-    }
-    file_name = Path(file_path).name;
-
-    candidates = [
-        base_path / 'dist' / file_path,
-        base_path / 'dist' / file_name,
-        base_path / 'assets' / file_path,
-        base_path / 'assets' / file_name,
-        base_path / 'public' / file_path,
-        base_path / 'src' / file_path,
-        base_path / 'src' / file_name,
-        (base_path / file_path),
-        base_path / '.jac' / 'client' / 'dist' / file_path,
-        base_path / '.jac' / 'client' / 'dist' / file_name
-    ];
-
-    for candidate_file in candidates {
-        if (candidate_file.exists() and candidate_file.is_file()) {
-            file_content = candidate_file.read_bytes();
-            (content_type, _) = mimetypes.guess_type(str(candidate_file));
-            if (content_type is None) {
-                content_type = 'application/octet-stream';
-            }
-            headers = {'Cache-Control': 'public, max-age=31536000'};
-            return Response(
-                content=file_content, media_type=content_type, headers=headers
-            );
-        }
-    }
-    return Response(
-        status_code=404,
-        content=f"Asset not found: {file_path}",
-        media_type='text/plain'
-    );
-}
-
 impl JacAPIServerStatic.register_root_asset_endpoint -> None {
     self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
             path='/{file_path:path}',
-            callback=self.serve_root_asset,
+            callback=self.serve_asset,
             parameters=[
                 APIParameter(
                     name='file_path',
@@ -349,7 +255,7 @@ impl JacAPIServerStatic.register_root_asset_endpoint -> None {
             response_model=None,
             tags=['Static Files'],
             summary='Serve root-level assets',
-            description='Endpoint to serve assets from root path with common extensions (.png, .jpg, .svg, etc.)'
+            description='Serves assets from the configured asset roots, falling back to the base route app for client-side routes.'
         )
     );
 }

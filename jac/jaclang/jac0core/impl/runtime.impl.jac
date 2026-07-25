@@ -1691,11 +1691,11 @@ impl JacServe.send_css(handler: BaseHTTPRequestHandler, css_code: str) -> None {
     ResponseBuilder.send_css(handler, css_code);
 }
 
-impl JacServe.send_static_file(
-    handler: BaseHTTPRequestHandler, file_path: Path, content_type: (str | None) = None
+impl JacServe.send_asset(
+    handler: BaseHTTPRequestHandler, resolution: any, head_only: bool = False
 ) -> None {
     import from jaclang.runtimelib.client.serving { JacClient }
-    JacClient.send_static_file(handler, file_path, content_type);
+    JacClient.send_asset(handler, resolution, head_only);
 }
 
 impl JacLLM.get_mtir(

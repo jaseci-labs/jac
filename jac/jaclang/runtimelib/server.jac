@@ -20,6 +20,7 @@ import from typing {
     get_type_hints
 }
 import from urllib.parse { parse_qs, urlparse }
+import from jaclang.runtimelib.client.assets { AssetResolver }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
 import from jaclang.runtimelib.context { CallState, ExecutionContext }
 import from jaclang.runtimelib.transport { TransportResponse, HTTPTransport, Meta }
@@ -208,7 +209,8 @@ obj JacAPIServer {
         introspection_handler: IntrospectionHandler postinit,
         execution_handler: ExecutionHandler postinit,
         server: (HTTPServer | None) postinit,
-        scheduler: Scheduler postinit;
+        scheduler: Scheduler postinit,
+        _asset_resolver: (AssetResolver | None) = None;
 
     obj RestSpecs {
         has method: str = "",
@@ -224,6 +226,7 @@ obj JacAPIServer {
     def load_module(force_reload: bool = False) -> None;
 
     has module: object { getter; }
+    has asset_resolver: AssetResolver { getter; }
 
     def get_functions -> dict[str, Callable[(..., Any)]];
     def get_walkers -> dict[str, type[WalkerArchetype]];

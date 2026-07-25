@@ -37,9 +37,8 @@ impl AssetProcessor.copy_custom_asset_types(
             }
         }
     }
-    config = get_config();
-    assets_config = config.get_plugin_config("client").get("assets", {});
-    custom_asset_extensions = set(assets_config.get("custom_extensions", []));
+    import from jaclang.runtimelib.client.assets { configured_extra_extensions }
+    custom_asset_extensions = configured_extra_extensions();
     if custom_asset_extensions {
         copy_recursive(src_dir, dest_dir);
     }

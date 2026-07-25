@@ -1,13 +1,13 @@
 import hashlib;
 import html;
 import json;
-import mimetypes;
 import types;
 import from http.server { BaseHTTPRequestHandler }
 import from pathlib { Path }
 import from typing { Any, Literal, TypeAlias }
 import from jaclang.runtimelib.runtime { JacRuntime as Jac }
 import from jaclang.runtimelib.server { ModuleIntrospector }
+import from jaclang.runtimelib.client.assets { AssetResolution }
 
 glob JsonValue: TypeAlias = None | str | int | float | bool | list['JsonValue'] | dict[
          (str, 'JsonValue')
@@ -39,10 +39,10 @@ obj HeaderBuilder {
 }
 
 class JacClient {
-    static def send_static_file(
+    static def send_asset(
         handler: BaseHTTPRequestHandler,
-        file_path: Path,
-        content_type: (str | None) = None
+        resolution: AssetResolution,
+        head_only: bool = False
     ) -> None;
 
     static def render_page(

@@ -469,10 +469,8 @@ class JacServe {
 
     static def send_javascript(handler: BaseHTTPRequestHandler, code: str) -> None;
     static def send_css(handler: BaseHTTPRequestHandler, css_code: str) -> None;
-    static def send_static_file(
-        handler: BaseHTTPRequestHandler,
-        file_path: Path,
-        content_type: (str | None) = None
+    static def send_asset(
+        handler: BaseHTTPRequestHandler, resolution: any, head_only: bool = False
     ) -> None;
 }
 

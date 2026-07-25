@@ -1937,131 +1937,15 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 Jac.send_json(self, 200, get_build_status());
                 return;
             }
-            is_static_path = path.startswith('/static/');
             import from jaclang.project.config { get_config }
+            import from jaclang.runtimelib.client.assets { AssetOutcome }
 
             config = get_config();
-            client_cfg = config.get_plugin_config("client") if config else None;
-            assets_config = client_cfg.get("assets", {}) if client_cfg else {};
-            custom_asset_extensions = set(assets_config.get("custom_extensions", []));
             cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
             cl_route_path = f"/{cl_route_prefix}/";
-            is_asset_file = (
-                not is_static_path
-                and (path != '/')
-                and not path.startswith(cl_route_path)
-                and not path.startswith('/function/')
-                and not path.startswith('/walker/')
-                and not path.startswith('/user/')
-                and not path.startswith('/functions')
-                and not path.startswith('/walkers')
-                and not path.startswith('/protected')
-                and (
-                    Path(path).suffix in (
-                        custom_asset_extensions
-                        or {
-                            '.png',
-                            '.jpg',
-                            '.jpeg',
-                            '.gif',
-                            '.webp',
-                            '.svg',
-                            '.ico',
-                            '.woff',
-                            '.woff2',
-                            '.ttf',
-                            '.otf',
-                            '.eot',
-                            '.mp4',
-                            '.webm',
-                            '.mp3',
-                            '.wav',
-                            '.css',
-                            '.js',
-                            '.json'
-                        }
-                    )
-                )
-            );
-            if (is_static_path or is_asset_file) {
-                try {
-                    import from jaclang.project.config { find_project_root }
-                    bp_dir = Jac.get_context().base_path_dir or Jac.get_base_path_dir();
-                    base_path_dir = Path(bp_dir) if bp_dir else Path.cwd();
-                    project_root_result = find_project_root(base_path_dir);
-                    if project_root_result {
-                        (base_path, _) = project_root_result;
-                    } else {
-                        base_path = base_path_dir;
-                    }
-                    if is_static_path {
-                        relative_path = path[8:];
-                    } else {
-                        relative_path = path[1:];
-                    }
-                    file_name = Path(relative_path).name;
-
-                    client_build_dist_file = base_path / '.jac' / 'client' / 'dist' / relative_path;
-                    client_build_dist_file_simple = base_path / '.jac' / 'client' / 'dist' / file_name;
-
-                    dist_file = base_path / 'dist' / relative_path;
-                    dist_file_simple = base_path / 'dist' / file_name;
-
-                    assets_file = base_path / 'assets' / relative_path;
-                    assets_file_simple = base_path / 'assets' / file_name;
-                    if path.endswith('.css') {
-                        if client_build_dist_file.exists() {
-                            css_content = client_build_dist_file.read_text(
-                                encoding='utf-8'
-                            );
-                            Jac.send_css(self, css_content);
-                            return;
-                        } elif client_build_dist_file_simple.exists() {
-                            css_content = client_build_dist_file_simple.read_text(
-                                encoding='utf-8'
-                            );
-                            Jac.send_css(self, css_content);
-                            return;
-                        } elif dist_file.exists() {
-                            css_content = dist_file.read_text(encoding='utf-8');
-                            Jac.send_css(self, css_content);
-                            return;
-                        } elif dist_file_simple.exists() {
-                            css_content = dist_file_simple.read_text(encoding='utf-8');
-                            Jac.send_css(self, css_content);
-                            return;
-                        } elif assets_file.exists() {
-                            css_content = assets_file.read_text(encoding='utf-8');
-                            Jac.send_css(self, css_content);
-                            return;
-                        } elif assets_file_simple.exists() {
-                            css_content = assets_file_simple.read_text(
-                                encoding='utf-8'
-                            );
-                            Jac.send_css(self, css_content);
-                            return;
-                        } else {
-                            Jac.send_json(self, 404, {'error': 'CSS file not found'});
-                            return;
-                        }
-                    }
-                    for candidate_file in [
-                        client_build_dist_file,
-                        client_build_dist_file_simple,
-                        dist_file,
-                        dist_file_simple,
-                        assets_file,
-                        assets_file_simple
-                    ] {
-                        if (candidate_file.exists() and candidate_file.is_file()) {
-                            Jac.send_static_file(self, candidate_file);
-                            return;
-                        }
-                    }
-                    Jac.send_json(self, 404, {'error': 'Static file not found'});
-                } except Exception as exc {
-                    Jac.send_json(self, 500, {'error': str(exc)});
-                }
+            asset = server.asset_resolver.resolve(path, parsed_path.query);
+            if asset.outcome != AssetOutcome.NOT_AN_ASSET.value {
+                Jac.send_asset(self, asset);
                 return;
             }
             if (path == '/') {
@@ -2390,6 +2274,13 @@ impl JacAPIServer.load_module(force_reload: bool = False) -> None {
 
 impl JacAPIServer.module.getter -> object {
     return self.introspector._module;
+}
+
+impl JacAPIServer.asset_resolver.getter -> AssetResolver {
+    if self._asset_resolver is None {
+        self._asset_resolver = AssetResolver.build(dev=True);
+    }
+    return self._asset_resolver;
 }
 
 impl JacAPIServer.get_functions -> dict[str, Callable[(..., Any)]] {

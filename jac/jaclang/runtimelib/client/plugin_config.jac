@@ -52,6 +52,45 @@ class JacClientPluginConfig {
                     "default": {},
                     "description": "TypeScript configuration overrides"
                 },
+                "assets": {
+                    "type": "dict",
+                    "default": {},
+                    "description": "Static asset serving. Applies identically to the local server and to jac-scale.",
+                    "nested": {
+                        "roots": {
+                            "type": "list",
+                            "default": [],
+                            "description": "Ordered directories assets are served from, each { path, mode = 'build-output' | 'public' | 'source-asset', flatten = false }. Paths are confined to the project. Empty means the built-in set: .jac/client/dist, dist, public, assets."
+                        },
+                        "extensions": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Adjust the servable extension table with 'add' and 'remove' lists. Both are deltas on the built-in table; neither replaces it.",
+                            "nested": {
+                                "add": {
+                                    "type": "list",
+                                    "default": [],
+                                    "description": "Extra extensions to treat as assets (e.g. ['.avif'])"
+                                },
+                                "remove": {
+                                    "type": "list",
+                                    "default": [],
+                                    "description": "Built-in extensions to stop serving"
+                                }
+                            }
+                        },
+                        "immutable_max_age": {
+                            "type": "int",
+                            "default": 31536000,
+                            "description": "max-age for content-hashed filenames. Unhashed files are always revalidated with an ETag instead."
+                        },
+                        "custom_extensions": {
+                            "type": "list",
+                            "default": [],
+                            "description": "Deprecated: use extensions.add. Kept readable for one release and now additive; it used to replace the built-in table, which silently 404'd fonts and images."
+                        }
+                    }
+                },
                 "configs": {
                     "type": "dict",
                     "default": {},
