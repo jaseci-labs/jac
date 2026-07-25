@@ -92,6 +92,45 @@ glob JS_GLOBALS: dict[str, str] = {
          "Unpacking arguments at a native call site is not lowered yet; "
          "pass the elements explicitly or move the call to a @sv/Python "
          "context."
+     ),
+     _NATIVE_OBJMODEL_DYNNAME_HELP: str = (
+         "The attribute name is a runtime value, so it cannot be resolved "
+         "to a struct slot at compile time. Native reflection lowers only "
+         "string-literal names naming a declared `has` field "
+         "(getattr/setattr/hasattr become plain field operations); dynamic "
+         "attribute names will never be supported natively. Use direct "
+         "field access, a dict, or move the code to a @sv/Python context."
+     ),
+     _NATIVE_OBJMODEL_DELATTR_HELP: str = (
+         "Unbinding an instance attribute at runtime cannot be represented "
+         "in a native archetype: fields are fixed struct slots that always "
+         "exist. Model absence explicitly instead -- declare the field "
+         "optional (`has x: int | None;`) and assign `None`, or use a "
+         "sentinel value."
+     ),
+     _NATIVE_OBJMODEL_NAMESPACE_HELP: str = (
+         "Native code has no per-instance or per-module namespace dict to "
+         "reflect over: fields live in fixed struct slots and locals live "
+         "in registers. Access fields directly, or move introspective code "
+         "to a @sv/Python context."
+     ),
+     _NATIVE_OBJMODEL_TYPE_HELP: str = (
+         "Fabricating a class at runtime (`type(name, bases, ns)`) needs a "
+         "dynamic object model; native archetype layouts are fixed at "
+         "compile time. Declare the archetype statically, or move the code "
+         "to a @sv/Python context."
+     ),
+     _NATIVE_OBJMODEL_CLASS_ASSIGN_HELP: str = (
+         "An object's class fixes its struct layout and method dispatch at "
+         "compile time, so `__class__` cannot be reassigned at runtime. "
+         "Construct a new instance of the target archetype instead."
+     ),
+     _NATIVE_OBJMODEL_PATCH_HELP: str = (
+         "Assigning to an attribute of a class object rewires method "
+         "dispatch or fabricates class state at runtime; native methods "
+         "are direct (or vtable) calls resolved at compile time. Declare "
+         "the behavior statically on the archetype (`def` / `static has`), "
+         "or move the dynamic code to a @sv/Python context."
      );
 
 
@@ -161,6 +200,139 @@ impl static_fstring_spec_text(spec: uni.UniNode) -> (str | None) {
             parts2.append(p.lit_value);
         }
         return "".join(parts2);
+    }
+    return None;
+}
+
+impl reflection_literal_attr_name(nd: uni.UniNode) -> (str | None) {
+    if isinstance(nd, uni.String) {
+        lv = nd.lit_value;
+        return lv if isinstance(lv, str) else None;
+    }
+    if isinstance(nd, uni.MultiString) {
+        parts: list[str] = [];
+        for s in nd.strings {
+            if not isinstance(s, uni.String) or not isinstance(s.lit_value, str) {
+                return None;
+            }
+            parts.append(s.lit_value);
+        }
+        return "".join(parts);
+    }
+    return None;
+}
+
+impl archetype_decl_of(nd: uni.UniNode) -> (uni.Archetype | None) {
+    if not isinstance(nd, uni.Name) or nd.sym is None or not nd.sym.defn {
+        return None;
+    }
+    cand = nd.sym.defn[0].name_of;
+    return cand if isinstance(cand, uni.Archetype) else None;
+}
+
+impl arch_static_field_names(arch: uni.Archetype) -> set {
+    import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
+    names: set = set();
+    work: list = [arch];
+    seen: set = set();
+    while work {
+        cur = work.pop();
+        if id(cur) in seen {
+            continue;
+        }
+        seen.add(id(cur));
+        for stmt in (ModuleCodegenPass.unwrap_body(cur) or []) {
+            if isinstance(stmt, uni.ArchHas) and stmt.is_static {
+                for hv in stmt.vars {
+                    names.add(hv.name.value);
+                }
+            }
+        }
+        for base in (cur.base_classes or []) {
+            base_arch = archetype_decl_of(base);
+            if base_arch is not None {
+                work.append(base_arch);
+            }
+        }
+    }
+    return names;
+}
+
+impl objmodel_call_violation(nd: uni.FuncCall) -> (tuple | None) {
+    target = nd.target;
+    if not isinstance(target, uni.Name) {
+        return None;
+    }
+    fname = target.value;
+    params_l = list(nd.params or []);
+    _has_kw = any([isinstance(p, uni.KWPair) for p in params_l]);
+    if nd.call_kind == "builtin" {
+        if fname == "delattr" {
+            return (nd, "builtin call", fname, _NATIVE_OBJMODEL_DELATTR_HELP);
+        }
+        if fname in ("setattr", "getattr", "hasattr") {
+            if _has_kw
+            or (
+                len(params_l) >= 2 and reflection_literal_attr_name(params_l[1]) is None
+            ) {
+                return (nd, "builtin call", fname, _NATIVE_OBJMODEL_DYNNAME_HELP);
+            }
+            return None;
+        }
+        if fname == "vars" {
+            return (nd, "builtin call", fname, _NATIVE_OBJMODEL_NAMESPACE_HELP);
+        }
+        if fname == "type" {
+            _pos = [
+                p
+                for p in params_l
+                if not isinstance(p, uni.KWPair)
+            ];
+            if len(_pos) >= 2 {
+                return (nd, "builtin call", fname, _NATIVE_OBJMODEL_TYPE_HELP);
+            }
+        }
+        return None;
+    }
+    if fname in ("globals", "locals") {
+        _gl_sym = target.sym;
+        _gl_stub = (
+            _gl_sym is None
+            or not _gl_sym.defn
+            or str(_gl_sym.defn[0].loc.mod_path).endswith(".pyi")
+        );
+        if _gl_stub {
+            return (nd, "builtin call", fname, _NATIVE_OBJMODEL_NAMESPACE_HELP);
+        }
+    }
+    return None;
+}
+
+impl objmodel_trailer_violation(nd: uni.AtomTrailer) -> (tuple | None) {
+    import ast as ast3;
+    if not nd.is_attr or not isinstance(nd.right, uni.Name) {
+        return None;
+    }
+    attr = nd.right.value;
+    if attr == "__dict__" {
+        return (nd, "attribute access", attr, _NATIVE_OBJMODEL_NAMESPACE_HELP);
+    }
+    _is_store = nd.right._py_ctx_func == ast3.Store;
+    if not _is_store {
+        return None;
+    }
+    if attr == "__class__" {
+        return (nd, "attribute assignment", attr, _NATIVE_OBJMODEL_CLASS_ASSIGN_HELP);
+    }
+    _cls = archetype_decl_of(nd.target);
+    if _cls is not None and attr not in arch_static_field_names(_cls) {
+        _cls_name = _cls.name.value if _cls.name is not None else "?";
+        return (
+            nd,
+            "class attribute assignment",
+            f"{_cls_name}.{attr}",
+            _NATIVE_OBJMODEL_PATCH_HELP
+        );
     }
     return None;
 }
@@ -260,6 +432,22 @@ impl native_capability_violations(mod: uni.Module) -> list {
                 kind = "expression" if isinstance(nd, uni.Expr) else "statement";
                 out.append((nd, kind, type(nd).__name__, None));
                 continue;
+            }
+
+            if isinstance(nd, uni.FuncCall) {
+                _omv = objmodel_call_violation(nd);
+                if _omv is not None {
+                    out.append((_omv[0], _omv[1], _omv[2], _omv[3], E5093));
+                    continue;
+                }
+            }
+
+            if isinstance(nd, uni.AtomTrailer) {
+                _omt = objmodel_trailer_violation(nd);
+                if _omt is not None {
+                    out.append((_omt[0], _omt[1], _omt[2], _omt[3], E5093));
+                    continue;
+                }
             }
 
             if isinstance(nd, uni.CtrlStmt)
@@ -512,7 +700,11 @@ impl native_capability_violations(mod: uni.Module) -> list {
             }
         }
     }
-    return out;
+    normalized: list = [];
+    for v in out {
+        normalized.append(v if len(v) == 5 else (v[0], v[1], v[2], v[3], E5090));
+    }
+    return normalized;
 }
 
 impl NativeCapabilityCheckPass.postinit -> None {
@@ -520,9 +712,11 @@ impl NativeCapabilityCheckPass.postinit -> None {
 }
 
 impl NativeCapabilityCheckPass.transform(ir_in: uni.Module) -> uni.Module {
-    for (_vnode, _vkind, _vname, _vhelp) in native_capability_violations(ir_in) {
+    for (_vnode, _vkind, _vname, _vhelp, _vcode) in native_capability_violations(
+        ir_in
+    ) {
         self.emit(
-            E5090, node_override=_vnode, kind=_vkind, name=_vname, help_text=_vhelp
+            _vcode, node_override=_vnode, kind=_vkind, name=_vname, help_text=_vhelp
         );
     }
     ir_in.gen.native_viols_reported = True;

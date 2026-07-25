@@ -113,7 +113,7 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
     } elif isinstance(nd, uni.CtrlStmt) {
         self._codegen_ctrl(nd);
     } elif isinstance(nd, uni.ExprStmt) {
-        _estmt_val = self._codegen_expr(nd.expr);
+        _estmt_val = self._codegen_required(nd.expr);
         if (
             _estmt_val is not None
             and isinstance(_estmt_val.type, ir.PointerType)
@@ -147,76 +147,7 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
             );
         }
     } elif isinstance(nd, uni.DeleteStmt) {
-        target_expr = nd.target;
-        _del_arch = self._struct_name_of(target_expr);
-        _del_model = self.ir_in.gen.osp_model;
-        if (_del_arch is not None)
-        and (_del_model is not None)
-        and (_del_model.arch_kind.get(_del_arch) == "edge") {
-            _disc_fn = self.func_symtab.get("osp_disconnect");
-            _edge_h = self._codegen_expr(target_expr);
-            if (_disc_fn is not None) and (_edge_h is not None) {
-                _disc_argtys = _disc_fn.function_type.args;
-                self.builder.call(
-                    _disc_fn, [self._coerce_type(_edge_h, _disc_argtys[0])]
-                );
-            } elif _disc_fn is None {
-                self.emit(E5092, node_override=nd, kind="statement", name="DeleteStmt");
-            }
-        } elif (
-            isinstance(target_expr, uni.AtomTrailer)
-            and not target_expr.is_attr
-            and target_expr.right?.slices
-        ) {
-            slices = target_expr.right.slices or [];
-            if slices {
-                dict_type_key = self._dict_key_of(target_expr.target);
-                if dict_type_key is None {
-                    dict_val_tmp = self._codegen_expr(target_expr.target);
-                    if dict_val_tmp is not None {
-                        dict_info = self._infer_dict_type(dict_val_tmp);
-                        if dict_info is not None {
-                            dict_type_key = f"{dict_info[0]}:{dict_info[1]}";
-                        }
-                    }
-                }
-                if dict_type_key is not None {
-                    dict_val = self._codegen_expr(target_expr.target);
-                    idx_node = slices[0];
-                    idx_val = self._codegen_expr(idx_node);
-                    if idx_val is None and idx_node?.start {
-                        idx_val = self._codegen_expr(idx_node.start);
-                    }
-                    if dict_val is not None and idx_val is not None {
-                        self._dispatch_primitive_method(
-                            "dict", "remove", dict_val, [idx_val], dict_type_key
-                        );
-                    }
-                } else {
-                    list_val_tmp = self._codegen_expr(target_expr.target);
-                    if list_val_tmp is not None {
-                        elem_type_name = self._infer_list_elem_type(list_val_tmp);
-                        if elem_type_name is not None {
-                            list_val = self._codegen_expr(target_expr.target);
-                            idx_node = slices[0];
-                            idx_val = self._codegen_expr(idx_node);
-                            if idx_val is None and idx_node?.start {
-                                idx_val = self._codegen_expr(idx_node.start);
-                            }
-                            if list_val is not None and idx_val is not None {
-                                self._dispatch_primitive_method(
-                                    "list",
-                                    "del_at",
-                                    list_val,
-                                    [idx_val],
-                                    elem_type_name
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        self._codegen_delete(nd);
     } elif isinstance(nd, uni.Semi) { } elif isinstance(nd, uni.PyInlineCode) { } elif isinstance(
         nd, uni.VisitStmt
     ) {
@@ -230,6 +161,96 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
     }
 }
 
+impl NaIRGenPass._codegen_delete(nd: uni.DeleteStmt) -> None {
+    import from jaclang.compiler.passes.main.capability_check_pass {
+        _NATIVE_OBJMODEL_DELATTR_HELP
+    }
+    _del_errs = len(self.errors_had);
+    target_expr = nd.target;
+    _del_arch = self._struct_name_of(target_expr);
+    _del_model = self.ir_in.gen.osp_model;
+    if (_del_arch is not None)
+    and (_del_model is not None)
+    and (_del_model.arch_kind.get(_del_arch) == "edge") {
+        _disc_fn = self.func_symtab.get("osp_disconnect");
+        _edge_h = self._codegen_expr(target_expr);
+        if (_disc_fn is not None) and (_edge_h is not None) {
+            _disc_argtys = _disc_fn.function_type.args;
+            self.builder.call(_disc_fn, [self._coerce_type(_edge_h, _disc_argtys[0])]);
+            return;
+        }
+        if len(self.errors_had) == _del_errs {
+            self.emit(E5092, node_override=nd, kind="statement", name="DeleteStmt");
+        }
+        return;
+    }
+    if isinstance(target_expr, uni.AtomTrailer) and target_expr.is_attr {
+        self.emit(
+            E5093,
+            node_override=nd,
+            kind="attribute deletion",
+            name=(self._get_name(target_expr.right) or "<attr>"),
+            help_text=_NATIVE_OBJMODEL_DELATTR_HELP
+        );
+        return;
+    }
+    if (
+        isinstance(target_expr, uni.AtomTrailer)
+        and not target_expr.is_attr
+        and target_expr.right?.slices
+    ) {
+        slices = target_expr.right.slices or [];
+        if slices {
+            dict_type_key = self._dict_key_of(target_expr.target);
+            if dict_type_key is None {
+                dict_val_tmp = self._codegen_expr(target_expr.target);
+                if dict_val_tmp is not None {
+                    dict_info = self._infer_dict_type(dict_val_tmp);
+                    if dict_info is not None {
+                        dict_type_key = f"{dict_info[0]}:{dict_info[1]}";
+                    }
+                }
+            }
+            if dict_type_key is not None {
+                dict_val = self._codegen_expr(target_expr.target);
+                idx_node = slices[0];
+                idx_val = self._codegen_expr(idx_node);
+                if idx_val is None and idx_node?.start {
+                    idx_val = self._codegen_expr(idx_node.start);
+                }
+                if dict_val is not None and idx_val is not None {
+                    self._dispatch_primitive_method(
+                        "dict", "remove", dict_val, [idx_val], dict_type_key
+                    );
+                    return;
+                }
+            } else {
+                list_val_tmp = self._codegen_expr(target_expr.target);
+                if list_val_tmp is not None {
+                    elem_type_name = self._infer_list_elem_type(list_val_tmp);
+                    if elem_type_name is not None {
+                        list_val = self._codegen_expr(target_expr.target);
+                        idx_node = slices[0];
+                        idx_val = self._codegen_expr(idx_node);
+                        if idx_val is None and idx_node?.start {
+                            idx_val = self._codegen_expr(idx_node.start);
+                        }
+                        if list_val is not None and idx_val is not None {
+                            self._dispatch_primitive_method(
+                                "list", "del_at", list_val, [idx_val], elem_type_name
+                            );
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if len(self.errors_had) == _del_errs {
+        self.emit(E5092, node_override=nd, kind="statement", name="DeleteStmt");
+    }
+}
+
 impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
     _gc = self._gen_ctx;
     if _gc is not None and self.builder.function is _gc["resume_fn"] {
@@ -237,7 +258,7 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
             if nd.loc
             else 0}";
         if nd.expr is not None {
-            _rv = self._codegen_expr(nd.expr);
+            _rv = self._codegen_required(nd.expr);
             if _rv is not None
             and isinstance(_rv.type, ir.PointerType)
             and self._is_owned(_rv) {
@@ -1515,11 +1536,11 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 if field_val is not None {
                     self._codegen_field_assign(target_expr, field_val);
                 } elif len(self.errors_had) == _faug_errs {
-                    self.emit(
-                        E5092,
-                        node_override=target_expr,
-                        kind="augmented field assignment",
-                        name=(self._get_name(target_expr.right) or "<field>")
+                    self._emit_member_store_reject(
+                        target_expr,
+                        self._struct_name_of(target_expr.target),
+                        self._get_name(target_expr.right),
+                        "augmented field assignment"
                     );
                 }
             } else {

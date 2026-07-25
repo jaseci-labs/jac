@@ -96,9 +96,9 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
     _viols = native_capability_violations(self.ir_in);
     if _viols {
         if not self.ir_in.gen.native_viols_reported {
-            for (_vnode, _vkind, _vname, _vhelp) in _viols {
+            for (_vnode, _vkind, _vname, _vhelp, _vcode) in _viols {
                 self.emit(
-                    E5090,
+                    _vcode,
                     node_override=_vnode,
                     kind=_vkind,
                     name=_vname,

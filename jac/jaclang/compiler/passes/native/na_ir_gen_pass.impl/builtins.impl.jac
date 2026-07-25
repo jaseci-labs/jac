@@ -36,7 +36,7 @@ impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
     fmt_parts = [];
     args = [];
     for (i, param) in enumerate(params) {
-        val = self._codegen_expr(param);
+        val = self._codegen_required(param);
         if val is None {
             continue;
         }

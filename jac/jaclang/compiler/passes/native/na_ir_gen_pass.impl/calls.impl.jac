@@ -735,10 +735,14 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     }
 
     if self._codegen_rc_intrinsic(func_name) {
-        return None;
+        return ir.Constant(ir.IntType(64), 0);
     }
 
     if _call_kind == "builtin" {
+        if func_name in ("getattr", "setattr", "hasattr", "delattr") {
+            return self._emit_reflection_builtin(nd, func_name);
+        }
+
         if func_name == "print" {
             return self._emit_print(nd);
         }
