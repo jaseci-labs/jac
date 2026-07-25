@@ -1,6 +1,7 @@
 import ast as ast3;
 
 import from jaclang.cli.console { console }
+import from jaclang.cli.commands.cli_helpers { flatten_append }
 
 impl py2jac(filename: str) -> int {
     import jaclang.jac0core.unitree as uni;
@@ -31,6 +32,46 @@ impl py2jac(filename: str) -> int {
     } else {
         console.error('Not a .py file.');
         return 1;
+    }
+    return 0;
+}
+
+impl c2jac(
+    filename: str,
+    incdir: list | None = None,
+    define: list | None = None,
+    undef: list | None = None,
+    force_include: list | None = None,
+    nostdinc: bool = False
+) -> int {
+    import from jaclang.compiler.c2jac.driver { transpile_c_file }
+    if not filename.endswith(".c") and not filename.endswith(".i") {
+        console.error("Not a .c or .i file.");
+        return 1;
+    }
+    try {
+        (jac_str, tags) = transpile_c_file(
+            filename,
+            include_dirs=flatten_append(incdir),
+            defines=flatten_append(define),
+            undefines=flatten_append(undef),
+            force_includes=flatten_append(force_include),
+            nostdinc=nostdinc,
+        );
+    } except OSError as e {
+        console.error(f"Cannot read {filename}: {e}");
+        return 1;
+    } except Exception as e {
+        console.error(f"Transpilation failed: {e}");
+        return 1;
+    }
+    console.print(jac_str, markup=False, highlight=False);
+    tier_b = tags.tier_b_entries();
+    if tier_b {
+        console.warning(
+            f"[c2jac] {len(tier_b)} best-effort (Tier-B) site(s) — flagged inline "
+            f"in the output (see the `# c2jac:` header and per-site notes)"
+        );
     }
     return 0;
 }

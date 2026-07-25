@@ -121,6 +121,7 @@ obj PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]) {
     def proc_arg(nd: py_ast.arg) -> uni.ParamVar;
     def proc_arguments(nd: py_ast.arguments) -> uni.FuncSignature;
     def operator(tok: Tok, value: str) -> uni.Token;
+    def ctrl_loc(nd: object) -> tuple[int, int];
     def proc_and(nd: py_ast.And) -> uni.Token;
     def proc_or(nd: py_ast.Or) -> uni.Token;
     def proc_add(nd: py_ast.Add) -> uni.Token;

@@ -3,6 +3,14 @@ import from jaclang.cli.console { console }
 import from jaclang.jac0core.ext_registry { base_stem, is_jac, is_python }
 
 
+def flatten_append(groups: list | None) -> list | None {
+    if not groups {
+        return None;
+    }
+    return [v for g in groups for v in g];
+}
+
+
 def proc_file(filename: str) -> tuple {
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     (base, mod) = os.path.split(filename);
