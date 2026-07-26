@@ -141,6 +141,26 @@ def _stream_with_telemetry(
     }
 }
 
+def _is_unsupported_temperature_error(e: Exception) -> bool {
+    msg = str(e).lower();
+    if "temperature" not in msg {
+        return False;
+    }
+    return ("deprecated" in msg or "not support" in msg or "unsupported value" in msg);
+}
+
+def _should_retry_without_temperature(params: dict, e: Exception) -> bool {
+    return "temperature" in params and _is_unsupported_temperature_error(e);
+}
+
+def _without_temperature(params: dict, e: Exception) -> dict {
+    logger.warning(
+        f"Model {params.get('model')} rejected temperature="
+        f"{params['temperature']!r} ({e}); retrying without it"
+    );
+    return {k: v for (k, v) in params.items() if k != "temperature"};
+}
+
 impl Model._raise_mapped_provider_error(e: Exception) -> None {
     if isinstance(e, litellm.exceptions.AuthenticationError)
     or isinstance(e, openai.AuthenticationError) {
@@ -179,12 +199,15 @@ impl Model.model_call_no_stream(params: dict) -> dict {
             response = litellm.completion(api_key=self.api_key or None, **params);
         }
     } except Exception as e {
+        if _should_retry_without_temperature(params, e) {
+            return self.model_call_no_stream(_without_temperature(params, e));
+        }
         self._raise_mapped_provider_error(e);
     }
     return response;
 }
 
-impl Model.model_call_with_stream(params: dict) {
+impl Model.model_call_with_stream(params: dict) -> object {
     params["stream_options"] = (params.get("stream_options") or {}) | {
         "include_usage": True
     };
@@ -211,6 +234,11 @@ impl Model.model_call_with_stream(params: dict) {
         raise ModelNotFoundError(str(e));
     } except openai.NotFoundError as e {
         raise ModelNotFoundError(str(e));
+    } except Exception as e {
+        if _should_retry_without_temperature(params, e) {
+            return self.model_call_with_stream(_without_temperature(params, e));
+        }
+        raise;
     }
     return response;
 }
@@ -250,12 +278,15 @@ impl Model.model_call_no_stream_async(params: dict) -> dict {
             );
         }
     } except Exception as e {
+        if _should_retry_without_temperature(params, e) {
+            return await self.model_call_no_stream_async(_without_temperature(params, e));
+        }
         self._raise_mapped_provider_error(e);
     }
     return response;
 }
 
-impl Model.model_call_with_stream_async(params: dict) {
+impl Model.model_call_with_stream_async(params: dict) -> object {
     params["stream_options"] = (params.get("stream_options") or {}) | {
         "include_usage": True
     };
@@ -284,6 +315,9 @@ impl Model.model_call_with_stream_async(params: dict) {
             );
         }
     } except Exception as e {
+        if _should_retry_without_temperature(params, e) {
+            return await self.model_call_with_stream_async(_without_temperature(params, e));
+        }
         self._raise_mapped_provider_error(e);
     }
     return response;

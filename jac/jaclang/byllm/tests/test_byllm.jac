@@ -19,7 +19,8 @@ import from jaclang.byllm.exceptions {
     OutputConversionError,
     ConfigurationError,
     FinishToolError,
-    McpError
+    McpError,
+    ContentFilteredError
 }
 import from jaclang.byllm.mcp { McpClient, McpTool }
 import from jaclang.byllm.types { Tool, Message, MessageRole }
@@ -921,6 +922,114 @@ test "unregistered tool call is recovered not fatal" {
     );
 }
 
+# A model can return finish_reason=content_filter with no content and no tool
+# calls (a refusal) — retried like a transient failure, then raised if it
+# doesn't clear. call_count asserts the retry actually ran.
+test "content-filtered response retries then raises ContentFilteredError, not a blank output" {
+    model = Model(model_name="claude-fable-5");
+    messages_list = [
+        Message(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+        Message(role=MessageRole.USER, content="Who is Jason Mars?"),
+
+    ];
+    mt_run = MTRuntime(
+        messages=messages_list,
+        resp_type=None,
+        stream=False,
+        tools=[],
+        call_params={"stream_num_retries": 1},
+        mtir=None  # type: ignore[arg-type]
+    );
+
+    fake_response = {
+        "choices": [
+            {
+                "message": {"content": None, "tool_calls": []},
+                "finish_reason": "content_filter"
+            }
+        ],
+        "usage": {}
+    };
+
+    with unittest.mock.patch.object(
+        model, "model_call_no_stream", return_value=fake_response
+    ) as mock_call {
+        raised = False;
+        try {
+            model.dispatch_no_streaming(mt_run);
+        } except ContentFilteredError as e {
+            raised = True;
+            assert "content_filter" in str(e) , (
+                f"Error should name the reason, got: {e}"
+            );
+        }
+        assert raised , "content_filter with no output must not be silently blank";
+        assert mock_call.call_count == 2 , (
+            f"expected 1 initial call + 1 retry (stream_num_retries=1), "
+            f"got {mock_call.call_count} — retry loop may not be running"
+        );
+    }
+}
+
+# dispatch_streaming_with_tools (the react/agentic loop's streaming path) must
+# retry a probabilistic content_filter block the same way dispatch_no_streaming
+# does, not hard-fail the turn on the first blocked attempt.
+test "content-filtered stream-with-tools retries then succeeds" {
+    model = Model(model_name="claude-fable-5");
+    messages_list = [
+        Message(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+        Message(role=MessageRole.USER, content="Who is Jason Mars?")
+    ];
+    mt_run = MTRuntime(
+        messages=messages_list,
+        resp_type=None,
+        stream=True,
+        tools=[],
+        call_params={},
+        mtir=None  # type: ignore[arg-type]
+    );
+
+    def empty_stream(params: dict) -> object {
+        yield types.SimpleNamespace(
+            choices=[types.SimpleNamespace(delta=types.SimpleNamespace(content=""))],
+            usage=None
+        );
+    }
+
+    filtered_rebuild = {
+        "choices": [
+            {
+                "message": {"content": None, "tool_calls": []},
+                "finish_reason": "content_filter"
+            }
+        ],
+        "usage": {}
+    };
+    ok_rebuild = {
+        "choices": [
+            {"message": {"content": "Hello", "tool_calls": []}, "finish_reason": "stop"}
+        ],
+        "usage": {}
+    };
+
+    with unittest.mock.patch.object(
+        model, "model_call_with_stream", side_effect=empty_stream
+    ) {
+        with unittest.mock.patch(
+            "litellm.stream_chunk_builder", side_effect=[filtered_rebuild, ok_rebuild]
+        ) as mock_builder {
+            out: list = [];
+            list(model.dispatch_streaming_with_tools(mt_run, out));
+            assert mock_builder.call_count == 2 , (
+                "content_filter should be retried once, not raised immediately"
+            );
+            assert len(out) == 1 and out[0].output == "Hello" , (
+                f"Expected the retried response to win, got: {out}"
+            );
+        }
+    }
+}
+
 # FinishToolError is raised inside the finish_tool closure when the final output
 # fails pydantic validation against the declared return type.
 test "finish tool error on type mismatch" {
@@ -1160,6 +1269,86 @@ test "all exception types log and propagate regardless of debug" {
         }
     } finally {
         _loguru_logger.remove(handler_id);
+    }
+}
+
+# A model that explicitly rejects an explicitly-set `temperature` (e.g. a very
+# new model litellm's registry does not yet know about, so `drop_params` cannot
+# save it) must not hard-fail the turn. byLLM retries once without `temperature`
+# instead of surfacing the provider's 400. Covers all four call sites — they
+# duplicate the same retry logic independently, so each can regress on its own.
+# See jacBuilder#896.
+test "model_call_* retries without temperature on provider rejection" {
+    import asyncio;
+
+    cases = [
+        ("model_call_no_stream", "litellm.completion", False),
+        ("model_call_with_stream", "litellm.completion", False),
+        ("model_call_no_stream_async", "litellm.acompletion", True),
+        ("model_call_with_stream_async", "litellm.acompletion", True)
+    ];
+
+    for (method_name, patch_target, is_async) in cases {
+        model = Model(model_name="claude-fable-5");
+        bad_temp_err = litellm.exceptions.BadRequestError(
+            message="`temperature` is deprecated for this model.",
+            llm_provider="anthropic",
+            model="claude-fable-5"
+        );
+        fake_success = {"choices": [{"message": {"content": "ok", "tool_calls": []}}]};
+        params = {"model": "claude-fable-5", "messages": [], "temperature": 0.2};
+        method = getattr(model, method_name);
+
+        with unittest.mock.patch(
+            patch_target, side_effect=[bad_temp_err, fake_success]
+        ) as mock_call {
+            if is_async {
+                async def _run {
+                    return await method(params);
+                }
+                result = asyncio.run(_run());
+            } else {
+                result = method(params);
+            }
+            assert result is fake_success , (
+                f"{method_name}: retry should return the successful response"
+            );
+            assert mock_call.call_count == 2 , (
+                f"{method_name}: expected exactly one retry, got {mock_call.call_count}"
+            );
+            second_call_kwargs = mock_call.call_args_list[1].kwargs;
+            assert "temperature" not in second_call_kwargs , (
+                f"{method_name}: retry call must omit temperature"
+            );
+        }
+    }
+}
+
+# Unrelated BadRequestErrors (e.g. a malformed request) must not be swallowed
+# by the temperature-retry path — they should propagate like before. The retry
+# guard is identical boilerplate across all four call sites, so one case is
+# enough to prove it doesn't over-trigger.
+test "model_call_no_stream does not retry on unrelated BadRequestError" {
+    model = Model(model_name="claude-fable-5");
+    other_err = litellm.exceptions.BadRequestError(
+        message="messages: at least one message is required",
+        llm_provider="anthropic",
+        model="claude-fable-5"
+    );
+    with unittest.mock.patch(
+        "litellm.completion", side_effect=other_err
+    ) as mock_completion {
+        raised = False;
+        try {
+            model.model_call_no_stream(
+                {"model": "claude-fable-5", "messages": [], "temperature": 0.2}
+            );
+        } except litellm.exceptions.BadRequestError as e {
+            raised = True;
+            assert e is other_err , "The original error must propagate unchanged";
+        }
+        assert raised , "Unrelated BadRequestError should still propagate";
+        assert mock_completion.call_count == 1 , "Unrelated error must not trigger a retry";
     }
 }
 

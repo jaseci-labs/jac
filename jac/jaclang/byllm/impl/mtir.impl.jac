@@ -1,13 +1,29 @@
-glob SYSTEM_PERSONA = """\
+import textwrap;
+
+# Un-dedented, these keep their literal source indentation (Jac triple-quoted
+# strings don't auto-dedent) — claude-fable-5's content filter blocks on that.
+glob SYSTEM_PERSONA = textwrap.dedent("""\
     This is a task you must complete by returning only the output.
     Do not include explanations, code, or extra text—only the result.
-    """,
-     INSTRUCTION_TOOL = """
+    """).strip(),
+     INSTRUCTION_TOOL = textwrap.dedent("""
     Use the tools provided to reach the goal. Call one tool at a time with \
     proper args—no explanations, no narration. Think step by step, invoking tools \
     as needed. When done, always call finish_tool(output) to return the final
     output. Only use tools.
-    """;
+    """).strip();
+
+# Python's single-quoted repr() (e.g. `'Who is Jason Mars?'`) also trips
+# the content filter; json.dumps double-quotes instead. Falls back to
+# repr() for values json can't serialize (e.g. a bound `self`).
+def _fmt_arg(value: object, semstr: str | None) -> str {
+    try {
+        rendered = json.dumps(value);
+    } except (TypeError, ValueError) {
+        rendered = repr(value);
+    }
+    return rendered if not semstr else f"{rendered}  # {semstr}";
+}
 
 impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     caller = mtir.caller;
@@ -56,15 +72,16 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
                 continue;
             }
 
+            arg_semstr = str(params[idx].semstr or "");
             if isinstance(key, str) {
-                inputs_detail.append(f"{key} = {(value, params[idx].semstr or "")}");
+                inputs_detail.append(f"{key} = {_fmt_arg(value, arg_semstr)}");
             } else {
                 if key < len(params) {
                     inputs_detail.append(
-                        f"{params[key].name} = {(value, params[idx].semstr or "")}"
+                        f"{params[key].name} = {_fmt_arg(value, arg_semstr)}"
                     );
                 } else {
-                    inputs_detail.append(f"arg = {(value, params[idx].semstr or "")}");
+                    inputs_detail.append(f"arg = {_fmt_arg(value, arg_semstr)}");
                 }
             }
         }
@@ -94,7 +111,7 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
                 media_inputs.append((value, ""));
             } else {
                 if has_mtir {
-                    inputs_detail.append(f"{key} = {(value, "")}");
+                    inputs_detail.append(f"{key} = {_fmt_arg(value, "")}");
                 } else {
                     inputs_detail.append(f"{key} = {value}");
                 }
@@ -103,19 +120,18 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     }
     if isinstance(caller, MethodType) {
         if has_mtir {
+            self_semstr = str(
+                ir_info.parent_class.semstr if ir_info.parent_class else ""
+            );
             inputs_detail.insert(
-                0,
-                f"self = {(
-                    caller.__self__,
-                    ir_info.parent_class.semstr if ir_info.parent_class else ''
-                )}"
+                0, f"self = {_fmt_arg(caller.__self__, self_semstr)}"
             );
         } else {
             inputs_detail.insert(0, f"self = {caller.__self__}");
         }
     }
 
-    system_content = SYSTEM_PERSONA;
+    system_content: str = SYSTEM_PERSONA;
     try {
         import from jaclang.project.config { find_project_root }
         import from pathlib { Path }
@@ -162,7 +178,7 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
 
     sys_msg = Message(
         role=MessageRole.SYSTEM,
-        content=system_content + (INSTRUCTION_TOOL if tools else ""),
+        content=system_content + ("\n\n" + INSTRUCTION_TOOL if tools else ""),
     );
     user_msg = Message(
         role=MessageRole.USER,
