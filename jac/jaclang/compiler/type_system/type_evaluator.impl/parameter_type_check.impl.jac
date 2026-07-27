@@ -61,7 +61,8 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
     if isinstance(caller_type, types.ClassType)
     and caller_type.is_builtin("auto")
     and (not expr.params or len(expr.params) == 0) {
-        return self.prefetch.int_class if self.prefetch else types.UnknownType();
+        return (self.prefetch.int_class if self.prefetch else None)
+        or types.UnknownType();
     }
 
     if self._in_native_context() {
@@ -144,7 +145,7 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
             dotted = target_node.sym.sym_dotted_name;
             is_cast = dotted.endswith("typing.cast");
         }
-        if is_cast and len(expr.params) >= 1 {
+        if is_cast and expr.params and len(expr.params) >= 1 {
             first_arg = expr.params[0];
             first_arg_expr = first_arg.value
                 if isinstance(first_arg, uni.KWPair)
@@ -466,7 +467,7 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
 }
 
 impl TypeEvaluator.match_args_to_params(
-    arg_nodes: list[uni.Expr | uni.KWPair],
+    arg_nodes: Sequence[uni.Expr | uni.KWPair] | None,
     node_for_error: uni.Expr | None,
     func_type: types.FunctionType,
     checking_overload: bool = False,
@@ -502,7 +503,7 @@ impl TypeEvaluator.match_args_to_params(
         }
     }
     param_tracker = type_utils.ParamAssignmentTracker(params_to_match);
-    for arg in arg_nodes {
+    for arg in (arg_nodes or []) {
         try {
             if isinstance(arg, uni.KWPair) {
                 matching_param = param_tracker.match_named_argument(arg);
@@ -632,7 +633,7 @@ impl TypeEvaluator._strip_implicit_self_cls(
 }
 
 impl TypeEvaluator._get_method_with_overloads(
-    method_member: any, caller_type: types.ClassType
+    method_member: type_utils.ClassMember, caller_type: types.ClassType
 ) -> TypeBase {
     method_ty = self.get_type_of_symbol(method_member.symbol);
 
@@ -889,7 +890,7 @@ impl TypeEvaluator._find_matching_raw_constructor(
 }
 
 impl TypeEvaluator._find_overload_by_arg_count(
-    method_type: types.TypeBase, arg_count: int, overload_symbols: list
+    method_type: types.TypeBase, arg_count: int, overload_symbols: list[uni.Symbol]
 ) -> types.FunctionType | None {
     overloads: list[types.FunctionType] = [];
     if isinstance(method_type, types.FunctionType) {

@@ -364,7 +364,7 @@ impl TypeEvaluator._get_type_for_member_lookup(
 }
 
 impl TypeEvaluator.get_type_of_member(
-    member: any, class_type: types.ClassType
+    member: type_utils.ClassMember, class_type: types.ClassType
 ) -> TypeBase {
     raw_type = self.get_type_of_symbol(member.symbol);
     if isinstance(raw_type, types.FunctionType) {
