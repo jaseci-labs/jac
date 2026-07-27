@@ -36,8 +36,6 @@ import from jaclang.jac0core.diagnostics {
     W3051
 }
 
-glob PROPERTY_IMPL_TARGETS: dict[str, str] = {};
-
 obj JacAutoLintPass(UniPass) {
     has lint_enabled: bool = True,
         report_only: bool = False,
@@ -53,6 +51,8 @@ obj JacAutoLintPass(UniPass) {
     def _is_file_excluded(file_path: str) -> bool;
     def enter_module(nd: uni.Module) -> None;
     def can_convert_to_glob(assignment: uni.Assignment) -> bool;
+    def names_unsafe_to_globalize(module: uni.Module) -> set[str];
+    def entry_written_names(module: uni.Module) -> set[str];
     def is_module_level_construct(stmt: uni.UniNode) -> bool;
     def create_glob_from_assignment(assignment: uni.Assignment) -> uni.GlobalVars;
     def create_entry_block(stmts: list) -> uni.ModuleCode;
@@ -102,6 +102,7 @@ obj JacAutoLintPass(UniPass) {
     def exit_bool_expr(bool_node: uni.BoolExpr) -> None;
     def _is_future_annotations_import(stmt: uni.UniNode) -> bool;
     def _fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> None;
+    def _impl_owner_archetype(impl_node: uni.ImplDef) -> (uni.Archetype | None);
     def _base_decl_archetypes(annex_path: str) -> list[uni.Archetype];
     def _signatures_match(
         decl_sig: uni.FuncSignature, impl_sig: uni.FuncSignature
@@ -186,6 +187,10 @@ obj JacAutoLintPass(UniPass) {
         type_expr: (uni.Expr | None),
         accessors: list
     ) -> uni.ArchHas;
+
+    def _property_impl_roles(
+        arch: uni.Archetype, prop_name: str
+    ) -> dict[str, list[uni.Ability]];
 
     def _impl_property_kind(nd: uni.ImplDef) -> str;
     def _convert_property_impl(nd: uni.ImplDef) -> None;

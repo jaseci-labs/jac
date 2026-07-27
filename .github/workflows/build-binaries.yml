@@ -51,9 +51,13 @@ jobs:
         # zig_target pins each Linux binary's glibc floor (2.17, manylinux2014)
         # on the release channel; the dev channel builds host-native so it can
         # reuse the native-ABI LLVMPY shim cache (the shim cache key does not
-        # encode a target triple). macOS builds host-native on both channels.
-        # No Intel-Mac leg: LLVM ships no macOS-x64 prebuilt for the pinned
-        # release.
+        # encode a target triple). macOS-ARM builds host-native on both
+        # channels. The Intel-Mac leg pins the macOS floor (12.0) the same way
+        # the Linux legs pin glibc -- unpinned it would inherit the runner's
+        # macOS 15 and exclude older Intel Macs; its LLVM slice is llvm-slice's
+        # from-source build (upstream ships no macOS-x64 for the pinned
+        # release). macos-15-intel is GitHub's last Intel image (retires Fall
+        # 2027).
         include:
           - os: ubuntu-latest
             platform: linux-x86_64
@@ -63,6 +67,9 @@ jobs:
             zig_target: aarch64-linux-gnu.2.17
           - os: macos-14
             platform: macos-aarch64
+          - os: macos-15-intel
+            platform: macos-x86_64
+            zig_target: x86_64-macos.12.0
     runs-on: ${{ matrix.os }}
     env:
       # -Dtarget flag for zig build: set on release-channel Linux legs, empty
@@ -244,6 +251,35 @@ jobs:
           [ -f "$SHIM" ] || SHIM="zig-out/lib/libjacllvm.so"
           check "$SHIM"
 
+      # Intel-mac mirror of the glibc check: neither the launcher nor the shim
+      # may require a macOS newer than the zig_target floor, and the shim must
+      # carry no Homebrew load commands (its from-source slice is built with
+      # every external OFF, so a brew dep here means the slice regressed).
+      # Release channel only: dev binaries are host-native with no pinned floor.
+      - name: Verify macOS floor (from zig_target)
+        if: runner.os == 'macOS' && inputs.channel != 'dev' && matrix.zig_target
+        working-directory: jac
+        env:
+          ZIG_TARGET: ${{ matrix.zig_target }}
+        run: |
+          set -euxo pipefail
+          FLOOR="${ZIG_TARGET##*macos.}"
+          check() {
+            local f="$1" minos
+            [ -f "$f" ] || { echo "::error::missing $f"; exit 1; }
+            minos="$(otool -l "$f" | awk '/minos/ {print $2; exit}')"
+            echo "$f -> minos $minos (floor $FLOOR)"
+            if [ "$(printf '%s\n%s\n' "$FLOOR" "$minos" | sort -V | tail -1)" != "$FLOOR" ]; then
+              echo "::error::$f requires macOS $minos (> $FLOOR)"; exit 1
+            fi
+          }
+          check zig-out/bin/jac
+          SHIM="jaclang/compiler/passes/native/llvm/libjacllvm.dylib"
+          check "$SHIM"
+          if otool -L "$SHIM" | grep -E "/opt/homebrew|/usr/local"; then
+            echo "::error::$SHIM links Homebrew dylibs; the from-source slice must not."; exit 1
+          fi
+
       - name: Package asset (+ checksum)
         id: pkg
         working-directory: jac
@@ -336,7 +372,10 @@ jobs:
           fi
           BIN="$PWD/$(ls jacbin/jac-*linux-x86_64)"
           chmod +x "$BIN"
-          ( cd jac/jaclang/scale/admin/ui && "$BIN" build main.jac )
+          # The admin console is a pure client app; its client bundle is
+          # type-checked by the client toolchain during `build`. Skip the
+          # whole-program gate, which applies native rules to `.cl.jac` code.
+          ( cd jac/jaclang/scale/admin/ui && "$BIN" build main.jac --no_typecheck )
           DIST=jac/jaclang/scale/admin/ui/.jac/client/dist
           test -f "$DIST/index.html"
           mkdir -p dist
@@ -425,7 +464,7 @@ jobs:
       # mean a misconfiguration (e.g. a caller not passing them through) --
       # fail loudly instead of green-skipping the publish.
       - name: Fail if publishing secrets are missing (org repo)
-        if: github.repository == 'Jaseci-Labs/jaseci' && (env.DOCKERHUB_USERNAME == '' || env.DOCKERHUB_TOKEN_SET != 'true')
+        if: github.repository == 'jaseci-labs/jac' && (env.DOCKERHUB_USERNAME == '' || env.DOCKERHUB_TOKEN_SET != 'true')
         run: |
           echo "::error::DOCKERHUB_USERNAME/DOCKERHUB_TOKEN did not reach this job; workflow_call callers must pass them via 'secrets:'."
           exit 1

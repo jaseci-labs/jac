@@ -69,6 +69,37 @@ test "osp nested spawn: an ability spawns a second walker and folds its result" 
 # disengage with E5090, so it is skipped automatically. `subtype_dispatch` also
 # runs on cl via the emitted subtype `is_a` table.
 # ---------------------------------------------------------------------------
+test "osp multi-hop: chained typed/untyped hops with per-step node filters" {
+    assert run_py_fixture("osp_multi_hop", "multi_hop_py") == {
+        "feed": [10, 20],
+        "untyped": [10, 20],
+        "typed2": [10]
+    };
+    run_with_both(
+        "osp_multi_hop.jac",
+        "multi_hop_py",
+        "multi_hop_cl",
+        "multi_hop_na",
+        require=["na"]
+    );
+}
+
+test "osp filter predicates: field compares over type-filtered elements" {
+    assert run_py_fixture("osp_filter_pred", "filter_pred_py") == {
+        "pending": [1, 3],
+        "combined": [2, 3],
+        "multi": [3],
+        "inchain": [1, 3]
+    };
+    run_with_both(
+        "osp_filter_pred.jac",
+        "filter_pred_py",
+        "filter_pred_cl",
+        "filter_pred_na",
+        require=["na"]
+    );
+}
+
 test "osp visit order: chain / diamond / fan-out / cycle DFS traversal" {
     assert run_py_fixture("osp_visit_order", "visit_order_py") == {
         "chain": [1, 2, 3, 4],

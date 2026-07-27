@@ -6,7 +6,7 @@ glob _PLACEHOLDER: set = {
          "__table_base"
      };
 
-def _rd_uleb(b: bytes, o: int) -> tuple {
+def _rd_uleb(b: bytes, o: int) -> tuple[int, int] {
     r = 0;
     s = 0;
     while True {
@@ -20,7 +20,7 @@ def _rd_uleb(b: bytes, o: int) -> tuple {
     }
 }
 
-def _rd_sleb(b: bytes, o: int) -> tuple {
+def _rd_sleb(b: bytes, o: int) -> tuple[int, int] {
     r = 0;
     s = 0;
     while True {
@@ -83,7 +83,7 @@ def _u32le(v: int) -> bytes {
     return (v & 0xffffffff).to_bytes(4, "little");
 }
 
-def _rd_name(b: bytes, o: int) -> tuple {
+def _rd_name(b: bytes, o: int) -> tuple[str, int] {
     (n, o) = _rd_uleb(b, o);
     return (b[o:o + n].decode("latin1"), o + n);
 }
@@ -111,14 +111,14 @@ def _patch(buf: bytearray, off: int, data: bytes) {
 
 obj WasmObj {
     has b: bytes,
-        types_raw: list = [],
-        imports: list = [],
-        func_types: list = [],
+        types_raw: list[bytes] = [],
+        imports: list[list[any]] = [],
+        func_types: list[int] = [],
         code: bytes = b"",
         data_raw: bytes = b"",
-        symtab: list = [],
-        relocs: list = [],
-        seg_info: list = [];
+        symtab: list[list[any]] = [],
+        relocs: list[list[any]] = [],
+        seg_info: list[tuple[str, int, int]] = [];
 
     def postinit {
         self.types_raw = [];
@@ -190,9 +190,9 @@ impl WasmObj.parse -> None {
                 } elif k == 3 {
                     vt = b[o];
                     o += 1;
-                    mut = b[o];
+                    is_mut = b[o];
                     o += 1;
-                    self.imports.append(["global", mod, fld, (vt, mut)]);
+                    self.imports.append(["global", mod, fld, (vt, is_mut)]);
                 }
                 ci += 1;
             }
@@ -403,6 +403,11 @@ impl WasmLinker.link(
             if host_abi is not None and fld in host_abi {
                 im = [im[0], host_module, fld, im[3]];
             } elif app_imports is not None and fld not in app_imports {
+                if fld.startswith("__jac64_") {
+                    raise RuntimeError(
+                        f"wasm import '{fld}' is a wasm_rt floor adapter, not " + "an app symbol: the vendored libc bitcode is stale and does " + f"not define it. Rebuild the floor (`zig build " + "vendor-wasm-libc`) rather than adding it to " + "wasm_host_abi.jac -- the host ABI is syscalls only, and a " + "host-side allocator cannot return a linear-memory pointer."
+                    );
+                }
                 raise RuntimeError(
                     f"wasm import '{fld}' is neither part of the " + f"{host_module} host ABI nor declared by the app; " + "the native floor references a symbol missing from the " + "vendored wasm_rt libc (compiler drift) — add it to " + "wasm_rt or to wasm_host_abi.jac"
                 );

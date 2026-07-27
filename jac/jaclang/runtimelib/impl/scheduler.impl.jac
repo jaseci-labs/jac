@@ -1,5 +1,4 @@
 impl Scheduler.instance -> Scheduler {
-    global _scheduler_instance;
     if _scheduler_instance is not None {
         return _scheduler_instance;
     }

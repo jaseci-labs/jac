@@ -2,7 +2,7 @@ import atexit;
 import from typing { cast }
 import from uuid { uuid4, UUID }
 import from pymongo { MongoClient }
-import from testcontainers.mongodb { MongoDbContainer }
+import from testcontainers.community.mongodb { MongoDbContainer }
 
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
 import from jaclang.runtimelib.serializer { Serializer }

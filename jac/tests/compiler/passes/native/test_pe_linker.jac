@@ -216,6 +216,66 @@ test "imports resolve to msvcrt.dll via the import directory" {
     assert "malloc_usable_size" not in syms;
 }
 
+test "data import: dllimport global resolves through an IAT slot (#7626 C4)" {
+    # A `dllimport` data global makes LLVM reference `__imp_ext_counter`;
+    # the linker must import `ext_counter`, give it an IAT slot, emit NO
+    # .text call thunk for it, and resolve the reference to the slot.
+    llvm.initialize_all_targets();
+    llvm.initialize_all_asmprinters();
+    src = (
+        'target triple = "x86_64-pc-windows-msvc"\n' + '@ext_counter = external dllimport global i64\n' + 'declare void @exit(i32)\n' + 'define i64 @read_it() {\n' + 'entry:\n' + '  %v = load i64, i64* @ext_counter\n' + '  ret i64 %v\n' + '}\n' + 'define void @_jac_win_start() {\n' + 'entry:\n' + '  %r = call i64 @read_it()\n' + '  call void @exit(i32 0)\n' + '  ret void\n' + '}\n'
+    );
+    mod = llvm.parse_assembly(src);
+    mod.verify();
+    tm = llvm.Target.from_triple(WIN_TRIPLE).create_target_machine(
+        opt=2, codemodel="large"
+    );
+    relobj = tm.emit_object(mod);
+    img = link_pe(relobj);
+    pe = parse_pe(img);
+    _all_names: list = [];
+    for (_d, _ns) in pe["imports"].items() {
+        _all_names.extend(_ns);
+    }
+    assert "ext_counter" in _all_names , (
+        f"expected 'ext_counter' among imports, got {pe['imports']}"
+    );
+    assert "__imp_ext_counter" not in _all_names , (
+        "the __imp_ prefix must be stripped before the hint/name table"
+    );
+}
+
+test "data import: direct reference to imported data is a loud link error (#7626 C4)" {
+    # Without dllimport the object carries a direct reference to the
+    # data symbol; PE cannot absorb the IAT indirection there, so the
+    # linker must refuse with guidance instead of emitting a thunk that
+    # would read the slot address as the value (the old silent-garbage
+    # failure).
+    llvm.initialize_all_targets();
+    llvm.initialize_all_asmprinters();
+    src = (
+        'target triple = "x86_64-pc-windows-msvc"\n' + '@stdout = external global i8*\n' + 'declare void @exit(i32)\n' + 'define i8* @read_it() {\n' + 'entry:\n' + '  %v = load i8*, i8** @stdout\n' + '  ret i8* %v\n' + '}\n' + 'define void @_jac_win_start() {\n' + 'entry:\n' + '  %r = call i8* @read_it()\n' + '  call void @exit(i32 0)\n' + '  ret void\n' + '}\n'
+    );
+    mod = llvm.parse_assembly(src);
+    mod.verify();
+    tm = llvm.Target.from_triple(WIN_TRIPLE).create_target_machine(
+        opt=2, codemodel="large"
+    );
+    relobj = tm.emit_object(mod);
+    d = tempfile.mkdtemp();
+    out = os.path.join(d, "a.exe");
+    raised = False;
+    try {
+        PeLinker.link(obj_bytes=relobj, output_path=out);
+    } except ValueError as e {
+        raised = True;
+        assert "__imp_stdout" in str(e) , (
+            f"error should point at the __imp_ fix, got: {e}"
+        );
+    }
+    assert raised , "direct data-import reference must refuse to link";
+}
+
 test "linking is deterministic" {
     relobj = emit_coff_object(FIXTURE);
     assert link_pe(relobj) == link_pe(relobj);

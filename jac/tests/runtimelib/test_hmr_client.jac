@@ -436,8 +436,7 @@ test "reload with code change preserves functionality" {
             # Test v2 logic - should now multiply by 3
             resp2 = client.post("/function/compute", json={"x": 5});
             assert resp2.ok;
-            assert resp2.data.get("result") == 15 ,  # 5 * 3
-             f"Expected 15 (5*3), got {resp2.data.get(
+            assert resp2.data.get("result") == 15 , f"Expected 15 (5*3), got {resp2.data.get(  # 5 * 3
                 'result'
             )} - code change not applied";
         } finally {
@@ -868,7 +867,7 @@ test "routing activates when pages are created after startup" {
         pages_dir.mkdir();
         index_file = pages_dir / "index.jac";
         index_file.write_text(
-            "cl {\n    def page() {\n        return <div>Home</div>;\n    }\n}\n"
+            "cl {\n    def View() -> JsxPage {\n        return <div>Home</div>;\n    }\n}\n"
         );
         reloader._recompile_client_code(str(index_file));
         index_js = compiled_dir / "pages" / "index.js";
@@ -880,7 +879,7 @@ test "routing activates when pages are created after startup" {
         # (e.g. the directory was moved into place)
         about_file = pages_dir / "about.jac";
         about_file.write_text(
-            "cl {\n    def page() {\n        return <div>About</div>;\n    }\n}\n"
+            "cl {\n    def View() -> JsxPage {\n        return <div>About</div>;\n    }\n}\n"
         );
         index_mtime = index_js.stat().st_mtime_ns;
         reloader._refresh_routing(str(index_file));
@@ -905,7 +904,7 @@ test "router entry survives an error then fix cycle" {
         pages_dir = unique_dir / "pages";
         pages_dir.mkdir();
         index_file = pages_dir / "index.jac";
-        good_source = "cl {\n    def page() {\n        return <div>Home</div>;\n    }\n}\n";
+        good_source = "cl {\n    def View() -> JsxPage {\n        return <div>Home</div>;\n    }\n}\n";
         index_file.write_text(good_source);
         reloader._recompile_client_code(str(index_file));
         reloader._refresh_routing(str(index_file));
@@ -915,7 +914,7 @@ test "router entry survives an error then fix cycle" {
         # Break the page: the app entry is untouched; the error goes out-of-band
         entry_mtime = entry_file.stat().st_mtime_ns;
         index_file.write_text(
-            "cl {\n    def page() {\n        return <div UNCLOSED;\n    }\n}\n"
+            "cl {\n    def View() -> JsxPage {\n        return <div UNCLOSED;\n    }\n}\n"
         );
         reloader._recompile_client_code(str(index_file));
         reloader._refresh_routing(str(index_file));
@@ -950,7 +949,7 @@ test "asset deletion removes the copy without touching the entry" {
         pages_dir.mkdir();
         index_file = pages_dir / "index.jac";
         index_file.write_text(
-            "cl {\n    def page() {\n        return <div>Home</div>;\n    }\n}\n"
+            "cl {\n    def View() -> JsxPage {\n        return <div>Home</div>;\n    }\n}\n"
         );
         reloader._recompile_client_code(str(index_file));
         reloader._refresh_routing(str(index_file));
@@ -984,7 +983,7 @@ test "no-op routing refresh does not rewrite entry or routes" {
         pages_dir.mkdir();
         index_file = pages_dir / "index.jac";
         index_file.write_text(
-            "cl {\n    def page() {\n        return <div>Home</div>;\n    }\n}\n"
+            "cl {\n    def View() -> JsxPage {\n        return <div>Home</div>;\n    }\n}\n"
         );
         reloader._recompile_client_code(str(index_file));
         reloader._refresh_routing(str(index_file));
@@ -1040,7 +1039,7 @@ def _routed_project(tmpdir: str, extra_pages: dict[str, str] = {}) -> tuple {
         page_file = pages_dir / rel;
         page_file.parent.mkdir(parents=True, exist_ok=True);
         page_file.write_text(
-            f"cl {{\n    def page() {{\n        return <div>{label}</div>;\n    }}\n}}\n"
+            f"cl {{\n    def View() -> JsxPage {{\n        return <div>{label}</div>;\n    }}\n}}\n"
         );
         reloader._recompile_client_code(str(page_file));
     }
@@ -1100,5 +1099,21 @@ test "renaming a page moves its route" {
         assert "PagesHome" in routes and "PagesIndex" not in routes , "the route must move to the new name";
         assert (compiled_dir / "pages" / "home.js").exists();
         assert not (compiled_dir / "pages" / "index.js").exists() , "stale compiled JS of the old name must be gone";
+    }
+}
+
+test "hyphenated page filenames sanitize to valid JS identifiers in _routes.js" {
+    with TemporaryDirectory() as tmpdir {
+        (reloader, compiled_dir, pages_dir) = _routed_project(
+            tmpdir, extra_pages={"features/about-connections.jac": "About"}
+        );
+        routes = (compiled_dir / "_routes.js").read_text();
+        assert "PagesFeaturesAboutConnections" in routes;
+        for line in routes.splitlines() {
+            if line.startswith("import ") {
+                imported_name = line.split(" as ")[1].split(" ")[0];
+                assert "-" not in imported_name , f"invalid JS identifier: {imported_name}";
+            }
+        }
     }
 }

@@ -2,7 +2,7 @@ import atexit;
 import threading;
 import from uuid { uuid4 }
 import from pymongo { MongoClient }
-import from testcontainers.mongodb { MongoDbContainer }
+import from testcontainers.community.mongodb { MongoDbContainer }
 
 import from jaclang.jac0core.archetype { EdgeAnchor, GenericEdge, Root }
 import from jaclang.runtimelib.changeset { ChangeSet }

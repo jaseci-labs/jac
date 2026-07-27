@@ -514,14 +514,59 @@ impl Serializer._get_class(module_name: str, class_name: str) -> (type | None) {
             return cls;
         }
 
-        logger.warning(
-            f"Serializer: alias {key} -> {aliased_key} has no registered "
-            "target; cannot resolve."
-        );
+        if Serializer._should_warn_once("alias-missing", key) {
+            logger.warning(
+                f"Serializer: alias {key} -> {aliased_key} has no registered "
+                "target; cannot resolve."
+            );
+        }
         return None;
     }
-    logger.warning(f"Refused to deserialize unregistered class: {key}");
+    if Serializer._should_warn_once("unregistered", key) {
+        logger.warning(f"Refused to deserialize unregistered class: {key}");
+    }
     return None;
+}
+
+impl Serializer._should_warn_once(scope: str, key: str) -> bool {
+    dedup_key = f"{scope}:{key}";
+    seen = Serializer._warned_class_keys;
+    if dedup_key in seen {
+        return False;
+    }
+    if Serializer._warn_dedup_saturated {
+        if logger.isEnabledFor(logging.DEBUG) {
+            logger.debug(
+                f"Serializer: warning suppressed (dedup cap reached): {dedup_key}"
+            );
+        }
+        return False;
+    }
+    with Serializer._warn_lock {
+        if dedup_key in seen {
+            return False;
+        }
+        if len(seen) >= _MAX_WARNED_CLASS_KEYS {
+            if not Serializer._warn_dedup_saturated {
+                Serializer._warn_dedup_saturated = True;
+                logger.warning(
+                    f"Serializer: warning dedup cache reached {_MAX_WARNED_CLASS_KEYS} "
+                    "distinct keys; further first-occurrence warnings are suppressed "
+                    "(enable DEBUG to still see suppressed keys)."
+                );
+            }
+            return False;
+        }
+        seen.add(dedup_key);
+        return True;
+    }
+}
+
+impl Serializer._reset_warn_cache -> None {
+    with Serializer._warn_lock {
+        Serializer._warned_class_keys.clear();
+        Serializer._warn_dedup_saturated = False;
+    }
 }
 
 impl Serializer._id_to_stub(anchor_cls: type, id_str: str) -> (Anchor | None) {
@@ -558,11 +603,13 @@ impl Serializer._deserialize_anchor(data: dict[str, object]) -> (Anchor | None) 
             }
             archetype = Serializer._deserialize_archetype(arch_data, anchor);
             if archetype is None {
-                logger.warning(
-                    "Serializer: archetype reconstruction failed for "
-                    f"{arch_data.get('__module__')}.{arch_data.get('__type__')}; "
-                    "dropping anchor (caller should quarantine)."
-                );
+                arch_key = f"{arch_data.get('__module__')}.{arch_data.get('__type__')}";
+                if Serializer._should_warn_once("archetype-failed", arch_key) {
+                    logger.warning(
+                        "Serializer: archetype reconstruction failed for "
+                        f"{arch_key}; dropping anchor (caller should quarantine)."
+                    );
+                }
                 return None;
             }
             anchor.archetype = archetype;
@@ -684,6 +731,7 @@ impl Serializer._deserialize_archetype(
             target = field_types[k];
             (coerced, ok) = Serializer.coerce(deser_v, target);
             if not ok {
+                field_key = f"{module_name}.{type_name}.{k}";
                 origin = get_origin(target);
                 args = get_args(target);
                 is_optional = (
@@ -705,26 +753,36 @@ impl Serializer._deserialize_archetype(
                         }
                     }
                     if not has_default {
-                        logger.warning(
-                            f"Serializer: {module_name}.{type_name}.{k}: stored None "
-                            f"on non-Optional field {target} and no class default "
-                            "available; cannot recover."
-                        );
+                        if Serializer._should_warn_once(
+                            "stored-none-no-default", field_key
+                        ) {
+                            logger.warning(
+                                f"Serializer: {module_name}.{type_name}.{k}: stored None "
+                                f"on non-Optional field {target} and no class default "
+                                "available; cannot recover."
+                            );
+                        }
                         return None;
                     }
-                    logger.warning(
-                        f"Serializer: {module_name}.{type_name}.{k}: stored None "
-                        f"on non-Optional field {target}; restored class default."
-                    );
+                    if Serializer._should_warn_once(
+                        "stored-none-defaulted", field_key
+                    ) {
+                        logger.warning(
+                            f"Serializer: {module_name}.{type_name}.{k}: stored None "
+                            f"on non-Optional field {target}; restored class default."
+                        );
+                    }
                     setattr(arch, k, recovered);
                     assigned.add(k);
                     continue;
                 }
-                logger.warning(
-                    f"Serializer: coercion fallback on {module_name}."
-                    f"{type_name}.{k}: stored={type(deser_v).__name__}, "
-                    f"target={target}; stored value kept as-is."
-                );
+                if Serializer._should_warn_once("coercion-fallback", field_key) {
+                    logger.warning(
+                        f"Serializer: coercion fallback on {module_name}."
+                        f"{type_name}.{k}: stored={type(deser_v).__name__}, "
+                        f"target={target}; stored value kept as-is."
+                    );
+                }
             }
             setattr(arch, k, coerced);
             assigned.add(k);
@@ -750,11 +808,15 @@ impl Serializer._deserialize_archetype(
             if fd.default_factory is not MISSING {
                 setattr(arch, fd.name, fd.default_factory());
             } elif fd.default is MISSING {
-                logger.warning(
-                    f"Serializer: {module_name}.{type_name}.{fd.name}: "
-                    "required field missing from stored data and no default "
-                    "available; attribute left unset."
-                );
+                if Serializer._should_warn_once(
+                    "required-missing", f"{module_name}.{type_name}.{fd.name}"
+                ) {
+                    logger.warning(
+                        f"Serializer: {module_name}.{type_name}.{fd.name}: "
+                        "required field missing from stored data and no default "
+                        "available; attribute left unset."
+                    );
+                }
             }
         }
         if attic {

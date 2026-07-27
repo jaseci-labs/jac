@@ -7,59 +7,32 @@ impl NaIRGenPass._codegen_enum(nd: uni.Enum) -> None {
     self.enum_types[enum_name] = ir.IntType(64);
     self.type_map[enum_name] = ir.IntType(64);
     self.has_native_code = True;
-    if (nd).body is None {
+
+    import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
+    _owner_mod = nd.find_parent_of_type(uni.Module) or self.ir_in;
+    lay = get_layout_registry(_owner_mod, self.prog).get_enum_layout(enum_name);
+    if lay is None or not lay.members {
         return;
     }
 
-    members: list = [];
-    for stmt in (nd).body {
-        if isinstance(stmt, uni.Assignment) {
-            targets = stmt.target
-                if isinstance(stmt.target, (list, tuple))
-                else [stmt.target];
-            for target_expr in targets {
-                member_name = self._get_name(target_expr);
-                if member_name is not None {
-                    members.append((member_name, stmt.value));
-                }
-            }
-        }
-    }
-
-    is_string_enum = False;
-    for (mname, vnode) in members {
-        if vnode is not None
-        and (isinstance(vnode, uni.String) or isinstance(vnode, uni.MultiString)) {
-            is_string_enum = True;
-            break;
-        }
-    }
-    if is_string_enum {
+    i64 = ir.IntType(64);
+    if lay.is_string_enum {
         entries: list = [];
-        i64 = ir.IntType(64);
-        for (ordinal, (mname, vnode)) in enumerate(members) {
-            str_val = "";
-            if vnode is not None and isinstance(vnode, (uni.String, uni.MultiString)) {
-                str_val = vnode.lit_value;
-            }
-            full_name = f"{enum_name}.{mname}";
-            self.enum_values[full_name] = ir.Constant(i64, ordinal);
-            self.enum_member_ordinal[full_name] = ordinal;
-            entries.append((mname, str_val, ordinal));
+        for m in lay.members {
+            full_name = f"{enum_name}.{m.name}";
+            self.enum_values[full_name] = ir.Constant(i64, m.ordinal);
+            self.enum_member_ordinal[full_name] = m.ordinal;
+            entries.append((m.name, m.str_value or "", m.ordinal));
         }
         self.enum_string_values[enum_name] = entries;
         self._build_enum_string_table(enum_name, entries);
     } else {
-        i64 = ir.IntType(64);
         name_entries: list = [];
-        for (ordinal, (mname, vnode)) in enumerate(members) {
-            val = vnode.lit_value
-                if (vnode is not None and isinstance(vnode, uni.Int))
-                else 0;
-            full_name = f"{enum_name}.{mname}";
-            self.enum_values[full_name] = ir.Constant(i64, val);
-            self.enum_member_ordinal[full_name] = ordinal;
-            name_entries.append((mname, "", ordinal));
+        for m in lay.members {
+            full_name = f"{enum_name}.{m.name}";
+            self.enum_values[full_name] = ir.Constant(i64, m.int_value);
+            self.enum_member_ordinal[full_name] = m.ordinal;
+            name_entries.append((m.name, "", m.ordinal));
         }
         self._build_enum_string_table(enum_name, name_entries, with_values=False);
     }

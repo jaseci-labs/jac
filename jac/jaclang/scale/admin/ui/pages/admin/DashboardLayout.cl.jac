@@ -16,6 +16,7 @@ import from "lucide-react" {
     BrainCircuit,
     Bot,
     Workflow,
+    Server,
     ScrollText,
     Stethoscope,
     Boxes,
@@ -40,8 +41,7 @@ import from .sso.SSOPage { SSOPage }
 import from .monitoring.MetricsPage { MetricsPage }
 import from .monitoring.LLMMetricsPage { LLMMetricsPage }
 import from .monitoring.LLMTracesPage { LLMTracesPage }
-import from .monitoring.WorkloadsPage { WorkloadsPage }
-import from .monitoring.GraphsPage { GraphsPage }
+import from .monitoring.ServicesPage { ServicesPage }
 import from .monitoring.TracesPage { TracesPage }
 import from .logs.LogsPage { LogsPage }
 import from .ops.OpsPage { OpsPage }
@@ -54,8 +54,7 @@ glob PAGE_ROUTES = {
          "users": UsersPage,
          "sso": SSOPage,
          "metrics": MetricsPage,
-         "workloads": WorkloadsPage,
-         "usage": GraphsPage,
+         "services": ServicesPage,
          "llm_metrics": LLMMetricsPage,
          "llm_traces": LLMTracesPage,
          "traces": TracesPage,
@@ -123,6 +122,7 @@ def:pub DashboardLayout -> JsxElement {
         "users": <Users className={iconCls}/>,
         "sso": <ShieldCheck className={iconCls}/>,
         "metrics": <BarChart3 className={iconCls}/>,
+        "services": <Server className={iconCls}/>,
         "llm_metrics": <BrainCircuit className={iconCls}/>,
         "llm_traces": <Bot className={iconCls}/>,
         "traces": <Workflow className={iconCls}/>,

@@ -5,11 +5,11 @@ test "a1" {
 }
 
 test "a2" {
-    c = Circle(RAD);
+    c: Circle = Circle(RAD);
     assert c.area() == expected_area;
 }
 
 test "a3" {
-    c = Circle(RAD);
+    c: Circle = Circle(RAD);
     assert c.shape_type == ShapeType.CIRCLE;
 }

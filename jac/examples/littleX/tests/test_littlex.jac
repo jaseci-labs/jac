@@ -40,6 +40,12 @@ def first_report(response: TestResponse) -> any {
     return reports[0] if reports else None;
 }
 
+"""Return a reported node's jid: `_jac_id` is how identity crosses the wire."""
+def jid_of(reported: any) -> str {
+    assert "_jac_id" in reported , f"expected a reported node, got {reported}";
+    return str(reported["_jac_id"]);
+}
+
 # -- Auth --
 test "register and login issues a token" {
     client = make_client();
@@ -66,18 +72,18 @@ test "profile setup and retrieval" {
     created = first_report(
         client.post("/walker/setup_profile", json={"username": "alice", "bio": "hi"})
     );
-    assert created["username"] == "alice";
-    assert created["bio"] == "hi";
+    assert created["profile"]["username"] == "alice";
+    assert created["profile"]["bio"] == "hi";
 
     fetched = first_report(client.post("/walker/get_profile", json={}));
-    assert fetched["id"] == created["id"];
+    assert jid_of(fetched["profile"]) == jid_of(created["profile"]);
     assert fetched["tweets"] == [];
 
     updated = first_report(
         client.post("/walker/setup_profile", json={"username": "", "bio": "updated"})
     );
-    assert updated["username"] == "alice";
-    assert updated["bio"] == "updated";
+    assert updated["profile"]["username"] == "alice";
+    assert updated["profile"]["bio"] == "updated";
 
     client.close();
 }
@@ -92,7 +98,8 @@ test "create tweet shows up in the feed" {
         client.post("/walker/create_tweet", json={"content": "hello world"})
     );
     assert tweet["content"] == "hello world";
-    assert tweet["is_mine"] == True;
+    assert tweet["author_username"] == "alice";
+    assert jid_of(tweet);
 
     feed = first_report(client.post("/walker/load_feed", json={}));
     assert len(list(feed)) == 1;
@@ -108,7 +115,7 @@ test "like and comment on a tweet" {
     tweet = first_report(
         client.post("/walker/create_tweet", json={"content": "rate this"})
     );
-    tweet_id = tweet["id"];
+    tweet_id = jid_of(tweet);
 
     liked = first_report(
         client.post("/walker/like_tweet", json={"tweet_id": tweet_id})
@@ -143,7 +150,7 @@ test "delete a tweet removes it from the feed" {
     );
 
     deleted = first_report(
-        client.post("/walker/delete_tweet", json={"tweet_id": tweet["id"]})
+        client.post("/walker/delete_tweet", json={"tweet_id": jid_of(tweet)})
     );
     assert deleted["success"] == True;
 
@@ -193,7 +200,7 @@ test "follow and unfollow another user" {
     bob_profile = first_report(
         client.post("/walker/setup_profile", json={"username": "bob"})
     );
-    bob_id = bob_profile["id"];
+    bob_id = jid_of(bob_profile["profile"]);
 
     client.login("alice", "secret123");
     client.post("/walker/setup_profile", json={"username": "alice"});
@@ -226,7 +233,9 @@ test "feed includes tweets from followed users" {
     client.login("alice", "secret123");
     client.post("/walker/setup_profile", json={"username": "alice"});
     client.post("/walker/create_tweet", json={"content": "alice's update"});
-    client.post("/walker/follow_user", json={"target_id": bob_profile["id"]});
+    client.post(
+        "/walker/follow_user", json={"target_id": jid_of(bob_profile["profile"])}
+    );
 
     feed = first_report(client.post("/walker/load_feed", json={}));
     contents = {t["content"] for t in feed};
@@ -267,7 +276,7 @@ test "channel create, join, post and detail" {
             "/walker/create_channel", json={"name": "jac-lang", "description": "chat"}
         )
     );
-    channel_id = channel["id"];
+    channel_id = jid_of(channel["channel"]);
     assert channel["is_member"] == True;
     assert channel["member_count"] == 1;
 
@@ -311,8 +320,8 @@ test "users only see their own profile via get_profile" {
     client.login("bob", "secret123");
     bob = first_report(client.post("/walker/setup_profile", json={"username": "bob"}));
 
-    assert alice["id"] != bob["id"];
-    assert bob["username"] == "bob";
+    assert jid_of(alice["profile"]) != jid_of(bob["profile"]);
+    assert bob["profile"]["username"] == "bob";
 
     client.close();
 }

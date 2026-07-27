@@ -6,9 +6,9 @@ description: Building C-ABI shared libraries from Jac with `jac nacompile --shar
 `jac nacompile --shared` packages a native Jac module as a **C-ABI shared library** any FFI-capable host can `dlopen` or link. Jac's own linker emits the file - no gcc/ld/lld, even for cross-targets:
 
 ```bash
-jac nacompile mathlib.na.jac --shared                    # -> ./libmathlib.so   (host platform)
-jac nacompile mathlib.na.jac --shared --target macos     # -> ./libmathlib.dylib (Mach-O, ad-hoc signed on arm64)
-jac nacompile mathlib.na.jac --shared --target windows   # -> ./mathlib.dll      (PE, DllMain init)
+jac nacompile mathlib.jac --shared                    # -> ./libmathlib.so   (host platform)
+jac nacompile mathlib.jac --shared --target macos     # -> ./libmathlib.dylib (Mach-O, ad-hoc signed on arm64)
+jac nacompile mathlib.jac --shared --target windows   # -> ./mathlib.dll      (PE, DllMain init)
 ```
 
 ## `:pub` is the export surface - no entry point
@@ -16,7 +16,7 @@ jac nacompile mathlib.na.jac --shared --target windows   # -> ./mathlib.dll     
 A shared library needs **no `with entry { }`** (the entry-required rule is executable-only). Exactly the symbols you mark `:pub` land in the export table; everything else stays internal. With zero `:pub` symbols the build refuses: *"Nothing to export from a shared library"*.
 
 ```jac
-# mathlib.na.jac
+# mathlib.jac
 glob:pub counter: int = 7;                   # exported global
 
 def:pub jadd(a: int, b: int) -> int {        # exported function
@@ -36,12 +36,12 @@ def:pub greet(name: str) -> str { return "hi " + name; }
 ```
 
 - **Methods are NOT exported** - `Point.magnitude_sq` has a class-qualified symbol, not a C name. Wrap any method you need in a `:pub` free function (like `point_sum` above).
-- `:pub` symbols of imported native modules are **re-exported**, so a library composes from several `.na.jac` files.
+- `:pub` symbols of imported native modules are **re-exported**, so a library composes from several `.jac` files.
 - Globals initialize **automatically on load** (ELF `DT_INIT_ARRAY` / Mach-O `__mod_init_func` / PE `DllMain`) - there is no `jac_init()` to call.
 
 ## The ABI: scalars by value, objects as opaque handles
 
-Scalars cross by value (`int` -> `int64`, `float` -> `double`, `bool`); `str` crosses as a NUL-terminated `char*` both directions. Jac objects/lists/dicts cross as **opaque `void*` handles** - pass them back into other `:pub` functions, never dereference. The library exports `jac_retain(void*)` / `jac_release(void*)` to manage their refcounted lifetime.
+Scalars cross by value (`int` -> `int64`, `float` -> `double`, `bool`); `str` crosses as a NUL-terminated `char*` both directions. Jac objects/lists/dicts cross as **opaque `void*` handles** - pass them back into other `:pub` functions, never dereference. The library exports `jac_retain(void*)` / `jac_release(void*)` to manage their refcounted lifetime. (Those two wrappers exist only when the library was built under a managed gc mode - the default; a zero-RC `--gc none` build emits no RC helpers to wrap, so the exports are absent by design. See `jac-native-memory`.)
 
 ```python
 import ctypes

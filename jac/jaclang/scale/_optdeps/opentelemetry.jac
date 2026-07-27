@@ -1,10 +1,3 @@
-"""Guarded re-exports for opentelemetry (install group: [tracing]).
-
-Mirrors `prometheus.jac` / `docker.jac`: callers import from here and
-branch on `HAS_OTEL`. Symbols are None (and `HAS_OTEL` False) when the
-optional dependency isn't installed, so tracing degrades to a no-op.
-"""
-
 with entry {
     try {
         import from opentelemetry { trace }
@@ -37,9 +30,7 @@ with entry {
         ParentBased = None;
         TraceIdRatioBased = None;
         OTLPSpanExporter = None;
-        # `object` (not None) so a subclass definition still compiles when
-        # OpenTelemetry is absent; the subclass is only instantiated under
-        # a HAS_OTEL guard, so the harmless base is never used at runtime.
+
         IdGenerator = object;
         HAS_OTEL = False;
     }

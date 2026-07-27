@@ -32,6 +32,7 @@ obj NormalizePass(UniPass) {
     def enter_typed_ctx_block(nd: uni.TypedCtxBlock) -> None;
     def _normalize_cond_block(nd: uni.UniNode, kw: Tok) -> None;
     def _normalize_name_list_stmt(nd: uni.UniNode, op: Tok) -> None;
+    def enter_open_stmt(nd: uni.OpenStmt) -> None;
     def enter_if_stmt(nd: uni.IfStmt) -> None;
     def enter_else_if(nd: uni.ElseIf) -> None;
     def enter_else_stmt(nd: uni.ElseStmt) -> None;
@@ -56,8 +57,6 @@ obj NormalizePass(UniPass) {
     def enter_disengage_stmt(nd: uni.DisengageStmt) -> None;
     def enter_await_expr(nd: uni.AwaitExpr) -> None;
     def enter_cast_expr(nd: uni.CastExpr) -> None;
-    def enter_global_stmt(nd: uni.GlobalStmt) -> None;
-    def enter_non_local_stmt(nd: uni.NonLocalStmt) -> None;
     def enter_assignment(nd: uni.Assignment) -> None;
     def enter_concurrent_expr(nd: uni.ConcurrentExpr) -> None;
     def enter_binary_expr(nd: uni.BinaryExpr) -> None;

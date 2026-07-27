@@ -158,7 +158,6 @@ def _validate_plugin_keys(plugins: dict[str, any]) -> None {
 }
 
 impl get_desktop_config(project_dir: Path | None = None) -> JacDesktopConfig {
-    global _desktop_config_instance;
     if (
         _desktop_config_instance is not None
         and project_dir != _desktop_config_instance.project_dir
@@ -172,7 +171,6 @@ impl get_desktop_config(project_dir: Path | None = None) -> JacDesktopConfig {
 }
 
 impl reset_desktop_config -> None {
-    global _desktop_config_instance;
     _desktop_config_instance = None;
 }
 

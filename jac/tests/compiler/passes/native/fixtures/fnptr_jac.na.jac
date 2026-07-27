@@ -1,9 +1,13 @@
-"""Jac-to-Jac function pointer passing via Callable[[...], ret] type annotations.
+"""Jac-to-Jac callable passing via Callable[[...], ret] type annotations.
 
 Tests that:
-  1. Callable[[param_types], ret] resolves to the correct LLVM function pointer type.
-  2. A Jac `def` can be passed as a Callable argument (ir.Function → fn-ptr coercion).
-  3. Indirect calls via a function-pointer parameter produce the correct result.
+  1. Callable[[param_types], ret] resolves to the uniform native closure
+     value: an RC {fn, env} pair (a plain `def` wraps with a null env).
+  2. A Jac `def` can be passed as a Callable argument (ir.Function → closure
+     wrap coercion) and called indirectly with the env as a trailing arg.
+  3. Indirect calls via a Callable parameter or local produce the correct
+     result. The native wrapper entries exist because the closure-pair ABI
+     is not callable with raw C function addresses from ctypes.
 """
 
 def add(a: int, b: int) -> int {
@@ -32,4 +36,24 @@ def apply1(fn: Callable[[int], int], x: int) -> int {
 def call_via_local(fn: Callable[[int, int], int], a: int, b: int) -> int {
     stored: Callable[[int, int], int] = fn;
     return stored(a, b);
+}
+
+def apply2_add(x: int, y: int) -> int {
+    return apply2(add, x, y);
+}
+
+def apply2_mul(x: int, y: int) -> int {
+    return apply2(mul, x, y);
+}
+
+def apply1_negate(x: int) -> int {
+    return apply1(negate, x);
+}
+
+def call_via_local_add(a: int, b: int) -> int {
+    return call_via_local(add, a, b);
+}
+
+def call_via_local_mul(a: int, b: int) -> int {
+    return call_via_local(mul, a, b);
 }

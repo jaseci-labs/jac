@@ -1,7 +1,16 @@
 import os;
 import jaclang.jac0core.unitree as uni;
 import from pathlib { Path }
+import from jaclang.jac0core.constant { CodeContext }
 import from jaclang.jac0core.parser { parse }
+import from jaclang.jac0core.ext_registry {
+    base_stem,
+    codespace_of,
+    is_annex,
+    SERVER,
+    CLIENT,
+    NATIVE
+}
 import from jaclang.jac0core.modresolver { find_jac_project_root }
 import from jaclang.scale.runtime.discovery.route_policy {
     derive_route_prefix,
@@ -36,22 +45,62 @@ def scan_markers(text: str, file_path: str) -> ModuleMarkers | None {
         return None;
     }
     targets: list[str] = [];
-    for imp in mod.get_all_sub_nodes(uni.Import) {
-        first = imp.kid[0] if imp.kid else None;
-        is_sv = (
-            (first is not None)
-            and (first?.name == _SV_PREFIX_TOK)
-            and (imp.from_loc is not None)
-        );
-        if is_sv {
-            name = imp.from_loc.base_module_name;
-            if name {
-                targets.append(name);
+    if codespace_of(file_path) != CLIENT {
+        for imp in mod.get_all_sub_nodes(uni.Import) {
+            first = imp.kid[0] if imp.kid else None;
+            is_sv = (
+                (first is not None)
+                and (first?.name == _SV_PREFIX_TOK)
+                and (imp.from_loc is not None)
+                and (imp.code_context != CodeContext.CLIENT)
+            );
+            if is_sv {
+                name = imp.from_loc.base_module_name;
+                if name {
+                    targets.append(name);
+                }
             }
         }
     }
     is_service = len(mod.get_all_sub_nodes(uni.ServerBlock)) > 0;
     return ModuleMarkers(sv_import_targets=targets, is_service=is_service);
+}
+
+
+def sv_target_stem(target: str) -> str {
+    return base_stem(target).rsplit(".", 1)[-1];
+}
+
+
+def _stem_entry_rank(rel_path: str, is_service: bool) -> int {
+    rank: int = 0;
+    if is_service {
+        rank += 100;
+    }
+    cs = codespace_of(rel_path);
+    if cs == SERVER {
+        rank += 10;
+    } elif cs == CLIENT {
+        rank += 5;
+    } elif cs == NATIVE {
+        rank += 5;
+    }
+    return rank;
+}
+
+
+def _prefer_stem_entry(
+    current_path: str,
+    current_is_service: bool,
+    candidate_path: str,
+    candidate_is_service: bool
+) -> tuple {
+    current_rank = _stem_entry_rank(current_path, current_is_service);
+    candidate_rank = _stem_entry_rank(candidate_path, candidate_is_service);
+    if candidate_rank > current_rank {
+        return (candidate_path, candidate_is_service);
+    }
+    return (current_path, current_is_service);
 }
 
 
@@ -75,7 +124,7 @@ def _scan_project(entry_file: str) -> tuple {
         entry_stem: str = "";
     } else {
         root_dir = entry_path.parent;
-        entry_stem: str = entry_path.stem;
+        entry_stem: str = base_stem(str(entry_path));
     }
     if not root_dir.is_dir() {
         return (set(), {});
@@ -86,8 +135,8 @@ def _scan_project(entry_file: str) -> tuple {
     scan_root_str = str(scan_root);
 
     services: set[str] = set();
-    service_files: dict[str, str] = {};
     all_stems: dict[str, str] = {};
+    all_stems_service: dict[str, bool] = {};
 
     for (cur_root, dirnames, filenames) in os.walk(scan_root_str) {
         kept: list[str] = [];
@@ -105,44 +154,50 @@ def _scan_project(entry_file: str) -> tuple {
             dirnames.append(d);
         }
         for fn in sorted(filenames) {
-            if not fn.endswith(".jac") {
+            if not fn.endswith(".jac") or is_annex(fn) {
                 continue;
             }
             jac_path = os.path.join(cur_root, fn);
-            stem: str = Path(jac_path).stem;
+
+            stem: str = base_stem(jac_path);
             rel_path: str = os.path.relpath(jac_path, scan_root_str);
-            if stem not in all_stems {
-                all_stems[stem] = rel_path;
-            }
             try {
                 text = Path(jac_path).read_text(encoding="utf-8");
             } except Exception {
                 continue;
             }
             markers = scan_markers(text, jac_path);
-            if markers is None {
-                continue;
-            }
-            for target in markers.sv_import_targets {
-                services.add(target);
-            }
-            if markers.is_service {
-                services.add(stem);
-                if stem not in service_files {
-                    service_files[stem] = rel_path;
+            is_svc = False;
+            if markers is not None {
+                for target in markers.sv_import_targets {
+                    services.add(sv_target_stem(target));
                 }
+                is_svc = markers.is_service;
+                if is_svc {
+                    services.add(stem);
+                }
+            }
+            if stem in all_stems {
+                (chosen_path, chosen_svc) = _prefer_stem_entry(
+                    all_stems[stem],
+                    all_stems_service.get(stem, False),
+                    rel_path,
+                    is_svc
+                );
+                all_stems[stem] = chosen_path;
+                all_stems_service[stem] = chosen_svc;
+            } else {
+                all_stems[stem] = rel_path;
+                all_stems_service[stem] = is_svc;
             }
         }
     }
 
     services.discard(entry_stem);
 
-    # A service found only as an sv-import target (no `to sv:` marker of its
-    # own) still lives at its module file -- fall back to any scanned .jac
-    # whose stem matches the service name.
     files: dict[str, str] = {};
     for name in services {
-        path = service_files.get(name) or all_stems.get(name);
+        path = all_stems.get(name);
         if path {
             files[name] = path;
         }

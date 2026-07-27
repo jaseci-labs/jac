@@ -33,7 +33,6 @@ impl AuthTokenStore.postinit -> None {
 }
 
 impl AuthTokenStore.instance -> AuthTokenStore {
-    global _auth_token_store;
     if _auth_token_store is not None {
         return _auth_token_store;
     }
@@ -42,7 +41,6 @@ impl AuthTokenStore.instance -> AuthTokenStore {
 }
 
 impl reset_auth_token_store -> None {
-    global _auth_token_store;
     _auth_token_store = None;
 }
 

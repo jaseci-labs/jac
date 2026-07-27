@@ -206,3 +206,107 @@ test "LLVM_TO_CTYPES contains all standard mappings" {
     assert LLVM_TO_CTYPES["i8*"] == ctypes.c_char_p;
     assert LLVM_TO_CTYPES["void"] is None;
 }
+
+# ── identity dedup + cycle safety ────────────────────────────
+def _pair_layout -> NativeModuleLayout {
+    return NativeModuleLayout(
+        structs={
+            "Child": NativeStructLayout(
+                name="Child",
+                fields=[NativeFieldInfo(name="val", llvm_type="i64", index=0)]
+            ),
+            "Pair": NativeStructLayout(
+                name="Pair",
+                fields=[
+                    NativeFieldInfo(name="left", llvm_type="Child*", index=0),
+                    NativeFieldInfo(name="right", llvm_type="Child*", index=1)
+                ]
+            )
+        }
+    );
+}
+
+def _node_layout -> NativeModuleLayout {
+    return NativeModuleLayout(
+        structs={
+            "Node": NativeStructLayout(
+                name="Node",
+                fields=[
+                    NativeFieldInfo(name="val", llvm_type="i64", index=0),
+                    NativeFieldInfo(name="nxt", llvm_type="Node*", index=1)
+                ]
+            )
+        }
+    );
+}
+
+test "marshal_value dedups shared struct pointers" {
+    layout = _pair_layout();
+    classes = build_ctypes_classes(layout);
+    child = classes["Child"]();
+    child.val = 7;
+    pair = classes["Pair"]();
+    pair.left = ctypes.addressof(child);
+    pair.right = ctypes.addressof(child);
+    v = marshal_value(ctypes.addressof(pair), "Pair*", classes, {}, {}, layout=layout);
+    assert v.left is v.left;
+    assert v.left is v.right;
+    assert v.left == v.right;
+    assert len({v.left, v.right}) == 1;
+    assert v.left.val == 7;
+}
+
+test "marshal_value closes cyclic struct graphs" {
+    layout = _node_layout();
+    classes = build_ctypes_classes(layout);
+    a = classes["Node"]();
+    b = classes["Node"]();
+    a.val = 1;
+    b.val = 2;
+    a.nxt = ctypes.addressof(b);
+    b.nxt = ctypes.addressof(a);
+    v = marshal_value(ctypes.addressof(a), "Node*", classes, {}, {}, layout=layout);
+    assert v.nxt.nxt is v;
+    assert v.nxt.nxt == v;
+    assert v.nxt.val == 2;
+}
+
+test "struct view scalar write goes through to native memory" {
+    layout = _pair_layout();
+    classes = build_ctypes_classes(layout);
+    child = classes["Child"]();
+    child.val = 7;
+    v = marshal_value(
+        ctypes.addressof(child), "Child*", classes, {}, {}, layout=layout
+    );
+    v.val = 99;
+    assert child.val == 99;
+    fresh = marshal_value(
+        ctypes.addressof(child), "Child*", classes, {}, {}, layout=layout
+    );
+    assert fresh.val == 99;
+}
+
+test "struct view write rejects pointer fields and unknown names" {
+    layout = _pair_layout();
+    classes = build_ctypes_classes(layout);
+    child = classes["Child"]();
+    pair = classes["Pair"]();
+    pair.left = ctypes.addressof(child);
+    pair.right = ctypes.addressof(child);
+    v = marshal_value(ctypes.addressof(pair), "Pair*", classes, {}, {}, layout=layout);
+    got_type_error = False;
+    try {
+        v.left = 0;
+    } except TypeError {
+        got_type_error = True;
+    }
+    assert got_type_error;
+    got_attr_error = False;
+    try {
+        v.missing = 1;
+    } except AttributeError {
+        got_attr_error = True;
+    }
+    assert got_attr_error;
+}

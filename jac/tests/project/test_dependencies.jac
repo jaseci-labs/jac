@@ -23,7 +23,9 @@ import from jaclang.project.pyvenv {
     make_pip_spec,
     pip_command,
     remove_venv_from_path,
-    summarize_pip_failure
+    summarize_pip_failure,
+    _bundled_runtime_python,
+    _is_fused_venv
 }
 import from jaclang.project.providers {
     InstallContext,
@@ -100,7 +102,9 @@ test "ensure_venv creates" {
         venv_dir = project_dir / ".jac" / "venv";
         assert not venv_dir.exists();
 
-        with patch("venv.EnvBuilder") as mock_builder_class {
+        with patch(
+            "jaclang.project.pyvenv._bundled_runtime_python", return_value=None
+        ), patch("venv.EnvBuilder") as mock_builder_class {
             mock_builder = MagicMock();
             mock_builder_class.return_value = mock_builder;
             ensure_venv(config.get_venv_dir());
@@ -179,7 +183,9 @@ test "ensure_venv recreates corrupted" {
         venv_dir.mkdir(parents=True, exist_ok=True);
         (venv_dir / "pyvenv.cfg").write_text("home = /usr/bin");
 
-        with patch("venv.EnvBuilder") as mock_builder_class {
+        with patch(
+            "jaclang.project.pyvenv._bundled_runtime_python", return_value=None
+        ), patch("venv.EnvBuilder") as mock_builder_class {
             mock_builder = MagicMock();
             mock_builder_class.return_value = mock_builder;
             ensure_venv(config.get_venv_dir(), verbose=True);
@@ -197,7 +203,9 @@ test "ensure_venv ensurepip missing" {
     try {
         config = JacConfig.load(project_dir / "jac.toml");
 
-        with patch("venv.EnvBuilder") as mock_builder_class {
+        with patch(
+            "jaclang.project.pyvenv._bundled_runtime_python", return_value=None
+        ), patch("venv.EnvBuilder") as mock_builder_class {
             mock_builder = MagicMock();
             mock_builder.create.side_effect = Exception("No module named 'ensurepip'");
             mock_builder_class.return_value = mock_builder;
@@ -209,6 +217,93 @@ test "ensure_venv ensurepip missing" {
                 assert "sudo apt install python3-venv" in str(e);
             }
             assert raised , "Expected RuntimeError";
+        }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+# ===== Project venv interpreter selection =====
+def _make_fused_venv_stub(project_dir: Path) -> Path {
+    # Stub a venv whose bin/python resolves to sys.executable (fused-like).
+    config = JacConfig.load(project_dir / "jac.toml");
+    venv_dir = config.get_venv_dir();
+    bin_dir = venv_dir / "bin";
+    bin_dir.mkdir(parents=True, exist_ok=True);
+    py = bin_dir / "python";
+    try {
+        py.symlink_to(Path(sys.executable));
+    } except OSError {
+        py.write_text(sys.executable);
+    }
+    (venv_dir / "pyvenv.cfg").write_text("home = /usr/bin\nversion = 3.14.0\n");
+    return venv_dir;
+}
+
+test "bundled runtime python is None outside standalone" {
+    with patch.dict(os.environ, {}, clear=False) {
+        os.environ.pop("JAC_STANDALONE", None);
+        assert _bundled_runtime_python() is None;
+    }
+}
+
+test "ensure_venv keeps symlinked python venv outside standalone" {
+    # In pip-install mode venv/bin/python symlinks to sys.executable; that must
+    # not trigger the fused-venv recreation path reserved for standalone.
+    reset_config();
+    (tmp, project_dir) = make_temp_project();
+    try {
+        venv_dir = _make_fused_venv_stub(project_dir);
+        assert _is_fused_venv(venv_dir);
+        with patch.dict(os.environ, {}, clear=False) {
+            os.environ.pop("JAC_STANDALONE", None);
+            with patch("shutil.rmtree") as rm, patch(
+                "venv.EnvBuilder"
+            ) as mock_builder_class {
+                mock_builder = MagicMock();
+                mock_builder_class.return_value = mock_builder;
+                ensure_venv(venv_dir, verbose=False);
+                rm.assert_not_called();
+                mock_builder.create.assert_not_called();
+            }
+        }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+test "ensure_venv recreates fused jac-as-python venvs" {
+    reset_config();
+    (tmp, project_dir) = make_temp_project();
+    try {
+        venv_dir = _make_fused_venv_stub(project_dir);
+        assert _is_fused_venv(venv_dir);
+        with patch.dict(os.environ, {"JAC_STANDALONE": "1"}, clear=False), patch(
+            "shutil.rmtree"
+        ) as rm, patch("subprocess.run") as run, patch(
+            "jaclang.project.pyvenv.run_pip", return_value=(0, "", "")
+        ), patch(
+            "jaclang.project.pyvenv._bundled_runtime_python",
+            return_value="/fake/rt/python/bin/python3.14"
+        ) {
+            run.return_value = MagicMock(returncode=0, stdout="", stderr="");
+            ensure_venv(venv_dir, verbose=False);
+            rm.assert_called_once_with(venv_dir);
+            assert run.call_count == 2 , (
+                "bundled venv create should run venv then ensurepip"
+            );
+            assert run.call_args_list[0].args[0] == [
+                "/fake/rt/python/bin/python3.14",
+                "-m",
+                "venv",
+                str(venv_dir),
+
+            ];
+            assert "--with-pip" not in run.call_args_list[0].args[0];
+            ensurepip_cmd = run.call_args_list[1].args[0];
+            assert ensurepip_cmd[-3:] == ["-m", "ensurepip", "--upgrade"];
         }
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
@@ -1143,6 +1238,94 @@ test "install pkg with explicit version" {
             config = JacConfig.load(Path(project_path) / "jac.toml");
             assert "numpy" in config.dependencies;
             assert config.dependencies["numpy"] == ">=1.24";
+        } finally {
+            os.chdir(original_cwd);
+            reset_config();
+        }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "install honors declared version constraint" {
+    # `jac install bcrypt` with `bcrypt = ">=4.0.0,<5.0.0"` already declared
+    # must resolve WITHIN that constraint (pip gets the constrained spec, not a
+    # bare name) and must not rewrite the pin or destroy manifest comments.
+    reset_config();
+    import from jaclang.cli.commands { project as proj_cmds }
+    tmp = tempfile.mkdtemp(prefix="jac_test_");
+    try {
+        toml = '[project]\nname = "testproj"\nversion = "0.1.0"\n\n[dependencies]\n# bcrypt 5.x breaks stored hashes; do not bump.\nbcrypt = ">=4.0.0,<5.0.0"\n';
+        project_path = create_test_project(tmp, toml);
+        os.makedirs(os.path.join(project_path, ".jac", "venv"), exist_ok=True);
+        original_cwd = os.getcwd();
+        os.chdir(project_path);
+        reset_config();
+        try {
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
+                PythonProvider, "_run_project_pip"
+            ) as mock_pip, patch.object(
+                PythonProvider, "_snapshot_installed"
+            ) as mock_snap {
+                mock_snap.return_value = (False, set());
+                mock_pip.side_effect = [
+                    (0, "Successfully installed bcrypt-4.3.0", ""),
+                    (0, "Name: bcrypt\nVersion: 4.3.0", "")
+                ];
+                result = proj_cmds.install(packages=["bcrypt"]);
+            }
+            assert result == 0;
+            install_args = mock_pip.call_args_list[0].args[1];
+            assert "bcrypt>=4.0.0,<5.0.0" in install_args , (
+                f"pip must receive the declared constraint, got: {install_args}"
+            );
+            config = JacConfig.load(Path(project_path) / "jac.toml");
+            assert config.dependencies["bcrypt"] == ">=4.0.0,<5.0.0" , (
+                "an explicit manifest constraint must never be rewritten"
+            );
+            saved = (Path(project_path) / "jac.toml").read_text();
+            assert "# bcrypt 5.x breaks stored hashes; do not bump." in saved , (
+                "jac install must not destroy jac.toml comments"
+            );
+        } finally {
+            os.chdir(original_cwd);
+            reset_config();
+        }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "install explicit spec replaces declared pin" {
+    # An explicit constraint typed on the command line is an intentional
+    # change: it must win over (and replace) the declared pin.
+    reset_config();
+    import from jaclang.cli.commands { project as proj_cmds }
+    tmp = tempfile.mkdtemp(prefix="jac_test_");
+    try {
+        toml = '[project]\nname = "testproj"\nversion = "0.1.0"\n\n[dependencies]\nbcrypt = ">=4.0.0,<5.0.0"\n';
+        project_path = create_test_project(tmp, toml);
+        os.makedirs(os.path.join(project_path, ".jac", "venv"), exist_ok=True);
+        original_cwd = os.getcwd();
+        os.chdir(project_path);
+        reset_config();
+        try {
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
+                PythonProvider, "_run_project_pip"
+            ) as mock_pip, patch.object(
+                PythonProvider, "_snapshot_installed"
+            ) as mock_snap {
+                mock_snap.return_value = (False, set());
+                mock_pip.return_value = (0, "Successfully installed bcrypt-5.0.0", "");
+                result = proj_cmds.install(packages=["bcrypt~=5.0"]);
+            }
+            assert result == 0;
+            install_args = mock_pip.call_args_list[0].args[1];
+            assert "bcrypt~=5.0" in install_args;
+            config = JacConfig.load(Path(project_path) / "jac.toml");
+            assert config.dependencies["bcrypt"] == "~=5.0" , (
+                "an explicit CLI constraint must replace the declared pin"
+            );
         } finally {
             os.chdir(original_cwd);
             reset_config();

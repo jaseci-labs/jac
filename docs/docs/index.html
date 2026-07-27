@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="/assets/logo.png" type="image/png" />
-    <title>Jac and Jaseci: Python Supercharged for AI Development at Scale</title>
+    <title>Jac and Jaseci: One Language, Whole Stack, No Glue</title>
     <link rel="stylesheet"
         href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/atom-one-dark.min.css">
     <link rel="stylesheet" href="landing.css">
@@ -56,9 +56,8 @@
         <div class="floating-nav">
             <div class="nav-container">
                 <nav class="nav-links">
-                    <a href="/learn/introduction" class="nav-link">Learn</a>
-                    <!-- <a href="/internals/contrib" class="nav-link">Internals</a> -->
-                    <a href="/communityhub/roadmap" class="nav-link">Community Hub</a>
+                    <a href="/tutorials/language/basics/" class="nav-link">Learn</a>
+                    <a href="/community/contributing/" class="nav-link">Community Hub</a>
                     <a href="/playground" class="nav-link" target="_blank">Jac Playground</a>
                     <a href="https://jac-gpt.jaseci.org/" class="nav-link" target="_blank" rel="noopener noreferrer">Jac
                         GPT</a>
@@ -76,12 +75,12 @@
                 Jac and Jaseci
             </h1>
             <p class="hero-subtitle animate-on-scroll">
-                The Jac programming language and Jaseci runtime stack features Python-like syntax, compiles to Python bytecode, JavaScript, and native machine code, and adds
-                <a href="https://arxiv.org/abs/2405.08965" target="_blank" class="fancy-link">AI-first constructs</a>,
-                <a href="https://arxiv.org/abs/2503.15812" target="_blank" class="fancy-link">object spatial
-                    programming</a>, and
-                <a href="https://arxiv.org/abs/2504.03109" target="_blank" class="fancy-link">scale-native
-                    constructs</a>.
+                The Jac programming language and Jaseci runtime stack features Python-like syntax, compiles to Python bytecode, JavaScript, and native machine code, and makes
+                <a href="https://arxiv.org/abs/2405.08965" target="_blank" class="fancy-link">meaning types</a>,
+                <a href="https://arxiv.org/abs/2503.15812" target="_blank" class="fancy-link">Object-Spatial
+                    Programming</a>, and
+                <a href="https://arxiv.org/abs/2504.03109" target="_blank" class="fancy-link">scale
+                    invariance</a> language features.
             </p>
             <div class="typing-container animate-on-scroll">
                 <span class="typing-text" id="typing-text"></span>
@@ -154,7 +153,7 @@
                     </a>
                 </button>
                 <button class="vt-tab-btn" data-index="3" tabindex="0">
-                    Object-spatial programming
+                    Object-Spatial Programming
                     <a href="#" class="vt-learn-more-link" target="_blank">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                             <path
@@ -217,7 +216,7 @@
                             <p class="card-description">
                                 Install Jac and setup your development environment. Write your first Jac program.
                             </p>
-                            <a href="/learn/getting_started/" class="card-link">Start Guide</a>
+                            <a href="/quick-guide/install/" class="card-link">Start Guide</a>
                         </div>
 
                         <div class="access-card">
@@ -226,7 +225,7 @@
                             <p class="card-description">
                                 Learn core concepts including Object-Spatial Programming and AI constructs.
                             </p>
-                            <a href="/learn/introduction/" class="card-link">Take Tour</a>
+                            <a href="/quick-guide/" class="card-link">Take Tour</a>
                         </div>
 
                         <div class="access-card">
@@ -235,7 +234,7 @@
                             <p class="card-description">
                                 Complete guide for Python developers transitioning to Jac programming.
                             </p>
-                            <a href="/reference/language/" class="card-link">Read Reference</a>
+                            <a href="/reference/language/foundation/" class="card-link">Read Reference</a>
                         </div>
                     </div>
 
@@ -243,29 +242,29 @@
                     <div class="carousel-slide">
                         <div class="access-card">
                             <div class="card-icon">🐦</div>
-                            <h3 class="card-title">LittleX Tutorial</h3>
+                            <h3 class="card-title">AI Day Planner</h3>
                             <p class="card-description">
-                                Build your own Twitter-like app with Jac. Learn object-spatial programming hands-on.
+                                Build a complete full-stack AI app in one guided project. The flagship tutorial.
                             </p>
-                            <a href="/learn/examples/littleX/tutorial/" class="card-link">Build Twitter</a>
+                            <a href="/tutorials/first-app/build-ai-day-planner/" class="card-link">Build the App</a>
                         </div>
 
                         <div class="access-card">
                             <div class="card-icon">🤖</div>
-                            <h3 class="card-title">RAG Chatbot</h3>
+                            <h3 class="card-title">Agentic AI</h3>
                             <p class="card-description">
-                                Create an AI-powered conversational chatbot with retrieval-augmented generation.
+                                Give an LLM tools it can call: build an agent that reads and acts on your data.
                             </p>
-                            <a href="/learn/examples/rag_chatbot/readme/" class="card-link">Build Chatbot</a>
+                            <a href="/tutorials/ai/agentic/" class="card-link">Build an Agent</a>
                         </div>
 
                         <div class="access-card">
                             <div class="card-icon">🎮</div>
-                            <h3 class="card-title">AI Games</h3>
+                            <h3 class="card-title">Build a Chess Engine</h3>
                             <p class="card-description">
-                                Explore AI-driven applications with RPG games and fantasy trading systems.
+                                The native pathway hands-on: from Jac source to a standalone compiled binary.
                             </p>
-                            <a href="/learn/examples/mtp_examples/rpg_game/" class="card-link">Play Games</a>
+                            <a href="/tutorials/native/chess/" class="card-link">Go Native</a>
                         </div>
                     </div>
 
@@ -277,7 +276,7 @@
                             <p class="card-description">
                                 Deploy your Jac applications to the cloud with built-in scaling and persistence.
                             </p>
-                            <a href="/learn/jac-scale/introduction/" class="card-link">Go Scale</a>
+                            <a href="/reference/plugins/jac-scale/" class="card-link">Go Scale</a>
                         </div>
 
                         <div class="access-card">
@@ -286,7 +285,7 @@
                             <p class="card-description">
                                 Master AI integration with byLLM and multimodal models in Jac.
                             </p>
-                            <a href="/learn/jac-byllm/quickstart/" class="card-link">AI Guide</a>
+                            <a href="/tutorials/ai/quickstart/" class="card-link">AI Guide</a>
                         </div>
 
                         <div class="access-card">
@@ -295,7 +294,7 @@
                             <p class="card-description">
                                 Jac in 2 minutes! Quick syntax reference and cheat sheets for fast learning.
                             </p>
-                            <a href="/learn/jac_in_a_flash/" class="card-link">Quick Start</a>
+                            <a href="/reference/language/syntax-cheatsheet/" class="card-link">Quick Start</a>
                         </div>
                     </div>
                 </div>
@@ -332,10 +331,11 @@
 
                         <div class="feature-card">
                             <div class="feature-icon">🧠</div>
-                            <h3 class="feature-title">Novel Code Construct for AI</h3>
+                            <h3 class="feature-title">Meaning-Typed AI Integration</h3>
                             <p class="feature-description">
-                                Jac introduces a new way programmers can integrate LLMs into their code. Simply
-                                replace a function body with an llm call, need for prompt engineering.
+                                Jac introduces a new way to integrate LLMs into code: replace a function body
+                                with by llm(), and the prompt is derived from your names, types, and sem
+                                annotations. There is no prompt to write.
                             </p>
                         </div>
                     </div>
@@ -346,17 +346,18 @@
                             <div class="feature-icon">🌐</div>
                             <h3 class="feature-title">Object-Spatial Programming</h3>
                             <p class="feature-description">
-                                Jac introduces super OOP constructs for a new paradigm called object-spatial OOP,
-                                enhancing the handling and visualization of data.
+                                Nodes, edges, and walkers make the moving locus of computation a language
+                                construct: computation travels through your data's topology, dispatched by
+                                arrival.
                             </p>
                         </div>
 
                         <div class="feature-card">
                             <div class="feature-icon">☁️</div>
-                            <h3 class="feature-title">Cloud Native Abstractions</h3>
+                            <h3 class="feature-title">Scale Invariance</h3>
                             <p class="feature-description">
-                                Jac makes persistence and user concepts part of the language, enabling simple
-                                programs to run unchanged in terminals or across clouds.
+                                Jac makes persistence and user concepts part of the language, so the same
+                                program text runs unchanged in a terminal or across a cluster.
                             </p>
                         </div>
                     </div>
@@ -365,10 +366,11 @@
                     <div class="carousel-slide">
                         <div class="feature-card">
                             <div class="feature-icon">⚡</div>
-                            <h3 class="feature-title">Zero DevOps Setup</h3>
+                            <h3 class="feature-title">One-Command Deployment</h3>
                             <p class="feature-description">
-                                Deploy applications without complex infrastructure setup. Jac handles scaling,
-                                persistence, and user management automatically.
+                                Deploy without writing infrastructure. jac start --scale provisions Kubernetes,
+                                Redis, and MongoDB, and scaling, persistence, and user management are runtime
+                                concerns.
                             </p>
                         </div>
 
@@ -416,7 +418,7 @@
                             providing seamless access to the PyPI, npm, and native ecosystems. Created by <strong><a
                                     href="https://github.com/marsninja" target="_blank"
                                     class="fancy-link">@marsninja</a></strong>
-                            with contributors of <strong><a href="/communityhub/top_contributors/" target="_blank"
+                            with contributors of <strong><a href="https://github.com/jaseci-labs/jaseci/graphs/contributors" target="_blank"
                                     class="fancy-link">Jac Hackers Everywhere</a></strong>,
                             it introduces cutting-edge programming models and abstractions specifically designed to
                             minimize
@@ -535,9 +537,9 @@
                 <div class="footer-links">
                     <a href="https://github.com/Jaseci-Labs/jaseci" target="_blank">GitHub</a>
                     <a href="https://discord.gg/6j3QNdtcN6" target="_blank">Community</a>
-                    <a href="/learn/getting_started/">Documentation</a>
+                    <a href="/quick-guide/">Documentation</a>
                 </div>
-                <p>© 2025 Jac Hackers Everywhere. All rights reserved.</p>
+                <p>© 2026 Jac Hackers Everywhere. All rights reserved.</p>
                 <p style="margin-top: 10px; color: #666;">Built with passion for innovative programming languages</p>
             </div>
         </div>

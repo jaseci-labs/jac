@@ -378,6 +378,9 @@ impl NaIRGenPass._emit_struct_free_log(
 }
 
 impl NaIRGenPass._set_rc_ctx(op: str, loc: str) -> None {
+    if self._nogc_headerless() {
+        return;
+    }
     if self.rc_ctx_op_gv is None {
         self._emit_rc_helpers();
     }
@@ -399,7 +402,7 @@ impl NaIRGenPass._set_rc_ctx(op: str, loc: str) -> None {
 }
 
 impl NaIRGenPass._clear_rc_ctx -> None {
-    if self.rc_ctx_op_gv is None {
+    if self._nogc_headerless() or self.rc_ctx_op_gv is None {
         return;
     }
     i8_ptr = ir.IntType(8).as_pointer();

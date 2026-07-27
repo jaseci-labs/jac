@@ -1,8 +1,8 @@
 import contextlib;
 import os;
 import from collections.abc { Generator }
-import from testcontainers.mongodb { MongoDbContainer }
-import from testcontainers.redis { RedisContainer }
+import from testcontainers.community.mongodb { MongoDbContainer }
+import from testcontainers.community.redis { RedisContainer }
 import from jaclang.scale.persistence.db { close_all_db_connections }
 import from jaclang.scale.persistence.lib { kvstore }
 

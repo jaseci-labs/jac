@@ -38,6 +38,16 @@ class NativeList(ctypes.Structure) {
 }
 
 
+class NativeDict(ctypes.Structure) {
+    has _fields_: list[tuple[str, type]] = [
+        ("len", ctypes.c_int64),
+        ("cap", ctypes.c_int64),
+        ("keys", ctypes.c_void_p),
+        ("vals", ctypes.c_void_p)
+    ];
+}
+
+
 obj NativeStructView {
     has addr: int,
         ct_cls: any = None,
@@ -46,13 +56,17 @@ obj NativeStructView {
         ctypes_classes: dict = field(default_factory=`dict),
         enum_maps: dict = field(default_factory=`dict),
         _native: any = field(default=None, repr=False),
-        _field_meta: dict = field(default_factory=`dict, repr=False);
+        _field_meta: dict = field(default_factory=`dict, repr=False),
+        _view_memo: dict = field(default_factory=`dict, repr=False);
 
     def postinit -> None;
     def __getattr__(name: str) -> any;
+    def __setattr__(name: str, value: any) -> None;
     def _resolve(name: str, raw: any) -> any;
     def __getitem__(key: str) -> any;
     def __contains__(key: str) -> bool;
+    def __eq__(other: any) -> any;
+    def __hash__ -> int;
     def keys -> any;
     def items -> any;
     def __repr__ -> str;
@@ -66,10 +80,12 @@ obj NativeListView {
         enum_maps: dict = field(default_factory=`dict),
         layout: any = None,
         struct_hint: (str | None) = None,
+        elem_hint: (str | None) = None,
         _count: int = field(default=0, repr=False),
         _arr: any = field(default=None, repr=False),
         _ct_cls: any = field(default=None, repr=False),
-        _struct_name: (str | None) = field(default=None, repr=False);
+        _struct_name: (str | None) = field(default=None, repr=False),
+        _view_memo: dict = field(default_factory=`dict, repr=False);
 
     def postinit -> None;
     @classmethod
@@ -82,6 +98,137 @@ obj NativeListView {
     def __iter__ -> any;
     def __eq__(other: any) -> any;
     def __repr__ -> str;
+}
+
+
+def get_struct_view(
+    addr: int,
+    ct_cls: any,
+    struct_name: str,
+    layout: any,
+    ctypes_classes: dict,
+    enum_maps: dict,
+    view_memo: (dict | None) = None
+) -> NativeStructView {
+    if view_memo is None {
+        view_memo = {};
+    }
+    memo_key = ("s", addr, struct_name);
+    cached = view_memo.get(memo_key);
+    if cached is not None {
+        return cached;
+    }
+    view = NativeStructView(
+        addr,
+        ct_cls,
+        struct_name,
+        layout,
+        ctypes_classes,
+        enum_maps,
+        _view_memo=view_memo
+    );
+    view_memo[memo_key] = view;
+    return view;
+}
+
+
+def get_list_view(
+    list_ptr: int,
+    elem_key: str,
+    ctypes_classes: dict,
+    enum_maps: dict,
+    layout: any = None,
+    struct_hint: (str | None) = None,
+    elem_hint: (str | None) = None,
+    view_memo: (dict | None) = None
+) -> NativeListView {
+    if (list_ptr is None or list_ptr == 0) {
+        return NativeListView.empty();
+    }
+    if view_memo is None {
+        view_memo = {};
+    }
+    memo_key = ("l", list_ptr, elem_key, struct_hint, elem_hint);
+    cached = view_memo.get(memo_key);
+    if cached is not None {
+        return cached;
+    }
+    view = NativeListView(
+        list_ptr,
+        elem_key,
+        ctypes_classes,
+        enum_maps,
+        layout,
+        struct_hint=struct_hint,
+        elem_hint=elem_hint,
+        _view_memo=view_memo
+    );
+    view_memo[memo_key] = view;
+    return view;
+}
+
+
+def _decode_scalar_array(
+    addr: any, count: int, type_name: str, as_str: bool = False
+) -> list {
+    if (count <= 0 or not addr) {
+        return [];
+    }
+    if type_name == "i64" {
+        return [int(x) for x in (ctypes.c_int64 * count).from_address(addr)];
+    }
+    if type_name == "f64" {
+        return [float(x) for x in (ctypes.c_double * count).from_address(addr)];
+    }
+    ptrs = (ctypes.c_void_p * count).from_address(addr);
+    if (type_name == "bytes" or as_str) {
+        return [
+            ctypes.string_at(p).decode("utf-8", errors="replace") if p else ""
+            for p in ptrs
+        ];
+    }
+    return [int(p) if p is not None else 0 for p in ptrs];
+}
+
+
+def _marshal_dict(dict_ptr: int, spec: str, func_layout: any = None) -> any {
+    parts = spec.split(".", 1);
+    if len(parts) != 2 {
+        return dict_ptr;
+    }
+    (key_name, val_name) = (parts[0], parts[1]);
+    if (
+        key_name not in ("i64", "f64", "bytes", "ptr")
+        or val_name not in ("i64", "f64", "ptr")
+    ) {
+        return dict_ptr;
+    }
+    nd = NativeDict.from_address(dict_ptr);
+    count = int(nd.len) if nd.len > 0 else 0;
+    ret_keys = func_layout?.ret_elem_keys if func_layout is not None else None;
+    key_as_str = bool(
+        key_name == "ptr" and ret_keys and len(ret_keys) == 2 and ret_keys[0] == "str"
+    );
+    val_as_str = bool(
+        val_name == "ptr" and ret_keys and len(ret_keys) == 2 and ret_keys[1] == "str"
+    );
+    dkeys = _decode_scalar_array(nd.keys, count, key_name, as_str=key_as_str);
+    dvals = _decode_scalar_array(nd.vals, count, val_name, as_str=val_as_str);
+    return dict(zip(dkeys, dvals));
+}
+
+
+def _marshal_set(set_ptr: int, elem_name: str, func_layout: any = None) -> any {
+    if elem_name not in ("i64", "f64", "bytes", "ptr") {
+        return set_ptr;
+    }
+    nl = NativeList.from_address(set_ptr);
+    count = int(nl.len) if (nl.len > 0 and nl.data) else 0;
+    ret_keys = func_layout?.ret_elem_keys if func_layout is not None else None;
+    as_str = bool(
+        elem_name == "ptr" and ret_keys and len(ret_keys) == 1 and ret_keys[0] == "str"
+    );
+    return set(_decode_scalar_array(nl.data, count, elem_name, as_str=as_str));
 }
 
 
@@ -137,7 +284,8 @@ def marshal_value(
     py_classes: dict,
     field_info: any = None,
     func_layout: any = None,
-    layout: any = None
+    layout: any = None,
+    view_memo: (dict | None) = None
 ) -> any {
     if (field_info and field_info.is_func_ptr) {
         if (raw is None or raw == 0) {
@@ -198,10 +346,25 @@ def marshal_value(
                 ctypes_classes,
                 enum_maps,
                 py_classes,
-                layout
+                layout,
+                view_memo=view_memo
             );
         }
         return raw;
+    }
+
+    if (llvm_type.startswith("Dict.") and llvm_type.endswith("*")) {
+        if (raw is None or raw == 0) {
+            return {};
+        }
+        return _marshal_dict(raw, llvm_type[5:-1], func_layout);
+    }
+
+    if (llvm_type.startswith("Set.") and llvm_type.endswith("*")) {
+        if (raw is None or raw == 0) {
+            return set();
+        }
+        return _marshal_set(raw, llvm_type[4:-1], func_layout);
     }
 
     if (llvm_type.endswith("*") and not llvm_type.startswith("List.")) {
@@ -213,8 +376,14 @@ def marshal_value(
         if (ct_cls is None or raw is None or raw == 0) {
             return raw;
         }
-        return NativeStructView(
-            raw, ct_cls, struct_name, layout, ctypes_classes, enum_maps
+        return get_struct_view(
+            raw,
+            ct_cls,
+            struct_name,
+            layout,
+            ctypes_classes,
+            enum_maps,
+            view_memo=view_memo
         );
     }
 
@@ -223,7 +392,26 @@ def marshal_value(
         if (raw is None or raw == 0) {
             return NativeListView.empty();
         }
-        return NativeListView(raw, elem_key, ctypes_classes, enum_maps, layout);
+        struct_hint: (str | None) = None;
+        elem_hint: (str | None) = None;
+        ret_keys = func_layout?.ret_elem_keys if func_layout is not None else None;
+        if (elem_key == "ptr" and ret_keys and len(ret_keys) == 1 and ret_keys[0]) {
+            if ret_keys[0] == "str" {
+                elem_hint = "str";
+            } elif ret_keys[0] in ctypes_classes {
+                struct_hint = ret_keys[0];
+            }
+        }
+        return get_list_view(
+            raw,
+            elem_key,
+            ctypes_classes,
+            enum_maps,
+            layout,
+            struct_hint=struct_hint,
+            elem_hint=elem_hint,
+            view_memo=view_memo
+        );
     }
 
     return raw;
@@ -236,7 +424,8 @@ def _marshal_tuple(
     ctypes_classes: dict,
     enum_maps: dict,
     py_classes: dict,
-    layout: any = None
+    layout: any = None,
+    view_memo: (dict | None) = None
 ) -> tuple {
     elem_types = tuple_layout.element_types;
     struct_hints = tuple_layout.element_struct_hints or [];
@@ -258,13 +447,25 @@ def _marshal_tuple(
 
         if (et == "List.ptr*" and hint and raw_val and raw_val != 0) {
             result.append(
-                NativeListView(
-                    raw_val, "ptr", ctypes_classes, enum_maps, layout, struct_hint=hint
+                get_list_view(
+                    raw_val,
+                    "ptr",
+                    ctypes_classes,
+                    enum_maps,
+                    layout,
+                    struct_hint=hint,
+                    view_memo=view_memo
                 )
             );
         } else {
             marshalled = marshal_value(
-                raw_val, et, ctypes_classes, enum_maps, py_classes, layout=layout
+                raw_val,
+                et,
+                ctypes_classes,
+                enum_maps,
+                py_classes,
+                layout=layout,
+                view_memo=view_memo
             );
             result.append(marshalled);
         }
@@ -317,6 +518,10 @@ def wrap_native_function(
         for (arg, pt) in zip(args, param_types) {
             if (pt == "i8*" and isinstance(arg, str)) {
                 c_args.append(arg.encode("utf-8"));
+            } elif isinstance(arg, NativeStructView) {
+                c_args.append(arg.addr);
+            } elif isinstance(arg, NativeListView) {
+                c_args.append(arg.list_ptr);
             } else {
                 c_args.append(arg);
             }
@@ -329,7 +534,8 @@ def wrap_native_function(
             enum_maps,
             py_classes,
             func_layout=fl,
-            layout=layout
+            layout=layout,
+            view_memo={}
         );
     }
 

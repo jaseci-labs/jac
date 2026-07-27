@@ -9,7 +9,6 @@ returned `s or "fallback"` was a garbage pointer (segfault).
 glob _CALLS: int = 0;
 
 def bump -> int {
-    global _CALLS;
     _CALLS += 1;
     return 99;
 }
@@ -40,7 +39,6 @@ def:pub bool_ops_str -> int {
 }
 
 def:pub bool_ops_short_circuit -> int {
-    global _CALLS;
     _CALLS = 0;
     v = 5 or bump();
     w = 0 and bump();

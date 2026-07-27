@@ -10,7 +10,7 @@ import from jaclang.scale.tests.fixtures.social_graph {
 import from jaclang.scale.persistence.lib { kvstore }
 import from jaclang.scale.persistence.db { close_all_db_connections }
 import from jaclang.scale.config.config_loader { reset_scale_config }
-import from testcontainers.mongodb { MongoDbContainer }
+import from testcontainers.community.mongodb { MongoDbContainer }
 import from uuid { uuid4 }
 import from jaclang.jac0core.archetype { NodeAnchor, EdgeAnchor, ObjectAnchor }
 

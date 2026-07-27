@@ -26,7 +26,7 @@ obj Shape {
     has shape_type: ShapeType;
 
     """Abstract method to calculate the area of a shape."""
-    def area -> float abs;
+    def area -> float abst;
 }
 
 """Circle class inherits from Shape."""
@@ -58,11 +58,11 @@ test "calc area" {
 }
 
 test "circle area" {
-    c = Circle(RAD);
+    c: Circle = Circle(RAD);
     assert c.area() == expected_area;
 }
 
 test "circle type" {
-    c = Circle(RAD);
+    c: Circle = Circle(RAD);
     assert c.shape_type == ShapeType.CIRCLE;
 }

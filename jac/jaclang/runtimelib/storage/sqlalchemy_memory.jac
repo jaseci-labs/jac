@@ -12,10 +12,10 @@ glob __all__ = ["SqlAlchemyMemory"];
 
 obj SqlAlchemyMemory(PersistentMemory) {
     has url: str,
-        __mem__: dict[UUID, Anchor] by postinit,
-        __lock__: threading.RLock by postinit,
-        _engine: (object | None) by postinit,
-        _anchors: object by postinit;
+        __mem__: dict[UUID, Anchor] postinit,
+        __lock__: threading.RLock postinit,
+        _engine: (object | None) postinit,
+        _anchors: object postinit;
 
     def postinit -> None;
     def is_available -> bool;

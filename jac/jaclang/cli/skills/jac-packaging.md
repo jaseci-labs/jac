@@ -70,12 +70,12 @@ There is no `jac publish` command - use `twine` (separate pip install). In CI au
 
 ## Publishing to npm
 
-`jac build --as npm` compiles client modules (`.cl.jac` and plain `.jac` under the package dir) to ES-module JavaScript, generates `package.json` + a `.d.ts` per module (TypeScript consumers get full type-checking), and packs `dist/<name>-<version>.tgz`. To produce both a wheel and an npm tarball, run both commands - there is no combined projection.
+`jac build --as npm` compiles the package's client modules (`.jac` files under the package dir - client placement is inferred from JSX or npm imports) to ES-module JavaScript, generates `package.json` + a `.d.ts` per module (TypeScript consumers get full type-checking), and packs `dist/<name>-<version>.tgz`. To produce both a wheel and an npm tarball, run both commands - there is no combined projection.
 
 ```toml
 [npm]
 name = "@yourscope/greetui"     # scoped npm name (defaults to normalized project name)
-entry = "greetui/index.cl.jac"  # entry module (defaults to an index.* module)
+entry = "greetui/index.jac"     # entry module (defaults to an index.* module)
 ```
 
 - Modules that use JSX or the reactive API automatically get `@jaseci/runtime` wired into `dependencies` (a normal, React-independent npm package). Modules that explicitly `import from react` get `react`/`react-dom` as `peerDependencies`.

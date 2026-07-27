@@ -3,7 +3,7 @@ name: jac-mobile-app
 description: Shipping a Jac client as a native Android/iOS app via Capacitor - `jac setup mobile`, dev loop with live reload and auto adb reverse, `jac build --client mobile`, `[client.mobile]` config, Capacitor plugins, on-device debugging. Load when targeting phones or tablets.
 ---
 
-The mobile target wraps your web bundle in a native shell via [Capacitor](https://capacitorjs.com/), producing an Android APK or iOS app from the same `.cl.jac` codebase. **Architecture first: the mobile app is FRONTEND ONLY.** The native shell is a webview running your `cl` bundle; every walker/`def:pub` call goes over HTTP to a Jac server you deploy separately (see `jac-sv-deploy`). There is no embedded backend - plan the server deployment before shipping the app.
+The mobile target wraps your web bundle in a native shell via [Capacitor](https://capacitorjs.com/), producing an Android APK or iOS app from the same client codebase. **Architecture first: the mobile app is FRONTEND ONLY.** The native shell is a webview running your client bundle; every walker/`def:pub` call goes over HTTP to a Jac server you deploy separately (see `jac-sv-deploy`). There is no embedded backend - plan the server deployment before shipping the app.
 
 ## Prerequisites
 

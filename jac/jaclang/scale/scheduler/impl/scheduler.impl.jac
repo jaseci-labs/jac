@@ -286,7 +286,6 @@ impl JacScaleScheduler._require_store -> JobStore {
 }
 
 impl JacScaleScheduler.instance -> JacScaleScheduler {
-    global _jaclang_scale_scheduler;
     if _jaclang_scale_scheduler is not None {
         return _jaclang_scale_scheduler;
     }

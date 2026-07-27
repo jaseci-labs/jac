@@ -91,6 +91,26 @@ impl Text.__str__ -> str {
     return f'Text("{self.text}")';
 }
 
+impl LineSuffix.treeprint(level: int = 0) -> str {
+    indent = '  ' * level;
+    header = f"{indent}LineSuffix:";
+    children_repr: list[str] = [self.contents.treeprint(level + 1)];
+    return header + '\n' + '\n'.join(children_repr);
+}
+
+impl LineSuffix.__str__ -> str {
+    return f"LineSuffix({self.contents})";
+}
+
+impl BreakParent.treeprint(level: int = 0) -> str {
+    indent = '  ' * level;
+    return f"{indent}BreakParent";
+}
+
+impl BreakParent.__str__ -> str {
+    return 'BreakParent';
+}
+
 impl Doc.treeprint(level: int = 0) -> str {
     indent = '  ' * level;
     return f"{indent}{self.__class__.__name__}";

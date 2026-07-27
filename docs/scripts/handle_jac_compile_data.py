@@ -1,6 +1,6 @@
-"""Handle jac compile data for jaclang.org.
+"""Handle jac compile data for docs.jaseci.org.
 
-This script is used  to handle the jac compile data for jac playground.
+This script is used to handle the jac compile data for the in-docs playground.
 """
 
 import os

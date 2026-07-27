@@ -11,7 +11,7 @@ Set the SMTP password via env before starting:
 """
 
 walker ping {
-    can pong with `root entry {
+    can pong with Root entry {
         report {"status": "ok"};
     }
 }

@@ -8,7 +8,6 @@ silently True.
 glob _BUMPS: int = 0;
 
 def bump(v: int) -> int {
-    global _BUMPS;
     _BUMPS += 1;
     return v;
 }
@@ -25,7 +24,6 @@ def:pub chain_cases -> int {
 }
 
 def:pub middle_evaluated_once -> int {
-    global _BUMPS;
     _BUMPS = 0;
     ok = 1 if 1 < bump(5) < 9 else 0;
     return ok * 10 + _BUMPS;

@@ -82,6 +82,23 @@ obj OspModel {
 }
 
 
+def get_osp_model(
+    module: uni.Module,
+    archetypes: (list[uni.Archetype] | None) = None,
+    context: (CodeContext | None) = None
+) -> OspModel {
+    existing = module.gen.osp_model;
+    if existing is not None {
+        return existing;
+    }
+    archs = archetypes
+        if archetypes is not None
+        else module.get_all_sub_nodes(uni.Archetype);
+    model = OspAnalysis.compute(module, archs, context);
+    module.gen.osp_model = model;
+    return model;
+}
+
 obj OspAnalysis {
     static def head_name(nd: (uni.UniNode | None)) -> (str | None) {
         cur = nd;

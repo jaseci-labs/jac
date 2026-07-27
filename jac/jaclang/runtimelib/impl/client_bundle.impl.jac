@@ -13,6 +13,14 @@ impl _lookup_module_in_hub(path_key: str, hub: dict) -> (Module | None) {
 
 impl _ensure_js_generated(mod: Module, program: any) -> None {
     if mod and not mod.gen.js {
+        if id(mod) not in program._inferred_mods {
+            import from jaclang.jac0core.compiler { get_inference_sched }
+            _sched = get_inference_sched();
+            if _sched {
+                program.run_schedule(mod, _sched);
+                program._inferred_mods.add(id(mod));
+            }
+        }
         import from jaclang.compiler.passes.ecmascript.esast_gen_pass { EsastGenPass }
         EsastGenPass(ir_in=mod, prog=program);
     }

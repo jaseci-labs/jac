@@ -22,15 +22,15 @@ jac start
 | `--faux` `-f` | Print generated API docs only (no server) | false |
 | `--dev` `-d` | Enable HMR (Hot Module Replacement) mode | false |
 | `--api_port` `-a` | Separate API port for HMR mode (0=same as port) | 0 |
-| `--no_client` `-n` | Skip client bundling/serving (API only) | false |
+| `--no-client` `-n` | Skip client bundling/serving (API only) | false |
 | `--profile` | Configuration profile to load (e.g. prod, staging) | - |
 | `--client` | Client build target for dev server (web, desktop, pwa) | - |
 | `--scale` | Deploy to a target platform instead of running locally | false |
-| `--build` `-b` | Build and push Docker image (with --scale) | false |
 | `--experimental` `-e` | Use experimental mode (install from repo instead of PyPI) | false |
 | `--target` | Deployment target (kubernetes, aws, gcp) | kubernetes |
-| `--registry` | Image registry (dockerhub, ecr, gcr) | dockerhub |
 | `--enable-tls` | Enable HTTPS via Let's Encrypt (run after pointing your domain CNAME to the NLB) | false |
+| `--dry-run` | Print the manifests that would be applied; change nothing | false |
+| `--show-yaml` | With `--dry-run`: dump the raw YAML stream | false |
 
 ### Examples
 
@@ -42,7 +42,7 @@ jac start --port 3000
 jac start --dev
 
 # API only -- skip client bundling
-jac start --dev --no_client
+jac start --dev --no-client
 
 # Preview generated API endpoints without starting
 jac start --faux
@@ -137,7 +137,31 @@ curl -X POST http://localhost:8000/walker/search \
 
 ### Response Format
 
-Walker `report` values become the response.
+Responses are wrapped in a JSON envelope. Walker `report` values arrive in
+`data.reports`; a function's return value arrives in `data.result`:
+
+```json
+{
+  "ok": true,
+  "type": "response",
+  "data": { "result": null, "reports": [ ... ] },
+  "error": null,
+  "meta": { }
+}
+```
+
+Failures keep the same shape with `"ok": false` and an `error` object:
+
+```json
+{ "ok": false, "error": { "code": "EXECUTION_ERROR", "message": "..." } }
+```
+
+Generated client stubs unwrap this for you. When calling from outside Jac,
+read `data.reports` for walkers and `data.result` for functions.
+
+Functions can opt out of the envelope entirely with
+`@restspec(envelope=False)` when the caller needs the raw bytes -- see
+[Raw Response Bodies](#raw-response-bodies).
 
 ---
 
@@ -194,6 +218,11 @@ The `@restspec` decorator customizes how walkers and functions are exposed as RE
 | `path` | `str` | `""` (auto-generated) | Custom URL path for the endpoint |
 | `protocol` | `APIProtocol` | `APIProtocol.HTTP` | Protocol for the endpoint (`HTTP`, `WEBHOOK`, or `WEBSOCKET`) |
 | `broadcast` | `bool` | `False` | Broadcast responses to all connected WebSocket clients (only valid with `WEBSOCKET` protocol) |
+| `produces` | `str` | `""` (`text/plain`) | `Content-Type` of the response body. Only meaningful with `envelope=False` |
+| `envelope` | `bool` | `True` | When `False`, the function's return value becomes the response body verbatim instead of being wrapped in the JSON envelope. **Functions only** |
+
+The first four options shape the **request** (how the endpoint is reached);
+`produces` and `envelope` shape the **response** (what comes back).
 
 > **Note:** `APIProtocol` and `restspec` are builtins and do not require an import statement. `HTTPMethod` must be imported with `import from http { HTTPMethod }`.
 
@@ -265,6 +294,74 @@ def :pub health_check() -> dict {
 @restspec(method=HTTPMethod.GET, path="/custom/status")
 def :pub app_status() -> dict {
     return {"status": "running", "version": "1.0.0"};
+}
+```
+
+### Raw Response Bodies
+
+By default every response is wrapped in the JSON transport envelope (see
+[Response Format](#response-format)). Some endpoints cannot be: a shell
+installer served for `curl | bash`, a `robots.txt`, an RSS feed, a
+`.well-known` document. `envelope=False` returns the function's value as the
+response body verbatim, and `produces` types it:
+
+```jac
+import from http { HTTPMethod }
+
+@restspec(
+    method=HTTPMethod.GET,
+    path="/install.sh",
+    produces="text/x-shellscript",
+    envelope=False
+)
+def :pub install_sh() -> str {
+    return "#!/usr/bin/env bash\necho installing...\n";
+}
+```
+
+```bash
+$ curl -sS -D- http://localhost:8000/install.sh
+HTTP/1.1 200 OK
+content-type: text/x-shellscript; charset=utf-8
+
+#!/usr/bin/env bash
+echo installing...
+```
+
+So `curl -fsSL http://localhost:8000/install.sh | bash` works. Without
+`envelope=False` the shell would instead receive
+`{"ok":true,"data":{"result":"#!/usr/bin/env bash\n..."}}`.
+
+The HTTP concerns stay on the declaration, so the body remains an ordinary
+`-> str` with no transport types in it.
+
+!!! note "Root paths are available"
+    Function endpoints are registered ahead of the static-asset catch-all, so
+    a `path` like `/install.sh` or `/robots.txt` binds to your function and
+    never reaches asset resolution.
+
+#### Limits
+
+- **Functions only.** A walker can `report` any number of times, so there is
+  no single value to project onto a raw body. `envelope=False` on a walker
+  has no effect.
+- **Text only.** A `bytes` return is stringified by `Serializer` before the
+  response layer sees it, so binary payloads are not yet expressible. Serve
+  those as static assets.
+- **Errors keep the envelope.** A failing call still returns the JSON error
+  envelope with its usual status code, so a 500 is never mistaken for a valid
+  payload of the declared content type. Callers should check the status, and
+  `curl -f` does this for you.
+
+Omitting `produces` yields `text/plain; charset=utf-8`. A non-`str` return is
+JSON-encoded into the body, but still without the envelope around it -- useful
+when a third-party client expects a bare JSON document:
+
+```jac
+@restspec(method=HTTPMethod.GET, path="/.well-known/jac.json",
+          produces="application/json", envelope=False)
+def :pub well_known() -> dict {
+    return {"version": "1.0"};   # body is exactly {"version": "1.0"}
 }
 ```
 
@@ -1750,7 +1847,7 @@ Overrides for `sv_walker_call` must end by returning the rehydrated walker insta
 |---------|-------------|
 | `jac start app.jac` | Start local API server |
 | `jac start app.jac --scale` | Deploy to Kubernetes |
-| `jac start app.jac --scale --build` | Build image and deploy |
+| `jac start app.jac --scale --dry-run` | Print the manifests that would be applied; change nothing |
 | `jac start app.jac --scale --target kubernetes` | Explicit deployment target (default) |
 | `jac start app.jac --scale --enable-tls` | Enable HTTPS on a live deployment (no redeploy) |
 | `jac scale status app.jac` | Show live deployment status |

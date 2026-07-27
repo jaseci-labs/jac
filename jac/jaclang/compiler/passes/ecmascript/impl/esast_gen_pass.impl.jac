@@ -1,3 +1,4 @@
+import from jaclang.jac0core.compiler { is_client_native_edge_import }
 import from jaclang.compiler.passes.ecmascript.reactive_intent {
     StateField,
     RefField,
@@ -140,15 +141,11 @@ impl EsastGenPass.exit_module_code(nd: uni.ModuleCode) -> None {
     nd.gen.es_ast = self._collect_body_stmts(nd.body);
 }
 
-impl EsastGenPass.exit_non_local_stmt(nd: uni.NonLocalStmt) -> None {
-    nd.gen.es_ast = [];
-}
-
 impl EsastGenPass.exit_global_vars(nd: uni.GlobalVars) -> None {
     if nd.code_context == CodeContext.CLIENT {
         self.client_manifest.has_client = True;
         is_pub = nd.access and (nd.access.tag.name == Tok.KW_PUB);
-        if is_pub {
+        if is_pub or nd.codespace_dual {
             for assignment in nd.assignments {
                 for target in assignment.target {
                     if (sym_name := target?.sym_name) {
@@ -199,8 +196,53 @@ impl EsastGenPass.exit_name(nd: uni.Name) -> None {
     nd.gen.es_ast = identifier;
 }
 
+impl EsastGenPass._in_type_slot(nd: uni.UniNode) -> bool {
+    child = nd;
+    parent = nd.parent;
+    while parent is not None {
+        if (
+            isinstance(parent, uni.SubTag)
+            or (isinstance(parent, uni.FuncSignature) and parent.return_type is child)
+            or (isinstance(parent, uni.CastExpr) and parent.cast_type is child)
+            or (isinstance(parent, uni.TypedCtxBlock) and parent.type_ctx is child)
+            or (isinstance(parent, uni.Except) and parent.ex_type is child)
+        ) {
+            return True;
+        }
+        child = parent;
+        parent = parent.parent;
+    }
+    return False;
+}
+
+impl EsastGenPass._is_call_target(nd: uni.UniNode) -> bool {
+    return isinstance(nd.parent, uni.FuncCall) and nd.parent.target is nd;
+}
+
 impl EsastGenPass.exit_builtin_type(nd: uni.BuiltinType) -> None {
     type_name = nd.sym_name;
+    self._ensure_emitters();
+    if (
+        not self._in_type_slot(nd)
+        and getattr(self._builtin_emitter, "emit_" + type_name, None) is not None
+    ) {
+        nd.gen.es_ast = self.sync_loc(
+            es.MemberExpression(
+                object=es.MemberExpression(
+                    object=es.Identifier(name='_jac'),
+                    property=es.Identifier(name='types'),
+                    computed=False
+                ),
+                property=es.Identifier(name=type_name),
+                computed=False
+            ),
+            jac_node=nd
+        );
+        if not self._is_call_target(nd) {
+            self.needs_jac_runtime = True;
+        }
+        return;
+    }
     tag = self.sync_loc(
         es.Literal(value=type_name, raw=json.dumps(type_name)), jac_node=nd
     );
@@ -909,25 +951,42 @@ impl EsastGenPass.exit_index_slice(nd: uni.IndexSlice) -> None {
 }
 
 impl EsastGenPass._resolve_source_module(nd: uni.Import) -> (uni.Module | None) {
-    if not nd.from_loc {
-        return None;
+    import from jaclang.compiler.symbol_utils { resolve_import_source_module }
+    return resolve_import_source_module(self.prog, nd);
+}
+
+impl EsastGenPass._pull_plain_jac_import_client(
+    nd: uni.Import, resolved_path: str
+) -> None {
+    import from jaclang.jac0core.ext_registry { codespace_of }
+    import from jaclang.jac0core.passes.codespace_pull_pass { pull_import_items_client }
+    import from jaclang.compiler.symbol_utils { symbol_linked_source_module }
+
+    if (
+        nd.is_sv_marked
+        or nd.is_virtual_jac
+        or nd.code_context != CodeContext.CLIENT
+        or not resolved_path.endswith('.jac')
+        or codespace_of(resolved_path) is not None
+    ) {
+        return;
     }
-    import from pathlib { Path }
-    resolved_path = nd.from_loc.resolve_relative_path();
-    abs_path = str(Path(resolved_path).resolve());
-    source_mod = self.prog.mod.hub.get(resolved_path)
-    or self.prog.mod.hub.get(abs_path);
-    if source_mod {
-        return source_mod;
+    targets: list[uni.Module] = [];
+    for candidate in (
+        self._resolve_source_module(nd),
+        symbol_linked_source_module(nd)
+    ) {
+        if (
+            candidate is not None
+            and candidate is not self.ir_in
+            and not any(candidate is t for t in targets)
+        ) {
+            targets.append(candidate);
+        }
     }
-    if Path(resolved_path).exists() {
-        source_mod = self.prog.compile(
-            resolved_path, no_cgen=True, type_check=False, symtab_ir_only=True
-        );
-        self.prog.mod.hub[abs_path] = source_mod;
-        return source_mod;
+    for target in targets {
+        pull_import_items_client(list(nd.items), target, self.prog);
     }
-    return None;
 }
 
 impl EsastGenPass._record_sv_backend(nd: uni.Import) -> None {
@@ -984,7 +1043,28 @@ impl EsastGenPass._return_type_includes_jsx_element(rt: uni.Expr) -> bool {
             or self._return_type_includes_jsx_element(rt.right)
         );
     }
-    return isinstance(rt, uni.Name) and rt.value == 'JsxElement';
+    return isinstance(rt, uni.Name)
+    and rt.value in ('JsxElement', 'JsxPage', 'JsxLayout');
+}
+
+impl EsastGenPass._return_type_route_role(rt: uni.Expr) -> (str | None) {
+    if (
+        isinstance(rt, uni.BinaryExpr)
+        and isinstance(rt.op, uni.Token)
+        and rt.op.name == Tok.BW_OR
+    ) {
+        left_role = self._return_type_route_role(rt.left);
+        return left_role or self._return_type_route_role(rt.right);
+    }
+    if isinstance(rt, uni.Name) {
+        if rt.value == 'JsxPage' {
+            return 'page';
+        }
+        if rt.value == 'JsxLayout' {
+            return 'layout';
+        }
+    }
+    return None;
 }
 
 impl EsastGenPass._component_pascal_name(nd: uni.Ability) -> (str | None) {
@@ -1572,6 +1652,7 @@ impl EsastGenPass._try_lower_server_rpc_call(
     }
     is_server_func = (
         ability_node.code_context != CodeContext.CLIENT
+        and ability_node.code_context != CodeContext.NATIVE
         and not ability_node.in_client_context()
         and ability_node.access is not None
         and ability_node.access.tag.name == Tok.KW_PUB
@@ -1580,6 +1661,24 @@ impl EsastGenPass._try_lower_server_rpc_call(
         return None;
     }
     func_name = nd.target.sym_name;
+    if isinstance(ability_node.signature, uni.FuncSignature) {
+        import re;
+        import from jaclang.jac0core.diagnostics { W6005 }
+        _sig = ability_node.signature;
+        for _plist in [_sig.posonly_params, _sig.params or [], _sig.kwonlyargs] {
+            for _p in _plist {
+                if (
+                    _p.type_tag is not None
+                    and _p.type_tag.tag is not None
+                    and re.search(r"\bCallable\b", _p.type_tag.tag.unparse())
+                ) {
+                    self.emit(
+                        W6005, node_override=nd, func=func_name, param=_p.name.sym_name
+                    );
+                }
+            }
+        }
+    }
 
     param_names: list[str] = self._param_names_from_ability(ability_node);
     inline_param_type_map: dict[str, str] = self._param_type_map_from_ability(
@@ -1789,10 +1888,6 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
     self._ensure_emitters();
 
     _call_kind = nd.call_kind;
-    if _call_kind is None {
-        import from jaclang.compiler.symbol_utils { classify_call }
-        _call_kind = classify_call(nd).value;
-    }
     if _call_kind == "builtin" and isinstance(nd.target, uni.Name) {
         import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
         _builtin_name = nd.target.sym_name;
@@ -1830,6 +1925,11 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
                 return;
             }
         }
+    }
+
+    if isinstance(nd.target, uni.BuiltinType)
+    and isinstance(callee, es.MemberExpression) {
+        self.needs_jac_runtime = True;
     }
 
     args_obj = self.sync_loc(es.ObjectExpression(properties=props), jac_node=nd);
@@ -3701,7 +3801,15 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
     if (nd.code_context == CodeContext.CLIENT and not nd.is_method) {
         self.client_manifest.has_client = True;
         is_pub = nd.access and (nd.access.tag.name == Tok.KW_PUB);
-        if is_pub {
+        route_role: (str | None) = None;
+        if (
+            isinstance(nd.signature, uni.FuncSignature)
+            and nd.signature.return_type is not None
+        ) {
+            route_role = self._return_type_route_role(nd.signature.return_type);
+        }
+
+        if is_pub or route_role or nd.codespace_dual {
             name = nd.name_ref.sym_name;
             self.client_manifest.exports.append(name);
             if (
@@ -3719,6 +3827,12 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
             ]
                 if isinstance(nd.signature, uni.FuncSignature)
                 else [];
+            if route_role == 'page' and self.client_manifest.page_export is None {
+                self.client_manifest.page_export = name;
+            } elif route_role == 'layout'
+            and self.client_manifest.layout_export is None {
+                self.client_manifest.layout_export = name;
+            }
         }
     }
     component_call_abi = self._component_call_abi(nd);
@@ -3906,14 +4020,9 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
 }
 
 impl EsastGenPass._osp_model -> OspModel {
+    import from jaclang.jac0core.osp_model { get_osp_model }
     _root = self.ir_in if isinstance(self.ir_in, uni.Module) else self.get_main_mod();
-    _existing = _root.gen.osp_model;
-    if _existing is not None {
-        return _existing;
-    }
-    _model = OspAnalysis.compute(_root, _root.get_all_sub_nodes(uni.Archetype));
-    _root.gen.osp_model = _model;
-    return _model;
+    return get_osp_model(_root);
 }
 
 impl EsastGenPass._osp_ability_info(nd: uni.Ability) -> (dict | None) {
@@ -4361,7 +4470,7 @@ impl EsastGenPass.exit_enum(nd: uni.Enum) -> None {
     if nd.code_context == CodeContext.CLIENT {
         self.client_manifest.has_client = True;
         is_pub = nd.access and (nd.access.tag.name == Tok.KW_PUB);
-        if is_pub {
+        if is_pub or nd.codespace_dual {
             self.client_manifest.exports.append(nd.name.sym_name);
         }
     }
@@ -4421,7 +4530,7 @@ impl EsastGenPass.exit_archetype(nd: uni.Archetype) -> None {
     if nd.code_context == CodeContext.CLIENT {
         self.client_manifest.has_client = True;
         is_pub = nd.access and (nd.access.tag.name == Tok.KW_PUB);
-        if is_pub {
+        if is_pub or nd.codespace_dual {
             self.client_manifest.exports.append(nd.name.sym_name);
         }
     }
@@ -4451,7 +4560,17 @@ impl EsastGenPass.exit_archetype(nd: uni.Archetype) -> None {
         and (nd.name.sym_name in self._osp_arch_set())
         and (nd.arch_kind is not None)
     );
-    if (((nd.arch_type.name == Tok.KW_OBJECT) or is_local_osp_arch) and has_members) {
+    is_shared_boundary_arch = (
+        (nd.name is not None) and (nd.name.sym_name in self.shared_arch_names)
+    );
+    if (
+        (
+            (nd.arch_type.name == Tok.KW_OBJECT)
+            or is_local_osp_arch
+            or is_shared_boundary_arch
+        )
+        and has_members
+    ) {
         constructor_stmts: list[es.Statement] = [];
         props_param = self.sync_loc(
             es.AssignmentPattern(
@@ -4598,25 +4717,44 @@ impl EsastGenPass.exit_import(nd: uni.Import) -> None {
         return;
     }
 
-    if (
-        nd.code_context != CodeContext.CLIENT
-        and nd._source_context_token() is not None
-        and nd._source_context_token().name == Tok.KW_SERVER
-    ) {
+    if nd.is_sv_marked {
         if (nd.from_loc and nd.items) {
             self._generate_sv_import_stubs(nd);
             self._record_sv_backend(nd);
         }
         return;
     }
+
+    if nd.is_na_marked or is_client_native_edge_import(nd, self.prog) {
+        if (nd.from_loc and nd.items) {
+            self._generate_na_import_binding(nd);
+        }
+        nd.gen.es_ast = None;
+        return;
+    }
+    emit_items: list = list(nd.items);
     if (nd.from_loc and nd.items) {
         resolved_path = nd.from_loc.resolve_relative_path();
+
+        self._pull_plain_jac_import_client(nd, resolved_path);
+        partition = self._partition_client_import_items(nd);
+        if partition is not None {
+            (emit_items, bridged_items) = partition;
+            if bridged_items {
+                self._generate_sv_import_stubs(nd, bridged_items);
+                self._record_sv_backend(nd);
+            }
+            if not emit_items {
+                nd.gen.es_ast = None;
+                return;
+            }
+        }
         import_key = nd.from_loc.dot_path_str;
         self.client_manifest.imports[import_key] = resolved_path;
         self.client_manifest.has_client = True;
 
         import_path = nd.from_loc.dot_path_str;
-        is_jac_runtime = import_path.startswith('@jac/');
+        is_jac_runtime = nd.is_virtual_jac;
         if resolved_path.endswith('.jac')
         and not import_path.startswith('.')
         and not is_jac_runtime {
@@ -4649,7 +4787,7 @@ impl EsastGenPass.exit_import(nd: uni.Import) -> None {
         list[
             es.ImportSpecifier | es.ImportDefaultSpecifier | es.ImportNamespaceSpecifier
         ] = [];
-    for item in nd.items {
+    for item in emit_items {
         if isinstance(item, uni.ModuleItem) {
             if isinstance(item.name, uni.Name) {
                 imported = self.sync_loc(
@@ -4703,12 +4841,45 @@ impl EsastGenPass.exit_import(nd: uni.Import) -> None {
     nd.gen.es_ast = None;
 }
 
-impl EsastGenPass._generate_sv_import_stubs(nd: uni.Import) -> None {
+impl EsastGenPass._partition_client_import_items(
+    nd: uni.Import
+) -> (tuple[list, list] | None) {
+    import from jaclang.compiler.symbol_utils {
+        ClientImportVerdict,
+        classify_client_import_item,
+        is_client_boundary_import,
+        report_dead_client_import
+    }
+    if not is_client_boundary_import(nd) {
+        return None;
+    }
+    source_mod = self._resolve_source_module(nd);
+    if source_mod is None {
+        return None;
+    }
+    kept: list = [];
+    bridged: list = [];
+    for item in nd.items {
+        verdict = classify_client_import_item(source_mod, item);
+        if verdict == ClientImportVerdict.BRIDGED {
+            bridged.append(item);
+        } elif verdict == ClientImportVerdict.DEAD {
+            report_dead_client_import(self, nd, item);
+        } else {
+            kept.append(item);
+        }
+    }
+    return (kept, bridged);
+}
+
+impl EsastGenPass._generate_sv_import_stubs(
+    nd: uni.Import, items: (Sequence[uni.ModuleItem] | None) = None
+) -> None {
     import from jaclang.compiler.symbol_utils { ability_of_symbol }
 
     source_mod: uni.Module | None = self._resolve_source_module(nd);
     stubs: list[es.Statement] = [];
-    for item in nd.items {
+    for item in (items if items is not None else nd.items) {
         if not isinstance(item, uni.ModuleItem)
         or not isinstance(item.name, uni.Name) {
             continue;
@@ -4815,6 +4986,121 @@ impl EsastGenPass._generate_sv_import_stubs(nd: uni.Import) -> None {
     }
 }
 
+def _na_wasm_stem(path: str) -> str {
+    import os;
+    stem = os.path.splitext(os.path.basename(path))[0];
+    for marker in ('.na', '.cl', '.sv') {
+        if stem.endswith(marker) {
+            stem = stem[0:-len(marker)];
+        }
+    }
+    return stem;
+}
+
+impl EsastGenPass._generate_na_import_binding(nd: uni.Import) -> None {
+    resolved_path = nd.from_loc.resolve_relative_path();
+    stem = _na_wasm_stem(resolved_path);
+
+    if self.client_manifest {
+        for existing in self.client_manifest.na_modules {
+            if existing != resolved_path and _na_wasm_stem(existing) == stem {
+                import from jaclang.jac0core.diagnostics { E5083 }
+                self.emit(
+                    E5083,
+                    node_override=nd,
+                    stem=stem,
+                    path=resolved_path,
+                    other=existing
+                );
+            }
+        }
+        if resolved_path not in self.client_manifest.na_modules {
+            self.client_manifest.na_modules.append(resolved_path);
+        }
+        self.client_manifest.has_client = True;
+    }
+
+    bind_local = '__jac_na_bind';
+    if bind_local not in self.injected_imports {
+        specifier = self.sync_loc(
+            es.ImportSpecifier(
+                imported=es.Identifier(name='__na_bind'),
+                local=es.Identifier(name=bind_local)
+            ),
+            jac_node=nd
+        );
+        source = self.sync_loc(
+            es.Literal(value='@jac/wasm_host', raw='"@jac/wasm_host"'), jac_node=nd
+        );
+        self.imports.append(
+            self.sync_loc(
+                es.ImportDeclaration(specifiers=[specifier], source=source), jac_node=nd
+            )
+        );
+        self.injected_imports.add(bind_local);
+    }
+
+    props: list[(es.AssignmentProperty | es.RestElement)] = [];
+    export_names: list[(es.Expression | es.SpreadElement | None)] = [];
+    for item in nd.items {
+        if not isinstance(item, uni.ModuleItem)
+        or not isinstance(item.name, uni.Name) {
+            continue;
+        }
+        export_name = item.name.sym_name;
+        local_name = item.alias.sym_name if item.alias else export_name;
+        export_names.append(
+            self.sync_loc(
+                es.Literal(value=export_name, raw=f'"{export_name}"'), jac_node=item
+            )
+        );
+        props.append(
+            self.sync_loc(
+                es.AssignmentProperty(
+                    key=es.Identifier(name=export_name),
+                    value=es.Identifier(name=local_name),
+                    shorthand=(export_name == local_name)
+                ),
+                jac_node=item
+            )
+        );
+    }
+    if not props {
+        return;
+    }
+
+    bind_call = self.sync_loc(
+        es.CallExpression(
+            callee=es.Identifier(name=bind_local),
+            arguments=[
+                self.sync_loc(es.Literal(value=stem, raw=f'"{stem}"'), jac_node=nd),
+                self.sync_loc(es.ArrayExpression(elements=export_names), jac_node=nd),
+
+            ]
+        ),
+        jac_node=nd
+    );
+    self.na_import_stubs.append(
+        self.sync_loc(
+            es.VariableDeclaration(
+                kind='const',
+                declarations=[
+                    self.sync_loc(
+                        es.VariableDeclarator(
+                            id=self.sync_loc(
+                                es.ObjectPattern(properties=props), jac_node=nd
+                            ),
+                            init=bind_call
+                        ),
+                        jac_node=nd
+                    )
+                ]
+            ),
+            jac_node=nd
+        )
+    );
+}
+
 impl EsastGenPass._sv_import_item_is_type(
     nd: uni.Import, item: uni.ModuleItem
 ) -> bool {
@@ -4847,13 +5133,28 @@ impl EsastGenPass.populate_client_manifest(nd: uni.Module) -> None {
     }
 }
 
+impl EsastGenPass._es_json_literal(value: any) -> any {
+    if isinstance(value, list) {
+        return es.ArrayExpression(elements=[self._es_json_literal(v) for v in value]);
+    }
+    if isinstance(value, dict) {
+        return es.ObjectExpression(
+            properties=[
+                es.Property(
+                    key=es.Literal(value=k), value=self._es_json_literal(v), kind='init'
+                ) for (k, v) in value.items()
+            ]
+        );
+    }
+    return es.Literal(value=value);
+}
+
 impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement] {
     manifest = nd.gen.interop_manifest;
     if not manifest.boundary_types {
         return [];
     }
     stubs: list[es.Statement] = [];
-    osp_archs = self._osp_arch_set();
 
     osp_class_map: dict[str, es.ClassDeclaration] = {};
     for item in self._merge_module_bodies(nd) {
@@ -4866,7 +5167,6 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
         }
     }
     for (type_name, info) in manifest.boundary_types.items() {
-        is_osp = type_name in osp_archs;
         if info.kind == "enum" {
             enum_props: list[es.Property] = [];
             for (member_name, member_val) in info.enum_members {
@@ -4907,6 +5207,9 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
             field_types = {f[0]: f[1] for f in info.fields};
             ctor_stmts: list[es.Statement] = [];
             for fname in field_names {
+                fallback = self._es_json_literal(info.field_defaults[fname])
+                    if fname in info.field_defaults
+                    else es.Literal(value=None);
                 assign = es.ExpressionStatement(
                     expression=es.AssignmentExpression(
                         operator='=',
@@ -4929,7 +5232,7 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
                                 property=es.Identifier(name=fname),
                                 computed=False
                             ),
-                            alternate=es.Literal(value=None)
+                            alternate=fallback
                         )
                     )
                 );
@@ -5424,55 +5727,49 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
                 static=False,
                 computed=False
             );
-            if is_osp {
-                osp_class = osp_class_map.get(type_name);
-                if osp_class is not None {
-                    if info.kind == "node" {
-                        for member in osp_class.body.body {
-                            if (
-                                isinstance(member, es.MethodDefinition)
-                                and (member.kind == "constructor")
-                            ) {
-                                member.value.body.body.append(
-                                    es.IfStatement(
-                                        test=es.CallExpression(
-                                            callee=es.MemberExpression(
-                                                object=es.Identifier(name='props'),
-                                                property=es.Identifier(
-                                                    name='hasOwnProperty'
-                                                ),
+            osp_class = osp_class_map.get(type_name);
+            if osp_class is not None {
+                if info.kind == "node" {
+                    for member in osp_class.body.body {
+                        if (
+                            isinstance(member, es.MethodDefinition)
+                            and (member.kind == "constructor")
+                        ) {
+                            member.value.body.body.append(
+                                es.IfStatement(
+                                    test=es.CallExpression(
+                                        callee=es.MemberExpression(
+                                            object=es.Identifier(name='props'),
+                                            property=es.Identifier(
+                                                name='hasOwnProperty'
+                                            ),
+                                            computed=False
+                                        ),
+                                        arguments=[es.Literal(value='_jac_id')]
+                                    ),
+                                    consequent=es.ExpressionStatement(
+                                        expression=es.AssignmentExpression(
+                                            operator='=',
+                                            left=es.MemberExpression(
+                                                object=es.ThisExpression(),
+                                                property=es.Identifier(name='_jac_id'),
                                                 computed=False
                                             ),
-                                            arguments=[es.Literal(value='_jac_id')]
-                                        ),
-                                        consequent=es.ExpressionStatement(
-                                            expression=es.AssignmentExpression(
-                                                operator='=',
-                                                left=es.MemberExpression(
-                                                    object=es.ThisExpression(),
-                                                    property=es.Identifier(
-                                                        name='_jac_id'
-                                                    ),
-                                                    computed=False
-                                                ),
-                                                right=es.MemberExpression(
-                                                    object=es.Identifier(name='props'),
-                                                    property=es.Identifier(
-                                                        name='_jac_id'
-                                                    ),
-                                                    computed=False
-                                                )
+                                            right=es.MemberExpression(
+                                                object=es.Identifier(name='props'),
+                                                property=es.Identifier(name='_jac_id'),
+                                                computed=False
                                             )
-                                        ),
-                                        alternate=None
-                                    )
-                                );
-                            }
+                                        )
+                                    ),
+                                    alternate=None
+                                )
+                            );
                         }
                     }
-                    osp_class.body.body.append(from_wire_def);
-                    osp_class.body.body.append(to_wire_def);
                 }
+                osp_class.body.body.append(from_wire_def);
+                osp_class.body.body.append(to_wire_def);
             } else {
                 class_body = es.ClassBody(body=[ctor_def, from_wire_def, to_wire_def]);
                 class_decl = es.ClassDeclaration(
@@ -5508,6 +5805,7 @@ impl EsastGenPass.exit_module(nd: uni.Module) -> None {
     body.extend(self.imports);
 
     body.extend(self.sv_import_stubs);
+    body.extend(self.na_import_stubs);
 
     body.extend(self._emit_boundary_type_stubs(nd));
     scope = self.scope_map.get(nd);
@@ -6044,12 +6342,11 @@ impl EsastGenPass.exit_node(nd: uni.UniNode) -> None {
         and nd.code_context != CodeContext.CLIENT
         and ((nd.parent is None) or isinstance(nd.parent, uni.Module))
     ) {
-        is_sv_import = (
-            isinstance(nd, uni.Import)
-            and nd._source_context_token() is not None
-            and nd._source_context_token().name == Tok.KW_SERVER
-        );
+        is_sv_import = isinstance(nd, uni.Import)
+        and (nd.is_sv_marked or nd.is_na_marked);
 
+        is_native_edge = isinstance(nd, uni.Import)
+        and is_client_native_edge_import(nd, self.prog);
         is_shared_arch = (
             isinstance(nd, uni.Archetype)
             and (nd.name is not None)
@@ -6057,6 +6354,7 @@ impl EsastGenPass.exit_node(nd: uni.UniNode) -> None {
         );
         if (
             not is_sv_import
+            and not is_native_edge
             and not isinstance(nd, uni.ServerBlock)
             and not is_shared_arch
         ) {
@@ -6082,19 +6380,19 @@ impl EsastGenPass.enter_node(nd: uni.UniNode) -> None {
         and nd.code_context != CodeContext.CLIENT
         and ((nd.parent is None) or isinstance(nd.parent, uni.Module))
     ) {
-        is_sv_import = (
-            isinstance(nd, uni.Import)
-            and nd._source_context_token() is not None
-            and nd._source_context_token().name == Tok.KW_SERVER
-        );
+        is_sv_import = isinstance(nd, uni.Import)
+        and (nd.is_sv_marked or nd.is_na_marked);
 
         is_shared_arch = (
             isinstance(nd, uni.Archetype)
             and (nd.name is not None)
             and (nd.name.value in self.shared_arch_names)
         );
+        is_native_edge = isinstance(nd, uni.Import)
+        and is_client_native_edge_import(nd, self.prog);
         if (
             not is_sv_import
+            and not is_native_edge
             and not isinstance(nd, uni.ServerBlock)
             and not is_shared_arch
         ) {

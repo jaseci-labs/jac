@@ -243,6 +243,21 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
 
+    if getattr(self.ir_in.gen, "nogc_enforced", False)
+    and not self._raise_has_frame_handler(nd) {
+        _abort_fn = self._get_or_declare_extern("abort", ir.VoidType(), []);
+        _msg = self._make_global_string(
+            "jac: unhandled exception in nogc-enforced module (abort)",
+            name_prefix=".nogc.abort"
+        );
+        _puts_fn = self._get_or_declare_extern("puts", i32, [i8p]);
+        _msg_i8 = self.builder.bitcast(_msg, i8p, name="nogc.abort.msg");
+        self.builder.call(_puts_fn, [_msg_i8]);
+        self.builder.call(_abort_fn, []);
+        self.builder.unreachable();
+        return;
+    }
+
     if self._exc_raise_fn is None {
         self._declare_exception_runtime();
     }
@@ -256,13 +271,27 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
             exc_type_name = self._get_name(nd.cause.target) or "Exception";
             exc_type_id = self._get_or_register_exc_type(exc_type_name);
 
-            if exc_type_name in self.struct_types {
-                exc_payload = self._codegen_expr(nd.cause);
-            } else {
-                params = nd.cause.params or [];
-                if params {
-                    exc_msg = self._codegen_expr(params[0]);
+            _exc_pos_args = [];
+            for _p in (nd.cause.params or []) {
+                if not isinstance(_p, uni.KWPair) {
+                    _exc_pos_args.append(_p);
                 }
+            }
+            _exc_has_init = f"{exc_type_name}.init" in self.method_funcs;
+            if f"{exc_type_name}.__init__" in self.method_funcs {
+                _exc_has_init = True;
+            }
+            _exc_order = self.struct_field_order.get(exc_type_name);
+            _exc_struct_ok = _exc_has_init;
+            if (not _exc_struct_ok) and (_exc_order is not None) {
+                _exc_struct_ok = len(_exc_pos_args) <= len(_exc_order);
+            }
+            if (exc_type_name in self.struct_types) and _exc_struct_ok {
+                exc_payload = self._codegen_expr(nd.cause);
+            } elif _exc_pos_args {
+                exc_msg = self._codegen_expr(_exc_pos_args[0]);
+            } elif nd.cause.params {
+                exc_msg = self._codegen_expr(nd.cause.params[0]);
             }
         } else {
             exc_msg = self._codegen_expr(nd.cause);
@@ -288,6 +317,22 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
     self.builder.unreachable();
 }
 
+impl NaIRGenPass._raise_has_frame_handler(nd: uni.RaiseStmt) -> bool {
+    _child: uni.UniNode = nd;
+    _cur = nd.parent;
+    while _cur is not None {
+        if isinstance(_cur, uni.TryStmt) and _child in list(_cur.body) {
+            return True;
+        }
+        if isinstance(_cur, (uni.Ability, uni.LambdaExpr, uni.Module)) {
+            return False;
+        }
+        _child = _cur;
+        _cur = _cur.parent;
+    }
+    return False;
+}
+
 impl NaIRGenPass._codegen_try(nd: uni.TryStmt) -> None {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
@@ -298,6 +343,8 @@ impl NaIRGenPass._codegen_try(nd: uni.TryStmt) -> None {
     exc_state_type = self._exc_state_type;
     exc_state_ptr = exc_state_type.as_pointer();
     func = self.builder.function;
+    _gc = self._gen_ctx;
+    _in_gen = _gc is not None and func is _gc["resume_fn"];
 
     func.attributes.add("optnone");
     func.attributes.add("noinline");
@@ -312,7 +359,9 @@ impl NaIRGenPass._codegen_try(nd: uni.TryStmt) -> None {
     self.builder.branch(setup_bb);
 
     self.builder.position_at_end(setup_bb);
-    exc_state = self.builder.alloca(exc_state_type, name="exc.state");
+    exc_state = self._stack_entry_alloca(exc_state_type, "exc.state")
+        if _in_gen
+        else self.builder.alloca(exc_state_type, name="exc.state");
 
     self.builder.call(self._exc_push_fn, [exc_state]);
 
@@ -329,8 +378,14 @@ impl NaIRGenPass._codegen_try(nd: uni.TryStmt) -> None {
     self.builder.cbranch(is_exception, dispatch_bb, body_bb);
 
     self.builder.position_at_end(body_bb);
+    if _in_gen {
+        self._gen_try_stack.append({"state": exc_state, "dispatch": dispatch_bb});
+    }
     if isinstance(nd.body, (list, tuple)) {
         self._codegen_body(nd.body);
+    }
+    if _in_gen {
+        self._gen_try_stack.pop();
     }
     if not self.builder.block.is_terminated {
         self.builder.branch(success_bb);

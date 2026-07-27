@@ -91,13 +91,17 @@ test "params format" {
         "messages",
         "tools",
         "response_format",
-        "temperature",
         "max_tokens",
 
     ];
     for key in required_keys {
         assert key in extracted_dict , f"Missing key: {key}";
     }
+
+    # Temperature is omitted entirely when the caller never sets one, so the
+    # provider (or an aggregator like OpenRouter) applies its own default
+    # instead of byLLM forcing an unsupported value. See issue #7687.
+    assert "temperature" not in extracted_dict , "temperature must be omitted when unset";
 
     add_message = extracted_dict["messages"];
     assert add_message[0]["role"] == "system" , "First message should be of role 'system'";
@@ -111,6 +115,21 @@ test "params format" {
     assert add_tool["type"] == "function" , "First tool should be of type 'function'";
     assert add_tool["function"]["name"] == "get_live_wind_speed" , "First tool function should be 'get_live_wind_speed'";
     assert "city" in add_tool["function"]["parameters"]["properties"] , "get_live_wind_speed function should have 'city' parameter";
+}
+
+test "temperature passed through when set" {
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    jac_import("llm_params_temp", base_path=FIXTURE_DIR + "/");
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    dict_str = stdout_value[stdout_value.find("{"):stdout_value.rfind("}") + 1];
+    extracted_dict = yaml.safe_load(dict_str);
+
+    assert "temperature" in extracted_dict , "temperature must be present when the caller sets it";
+    assert extracted_dict["temperature"] == 0.3 , f"expected temperature 0.3, got {extracted_dict.get(
+        'temperature'
+    )}";
 }
 
 test "image input" {
@@ -1778,4 +1797,147 @@ test "typed retry only fires for structured output failures" {
     assert len(mod.error_llm.seen_prompts) == 1 , f"non-conversion error must not retry, got {len(
         mod.error_llm.seen_prompts
     )}";
+}
+
+
+"""A tool requiring an argument; calling it with none raises inside Tool.__call__,
+exercising the handled tool-failure path (issue #7657)."""
+def _needs_arg_tool(x: int) -> str {
+    return str(x);
+}
+
+
+test "tool call failure logs at WARNING not ERROR (issue #7657)" {
+    import logging;
+
+    # Capture every log record emitted anywhere (the types-module logger
+    # propagates to root) while a tool fails and is handled.
+    buf = io.StringIO();
+    handler = logging.StreamHandler(buf);
+    handler.setLevel(int(logging.DEBUG));
+    handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"));
+    root_logger = logging.getLogger();
+    prev_level = root_logger.level;
+    root_logger.addHandler(handler);
+    root_logger.setLevel(int(logging.DEBUG));
+    try {
+        t = Tool(func=_needs_arg_tool);
+        result = t();  # missing required arg -> raises -> caught -> returned to model
+    } finally {
+        root_logger.removeHandler(handler);
+        root_logger.setLevel(prev_level);
+    }
+    captured = buf.getvalue();
+
+    # (a) the failure is still handed back to the model as a recoverable
+    # observation -- behaviour must be unchanged by the logging fix.
+    assert isinstance(result, str) , f"expected str, got {type(result).__name__}";
+    assert result.startswith("Tool error:") , f"unexpected return: {result!r}";
+
+    # (b) logged once at WARNING, message names the failing tool.
+    assert "WARNING" in captured , f"expected a WARNING record, got: {captured!r}";
+    assert "_needs_arg_tool" in captured , f"WARNING should name the tool, got: {captured!r}";
+
+    # (c) the regression itself: never ERROR level, never a stack trace.
+    assert "ERROR" not in captured , f"handled tool failure must not log at ERROR: {captured!r}";
+    assert "Traceback (most recent call last)" not in captured , f"handled tool failure must not emit a traceback: {captured!r}";
+}
+
+
+"""A tool body that raises at call time; used to exercise the failure path on a
+callable that has no __name__ (issue #7657, PR #7665)."""
+def _raising_tool -> str {
+    raise ValueError("kaboom");
+}
+
+
+test "tool failure on a callable without __name__ is handled, not escaped (issue #7657)" {
+    import functools;
+
+    # functools.partial is callable but has no __name__. Before the fix,
+    # Tool.get_name() read self.func.__name__ directly, so is_finish_tool() (and
+    # the failure log) raised AttributeError on such a callable, and a tool that
+    # threw at runtime escaped as AttributeError instead of reaching the model as
+    # a "Tool error: ..." observation.
+    escaped = None;
+    result = None;
+    try {
+        t = Tool(func=functools.partial(_raising_tool));
+        result = t();  # underlying raises -> caught -> returned, not escaped
+    } except Exception as e {
+        escaped = e;
+    }
+
+    assert escaped is None , f"handled failure escaped as {type(escaped).__name__}: {escaped}";
+    assert isinstance(result, str) , f"expected str, got {type(result).__name__}";
+    assert result.startswith("Tool error:") , f"unexpected return: {result!r}";
+}
+
+
+test "a tool call cut off mid-arguments is reported to the model (issue #7657)" {
+    # Streaming leaves finish_reason empty exactly when a call was cut short, so
+    # keying truncation off "length" alone misses the real case: the unparseable
+    # arguments are replaced with "{}" and the tool is then invoked bare.
+    cut_off = types.SimpleNamespace(
+        name="write_code",
+        arguments='{"file_path": "/app/Landing.cl.jac", "content": "node Landing { has t'
+    );
+    message = {
+        "tool_calls": [
+            types.SimpleNamespace(id="call_1", function=cut_off, type="function")
+        ],
+        "content": ""
+    };
+    damaged = _byllm_llm_mod._sanitize_tool_calls(message);
+    assert "call_1" in damaged , f"damaged call must be reported, got {damaged!r}";
+    # finish_reason is "tool_calls" for a corrupted batch, so the truncation
+    # guard cannot be what reports it.
+    assert not _byllm_llm_mod._truncated_call_ids(message, "tool_calls") , "the truncation guard must not be the thing catching this";
+
+    # A tool that genuinely takes no arguments is normal, not damage.
+    blank = {
+        "tool_calls": [
+            types.SimpleNamespace(
+                id="call_2",
+                function=types.SimpleNamespace(name="list_files", arguments=""),
+                type="function"
+            )
+        ],
+        "content": ""
+    };
+    assert not _byllm_llm_mod._sanitize_tool_calls(blank) , "an argument-less call must not be reported as truncated";
+}
+
+
+"""A tool with required parameters, for exercising the damaged/truncated split."""
+def _writer_tool(file_path: str, content: str) -> str {
+    return f"wrote {len(content)} bytes to {file_path}";
+}
+
+
+test "damaged and truncated calls get the advice that fits the cause (issue #7657)" {
+    tool = Tool(func=_writer_tool);
+
+    def _get_tool(name: str) -> object {
+        return tool;
+    }
+    mt_run = types.SimpleNamespace(get_tool=_get_tool);
+    fn = types.SimpleNamespace(name="_writer_tool", arguments='{"file_path"');
+    call = types.SimpleNamespace(id="call_1", function=fn, type="function");
+
+    # A genuine max_tokens truncation really was too large, so splitting helps.
+    truncated = _byllm_llm_mod._parse_tool_calls(
+        mt_run, [call], `set(["call_1"]), `set()
+    );
+    truncated_msg = str(truncated[0].tool.func());
+    assert "smaller payload" in truncated_msg , f"a truncated call should be told to split: {truncated_msg!r}";
+
+    # A call corrupted in transit was never too large; telling it to split would
+    # make the agent fragment files for no reason.
+    damaged = _byllm_llm_mod._parse_tool_calls(
+        mt_run, [call], `set(), `set(["call_1"])
+    );
+    damaged_msg = str(damaged[0].tool.func());
+    assert "same call again unchanged" in damaged_msg , f"a damaged call should be told to re-send: {damaged_msg!r}";
+    assert "smaller payload" not in damaged_msg , f"a damaged call must not be told to split: {damaged_msg!r}";
 }

@@ -6,66 +6,25 @@ For production, the `--scale` flag automates Docker image builds and Kubernetes 
 
 Scale ships **built into `jaclang` core** as the `scale` subsystem (importable as `jaclang.scale`) -- there is no separate `jac-scale` package to install. It arrives with the `jac` binary, so the serving and deployment machinery is always present; only the heavier optional third-party libraries it can use (MongoDB, Redis, Kubernetes, Prometheus, ...) are pulled in per-project, on demand.
 
-This reference is split across three focused pages, hubbed here. Use the quick reference below to jump to the area you need.
+## The scale-invariance contract
 
-<!-- This page was split into three sub-pages (see "Reference pages" below). Old
-     deep links such as jac-scale/#storage still resolve to this hub; the script
-     below forwards a matching fragment to the section's new home so external
-     bookmarks keep working. -->
-<script>
-(function () {
-  var moved = {
-    "admin-portal": "jac-scale-http",
-    "api-documentation": "jac-scale-http",
-    "api-endpoints": "jac-scale-http",
-    "async-walkers": "jac-scale-persistence",
-    "authentication": "jac-scale-http",
-    "autoscaling": "jac-scale-kubernetes",
-    "builtins": "jac-scale-persistence",
-    "centralised-logs": "jac-scale-kubernetes",
-    "cli-commands": "jac-scale-http",
-    "cross-service-shared-volumes": "jac-scale-kubernetes",
-    "database-and-dashboards": "jac-scale-persistence",
-    "direct-database-access-kvstore": "jac-scale-persistence",
-    "distributed-locks-redis-only": "jac-scale-persistence",
-    "emailer": "jac-scale-http",
-    "event-streaming": "jac-scale-persistence",
-    "firestore-operations": "jac-scale-persistence",
-    "graph-traversal-api": "jac-scale-persistence",
-    "graph-visualization": "jac-scale-http",
-    "health-checks": "jac-scale-kubernetes",
-    "identity-management-password-reset": "jac-scale-http",
-    "kubernetes-deployment": "jac-scale-kubernetes",
-    "kubernetes-secrets": "jac-scale-kubernetes",
-    "microservice-interop-sv-to-sv": "jac-scale-http",
-    "microservice-mode-in-kubernetes": "jac-scale-kubernetes",
-    "middleware-walkers": "jac-scale-http",
-    "mongodb-operations": "jac-scale-persistence",
-    "permissions-access-control": "jac-scale-http",
-    "pre-bound-serviceaccount": "jac-scale-kubernetes",
-    "prometheus-metrics": "jac-scale-kubernetes",
-    "redis-operations": "jac-scale-persistence",
-    "remote-image-registry": "jac-scale-kubernetes",
-    "restspec-decorator": "jac-scale-http",
-    "sandbox-environments": "jac-scale-kubernetes",
-    "service-discovery": "jac-scale-http",
-    "setting-up-kubernetes": "jac-scale-kubernetes",
-    "starting-a-server": "jac-scale-http",
-    "storage": "jac-scale-persistence",
-    "sv_client-api-reference": "jac-scale-http",
-    "troubleshooting": "jac-scale-kubernetes",
-    "walker-imports": "jac-scale-http",
-    "webhooks": "jac-scale-http",
-    "websockets": "jac-scale-http"
-  };
-  function reroute() {
-    var h = (location.hash || "").replace(/^#/, "");
-    if (h && moved[h]) { location.replace("../" + moved[h] + "/#" + h); }
-  }
-  reroute();
-  window.addEventListener("hashchange", reroute);
-})();
-</script>
+Scale exists to keep one promise: **your program text does not change with the shape of its deployment.** The property is *scale invariance*: program semantics are invariant under deployment-scale transformation, one user to N users, one machine to M machines, transient to persistent. Delivered, it presents a *single system image*: processes, machines, and users appear to the program as one continuous machine. The program that runs as a script serves as an API and deploys to a cluster --
+
+```bash
+jac run main.jac             # one user, one process, local store
+jac start main.jac           # N users, one machine, walkers as endpoints
+jac start main.jac --scale   # N users, M machines, Kubernetes
+```
+
+-- and the diff between those three configurations is empty. The strata a conventional stack adds at each step (the web framework, the auth middleware, the tenancy filter on every query, the serialization schema, the deployment manifests) encode the *shape of the deployment*, not application meaning, and Scale's position is that deployment shape is a runtime concern, the way garbage collection is a runtime concern. Three mechanisms carry the promise: walkers project as endpoints (a walker's `has` fields and `report`s already form a complete, typed interface description, so there is no route table or client SDK to drift), `root` binds per-caller (each authenticated user's traversals are scoped to their own graph by construction, so isolation is geometry rather than middleware), and persistence follows reachability (transient vs. durable is not a code change).
+
+**What the contract does not hide.** The equivalence is per-user and semantic, not operational -- a deployment with more machines answers with different latencies and fails in different ways, and pretending otherwise is the mistake that sank a generation of RPC systems. So the physics stays visible on purpose:
+
+- **Latency** is excluded from the promise. A traversal that was correct on one machine is correct on twenty; making it *fast* is a placement and caching problem (see [Data & Storage](jac-scale-persistence.md)), not a rewrite.
+- **Concurrency conflicts** are handled by a documented rule, not silently: writes are guarded by per-node optimistic concurrency -- a losing request's work is discarded atomically and replayed against the winner's state (with `on_commit` side effects firing exactly once, for the attempt that wins), or surfaced as a typed conflict error if you configure conflicts to be explicit. See [Concurrent writes](../persistence.md#concurrent-writes-check-then-create-and-convergence).
+- **Cost** moves, it doesn't vanish: scaling is paid in machines and operator attention instead of engineering time. The single system image hides the deployment's shape from the program, not the bill from the people running it.
+
+This reference is split across three focused pages, hubbed here. Use the quick reference below to jump to the area you need.
 
 ---
 
@@ -87,13 +46,13 @@ For example, configuring a Mongo database under `[scale.database]` makes `jac in
 
 | Capability | What it needs | When you need it |
 |-------|-------------|-----------------|
-| _(core serving)_ | FastAPI, uvicorn, JWT auth | Always available -- ships with `jaclang` |
+| *(core serving)* | FastAPI, uvicorn, JWT auth | Always available -- ships with `jaclang` |
 | Mongo/Redis storage | pymongo, redis | Using MongoDB/Redis for storage (`jac start` with `[scale.database]`) |
 | Firestore | google-cloud-firestore | Using Firestore with `kvstore(db_type='firestore')` |
 | Cloud object storage | boto3 | Using S3-compatible cloud storage |
 | Monitoring | prometheus-client | Prometheus `/metrics` endpoint |
 | Scheduling | apscheduler | `@schedule(trigger=...)` on walkers/functions |
-| Deployment | kubernetes, docker | `jac start --scale` or `jac start --build` |
+| Deployment | kubernetes, docker | `jac start --scale` |
 
 ---
 
@@ -117,33 +76,7 @@ For end-to-end walkthroughs rather than reference material, see the Deploy tutor
 
 ## Library Mode
 
-For teams preferring pure Python syntax or integrating Jac into existing Python codebases, Library Mode provides an alternative deployment approach. Instead of `.jac` files, you use Python files with Jac's runtime as a library.
-
-> **Complete Guide:** See [Library Mode](../language/library-mode.md) for the full API reference, code examples, and migration guide.
-
-**Key Features:**
-
-- All Jac features accessible through `jaclang.lib` imports
-- Pure Python syntax with decorators (`@on_entry`, `@on_exit`)
-- Full IDE/tooling support (autocomplete, type checking, debugging)
-- Zero migration friction for existing Python projects
-
-**Quick Example:**
-
-```python
-from jaclang.lib import Node, Walker, spawn, root, on_entry
-
-class Task(Node):
-    title: str
-    done: bool = False
-
-class TaskFinder(Walker):
-    @on_entry
-    def find(self, here: Task) -> None:
-        print(f"Found: {here.title}")
-
-spawn(TaskFinder(), root())
-```
+Teams preferring pure Python syntax can drive all of Scale through `jaclang.lib` instead of `.jac` files. See [Library Mode](../language/library-mode.md) for the full API reference and examples.
 
 ---
 

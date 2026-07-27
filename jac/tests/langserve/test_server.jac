@@ -82,16 +82,6 @@ def create_server(workspace_path: str | None = None) -> JacLangServer {
     return lsp;
 }
 
-"""Return documentation text for a completion label, if present."""
-def completion_doc(items: list[lspt.CompletionItem], label: str) -> (str | None) {
-    for item in items {
-        if item.label == label and item.documentation {
-            return item.documentation.value;
-        }
-    }
-    return None;
-}
-
 obj Case {
     has pos: lspt.Position,
         expected: list[str],
@@ -406,6 +396,7 @@ test "test_completion" {
         lsp.type_check_file(base_module_file);
 
         test_cases: list[Case] = [
+            # Member access after `foo.`
             Case(pos=lspt.Position(8, 8), expected=["bar", "baz"]),
 
         ];
@@ -425,28 +416,157 @@ test "test_completion" {
     }
 }
 
-test "test_completion_docs" {
+test "test_completion_identifier_and_keywords" {
     import asyncio;
+    import tempfile;
 
     setup_test();
     try {
         lsp = create_server();
-        docs_file = uris.from_fs_path(fixture_path("completion_docs.jac"));
-        lsp.type_check_file(docs_file);
+        with tempfile.TemporaryDirectory() as td {
+            path = os.path.join(td, "completion_ident.jac");
+            uri = uris.from_fs_path(path);
+            # Member access after `self.`
+            with open(path, "w") as f {
+                f.write(
+                    """class Foo {
+    has bar: int;
+    has baz: int;
+    def greet {
+        self.
+    }
+}
+"""
+                );
+            }
+            lsp.type_check_file(uri);
+            members = asyncio.run(
+                lsp.get_completion(uri, lspt.Position(4, 13), completion_trigger=".")
+            );
+            member_labels = [i.label for i in members.items];
+            assert "bar" in member_labels;
+            assert "baz" in member_labels;
+            # Prefix `pr` on its own line → scope symbols + builtins + keywords
+            with open(path, "w") as f {
+                f.write(
+                    """class Foo {
+    has bar: int;
+    def greet {
+        pr
+    }
+}
+"""
+                );
+            }
+            lsp.type_check_file(uri);
+            ident = asyncio.run(
+                lsp.get_completion(uri, lspt.Position(3, 10), completion_trigger=None)
+            );
+            ident_labels = [i.label for i in ident.items];
+            assert "print" in ident_labels , f"expected print in {ident_labels[:30]}";
+            assert "self" in ident_labels;
+            assert "return" in ident_labels , "expected keyword 'return'";
+            assert "walker" in ident_labels , "expected keyword 'walker'";
+            # Inside `self` (KW_SELF, not NAME) → scope completions
+            with open(path, "w") as f {
+                f.write(
+                    """class Foo {
+    has bar: int;
+    def greet {
+        self
+    }
+}
+"""
+                );
+            }
+            lsp.type_check_file(uri);
+            on_self = asyncio.run(
+                lsp.get_completion(uri, lspt.Position(3, 10), completion_trigger=None)
+            );
+            on_self_labels = [i.label for i in on_self.items];
+            assert "print" in on_self_labels;
+            assert len(on_self_labels) > 0;
+            # Blank line inside method body → scope + keywords
+            with open(path, "w") as f {
+                f.write(
+                    """class Foo {
+    has bar: int;
+    def greet {
+        x = 1;
 
-        scope_results = asyncio.run(
-            lsp.get_completion(docs_file, lspt.Position(21, 5), completion_trigger="")
-        );
-        assert completion_doc(scope_results.items, "Circle") == "A circle shape.";
-        assert completion_doc(scope_results.items, "Direction") == "Cardinal directions.";
+    }
+}
+"""
+                );
+            }
+            lsp.type_check_file(uri);
+            blank = asyncio.run(
+                lsp.get_completion(uri, lspt.Position(4, 8), completion_trigger=None)
+            );
+            blank_labels = [i.label for i in blank.items];
+            assert "print" in blank_labels;
+            assert "x" in blank_labels or "self" in blank_labels;
+            assert "if" in blank_labels;
+        }
+    } finally {
+        teardown_test();
+    }
+}
 
-        member_results = asyncio.run(
-            lsp.get_completion(docs_file, lspt.Position(23, 6), completion_trigger=".")
-        );
-        assert completion_doc(member_results.items, "radius") == "Radius of the circle.";
-        assert completion_doc(member_results.items, "add_values") == "Adds two numbers.";
-        assert completion_doc(member_results.items, "undocumented_field") is None;
-        assert completion_doc(member_results.items, "Circle") is None;
+test "test_completion_suppressed_in_string_and_comment" {
+    # Scope-fallback completions must not leak into string literals or comments,
+    # but must still work inside an f-string's interpolated expression.
+    import asyncio;
+    import tempfile;
+
+    setup_test();
+    try {
+        lsp = create_server();
+        with tempfile.TemporaryDirectory() as td {
+            path = os.path.join(td, "completion_text.jac");
+            uri = uris.from_fs_path(path);
+            with open(path, "w") as f {
+                f.write(
+                    """class Foo {
+    has bar: int;
+    def greet {
+        print("hello world");
+        # a comment here
+        s = f"val {name} end";
+    }
+}
+"""
+                );
+            }
+            lsp.type_check_file(uri);
+            # Inside the string literal -> no completions
+            in_string = asyncio.run(
+                lsp.get_completion(uri, lspt.Position(3, 18), completion_trigger=None)
+            );
+            assert len(in_string.items) == 0 , "expected no completions inside a string";
+            # Inside the line comment -> no completions
+            in_comment = asyncio.run(
+                lsp.get_completion(uri, lspt.Position(4, 14), completion_trigger=None)
+            );
+            assert len(in_comment.items) == 0 , "expected no completions inside a comment";
+            # Inside the f-string literal text -> no completions
+            in_fstring_text = asyncio.run(
+                lsp.get_completion(uri, lspt.Position(5, 15), completion_trigger=None)
+            );
+            assert len(in_fstring_text.items) == 0 , "expected no completions in f-string text";
+            # Inside the f-string interpolated expression -> completions still work
+            in_fstring_expr = asyncio.run(
+                lsp.get_completion(uri, lspt.Position(5, 20), completion_trigger=None)
+            );
+            expr_labels = [i.label for i in in_fstring_expr.items];
+            assert len(expr_labels) > 0 , "expected completions inside f-string expression";
+            assert "print" in expr_labels;
+            # Control: typing at a normal identifier position still completes
+            on_ident = asyncio.run(
+                lsp.get_completion(uri, lspt.Position(3, 9), completion_trigger=None)
+            );
+            assert len(on_ident.items) > 0 , "expected completions at a normal position";
+        }
     } finally {
         teardown_test();
     }

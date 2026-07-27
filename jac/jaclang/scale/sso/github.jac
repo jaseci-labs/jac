@@ -1,13 +1,7 @@
-"""GitHub SSO Provider implementation for jac-scale.
-
-This module implements the SSOProvider interface for GitHub OAuth authentication.
-"""
-
 import from fastapi_sso.sso.github { GithubSSO }
 import from fastapi_sso.sso.base { SSOBase }
 import from jaclang.scale.sso.provider { FastAPISSOBase }
 
-"""GitHub OAuth SSO Provider (fastapi_sso GithubSSO behind FastAPISSOBase)."""
 obj GithubSSOProvider(FastAPISSOBase) {
     def _make_sso -> SSOBase {
         return GithubSSO(

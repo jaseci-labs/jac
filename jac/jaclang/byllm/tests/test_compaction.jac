@@ -638,8 +638,8 @@ test "LocalLLM ctx_window propagation drives compaction end-to-end" {
     assert fires_compaction(cfg, cfg, 0) , "config['n_ctx'] override must reach compaction";
 
     # self.ctx_window rung.
-    own = LocalLLM(model_name="local:gemma-4-e4b", ctx_window=OVERRIDE);
-    assert fires_compaction(own, own, 0) , "self.ctx_window override must reach compaction";
+    own_llm = LocalLLM(model_name="local:gemma-4-e4b", ctx_window=OVERRIDE);
+    assert fires_compaction(own_llm, own_llm, 0) , "self.ctx_window override must reach compaction";
 
     # call_params rung (highest priority).
     direct = LocalLLM(model_name="local:gemma-4-e4b");

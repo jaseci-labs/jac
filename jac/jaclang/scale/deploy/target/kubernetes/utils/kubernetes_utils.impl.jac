@@ -601,15 +601,14 @@ impl check_deployment_status(
             f"[warn] RS hash lookup failed, falling back to broad pod scan: {exc}"
         );
     }
-    # rs_hashes is resolved once up front so we don't hit AppsV1 on every retry.
-    # If it was captured before the new RS's revision annotation was stamped,
-    # the old RS would win the highest-revision comparison and this hoisted
-    # read would stay wrong for the whole loop. To avoid that sticking, a
-    # detected crash is re-verified against a freshly resolved hash set
-    # before the deploy is actually failed (see _refresh_rs_hashes below).
+
     for attempt in range(1, (max_retries + 1)) {
         try {
-            response = requests.get(url, timeout=10);
+            try {
+                response = requests.get(url, timeout=10);
+            } except SSLError {
+                response = requests.get(url, timeout=10, verify=False);
+            }
             if (response.status_code == 200) {
                 return (True, "Successful");
             }

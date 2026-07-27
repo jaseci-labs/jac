@@ -11,7 +11,7 @@ window.jaclangMonarchSyntax = {
     'if', 'else', 'elif', 'while', 'for', 'in', 'match', 'case',
     'return', 'break', 'continue', 'spawn', 'ignore', 'visit', 'disengage',
     'entry', 'exit', 'pass', 'try', 'except', 'finally', 'raise', 'assert',
-    'async', 'await', 'lambda', 'by', 'to', 'del', 'check'
+    'async', 'await', 'lambda', 'by', 'del', 'check'
   ],
 
   literalKeywords: ['True', 'False', 'None'],

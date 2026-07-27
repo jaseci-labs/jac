@@ -2,7 +2,8 @@ import from jaclang.scale._optdeps.kubernetes { AutoscalingV2Api, ApiException, 
 import from jaclang.scale.deploy.autoscale.autoscaler {
     Autoscaler,
     AutoscalerSpec,
-    DEFAULT_CPU_UTILIZATION_TARGET
+    DEFAULT_CPU_UTILIZATION_TARGET,
+    DEFAULT_MEMORY_UTILIZATION_TARGET
 }
 import from jaclang.scale.observability.logger { Logger }
 import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {

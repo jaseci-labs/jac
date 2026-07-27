@@ -25,7 +25,8 @@ def _scaffold(kind: str) -> Path {
     d = tempfile.mkdtemp(prefix="jaccreate_");
     _tmp_dirs.append(d);
     os.chdir(d);
-    rc = project.create(name="app", kind=kind, force=True);
+    # Scaffold only — create-time dep install needs network and is not under test.
+    rc = project.create(name="app", kind=kind, force=True, skip=True);
     os.chdir(_orig_cwd);
     assert rc == 0 , f"create --kind {kind} returned {rc}";
     return Path(d) / "app";
@@ -101,7 +102,7 @@ test "bare create defaults to cli kind" {
     d = tempfile.mkdtemp(prefix="jaccreate_");
     _tmp_dirs.append(d);
     os.chdir(d);
-    rc = project.create(name="app", force=True);
+    rc = project.create(name="app", force=True, skip=True);
     os.chdir(_orig_cwd);
     assert rc == 0;
     toml = (Path(d) / "app" / "jac.toml").read_text();

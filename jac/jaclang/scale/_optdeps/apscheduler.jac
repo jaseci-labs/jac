@@ -1,5 +1,3 @@
-"""Guarded re-exports for apscheduler (install group: [scheduler])."""
-
 with entry {
     try {
         import from apscheduler.schedulers.background { BackgroundScheduler }

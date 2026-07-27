@@ -25,7 +25,7 @@ obj _StubConfig {
 
 obj _StubTarget {
     has _bundle: dict[str, Any] = {},
-        k8s_config: _StubConfig by postinit;
+        k8s_config: _StubConfig postinit;
 
     def postinit {
         self.k8s_config = _StubConfig();

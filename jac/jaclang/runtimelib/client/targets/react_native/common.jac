@@ -3,7 +3,7 @@ import from jaclang.runtimelib.client.targets.build_common {
     SUBPROCESS_TIMEOUT_BUILD_NATIVE
 }
 import from jaclang.runtimelib.client.targets.node_tooling_common {
-    resolve_node_runner as _node_resolve_node_runner,
+    resolve_node_tool as _node_resolve_node_tool,
     run_manifest_install as _node_run_manifest_install
 }
 import from jaclang.runtimelib.client.config_loader { JacClientConfig }
@@ -17,8 +17,8 @@ glob DEFAULT_PROJECT_DIR_NAME = "mobile-rn",
      EAS_CLI_VERSION = "20",
      SUBPROCESS_TIMEOUT_BUILD: int = SUBPROCESS_TIMEOUT_BUILD_NATIVE;
 
-def resolve_node_runner -> list[str] {
-    return _node_resolve_node_runner();
+def resolve_node_tool(project_dir: Path, tool: str) -> list[str] {
+    return _node_resolve_node_tool(project_dir, tool);
 }
 
 def run_manifest_install(project_dir: Path) {

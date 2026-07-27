@@ -24,6 +24,10 @@ def _get_jid -> Callable[..., any];
 
 def _get_jobj -> Callable[..., any];
 
+def jref(id_or_obj: any) -> any;
+
+def _get_jref -> Callable[..., any];
+
 def _get_grant -> Callable[..., any];
 
 def _get_revoke -> Callable[..., any];
@@ -68,10 +72,14 @@ def new(cls: any, *args: any) -> any;
 
 def unsafe_html(html: any) -> dict;
 
+def managed(x: any) -> any;
+
+
 glob __all__ = [
          'printgraph',
          'jid',
          'jobj',
+         'jref',
          'grant',
          'revoke',
          'allroots',
@@ -94,5 +102,11 @@ glob __all__ = [
          'schema_alias',
          'schema_drop',
          'schema_upgrade',
-         'unsafe_html'
+         'unsafe_html',
+         'managed',
+         'Region',
+         '_jac_region_open',
+         '_jac_region_close',
+         '_jac_region_register',
+         '_jac_region_instrument'
      ];

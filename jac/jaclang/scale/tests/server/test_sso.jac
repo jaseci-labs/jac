@@ -208,7 +208,7 @@ obj MockGithubSSO {
 
 obj MockScaleConfig {
     has sso_config: dict | None = None,
-        _sso_config: dict by postinit;
+        _sso_config: dict postinit;
 
     def postinit {
         self._sso_config = self.sso_config or mock_sso_config_with_credentials();

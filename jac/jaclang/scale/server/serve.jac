@@ -1,4 +1,5 @@
 import time;
+import asyncio;
 import logging;
 import mimetypes;
 import from collections.abc { Callable }
@@ -28,7 +29,25 @@ import from jaclang.scale.observability.metrics { MetricsCollector }
 import from jaclang.scale.events.broker { EventStreamBroker }
 import from jaclang.scale.websocket.websocket {
     WebSocketConnectionManager,
+    ConnectionContext,
     _ws_stream_result
+}
+import from jaclang.scale.websocket.backplane { build_backplane }
+import from jaclang.scale.websocket.protocol {
+    HEARTBEAT_SECONDS,
+    HEARTBEAT_MISSED_ALLOWED,
+    SEND_TIMEOUT_SECONDS,
+    AUTH_HANDSHAKE_TIMEOUT_SECONDS,
+    ws_error_frame,
+    ws_pre_accept_auth,
+    ws_reject_pre_accept,
+    ws_authenticate,
+    ws_heartbeat_loop,
+    ws_reject_auth,
+    ws_reject_registration,
+    ws_receive_frame,
+    ws_handle_control,
+    ws_execute_target
 }
 import from typing { AsyncGenerator }
 import from inspect { isgenerator }
@@ -177,7 +196,11 @@ obj JacAPIServerEndpoints {
     def create_webhook_parameters(walker_name: str) -> list[APIParameter];
     def get_ws_manager -> WebSocketConnectionManager;
     def _create_websocket_target_handler(
-        target_name: str, target: any, requires_auth: bool, execute: Callable, kind: str
+        target_kind: str,
+        target_name: str,
+        target: any,
+        requires_auth: bool,
+        execute: Callable
     ) -> Callable;
 
     def create_websocket_handler(walker_name: str) -> Callable;

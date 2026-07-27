@@ -12,10 +12,10 @@ Run: jac start main.jac
 """
 
 # Client-side UI - served as static SPA by the gateway
-to cl:
+cl {
+    import from .frontend { app as ClientApp }
 
-import from .frontend { app as ClientApp }
-
-def:pub app -> any {
-    return <ClientApp/>;
+    def:pub app -> any {
+        return <ClientApp/>;
+    }
 }

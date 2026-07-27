@@ -1,8 +1,15 @@
 import functools;
 import from jaclang.compiler.passes.native.llvm.ir { instructions, types, values }
-with entry {
-    _CMP_MAP = {'>': 'gt', '<': 'lt', '==': 'eq', '!=': 'ne', '>=': 'ge', '<=': 'le'};
-}
+
+glob _CMP_MAP = {
+         '>': 'gt',
+         '<': 'lt',
+         '==': 'eq',
+         '!=': 'ne',
+         '>=': 'ge',
+         '<=': 'le'
+     };
+
 def _unop(opname: Any, cls: Any = instructions.Instruction) -> object {
     def wrap(fn: Any) -> object {
         @functools.wraps(fn)
@@ -15,6 +22,7 @@ def _unop(opname: Any, cls: Any = instructions.Instruction) -> object {
     }
     return wrap;
 }
+
 def _binop(opname: Any, cls: Any = instructions.Instruction) -> object {
     def wrap(fn: Any) -> object {
         @functools.wraps(fn)
@@ -39,6 +47,7 @@ def _binop(opname: Any, cls: Any = instructions.Instruction) -> object {
     }
     return wrap;
 }
+
 def _castop(opname: Any, cls: Any = instructions.CastInstr) -> object {
     def wrap(fn: Any) -> object {
         @functools.wraps(fn)
@@ -61,6 +70,7 @@ class IRBuilder(object) {
         self._anchor = len(block.instructions) if block else 0;
         self.debug_metadata = None;
     }
+
     """
         The current basic block.
         """
@@ -150,12 +160,14 @@ class IRBuilder(object) {
         self._block.instructions.insert(self._anchor, instr);
         self._anchor += 1;
     }
+
     def _set_terminator(self: IRBuilder, term: Any) -> object {
         assert not self.block.is_terminated;
         self._insert(term);
         self.block.terminator = term;
         return term;
     }
+
     """
         Left integer shift:
             name = lhs << rhs
@@ -282,7 +294,6 @@ class IRBuilder(object) {
     @_binop('xor')
     def xor(self: IRBuilder, lhs: Any, rhs: Any, name: Any = '') -> object { }
 
-
     """
         Bitwise integer complement:
             name = ~value
@@ -326,6 +337,7 @@ class IRBuilder(object) {
         self._insert(instr);
         return instr;
     }
+
     """
         Signed integer comparison:
             name = lhs <cmpop> rhs
@@ -537,7 +549,6 @@ class IRBuilder(object) {
         return st;
     }
 
-
     """
         Unconditional branch to *target*.
         """
@@ -545,6 +556,26 @@ class IRBuilder(object) {
         br = instructions.Branch(self.block, "br", [target]);
         self._set_terminator(br);
         return br;
+    }
+
+    """
+        Switch on *value*, jumping to *default_bb* unless a case added via
+        `add_case` matches.
+        """
+    def `switch(self: IRBuilder, value: Any, default_bb: Any) -> object {
+        swt = instructions.SwitchInstr(self.block, "switch", value, default_bb);
+        self._set_terminator(swt);
+        return swt;
+    }
+
+    """
+        Switch on *value*, jumping to *default_bb* unless a case added via
+        `add_case` matches.
+        """
+    def `switch(self: IRBuilder, value: Any, default_bb: Any) -> object {
+        swt = instructions.SwitchInstr(self.block, "switch", value, default_bb);
+        self._set_terminator(swt);
+        return swt;
     }
 
     """
@@ -569,7 +600,6 @@ class IRBuilder(object) {
     def ret(self: IRBuilder, value: Any) -> object {
         return self._set_terminator(instructions.Ret(self.block, "ret", value));
     }
-
 
     """
         Call function *fn* with *args*:
@@ -641,8 +671,6 @@ class IRBuilder(object) {
         return instr;
     }
 
-
-
     """
         Extract member number *idx* from aggregate.
         """
@@ -674,11 +702,13 @@ class IRBuilder(object) {
         self._insert(inst);
         return inst;
     }
+
     def unreachable(self: IRBuilder) -> object {
         inst = instructions.Unreachable(self.block);
         self._set_terminator(inst);
         return inst;
     }
+
     def atomic_rmw(
         self: IRBuilder, op: Any, ptr: Any, val: Any, ordering: Any, name: Any = ''
     ) -> object {
@@ -687,4 +717,3 @@ class IRBuilder(object) {
         return inst;
     }
 }
-

@@ -165,10 +165,18 @@ impl DeclImplMatchPass._connect_one_impl(
     impl_node.sym_tab.names_in_scope.update(valid_decl.sym_tab.names_in_scope);
     valid_decl.sym_tab.names_in_scope = impl_node.sym_tab.names_in_scope;
 
-    for global_stmt in impl_node.get_all_sub_nodes(uni.GlobalStmt) {
-        bind_global_stmt(global_stmt);
-    }
     for assignment in impl_node.get_all_sub_nodes(uni.Assignment) {
+        if assignment.type_tag is not None {
+            import from jaclang.jac0core.diagnostics { E0064 }
+            for i in assignment.target {
+                if isinstance(i, uni.Name) {
+                    scope = find_python_scope_node_of(i);
+                    if scope is not None and i.sym_name in scope.implicit_rebinds {
+                        self.emit(E0064, node_override=i, name=i.sym_name);
+                    }
+                }
+            }
+        }
         bind_assignment_targets(assignment);
     }
     self._resolve_symbols_in_subtree(impl_node);

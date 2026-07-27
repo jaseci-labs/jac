@@ -14,11 +14,11 @@ jac create myapp
 cd myapp
 
 # Full-stack web app (recommended for web development)
-jac create myapp --use web-static
+jac create myapp --kind web-static
 cd myapp
 ```
 
-This creates a `jac.toml` with default settings. When using `--use web-static`, the scaffolded project includes:
+This creates a `jac.toml` with default settings. When using `--kind web-static`, the scaffolded project includes:
 
 ```
 myapp/
@@ -32,7 +32,7 @@ myapp/
 └── .gitignore
 ```
 
-The auto-generated `jac.toml` for a `--use web-static` project looks like:
+The auto-generated `jac.toml` for a `--kind web-static` project looks like:
 
 ```toml
 [project]
@@ -58,7 +58,7 @@ You typically don't need to modify this file until you add dependencies or custo
 
 ### [project]
 
-Project metadata. Runtime fields (`entry-point`, `jac-version`) are used by `jac run` and `jac start`. Publishing fields (`license`, `readme`, `keywords`, `requires-python`, `authors`, `maintainers`, and `[project.include]`) are used by `jac build --as wheel` when building a distributable wheel. All publishing fields are optional -- a project that is never published only needs `name`.
+Project metadata. `entry-point` drives `jac run`. `jac-version` pins the Jac toolchain the project targets: `jac create` stamps it automatically, and `jac start --scale` uses it to select the pod runtime (see [jac-version](#jac-version) below). Publishing fields (`license`, `readme`, `keywords`, `requires-python`, `authors`, `maintainers`, and `[project.include]`) are used by `jac build --as wheel` when building a distributable wheel. All publishing fields are optional -- a project that is never published only needs `name`.
 
 ```toml
 [project]
@@ -67,7 +67,7 @@ version = "1.0.0"
 description = "My Jac application"
 entry-point = "main.jac"
 kind = "service"   # drives `jac run` (omit to infer from the entry-point)
-jac-version = ">=0.15.0"
+jac-version = "==0.34.3"   # stamped by `jac create`; widen to `>=`, `<=`, or a range
 
 # Publishing metadata -- only needed to run `jac build --as wheel`
 license = "MIT"
@@ -89,7 +89,7 @@ repository = "https://github.com/user/repo"
 | `description` | string | One-line summary (also shown on PyPI) |
 | `entry-point` | string | Main file for `jac run` (default: `main.jac`) |
 | `kind` | string | Project kind that drives `jac run` dispatch (execute / serve / build). Empty = inferred from the entry-point codespace. One of: `cli`, `cli-native`, `native-binary`, `native-lib`, `service`, `service-mesh`, `py-package`, `js-package`, `web-app`, `web-static`, `desktop`, `mobile` |
-| `jac-version` | string | Required Jac compiler version |
+| `jac-version` | string | Jac toolchain version the project targets, as a PEP 440-style specifier. `jac create` stamps `==<current>`; at `jac start --scale` the pod runtime binary, admin console, and base image are all taken from the release that satisfies it, and the deploy aborts if none does. See [jac-version](#jac-version). |
 | `license` | string | SPDX license identifier (e.g. `"MIT"`) |
 | `readme` | string | Path to README file (default: `README.md`) |
 | `requires-python` | string | Minimum Python version (e.g. `">=3.12"`) |
@@ -99,6 +99,25 @@ repository = "https://github.com/user/repo"
 | `urls` | table | Links shown on PyPI (declared under `[project.urls]`) |
 
 > **Note:** `authors` and `maintainers` also accept a plain string form (`authors = ["Your Name"]`), but the `{ name, email }` table form is recommended -- it is what published packages' `jac.toml` files use and what PyPI renders. See [`[project.include]`](#projectinclude) for controlling which files land in the wheel.
+
+#### jac-version
+
+`jac-version` records which Jac toolchain the project targets, written as a PEP 440-style specifier. Since the `jac` toolchain does not guarantee backward compatibility across versions (breaking changes ship as clean breaks), `jac create` stamps the **exact** version you created the project with:
+
+```toml
+jac-version = "==0.34.3"
+```
+
+You can widen or move it by editing the value -- `>=0.34.3`, `<=0.34.3`, `>=0.34,<0.35`, `~=0.34.3`, or a bare `0.34.3` (same as `==`).
+
+At deploy time (`jac start --scale`), the pin selects the **pod runtime**: the deployer downloads the released `jac` binary, admin console, and base image from the release that satisfies `jac-version` and ships them to the pods, so the app runs on the toolchain it was built against -- not on whatever `latest` happens to be. Resolution rules:
+
+- **Unset** -> the latest published release.
+- **Exact pin** (`==X` / `X`) -> the `vX` release.
+- **Range** -> the newest published release that satisfies it.
+- **No published release satisfies the pin** (or the matching release lacks the pod's CPU arch or a `jac-*` asset) -> the deploy **aborts** with an error naming the pin; a pinned deploy never silently ships a different version. Fix or remove `jac-version` to proceed.
+
+The pin is honored only on the default (stable) channel; the `[dev]`, `[experimental]`, and `JAC_SCALE_BINARY_PATH` (local) channels select the pod binary by their own rules and ignore it.
 
 ---
 
@@ -226,9 +245,12 @@ Build configuration:
 
 ```toml
 [build]
-typecheck = false   # Enable type checking
-dir = ".jac"        # Build artifacts directory
+typecheck = false           # Enable type checking
+dir = ".jac"                # Build artifacts directory
+default_codespace = "native"  # Codespace for markerless .jac modules: "native"/"na" or "server"/"sv"
 ```
+
+`default_codespace` controls how a plain `.jac` module with no explicit codespace marker (no `.sv.jac`/`.cl.jac`/`.na.jac` suffix and no top-level `sv`/`cl`/`na` markers) is treated. With `"native"` (the default) the compiler infers: a markerless module with no server-requiring constructs, and whose imported plain `.jac` modules are likewise native-clean, is compiled whole-module in the native codespace and executed through the native engine; `sv { }` blocks remain the per-block escape hatch. Modules with server-requiring constructs (OSP archetypes, python imports, serve endpoints, test blocks, JSX, and similar) compile in the server codespace exactly as before, and an inferred-native module that does not lower yet is transparently recompiled server-side with a dim `note:` -- the preference is always safe. Set `"server"` to opt a project out of native inference entirely; explicit `.na.jac` files and `na` markers remain strict mandates.
 
 The `dir` setting controls where all build artifacts are stored:
 
@@ -236,6 +258,25 @@ The `dir` setting controls where all build artifacts are stored:
 - `.jac/venv/` - Project virtual environment
 - `.jac/client/` - Client-side builds
 - `.jac/data/` - Runtime data
+
+---
+
+### [gc]
+
+Memory-management defaults for **native** compilation (`jac nacompile`):
+
+```toml
+[gc]
+default = "cycles"    # gc mode emitted when --gc is not passed: "cycles", "rc", or "none"
+
+[gc.enforce]
+modules = []          # module-name patterns compiled under zero-RC nogc enforcement
+grandfathered = []    # patterns exempted from enforcement (checked before `modules`)
+```
+
+`default` selects the memory-management runtime the native backend emits when `jac nacompile` is invoked without an explicit `--gc`: `cycles` (reference counting plus the cycle collector), `rc` (reference counting only), or `none` (no retain/release call sites).
+
+`[gc.enforce] modules` lists `fnmatch`-style patterns matched against compiled module names; a native module matching one is compiled under **nogc enforcement**, which makes zero-RC ownership coverage a compile-time contract -- every heap-typed parameter, return type, and `has` field must be in the owned world, and violations are hard [`E1401`-`E1406`](../diagnostics.md#zero-rc-enforcement-errors) errors that block codegen. `grandfathered` patterns exempt matching modules, so a codebase can adopt enforcement incrementally. The `jac nacompile --enforce-nogc` flag enforces the compiled module regardless of these patterns. See [Zero-RC ownership compilation](../language/native-pathway.md#zero-rc-ownership-compilation).
 
 ---
 
@@ -394,6 +435,19 @@ dir = "cache"    # Cache subdirectory under the build dir (i.e. .jac/cache).
                  # An absolute path relocates the cache wholesale.
 ```
 
+The format cache (`jac fmt --cache` / `jac precommit`) also lives here, under
+`<cache dir>/fmt-v1/`. It stores one marker per file proven clean, keyed on the
+file's content digest, the `lintfix` mode, the effective `[format]` and
+`[check]` settings (including `suppress` / `suppress_categories` / nested
+`lint`), the logical path when `lintfix` is on, and a formatter-pipeline
+fingerprint -- so a content, config, path, or pipeline change automatically
+invalidates the relevant entries. Entries are written only for fully
+successful, unchanged (or just-rewritten) results; syntax errors, lint
+failures, and annex failures are never cached as clean. `--cache` / precommit
+enable this format cache explicitly and do **not** consult `[cache].enabled`
+(that flag gates the bytecode cache). The directory is git-ignored, so it is
+safe to delete at any time. See [`jac fmt --cache`](../cli/index.md#jac-fmt).
+
 ---
 
 ### [storage]
@@ -520,7 +574,7 @@ Controls which JavaScript framework the `cl` compiler target emits. The default 
 Switching frameworks automatically adjusts the installed npm packages and the generated Vite config; no other changes are needed. Delete your `.jac/client/` build cache after switching so the previous framework's output is not mixed in.
 
 !!! warning "Solid support is experimental"
-    The `solid` framework target is under active development. Some jac-client features (error boundaries, suspense slots, advanced routing) may not yet be fully supported. Check the [release notes](../../community/release_notes/jac-client.md) before upgrading.
+    The `solid` framework target is under active development. Some jac-client features (error boundaries, suspense slots, advanced routing) may not yet be fully supported. Check the [release notes](../../community/release_notes/jaclang.md) before upgrading.
 
 **Import Path Aliases (jac-client):**
 
@@ -642,8 +696,6 @@ base_url = "${BASE_URL:?Base URL is required}"      # Required with error
 ### [project.include]
 
 Controls which files and directories `jac build --as wheel` collects into the wheel.
-
-> **Note:** Earlier releases used a separate `[package]` / `[package.include]` section for publishing metadata. As of jaclang 0.15, `[package]` has been merged into `[project]` -- all publishing fields now live under `[project]` (see above), and file-inclusion rules live under `[project.include]`. Plain `[package]` tables are no longer read.
 
 ```toml
 [project.include]
@@ -858,7 +910,7 @@ Project ID vars (`FIREBASE_AUTH_PROJECT_ID`, `FIRESTORE_PROJECT_ID`, `JAC_STORAG
 
 ### Scale: Kubernetes
 
-Deployment settings (app name, namespace, node port, CPU/memory requests and limits, registry credentials) are configured in `jac.toml` under `[scale.kubernetes]` -- see the [Kubernetes reference](../plugins/jac-scale-kubernetes.md). At deploy time, jac-scale injects these variables into every pod:
+Deployment settings (app name, namespace, node port, CPU/memory requests and limits, health probes) are configured in `jac.toml` under `[scale.kubernetes]` -- see the [Kubernetes reference](../plugins/jac-scale-kubernetes.md). At deploy time, jac-scale injects these variables into every pod:
 
 | Variable | Description |
 |----------|-------------|

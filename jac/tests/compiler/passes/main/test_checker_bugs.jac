@@ -56,8 +56,12 @@ glob CHECKER_FIXTURES = os.path.join(
 
 """Compile a checker fixture and run the type check pass."""
 def compile_and_check(fixture_name: str) -> JacProgram {
+    import from jaclang.jac0core.compile_options { CompileOptions }
     program = JacProgram();
-    mod = program.compile(os.path.join(CHECKER_FIXTURES, fixture_name));
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, fixture_name),
+        options=CompileOptions(type_check=False, default_codespace='server')
+    );
     TypeCheckPass(ir_in=mod, prog=program);
     return program;
 }

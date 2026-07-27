@@ -47,6 +47,23 @@ impl NaIRGenPass._dict_key_spec(key_type: ir.Type) -> tuple {
     return ("i64", 0);
 }
 
+impl NaIRGenPass._dict_val_spec(val_type: ir.Type) -> str {
+    if isinstance(val_type, ir.DoubleType) {
+        return "f64";
+    }
+    if self?.jacval_type and val_type == self.jacval_type {
+        return "jacval";
+    }
+    if isinstance(val_type, ir.PointerType) {
+        _pointee = val_type.pointee;
+        if isinstance(_pointee, ir.IdentifiedStructType) and _pointee.name {
+            return "ptr_" + str(_pointee.name).replace(".", "_");
+        }
+        return "ptr";
+    }
+    return "i64";
+}
+
 impl NaIRGenPass._emit_dict_helpers(
     key_type_name: str,
     val_type_name: str,
@@ -82,15 +99,18 @@ impl NaIRGenPass._emit_dict_helpers(
     free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
     memcpy_fn = self._get_or_declare_extern("memcpy", i8_ptr, [i8_ptr, i8_ptr, i64]);
 
-    _rel_fn_name_d = f"__rc_release_dict_{dict_key.replace(':', '_')}";
-    _rel_fnty_d = ir.FunctionType(ir.VoidType(), [dict_ptr_type]);
-    try {
-        _rel_fn_decl_d = self.llvm_module.get_global(_rel_fn_name_d);
-    } except KeyError {
-        _rel_fn_decl_d = ir.Function(
-            self.llvm_module, _rel_fnty_d, name=_rel_fn_name_d
-        );
-        _rel_fn_decl_d.linkage = "private";
+    _rel_fn_decl_d = None;
+    if not self._nogc_headerless() {
+        _rel_fn_name_d = f"__rc_release_dict_{dict_key.replace(':', '_')}";
+        _rel_fnty_d = ir.FunctionType(ir.VoidType(), [dict_ptr_type]);
+        try {
+            _rel_fn_decl_d = self.llvm_module.get_global(_rel_fn_name_d);
+        } except KeyError {
+            _rel_fn_decl_d = ir.Function(
+                self.llvm_module, _rel_fnty_d, name=_rel_fn_name_d
+            );
+            _rel_fn_decl_d.linkage = "private";
+        }
     }
 
     new_fn = self._emit_container_new_fn(
@@ -167,10 +187,15 @@ impl NaIRGenPass._emit_dict_helpers(
     old_vals_i8 = b.bitcast(old_vals, i8_ptr, name="old.vals.i8");
     new_vals_i8 = b.bitcast(new_vals, i8_ptr, name="new.vals.i8");
     b.call(memcpy_fn, [new_vals_i8, old_vals_i8, old_vals_bytes]);
-    if self.rc_safe_free_fn is None {
-        self._emit_rc_helpers();
+    if self._nogc_headerless() {
+        _free_hl = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
+        b.call(_free_hl, [old_vals_i8]);
+    } else {
+        if self.rc_safe_free_fn is None {
+            self._emit_rc_helpers();
+        }
+        b.call(self.rc_safe_free_fn, [old_vals_i8]);
     }
-    b.call(self.rc_safe_free_fn, [old_vals_i8]);
     b.store(new_vals, vals_p2);
     b.branch(append_bb);
 
@@ -278,12 +303,19 @@ impl NaIRGenPass._emit_dict_helpers(
         f"__dict_get_val_{key_type_name}_{val_type_name}", dict_ptr_type, val_type, 3
     );
 
-    release_fn = self._emit_container_release_fn(
-        f"__rc_release_dict_{dict_key.replace(':', '_')}",
-        dict_ptr_type,
-        [(2, key_type), (3, val_type)]
-    );
-    self.dict_release_fns[dict_key] = release_fn;
+    if self._nogc_headerless() {
+        _dstruct_name = getattr(dict_ptr_type.pointee, "name", "");
+        if _dstruct_name {
+            self._emit_container_drop_fn(_dstruct_name);
+        }
+    } else {
+        release_fn = self._emit_container_release_fn(
+            f"__rc_release_dict_{dict_key.replace(':', '_')}",
+            dict_ptr_type,
+            [(2, key_type), (3, val_type)]
+        );
+        self.dict_release_fns[dict_key] = release_fn;
+    }
 
     self.dict_helpers[dict_key] = {
         "new": new_fn,
@@ -407,7 +439,7 @@ impl NaIRGenPass._unbox_from_jacval(jv: ir.Value, target_type: ir.Type) -> ir.Va
         return b.inttoptr(payload, target_type, name="jv.unbox.p");
     }
 
-    self.emit(E5090, kind="expression", name=f"`any` unbox to {target_type}");
+    self.emit(E5092, kind="expression", name=f"`any` unbox to {target_type}");
     return ir.Constant(target_type, None);
 }
 
@@ -431,24 +463,27 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
     _own_dk = self._dict_key_of(nd);
     use_jacval = _own_dk is not None and _own_dk.endswith(":jacval");
 
-    key_type = first_key.type;
-    (key_type_name, key_size) = self._dict_key_spec(key_type);
-    if use_jacval {
-        val_type = self.jacval_type;
-        val_type_name = "jacval";
+    if _own_dk is not None and not use_jacval and _own_dk in self.dict_helpers {
+        dict_key = _own_dk;
+        helpers = self.dict_helpers[dict_key];
+        key_type = helpers["key_type"];
+        val_type = helpers["val_type"];
     } else {
-        val_type = first_val.type;
-        val_type_name = "i64";
-        if isinstance(val_type, ir.DoubleType) {
-            val_type_name = "f64";
-        } elif isinstance(val_type, ir.PointerType) {
-            val_type_name = "ptr";
+        key_type = first_key.type;
+        (key_type_name, key_size) = self._dict_key_spec(key_type);
+        if use_jacval {
+            val_type = self.jacval_type;
+            val_type_name = "jacval";
+        } else {
+            val_type = first_val.type;
+            val_type_name = self._dict_val_spec(val_type);
         }
+        dict_key = f"{key_type_name}:{val_type_name}";
+        self._emit_dict_helpers(
+            key_type_name, val_type_name, key_type, val_type, key_size
+        );
+        helpers = self.dict_helpers[dict_key];
     }
-    dict_key = f"{key_type_name}:{val_type_name}";
-
-    self._emit_dict_helpers(key_type_name, val_type_name, key_type, val_type, key_size);
-    helpers = self.dict_helpers[dict_key];
 
     _dict_new_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
@@ -460,10 +495,14 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
         if nd.loc
         else 0}";
 
-    first_store_val = self._box_to_jacval(first_val) if use_jacval else first_val;
+    first_store_val = (
+        self._box_to_jacval(first_val)
+            if use_jacval
+            else self._coerce_type(first_val, val_type)
+    );
     self._rc_call_with_ctx(
         helpers["set"],
-        [dict_val, first_key, first_store_val],
+        [dict_val, self._coerce_type(first_key, key_type), first_store_val],
         op="dict_init",
         loc=_dinit_loc
     );

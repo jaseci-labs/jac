@@ -51,10 +51,10 @@ jac nacompile sum.na.jac -o sum
 ./sum
 ```
 
-Jac ships its own native linker, so there's no `gcc`/`ld` in the loop. The native subset requires a `with entry` block and allows no walkers/nodes/async or Python imports.
+Jac ships its own native linker, so there's no `gcc`/`ld` in the loop. The native subset requires a `with entry` block and allows no walkers/nodes/async or Python imports. Memory is reference-counted by default, and modules written with [ownership annotations](../reference/language/ownership-borrowing.md) can compile with `--gc none --enforce-nogc` to Rust-style static allocation and free -- no refcounting or collector in the binary, verifiable with `--assert-no-rc` (see [zero-RC compilation](../reference/language/native-pathway.md#zero-rc-ownership-compilation)).
 
 !!! tip "Shipping a full app instead?"
-    The native subset is the price of the smallest possible artifact. To ship *any* Jac program (walkers, Python imports, even a web client) as one executable, use `jac build --as binary` -- it fuses your app's sealed `.jab` onto the `jac` launcher so the file carries the full runtime. A plain `jac build` emits the sealed `.jab` bundle itself, which any Jac install runs with zero live compilation. See [Ship it](../quick-guide/project-kinds.md#ship-it-one-file-or-one-executable) and [`jac build`](../reference/cli/index.md#jac-build).
+    The native subset is the price of the smallest possible artifact. To ship *any* Jac program (walkers, Python imports, even a web client) as one executable, use `jac build --as binary` -- it fuses your app's sealed `.jab` onto the `jac` launcher so the file carries the full runtime. A plain `jac build` emits the sealed `.jab` bundle itself, which any Jac install runs with zero live compilation. Add `--fat` to either to vendor the Python dependency closure into the bundle so it materializes offline, with no PyPI (see [fat jab](../reference/cli/index.md#jac-build)). See [Ship it](../quick-guide/project-kinds.md#ship-it-one-file-or-one-executable) and [`jac build`](../reference/cli/index.md#jac-build).
 
 ## Run natively in place {#cli-native}
 
@@ -63,7 +63,7 @@ Set `kind = "cli-native"` in `jac.toml` when you want the *program* to execute t
 ## Your learning path
 
 - **Concepts you need** → [Core Concepts](../quick-guide/what-makes-jac-different.md) -- codespaces & object-spatial programming
-- **Learn the language** → [Jac Fundamentals](../tutorials/language/basics.md) · [Graphs & Walkers](../tutorials/language/osp.md)
+- **Learn the language** → [Jac Fundamentals](../tutorials/language/basics.md) · [Object-Spatial Programming](../tutorials/language/osp.md)
 - **Build it for real** → [Build a Chess Engine](../tutorials/native/chess.md) -- a complete native project · [WebAssembly in the Browser](../tutorials/native/wasm.md) -- the same `na` code compiled to wasm
 - **Look it up** → [Native pathway reference](../reference/language/native-pathway.md) · [CLI commands](../reference/cli/index.md)
 

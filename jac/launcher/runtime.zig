@@ -87,6 +87,53 @@ extern fn ZSTD_isError(code: usize) c_uint;
 /// ZSTD_dParameter value -- part of zstd's stable public API (zstd.h).
 const ZSTD_d_windowLogMax: c_int = 100;
 
+/// Live status line for the first-run extract, fed compressed-bytes-consumed
+/// by `PayloadDecoder.stream`. On a TTY stderr the percentage rewrites one
+/// line in place (`\r`); on a non-TTY stderr (CI logs, pipes) it degrades to
+/// one newline-terminated line per 20% step so logs stay readable. Silent
+/// under `zig build test` -- the fixture tests drive the same code paths but
+/// must not spray status lines into the test runner's output.
+pub const ExtractProgress = struct {
+    /// Compressed payload length; the 100% mark. Never zero (callers clamp).
+    total: usize,
+    tty: bool,
+    /// Last percent (TTY) or last 20%-step (non-TTY) printed; 0xff = nothing
+    /// printed yet.
+    last_pct: u8 = 0xff,
+
+    fn report(self: *ExtractProgress, done_bytes: usize) void {
+        if (builtin.is_test) return;
+        const pct: u8 = @intCast(@min(100, done_bytes * 100 / self.total));
+        if (self.tty) {
+            if (pct == self.last_pct) return;
+            std.debug.print("\rjac:   extracting runtime... {d}%", .{pct});
+            self.last_pct = pct;
+        } else {
+            const step = pct - pct % 20;
+            if (self.last_pct != 0xff and step <= self.last_pct) return;
+            std.debug.print("jac:   extracting runtime... {d}%\n", .{step});
+            self.last_pct = step;
+        }
+    }
+
+    /// Terminate the status line at 100% once tar has fully drained.
+    fn finish(self: *ExtractProgress) void {
+        if (builtin.is_test) return;
+        if (self.tty) {
+            std.debug.print("\rjac:   extracting runtime... 100%\n", .{});
+        } else if (self.last_pct != 0xff and self.last_pct < 100) {
+            std.debug.print("jac:   extracting runtime... 100%\n", .{});
+        }
+    }
+
+    /// On an extract error, close a half-written TTY status line so the
+    /// launcher's failure message starts at column 0.
+    fn abort(self: *ExtractProgress) void {
+        if (builtin.is_test) return;
+        if (self.tty and self.last_pct != 0xff) std.debug.print("\n", .{});
+    }
+};
+
 /// Streaming zstd decoder over the in-memory compressed payload, exposed as a
 /// std `Io.Reader` so `std.tar.extract` can consume it -- the uncompressed
 /// tar (~430 MB) is never held in memory. libzstd owns the sliding window
@@ -102,6 +149,12 @@ pub const PayloadDecoder = struct {
     /// no input left must read as clean end-of-stream -- only running dry
     /// MID-frame is truncation.
     frame_done: bool = true,
+    /// Optional first-run status reporter (see `ExtractProgress`). `stream` is
+    /// the one place that knows how far the extract has come -- compressed
+    /// bytes consumed track the tar position, since libzstd only takes input
+    /// as tar drains output. Null (the default) for the build-time verify
+    /// path in payload.zig and for tests.
+    progress: ?*ExtractProgress = null,
     reader: Io.Reader,
 
     pub fn init(dctx: *anyopaque, src: []const u8, buffer: []u8) PayloadDecoder {
@@ -142,6 +195,7 @@ pub const PayloadDecoder = struct {
         var in = ZSTD_inBuffer{ .src = d.src.ptr, .size = d.src.len, .pos = d.src_pos };
         const rc = ZSTD_decompressStream(d.dctx, &out, &in);
         d.src_pos = in.pos;
+        if (d.progress) |p| p.report(d.src_pos);
         // Corrupt frame -- post-sha256, so an encoder/decoder mismatch, not
         // bit rot.
         if (ZSTD_isError(rc) != 0) return error.ReadFailed;
@@ -449,11 +503,19 @@ pub fn materialize(
 
     // Warm path: a complete extract is marked by `<rt>/.ok`.
     if (pathExists(io, rt, ".ok")) return rt;
-    if (!builtin.is_test)
+    // Cold path from here down: narrate each step to stderr in real time --
+    // this is a one-time multi-second wait (hundreds of MB of small-file
+    // writes), and a silent stall reads as a hang. `is_test` guards keep the
+    // fixture tests quiet; `t0` is comptime-elided with them.
+    const t0 = if (builtin.is_test) Io.Timestamp.zero else Io.Timestamp.now(io, .awake);
+    if (!builtin.is_test) {
+        std.debug.print("jac: first run, performing one-time setup...\n", .{});
+        std.debug.print("jac:   runtime cache: {s}\n", .{rt});
         std.debug.print(
-            "jac: first run, performing one-time setup...\n",
-            .{},
+            "jac:   reading embedded payload ({d} MiB)...\n",
+            .{trailer.payload_len / (1 << 20)},
         );
+    }
 
     // Cold path: read the compressed payload region into memory.
     const poff = std.math.sub(u64, total, TRAILER_LEN + trailer.payload_len) catch
@@ -468,6 +530,8 @@ pub fn materialize(
     // Integrity check before populating the cache: a truncated / bit-flipped /
     // tampered payload must not silently extract and then be reused on every
     // launch. Cold path only, so the `.ok` warm path stays cost-free.
+    if (!builtin.is_test)
+        std.debug.print("jac:   verifying payload (sha256)...\n", .{});
     var digest: [32]u8 = undefined;
     std.crypto.hash.sha2.Sha256.hash(zbuf, &digest, .{});
     if (!std.mem.eql(u8, &hexDigest(&digest), &trailer.hash))
@@ -475,10 +539,22 @@ pub fn materialize(
 
     try extractPayload(io, gpa, zbuf, rt, pid);
     gcStale(io, root, &key);
-    if (!builtin.is_test)
-        std.debug.print("jac: one-time setup complete.\n", .{});
+    if (!builtin.is_test) {
+        const ms = t0.durationTo(Io.Timestamp.now(io, .awake)).toMilliseconds();
+        std.debug.print(
+            "jac: one-time setup complete ({d}.{d}s).\n",
+            .{ @divTrunc(ms, 1000), @rem(@divTrunc(ms, 100), 10) },
+        );
+    }
     return rt;
 }
+
+/// mode_mode for payload extraction: `.executable_bit_only` (not `.ignore`!)
+/// so bundled scripts like build_libwebview.sh keep their exec bit -- payload.zig
+/// writes the real on-disk mode into the tar, and `.ignore` would flatten every
+/// file to 0o644 and make the runtime spawn fail EACCES. `pub const` so the
+/// payload.zig round-trip test exercises the exact value production uses.
+pub const payload_extract_mode_mode: std.tar.ExtractOptions.ModeMode = .executable_bit_only;
 
 /// zstd-decompress + untar `zbuf` into `<rt>` via a per-pid temp dir and an
 /// atomic rename. Streams decompression straight into the tar reader -- the
@@ -506,11 +582,20 @@ fn extractPayload(
         const buf = try gpa.alloc(u8, DECODE_BUF_LEN);
         defer gpa.free(buf);
 
+        var prog = ExtractProgress{
+            .total = @max(1, zbuf.len),
+            .tty = if (builtin.is_test) false else (Io.File.stderr().isTty(io) catch false),
+        };
         var dec = PayloadDecoder.init(dctx, zbuf, buf);
-        try std.tar.extract(io, dest, &dec.reader, .{
-            .mode_mode = .ignore,
+        dec.progress = &prog;
+        std.tar.extract(io, dest, &dec.reader, .{
+            .mode_mode = payload_extract_mode_mode,
             .strip_components = 0,
-        });
+        }) catch |e| {
+            prog.abort();
+            return e;
+        };
+        prog.finish();
 
         // Stamp the success marker inside the temp dir before the rename, so the
         // marker can never appear on an incomplete tree.
@@ -550,6 +635,10 @@ fn gcStale(io: Io, root: []const u8, keep_key: *const [RT_KEY_LEN]u8) void {
         if (!std.mem.eql(u8, entry.name[17..RT_KEY_LEN], my_pathhash)) continue;
         // Our own current version -> keep; our own older versions -> reclaim.
         if (std.mem.eql(u8, entry.name, keep_key)) continue;
+        // Narrated because deleting an old ~450 MB tree is itself seconds of
+        // small-file I/O on slow filesystems -- a silent pause reads as a hang.
+        if (!builtin.is_test)
+            std.debug.print("jac:   removing stale runtime {s}/{s}...\n", .{ rtdir, entry.name });
         dir.deleteTree(io, entry.name) catch {};
     }
 }

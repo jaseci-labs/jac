@@ -497,7 +497,8 @@ impl _locate(cdp: CDP, session: str, selector: str, timeout: float = 10.0) -> tu
             return (st["x"], st["y"]);
         }
         prev = (st["x"], st["y"]);
-        time.sleep(0.05);
+
+        time.sleep(0.15);
     }
     raise RuntimeError(f"{selector} not actionable: {last_err}");
 }
@@ -898,6 +899,12 @@ impl cmd_close(session: str) -> str {
 }
 
 
+def _need(rest: list, n: int, usage: str) {
+    if len(rest) < n {
+        raise ValueError(f"usage: {usage}");
+    }
+}
+
 impl main(argv: list) -> int {
     session = os.environ.get("JACBROWSER_SESSION", "default");
     if not argv {
@@ -913,24 +920,34 @@ impl main(argv: list) -> int {
         if cmd == "open" {
             out = cmd_open(session, rest[0] if rest else None);
         } elif cmd == "navigate" or cmd == "goto" {
+            _need(rest, 1, "navigate <url>");
             out = cmd_navigate(session, rest[0]);
         } elif cmd == "eval" {
+            _need(rest, 1, "eval <expression>");
             out = cmd_eval(session, rest[0]);
         } elif cmd == "click" {
+            _need(rest, 1, "click <selector|@ref>");
             out = cmd_click(session, rest[0]);
         } elif cmd == "type" {
+            _need(rest, 2, "type <selector|@ref> <text>");
             out = cmd_type(session, rest[0], rest[1]);
         } elif cmd == "fill" {
+            _need(rest, 2, "fill <selector|@ref> <text>");
             out = cmd_fill(session, rest[0], rest[1]);
         } elif cmd == "press" {
+            _need(rest, 1, "press <key>");
             out = cmd_press(session, rest[0]);
         } elif cmd == "get" {
+            _need(rest, 1, "get <title|url|text|html|value> [selector]");
             out = cmd_get(session, rest[0], rest[1] if len(rest) > 1 else None);
         } elif cmd == "wait" {
+            _need(rest, 1, "wait <selector|@ref>");
             out = cmd_wait(session, rest[0]);
         } elif cmd == "scroll" {
+            _need(rest, 1, "scroll <up|down|top|bottom|selector> [amount]");
             out = cmd_scroll(session, rest[0], int(rest[1]) if len(rest) > 1 else None);
         } elif cmd == "scrollintoview" {
+            _need(rest, 1, "scrollintoview <selector|@ref>");
             out = cmd_scroll(session, rest[0]);
         } elif cmd == "console" {
             out = cmd_console(session, "--clear" in rest or "clear" in rest);
@@ -939,6 +956,7 @@ impl main(argv: list) -> int {
         } elif cmd == "screenshot" {
             out = cmd_screenshot(session, rest[0] if rest else None);
         } elif cmd == "state" {
+            _need(rest, 2, "state <save|load> <path>");
             out = cmd_state(session, rest[0], rest[1]);
         } elif cmd == "sessions" {
             out = cmd_sessions(session);

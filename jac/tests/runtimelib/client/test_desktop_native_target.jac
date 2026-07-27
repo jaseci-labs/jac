@@ -171,6 +171,57 @@ test "host_boot applies the runtime extra-deps seam" {
     }
 }
 
+"""desktop_app_runtime_env and the generated launch script must wire the project
+venv into JAC_DESKTOP_DEPS -- otherwise the fused desktop host cannot import
+serve deps that `jac install` placed in `.jac/venv`."""
+test "desktop launch wires JAC_DESKTOP_DEPS from the project venv" {
+    import os;
+    import tempfile;
+    import shutil;
+    import from pathlib { Path }
+    import from jaclang.runtimelib.client.targets.desktop._dev_launch {
+        desktop_app_runtime_env,
+        jac_desktop_deps_shell_export,
+        jac_desktop_webkit_shell_export
+    }
+
+    # Pin the launch-script contract on the shared shell fragments.
+    webkit = jac_desktop_webkit_shell_export();
+    assert "GDK_BACKEND" in webkit , "launch script must export GDK_BACKEND";
+    assert "WEBKIT_DISABLE_DMABUF_RENDERER" in webkit;
+    snippet = jac_desktop_deps_shell_export();
+    assert "JAC_DESKTOP_DEPS" in snippet , "launch script must export JAC_DESKTOP_DEPS";
+    assert "venv/lib" in snippet , "launch script must discover the sibling project venv";
+
+    tmp = tempfile.mkdtemp(prefix="jac_desktop_deps_");
+    _saved = os.environ.get("JAC_DESKTOP_DEPS");
+    _cwd = os.getcwd();
+    try {
+        proj = Path(tmp);
+        (proj / "jac.toml").write_text(
+            "[project]\nname = \"d\"\nversion = \"0.1.0\"\n"
+        );
+        site = proj / ".jac" / "venv" / "lib" / "python3.14" / "site-packages";
+        site.mkdir(parents=True);
+        os.chdir(proj);
+        os.environ.pop("JAC_DESKTOP_DEPS", None);
+        env = desktop_app_runtime_env({});
+        assert env.get("JAC_DESKTOP_DEPS") == str(site) , (
+            f"desktop_app_runtime_env must set JAC_DESKTOP_DEPS to the project venv site, got {env.get(
+                'JAC_DESKTOP_DEPS'
+            )!r}"
+        );
+    } finally {
+        os.chdir(_cwd);
+        if _saved is None {
+            os.environ.pop("JAC_DESKTOP_DEPS", None);
+        } else {
+            os.environ["JAC_DESKTOP_DEPS"] = _saved;
+        }
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
 """host_boot.runtime_payload is the single routing decision between the
 in-process Jac runtime and the plugin host. Pin the wire forms it must accept:
 raw payload dicts, and the webview bind form (a one-element argument array

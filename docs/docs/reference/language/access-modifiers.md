@@ -2,7 +2,7 @@
 
 Jac has three access modifiers -- `:pub`, `:protect`, and `:priv` -- written as a tag on a declaration (`def:pub`, `has:priv`, `walker:protect`, `glob:protect`, ...). They share one intuition: `:pub` is the most exposed, `:priv` the most contained, and `:protect` sits in the middle.
 
-The crucial thing to understand is that **the same three keywords mean different things depending on where the symbol is declared**, and one *additional*, orthogonal meaning when the symbol is served as an HTTP endpoint. There are three contexts:
+The essential rule is that **the same three keywords mean different things depending on where the symbol is declared**, and one *additional*, orthogonal meaning when the symbol is served as an HTTP endpoint. There are three contexts:
 
 | Context | Applies to | What the modifier controls |
 |---|---|---|

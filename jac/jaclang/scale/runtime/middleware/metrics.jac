@@ -8,6 +8,17 @@ def build_gateway_metrics(
     }
 
     registry = CollectorRegistry();
+    try {
+        import from prometheus_client {
+            ProcessCollector,
+            PlatformCollector,
+            GCCollector
+        }
+        ProcessCollector(registry=registry);
+        PlatformCollector(registry=registry);
+        GCCollector(registry=registry);
+    } except Exception { }
+
     buckets = histogram_buckets
     or [0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 10.0];
 

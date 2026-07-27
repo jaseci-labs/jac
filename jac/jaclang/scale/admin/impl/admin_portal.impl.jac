@@ -1023,8 +1023,6 @@ impl JacAPIServerAdmin.admin_graph_data(
 impl JacAPIServerAdmin.admin_get_metrics(
     Authorization: str | None = None
 ) -> TransportResponse {
-    import re;
-    import from jaclang.scale._optdeps.prometheus { generate_latest, REGISTRY }
     error = self.require_admin(Authorization);
     if error {
         return error;
@@ -1040,7 +1038,7 @@ impl JacAPIServerAdmin.admin_get_metrics(
         );
     }
     try {
-        raw_metrics = generate_latest(REGISTRY).decode('utf-8');
+        raw_metrics = self._metrics.expose().decode('utf-8');
         metrics_data = _parse_prometheus_text(raw_metrics);
         summary = _calculate_metrics_summary(metrics_data);
 

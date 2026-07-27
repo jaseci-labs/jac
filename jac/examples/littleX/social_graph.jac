@@ -5,6 +5,13 @@ typed edges. Walkers are the mobile agents the client spawns - each one
 declares where it starts (`with Root entry`) and what to do at every node
 type it lands on (`with Tweet entry`, ...). Traversal is `visit`, never a
 hand-rolled loop, and shared fan-out lives in small base walkers.
+
+Walkers report graph nodes directly: a node's identity is its jid, which
+travels with the node (`jid(x)` resolves it on both sides of the wire), so
+no archetype carries a hand-rolled id field. Where the client needs
+edge-derived context alongside a node (follower lists, member counts,
+viewer membership), the walker reports a typed bundle that carries the
+node itself rather than a copy of its fields.
 """
 
 import datetime;
@@ -13,41 +20,20 @@ def _now -> str {
     return datetime.datetime.now(datetime.UTC).replace(tzinfo=None).isoformat() + "Z";
 }
 
-# --- View models: the typed contract returned to the client ---
-obj UserView {
-    has id: str,
-        username: str,
-        bio: str = "";
+# --- Report bundles: a node plus the edge-derived context the client
+#     needs alongside it. The node travels whole - identity included. ---
+obj ProfileBundle {
+    has profile: Profile,
+        followers: list[Profile],
+        following: list[Profile],
+        tweets: list[Tweet];
 }
 
-obj TweetView {
-    has id: str,
-        content: str,
-        author_username: str,
-        created_at: str,
-        likes: list[str],
-        comments: list[dict[str, str]],
-        is_mine: bool = False;
-}
-
-obj ProfileView {
-    has id: str,
-        username: str,
-        bio: str,
-        followers: list[UserView],
-        following: list[UserView],
-        tweets: list[TweetView];
-}
-
-obj ChannelView {
-    has id: str,
-        name: str,
-        description: str,
-        creator_username: str,
-        created_at: str,
+obj ChannelBundle {
+    has channel: Channel,
         member_count: int,
         is_member: bool,
-        posts: list[TweetView] = [];
+        posts: list[Tweet] = [];
 }
 
 obj TrendingTag {
@@ -61,29 +47,22 @@ edge Post {}
 edge Member {}
 edge ChannelPost {}
 
-# --- Graph nodes: data, plus the methods that present it as a view.
-#     A node knows how to describe itself; walkers decide when to ask. ---
+# --- Graph nodes: data, plus the methods that bundle it with nearby
+#     context. A node knows its own neighborhood; walkers decide when
+#     to ask. ---
 node Profile {
     has username: str = "",
         bio: str = "",
         created_at: str = "";
 
-    def to_user_view -> UserView {
-        return UserView(id=jid(self), username=self.username, bio=self.bio);
-    }
-
     # Followers / following fall straight out of the edges - no graph scan.
-    def to_profile_view -> ProfileView {
-        followers = [p.to_user_view() for p in [self<-:Follow:<-[?:Profile]]];
-        following = [p.to_user_view() for p in [self->:Follow:->[?:Profile]]];
-        tweets = [t.to_view() for t in [self-->[?:Tweet]]];
-        tweets.sort(key=lambda (t: TweetView) { t.created_at; }, reverse=True);
-        return ProfileView(
-            id=jid(self),
-            username=self.username,
-            bio=self.bio,
-            followers=followers,
-            following=following,
+    def to_bundle -> ProfileBundle {
+        tweets = [self-->[?:Tweet]];
+        tweets.sort(key=lambda (t: Tweet) { t.created_at; }, reverse=True);
+        return ProfileBundle(
+            profile=self,
+            followers=[self<-:Follow:<-[?:Profile]],
+            following=[self->:Follow:->[?:Profile]],
             tweets=tweets
         );
     }
@@ -95,20 +74,6 @@ node Tweet {
         created_at: str = "",
         likes: list[str] = [],
         comments: list[dict[str, str]] = [];
-
-    def to_view -> TweetView {
-        mine = [root-->[?:Profile]];
-        is_mine: bool = len(mine) > 0 and self.author_username == mine[0].username;
-        return TweetView(
-            id=jid(self),
-            content=self.content,
-            author_username=self.author_username,
-            created_at=self.created_at,
-            likes=self.likes,
-            comments=self.comments,
-            is_mine=is_mine
-        );
-    }
 }
 
 node Channel {
@@ -117,20 +82,16 @@ node Channel {
         creator_username: str = "",
         created_at: str = "";
 
-    def to_view(with_posts: bool) -> ChannelView {
+    def to_bundle(with_posts: bool) -> ChannelBundle {
         mine = [root-->[?:Profile]];
         is_member: bool = len(mine) > 0 and len([edge mine[0]->:Member:->self]) > 0;
-        posts: list[TweetView] = [];
+        posts: list[Tweet] = [];
         if with_posts {
-            posts = [t.to_view() for t in [self-->[?:Tweet]]];
-            posts.sort(key=lambda (t: TweetView) { t.created_at; }, reverse=True);
+            posts = [self-->[?:Tweet]];
+            posts.sort(key=lambda (t: Tweet) { t.created_at; }, reverse=True);
         }
-        return ChannelView(
-            id=jid(self),
-            name=self.name,
-            description=self.description,
-            creator_username=self.creator_username,
-            created_at=self.created_at,
+        return ChannelBundle(
+            channel=self,
             member_count=len([self<-:Member:<-[?:Profile]]),
             is_member=is_member,
             posts=posts
@@ -142,7 +103,7 @@ node Channel {
 walker setup_profile {
     has username: str = "",
         bio: str = "",
-        reports: list[ProfileView] = [];
+        reports: list[ProfileBundle] = [];
 
     can run with Root entry {
         # The `else` fires when `visit` enqueues nothing - i.e. no profile
@@ -161,26 +122,26 @@ walker setup_profile {
         if self.bio {
             here.bio = self.bio;
         }
-        report here.to_profile_view();
+        report here.to_bundle();
     }
 }
 
 walker get_profile {
-    has reports: list[ProfileView] = [];
+    has reports: list[ProfileBundle] = [];
 
     can run with Root entry {
         visit [-->[?:Profile]];
     }
 
     can give with Profile entry {
-        report here.to_profile_view();
+        report here.to_bundle();
     }
 }
 
 # --- Accumulator walkers: fan out, gather at each node, report once at exit ---
 walker:pub get_all_profiles {
-    has results: list[UserView] = [],
-        reports: list[list[UserView]] = [];
+    has results: list[Profile] = [],
+        reports: list[list[Profile]] = [];
 
     can run with Root entry {
         for r in allroots() {
@@ -189,7 +150,7 @@ walker:pub get_all_profiles {
     }
 
     can gather with Profile entry {
-        self.results.append(here.to_user_view());
+        self.results.append(here);
     }
 
     can deliver with Root exit {
@@ -234,8 +195,8 @@ walker get_trending {
 
 walker load_feed {
     has search_query: str = "",
-        feed: list[TweetView] = [],
-        reports: list[list[TweetView]] = [];
+        feed: list[Tweet] = [],
+        reports: list[list[Tweet]] = [];
 
     can run with Root entry {
         mine = [-->[?:Profile]];
@@ -247,7 +208,7 @@ walker load_feed {
     }
 
     can gather with Tweet entry {
-        self.feed.append(here.to_view());
+        self.feed.append(here);
     }
 
     can deliver with Root exit {
@@ -260,15 +221,15 @@ walker load_feed {
                 if q in t.content.lower()
             ];
         }
-        result.sort(key=lambda (t: TweetView) { t.created_at; }, reverse=True);
+        result.sort(key=lambda (t: Tweet) { t.created_at; }, reverse=True);
         report result;
     }
 }
 
 walker get_channels {
     has seen: dict[str, bool] = {},
-        results: list[ChannelView] = [],
-        reports: list[list[ChannelView]] = [];
+        results: list[ChannelBundle] = [],
+        reports: list[list[ChannelBundle]] = [];
 
     can run with Root entry {
         for r in allroots() {
@@ -281,12 +242,14 @@ walker get_channels {
         cid = jid(here);
         if cid not in self.seen {
             self.seen[cid] = True;
-            self.results.append(here.to_view(False));
+            self.results.append(here.to_bundle(False));
         }
     }
 
     can deliver with Root exit {
-        self.results.sort(key=lambda (c: ChannelView) { c.created_at; }, reverse=True);
+        self.results.sort(
+            key=lambda (c: ChannelBundle) { c.channel.created_at; }, reverse=True
+        );
         report self.results;
     }
 }
@@ -304,7 +267,7 @@ walker create_tweet {
             content=self.content, author_username=here.username, created_at=_now()
         );
         grant(new, level=WritePerm);
-        report new.to_view();
+        report new;
     }
 }
 
@@ -324,7 +287,7 @@ walker create_channel {
             created_at=_now()
         );
         grant(new, level=ConnectPerm);
-        report new.to_view(False);
+        report new.to_bundle(False);
     }
 }
 
@@ -474,11 +437,11 @@ walker leave_channel(find_channel) {
 }
 
 walker get_channel_detail(find_channel) {
-    has reports: list[ChannelView] = [];
+    has reports: list[ChannelBundle] = [];
 
     can act with Channel entry {
         if jid(here) == self.channel_id {
-            report here.to_view(True);
+            report here.to_bundle(True);
             disengage;
         }
     }
@@ -495,7 +458,7 @@ walker create_channel_tweet(find_channel) {
                     content=self.content, author_username=me.username, created_at=_now()
                 );
                 grant(new, level=WritePerm);
-                report new.to_view();
+                report new;
             }
             disengage;
         }

@@ -1,6 +1,6 @@
-# Part III: Object-Spatial Programming (OSP)
+# Object-Spatial Programming (OSP)
 
-**In this part:**
+**On this page:**
 
 - [Introduction to OSP](#introduction-to-osp) - Concepts, motivation, core example
 - [Nodes](#nodes) - Node declaration, entry/exit abilities
@@ -15,14 +15,14 @@
 
 > **Related Sections:**
 >
-> - [Graph Operators](foundation.md#7-graph-operators-osp) - Connection and edge reference syntax
-> - [Pipe Operators](foundation.md#8-pipe-operators) - Spawn traversal modes
+> - [Graph Operators](operators.md#7-graph-operators-osp) - Connection and edge reference syntax
+> - [Pipe Operators](operators.md#8-pipe-operators) - Spawn traversal modes
 
 ## Introduction to OSP
 
 ### 1 What is OSP?
 
-Object-Spatial Programming models data as graphs and computation as mobile agents (walkers) that traverse the graph. Instead of calling functions on objects, walkers visit nodes and perform operations based on location.
+*Object-Spatial Programming* (OSP) is the paradigm realizing Jac's *topokinetic* property: programs expressed as walkers traversing a persistent topology of nodes and edges, with abilities triggered by arrival. Where object-*oriented* programming organizes computation around encapsulated objects that are invoked, object-*spatial* programming organizes it around located objects that are visited: walkers visit nodes and perform operations based on location, and dispatch happens by arrival rather than by call. The property beneath the paradigm is defined in [The Two Ideas](../../quick-guide/ideas-behind-jac.md#topokinetic).
 
 ### 2 Why OSP?
 
@@ -197,7 +197,7 @@ edge Weighted {
 
 ### 2 Edge Entry/Exit
 
-Walkers can trigger abilities on edges during traversal:
+Edges are locations too: an edge may declare abilities of its own, which fire when the walker's itinerary includes the edge itself.
 
 ```jac
 edge Road {
@@ -207,10 +207,19 @@ edge Road {
         visitor.total_distance += self.distance;
     }
 }
+
+walker Traveler {
+    has total_distance: float = 0.0;
+
+    can go with City entry {
+        visit [edge -->];   # visit the EDGES: Road abilities fire,
+                            # then the walker continues to each far city
+    }
+}
 ```
 
-!!! warning "Known Limitation"
-    Edge entry/exit abilities are not currently triggered during walker traversal. This feature is planned but not yet implemented. For now, perform edge-related logic in the walker's node abilities instead.
+!!! warning "Edge abilities fire only on edge visits"
+    A plain node visit (`visit [-->]`) crosses edges **without waking them** -- `on_traverse` never fires. Edge abilities run only when the itinerary includes the edge itself: `visit [edge -->]`, or spawning the walker directly on an edge object. After an edge's abilities run, the walker automatically continues to the edge's target node.
 
 ### 3 Directed vs Undirected
 
@@ -597,7 +606,7 @@ curl -X POST http://localhost:8000/walker/add_todo \
   -d '{"title": "Learn OSP"}'
 ```
 
-Walker `has` properties become the request body. The `report` values become the response. See [Part IV: Full-Stack](../plugins/jac-client.md) and the [Scale Reference](../plugins/jac-scale.md) for full API documentation.
+Walker `has` properties become the request body. The `report` values become the response. See [jac-client Reference](../plugins/jac-client.md) and the [Scale Reference](../plugins/jac-scale.md) for full API documentation.
 
 ### 7 Walker Inheritance
 
@@ -623,14 +632,14 @@ These keywords have special meaning in specific contexts:
 
 | Reference | Valid Context | Description | See Also |
 |-----------|---------------|-------------|----------|
-| `self` | Any method/ability | Current instance (walker, node, object) | [Part II: Functions](functions-objects.md#object-oriented-programming) |
+| `self` | Any method/ability | Current instance (walker, node, object) | [Functions & Objects](functions-objects.md#object-oriented-programming) |
 | `here` | Walker ability | Current node the walker is visiting | [Walkers](#walkers) |
 | `visitor` | Node ability | The walker that triggered this ability | [Nodes](#nodes) |
 | `root` | Anywhere | Root node of the current graph | [Graph Construction](#graph-construction) |
 | `super` | Subclass method | Parent class reference | [Part II](functions-objects.md#3-inheritance) |
 | `init` | Object body | Constructor method name | [Part II](functions-objects.md#1-objects-classes) |
-| `postinit` | Object body | Post-constructor hook | [Part I](foundation.md#2-instance-variables-has) |
-| `props` | JSX context | Component props reference | [Part IV: Full-Stack](../plugins/jac-client.md#client-sections) |
+| `postinit` | Object body | Post-constructor hook | [Variables and Scope](variables-and-scope.md#2-instance-variables-has) |
+| `props` | JSX context | Component props reference | [jac-client Reference](../plugins/jac-client.md#client-sections) |
 
 **Usage examples:**
 
@@ -761,8 +770,14 @@ with entry {
     bob = Person(name="Bob");
     alice +>: Friend :+> bob;
 
-    # Delete specific edge
+    # Delete specific edge (untyped disconnect)
     alice del --> bob;
+
+    # Delete a specific TYPED edge: pin it by both endpoints with an
+    # [edge ...] reference, then del the edge objects
+    for e in [edge alice ->:Friend:-> bob] {
+        del e;
+    }
 
     # Delete node
     del bob;
@@ -1041,6 +1056,47 @@ walker Querier {
 
         # Combined with filters
         target = [->:Friend:since < 2020:->][?:Person, age > 30];
+
+        # Every hop can carry its own edge predicate AND node filter
+        rising = [here ->:Friend:since > 2020:->
+                      [?:Person, age >= 18] ->:Friend:->];
+
+        # Directions can reverse mid-chain: who follows me, and who
+        # do THEY work with?
+        reach = [here <-:Friend:<- ->:Colleague:->];
+
+        # Multiple predicates on one hop AND together
+        window = [->:Friend:since >= 2019, since <= 2022:->];
+
+        # The anchor can be a list of nodes
+        friends = [here ->:Friend:->];
+        fofs = [friends ->:Friend:->];
+    }
+}
+```
+
+The general form is: an optional anchor, then one or more hops, each hop an edge operator (optionally typed, optionally predicated) followed by an optional node filter. Every element composes with every other, so a query like "adult friends I made after 2020, and their friends" is a single expression rather than a join pipeline.
+
+### 4 Query Semantics
+
+Three guarantees and one constraint govern every edge reference:
+
+- **Deduplicated per reference.** One reference returns each destination once, however many parallel edges or diamond paths reach it. Separate `visit` statements can still each enqueue the same node -- guard with a `seen` flag when walking graphs with multiple in-paths.
+- **Connection order.** Results come back in the order the edges were created, which is what makes traversal order deterministic run to run.
+- **Eager evaluation.** A reference is evaluated where it appears: `visit [-->]` snapshots the neighborhood at that line, so nodes you attach later in the same ability are not part of that visit.
+- **The edge-type slot takes a bare name.** To choose the edge type at runtime, assign it to a variable first -- edge types are values:
+
+```jac
+node State { has name: str = ""; }
+edge Coin {}
+edge Push {}
+
+walker Fire {
+    has table: dict = {};
+
+    can step with State entry {
+        t = self.table["coin"];   # e.g. {"coin": Coin, "push": Push}
+        visit [->:t:->];          # expression forms like [->:table["coin"]:->] do not parse
     }
 }
 ```
@@ -1294,4 +1350,4 @@ walker:priv GetStats {
 - [Walker Responses](walker-responses.md) - Patterns for handling `.reports` array
 - [Build an AI Day Planner](../../tutorials/first-app/build-ai-day-planner.md) - Full-stack tutorial using OSP concepts
 - [OSP Tutorial](../../tutorials/language/osp.md) - Hands-on tutorial with exercises
-- [What Makes Jac Different](../../quick-guide/what-makes-jac-different.md) - Gentle introduction to Jac's core concepts
+- [Core Concepts](../../quick-guide/what-makes-jac-different.md) - Gentle introduction to Jac's core concepts

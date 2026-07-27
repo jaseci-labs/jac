@@ -289,7 +289,17 @@ test "hpa autoscaler build manifests produces correct dict" {
                         "target": {"type": "Utilization", "averageUtilization": 70}
                     }
                 }
-            ]
+            ],
+            "behavior": {
+                "scaleUp": {
+                    "stabilizationWindowSeconds": 60,
+                    "policies": [{"type": "Pods", "value": 2, "periodSeconds": 60}]
+                },
+                "scaleDown": {
+                    "stabilizationWindowSeconds": 300,
+                    "policies": [{"type": "Percent", "value": 50, "periodSeconds": 60}]
+                }
+            }
         }
     };
     assert result == expected;

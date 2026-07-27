@@ -294,7 +294,7 @@ Minimal structural skeletons with the non-obvious rules for each. Use these as s
     <Empty>
         <EmptyHeader>
             <EmptyMedia variant="icon">
-                <HugeiconsIcon icon={FolderIcon} strokeWidth={2} />
+                <HugeiconsIcon icon={Folder01Icon} strokeWidth={2} />
             </EmptyMedia>
             <EmptyTitle>No items yet</EmptyTitle>
             <EmptyDescription>Get started by creating your first item.</EmptyDescription>

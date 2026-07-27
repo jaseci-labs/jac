@@ -7,7 +7,7 @@ This tutorial shows how to call backend functions from the frontend, use walkers
 > **Prerequisites**
 >
 > - Completed: [State Management](state.md)
-> - Familiar with: [What Makes Jac Different](../../quick-guide/what-makes-jac-different.md) (core concepts)
+> - Familiar with: [Core Concepts](../../quick-guide/what-makes-jac-different.md)
 > - Time: ~30 minutes
 
 !!! note "Walker spawn results and `jac check`"

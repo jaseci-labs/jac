@@ -14,6 +14,7 @@ import from pathlib { Path }
 import from unittest.mock { patch, MagicMock }
 
 import from jaclang.cli.commands { execution as exec_cmds }
+import from jaclang.cli.commands { project as proj_cmds }
 
 
 """Reset global config singleton (mirrors test_dependencies)."""
@@ -328,10 +329,11 @@ test "_find_node_tool resolves a present shim and None otherwise" {
     }
 }
 
-test "_tool_tiers orders project python, project npm, then global" {
+test "_tool_tiers orders project python, project npm, global python, then global npm" {
     reset_config();
     tmp = tempfile.mkdtemp(prefix="jac_x_test_");
     old_cwd = os.getcwd();
+    old_env = os.environ.get("JAC_GLOBAL_DIR");
     try {
         project_dir = Path(tmp) / "proj";
         project_dir.mkdir();
@@ -339,19 +341,28 @@ test "_tool_tiers orders project python, project npm, then global" {
             '[project]\nname = "xproj"\nversion = "0.1.0"\n'
         );
         os.chdir(project_dir);
+        os.environ["JAC_GLOBAL_DIR"] = str(Path(tmp) / "gdir");
         reset_config();
 
+        # Tiers are (scope, kind, loc): scope in {project, global}, kind in {py, node}.
         kinds = [
-            (label, kind) for (label, kind, loc) in exec_cmds._tool_tiers(False, False)
+            (scope, kind) for (scope, kind, loc) in exec_cmds._tool_tiers(False, False)
         ];
         assert ("project", "py") in kinds;
-        assert ("node", "node") in kinds;
+        assert ("project", "node") in kinds;
         assert ("global", "py") in kinds;
-        # Locality-first: project venv, then project npm, then global site.
-        assert kinds.index(("project", "py")) < kinds.index(("node", "node"));
-        assert kinds.index(("node", "node")) < kinds.index(("global", "py"));
+        assert ("global", "node") in kinds;
+        # Locality-first: project venv, project npm, then the two global tiers.
+        assert kinds.index(("project", "py")) < kinds.index(("project", "node"));
+        assert kinds.index(("project", "node")) < kinds.index(("global", "py"));
+        assert kinds.index(("global", "py")) < kinds.index(("global", "node"));
     } finally {
         os.chdir(old_cwd);
+        if old_env is None {
+            os.environ.pop("JAC_GLOBAL_DIR", None);
+        } else {
+            os.environ["JAC_GLOBAL_DIR"] = old_env;
+        }
         shutil.rmtree(tmp, ignore_errors=True);
         reset_config();
     }
@@ -380,10 +391,11 @@ test "_tool_tiers with use_node yields only the npm tier" {
     }
 }
 
-test "_tool_tiers with use_global has no npm or project tier" {
+test "_tool_tiers with use_global keeps only global tiers, including a global npm tier" {
     reset_config();
     tmp = tempfile.mkdtemp(prefix="jac_x_test_");
     old_cwd = os.getcwd();
+    old_env = os.environ.get("JAC_GLOBAL_DIR");
     try {
         project_dir = Path(tmp) / "proj";
         project_dir.mkdir();
@@ -391,14 +403,25 @@ test "_tool_tiers with use_global has no npm or project tier" {
             '[project]\nname = "xproj"\nversion = "0.1.0"\n'
         );
         os.chdir(project_dir);
+        os.environ["JAC_GLOBAL_DIR"] = str(Path(tmp) / "gdir");
         reset_config();
 
-        labels = [label for (label, kind, loc) in exec_cmds._tool_tiers(True, False)];
-        kinds = [kind for (label, kind, loc) in exec_cmds._tool_tiers(True, False)];
-        assert "node" not in kinds;
-        assert "project" not in labels;
+        tiers = exec_cmds._tool_tiers(True, False);
+        scopes = {scope for (scope, kind, loc) in tiers};
+        kinds = {(scope, kind) for (scope, kind, loc) in tiers};
+        # The global filter drops every project tier ...
+        assert scopes == {"global"};
+        # ... but a global npm tier now sits alongside the global python site,
+        # so `jac x --global` can run node tools too.
+        assert ("global", "py") in kinds;
+        assert ("global", "node") in kinds;
     } finally {
         os.chdir(old_cwd);
+        if old_env is None {
+            os.environ.pop("JAC_GLOBAL_DIR", None);
+        } else {
+            os.environ["JAC_GLOBAL_DIR"] = old_env;
+        }
         shutil.rmtree(tmp, ignore_errors=True);
         reset_config();
     }
@@ -470,4 +493,115 @@ test "x --list includes npm tools" {
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
     }
+}
+
+
+# ===== global npm tools: resolve (jac x --global) + install (jac install --npm --global) =====
+"""The jac-owned global npm bin dir for a given JAC_GLOBAL_DIR prefix."""
+def global_npm_bin(prefix: Path) -> Path {
+    return prefix / "npm" / "node_modules" / ".bin";
+}
+
+test "x --global resolves a global npm tool through the node runner" {
+    reset_config();
+    tmp = tempfile.mkdtemp(prefix="jac_x_test_");
+    old_env = os.environ.get("JAC_GLOBAL_DIR");
+    try {
+        gdir = Path(tmp) / "gdir";
+        os.environ["JAC_GLOBAL_DIR"] = str(gdir);
+        make_fake_node_bin(global_npm_bin(gdir), "demo");
+        reset_config();
+
+        with patch(
+            "jaclang.cli.commands.execution._run_node_tool", return_value=77
+        ) as mock_node {
+            rc = exec_cmds.x(name="demo", use_global=True, args=["v"]);
+        }
+        assert rc == 77;
+        assert mock_node.called;
+        # Routed as _run_node_tool(name, shim_path, args) from the global bin dir.
+        assert mock_node.call_args[0][0] == "demo";
+        assert mock_node.call_args[0][1].name == "demo";
+        assert mock_node.call_args[0][2] == ["v"];
+    } finally {
+        if old_env is None {
+            os.environ.pop("JAC_GLOBAL_DIR", None);
+        } else {
+            os.environ["JAC_GLOBAL_DIR"] = old_env;
+        }
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+test "run_npm_add --global installs into the jac global npm dir via bun add" {
+    import from jaclang.runtimelib.client { cli as npm_cli }
+    tmp = tempfile.mkdtemp(prefix="jac_x_test_");
+    old_env = os.environ.get("JAC_GLOBAL_DIR");
+    try {
+        gdir = Path(tmp) / "gdir";
+        os.environ["JAC_GLOBAL_DIR"] = str(gdir);
+        with patch(
+            "jaclang.runtimelib.client.bun_installer.get_bun", return_value="/fake/bun"
+        ), patch("subprocess.run") as mock_run {
+            mock_run.return_value = MagicMock(returncode=0);
+            rc = npm_cli.run_npm_add(["eslint@9"], False, True);
+        }
+        assert rc == 0;
+        # `bun add <specs>` ran in the jac-owned global npm root (no project needed).
+        argv = mock_run.call_args[0][0];
+        assert argv[0] == "/fake/bun";
+        assert argv[1] == "add";
+        assert "eslint@9" in argv;
+        npm_root = gdir / "npm";
+        assert mock_run.call_args[1]["cwd"] == str(npm_root);
+        assert (npm_root / "package.json").exists();
+    } finally {
+        if old_env is None {
+            os.environ.pop("JAC_GLOBAL_DIR", None);
+        } else {
+            os.environ["JAC_GLOBAL_DIR"] = old_env;
+        }
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "run_npm_add --global --dev forwards --dev to bun add" {
+    import from jaclang.runtimelib.client { cli as npm_cli }
+    tmp = tempfile.mkdtemp(prefix="jac_x_test_");
+    old_env = os.environ.get("JAC_GLOBAL_DIR");
+    try {
+        os.environ["JAC_GLOBAL_DIR"] = str(Path(tmp) / "gdir");
+        with patch(
+            "jaclang.runtimelib.client.bun_installer.get_bun", return_value="/fake/bun"
+        ), patch("subprocess.run") as mock_run {
+            mock_run.return_value = MagicMock(returncode=0);
+            rc = npm_cli.run_npm_add(["typescript"], True, True);
+        }
+        assert rc == 0;
+        assert "--dev" in mock_run.call_args[0][0];
+    } finally {
+        if old_env is None {
+            os.environ.pop("JAC_GLOBAL_DIR", None);
+        } else {
+            os.environ["JAC_GLOBAL_DIR"] = old_env;
+        }
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "install --npm --global routes to the global npm installer" {
+    with patch(
+        "jaclang.runtimelib.client.cli.run_npm_add", return_value=0
+    ) as mock_add {
+        rc = proj_cmds.install(packages=["eslint"], npm=True, install_global=True);
+    }
+    assert rc == 0;
+    assert mock_add.called;
+    # install_global is forwarded so the npm channel honors --global.
+    forwarded = (
+        (len(mock_add.call_args[0]) >= 3 and mock_add.call_args[0][2] == True)
+        or mock_add.call_args[1].get("install_global") == True
+    );
+    assert forwarded;
 }

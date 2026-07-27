@@ -123,10 +123,10 @@ def _start_loopback(
 ) {
     dist = os.path.join(app_dir, "dist");
     store = SessionStore(os.path.join(data_dir, ".jac", "desktop", "session.json"));
-    server_cls: any = socketserver.TCPServer;
+
+    server_cls: any = socketserver.ThreadingTCPServer;
+    server_cls.daemon_threads = True;
     if mode == "cef" {
-        server_cls = socketserver.ThreadingTCPServer;
-        server_cls.daemon_threads = True;
         handler = make_handler(
             dist,
             store,
@@ -135,7 +135,7 @@ def _start_loopback(
             sv_bridge=inprocess_forward
         );
     } else {
-        handler = make_handler(dist, store);
+        handler = make_handler(dist, store, dispatch=ctx.dispatch);
     }
     server_cls.allow_reuse_address = True;
     pref = preferred_port(app_name);

@@ -1,5 +1,4 @@
 impl load_counts -> dict[str, int] {
-    global _counts_cache;
     if _counts_cache is None {
         _counts_cache = json.loads("{}");
     }

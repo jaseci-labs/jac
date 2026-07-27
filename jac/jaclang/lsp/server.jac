@@ -57,8 +57,8 @@ obj TextDocument {
     has uri: str = "",
         _source: Optional[str] = None,
         version: Optional[int] = None,
-        path: str by postinit,
-        _position_codec: PositionCodec by postinit;
+        path: str postinit,
+        _position_codec: PositionCodec postinit;
 
     def postinit -> None;
 
@@ -77,8 +77,8 @@ obj Workspace {
     has root_uri: Optional[str] = None,
         _sync_kind: TextDocumentSyncKind = TextDocumentSyncKind.Incremental,
         _text_documents: dict[str, TextDocument] = {},
-        _root_path: Optional[str] by postinit,
-        _position_codec: PositionCodec by postinit;
+        _root_path: Optional[str] postinit,
+        _position_codec: PositionCodec postinit;
 
     def postinit -> None;
     def get_text_document(doc_uri: str) -> TextDocument;
@@ -97,7 +97,7 @@ obj LanguageServer {
         _feature_options: dict[str, any] = {},
         _workspace: Optional[Workspace] = None,
         _transport_writer: Optional[any] = None,
-        _write_lock: threading.Lock by postinit,
+        _write_lock: threading.Lock postinit,
         _next_request_id: int = 0,
         _shutdown_flag: bool = False;
 

@@ -7,7 +7,7 @@ obj JacTestResult(unittest.TextTestResult) {
         descriptions: any,
         verbosity: int,
         max_failures: (int | None) = None,
-        failures_count: int by postinit;
+        failures_count: int postinit;
 
     def postinit -> None;
     def addFailure(`test: any, err: any) -> None;
@@ -57,4 +57,8 @@ def parametrize(
     params: Iterable,
     test_func: Callable,
     id_fn: (Callable | None) = None
+) -> None;
+
+def invoke_native_test(
+    engine: any, symbol: str, test_name: str, init_symbols: (list | None) = None
 ) -> None;

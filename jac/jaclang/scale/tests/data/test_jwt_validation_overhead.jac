@@ -16,7 +16,7 @@ import time;
 import from pathlib { Path }
 
 import from pymongo { MongoClient }
-import from testcontainers.mongodb { MongoDbContainer }
+import from testcontainers.community.mongodb { MongoDbContainer }
 import from jaclang.scale.tests.server_support {
     call_walker,
     get_free_port,

@@ -54,7 +54,7 @@ obj red(Colour1) {
     }
 
     def apply_red -> int {
-        x = self.inner_red.color22.GREEN22;
+        x: any = self.inner_red.color22.GREEN22;
         return self.point1 + self.pointred;
     }
 }

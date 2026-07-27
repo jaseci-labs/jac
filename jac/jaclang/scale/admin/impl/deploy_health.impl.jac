@@ -1,15 +1,3 @@
-"""Implementation of JacAPIServerDeployHealth.
-
-Same two-layer split as the self-check:
-  (a) PURE reshape helpers - take a kubernetes object's `.to_dict()` and
-      flatten it to the compact shape the React table needs. No I/O, so
-      `test_ops_deploy.jac` feeds them mocked API dicts.
-  (b) Thin K8s list calls (via admin/k8s_ops.jac) that fetch the live
-      objects, `.to_dict()` them, and run the pure helpers.
-
-All datetimes are stringified here so JSONResponse never chokes; a dead /
-forbidden API renders `available: false` with a detail, never a 500.
-"""
 import asyncio;
 import logging;
 import from fastapi { Request }
@@ -27,11 +15,6 @@ import from jaclang.scale.admin.k8s_ops {
 glob logger = logging.getLogger(__name__);
 
 
-# =========================================================================
-# (a) PURE reshape helpers - unit-tested with mocked `.to_dict()` payloads.
-# =========================================================================
-"""Best-effort string for any value (stringifies datetimes so the JSON
-encoder never chokes). None -> ''."""
 def _s(v: any) -> str {
     if v is None {
         return "";
@@ -40,12 +23,6 @@ def _s(v: any) -> str {
 }
 
 
-"""Derive a coarse rollout status from a Deployment dict.
-
-Returns {status, reason, message}: 'complete' when updated==available==
-desired; 'stuck' when a Progressing condition reports
-ProgressDeadlineExceeded; otherwise 'progressing'. Pure - reads only
-spec/status counts + conditions."""
 def _rollout_status(dep: dict) -> dict {
     spec = dep.get("spec", {}) or {};
     status = dep.get("status", {}) or {};
@@ -64,7 +41,7 @@ def _rollout_status(dep: dict) -> dict {
             };
         }
     }
-    # At desired replica count (including a deliberate scale-to-zero) -> done.
+
     if updated == desired and available == desired {
         return {"status": "complete", "reason": "", "message": ""};
     }
@@ -76,8 +53,6 @@ def _rollout_status(dep: dict) -> dict {
 }
 
 
-"""Flatten a V1Deployment dict to {name, desired, ready, available,
-updated, images, rollout}."""
 def summarize_deployment(dep: dict) -> dict {
     meta = dep.get("metadata", {}) or {};
     spec = dep.get("spec", {}) or {};
@@ -105,8 +80,6 @@ def summarize_deployment(dep: dict) -> dict {
 }
 
 
-"""Extract the active container state as {state, reason} from a
-container_status dict. state is one of running/waiting/terminated."""
 def _container_state(cs: dict) -> dict {
     state = cs.get("state", {}) or {};
     if state.get("running") {
@@ -124,9 +97,6 @@ def _container_state(cs: dict) -> dict {
 }
 
 
-"""Flatten a V1Pod dict to {name, app, phase, ready, total, restarts,
-node, created, containers[]}. `containers[]` carries the per-container
-spec image vs resolved imageID digest."""
 def summarize_pod(pod: dict) -> dict {
     meta = pod.get("metadata", {}) or {};
     spec = pod.get("spec", {}) or {};
@@ -172,9 +142,6 @@ def summarize_pod(pod: dict) -> dict {
 }
 
 
-"""Assemble the deploy-health payload from already-listed deployment + pod
-dicts (pure). Kept separate so the test can build the whole response from
-mocked lists."""
 def build_deploy_health(namespace: str, deployments: list, pods: list) -> dict {
     deps = [summarize_deployment(d) for d in deployments];
     pds = [summarize_pod(p) for p in pods];
@@ -189,11 +156,6 @@ def build_deploy_health(namespace: str, deployments: list, pods: list) -> dict {
 }
 
 
-# =========================================================================
-# (b) Thin K8s list calls -> pure helpers.
-# =========================================================================
-"""Fetch + reshape deploy health for the pod's namespace. Best-effort:
-returns {available: False, detail} when off-cluster or on any API error."""
 def _collect_deploy_health -> dict {
     if not k8s_available() {
         return {"available": False, "detail": unavailable_detail()};

@@ -8,14 +8,14 @@ obj Test1 {
 # 2. Test if postinit is needed but not provided.
 obj Test2 {
     has var1: str;
-    has var2: int by postinit;
+    has var2: int postinit;
 }
 
 # 3. Postinit should be considered as has default initialization.
 obj Test3 {
     has var1: int;
     has var2: int = 42;
-    has var3: int by postinit;  # <-- This is fine.
+    has var3: int postinit;  # <-- This is fine.
     has var4: int;  # <-- This should be syntax error.
 
     def postinit() {

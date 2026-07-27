@@ -54,13 +54,29 @@ def walk_es_nodes(nd: es.Node) -> list[es.Node] {
     return result;
 }
 
-"""Compile Jac source to an ESTree program."""
+"""Return compile errors that are not non-fatal TypeCheckPass diagnostics."""
+def _fatal_errors(prog: JacProgram) -> list {
+    import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
+    return [
+        e
+        for e in prog.errors_had
+        if not issubclass(e.from_pass, TypeCheckPass)
+    ];
+}
+
+"""Compile Jac source to an ESTree program.
+
+type_check=True mirrors the real client codegen path: the backend consumes
+core facts (call_kind, callee_decl) that the required inference schedule
+stamps, so the fixture IR must be fact-stamped before EsastGenPass runs.
+"""
 def compile_to_esast(filename: str) -> es.Program {
     prog = JacProgram();
-    ir = prog.compile(file_path=filename, no_cgen=True);
+    ir = prog.compile(file_path=filename, no_cgen=True, type_check=True);
 
-    assert not prog.errors_had , (
-        f"Compilation errors in {filename}: {[str(e) for e in prog.errors_had]}"
+    _fatal = _fatal_errors(prog);
+    assert not _fatal , (
+        f"Compilation errors in {filename}: {[str(e) for e in _fatal]}"
     );
 
     es_pass = EsastGenPass(ir_in=ir, prog=prog);
@@ -74,10 +90,11 @@ def compile_to_esast(filename: str) -> es.Program {
 """Compile Jac source to an ESTree program with an explicit FrameworkBackend."""
 def compile_to_esast_with_backend(filename: str, backend: object) -> es.Program {
     prog = JacProgram();
-    ir = prog.compile(file_path=filename, no_cgen=True);
+    ir = prog.compile(file_path=filename, no_cgen=True, type_check=True);
 
-    assert not prog.errors_had , (
-        f"Compilation errors in {filename}: {[str(e) for e in prog.errors_had]}"
+    _fatal = _fatal_errors(prog);
+    assert not _fatal , (
+        f"Compilation errors in {filename}: {[str(e) for e in _fatal]}"
     );
 
     es_pass = EsastGenPass(ir_in=ir, prog=prog, backend=backend);

@@ -11,14 +11,14 @@ primitives instead of raw `<div>`/`<button>`/antd -- so it isn't locked to the b
 
 - **Full stack in one file.** The top of `main.jac` is the backend: a `Tweet` node
   persisted on the graph and `walker:pub` endpoints (`load_feed`, `create_tweet`,
-  `like_tweet`). The `cl { }` block is the cross-platform UI.
+  `like_tweet`). The rest of the file is the cross-platform UI, inferred client from its JSX and `@jac/mobui` imports.
 - **Client calls the backend directly** -- `root spawn create_tweet(...)` /
   `tid spawn like_tweet()` compile to walker RPCs; you read `result.reports`.
 - **Every primitive in the contract**: `View`, `Text`, `Pressable`, `TextInput`,
   `Image`, `ScrollView`, `StyleSheet.create`, plus an `Animated` mount transition.
-- **Real Lucide icons, cross-platform** via a platform-split module: `icon.cl.jac`
+- **Real Lucide icons, cross-platform** via a platform-split module: `icon.jac`
   uses `lucide-react` on web (plain DOM SVG -- no `react-native-svg`, so the web
-  bundle stays clean), and `icon.native.cl.jac` uses `lucide-react-native` on
+  bundle stays clean), and `icon.native.jac` uses `lucide-react-native` on
   native (Metro bundles its SVG fine). Same `<Icon name=.../>` API on both.
 - **No raw HTML.** There is no `<div>` anywhere -- the bundler aliases `@jac/mobui` to the
   compiled primitive module and (on web only) rewrites `react-native -> react-native-web`.
@@ -41,5 +41,5 @@ own isolated graph.
 ## Theme
 
 OLED-black (`#000000`) with an X-style sky-blue accent (`#1d9bf0`) and a pink like
-(`#f91880`). All colors/spacing/radii live in the `C`/`S`/`R`/`F` token globals at the
-top of the `cl { }` block -- change those to re-skin the whole app.
+(`#f91880`). All colors/spacing/radii live in the `C`/`S`/`R`/`F` token globals in
+`theme.jac` -- change those to re-skin the whole app.

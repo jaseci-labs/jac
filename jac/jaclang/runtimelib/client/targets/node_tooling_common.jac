@@ -3,8 +3,26 @@ import from pathlib { Path }
 import from jaclang.cli.console { console }
 import from jaclang.runtimelib.client { get_bun }
 
-def resolve_node_runner -> list[str] {
-    return [_require_bundled_bun(), "x"];
+def resolve_node_tool_entry(project_dir: Path, tool: str) -> (Path | None) {
+    shim = project_dir / "node_modules" / ".bin" / tool;
+    if not shim.exists() {
+        return None;
+    }
+    return shim.resolve();
+}
+
+def resolve_node_tool(project_dir: Path, tool: str) -> list[str] {
+    bun = _require_bundled_bun();
+    entry = resolve_node_tool_entry(project_dir, tool);
+    if entry is None {
+        raise RuntimeError(
+            f"The npm tool '{tool}' is not installed under "
+            f"{project_dir / 'node_modules'}. Install the project's "
+            "dependencies first; jac provisions bun and never provisions "
+            "node, so npm tools must resolve from the local node_modules."
+        );
+    }
+    return [bun, str(entry)];
 }
 
 def resolve_package_manager -> str {

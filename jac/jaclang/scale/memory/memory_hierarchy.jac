@@ -79,8 +79,8 @@ obj RedisBackend(CacheMemory) {
 
 obj MongoBackend(PersistentMemory) {
     has client: MongoClient | None = None,
-        db: any by postinit,
-        collection: any by postinit,
+        db: any postinit,
+        collection: any postinit,
         db_name: str = 'jac_db',
         collection_name: str = '_anchors',
         mongo_url: (str | None) = None,
@@ -152,9 +152,11 @@ obj ScaleTieredMemory(TieredMemory) {
         use_cache: bool = True;
 
     def postinit -> None;
+    def put(anchor: Anchor) -> None;
     def commit(anchor: (Anchor | None) = None) -> None;
     async def acommit(anchor: (Anchor | None) = None) -> None;
     def close -> None;
+    def _mark_committed(anchor: (Anchor | None)) -> None;
     def get(id: UUID) -> (Anchor | None);
     def batch_get(ids: list[UUID]) -> dict[UUID, Anchor];
     def query(

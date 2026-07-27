@@ -8,6 +8,31 @@ curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/ins
 
 That's it. You now have a compiler, a runtime, a package manager, a server, a build system, and a native linker -- all behind one command.
 
+## The toolchain is the hidden tier
+
+The fragmentation that [Why Jac Exists](why-jac.md) counts does not stop at
+the program text. The toolchain is a substrate of its own: interpreter,
+bundler, compilers, linker, package managers, server, and deployer, each
+separately installed and separately versioned. Version skew between them is a
+*discontinuity* in time, the same marshaling failure with the filesystem as
+the wire format, and "works on my machine" is its error message. The `jac`
+binary dissolves this boundary the way the language dissolves the others: by
+internalizing the whole toolchain under one content-addressed version. The
+version vector of your toolchain collapses to length one.
+
+## One compiler for the whole application: the polypiler
+
+The compiler inside the binary is a *polypiler*: a compiler whose unit of
+compilation is the whole polyglot application, whose targets are ecosystems
+rather than instruction sets, and whose optimization surface includes the
+boundaries between them. One `jac build` sees the server code, the client
+code, and the native code as one program: `sv` declarations lower to Python
+bytecode among PyPI packages, `cl` declarations lower to JavaScript among npm
+packages, and `na` declarations lower through LLVM to machine code beside C
+libraries. For example, the HTTP call, serialization, and shared types behind
+a client-to-server function call are not written or generated for you to
+maintain: they are compiler output, owned and re-derived on every build.
+
 ## What's Inside the Binary
 
 | Capability | What it replaces | How you use it |

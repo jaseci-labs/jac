@@ -30,7 +30,6 @@ def _backend_available -> bool {
 
 
 def _call(kind: str, name: str, fields: dict, anchor: str = "") -> dict {
-    global _BOOTED;
     import from jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch {
         boot,
         dispatch

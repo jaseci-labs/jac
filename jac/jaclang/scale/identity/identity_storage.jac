@@ -20,8 +20,8 @@ import from sqlalchemy.exc { IntegrityError, OperationalError }
 import from jaclang.scale._optdeps.pymongo { DuplicateKeyError }
 import type from pymongo.collection { Collection }
 import from jaclang.jac0core.constant { Constants as Con }
+import from jaclang.scale.config.config_loader { get_scale_config }
 
-"""Raised by storage backends when an identity uniqueness constraint fires."""
 obj IdentityTakenError(Exception) {}
 
 obj IdentityStorage {
@@ -50,6 +50,7 @@ obj IdentityStorage {
     ) -> dict[str, any];
 
     def user_exists_by_id(user_id: str) -> bool;
+    def ensure_user_by_id(user_id: str) -> str | None;
     def authenticate(identifier: str, password: str) -> dict[str, any] | None;
     def set_user_role(user_id: str, role: str) -> bool;
     def get_user_role(user_id: str) -> str | None;
@@ -92,10 +93,10 @@ obj MongoIdentityStorage(IdentityStorage) {
 
 obj SqliteIdentityStorage(IdentityStorage) {
     has db_path: str,
-        _engine: Engine by postinit,
-        _table: Table by postinit,
-        _identity_lookups: Table by postinit,
-        _sso_lookups: Table by postinit;
+        _engine: Engine postinit,
+        _table: Table postinit,
+        _identity_lookups: Table postinit,
+        _sso_lookups: Table postinit;
 
     def postinit -> None;
     def _store_user(user_doc: dict[str, any]) -> None;

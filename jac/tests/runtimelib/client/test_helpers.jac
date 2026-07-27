@@ -121,7 +121,7 @@ def request_endpoint(
             } else {
                 raise;
             }
-        } except (URLError, RemoteDisconnected, TimeoutError) as exc {
+        } except (URLError, RemoteDisconnected, ConnectionError, TimeoutError) as exc {
             last_err = exc;
             time.sleep(poll_interval);
         }

@@ -33,19 +33,22 @@ Every interop edge is one of two fundamentally different things:
   `sv↔na`, `na↔C`, `na↔cl`, and the opt-in `sv→sv` microservice split are
   marshalled.
 
-The compiler decides which is which automatically. Two analysis passes do
+The compiler decides which is which automatically. One analysis pass does
 the discovery:
 
-- **`BoundaryAnalysisPass`** detects an explicitly-tagged cross-runtime
-  import (`sv import` inside a `.cl.jac`, a `clib` import in native code,
-  etc.) and re-reads the *provider* module's AST to extract the public
-  surface -- walker `has`-fields, `def` signatures, struct layouts -- into an
-  `InteropBinding`.
-- **`InteropAnalysisPass`** walks call sites, records the caller's and
-  callee's `CodeContext` plus the boundary types, and accumulates them into
-  an `InteropManifest`.
+- **`BoundaryAnalysisPass`** detects a cross-runtime import (`sv import`
+  in client-placed code -- whether that placement is inferred or comes from
+  a `.cl.jac` extension -- a `clib` import in native code, etc.) and
+  re-reads the *provider* module's AST to extract the public surface --
+  walker `has`-fields, `def` signatures, struct layouts -- into an
+  `InteropBinding`. On an import, the `sv` marker is a boundary fact (the
+  target stays server-side); the import's own `code_context` is its
+  placement, which determines the caller side of the binding. The same pass
+  walks call sites, records the caller's and callee's `CodeContext` plus
+  the boundary types, and accumulates every binding into an
+  `InteropManifest`.
 
-Both write their results into the schemas in
+The results land in the schemas in
 [`jac0core/codeinfo.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/codeinfo.jac).
 Each backend codegen pass then reads that manifest and emits *its half* of
 every bridge it participates in. No global "target" flag exists -- selection
@@ -291,8 +294,9 @@ can cross -- the exception being Python-style monkey-patched classes.
 
 ### AOT alternative
 
-`jac run --autonative` JITs `jac_entry` directly when a module is
-`native_compat` (and silently falls back to the Python path otherwise). The
+`jac run` JITs `jac_entry` directly when a markerless module infers
+native, which is the default codespace preference (demoting gracefully
+to the Python path when it cannot lower). The
 *ahead-of-time* counterpart is the **`na → C host`** native-lib export
 path (below), where the native side is packaged as a real `.so` and a host (Python via `ctypes`, or C) loads
 it across the process boundary.
@@ -395,22 +399,46 @@ Native code reaches the *client* by compiling to wasm.
 `jac nacompile --target wasm32` (and the client bundler's `_emit_na_wasm`,
 which serves `/static/<stem>.wasm`) both route through
 `wasm_build.compile_to_wasm`: it sets the `wasm32-unknown-unknown` triple,
-compiles AOT, runs `opt2` **without** `internalize` (so defined functions
-stay exported), and links with the pure-Jac `WasmLinker` (no
-wasm-ld/emscripten).
+compiles AOT, honors the project's `[gc]` settings (`default = "none"`
+builds headerless and audits the IR for `__rc_*` machinery), runs `opt2`
+**without** `internalize` (so defined functions stay exported), and links
+with the pure-Jac `WasmLinker` (no wasm-ld/emscripten).
 
-The interop model is the standard wasm import/export contract:
+The language-level spelling of the crossing is a marked import in client
+code:
+
+```jac
+na import from .arena { init, frame }
+```
+
+`na import` is the cl → na twin of `sv import`. It is the discovery signal
+(the client build compiles the target module to `/static/<stem>.wasm`; the
+module never has to be imported anywhere else), and it binds each name to a
+generated stub: `exit_import` in `EsastGenPass` emits
+`const { init, frame } = __na_bind("arena", ["init", "frame"])`, where
+`__na_bind` (in `@jac/wasm_host`) lazily instantiates the module on first
+call and dispatches to its exports. Calls to the bound names type-check as
+async in client code (the same coroutine-wrapping `sv import` calls get),
+so `await init()` is the natural call shape. On the Python side the import
+compiles to **nothing** -- an `na import` never executes the native module
+under CPython, which is what distinguishes it from a plain import of a
+native module (row 7's ctypes crossing). A module that declares app FFI
+registers its host implementations before the first call with
+`set_na_env("<stem>", shim, {"env": {...}})`; an FFI-free module needs no
+setup at all.
+
+Underneath, the interop model is the standard wasm import/export contract:
 
 - **`cl → na`** (exports) -- `WasmLinker` exports `memory`, the
   `__stack_pointer`/`__heap_base` globals, and **every defined function**
   (or an explicit `export_funcs` list). JS calls these directly after
   `WebAssembly.instantiate`.
-- **`na → cl`** (imports) -- undefined externs (raylib, `malloc`/`free`/
-  `memcpy`, compiler-rt helpers like `__multi3`) remain wasm **imports** from
-  module `"env"`. The JS host satisfies them by providing an
-  `importObject.env` at instantiate time; the client shim supplies the
-  externs. So native code calls back into JS through these imported `env`
-  functions.
+- **`na → cl`** (imports) -- the vendored libc floor is linked *into* the
+  module, so what remains as wasm **imports** is the versioned `jac_host1`
+  host surface (syscall-ish: `write`, `clock_gettime`, ...) plus the app's
+  own extern decls (e.g. raylib) under module `"env"`. The JS host satisfies
+  them at instantiate time; native code calls back into JS through these
+  imported functions.
 
 ---
 
@@ -509,6 +537,14 @@ Everything crossing a marshalled boundary is **JSON** (for `cl↔sv` and the
   The client unwraps `payload.data` (walkers) or `payload.data.result`
   (functions), then runs typed values through `__from_wire`. Errors come
   back `{ "ok": false, "error": { "code", "message", "details" } }`.
+
+  A function declared `@restspec(envelope=False, produces=...)` skips this
+  wrapper: its return value is written to the body verbatim under the
+  declared content type, for callers that are not Jac clients (a
+  `curl | bash` installer, `robots.txt`, a feed). Serialisation still runs,
+  so the body is text; error paths keep the envelope. Walkers always keep it,
+  having no single value to project. See
+  [jac-scale HTTP](../reference/plugins/jac-scale-http.md#raw-response-bodies).
 
 ### C-ABI wire format (`na`)
 
@@ -640,7 +676,7 @@ RPC to the backend). It is the matrix in miniature.
 
 | Concern | Files |
 |---------|-------|
-| Boundary discovery | `jac0core/passes/impl/boundary_analysis_pass.impl.jac`; `InteropAnalysisPass`; [`codeinfo.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/codeinfo.jac) (`InteropBinding`, `InteropManifest`) |
+| Boundary discovery | `jac0core/passes/impl/boundary_analysis_pass.impl.jac`; `BoundaryAnalysisPass`; [`codeinfo.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/codeinfo.jac) (`InteropBinding`, `InteropManifest`) |
 | Context split / coercion | [`compiler.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/compiler.jac) (`_coerce_module`); `constant.jac` (`CodeContext`) |
 | `cl → sv` | `compiler/passes/ecmascript/impl/esast_gen_pass.impl.jac` (`__jacSpawn`/`__jacCallFunction`); `runtimelib/impl/client_runtime.impl.jac`; `jac/jaclang/scale/server/impl/serve.endpoints.impl.jac` |
 | `sv → cl` | `runtimelib/client/impl/{compiler,vite_bundler}.impl.jac`; `runtimelib/impl/server.impl.jac`; `passes/ast_gen/impl/jsx_processor.impl.jac` |

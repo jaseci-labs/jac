@@ -57,7 +57,13 @@ def:pub OpsPage -> JsxElement {
         loadedOnce = True;
     }
 
-    useEffect(lambda { loadHealth(); }, []);
+    useEffect(
+        lambda {
+            loadHealth();
+            return;
+        },
+        []
+    );
 
     # ---- helpers -----------------------------------------------------
     # Per-step status icon as a DICT of pre-built elements (NOT a

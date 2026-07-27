@@ -54,11 +54,12 @@ impl RouteScanner._scan_directory(
                 routes.extend(child_routes);
             }
         } elif entry.is_file() and entry.suffix == '.jac' {
-            if any(suffix in entry.name for suffix in self.SKIP_SUFFIXES) {
+            if any(suffix in entry.name for suffix in self.MODULE_ROLE_SUFFIXES) {
                 continue;
             }
+            (page_export, layout_export) = self.route_exports_of(entry);
             stem = entry.stem;
-            if stem == self.LAYOUT_FILENAME {
+            if layout_export is not None {
                 layout_key = url_prefix or "/";
                 if layout_key in self._layouts {
                     raise ClientBundleError(
@@ -72,10 +73,14 @@ impl RouteScanner._scan_directory(
                     path=layout_key,
                     component_import=component_name,
                     file_path=entry,
+                    source_export=layout_export,
                     is_layout=True
                 );
                 self._layouts[layout_key] = layout_entry;
                 self._page_files.append(entry);
+                continue;
+            }
+            if page_export is None {
                 continue;
             }
             route_segment = self._file_to_route_path(stem);
@@ -90,6 +95,7 @@ impl RouteScanner._scan_directory(
                 path=route_path,
                 component_import=component_name,
                 file_path=entry,
+                source_export=page_export,
                 auth_required=auth_required,
                 is_catch_all=is_catch_all
             );
@@ -114,6 +120,16 @@ impl RouteScanner._file_to_route_path(filename: str) -> str {
     return filename;
 }
 
+def _sanitize_segment(segment: str) -> list[str] {
+    fragments: list[str] = [];
+    for fragment in re.split(r'[^0-9A-Za-z]+', segment) {
+        if len(fragment) > 0 {
+            fragments.append(fragment[0].upper() + fragment[1:]);
+        }
+    }
+    return fragments;
+}
+
 impl RouteScanner._file_to_component_name(file_path: Path) -> str {
     try {
         relative = file_path.relative_to(self.pages_dir);
@@ -127,26 +143,84 @@ impl RouteScanner._file_to_component_name(file_path: Path) -> str {
         }
 
         clean = re.sub(r'^\[\.\.\.(\w+)\]$', r'\1', part);
-
         clean = re.sub(r'^\[(\w+)\]$', r'\1', clean);
-        parts.append(clean[0].upper() + clean[1:] if len(clean) > 0 else clean);
+        parts.extend(_sanitize_segment(clean));
     }
     return self.COMPONENT_PREFIX + "".join(parts);
 }
 
 impl RouteScanner._detect_collisions(routes: list[RouteEntry]) -> None {
-    seen: dict[(str, Path)] = {};
-    for route in routes {
-        if route.is_layout {
-            continue;
-        }
-        if route.path in seen {
+    seen_paths: dict[(str, Path)] = {};
+    seen_imports: dict[(str, Path)] = {};
+    all_entries = routes + list(self._layouts.values());
+    for entry in all_entries {
+        if (not entry.is_layout) and (entry.path in seen_paths) {
             raise ClientBundleError(
-                f"Route collision: '{route.path}' is defined by both "
-                f"'{seen[route.path]}' and '{route.file_path}'. "
+                f"Route collision: '{entry.path}' is defined by both "
+                f"'{seen_paths[entry.path]}' and '{entry.file_path}'. "
                 f"Remove one of them."
             );
         }
-        seen[route.path] = route.file_path;
+        if not entry.is_layout {
+            seen_paths[entry.path] = entry.file_path;
+        }
+        other = seen_imports.get(entry.component_import);
+        if other {
+            raise ClientBundleError(
+                f"Route import-name collision: '{other}' and '{entry.file_path}' "
+                f"both sanitize to the JS identifier '{entry.component_import}'. "
+                f"Rename one of the files."
+            );
+        }
+        seen_imports[entry.component_import] = entry.file_path;
     }
+}
+
+impl resolve_route_exports(module_path: Path) -> tuple[((str | None), (str | None))] {
+    import from jaclang { JacRuntime as Jac }
+    program = Jac.program;
+    if program is None {
+        return (None, None);
+    }
+    try {
+        mod = program.compile(str(module_path.resolve()));
+    } except Exception {
+        return (None, None);
+    }
+    if mod is None {
+        return (None, None);
+    }
+    manifest = mod.gen.client_manifest;
+    page_name = manifest.page_export if manifest else None;
+    layout_name = manifest.layout_export if manifest else None;
+    if page_name is None and layout_name is None {
+        (page_name, layout_name) = _route_exports_from_ast(mod);
+    }
+    return (page_name, layout_name);
+}
+
+impl _route_exports_from_ast(mod: any) -> tuple[((str | None), (str | None))] {
+    import jaclang.jac0core.unitree as uni;
+    page_name: (str | None) = None;
+    layout_name: (str | None) = None;
+    try {
+        abilities = mod.get_all_sub_nodes(uni.Ability);
+    } except Exception {
+        return (None, None);
+    }
+    for nd in abilities {
+        if nd.is_method or not isinstance(nd.signature, uni.FuncSignature) {
+            continue;
+        }
+        rt = nd.signature.return_type;
+        if not isinstance(rt, uni.Name) or nd.name_ref is None {
+            continue;
+        }
+        if rt.value == 'JsxPage' and page_name is None {
+            page_name = nd.name_ref.sym_name;
+        } elif rt.value == 'JsxLayout' and layout_name is None {
+            layout_name = nd.name_ref.sym_name;
+        }
+    }
+    return (page_name, layout_name);
 }

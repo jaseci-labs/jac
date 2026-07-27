@@ -21,6 +21,13 @@ walker BadWalker {
 
 }
 
+walker BadBacktickRoot {
+    can visit with `root entry {
+        ;
+    }  # E1116 - `root (escaped keyword) is the root value, not the Root class
+
+}
+
 walker BadUnion {
     can visit with Root | root entry {
         ;

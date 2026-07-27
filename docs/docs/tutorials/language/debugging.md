@@ -6,9 +6,8 @@ This tutorial walks you through setting up the debugger, using breakpoints effec
 
 > **Prerequisites**
 >
-> - Python 3.12+
-> - jaclang installed
-> - VS Code with Jac extension
+> - The `jac` binary installed ([Install](../../quick-guide/install.md)); it ships its own Python, so there is nothing else to set up
+> - VS Code with the Jac extension
 > - Time: ~15 minutes
 
 ---
@@ -17,7 +16,7 @@ This tutorial walks you through setting up the debugger, using breakpoints effec
 
 If you're already familiar with debuggers:
 
-1. Install Python 3.12+ and jaclang
+1. Install the `jac` binary ([one-line installer](../../quick-guide/install.md))
 2. Install VS Code + Jac extension
 3. Create launch.json (Debug and Run > Create launch.json > Jac Debug)
 4. Open VS Code Command Palette and run `jacvis` for graph visualization
@@ -44,8 +43,7 @@ Complete these steps once per computer.
 
 | Requirement | How to Check |
 |-------------|--------------|
-| Python 3.12+ | `python --version` |
-| jaclang | `jac --version` |
+| The `jac` binary | `jac --version` |
 | VS Code | [Download](https://code.visualstudio.com/) |
 | Jac Extension | Extensions tab > search "Jac" |
 

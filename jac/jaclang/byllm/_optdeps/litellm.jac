@@ -1,17 +1,3 @@
-"""Guarded re-exports for litellm (capability: llm).
-
-Keeps `import jaclang.byllm.llm` / `import jaclang.byllm.types` cheap: litellm is
-only imported here, lazily, so the byllm public API stays importable without the
-`llm` capability installed. Actual API calls are gated by `require_optional` at
-the call sites (Model.model_call_*), which raise the actionable capability error.
-
-When litellm is absent we still expose a stand-in object whose `.exceptions.*`
-and transient-error classes are private Exception subclasses that never match a
-real error. This lets the mock backend run the shared ReAct loop (whose `except
-litellm.exceptions.*` clauses would otherwise dereference None) without the `llm`
-capability; real backends are guarded before any litellm call is reached.
-"""
-
 import types;
 
 with entry {
@@ -48,9 +34,6 @@ with entry {
             return None;
         }
 
-        # Sentinel so `Message | LiteLLMMessage` annotations and isinstance checks
-        # stay safe; a real LiteLLMMessage is only constructed inside a live model
-        # flow, where litellm is present.
         class LiteLLMMessage {}
         HAS_LITELLM = False;
     }

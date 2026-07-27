@@ -110,10 +110,12 @@ obj:pub SSLContext {
 }
 
 
-def:pub create_default_context(cafile: str = "") -> SSLContext {
+def:pub create_default_context(cafile: str | None = None) -> SSLContext {
     c = SSLContext();
-    if len(cafile) > 0 {
-        c.load_verify_locations(cafile);
+    if cafile is not None {
+        if len(cafile) > 0 {
+            c.load_verify_locations(cafile);
+        }
     }
     return c;
 }

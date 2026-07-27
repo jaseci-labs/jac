@@ -5,24 +5,24 @@ import from collections.abc { Sequence }
 import from threading { Event }
 import from typing { TypeAlias, TypeVar, cast }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.constant { Tokens as Tok, TOKEN_MAP }
+import from jaclang.jac0core.constant { Tokens as Tok, RESERVED_IDENT_NAMES }
 import from jaclang.jac0core.diagnostics { E5041, E5042 }
 import from jaclang.jac0core.passes.transform { Transform }
 import type from jaclang.jac0core.program { JacProgram }
 
 glob T = TypeVar('T', bound=uni.UniNode),
-     _reserved_keywords = [v for (_, v) in TOKEN_MAP.items()];
+     _reserved_keywords = RESERVED_IDENT_NAMES;
 
 obj PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]) {
     has ir_in: uni.PythonModuleAst,
         prog: JacProgram,
         cancel_token: Event | None = None,
-        mod_path: str by postinit,
-        orig_src: str by postinit,
-        _source_lines: list[str] by postinit,
-        in_type_annotation: bool by postinit,
-        in_match_pattern: bool by postinit,
-        in_fstring_expr: bool by postinit;
+        mod_path: str postinit,
+        orig_src: str postinit,
+        _source_lines: list[str] postinit,
+        in_type_annotation: bool postinit,
+        in_match_pattern: bool postinit,
+        in_fstring_expr: bool postinit;
 
     def postinit -> None;
     def _get_source_segment(nd: py_ast.AST) -> (str | None);
@@ -85,7 +85,7 @@ obj PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]) {
     def proc_template_str(nd: py_ast.AST) -> uni.UniNode;
     def proc_interpolation(nd: py_ast.AST) -> uni.UniNode;
     def proc_generator_exp(nd: py_ast.GeneratorExp) -> uni.GenCompr;
-    def proc_global(nd: py_ast.Global) -> uni.GlobalStmt;
+    def proc_global(nd: py_ast.Global) -> uni.Semi;
     def proc_if_exp(nd: py_ast.IfExp) -> uni.IfElseExpr;
     def proc_import(nd: py_ast.Import) -> uni.Import;
     def proc_import_from(nd: py_ast.ImportFrom) -> uni.Import;
@@ -104,7 +104,7 @@ obj PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]) {
     def proc_match_value(nd: py_ast.MatchValue) -> uni.MatchValue;
     def proc_name(nd: py_ast.Name) -> uni.Name;
     def proc_named_expr(nd: py_ast.NamedExpr) -> uni.AtomUnit;
-    def proc_nonlocal(nd: py_ast.Nonlocal) -> uni.NonLocalStmt;
+    def proc_nonlocal(nd: py_ast.Nonlocal) -> uni.Semi;
     def proc_pass(nd: py_ast.Pass) -> uni.Semi;
     def proc_set(nd: py_ast.Set) -> uni.SetVal;
     def _proc_compr(nd: py_ast.AST, compr_cls: type) -> uni.UniNode;

@@ -26,8 +26,8 @@ import from pathlib { Path }
 import from typing { cast }
 
 import requests;
-import from testcontainers.mongodb { MongoDbContainer }
-import from testcontainers.redis { RedisContainer }
+import from testcontainers.community.mongodb { MongoDbContainer }
+import from testcontainers.community.redis { RedisContainer }
 import from jaclang.scale.tests.server_support { call_walker, extract, get_free_port }
 
 glob FIXTURES_DIR = Path(__file__).parent.parent / "fixtures",

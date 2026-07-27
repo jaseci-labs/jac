@@ -33,12 +33,10 @@ impl create_piece(kind: PieceKind, color: Color, row: int, col: int) -> Piece {
 }
 
 impl seed_random(seed: int) -> None {
-    global _rand_state;
     _rand_state = seed;
 }
 
 impl random_int(max_val: int) -> int {
-    global _rand_state;
     _rand_state = (_rand_state * 1103515245 + 12345) % 2147483648;
     if max_val <= 0 {
         return 0;

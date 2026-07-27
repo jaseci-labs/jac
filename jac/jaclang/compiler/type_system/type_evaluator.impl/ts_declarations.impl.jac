@@ -1,11 +1,7 @@
 impl TypeEvaluator._get_ts_declared_item_type(
     from_loc: uni.ModulePath, item_name: str
 ) -> (TypeBase | None) {
-    if not (
-        from_loc.path
-        and len(from_loc.path) == 1
-        and isinstance(from_loc.path[0], uni.String)
-    ) {
+    if from_loc.string_path_value is None {
         return None;
     }
     if not from_loc.in_client_context() {
@@ -36,7 +32,10 @@ impl TypeEvaluator._get_ts_declared_item_type(
                     dts_path = sibling_declaration_file(js_path);
                 }
             } else {
-                dts_path = resolve_client_npm_declarations(spec, mod_path);
+                base = self._client_npm_base(spec, mod_path);
+                if base is not None {
+                    dts_path = resolve_client_npm_declarations(spec, base);
+                }
             }
         } except Exception {
             dts_path = None;

@@ -10,8 +10,10 @@ import from jaclang.scale.events.broker {
     HealthStatus
 }
 import from typing { Callable }
+import from threading { Event as _ThreadStop }
 import from jaclang.scale.events.publisher { publish, set_broker }
 import from jaclang.scale.events.subscriber { subscribe, get_subscriptions }
+import from jaclang.scale.events.streams._stream_common { consumer_loop }
 
 
 """Broker stub that raises on publish; verifies the facade swallows errors."""
@@ -204,4 +206,61 @@ test "subscribe decorator returns the original function" {
         return;
     }
     assert my_handler.__name__ == "my_handler";
+}
+
+
+# --- consumer_loop start_from forwarding ---
+"""Broker stub that records the start_from consumer_loop passes to consume."""
+obj _StartFromRecorder(EventStreamBroker) {
+    has _stop_event: _ThreadStop = _ThreadStop(),
+        seen_start_from: str = "";
+
+    def start { }
+    def stop(drain: bool = True) { }
+    def publish(topic: str, event: Event, key: str | None = None) { }
+    def register_handler(
+        topic: str,
+        handler: Callable[[Event], any],
+        group: str | None = None,
+        retry: RetryPolicy | None = None,
+        start_from: str = "latest"
+    ) { }
+
+    def consume(
+        topic: str,
+        group: str | None = None,
+        max_messages: int = 1,
+        timeout_seconds: float = 5.0,
+        start_from: str = "latest"
+    ) -> list[Event] {
+        self.seen_start_from = start_from;
+        self._stop_event.set();
+        return [];
+    }
+
+    def ack(event: Event) { }
+    def health -> HealthStatus {
+        return HealthStatus(healthy=True, broker="recorder");
+    }
+}
+
+
+def _noop_handler(ev: Event) -> None {
+    return;
+}
+
+
+test "consumer_loop forwards start_from to consume" {
+    broker = _StartFromRecorder();
+    consumer_loop(
+        broker, "topic", "grp", _noop_handler, RetryPolicy(), start_from="earliest"
+    );
+    assert broker.seen_start_from == "earliest";
+}
+
+
+test "consumer_loop defaults start_from to latest" {
+    broker = _StartFromRecorder();
+    consumer_loop(broker, "topic", "grp", _noop_handler, RetryPolicy());
+    assert broker.seen_start_from == "latest";
 }

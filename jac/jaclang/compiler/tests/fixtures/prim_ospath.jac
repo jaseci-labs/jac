@@ -10,14 +10,33 @@ congruent on the pure-string POSIX path helpers, including the `normpath` /
 opts out.
 """
 
-import from os.path { normpath, dirname, basename, splitext, split, isabs }
+import from os.path {
+    normpath,
+    dirname,
+    basename,
+    splitext,
+    split,
+    isabs,
+    join,
+    abspath
+}
 
-def ospath_py() -> dict {
+def ospath_py -> dict {
     (stem, ext) = splitext("/a/archive.tar.gz");
     (sh_trail, st_trail) = split("/a/b/");
     (sh_all, st_all) = split("//");
     (sh_rel, st_rel) = split("file.txt");
     return {
+        "join2": join("a", "b"),
+        "join_trail": join("a/", "b"),
+        "join_abs": join("a", "/b"),
+        "join_empty_tail": join("a", ""),
+        "join_empty_head": join("", "b"),
+        "join3": join("a", "b", "c"),
+        "abspath_abs": abspath("/a/../b"),
+        "abspath_rel": abspath("x/./y"),
+        "abspath_dot": abspath("."),
+        "abspath_empty": abspath(""),
         "np_rel": normpath("a/b/../c"),
         "np_abs": normpath("/a//b/./c/"),
         "np_dot": normpath("."),
@@ -38,20 +57,31 @@ def ospath_py() -> dict {
         "splitext_ext": ext,
         "isabs_yes": 1 if isabs("/x") else 0,
         "isabs_no": 1 if isabs("rel/x") else 0,
+
     };
 }
 
-cl def ospath_cl() -> dict {
+cl def ospath_cl -> dict {
     return {};
 }
 
 na {
-    def ospath_na() -> dict[str, any] {
+    def ospath_na -> dict[str, any] {
         (stem, ext) = splitext("/a/archive.tar.gz");
         (sh_trail, st_trail) = split("/a/b/");
         (sh_all, st_all) = split("//");
         (sh_rel, st_rel) = split("file.txt");
         return {
+            "join2": join("a", "b"),
+            "join_trail": join("a/", "b"),
+            "join_abs": join("a", "/b"),
+            "join_empty_tail": join("a", ""),
+            "join_empty_head": join("", "b"),
+            "join3": join("a", "b", "c"),
+            "abspath_abs": abspath("/a/../b"),
+            "abspath_rel": abspath("x/./y"),
+            "abspath_dot": abspath("."),
+            "abspath_empty": abspath(""),
             "np_rel": normpath("a/b/../c"),
             "np_abs": normpath("/a//b/./c/"),
             "np_dot": normpath("."),
@@ -72,6 +102,7 @@ na {
             "splitext_ext": ext,
             "isabs_yes": 1 if isabs("/x") else 0,
             "isabs_no": 1 if isabs("rel/x") else 0,
+
         };
     }
 }

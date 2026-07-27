@@ -120,6 +120,59 @@ test "install refuses a foreign hook unless forced" {
     assert backed_up , "--force must back the foreign hook up as pre-commit.bak";
 }
 
+test "install writes both hooks and reinstall is idempotent" {
+    repo = make_repo();
+    old = os.getcwd();
+    os.chdir(repo);
+    try {
+        first = precommit(install=True);
+        second = precommit(install=True);
+        hooks = Path(repo) / ".git" / "hooks";
+        pc = hooks / "pre-commit";
+        cm = hooks / "commit-msg";
+        both_exist = pc.exists() and cm.exists();
+        both_exec = os.access(str(pc), os.X_OK) and os.access(str(cm), os.X_OK);
+    } finally {
+        os.chdir(old);
+        shutil.rmtree(repo, ignore_errors=True);
+    }
+    assert first == 0 , "fresh install must succeed";
+    assert second == 0 , "re-running install over our own hooks must succeed "
+    "without --force (fresh_env.sh re-runs it)";
+    assert both_exist , "install must write pre-commit AND commit-msg hooks";
+    assert both_exec , "both hooks must be executable";
+}
+
+test "commit-msg hook blocks AI co-author attribution" {
+    repo = make_repo();
+    old = os.getcwd();
+    os.chdir(repo);
+    try {
+        ret = precommit(install=True);
+        cm = str(Path(repo) / ".git" / "hooks" / "commit-msg");
+        msg = Path(repo) / "msg.txt";
+
+        msg.write_text(
+            "fix: a change\n\nCo-Authored-By: Claude <noreply@anthropic.com>\n"
+        );
+        ai_rc = subprocess.run(["sh", cm, str(msg)]).returncode;
+
+        msg.write_text("fix: a change\n\nCo-authored-by: Aidan Smith <a@b.co>\n");
+        human_rc = subprocess.run(["sh", cm, str(msg)]).returncode;
+
+        msg.write_text("fix: a plain change\n");
+        plain_rc = subprocess.run(["sh", cm, str(msg)]).returncode;
+    } finally {
+        os.chdir(old);
+        shutil.rmtree(repo, ignore_errors=True);
+    }
+    assert ret == 0 , "install must succeed";
+    assert ai_rc != 0 , "an AI co-author trailer must be rejected";
+    assert human_rc == 0 , "a human co-author must pass (word-boundary match: "
+    "'Aidan' must not trip the 'ai' pattern)";
+    assert plain_rc == 0 , "a message with no co-author trailer must pass";
+}
+
 test "precommit typecheck knob gates the check step" {
     # A formatted file with a TYPE error: with [precommit] typecheck = false
     # the gate passes (format-only commits while a codebase is not yet

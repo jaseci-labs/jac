@@ -19,7 +19,7 @@ import from jaclang.jac0core.osp_kernel {
 }
 
 obj _ContextStack {
-    has _var: any by postinit;
+    has _var: any postinit;
 
     def postinit {
         self._var = ContextVar('osp_walk_stack', default=None);

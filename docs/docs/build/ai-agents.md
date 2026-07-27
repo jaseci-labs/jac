@@ -53,4 +53,4 @@ def answer_question(question: str) -> str
 - An AI CLI tool → [CLI tools & native binaries](cli-and-native.md)
 - An AI backend → [Backend APIs & services](backend-apis.md)
 - An AI full-stack app → [Full-stack web apps](fullstack-web.md) (see the AI Day Planner)
-- Let AI build *for* you → [Agent Skills & MCP](../quick-guide/agent-skills-and-mcp.md) -- Jac's built-in coding agent (`jac ai`), MCP server, and agent-facing tooling
+- Let AI build *for* you → [Agent Skills & MCP](../reference/agent-skills-and-mcp.md) -- Jac's built-in coding agent (`jac ai`), MCP server, and agent-facing tooling

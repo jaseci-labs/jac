@@ -39,9 +39,9 @@ zig version          # must print 0.16.0
 
 (The vendored typeshed stdlib stubs are not committed -- `zig build` fetches them at the pinned commit on first build, so there is nothing to check out manually.)
 
-**2. Build the binary and set up plugins + pre-commit**
+**2. Build the binary and set up plugins + git hooks**
 
-The bootstrap script builds the binary, puts it on PATH for the current shell, installs the plugins editable, and sets up pre-commit:
+The bootstrap script builds the binary, puts it on PATH for the current shell, installs the plugins editable, and installs the git hooks (`jac precommit --install`):
 
 ```bash
 ./scripts/fresh_env.sh
@@ -90,7 +90,7 @@ test_jobs = "auto"   # "auto" = one worker per core; "0" = serial; or a fixed co
 **Build something awesome, or fix something that's broken**
 
 See Rules below.
-And check [`.pre-commit-config.yaml`](https://github.com/Jaseci-Labs/jaseci/blob/main/.pre-commit-config.yaml) to see our lint strategy.
+Formatting and linting are enforced by `jac precommit` (configured via `[check.lint]` in [`jac.toml`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac.toml)); markdown lint and the em-dash ban run on every PR via pre-commit.ci ([`.pre-commit-config.yaml`](https://github.com/Jaseci-Labs/jaseci/blob/main/.pre-commit-config.yaml)).
 
 **This is how we run the docs.**
 
@@ -126,7 +126,7 @@ python docs/scripts/mkdocs_serve.py
 
 > **Tip: PR Best Practices**
 >
-> - Make sure all pre-commit checks pass before pushing
+> - Make sure `jac precommit` passes before pushing
 > - Run tests locally using the test script above
 > - Keep your PR focused on a single feature or fix
 > - Write clear commit messages and PR descriptions

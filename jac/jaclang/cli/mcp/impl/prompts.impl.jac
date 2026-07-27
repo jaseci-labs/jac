@@ -1,7 +1,6 @@
 impl load_resource_content(uri: str) -> str {
-    import from jaclang.cli.mcp.resources { ResourceProvider }
-    rp = ResourceProvider();
-    rp.index_resources();
+    import from jaclang.cli.mcp.resources { get_resource_provider }
+    rp = get_resource_provider();
     content = rp.read_resource(uri);
     if content.startswith("Error:") {
         return "";

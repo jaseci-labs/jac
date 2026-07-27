@@ -64,7 +64,7 @@ test "pyfunc 1" {
     assert 'assert (x == 5) , "x should be equal to 5";' in output;
     assert "if not (x == y) {" in output;
     assert "squares_dict = {x: (x ** 2) for x in numbers};" in output;
-    assert '\n"""Say hello"""\n@my_decorator\n\n def say_hello() -> object {' in output;
+    assert '\n"""Say hello"""\n@my_decorator\n\ndef say_hello() -> object {' in output;
 }
 
 test "pyfunc 2" {

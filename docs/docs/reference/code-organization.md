@@ -94,7 +94,7 @@ The simplest pattern: declarations and implementations live together in a single
 
 ```jac
 obj ReadWriteLock {
-    has _cond: threading.Condition by postinit,
+    has _cond: threading.Condition postinit,
         _readers: int = 0,
         _writer: bool = False;
 

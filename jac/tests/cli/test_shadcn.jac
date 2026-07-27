@@ -66,7 +66,7 @@ test "read shadcn config returns none when section missing" {
 # ── Peer Dependency Resolution Tests ──
 test "resolve peer deps with no dependencies" {
     registry_data = {
-        "components": {"button": {"file": "button.cl.jac", "peerComponents": []}}
+        "components": {"button": {"file": "button.jac", "peerComponents": []}}
     };
     result = _resolve_peer_deps(["button"], registry_data, set());
     assert result == ["button"];
@@ -75,8 +75,8 @@ test "resolve peer deps with no dependencies" {
 test "resolve peer deps adds missing peers" {
     registry_data = {
         "components": {
-            "dialog": {"file": "dialog.cl.jac", "peerComponents": ["button"]},
-            "button": {"file": "button.cl.jac", "peerComponents": []}
+            "dialog": {"file": "dialog.jac", "peerComponents": ["button"]},
+            "button": {"file": "button.jac", "peerComponents": []}
         }
     };
     result = _resolve_peer_deps(["dialog"], registry_data, set());
@@ -88,8 +88,8 @@ test "resolve peer deps adds missing peers" {
 test "resolve peer deps skips existing components" {
     registry_data = {
         "components": {
-            "dialog": {"file": "dialog.cl.jac", "peerComponents": ["button"]},
-            "button": {"file": "button.cl.jac", "peerComponents": []}
+            "dialog": {"file": "dialog.jac", "peerComponents": ["button"]},
+            "button": {"file": "button.jac", "peerComponents": []}
         }
     };
     result = _resolve_peer_deps(["dialog"], registry_data, {"button"});
@@ -105,9 +105,9 @@ test "resolve peer deps handles unknown component" {
 test "resolve peer deps handles transitive deps" {
     registry_data = {
         "components": {
-            "a": {"file": "a.cl.jac", "peerComponents": ["b"]},
-            "b": {"file": "b.cl.jac", "peerComponents": ["c"]},
-            "c": {"file": "c.cl.jac", "peerComponents": []}
+            "a": {"file": "a.jac", "peerComponents": ["b"]},
+            "b": {"file": "b.jac", "peerComponents": ["c"]},
+            "c": {"file": "c.jac", "peerComponents": []}
         }
     };
     result = _resolve_peer_deps(["a"], registry_data, set());
@@ -120,9 +120,9 @@ test "resolve peer deps handles transitive deps" {
 test "resolve peer deps no duplicates" {
     registry_data = {
         "components": {
-            "a": {"file": "a.cl.jac", "peerComponents": ["c"]},
-            "b": {"file": "b.cl.jac", "peerComponents": ["c"]},
-            "c": {"file": "c.cl.jac", "peerComponents": []}
+            "a": {"file": "a.jac", "peerComponents": ["c"]},
+            "b": {"file": "b.jac", "peerComponents": ["c"]},
+            "c": {"file": "c.jac", "peerComponents": []}
         }
     };
     result = _resolve_peer_deps(["a", "b"], registry_data, set());
@@ -170,10 +170,10 @@ test "remove existing component" {
     with tempfile.TemporaryDirectory() as tmpdir {
         ui_dir = Path(tmpdir) / "components" / "ui";
         ui_dir.mkdir(parents=True);
-        (ui_dir / "button.cl.jac").write_text("// button component");
+        (ui_dir / "button.jac").write_text("// button component");
         result = remove_shadcn_components(MockConfig(project_root=tmpdir), ["button"]);
         assert result == True;
-        assert not (ui_dir / "button.cl.jac").exists();
+        assert not (ui_dir / "button.jac").exists();
     }
 }
 
@@ -199,30 +199,44 @@ test "remove multiple components" {
     with tempfile.TemporaryDirectory() as tmpdir {
         ui_dir = Path(tmpdir) / "components" / "ui";
         ui_dir.mkdir(parents=True);
-        (ui_dir / "button.cl.jac").write_text("// button");
-        (ui_dir / "card.cl.jac").write_text("// card");
+        (ui_dir / "button.jac").write_text("// button");
+        (ui_dir / "card.jac").write_text("// card");
         result = remove_shadcn_components(
             MockConfig(project_root=tmpdir), ["button", "card"]
         );
         assert result == True;
-        assert not (ui_dir / "button.cl.jac").exists();
-        assert not (ui_dir / "card.cl.jac").exists();
+        assert not (ui_dir / "button.jac").exists();
+        assert not (ui_dir / "card.jac").exists();
     }
 }
 
 test "remove resolves registry filename mismatch" {
-    # `jac install --shadcn input-otp` installs as otp_input.cl.jac (registry file
-    # `otp-input.cl.jac`, dashes → underscores); remove by the registry name
-    # must resolve to that file, not input_otp.cl.jac.
+    # `jac install --shadcn input-otp` installs as otp_input.jac (registry file
+    # `otp-input.jac`, dashes → underscores); remove by the registry name
+    # must resolve to that file, not input_otp.jac.
     with tempfile.TemporaryDirectory() as tmpdir {
         ui_dir = Path(tmpdir) / "components" / "ui";
         ui_dir.mkdir(parents=True);
-        (ui_dir / "otp_input.cl.jac").write_text("// otp input");
+        (ui_dir / "otp_input.jac").write_text("// otp input");
         result = remove_shadcn_components(
             MockConfig(project_root=tmpdir), ["input-otp"]
         );
         assert result == True;
-        assert not (ui_dir / "otp_input.cl.jac").exists();
+        assert not (ui_dir / "otp_input.jac").exists();
+    }
+}
+
+test "remove finds legacy .cl.jac component" {
+    # GUARD: pre-markerless projects hold `button.cl.jac`. The registry now
+    # resolves to `button.jac`, so remove must fall back to the legacy `.cl.jac`
+    # name or it silently leaves the old file installed.
+    with tempfile.TemporaryDirectory() as tmpdir {
+        ui_dir = Path(tmpdir) / "components" / "ui";
+        ui_dir.mkdir(parents=True);
+        (ui_dir / "button.cl.jac").write_text("// legacy button component");
+        result = remove_shadcn_components(MockConfig(project_root=tmpdir), ["button"]);
+        assert result == True;
+        assert not (ui_dir / "button.cl.jac").exists();
     }
 }
 
@@ -329,10 +343,10 @@ test "add components from bundled registry" {
         ui_dir = Path(tmpdir) / "components" / "ui";
         assert ui_dir.exists();
         # Check button file was created
-        button_files = list(ui_dir.glob("button*.cl.jac"));
+        button_files = list(ui_dir.glob("button*.jac"));
         assert len(button_files) > 0;
         # Check utils was created
-        utils_path = Path(tmpdir) / "lib" / "utils.cl.jac";
+        utils_path = Path(tmpdir) / "lib" / "utils.jac";
         assert utils_path.exists();
     }
 }
@@ -347,7 +361,7 @@ test "add components fails without shadcn config" {
 
 test "add hyphenated component installs underscored file name" {
     # GUARD: a hyphen cannot appear in a Jac module name, so `install --shadcn
-    # dropdown-menu` MUST write `dropdown_menu.cl.jac`. A hyphenated file is not
+    # dropdown-menu` MUST write `dropdown_menu.jac`. A hyphenated file is not
     # importable (unquoted = parse error, quoted = unresolved). Do not drop the
     # install-side dash-to-underscore conversion.
     with tempfile.TemporaryDirectory() as tmpdir {
@@ -361,16 +375,16 @@ test "add hyphenated component installs underscored file name" {
         result = add_shadcn_components(config, ["dropdown-menu"]);
         assert result == True;
         ui_dir = Path(tmpdir) / "components" / "ui";
-        assert (ui_dir / "dropdown_menu.cl.jac").exists();
-        assert not (ui_dir / "dropdown-menu.cl.jac").exists();
-        for installed in ui_dir.glob("*.cl.jac") {
+        assert (ui_dir / "dropdown_menu.jac").exists();
+        assert not (ui_dir / "dropdown-menu.jac").exists();
+        for installed in ui_dir.glob("*.jac") {
             assert "-" not in installed.name;
         }
     }
 }
 
 test "add double-stem-mismatch component installs underscored file name" {
-    # `input-otp` -> registry file `otp-input.cl.jac` -> installed `otp_input.cl.jac`.
+    # `input-otp` -> registry file `otp-input.jac` -> installed `otp_input.jac`.
     with tempfile.TemporaryDirectory() as tmpdir {
         toml_path = Path(tmpdir) / "jac.toml";
         toml_path.write_text(
@@ -382,8 +396,8 @@ test "add double-stem-mismatch component installs underscored file name" {
         result = add_shadcn_components(config, ["input-otp"]);
         assert result == True;
         ui_dir = Path(tmpdir) / "components" / "ui";
-        assert (ui_dir / "otp_input.cl.jac").exists();
-        assert not (ui_dir / "otp-input.cl.jac").exists();
+        assert (ui_dir / "otp_input.jac").exists();
+        assert not (ui_dir / "otp-input.jac").exists();
     }
 }
 
@@ -394,7 +408,7 @@ test "registry uses valid Jac module names throughout" {
     import from jaclang.cli.shadcn.shadcn_handler { _registry_dir }
     import re;
     ui_dir = _registry_dir() / "components" / "ui";
-    for source_file in ui_dir.glob("*.cl.jac") {
+    for source_file in ui_dir.glob("*.jac") {
         assert "-" not in source_file.name;
         for spec in re.findall(r'import from "(\.[^"]*)"', source_file.read_text()) {
             assert "-" not in spec;
@@ -416,8 +430,8 @@ test "component with a peer resolves to a matching underscored import" {
         result = add_shadcn_components(config, ["combobox"]);
         assert result == True;
         ui_dir = Path(tmpdir) / "components" / "ui";
-        assert (ui_dir / "input_group.cl.jac").exists();
-        combobox_src = (ui_dir / "combobox.cl.jac").read_text();
+        assert (ui_dir / "input_group.jac").exists();
+        combobox_src = (ui_dir / "combobox.jac").read_text();
         assert 'import from ".input_group"' in combobox_src;
         assert 'import from ".input-group"' not in combobox_src;
     }

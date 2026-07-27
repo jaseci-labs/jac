@@ -43,10 +43,6 @@ fi
 # Check if any release notes .md files were directly modified
 PROTECTED_FILES=(
     "docs/docs/community/release_notes/jaclang.md"
-    "docs/docs/community/release_notes/byllm.md"
-    "docs/docs/community/release_notes/jac-client.md"
-    "docs/docs/community/release_notes/jac-scale.md"
-    "docs/docs/community/release_notes/jac-mcp.md"
 )
 
 DIRECTLY_MODIFIED=()
@@ -83,6 +79,8 @@ FRAGMENT_REGEX='docs/docs/community/release_notes/unreleased/[^/]+/([0-9]+)\.(fe
 CHANGED_FRAGMENTS=()
 while IFS= read -r file; do
     [ -z "$file" ] && continue
+    # Deleted fragments (cleanup of stale entries) are not "this PR's fragment"
+    [ -f "$file" ] || continue
     [[ "$file" =~ $FRAGMENT_REGEX ]] && CHANGED_FRAGMENTS+=("$file")
 done <<< "$CHANGED_FILES"
 

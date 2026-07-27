@@ -42,3 +42,18 @@ def test_strip_split() -> int {
     parts: list[str] = t.split(" ");
     return len(parts);
 }
+
+# Leak regression (#6814): split() must not strand its fresh token strings.
+# Parameterized so the test can drive a large (200-element) input to amplify
+# any per-token leak; the returned list is a scope-local freed at exit.
+def split_count(s: str, sep: str) -> int {
+    parts: list[str] = s.split(sep);
+    return len(parts);
+}
+
+# Leak regression (#6814): str[i:j] substring slicing must not strand the
+# freshly-allocated result. Returns the half-length of a scope-local slice.
+def slice_half_len(s: str) -> int {
+    half: str = s[0:len(s) / 2];
+    return len(half);
+}

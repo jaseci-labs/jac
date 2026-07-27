@@ -6,7 +6,7 @@ import from jaclang.scale.config.config_loader { get_scale_config }
 obj KubernetesMongoProvider(DatabaseProvider) {
     has target: (DeploymentTarget | None) = None,
         config: dict[str, any] = {},
-        app_name: str by postinit,
+        app_name: str postinit,
         connection_string: str = '';
 
     def postinit {

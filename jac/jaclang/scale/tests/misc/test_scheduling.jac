@@ -353,6 +353,7 @@ test "jobs validation and auth errors" {
             # Pydantic schema layer (CreateJobRequest) with FastAPI's default
             # 422 response, so they don't reach our custom handler and aren't
             # listed here.
+
         ];
 
         for (payload, expected_code) in invalid_request_cases {

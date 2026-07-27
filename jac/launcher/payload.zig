@@ -272,10 +272,12 @@ fn fetchPbs(io: Io, gpa: Allocator, a: Allocator, osarch: []const u8, dest: []co
 fn fetchLlvm(io: Io, gpa: Allocator, a: Allocator, dest: []const u8) !void {
     const rel = llvmRelease() orelse
         die("fetch-llvm: no pinned LLVM release for this host ({s}-{s}); add a row to llvmRelease().", .{ @tagName(builtin.cpu.arch), @tagName(builtin.os.tag) });
-    // Presence marker / success check. On macOS the shim link needs the release's
-    // own libLTO.dylib (ThinLTO bitcode archives; see build.zig macosShim, #6938),
-    // so require it there. A missing marker re-fetches (self-heals a stale cache).
-    const marker_lib = if (builtin.os.tag == .macos) "libLTO.dylib" else "libLLVMCore.a";
+    // Presence marker / success check. On macOS an UPSTREAM slice's shim link
+    // needs the release's own libLTO.dylib (ThinLTO bitcode archives; see
+    // build.zig macosShim, #6938), so require it there; a from-source slice
+    // (e.g. macos-x86_64) ships plain archives and no libLTO. A missing marker
+    // re-fetches (self-heals a stale cache).
+    const marker_lib = if (builtin.os.tag == .macos and rel.upstream) "libLTO.dylib" else "libLLVMCore.a";
     const marker = try std.fmt.allocPrint(a, "{s}/{s}/lib/{s}", .{ dest, rel.dirname, marker_lib });
     if (fileExists(io, marker)) {
         log("fetch-llvm: already present at {s}/{s}", .{ dest, rel.dirname });
@@ -675,7 +677,12 @@ fn buildWasmLibc(io: Io, gpa: Allocator, a: Allocator, src_root: []const u8, des
     defer srcs.deinit(gpa);
     var outs: std.ArrayList([]const u8) = .empty; // matching .bc basenames
     defer outs.deinit(gpa);
-    var hdr_m: i96 = 0; // newest non-.c file (headers/prelude) under wasm_rt
+    var rels: std.ArrayList([]const u8) = .empty; // manifest key per source
+    defer rels.deinit(gpa);
+    var hdrs: std.ArrayList([]const u8) = .empty; // non-.c inputs (headers/prelude)
+    defer hdrs.deinit(gpa);
+    var hdr_rels: std.ArrayList([]const u8) = .empty;
+    defer hdr_rels.deinit(gpa);
     {
         var root = Dir.cwd().openDir(io, src_root, .{ .iterate = true }) catch
             die("build-wasm-libc: wasm_rt source dir missing at {s}", .{src_root});
@@ -685,10 +692,16 @@ fn buildWasmLibc(io: Io, gpa: Allocator, a: Allocator, src_root: []const u8, des
             if (entry.kind != .file) continue;
             const full = try std.fmt.allocPrint(a, "{s}/{s}", .{ src_root, entry.name });
             if (!std.mem.startsWith(u8, entry.name, "jac_") or !std.mem.endsWith(u8, entry.name, ".c")) {
-                hdr_m = @max(hdr_m, mtimeNs(io, full) orelse 0);
+                // Only .h participates; README/LICENSE are not build inputs and
+                // must not force a full rebuild of every translation unit.
+                if (std.mem.endsWith(u8, entry.name, ".h")) {
+                    try hdrs.append(gpa, full);
+                    try hdr_rels.append(gpa, try a.dupe(u8, entry.name));
+                }
                 continue;
             }
             try srcs.append(gpa, full);
+            try rels.append(gpa, try a.dupe(u8, entry.name));
             try outs.append(gpa, try std.fmt.allocPrint(a, "{s}bc", .{entry.name[0 .. entry.name.len - 1]}));
         }
         const vendor = try std.fmt.allocPrint(a, "{s}/vendor", .{src_root});
@@ -700,11 +713,19 @@ fn buildWasmLibc(io: Io, gpa: Allocator, a: Allocator, src_root: []const u8, des
         while (walker.next(io) catch null) |entry| {
             if (entry.kind != .file) continue;
             const full = try std.fmt.allocPrint(a, "{s}/{s}", .{ vendor, entry.path });
+            const rel = try std.fmt.allocPrint(a, "vendor/{s}", .{entry.path});
+            for (rel) |*ch| {
+                if (ch.* == '\\') ch.* = '/';
+            }
             if (!std.mem.endsWith(u8, entry.path, ".c")) {
-                hdr_m = @max(hdr_m, mtimeNs(io, full) orelse 0);
+                if (std.mem.endsWith(u8, entry.path, ".h")) {
+                    try hdrs.append(gpa, full);
+                    try hdr_rels.append(gpa, rel);
+                }
                 continue;
             }
             try srcs.append(gpa, full);
+            try rels.append(gpa, rel);
             const flat = try a.dupe(u8, entry.path);
             for (flat) |*ch| {
                 if (ch.* == '/' or ch.* == '\\') ch.* = '_';
@@ -715,16 +736,59 @@ fn buildWasmLibc(io: Io, gpa: Allocator, a: Allocator, src_root: []const u8, des
     if (srcs.items.len == 0) die("build-wasm-libc: no sources found under {s}", .{src_root});
 
     try Dir.cwd().createDirPath(io, dest);
-    var stale: usize = 0;
-    for (srcs.items, outs.items) |src, out_name| {
-        const out_path = try std.fmt.allocPrint(a, "{s}/{s}", .{ dest, out_name });
-        const out_m = mtimeNs(io, out_path) orelse {
-            stale += 1;
-            continue;
+
+    // Staleness is decided by content, not mtime. A `git checkout` that
+    // rewrites timestamps without changing bytes must not force a rebuild,
+    // and an edit that leaves the mtime alone must not be missed. The file
+    // written here is the same one wasm_build.jac reads back to decide
+    // whether the floor it is about to link matches this source tree, so the
+    // producer's incremental key and the consumer's staleness check are one
+    // artifact rather than two mechanisms that can disagree.
+    var digest_of = std.StringHashMap([64]u8).init(gpa);
+    defer digest_of.deinit();
+    for (rels.items, srcs.items) |rel, full| {
+        const bytes = try Dir.cwd().readFileAlloc(io, full, a, .unlimited);
+        try digest_of.put(rel, sha256Hex(bytes));
+    }
+    for (hdr_rels.items, hdrs.items) |rel, full| {
+        const bytes = try Dir.cwd().readFileAlloc(io, full, a, .unlimited);
+        try digest_of.put(rel, sha256Hex(bytes));
+    }
+
+    var prev = std.StringHashMap([64]u8).init(gpa);
+    defer prev.deinit();
+    const manifest_path = try std.fmt.allocPrint(a, "{s}/{s}", .{ dest, wasm_floor_manifest });
+    if (Dir.cwd().readFileAlloc(io, manifest_path, a, .unlimited) catch null) |txt| {
+        var lines = std.mem.tokenizeScalar(u8, txt, '\n');
+        while (lines.next()) |ln| {
+            if (ln.len < 67 or ln[64] != ' ') continue;
+            var d: [64]u8 = undefined;
+            @memcpy(&d, ln[0..64]);
+            try prev.put(std.mem.trim(u8, ln[65..], " \r"), d);
+        }
+    }
+
+    // Headers are inputs to every translation unit, so any header change
+    // rebuilds the whole floor; a .c change rebuilds only its own object.
+    var hdrs_changed = false;
+    for (hdr_rels.items) |rel| {
+        const now = digest_of.get(rel).?;
+        const was = prev.get(rel) orelse {
+            hdrs_changed = true;
+            break;
         };
-        if (@max(mtimeNs(io, src) orelse 0, hdr_m) > out_m) stale += 1;
+        if (!std.mem.eql(u8, &now, &was)) {
+            hdrs_changed = true;
+            break;
+        }
+    }
+
+    var stale: usize = 0;
+    for (rels.items, outs.items) |rel, out_name| {
+        if (wasmFloorUnitStale(io, a, dest, out_name, rel, digest_of, prev, hdrs_changed)) stale += 1;
     }
     if (stale == 0) {
+        try writeWasmFloorManifest(io, gpa, manifest_path, rels.items, hdr_rels.items, digest_of);
         log("==> wasm libc bitcode up to date in {s}; skipping", .{dest});
         return;
     }
@@ -741,11 +805,9 @@ fn buildWasmLibc(io: Io, gpa: Allocator, a: Allocator, src_root: []const u8, des
     const inc_private = try std.fmt.allocPrint(a, "-I{s}/vendor/private", .{src_root});
     const inc_math = try std.fmt.allocPrint(a, "-I{s}/vendor/math", .{src_root});
     var built: usize = 0;
-    for (srcs.items, outs.items) |src, out_name| {
+    for (srcs.items, outs.items, rels.items) |src, out_name, rel| {
         const out_path = try std.fmt.allocPrint(a, "{s}/{s}", .{ dest, out_name });
-        if (mtimeNs(io, out_path)) |out_m| {
-            if (@max(mtimeNs(io, src) orelse 0, hdr_m) <= out_m) continue;
-        }
+        if (!wasmFloorUnitStale(io, a, dest, out_name, rel, digest_of, prev, hdrs_changed)) continue;
         if (!runChild(io, &.{
             zig_exe,                                                                       "cc",         "-target",    "wasm32-wasi",  "-O2",      "-g0",
             "-w",                                                                          "-c",         "-emit-llvm", "-fno-builtin", "-include", prelude,
@@ -758,7 +820,71 @@ fn buildWasmLibc(io: Io, gpa: Allocator, a: Allocator, src_root: []const u8, des
     // The merged-module cache is derived from the parts; a fresh compile
     // invalidates it.
     Dir.cwd().deleteFile(io, try std.fmt.allocPrint(a, "{s}/_merged.bc", .{dest})) catch {};
+
+    // Written only after every unit compiled: a manifest is a claim that the
+    // floor beside it was built from exactly these bytes, so a half-finished
+    // build must not leave one behind. sha256sum's format, so it stays
+    // readable (and `shasum -c`-able) and needs no parser on either side.
+    try writeWasmFloorManifest(io, gpa, manifest_path, rels.items, hdr_rels.items, digest_of);
     log("==> compiled {d} wasm libc bitcode file(s) -> {s}", .{ built, dest });
+}
+
+/// Record the exact bytes the floor beside it was built from, in sha256sum's
+/// format so it stays readable (and `shasum -c`-able) and needs no parser on
+/// either side. Rewritten on every run, including the no-op path, so it never
+/// describes a stale input set: a manifest that outlived one of its entries
+/// would make the consumer's verification answer a question nobody asked.
+fn writeWasmFloorManifest(
+    io: Io,
+    gpa: Allocator,
+    manifest_path: []const u8,
+    srcs: []const []const u8,
+    hdrs: []const []const u8,
+    digest_of: std.StringHashMap([64]u8),
+) !void {
+    var all: std.ArrayList([]const u8) = .empty;
+    defer all.deinit(gpa);
+    try all.appendSlice(gpa, srcs);
+    try all.appendSlice(gpa, hdrs);
+    std.mem.sort([]const u8, all.items, {}, struct {
+        fn lt(_: void, x: []const u8, y: []const u8) bool {
+            return std.mem.lessThan(u8, x, y);
+        }
+    }.lt);
+    var man: std.ArrayList(u8) = .empty;
+    defer man.deinit(gpa);
+    for (all.items) |rel| {
+        const d = digest_of.get(rel) orelse continue;
+        try man.appendSlice(gpa, &d);
+        try man.append(gpa, ' ');
+        try man.appendSlice(gpa, rel);
+        try man.append(gpa, '\n');
+    }
+    try Dir.cwd().writeFile(io, .{ .sub_path = manifest_path, .data = man.items });
+}
+
+/// Name of the floor's source manifest; `wasm_build.jac` resolves the same
+/// constant to verify a floor before linking it.
+const wasm_floor_manifest = "SOURCES.sha256";
+
+/// One translation unit is stale when its object is missing, its own source
+/// hash moved, or any header changed (headers feed every unit).
+fn wasmFloorUnitStale(
+    io: Io,
+    a: Allocator,
+    dest: []const u8,
+    out_name: []const u8,
+    rel: []const u8,
+    digest_of: std.StringHashMap([64]u8),
+    prev: std.StringHashMap([64]u8),
+    hdrs_changed: bool,
+) bool {
+    const out_path = std.fmt.allocPrint(a, "{s}/{s}", .{ dest, out_name }) catch return true;
+    if (mtimeNs(io, out_path) == null) return true; // object missing
+    if (hdrs_changed) return true;
+    const now = digest_of.get(rel) orelse return true;
+    const was = prev.get(rel) orelse return true;
+    return !std.mem.eql(u8, &now, &was);
 }
 
 /// Extract the single zip member whose name ends with `suffix` from an in-memory
@@ -1117,6 +1243,10 @@ fn mkPayload(
 
     try stageTree(io, gpa, a, pbs_py_dir, site, stage, musl_dir, wasm_libc_dir);
 
+    // Precompile the staged stdlib + site to HASH-based .pyc. Must run AFTER
+    // stageTree (compiles the copied tree that gets tarred) and BEFORE tarGzDir.
+    precompilePyc(io, a, py, stage);
+
     // ninja editor: the assembled nvim tree (runtime/ + ninja/) rides the
     // payload verbatim -- the launcher's `jac ninja` dispatch resolves it at
     // <rt>/nvim without booting Python.
@@ -1262,6 +1392,21 @@ fn precompile(io: Io, gpa: Allocator, a: Allocator, parent_env: *std.process.Env
 }
 
 
+/// Stage the relocatable pbs `python3.x` launcher under `python/bin/`. Project
+/// venvs created by the fused `jac` binary use this as their base interpreter.
+/// Only the versioned binary is copied; aliases are unnecessary because
+/// `_bundled_runtime_python` prefers `python{major}.{minor}`. Do not strip: plain
+/// `strip` corrupts the PBS launcher (versioned-symbol lookup fails at runtime).
+fn stagePythonBin(io: Io, a: Allocator, pbs_py_dir: []const u8, stage: []const u8) !void {
+    const py = try resolvePython(io, a, pbs_py_dir);
+    const bare = std.fs.path.basename(py);
+    const bin_dst = try std.fmt.allocPrint(a, "{s}/python/bin", .{stage});
+    try Dir.cwd().createDirPath(io, bin_dst);
+    const dst = try std.fmt.allocPrint(a, "{s}/{s}", .{ bin_dst, bare });
+    try Dir.cwd().copyFile(py, Dir.cwd(), dst, io, .{ .permissions = .fromMode(0o755) });
+    log("==> staged project venv interpreter -> python/bin/{s}", .{bare});
+}
+
 /// Stage the runtime tree: shared libpython + stdlib + the assembled site.
 fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site: []const u8, stage: []const u8, musl_dir: ?[]const u8, wasm_libc_dir: ?[]const u8) !void {
     log("==> staging runtime tree (shared libpython + stdlib + site)", .{});
@@ -1319,6 +1464,11 @@ fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site:
     // The LLVMPY_* shim statically links LLVM (~130 MiB); strip it (best-effort).
     stripBestEffort(io, try std.fmt.allocPrint(a, "{s}/site/jaclang/compiler/passes/native/llvm/{s}", .{ stage, shimFileName() }));
 
+    // Relocatable pbs python launcher for project venv creation. The fused `jac`
+    // binary is not a pip/venv base interpreter; project `.jac/venv` must use
+    // real CPython so normal `pip install` works.
+    try stagePythonBin(io, a, pbs_py_dir, stage);
+
     // Static C-floor archives + CA bundle so an installed binary can static-link
     // a bundled C floor at `nacompile` time, not just dev builds (#6978 0.2).
     try stageFloor(io, gpa, a, pbs_py_dir, stage);
@@ -1330,6 +1480,37 @@ fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site:
     // Vendored wasm32 libc bitcode, so an installed binary links libc into
     // na->wasm modules (in-module libc + jac_host1 import contract, #7048).
     if (wasm_libc_dir) |wd| try stageWasmLibc(io, a, wd, stage);
+}
+
+/// Compile the staged CPython stdlib + jaclang site to HASH-based `.pyc`
+/// (PEP 552 unchecked-hash). This is the cold-start fix.
+///
+/// Timestamp `.pyc` are worthless in our payload: the runtime materializer
+/// (runtime.zig) untars the payload into a fresh cache dir, and `std.tar` has
+/// no mtime field -- so every extracted `.py` gets a "now" timestamp that can
+/// never match a timestamp-`.pyc`'s embedded build-time mtime. The embedded
+/// interpreter runs with write_bytecode=0 (embed.zig), so on that mtime
+/// mismatch it discards the `.pyc` AND cannot cache a fresh one -- it re-parses
+/// the module from source on EVERY `jac` invocation. That is exactly why pbs's
+/// own shipped timestamp `.pyc` do nothing today; the hot stdlib chain (pdb,
+/// asyncio, logging, http.server, ...) is compiled cold every run.
+///
+/// Hash-based unchecked `.pyc` ignore mtime entirely -- the interpreter uses
+/// them as-is regardless of the source timestamp, so they survive materialize.
+/// `-f` overwrites pbs's dead timestamp `.pyc` in place with hash ones. The
+/// build never fails on this: compileall exits non-zero if any single module is
+/// uncompilable (a few stdlib corners are), which just means that module
+/// recompiles at runtime as before -- strictly no worse than today.
+fn precompilePyc(io: Io, a: Allocator, py: []const u8, stage: []const u8) void {
+    log("==> precompiling stdlib + site -> hash-based .pyc (survives materialize)", .{});
+    const stdlib = std.fmt.allocPrint(a, "{s}/python/lib/python{s}", .{ stage, py_ver }) catch return;
+    const site_dir = std.fmt.allocPrint(a, "{s}/site", .{stage}) catch return;
+    _ = runChild(io, &.{
+        py,       "-m",              "compileall",
+        "--invalidation-mode", "unchecked-hash",
+        "-q",     "-f",              "-j",
+        "0",      stdlib,            site_dir,
+    }, null, true);
 }
 
 /// The build host's `<os>-<arch>` key, matching the fetch-pbs osarch dir names
@@ -1753,6 +1934,19 @@ fn zstdCompressAlloc(gpa: Allocator, bytes: []const u8) ![]u8 {
     return gpa.realloc(dst, n) catch dst[0..n];
 }
 
+/// On-disk mode of `sub_path`, or 0 (tar Writer's 0o664 default) when
+/// unreadable or on a platform without real exec bits. Guarded on
+/// `has_executable_bit` rather than `@hasDecl(Permissions, "toMode")` because
+/// WASI has `toMode` but `has_executable_bit = false`.
+fn sourceFileMode(io: Io, dir: Dir, sub_path: []const u8) u32 {
+    const Perm = Io.File.Permissions;
+    if (Perm.has_executable_bit) {
+        const st = dir.statFile(io, sub_path, .{}) catch return 0;
+        return @intCast(st.permissions.toMode());
+    }
+    return 0;
+}
+
 /// tar `stage` (its top-level `python` + `site`) and zstd it to `out`. The
 /// runtime side (runtime.zig extractPayload) decompresses this exact format
 /// with pure std. The full tar is built in memory (~430 MB plus the compress
@@ -1773,7 +1967,10 @@ fn tarZstDir(io: Io, gpa: Allocator, a: Allocator, stage: []const u8, out: []con
             else => {
                 const bytes = try stage_dir.readFileAlloc(io, entry.path, a, .unlimited);
                 defer a.free(bytes);
-                try tw.writeFileBytes(entry.path, bytes, .{});
+                // Carry the real on-disk mode so executable scripts keep their
+                // exec bit; `mode = 0` would strip IXUSR (see runtime.zig
+                // extractPayload's matching .executable_bit_only).
+                try tw.writeFileBytes(entry.path, bytes, .{ .mode = sourceFileMode(io, stage_dir, entry.path) });
             },
         }
     }
@@ -1858,6 +2055,17 @@ test "tarZstDir round-trips through the launcher's payload decoder" {
         .sub_path = try std.fmt.allocPrint(a, "{s}/python/bin/python", .{stage}),
         .data = text,
     });
+    // A 0o755 script must survive pack/extract with its exec bit intact.
+    // Guarded on `has_executable_bit` so the test compiles on Windows/WASI.
+    const exec_script = "#!/bin/sh\necho hi\n";
+    const has_mode = Io.File.Permissions.has_executable_bit;
+    if (has_mode) {
+        try Dir.cwd().writeFile(io, .{
+            .sub_path = try std.fmt.allocPrint(a, "{s}/python/bin/build_x.sh", .{stage}),
+            .data = exec_script,
+            .flags = .{ .permissions = .fromMode(0o755) },
+        });
+    }
     const big = try a.alloc(u8, 3 * zstd.block_size_max + 12345);
     var prng = std.Random.DefaultPrng.init(42);
     prng.random().bytes(big);
@@ -1881,8 +2089,28 @@ test "tarZstDir round-trips through the launcher's payload decoder" {
     try Dir.cwd().createDirPath(io, dest);
     var dest_dir = try Dir.cwd().openDir(io, dest, .{});
     defer dest_dir.close(io);
-    try std.tar.extract(io, dest_dir, &dec.reader, .{ .mode_mode = .ignore, .strip_components = 0 });
+    // Extract through the same mode_mode production uses, so this test covers
+    // the extract side too (reverting it to `.ignore` fails the IXUSR check).
+    try std.tar.extract(io, dest_dir, &dec.reader, .{ .mode_mode = runtime.payload_extract_mode_mode, .strip_components = 0 });
 
     try testing.expectEqualStrings(text, try dest_dir.readFileAlloc(io, "python/bin/python", a, .unlimited));
     try testing.expectEqualSlices(u8, big, try dest_dir.readFileAlloc(io, "python/big.bin", a, .unlimited));
+
+    // Regression: an executable source file must keep IXUSR through pack/extract.
+    if (has_mode) {
+        try testing.expectEqualStrings(exec_script, try dest_dir.readFileAlloc(io, "python/bin/build_x.sh", a, .unlimited));
+        const sf = try dest_dir.openFile(io, "python/bin/build_x.sh", .{});
+        defer sf.close(io);
+        const sst = try sf.stat(io);
+        try testing.expect(sst.permissions.toMode() & 0o100 != 0); // IXUSR preserved
+    }
+
+    // Symmetric guard: a non-executable file must stay non-exec, so the fix
+    // can't be over-broad.
+    if (has_mode) {
+        const pf = try dest_dir.openFile(io, "python/bin/python", .{});
+        defer pf.close(io);
+        const pst = try pf.stat(io);
+        try testing.expect(pst.permissions.toMode() & 0o100 == 0);
+    }
 }

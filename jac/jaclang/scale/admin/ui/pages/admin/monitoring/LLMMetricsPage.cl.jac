@@ -24,7 +24,13 @@ def:pub LLMMetricsPage -> JsxElement {
         isLoading = False;
     }
 
-    useEffect(lambda { loadSummary(); }, []);
+    useEffect(
+        lambda {
+            loadSummary();
+            return;
+        },
+        []
+    );
 
     useEffect(
         lambda -> any {

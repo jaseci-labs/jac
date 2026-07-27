@@ -57,17 +57,9 @@ jac install \
   "httpx>=0.27.0" "loguru>=0.7.2,<0.8.0" \
   --global
 
-# pre-commit is a standalone contributor tool (not part of the jac toolchain).
-# Its jac hooks shell out to the `jac` binary on PATH, so all it needs is the
-# binary above plus pre-commit itself. Install it however you prefer -- pipx is
-# cleanest; otherwise a throwaway venv keeps it out of the system site.
-if command -v pipx >/dev/null 2>&1; then
-  pipx install pre-commit
-else
-  python3 -m venv .venv-precommit
-  # shellcheck disable=SC1091
-  source .venv-precommit/bin/activate
-  pip install --quiet pre-commit
-fi
-pre-commit install
-echo "Done. Ensure 'jac' stays on PATH for the pre-commit hooks."
+# Local git hooks come from the jac binary itself: a pre-commit hook that
+# formats/lints staged .jac files and a commit-msg hook that blocks AI
+# co-author attribution. Markdown lint + the em-dash ban run on every PR via
+# pre-commit.ci (see .pre-commit-config.yaml); nothing extra to install here.
+jac precommit --install
+echo "Done. Ensure 'jac' stays on PATH for the git hooks."

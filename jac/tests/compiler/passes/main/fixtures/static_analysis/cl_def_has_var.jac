@@ -19,7 +19,7 @@ cl def app -> str {
     var = 5;
 
     def foo() {
-        var = 3;
+        var: int = 3;
     }
 
     return str(items) + str(count) + str(var);

@@ -13,7 +13,13 @@ import from types { SimpleNamespace }
 
 import from jaclang.scale.config.app_config { AppConfig }
 import from jaclang.scale.models.deployment_result { DeploymentResult }
-import from jaclang.scale.config.config_loader { JacScaleConfig, get_scale_config }
+import from jaclang.scale.config.config_loader {
+    JacScaleConfig,
+    get_scale_config,
+    reset_scale_config
+}
+import from tempfile { mkdtemp }
+import shutil;
 import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
 import from jaclang.scale.deploy.database.factory { DatabaseProviderFactory }
 import from jaclang.scale.deploy.database { kubernetes_redis as redis_module }
@@ -209,12 +215,14 @@ test "fleet rollout ignores crash-looping pod from a stale replica set" {
     healthy_pod = unittest.mock.MagicMock();
     healthy_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": current_hash};
     healthy_pod.metadata.name = "svc-a-healthy";
+    healthy_pod.metadata.deletion_timestamp = None;
     healthy_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=0)];
     healthy_pod.status.phase = "Running";
 
     stale_pod = unittest.mock.MagicMock();
     stale_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": stale_hash};
     stale_pod.metadata.name = "svc-a-stale-crash";
+    stale_pod.metadata.deletion_timestamp = None;
     stale_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=5)];
     stale_pod.status.phase = "Running";
 
@@ -249,6 +257,7 @@ test "fleet rollout still fails when a current replica set pod is crash-looping"
     crash_pod = unittest.mock.MagicMock();
     crash_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": current_hash};
     crash_pod.metadata.name = "svc-a-crash";
+    crash_pod.metadata.deletion_timestamp = None;
     crash_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=5)];
     crash_pod.status.phase = "Running";
 
@@ -279,6 +288,7 @@ test "fleet rollout still fails when a companion Deployment pod outside the flee
     healthy_pod = unittest.mock.MagicMock();
     healthy_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": current_hash};
     healthy_pod.metadata.name = "svc-a-healthy";
+    healthy_pod.metadata.deletion_timestamp = None;
     healthy_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=0)];
     healthy_pod.status.phase = "Running";
 
@@ -294,6 +304,7 @@ test "fleet rollout still fails when a companion Deployment pod outside the flee
         "pod-template-hash": "redis-hash-not-in-current-hashes"
     };
     redis_pod.metadata.name = "svc-a-redis-789";
+    redis_pod.metadata.deletion_timestamp = None;
     redis_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=5)];
     redis_pod.status.phase = "Running";
 
@@ -323,6 +334,7 @@ test "fleet rollout falls back to broad pod scan when RS lookup fails" {
     crash_pod = unittest.mock.MagicMock();
     crash_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": "whatever-hash"};
     crash_pod.metadata.name = "svc-a-crash";
+    crash_pod.metadata.deletion_timestamp = None;
     crash_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=5)];
     crash_pod.status.phase = "Running";
 
@@ -704,7 +716,7 @@ test "enable tls raises when no domain configured" {
     assert raised , "enable_tls should raise when no domain is configured";
 }
 
-test "deploy with domain set stores domain in annotation not ingress host rule" {
+test "deploy with domain set renders host plus catch-all rules and stores domain annotation" {
     k8s_config = KubernetesConfig(
         domain="app.example.com", cert_manager_email="user@example.com"
     );
@@ -733,15 +745,17 @@ test "deploy with domain set stores domain in annotation not ingress host rule" 
     assert mock_networking_v1.create_namespaced_ingress.called , "ingress should be created on first deploy";
     created_body = mock_networking_v1.create_namespaced_ingress.call_args[1]["body"];
 
-    rule = created_body["spec"]["rules"][0];
-    assert "host" not in rule , "ingress rule must not set host before TLS is enabled";
+    rules = created_body["spec"]["rules"];
+    assert len(rules) == 2 , "domain app must render a host rule plus a catch-all";
+    assert rules[0].get("host") == "app.example.com" , "first rule must bind the domain host so redeploys keep the TLS cert served (#7707)";
+    assert "host" not in rules[1] , "catch-all rule must keep the raw load-balancer hostname serving before DNS/TLS";
 
     annotations = created_body["metadata"]["annotations"];
     assert annotations.get("jac-scale/domain") == "app.example.com" , "domain must be stored in jac-scale/domain annotation for --enable-tls";
     assert annotations.get("jac-scale/cert-email") == "user@example.com" , "cert_manager_email must be stored in jac-scale/cert-email annotation for --enable-tls";
 }
 
-test "redis ingress rule must not set host before TLS is enabled" {
+test "redis ingress with domain renders host plus catch-all rules" {
     k8s_config = KubernetesConfig(
         domain="app.example.com", cert_manager_email="user@example.com"
     );
@@ -772,8 +786,10 @@ test "redis ingress rule must not set host before TLS is enabled" {
         1
     ]["body"];
 
-    redis_rule = redis_created_body["spec"]["rules"][0];
-    assert "host" not in redis_rule , "Redis ingress rule must not set host before TLS is enabled";
+    redis_rules = redis_created_body["spec"]["rules"];
+    assert len(redis_rules) == 2 , "domain app must render a host rule plus a catch-all";
+    assert redis_rules[0].get("host") == "app.example.com" , "first Redis rule must bind the domain host (#7707)";
+    assert "host" not in redis_rules[1] , "catch-all Redis rule must keep raw load-balancer access";
 }
 
 test "redis insight cache dashboard spec is correctly built" {
@@ -1066,5 +1082,66 @@ test "shared ingress merges caller-supplied annotations for non-nginx controller
     assert created_body["spec"]["ingressClassName"] == "alb" , "ingressClassName must be the shared class";
     for key in annos.keys() {
         assert not str(key).startswith("nginx.ingress.kubernetes.io/") , f"nginx annotation leaked onto non-nginx ingress: {key}";
+    }
+}
+
+test "k8s safe slug normalizes names into valid k8s identifiers" {
+    import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
+        k8s_safe_slug
+    }
+
+    cases = [
+        ("this-is-jac", "this-is-jac"),
+        ("My App", "my-app"),
+        ("My_Cool_App!!", "my-cool-app"),
+        ("-lead-and-trail-", "lead-and-trail"),
+        ("UPPER", "upper"),
+        ("a" * 100, "a" * 63),
+        ("", "jaseci")
+    ];
+    for (raw, expected) in cases {
+        result = k8s_safe_slug(raw);
+        assert result == expected , f"k8s_safe_slug({raw!r}) = {result!r}, expected {expected!r}";
+    }
+}
+
+"""Resolve get_kubernetes_config() against a temp project with the given jac.toml."""
+def _k8s_config_for_toml(toml_content: str) -> dict {
+    tmp_dir = Path(mkdtemp());
+    (tmp_dir / "jac.toml").write_text(toml_content);
+    # get_scale_config() caches a process-wide singleton; reset around the temp project.
+    reset_scale_config();
+    try {
+        return get_scale_config(tmp_dir).get_kubernetes_config();
+    } finally {
+        reset_scale_config();
+        shutil.rmtree(tmp_dir, ignore_errors=True);
+    }
+}
+
+test "unconfigured app_name derives from [project].name; namespace stays default" {
+    cfg = _k8s_config_for_toml(
+        "[project]\nname = \"My App\"\nentry-point = \"main.jac\"\n"
+    );
+    assert cfg["app_name"] == "my-app" , f"got {cfg['app_name']!r}";
+    assert cfg["namespace"] == "default" , f"got {cfg['namespace']!r}";
+}
+
+test "explicit app_name wins over the derived default" {
+    cfg = _k8s_config_for_toml(
+        "[project]\nname = \"My App\"\n\n[scale.kubernetes]\napp_name = \"custom-app\"\n"
+    );
+    assert cfg["app_name"] == "custom-app" , f"got {cfg['app_name']!r}";
+}
+
+test "no usable project name falls back to legacy app_name 'jaseci'" {
+    for toml in [
+        "[project]\nentry-point = \"main.jac\"\n",
+        "[project]\nname = \"---\"\n",
+        "[project]\nname = \"   \"\n"
+    ] {
+        cfg = _k8s_config_for_toml(toml);
+        assert cfg["app_name"] == "jaseci" , f"{toml!r}: got {cfg['app_name']!r}";
+        assert cfg["namespace"] == "default" , f"{toml!r}: got {cfg['namespace']!r}";
     }
 }

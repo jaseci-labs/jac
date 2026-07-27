@@ -115,8 +115,8 @@ def build_message(anchor_id: str, origin_l1_id: (str | None)) -> str {
 obj L1InvalidationListener {
     has redis_url: str,
         channel: str,
-        _stop: threading.Event by postinit,
-        _thread: threading.Thread by postinit;
+        _stop: threading.Event postinit,
+        _thread: threading.Thread postinit;
 
     def postinit {
         self._stop = threading.Event();

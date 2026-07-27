@@ -604,3 +604,58 @@ test "recursive obj body flows" {
         client.close();
     }
 }
+
+# ============================================================================
+# Raw response body -- @restspec(envelope=False, produces=...)
+# The endpoint that motivated this: a `curl | bash` installer cannot be handed
+# a JSON envelope, so the return value has to reach the wire verbatim.
+# ============================================================================
+test "raw body skips the transport envelope" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        r = client.get("/raw/script.sh");
+        assert r.status_code == 200 , r.text;
+        # Body is the return value verbatim -- no {"ok":..,"data":..} wrapper.
+        assert r.text == "#!/usr/bin/env bash\necho jac\n" , r.text;
+        assert r.headers["content-type"].startswith("text/x-shellscript");
+        assert "\"ok\"" not in r.text;
+    } finally {
+        client.close();
+    }
+}
+
+test "raw body defaults to text/plain without produces" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        r = client.get("/raw/plain");
+        assert r.status_code == 200 , r.text;
+        assert r.text == "plain body";
+        assert r.headers["content-type"].startswith("text/plain");
+    } finally {
+        client.close();
+    }
+}
+
+test "raw body json-encodes non-str returns without the envelope" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        r = client.get("/raw/json");
+        assert r.status_code == 200 , r.text;
+        assert r.json() == {"a": 1} , r.text;
+        assert r.headers["content-type"].startswith("application/json");
+    } finally {
+        client.close();
+    }
+}
+
+test "envelope remains the default" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        r = client.get("/raw/enveloped");
+        assert r.status_code == 200 , r.text;
+        assert r.headers["content-type"].startswith("application/json");
+        assert extract_data(r.json())["result"] == "wrapped";
+    } finally {
+        client.close();
+    }
+}

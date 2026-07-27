@@ -32,7 +32,7 @@ test "interface field access resolves with correct types" {
             '    retries: float = c.retries;\n'
             '    d = getDerived();\n'
             '    inherited: str = d.id;\n'
-            '    own: float = d.extra;\n'
+            '    extra_val: float = d.extra;\n'
             '    return theme;\n'
             '}\n'
         );
@@ -389,7 +389,7 @@ test "generic heritage degrades gracefully to gradual any" {
             'cl import from "genpkg" { getDerived }\n\n'
             'def:pub use() -> str {\n'
             '    d = getDerived();\n'
-            '    own: float = d.extra;\n'
+            '    extra_val: float = d.extra;\n'
             '    s: str = d.id;\n'
             '    return s;\n'
             '}\n'

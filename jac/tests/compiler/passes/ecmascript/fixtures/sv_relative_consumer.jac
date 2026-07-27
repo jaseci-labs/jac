@@ -17,14 +17,14 @@ glob _signatures: list[str] = [];
 walker:pub sign_guestbook {
     has name: str;
 
-    can run with `root entry {
+    can run with Root entry {
         _signatures.append(self.name);
         report {"ok": True, "count": len(_signatures)};
     }
 }
 
 walker:pub get_guestbook {
-    can run with `root entry {
+    can run with Root entry {
         report _signatures;
     }
 }

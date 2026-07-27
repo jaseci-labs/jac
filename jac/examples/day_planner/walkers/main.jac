@@ -1,14 +1,10 @@
 """AI Day Planner -- walker-based version with OSP."""
 
-to cl:
-
 import from frontend { app as ClientApp }
 
 def:pub app -> JsxElement {
     return <ClientApp/>;
 }
-
-to sv:
 
 enum Category { WORK, PERSONAL, SHOPPING, HEALTH, FITNESS, OTHER }
 

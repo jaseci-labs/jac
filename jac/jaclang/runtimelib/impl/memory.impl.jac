@@ -573,10 +573,18 @@ impl SqliteMemory._ensure_connection -> None {
         os.makedirs(parent_dir, exist_ok=True);
     }
 
-    self.__conn__ = sqlite3.connect(self.path, check_same_thread=False);
-    self.__conn__.execute("PRAGMA journal_mode=WAL");
-    self.__conn__.execute("PRAGMA synchronous=NORMAL");
+    self.__conn__ = sqlite3.connect(self.path, check_same_thread=False, timeout=5.0);
+
     self.__conn__.execute("PRAGMA busy_timeout=5000");
+    try {
+        self.__conn__.execute("PRAGMA journal_mode=WAL");
+    } except sqlite3.OperationalError as e {
+        logger.warning(
+            f"could not switch {self.path} to WAL journal mode ({e}); "
+            "continuing with the current journal mode"
+        );
+    }
+    self.__conn__.execute("PRAGMA synchronous=NORMAL");
 
     if _is_new_schema(self.__conn__) {
         _create_new_schema(self.__conn__);

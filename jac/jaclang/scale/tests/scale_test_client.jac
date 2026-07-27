@@ -1,8 +1,14 @@
+import os;
 import shutil;
 import glob;
 import tempfile;
 import contextlib;
 import from pathlib { Path }
+
+# Hash throwaway fixture credentials at minimum bcrypt cost so it does not dominate test time.
+with entry {
+    os.environ.setdefault('JAC_SCALE_BCRYPT_ROUNDS', '4');
+}
 
 def make_client(fixture_file: str = "test_api.jac") -> ScaleTestClient {
     fixtures_dir = Path(__file__).parent / "fixtures";

@@ -36,4 +36,6 @@ obj NativeCompilePass(Transform) {
     def _jit_load_clib(lib_path: str) -> bool;
     def _link_osp_kernel(main_mod: object) -> None;
     def _references_undefined_osp_kernel(main_mod: object) -> bool;
+    def _link_fmt_kernel(main_mod: object) -> None;
+    def _references_undefined_fmt_kernel(main_mod: object) -> bool;
 }

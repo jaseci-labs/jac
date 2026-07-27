@@ -21,9 +21,6 @@ def pick_free_port(name: str, base: int = 18000, retries: int = 100) -> int {
 }
 
 def jac_executable -> str {
-    # Re-invoking jac must not depend on `jac` being on PATH: the single-binary
-    # launcher pins its real path in JAC_EXECUTABLE. Fall back to PATH, then a
-    # bare name for dev / link-source runs.
     return os.environ.get("JAC_EXECUTABLE", "") or shutil.which("jac") or "jac";
 }
 

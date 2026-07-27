@@ -72,6 +72,8 @@ impl __getattr__(name: str) -> object {
         return _get_jid();
     } elif (name == 'jobj') {
         return _get_jobj();
+    } elif (name == 'jref') {
+        return _get_jref();
     } elif (name == 'grant') {
         return _get_grant();
     } elif (name == 'revoke') {
@@ -92,6 +94,24 @@ impl __getattr__(name: str) -> object {
         return _get_archetype_alias();
     } elif (name in ('schema_was', 'schema_alias', 'schema_drop', 'schema_upgrade')) {
         return _get_schema_builder(name);
+    } elif (
+        name in (
+            'Region',
+            '_jac_region_open',
+            '_jac_region_close',
+            '_jac_region_register',
+            '_jac_region_instrument'
+        )
+    ) {
+        import jaclang.runtimelib.region as _region_mod;
+        _region_map = {
+            'Region': 'JacRegion',
+            '_jac_region_open': 'open_region',
+            '_jac_region_close': 'close_region',
+            '_jac_region_register': 'register_drop',
+            '_jac_region_instrument': 'instrument_drops'
+        };
+        return getattr(_region_mod, _region_map[name]);
     }
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}");
 }
@@ -152,6 +172,17 @@ impl _get_jobj -> Callable[..., any] {
     return _get_jac().get_object;
 }
 
+impl _get_jref -> Callable[..., any] {
+    return jref;
+}
+
+impl jref(id_or_obj: any) -> any {
+    if isinstance(id_or_obj, str) {
+        return _get_jobj()(id=id_or_obj);
+    }
+    return id_or_obj;
+}
+
 impl _get_jid -> Callable[..., any] {
     return _get_jac().object_ref;
 }
@@ -172,6 +203,10 @@ impl new(cls: any, *args: any) -> any {
 
 impl unsafe_html(html: any) -> dict {
     return {"__jacUnsafeHtml": str(html) if (html is not None) else ""};
+}
+
+impl managed(x: any) -> any {
+    return x;
 }
 
 impl restspec(**specs: any) -> Callable {

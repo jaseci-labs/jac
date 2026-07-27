@@ -74,9 +74,9 @@ glob KEY_CODES: dict = {
 obj WebSocket {
     has url: str,
         timeout: float = 30.0,
-        sock: socket.socket by postinit,
-        _buf: bytearray by postinit,
-        path: str by postinit;
+        sock: socket.socket postinit,
+        _buf: bytearray postinit,
+        path: str postinit;
 
     def postinit {
         if not self.url.startswith("ws://") {
@@ -106,8 +106,8 @@ obj WebSocket {
 obj CDP {
     has ws_url: str,
         _id: int = 0,
-        ws: WebSocket by postinit,
-        events: list by postinit;
+        ws: WebSocket postinit,
+        events: list postinit;
 
     def postinit {
         self.ws = WebSocket(url=self.ws_url);

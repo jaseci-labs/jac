@@ -14,7 +14,7 @@ def main_run;
 obj Shape {
     has shape_type: ShapeType;
 
-    def area -> float abs;
+    def area -> float abst;
 }
 
 """Circle class inherits from Shape."""

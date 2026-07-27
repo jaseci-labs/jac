@@ -70,7 +70,7 @@ def _adaptProps(tag: str, props: dict) -> dict;
 def _isAbsoluteImageUri(src: str) -> bool;
 def _adaptImageProps(props: dict) -> dict;
 def _textStyleFrom(style: any) -> dict;
-def _makeNativeLink(props: dict, children: list) -> JsxElement;
+def _makeNativeLink(link_props: dict, children: list) -> JsxElement;
 def _toChildrenArray(children: any) -> list;
 def _normalizeRoutePath(path: str) -> str;
 def _joinRoutePath(parent_path: str, child_path: str) -> str;

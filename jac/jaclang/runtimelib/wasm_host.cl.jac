@@ -108,3 +108,47 @@ async def:pub instantiate_na_wasm(url: str, sh: any, extra_imports: any = None) 
     }
     return inst;
 }
+
+glob _na_env_cfg: dict = {},
+     _na_pending: dict = {};
+
+def:pub set_na_env(module_stem: str, sh: any, extra_imports: any = None) {
+    _na_env_cfg[module_stem] = [sh, extra_imports];
+}
+
+async def _na_instance(module_stem: str) -> any {
+    if module_stem in _na_pending {
+        return await _na_pending[module_stem];
+    }
+    cfg = _na_env_cfg.get(module_stem);
+    sh: any = cfg[0] if cfg else {};
+    extra: any = cfg[1] if cfg else None;
+    p = instantiate_na_wasm(f"/static/{module_stem}.wasm", sh, extra);
+    _na_pending[module_stem] = p;
+    try {
+        return await p;
+    } except Exception as err {
+        _na_pending.pop(module_stem, None);
+        raise err;
+    }
+}
+
+def _na_caller(module_stem: str, fn_name: str) -> any {
+    async def _call(*args: any) -> any {
+        inst = await _na_instance(module_stem);
+        fn: any = inst.exports[fn_name];
+        if not fn {
+            raise Error(f"na module '{module_stem}' has no export '{fn_name}'");
+        }
+        return fn(*args);
+    }
+    return _call;
+}
+
+def:pub __na_bind(module_stem: str, names: list) -> any {
+    out: any = {};
+    for nm in names {
+        out[nm] = _na_caller(module_stem, nm);
+    }
+    return out;
+}

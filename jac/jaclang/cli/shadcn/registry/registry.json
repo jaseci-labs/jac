@@ -2,7 +2,7 @@
   "version": "1.0.0",
   "components": {
     "button": {
-      "file": "button.cl.jac",
+      "file": "button.jac",
       "npmDeps": [
         "class-variance-authority",
         "radix-ui"
@@ -10,12 +10,12 @@
       "peerComponents": []
     },
     "card": {
-      "file": "card.cl.jac",
+      "file": "card.jac",
       "npmDeps": [],
       "peerComponents": []
     },
     "badge": {
-      "file": "badge.cl.jac",
+      "file": "badge.jac",
       "npmDeps": [
         "class-variance-authority",
         "radix-ui"
@@ -23,31 +23,31 @@
       "peerComponents": []
     },
     "input": {
-      "file": "input.cl.jac",
+      "file": "input.jac",
       "npmDeps": [],
       "peerComponents": []
     },
     "textarea": {
-      "file": "textarea.cl.jac",
+      "file": "textarea.jac",
       "npmDeps": [],
       "peerComponents": []
     },
     "label": {
-      "file": "label.cl.jac",
+      "file": "label.jac",
       "npmDeps": [
         "radix-ui"
       ],
       "peerComponents": []
     },
     "separator": {
-      "file": "separator.cl.jac",
+      "file": "separator.jac",
       "npmDeps": [
         "radix-ui"
       ],
       "peerComponents": []
     },
     "field": {
-      "file": "field.cl.jac",
+      "file": "field.jac",
       "npmDeps": [
         "class-variance-authority"
       ],
@@ -57,7 +57,7 @@
       ]
     },
     "input-group": {
-      "file": "input_group.cl.jac",
+      "file": "input_group.jac",
       "npmDeps": [
         "class-variance-authority"
       ],
@@ -68,7 +68,7 @@
       ]
     },
     "select": {
-      "file": "select.cl.jac",
+      "file": "select.jac",
       "npmDeps": [
         "@hugeicons/core-free-icons",
         "@hugeicons/react",
@@ -77,7 +77,7 @@
       "peerComponents": []
     },
     "combobox": {
-      "file": "combobox.cl.jac",
+      "file": "combobox.jac",
       "npmDeps": [
         "@base-ui/react",
         "@hugeicons/core-free-icons",
@@ -89,7 +89,7 @@
       ]
     },
     "dropdown-menu": {
-      "file": "dropdown_menu.cl.jac",
+      "file": "dropdown_menu.jac",
       "npmDeps": [
         "@hugeicons/core-free-icons",
         "@hugeicons/react",
@@ -98,7 +98,7 @@
       "peerComponents": []
     },
     "dialog": {
-      "file": "dialog.cl.jac",
+      "file": "dialog.jac",
       "npmDeps": [
         "@hugeicons/core-free-icons",
         "@hugeicons/react",
@@ -109,7 +109,7 @@
       ]
     },
     "alert-dialog": {
-      "file": "alert_dialog.cl.jac",
+      "file": "alert_dialog.jac",
       "npmDeps": [
         "radix-ui"
       ],
@@ -118,7 +118,7 @@
       ]
     },
     "checkbox": {
-      "file": "checkbox.cl.jac",
+      "file": "checkbox.jac",
       "npmDeps": [
         "@hugeicons/core-free-icons",
         "@hugeicons/react",
@@ -127,7 +127,7 @@
       "peerComponents": []
     },
     "tabs": {
-      "file": "tabs.cl.jac",
+      "file": "tabs.jac",
       "npmDeps": [
         "class-variance-authority",
         "radix-ui"
@@ -135,42 +135,42 @@
       "peerComponents": []
     },
     "switch": {
-      "file": "switch.cl.jac",
+      "file": "switch.jac",
       "npmDeps": [
         "radix-ui"
       ],
       "peerComponents": []
     },
     "tooltip": {
-      "file": "tooltip.cl.jac",
+      "file": "tooltip.jac",
       "npmDeps": [
         "radix-ui"
       ],
       "peerComponents": []
     },
     "radio-group": {
-      "file": "radio_group.cl.jac",
+      "file": "radio_group.jac",
       "npmDeps": [
         "radix-ui"
       ],
       "peerComponents": []
     },
     "avatar": {
-      "file": "avatar.cl.jac",
+      "file": "avatar.jac",
       "npmDeps": [
         "radix-ui"
       ],
       "peerComponents": []
     },
     "progress": {
-      "file": "progress.cl.jac",
+      "file": "progress.jac",
       "npmDeps": [
         "radix-ui"
       ],
       "peerComponents": []
     },
     "accordion": {
-      "file": "accordion.cl.jac",
+      "file": "accordion.jac",
       "npmDeps": [
         "radix-ui",
         "@hugeicons/react",
@@ -179,19 +179,19 @@
       "peerComponents": []
     },
     "alert": {
-      "file": "alert.cl.jac",
+      "file": "alert.jac",
       "npmDeps": [
         "class-variance-authority"
       ],
       "peerComponents": []
     },
     "skeleton": {
-      "file": "skeleton.cl.jac",
+      "file": "skeleton.jac",
       "npmDeps": [],
       "peerComponents": []
     },
     "spinner": {
-      "file": "spinner.cl.jac",
+      "file": "spinner.jac",
       "npmDeps": [
         "@hugeicons/react",
         "@hugeicons/core-free-icons"
@@ -199,7 +199,7 @@
       "peerComponents": []
     },
     "breadcrumb": {
-      "file": "breadcrumb.cl.jac",
+      "file": "breadcrumb.jac",
       "npmDeps": [
         "radix-ui",
         "@hugeicons/react",
@@ -208,40 +208,40 @@
       "peerComponents": []
     },
     "collapsible": {
-      "file": "collapsible.cl.jac",
+      "file": "collapsible.jac",
       "npmDeps": [
         "radix-ui"
       ],
       "peerComponents": []
     },
     "hover-card": {
-      "file": "hover_card.cl.jac",
+      "file": "hover_card.jac",
       "npmDeps": [
         "radix-ui"
       ],
       "peerComponents": []
     },
     "popover": {
-      "file": "popover.cl.jac",
+      "file": "popover.jac",
       "npmDeps": [
         "radix-ui"
       ],
       "peerComponents": []
     },
     "scroll-area": {
-      "file": "scroll_area.cl.jac",
+      "file": "scroll_area.jac",
       "npmDeps": [
         "radix-ui"
       ],
       "peerComponents": []
     },
     "table": {
-      "file": "table.cl.jac",
+      "file": "table.jac",
       "npmDeps": [],
       "peerComponents": []
     },
     "toggle": {
-      "file": "toggle.cl.jac",
+      "file": "toggle.jac",
       "npmDeps": [
         "class-variance-authority",
         "radix-ui"
@@ -249,7 +249,7 @@
       "peerComponents": []
     },
     "toggle-group": {
-      "file": "toggle_group.cl.jac",
+      "file": "toggle_group.jac",
       "npmDeps": [
         "class-variance-authority",
         "radix-ui"
@@ -259,7 +259,7 @@
       ]
     },
     "sheet": {
-      "file": "sheet.cl.jac",
+      "file": "sheet.jac",
       "npmDeps": [
         "radix-ui",
         "@hugeicons/react",
@@ -270,21 +270,21 @@
       ]
     },
     "drawer": {
-      "file": "drawer.cl.jac",
+      "file": "drawer.jac",
       "npmDeps": [
         "vaul"
       ],
       "peerComponents": []
     },
     "slider": {
-      "file": "slider.cl.jac",
+      "file": "slider.jac",
       "npmDeps": [
         "radix-ui"
       ],
       "peerComponents": []
     },
     "pagination": {
-      "file": "pagination.cl.jac",
+      "file": "pagination.jac",
       "npmDeps": [
         "@hugeicons/react",
         "@hugeicons/core-free-icons"
@@ -294,7 +294,7 @@
       ]
     },
     "navigation-menu": {
-      "file": "navigation_menu.cl.jac",
+      "file": "navigation_menu.jac",
       "npmDeps": [
         "class-variance-authority",
         "radix-ui",
@@ -304,7 +304,7 @@
       "peerComponents": []
     },
     "menubar": {
-      "file": "menubar.cl.jac",
+      "file": "menubar.jac",
       "npmDeps": [
         "radix-ui",
         "@hugeicons/react",
@@ -313,7 +313,7 @@
       "peerComponents": []
     },
     "context-menu": {
-      "file": "context_menu.cl.jac",
+      "file": "context_menu.jac",
       "npmDeps": [
         "radix-ui",
         "@hugeicons/react",
@@ -322,21 +322,21 @@
       "peerComponents": []
     },
     "resizable": {
-      "file": "resizable.cl.jac",
+      "file": "resizable.jac",
       "npmDeps": [
         "react-resizable-panels"
       ],
       "peerComponents": []
     },
     "aspect-ratio": {
-      "file": "aspect_ratio.cl.jac",
+      "file": "aspect_ratio.jac",
       "npmDeps": [
         "radix-ui"
       ],
       "peerComponents": []
     },
     "button-group": {
-      "file": "button_group.cl.jac",
+      "file": "button_group.jac",
       "npmDeps": [
         "class-variance-authority",
         "radix-ui"
@@ -344,19 +344,19 @@
       "peerComponents": ["separator"]
     },
     "empty": {
-      "file": "empty.cl.jac",
+      "file": "empty.jac",
       "npmDeps": [
         "class-variance-authority"
       ],
       "peerComponents": []
     },
     "kbd": {
-      "file": "kbd.cl.jac",
+      "file": "kbd.jac",
       "npmDeps": [],
       "peerComponents": []
     },
     "native-select": {
-      "file": "native_select.cl.jac",
+      "file": "native_select.jac",
       "npmDeps": [
         "@hugeicons/react",
         "@hugeicons/core-free-icons"
@@ -364,7 +364,7 @@
       "peerComponents": []
     },
     "item": {
-      "file": "item.cl.jac",
+      "file": "item.jac",
       "npmDeps": [
         "class-variance-authority",
         "radix-ui"
@@ -372,7 +372,7 @@
       "peerComponents": ["separator"]
     },
     "calendar": {
-      "file": "calendar.cl.jac",
+      "file": "calendar.jac",
       "npmDeps": [
         "react-day-picker",
         "@hugeicons/react",
@@ -381,7 +381,7 @@
       "peerComponents": ["button"]
     },
     "carousel": {
-      "file": "carousel.cl.jac",
+      "file": "carousel.jac",
       "npmDeps": [
         "embla-carousel-react",
         "@hugeicons/react",
@@ -390,14 +390,14 @@
       "peerComponents": []
     },
     "chart": {
-      "file": "chart.cl.jac",
+      "file": "chart.jac",
       "npmDeps": [
         "recharts"
       ],
       "peerComponents": []
     },
     "command": {
-      "file": "command.cl.jac",
+      "file": "command.jac",
       "npmDeps": [
         "cmdk",
         "@hugeicons/react",
@@ -406,14 +406,14 @@
       "peerComponents": ["dialog", "input-group"]
     },
     "input-otp": {
-      "file": "otp_input.cl.jac",
+      "file": "otp_input.jac",
       "npmDeps": [
         "input-otp"
       ],
       "peerComponents": []
     },
     "sidebar": {
-      "file": "sidebar.cl.jac",
+      "file": "sidebar.jac",
       "npmDeps": [
         "class-variance-authority",
         "@radix-ui/react-slot",
@@ -423,7 +423,7 @@
       "peerComponents": ["button", "input", "separator", "sheet", "skeleton", "tooltip"]
     },
     "sonner": {
-      "file": "sonner.cl.jac",
+      "file": "sonner.jac",
       "npmDeps": [
         "sonner"
       ],

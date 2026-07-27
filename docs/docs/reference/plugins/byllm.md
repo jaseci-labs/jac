@@ -2,7 +2,7 @@
 
 byLLM lets you delegate function implementations to large language models. You declare a function signature -- its name, parameter names, and types -- append `by llm`, and the LLM infers the behavior at runtime. byLLM handles prompt construction, model communication, response parsing, and type validation, so your Jac type annotations act as an enforced output schema.
 
-This approach is called **Meaning-Typed Programming (MTP)**: well-named function signatures already describe what a function should do, and byLLM makes that intent executable. This reference covers MTP concepts, configuration, structured outputs, tool calling, and provider setup.
+The constructs behind this are *meaning types*: semantic annotations from which prompts are automatically synthesized, making delegation of program logic to large language models (`by llm()`) a typed language feature rather than string engineering. **Meaning-Typed Programming (MTP)** is the paradigm built on them: meaning types are the construct, MTP is the practice of programming with them. A hand-written prompt is glue ([Why Jac Exists](../../quick-guide/why-jac.md)), and byLLM exists so you never write one. This reference covers MTP concepts, configuration, structured outputs, tool calling, and provider setup.
 
 ---
 
@@ -486,7 +486,7 @@ proxy = false                     # Enable proxy mode (uses OpenAI client)
 verbose = false                   # Log LLM calls to stderr
 
 [byllm.call_params]
-temperature = 0.7                 # Model creativity (0.0-2.0)
+temperature = 0.7                 # Optional; omit to use the provider default (0.0-2.0)
 max_tokens = 0                    # Max response tokens (0 = no limit)
 max_output_retries = 3            # Retries for structured output (0 = disabled)
 
@@ -528,7 +528,7 @@ compaction_model       = ""       # Empty = copy of the active model; set to use
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `temperature` | float | `0.7` | Creativity/randomness (0.0-2.0, lower is more deterministic) |
+| `temperature` | float | *unset* | Creativity/randomness (0.0-2.0, lower is more deterministic). Omitted from the request when unset, so the provider applies its own default |
 | `max_tokens` | int | `0` | Maximum response tokens (0 = no limit / model default) |
 | `max_output_retries` | int | `3` | Retries after the first attempt to regenerate a structured output that came back empty or unparseable (`0` disables). See [Typed-Output Retry](#typed-output-retry) |
 
@@ -813,7 +813,7 @@ Parameters passed to `by llm()` at call time:
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `temperature` | float | Controls randomness (0.0 = deterministic, 2.0 = creative). Default: 0.7 |
+| `temperature` | float | Controls randomness (0.0 = deterministic, 2.0 = creative). Omitted when unset, so the provider default applies |
 | `max_tokens` | int | Maximum tokens in response |
 | `max_output_retries` | int | Retries after the first attempt to regenerate a structured output that came back empty or unparseable (`0` disables). Default: 3. See [Typed-Output Retry](#typed-output-retry) |
 | `tools` | list | Tool functions for agentic behavior (automatically enables ReAct loop) |

@@ -7,7 +7,6 @@ glob _registry: dict[str, type] = {},
      logger = logging.getLogger(__name__);
 
 def register(name: str, cls: type) {
-    global _registry;
     if not isinstance(cls, type) or not issubclass(cls, Emailer) {
         raise TypeError(
             f"Emailer class for '{name}' must subclass Emailer, got {cls!r}"
@@ -54,7 +53,6 @@ def _instantiate(
 }
 
 def create(config: dict[str, Any]) -> Emailer | None {
-    global _registry;
     provider = (config.get('provider') or '').strip();
     if not provider {
         logger.info(

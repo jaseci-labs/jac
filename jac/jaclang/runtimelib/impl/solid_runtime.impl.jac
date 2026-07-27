@@ -137,7 +137,7 @@ impl JacAwaiting(props: dict) -> JsxElement {
 
 impl useJacForm(form_mode: str, schema: any, onSubmit: any = None) -> any {
     actualSchema = __unwrapFormSchema(schema);
-    schemaShape = actualSchema.shape || {};
+    schemaShape = actualSchema.shape or {};
     defaults = {};
     for key in Object.keys(schemaShape) {
         defaults[key] = "";
@@ -166,15 +166,15 @@ impl useJacForm(form_mode: str, schema: any, onSubmit: any = None) -> any {
 impl JacForm(props: dict) -> JsxElement {
     schema = props.schema;
     onSubmit = props.onSubmit;
-    layout = props.layout || "vertical";
-    field_config = props.field_config || {};
-    submitLabel = props.submitLabel || "Submit";
-    submitClassName = props.submitClassName || "";
-    gridColumns = props.gridColumns || 2;
-    validateMode = props.validateMode || "onTouched";
-    className = props.className || "";
+    layout = props.layout or "vertical";
+    field_config = props.field_config or {};
+    submitLabel = props.submitLabel or "Submit";
+    submitClassName = props.submitClassName or "";
+    gridColumns = props.gridColumns or 2;
+    validateMode = props.validateMode or "onTouched";
+    className = props.className or "";
     actualSchema = __unwrapFormSchema(schema);
-    schemaShape = actualSchema.shape || {};
+    schemaShape = actualSchema.shape or {};
     fieldNames = Object.keys(schemaShape);
     form = useJacForm(validateMode, schema, onSubmit);
     [passwordVisible, setPasswordVisible] = solidCreateSignal({});
@@ -256,7 +256,7 @@ impl JacForm(props: dict) -> JsxElement {
                 >
                     <input
                         type="checkbox"
-                        checked={fieldApi().state.value || False}
+                        checked={fieldApi().state.value or False}
                         onInput={lambda (e: any) { fieldApi().handleChange(
                             e.target.checked
                         ); }}
@@ -276,7 +276,7 @@ impl JacForm(props: dict) -> JsxElement {
             options = getEnumOptions(fieldSchema);
             return (
                 <select
-                    value={fieldApi().state.value || ""}
+                    value={fieldApi().state.value or ""}
                     onInput={lambda (e: any) { fieldApi().handleChange(
                         e.target.value
                     ); }}
@@ -365,7 +365,7 @@ impl JacForm(props: dict) -> JsxElement {
         }
 
         if fieldType == "password" and config.showPasswordToggle {
-            isVisible = passwordVisible()[fieldName] || False;
+            isVisible = passwordVisible()[fieldName] or False;
             return (
                 <div>
                     <div style={{position: "relative"}}>

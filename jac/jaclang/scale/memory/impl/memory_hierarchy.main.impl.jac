@@ -1,3 +1,8 @@
+def _carries_topology_index(anchor: Anchor) -> bool {
+    return isinstance(anchor, NodeAnchor) and anchor.topology_index_data is not None;
+}
+
+
 impl ScaleTieredMemory.postinit -> None {
     self.__mem__ = {};
 
@@ -76,13 +81,27 @@ impl ScaleTieredMemory.postinit -> None {
 }
 
 
+impl ScaleTieredMemory._mark_committed(anchor: (Anchor | None)) -> None {
+    if anchor is None {
+        self._committed = True;
+    }
+}
+
+impl ScaleTieredMemory.put(anchor: Anchor) -> None {
+    self._committed = False;
+    super.put(anchor);
+}
+
 impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
+    self._committed = False;
     if self.l3 is None {
         self.changes.clear();
+        self._mark_committed(anchor);
         return;
     }
     self._collect_into(self.changes);
     if self.changes.is_empty() {
+        self._mark_committed(anchor);
         return;
     }
 
@@ -112,6 +131,11 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
                     cast(RedisBackend, self.l2).publish_invalidation(
                         str(intent.anchor.id), self._l1_id
                     );
+                } elif _carries_topology_index(intent.anchor) {
+                    self.l2.invalidate(intent.anchor.id);
+                    cast(RedisBackend, self.l2).publish_invalidation(
+                        str(intent.anchor.id), self._l1_id
+                    );
                 }
             } except Exception as l2_err {
                 logger.warning(f"L2 cache update failed: {l2_err}");
@@ -124,6 +148,7 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
     if (conflict := apply_report.primary_conflict()) {
         raise conflict;
     }
+    self._mark_committed(anchor);
 }
 
 impl ScaleTieredMemory.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {

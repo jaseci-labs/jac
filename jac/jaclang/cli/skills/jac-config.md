@@ -21,6 +21,7 @@ description: The jac.toml control plane - every section ([project], [dependencie
 | `[check.lint]` | lint rule selection: `select = ["default"]` / `["all"]`, `ignore = ["combine-has"]`, `exclude = ["legacy/*"]` |
 | `[test]` | `jac test` defaults: `directory`, `filter`, `verbose`, `fail_fast`, `max_failures` |
 | `[build]` | `typecheck`, `dir` (artifact root, default `.jac/` - holds `cache/`, `venv/`, `client/`, `data/`) |
+| `[gc]` / `[gc.enforce]` | native memory management: `default = "cycles"/"rc"/"none"` (mode when `--gc` not passed); `enforce.modules`/`enforce.grandfathered` glob patterns opt modules into zero-RC nogc enforcement (see `jac-native-memory`) |
 | `[scripts]` | named command shortcuts run via `jac x <name>` |
 | `[environments]` / `[environment]` | per-profile overrides (below) |
 | `[byllm]` / `[byllm.model]` / `[byllm.call_params]` | AI settings: model identity, API keys, call params (see `jac-by-llm`) |
@@ -28,7 +29,7 @@ description: The jac.toml control plane - every section ([project], [dependencie
 | `[client]` | `framework` = `"react"` (default) / `"preact"` / `"solid"` (experimental) - which JS framework the `cl` target emits; `[client.routing] auth_redirect = "/path"` for unauthenticated redirects |
 | `[client.app_meta_data]` | served page's head/SEO config: `title`, `description`, `keywords`, `author`, `theme_color`, `icon` |
 | `[desktop]` / `[desktop.plugins]` | desktop app identity + window geometry; per-capability OS-plugin gates (`fs`/`clipboard`/`shell` allow-lists) - see `jac-desktop-app` |
-| `[jac-shadcn]` | theme config (`style`, `baseColor`, `theme`, `font`, `radius`) managed by `jac install --shadcn` / `jac retheme` - don't hand-edit (see `jac-shadcn-components`) |
+| `[jac-shadcn]` | theme config (`style`, `baseColor`, `theme`, `font`, `radius`) managed by `jac install --shadcn` / `jac retheme` - don't hand-edit. Two paths you MAY set by hand: `components_dir` and `utils_path`, which tell the installer where your primitives and `cn()` live if not `components/ui/` and `lib/utils.jac` (see `jac-shadcn-components`) |
 | `[npm]` | npm-publish overrides: `name = "@scope/pkg"`, `entry` (see `jac-packaging`) |
 | `[jacpack]` | marks the project as a `jac create` template (see `jac-scaffold`) |
 

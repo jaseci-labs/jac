@@ -558,10 +558,10 @@ na {
         single: list[str] = ["only"];
         single_joined: str = ",".join(single);
 
-        p1: list[str] = "hello world".partition(" ");
-        p2: list[str] = "hello".partition("x");
-        rp1: list[str] = "hello world foo".rpartition(" ");
-        rp2: list[str] = "hello".rpartition("x");
+        p1: list[str] = list("hello world".partition(" "));
+        p2: list[str] = list("hello".partition("x"));
+        rp1: list[str] = list("hello world foo".rpartition(" "));
+        rp2: list[str] = list("hello".rpartition("x"));
         sl: list[str] = "a\nb\nc".splitlines();
         rs: list[str] = "a b c".rsplit(" ");
 

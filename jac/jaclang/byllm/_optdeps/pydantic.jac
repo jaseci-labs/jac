@@ -1,11 +1,3 @@
-"""Guarded re-export for pydantic's TypeAdapter (capability: llm).
-
-pydantic ships transitively with litellm. `TypeAdapter` is only invoked during
-typed-output conversion inside a live model flow (after Model.postinit's
-require_optional guard), so the raising placeholder is never reached when the
-`llm` capability is absent.
-"""
-
 with entry {
     try {
         import from pydantic { TypeAdapter }

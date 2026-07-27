@@ -19,8 +19,8 @@ obj DrainCoordinator {
         _drain_started_ts: float | None = None,
         _drain_timeout_s: float = 10.0,
         _inflight: int = 0,
-        _lock: any by postinit,
-        _zero_event: any by postinit;
+        _lock: any postinit,
+        _zero_event: any postinit;
 
     def postinit {
         self._lock = _DrainLock();

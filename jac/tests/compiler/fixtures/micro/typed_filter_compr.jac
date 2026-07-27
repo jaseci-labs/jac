@@ -9,7 +9,7 @@ node MyObj2 {
 glob my_list = [];
 
 with entry {
-    for i = 0 to i < 10 by i += 1 {
+    for i = 0 while i < 10 with i += 1 {
         my_list.append(MyObj(a=i));
         my_list.append(MyObj2(a=i + 2));
     }

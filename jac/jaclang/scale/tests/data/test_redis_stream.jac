@@ -1,7 +1,7 @@
 import contextlib;
 import time;
 import threading;
-import from testcontainers.redis { RedisContainer }
+import from testcontainers.community.redis { RedisContainer }
 import from jaclang.scale.persistence.db { close_all_db_connections, get_redis_client }
 import from jaclang.scale.events.broker { Event, RetryPolicy }
 import from jaclang.scale.events.streams.redis { RedisEventStream }
@@ -250,6 +250,39 @@ test "consumed event exposes delivery_id, delivery_topic, delivery_group" {
     assert ev.delivery_group == "t_delivery";
 
     b.ack(ev);
+    b.stop(drain=False);
+    cleanup_connections();
+}
+
+
+test "consume self-heals after the stream key is evicted" {
+    _flush_redis();
+    b = _make_broker(group="t_evict");
+    client = get_redis_client(REDIS_URI);
+
+    b.publish("evict.topic", Event(event_type="e.one", data={"n": 1}));
+    first = b.consume(
+        "evict.topic",
+        group="t_evict",
+        max_messages=1,
+        timeout_seconds=2.0,
+        start_from="earliest"
+    );
+    assert len(first) == 1;
+
+    client.delete("evict.topic");
+    b.publish("evict.topic", Event(event_type="e.two", data={"n": 2}));
+
+    healed = b.consume(
+        "evict.topic",
+        group="t_evict",
+        max_messages=1,
+        timeout_seconds=2.0,
+        start_from="earliest"
+    );
+    assert len(healed) == 1;
+    assert healed[0].data["n"] == 2;
+
     b.stop(drain=False);
     cleanup_connections();
 }

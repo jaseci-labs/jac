@@ -1,3 +1,5 @@
+import os;
+
 glob sep: str = "/",
      extsep: str = ".",
      pardir: str = "..",
@@ -70,6 +72,49 @@ def:pub splitext(p: str) -> tuple[(str, str)] {
         }
     }
     return (p, "");
+}
+
+
+def _join2(a: str, b: str) -> str {
+    if b.startswith("/") {
+        return b;
+    }
+    if a == "" or a.endswith("/") {
+        return a + b;
+    }
+    return a + "/" + b;
+}
+
+
+def:pub join(
+    a: str,
+    p1: (str | None) = None,
+    p2: (str | None) = None,
+    p3: (str | None) = None,
+    p4: (str | None) = None
+) -> str {
+    out: str = a;
+    if p1 is not None {
+        out = _join2(out, p1);
+    }
+    if p2 is not None {
+        out = _join2(out, p2);
+    }
+    if p3 is not None {
+        out = _join2(out, p3);
+    }
+    if p4 is not None {
+        out = _join2(out, p4);
+    }
+    return out;
+}
+
+
+def:pub abspath(p: str) -> str {
+    if not isabs(p) {
+        p = join(os.getcwd(), p);
+    }
+    return normpath(p);
 }
 
 

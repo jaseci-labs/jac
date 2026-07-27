@@ -61,12 +61,13 @@ via `sv import`. Then:
 jac start main.jac --scale
 ```
 
-No Dockerfile, no registry config required for local clusters.
-`jac start --scale` detects your cluster type from kubeconfig, builds
-the image, loads it into the cluster (minikube internal daemon /
-`k3d image import` / `kind load` / `docker push` for remote), spins up
-MongoDB + Redis StatefulSets, injects `MONGODB_URI` / `REDIS_URL` env
-into every pod, and applies all Deployments + Services + HPAs + PDBs.
+No Dockerfile and no registry config, on any cluster: nothing is built
+and nothing is pushed. `jac start --scale` packs your source into a
+bundle and copies it into the cluster on a PVC, boots every pod from a
+stock base image (a bootstrap initContainer unpacks the bundle and
+installs the pinned `jac` runtime), spins up MongoDB + Redis
+StatefulSets, injects `MONGODB_URI` / `REDIS_URL` env into every pod,
+and applies all Deployments + Services + HPAs + PDBs.
 
 ## Reach your app
 

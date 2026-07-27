@@ -13,11 +13,12 @@ import from "lucide-react" {
     AlertTriangle
 }
 
-import from react { useEffect }
+import from react { useEffect, useRef }
 import from ....components.common.Button { Button }
 import from ....components.common.PageHeader { PageHeader }
 import from ....context.AuthContext { useAuth }
 import from ....services.metricsService { getMetrics }
+import from ....utils.format { formatBytes }
 
 def:pub MetricsPage -> JsxElement {
     has isLoading: bool = True,
@@ -28,6 +29,11 @@ def:pub MetricsPage -> JsxElement {
         autoRefresh: bool = True;
 
     auth = useAuth();
+    # Accumulate the chart history in a ref, not via reading `history` state
+    # inside the polling interval -- that lambda captures a stale `history`
+    # (closure), so the chart froze after the first few points. The ref is
+    # stable across renders, so .current always reads the latest buffer.
+    histRef = useRef([]);
 
     async def loadMetrics {
         result = await getMetrics(auth["authToken"]);
@@ -35,19 +41,52 @@ def:pub MetricsPage -> JsxElement {
             metricsEnabled = result["data"]["enabled"];
             summary = result["data"]["summary"] or {};
             metrics = result["data"]["metrics"] or [];
+            prevBuf = histRef.current or [];
+            newReqsTotal = summary["total_requests"] or 0;
+            # Bars plot per-interval traffic (delta of the cumulative counter),
+            # so an idle window reads ~0 instead of a flat full-height block.
+            prevReqsTotal = prevBuf[len(prevBuf) - 1]["requests"]
+                if len(prevBuf) > 0
+                else newReqsTotal;
+            reqDelta = newReqsTotal - prevReqsTotal;
+            if reqDelta < 0 {
+                reqDelta = 0;
+            }
             newPoint = {
                 "time": Date.now(),
-                "requests": summary["total_requests"] or 0,
+                "requests": newReqsTotal,
+                "delta": reqDelta,
                 "active": summary["active_requests"] or 0,
                 "errors": summary["error_count"] or 0,
                 "latency": summary["avg_latency_ms"] or 0
             };
-            history = (history + [newPoint])[-20:];
+            # Keep the last 20 points. Read/write through histRef (stable across
+            # renders) so the polling interval accumulates instead of freezing
+            # on a stale `history` closure. Avoid a negative slice ([-20:]) too --
+            # the client transpiler mishandles it (returns []).
+            combined = prevBuf + [newPoint];
+            startIdx = max(0, len(combined) - 20);
+            trimmed = [];
+            idx = 0;
+            for p in combined {
+                if idx >= startIdx {
+                    trimmed.append(p);
+                }
+                idx += 1;
+            }
+            histRef.current = trimmed;
+            history = trimmed;
         }
         isLoading = False;
     }
 
-    useEffect(lambda { loadMetrics(); }, []);
+    useEffect(
+        lambda {
+            loadMetrics();
+            return;
+        },
+        []
+    );
 
     useEffect(
         lambda -> any {
@@ -60,17 +99,31 @@ def:pub MetricsPage -> JsxElement {
         [autoRefresh]
     );
 
-    def getBarHeight(value: float, maxVal: float) -> str {
+    def getBarHeight(value: float, maxVal: float, minPct: int = 0) -> str {
         if maxVal == 0 {
             return "0%";
         }
         pct = min(100, (value / maxVal) * 100);
+        # Floor any non-zero value to a visible sliver so a busy interval
+        # never rounds away to 0% when a single tall bar dominates the scale.
+        if value > 0 and pct < minPct {
+            pct = minPct;
+        }
         return str(int(pct)) + "%";
     }
 
     def getMetricByName(name: str) -> dict {
         for m in metrics {
             if m["name"] == name {
+                return m;
+            }
+        }
+        return {};
+    }
+
+    def getMetricBySuffix(suffix: str) -> dict {
+        for m in metrics {
+            if str(m["name"]).endswith(suffix) {
                 return m;
             }
         }
@@ -94,22 +147,6 @@ def:pub MetricsPage -> JsxElement {
         return 0.0;
     }
 
-    def formatBytes(bytesVal: float) -> str {
-        if bytesVal >= 1073741824 {
-            val = int(bytesVal / 10737418.24) / 100;
-            return str(val) + " GB";
-        }
-        if bytesVal >= 1048576 {
-            val = int(bytesVal / 10485.76) / 100;
-            return str(val) + " MB";
-        }
-        if bytesVal >= 1024 {
-            val = int(bytesVal / 10.24) / 100;
-            return str(val) + " KB";
-        }
-        return str(int(bytesVal)) + " B";
-    }
-
     def formatUptime(startTimeVal: float) -> str {
         if startTimeVal == 0 {
             return "N/A";
@@ -128,7 +165,7 @@ def:pub MetricsPage -> JsxElement {
     }
 
     def getHttpRequestsData -> list {
-        m = getMetricByName("default_http_requests_total");
+        m = getMetricBySuffix("_http_requests_total");
         if not m or not m["values"] {
             return [];
         }
@@ -148,7 +185,7 @@ def:pub MetricsPage -> JsxElement {
     }
 
     def getLatencyForPath(path: str) -> float {
-        m = getMetricByName("default_http_request_duration_seconds");
+        m = getMetricBySuffix("_http_request_duration_seconds");
         if not m or not m["values"] {
             return 0.0;
         }
@@ -234,8 +271,8 @@ def:pub MetricsPage -> JsxElement {
     maxReqs = 1;
     maxLatency = 1;
     for h in history {
-        if h["requests"] > maxReqs {
-            maxReqs = h["requests"];
+        if (h["delta"] or 0) > maxReqs {
+            maxReqs = h["delta"];
         }
         if h["latency"] > maxLatency {
             maxLatency = h["latency"];
@@ -374,9 +411,12 @@ def:pub MetricsPage -> JsxElement {
                                     key={str(h["time"])}
                                     className="flex-1 bg-accent rounded-t opacity-80 hover:opacity-100 transition-opacity"
                                     style={{
-                                        "height": getBarHeight(h["requests"], maxReqs)
+                                        "minHeight": "2px",
+                                        "height": getBarHeight(
+                                            h["delta"] or 0, maxReqs, 14
+                                        )
                                     }}
-                                    title={str(h["requests"]) + " requests"}
+                                    title={str(h["delta"] or 0) + " req / interval"}
                                 ></div> for h in history
                             ]}
                         </div>

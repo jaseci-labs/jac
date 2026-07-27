@@ -81,7 +81,7 @@ jaclang/runtimelib/client/_bun/
 # Vendored typeshed stdlib stubs are fetched at the pinned commit by the
 # fetch-typeshed step of launcher/payload.zig, not committed -- only the PIN /
 # TARBALL_SHA256 / LICENSE / PROVENANCE.md beside the stubs are tracked.
-jaclang/vendor/typeshed/stdlib/
+jaclang/vendor/typeshed/stdlib
 .llvm-build/
 # CI staging dir for a cache-restored prebuilt shim (setup-jac -Dshim-bin).
 .shim-build/

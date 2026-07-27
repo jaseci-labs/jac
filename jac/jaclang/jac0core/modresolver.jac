@@ -529,6 +529,10 @@ def _resolve_pkg_exports(
     return None;
 }
 
+def has_client_npm_package(spec: str, base_path: str) -> bool {
+    return _find_npm_package(spec, base_path) is not None;
+}
+
 def resolve_client_npm_package(spec: str, base_path: str) -> (str | None) {
     found = _find_npm_package(spec, base_path);
     if found is None {

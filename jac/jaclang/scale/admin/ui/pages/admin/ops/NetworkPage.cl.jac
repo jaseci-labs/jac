@@ -54,7 +54,13 @@ def:pub NetworkPage -> JsxElement {
         loadedOnce = True;
     }
 
-    useEffect(lambda { load(); }, []);
+    useEffect(
+        lambda {
+            load();
+            return;
+        },
+        []
+    );
 
     def portsLabel(ports: list) -> str {
         parts: list = [];

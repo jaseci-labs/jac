@@ -1,11 +1,7 @@
-# Django #
+# Python / Jac artifacts
 *.log
-*.pot
 *.pyc
 __pycache__
-db.sqlite3
-media
-migrations
 venv
 .jac/
 *.jir
@@ -35,7 +31,6 @@ share/python-wheels/
 *.egg
 MANIFEST
 .venv/
-.venv-precommit/
 
 # Others #
 .coverage
@@ -46,33 +41,26 @@ MANIFEST
 .vscode
 build
 *Zone.Identifier
-.DS_Store
-parser.out
 codegen_output*
+.pytest_cache/
 
 *.rdb
 node_modules
 out.dot
 out.txt
-demo.jac
 
 # Mypy files #
 .mypy_cache*
 
-
 # Jaclang session files
 *.session
-mydatabase/
 demo/
 
 # session files
 *.bak
 *.dat
 *.dir
-*.log
 .env
-
-node_modules
 
 # Zig build artifacts. jac/.gitignore covers the in-tree binary build under jac/,
 # but `jac run` invoking the native backend emits a .zig-cache/ at the *repo
@@ -96,7 +84,7 @@ jactastic/**
 .mcp.json
 .gstack/
 
-# Docs "Build Anything" track pages live under docs/docs/build/ — the bare
+# Docs "Build Anything" track pages live under docs/docs/build/ -- the bare
 # `build` rule above would otherwise ignore them. Keep this content tracked.
 !docs/docs/build/
 !docs/docs/build/**

@@ -256,6 +256,19 @@ pub fn build(b: *std.Build) void {
         }
     }
 
+    // Arch-parameterized variants: `zig cc -target <arch>-linux-musl` cross-
+    // compiles musl from any host, so a cross `jac nacompile` (e.g. an x86_64
+    // host emitting an aarch64 static binary) and the aarch64 CI lane can
+    // static-link without target hardware (#7626 C1). Same payload plumbing
+    // as the host step; the step name pins the target osarch explicitly.
+    inline for ([_][]const u8{ "linux-x86_64", "linux-aarch64" }) |cross_osarch| {
+        const vendor_musl_cross = b.addRunArtifact(tool);
+        vendor_musl_cross.addArgs(&.{ "build-musl", cross_osarch, b.pathFromRoot(b.fmt(".pbs-build/{s}/musl/lib", .{cross_osarch})), b.graph.zig_exe });
+        vendor_musl_cross.has_side_effects = true;
+        b.step(b.fmt("vendor-musl-{s}", .{cross_osarch}), b.fmt("Harvest a static-musl runtime for {s} (cross-capable) into .pbs-build/{s}/musl/lib", .{ cross_osarch, cross_osarch }))
+            .dependOn(&vendor_musl_cross.step);
+    }
+
     // Standalone: compile the in-repo wasm_rt libc (vendored musl/wasi-libc
     // subset + jac allocator/io/abi adapters) to wasm32 LLVM bitcode under
     // .pbs-build/wasm32/libc, so na->wasm builds link libc INTO the module
@@ -443,10 +456,19 @@ pub fn build(b: *std.Build) void {
         }
 
         // Wasm32 libc bitcode: compile the in-repo wasm_rt sources (payload
-        // tool's `build-wasm-libc`, mirrors the musl block above) and bundle
-        // them so a shipped binary links libc into na->wasm modules at build
-        // time (#7048). Target-independent, so every platform bundles it.
-        if (link_dir == null) {
+        // tool's `build-wasm-libc`, mirrors the musl block above) so na->wasm
+        // modules link libc into the module (#7048). Target-independent, so
+        // every platform builds it.
+        //
+        // This runs for EVERY build, dev included. It used to sit inside the
+        // `link_dir == null` guard alongside the bundling, which meant the one
+        // mode that reads .pbs-build/wasm32/libc directly (a -Ddev binary, via
+        // wasm_build.jac's _wasm_libc_dir) was the one mode that never wrote
+        // it: the floor stayed at whatever the last non-dev `zig build` left,
+        // and an adapter added to jac_abi64.c never reached a dev checkout.
+        // Only the bundling stays conditional -- a linked binary has no
+        // payload to carry the floor in.
+        {
             const wasm_libc = b.pathFromRoot(".pbs-build/wasm32/libc");
             const vendor_wasm = b.addRunArtifact(tool);
             vendor_wasm.addArgs(&.{
@@ -455,9 +477,19 @@ pub fn build(b: *std.Build) void {
                 wasm_libc,
                 b.graph.zig_exe,
             });
+            // Declare the sources so Zig can see the step is out of date.
+            // addFileInput content-hashes each one; a bare directory arg
+            // hashes only the path (see the mkpayload note below).
+            // has_side_effects stays set because the output lives outside the
+            // cache, so the step must run even when the inputs are unchanged
+            // -- a deleted .pbs-build has to repopulate. The tool itself skips
+            // per-file work that is already up to date.
             vendor_wasm.has_side_effects = true;
+            addTreeInputs(b, vendor_wasm, "jaclang/compiler/passes/native/wasm_rt");
             mk.step.dependOn(&vendor_wasm.step);
-            mk.addArg(b.fmt("--wasm-libc={s}", .{wasm_libc}));
+            if (link_dir == null) {
+                mk.addArg(b.fmt("--wasm-libc={s}", .{wasm_libc}));
+            }
         }
 
         // Track the payload's real inputs so it repacks when any source changes.
@@ -738,6 +770,12 @@ fn macosShim(
     shim_flags: []const []const u8,
 ) std.Build.LazyPath {
     const io = b.graph.io;
+    // Upstream slice (repackaged official release) vs from-source llvm-slice
+    // build: decides the ThinLTO/libLTO plumbing and the external -l deps
+    // below. A custom -Dllvm-dir on an unpinned platform gets the upstream
+    // treatment (official releases are the only other supported layout).
+    const rel = llvm_release.llvmRelease(target.result.os.tag, target.result.cpu.arch);
+    const upstream = if (rel) |r| r.upstream else true;
     const cc = b.addSystemCommand(&.{"c++"});
     cc.addArg("-dynamiclib");
     // Target the resolved arch explicitly rather than the host c++'s default, so a
@@ -747,6 +785,12 @@ fn macosShim(
         .x86_64 => "x86_64",
         else => @panic("jacllvm: unsupported macOS arch for the c++ shim link"),
     } });
+    // Pin the shim's minos to the resolved target's floor, exactly like the
+    // zig-built launcher: with -Dtarget=x86_64-macos.12.0 the whole shipped
+    // binary floors at 12.0 instead of the build runner's macOS. Host-native
+    // builds resolve to the host version, matching clang's own default.
+    const macos_min = target.result.os.version_range.semver.min;
+    cc.addArg(b.fmt("-mmacosx-version-min={d}.{d}", .{ macos_min.major, macos_min.minor }));
     // Respect -Doptimize the way the Linux (Zig addLibrary) path does.
     cc.addArg(switch (optimize) {
         .Debug => "-O0",
@@ -769,29 +813,36 @@ fn macosShim(
             cc.addFileArg(.{ .cwd_relative = b.fmt("{s}/{s}", .{ libdir, entry.name }) });
         }
     }
-    // The LLVM release archives are ThinLTO bitcode, so ld64 must lower them to
-    // native code at link time via libLTO. Apple's bundled libLTO tracks Xcode and
-    // is too old on the CI runners ("Invalid summary version 12, should be in
-    // [1-10]" -> segfault), so point ld64 at the release's OWN libLTO.dylib (kept
-    // by payload.zig fetchLlvmSlice) -- it matches the bitcode it produced.
-    // This is link-time only; the output dylib gains no libLTO runtime dep.
+    // Upstream slices only: the official release archives are ThinLTO bitcode,
+    // so ld64 must lower them to native code at link time via libLTO. Apple's
+    // bundled libLTO tracks Xcode and is too old on the CI runners ("Invalid
+    // summary version 12, should be in [1-10]" -> segfault), so point ld64 at
+    // the release's OWN libLTO.dylib (kept by payload.zig fetchLlvmSlice) -- it
+    // matches the bitcode it produced. This is link-time only; the output dylib
+    // gains no libLTO runtime dep.
     //
     // The path MUST be absolute: ld64 silently falls back to its default libLTO
     // when -lto_library can't be resolved, and a relative path is not reliably
     // resolved from ld's cwd. Set LIBLTO_PATH too -- the env override ld honors
     // most reliably across ld64 / ld-prime.
-    const lto_dylib = b.fmt("{s}/lib/libLTO.dylib", .{llvm_dir});
-    const lto_abs = if (std.fs.path.isAbsolute(lto_dylib)) lto_dylib else b.pathFromRoot(lto_dylib);
-    cc.setEnvironmentVariable("LIBLTO_PATH", lto_abs);
-    cc.addPrefixedFileArg("-Wl,-lto_library,", .{ .cwd_relative = lto_abs });
-    // LLVM's system deps. zstd comes from Homebrew (not on the default search
-    // path); z/xml2 are in the macOS SDK, and clang++ links libc++ itself.
-    cc.addArgs(&.{ "-lz", "-lxml2" });
-    // Homebrew's prefix is /opt/homebrew on Apple Silicon, /usr/local on Intel;
-    // HOMEBREW_PREFIX overrides both for a custom install.
-    const brew = b.graph.environ_map.get("HOMEBREW_PREFIX") orelse
-        (if (target.result.cpu.arch == .aarch64) "/opt/homebrew" else "/usr/local");
-    cc.addArgs(&.{ b.fmt("-I{s}/opt/zstd/include", .{brew}), b.fmt("-L{s}/opt/zstd/lib", .{brew}), "-lzstd" });
+    //
+    // A from-source slice (macos-x86_64) is plain native Mach-O built with
+    // zlib/zstd/libxml2 OFF: no libLTO to point at, and no external -l deps
+    // either -- which keeps the shipped dylib free of Homebrew load commands.
+    if (upstream) {
+        const lto_dylib = b.fmt("{s}/lib/libLTO.dylib", .{llvm_dir});
+        const lto_abs = if (std.fs.path.isAbsolute(lto_dylib)) lto_dylib else b.pathFromRoot(lto_dylib);
+        cc.setEnvironmentVariable("LIBLTO_PATH", lto_abs);
+        cc.addPrefixedFileArg("-Wl,-lto_library,", .{ .cwd_relative = lto_abs });
+        // LLVM's system deps. zstd comes from Homebrew (not on the default search
+        // path); z/xml2 are in the macOS SDK, and clang++ links libc++ itself.
+        cc.addArgs(&.{ "-lz", "-lxml2" });
+        // Homebrew's prefix is /opt/homebrew on Apple Silicon, /usr/local on Intel;
+        // HOMEBREW_PREFIX overrides both for a custom install.
+        const brew = b.graph.environ_map.get("HOMEBREW_PREFIX") orelse
+            (if (target.result.cpu.arch == .aarch64) "/opt/homebrew" else "/usr/local");
+        cc.addArgs(&.{ b.fmt("-I{s}/opt/zstd/include", .{brew}), b.fmt("-L{s}/opt/zstd/lib", .{brew}), "-lzstd" });
+    }
     cc.addArgs(&.{ "-Wl,-exported_symbol,_LLVMPY_*", "-Wl,-install_name,@rpath/libjacllvm.dylib" });
     cc.addArg("-o");
     return cc.addOutputFileArg("libjacllvm.dylib");

@@ -5,16 +5,16 @@ import from pathlib { Path }
 import from typing { Any, Optional, cast }
 import from jaclang.cli.console { console }
 import from jaclang.runtimelib.watcher { FileChangeEvent }
-import from jaclang.runtimelib.client.targets.react_native.common {
-    resolve_node_runner
-}
+import from jaclang.runtimelib.client.targets.react_native.common { resolve_node_tool }
 import from jaclang.runtimelib.client.targets.react_native.build {
     lint_native_incompatible_usage,
     lint_unmapped_tags,
     read_user_js_sources,
     stage_native_image_assets,
     stage_compiled_entry,
-    strip_css_imports
+    strip_css_imports,
+    write_api_base_shim,
+    write_native_entry
 }
 import from jaclang.runtimelib.client.targets.client_dev_common {
     invalidate_runtime_module_cache,
@@ -67,7 +67,11 @@ def inject_dev_api_base_url(rn_dir: Path, api_url: str) -> Optional[str] {
     expo["extra"] = extra;
     cfg["expo"] = expo;
     config_path.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8");
-    console.print(f"  ✔ app.json → expo.extra.apiBaseUrl = {api_url}", style="success");
+
+    write_api_base_shim(rn_dir, api_url);
+    console.print(
+        f"  ✔ app.json + __jacApiBase.js → apiBaseUrl = {api_url}", style="success"
+    );
     return original;
 }
 
@@ -144,9 +148,10 @@ def rn_hmr_on_jac_changed(
     }
 }
 
-def build_expo_start_argv(metro_port: int, clear_cache: bool = True) -> list[str] {
-    argv: list[str] = resolve_node_runner() + [
-        "expo",
+def build_expo_start_argv(
+    rn_dir: Path, metro_port: int, clear_cache: bool = True
+) -> list[str] {
+    argv: list[str] = resolve_node_tool(rn_dir, "expo") + [
         "start",
         "--port",
         str(metro_port)
@@ -158,7 +163,7 @@ def build_expo_start_argv(metro_port: int, clear_cache: bool = True) -> list[str
 }
 
 def run_expo_start(rn_dir: Path, metro_port: int, clear_cache: bool = True) -> int {
-    argv = build_expo_start_argv(metro_port, clear_cache=clear_cache);
+    argv = build_expo_start_argv(rn_dir, metro_port, clear_cache=clear_cache);
     console.print(f"  Running: {' '.join(argv)}", style="muted");
     console.print("  (Press Ctrl+C to stop)\n", style="muted");
     result = subprocess.run(argv, cwd=str(rn_dir), check=False);

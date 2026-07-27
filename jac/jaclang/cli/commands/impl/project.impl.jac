@@ -14,7 +14,7 @@ impl create(
     force: bool = False,
     kind: str = "",
     use: str = "default",
-    list_jacpacks: bool = False,
+    `list: bool = False,
     pack: str = "",
     pack_output: str = "",
     `skip: bool = False,
@@ -29,9 +29,52 @@ impl create(
     if pack {
         return jacpack(action="pack", path=pack, output=pack_output);
     }
+    prev_skip_npm = os.environ.get("JAC_CLIENT_SKIP_NPM_INSTALL");
     if `skip {
         os.environ["JAC_CLIENT_SKIP_NPM_INSTALL"] = "1";
     }
+    try {
+        return _create_body(
+            name,
+            force,
+            kind,
+            use,
+            `list,
+            `skip or bool(os.environ.get("JAC_CLIENT_SKIP_NPM_INSTALL")),
+            style,
+            baseColor,
+            theme,
+            font,
+            radius,
+            menuAccent,
+            menuColor
+        );
+    } finally {
+        if `skip {
+            if prev_skip_npm is None {
+                os.environ.pop("JAC_CLIENT_SKIP_NPM_INSTALL", None);
+            } else {
+                os.environ["JAC_CLIENT_SKIP_NPM_INSTALL"] = prev_skip_npm;
+            }
+        }
+    }
+}
+
+def _create_body(
+    name: str,
+    force: bool,
+    kind: str,
+    use: str,
+    list_kinds: bool,
+    skip_deps: bool,
+    style: str | None,
+    baseColor: str | None,
+    theme: str | None,
+    font: str | None,
+    radius: str | None,
+    menuAccent: str | None,
+    menuColor: str | None
+) -> int {
     if use == "jac-shadcn" {
         import from jaclang.cli.shadcn.cli { stash_create_theme }
         theme_args = {
@@ -52,6 +95,7 @@ impl create(
     }
     import from jaclang.project.config { find_project_root }
     import from jaclang.project.template_registry {
+        TemplateRegistry,
         get_template_registry,
         initialize_template_registry
     }
@@ -59,27 +103,21 @@ impl create(
         load_template_from_json,
         load_template_from_directory
     }
-    import from jaclang.project.kinds {
-        is_valid_kind,
-        kind_required_plugin,
-        VALID_KINDS
-    }
-    registry = get_template_registry();
+    import from jaclang.project.kinds { is_valid_kind, VALID_KINDS }
+    registry: TemplateRegistry = get_template_registry();
 
     if registry.is_empty() {
         initialize_template_registry();
     }
 
-    if list_jacpacks {
+    if list_kinds {
         kinds = registry.list_kinds();
         if kinds {
             console.print(
                 "\nProject kinds (jac create --kind <kind>):\n", style="info"
             );
             for (kname, desc) in kinds {
-                plugin = kind_required_plugin(kname);
-                suffix = f"  [needs {plugin}]" if plugin else "";
-                console.print(f"  {kname}: {desc}{suffix}");
+                console.print(f"  {kname}: {desc}");
             }
         }
         variants = [
@@ -114,8 +152,7 @@ impl create(
         if tmpl is None {
             console.error(f"Unknown template: {use}");
             console.print(
-                "Use --list_jacpacks to see available kinds and templates.",
-                style="muted"
+                "Use --list to see available kinds and named variants.", style="muted"
             );
             return 1;
         }
@@ -128,23 +165,11 @@ impl create(
             );
             return 1;
         }
-        plugin = kind_required_plugin(target_kind);
-        if plugin and not _plugin_available(plugin) {
-            console.error(
-                f"Project kind '{target_kind}' requires the {plugin} plugin, which is not installed.",
-                hint=f"Install it (e.g. `pip install {plugin}` / `jac install {plugin}`), then retry."
-            );
-            return 1;
-        }
         tmpl = registry.get_by_kind(target_kind);
         if tmpl is None {
             console.error(
                 f"No template registered for kind '{target_kind}'.",
-                hint=(
-                    f"The {plugin} plugin provides it -- ensure it is installed."
-                        if plugin
-                        else "This is unexpected for a core kind; please report it."
-                )
+                hint="This is unexpected for a core kind; please report it."
             );
             return 1;
         }
@@ -201,6 +226,7 @@ impl create(
     import copy;
     render_config = copy.deepcopy(tmpl.config);
     _stamp_kind(render_config, tmpl.kind);
+    _stamp_jac_version(render_config);
 
     toml_content = _render_config_to_toml(render_config, project_name);
     with open(toml_path, "w", encoding="utf-8") as f {
@@ -243,6 +269,11 @@ impl create(
         }
     }
 
+    deps_installed = False;
+    if not skip_deps {
+        deps_installed = _bootstrap_project_deps(project_path);
+    }
+
     elapsed_time = time.time() - start_time;
     console.print();
     if elapsed_time < 1 {
@@ -257,7 +288,9 @@ impl create(
     if create_subdir {
         steps.append(f"cd {name}");
     }
-    steps.append("jac install           Install dependencies");
+    if not deps_installed {
+        steps.append("jac install           Install dependencies");
+    }
     steps.append(f"jac run               {_run_blurb(tmpl.kind)}");
     console.print_next_steps(steps);
     console.print();
@@ -301,12 +334,15 @@ def _stamp_kind(config: dict, kind: str) -> None {
     }
 }
 
-def _plugin_available(pkg: str) -> bool {
-    import importlib.util;
-    try {
-        return importlib.util.find_spec(pkg.replace("-", "_")) is not None;
-    } except (ImportError, ValueError) {
-        return False;
+def _stamp_jac_version(config: dict) {
+    proj = config.get("project");
+    if not isinstance(proj, dict) {
+        proj = {};
+        config["project"] = proj;
+    }
+    if not proj.get("jac-version") {
+        import from jaclang.cli.cli { jac_version }
+        proj["jac-version"] = f"=={jac_version()}";
     }
 }
 
@@ -417,8 +453,8 @@ def _resolve_template(use: str, registry: any) -> any {
 
     tmpl = registry.get(use);
     if tmpl is None {
-        console.error(f"Unknown jacpack template: {use}");
-        console.error("Use --list_jacpacks to see available templates.");
+        console.error(f"Unknown template: {use}");
+        console.error("Use --list to see available kinds and named variants.");
         console.error("You can also specify a path to a .jacpack file or a URL.");
         return None;
     }
@@ -535,13 +571,14 @@ impl install(
     }
     if shadcn or npm {
         channel = "--shadcn" if shadcn else "--npm";
+
+        flag_checks: list = [(no_save, "--no-save"), (dry_run, "--dry-run")];
+        if shadcn {
+            flag_checks.append((install_global, "--global"));
+        }
         ineffective: list[str] = [
             flag
-            for (enabled, flag) in [
-                (no_save, "--no-save"),
-                (dry_run, "--dry-run"),
-                (install_global, "--global")
-            ]
+            for (enabled, flag) in flag_checks
             if enabled
         ];
         if ineffective {
@@ -557,7 +594,7 @@ impl install(
     }
     if npm {
         import from jaclang.runtimelib.client.cli { run_npm_add }
-        return run_npm_add(packages, dev);
+        return run_npm_add(packages, dev, install_global);
     }
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
@@ -882,6 +919,27 @@ impl install(
     } else {
         console.error("Some dependencies failed to install");
         return 1;
+    }
+}
+
+def _bootstrap_project_deps(project_path: Path) -> bool {
+    import from jaclang.project.config { get_config, set_config }
+    prev = os.getcwd();
+    prev_cfg = get_config();
+    try {
+        os.chdir(str(project_path));
+
+        set_config(get_config(start_path=project_path, force_discover=True));
+        return install() == 0;
+    } except Exception as e {
+        console.warning(f"Could not install dependencies: {e}");
+        console.print(
+            "  Run 'jac install' in the project directory when ready.\n", style="muted"
+        );
+        return False;
+    } finally {
+        os.chdir(prev);
+        set_config(prev_cfg);
     }
 }
 
@@ -1255,14 +1313,17 @@ impl clean(
 }
 
 impl jacpack(action: str = "", path: str = "", output: str = "") -> int {
-    import from jaclang.project.template_registry { get_template_registry }
+    import from jaclang.project.template_registry {
+        TemplateRegistry,
+        get_template_registry
+    }
     import from jaclang.project.template_loader {
         load_template_from_directory,
         load_template_from_json,
         bundle_template
     }
     if not action or action == "list" {
-        registry = get_template_registry();
+        registry: TemplateRegistry = get_template_registry();
         templates = registry.list_templates();
         if not templates {
             console.print("No templates available.");
@@ -1801,7 +1862,72 @@ def _bundle_sealed(config: any, output: str) -> int {
     return 0;
 }
 
-def _bundle_jab(config: any, output: str) -> int {
+def _vendor_jab_deps(config: any, img: Path) -> bool {
+    import from jaclang.project.providers { resolve_plan, get_python_provider }
+    import from jaclang.jac0core.sealed { python_tag }
+    import from jaclang.runtimelib.jab_vendor {
+        wheels_dir,
+        download_wheels,
+        write_vendor_manifest
+    }
+
+    plan = resolve_plan(config, include_dev=False);
+    py_prov = get_python_provider();
+    py_deps = [
+        d
+        for d in plan.for_ecosystem("python")
+        if d.source == "pypi"
+    ];
+    skipped = [
+        d.name
+        for d in plan.for_ecosystem("python")
+        if d.source != "pypi"
+    ];
+    if skipped {
+        console.print(
+            f"  ⚠ not vendoring non-pypi dep(s): {', '.join(sorted(skipped))} "
+            "(installed normally at run time)",
+            style="warning"
+        );
+    }
+    specs = py_prov.specs_for(py_deps);
+    if not specs {
+        console.print(
+            "  ✔ Fat jab: no third-party Python deps to vendor", style="success"
+        );
+        write_vendor_manifest(img, specs, python_tag=python_tag());
+        return True;
+    }
+
+    console.print(
+        f"  Vendoring {len(specs)} Python dependency closure as wheels", style="muted"
+    );
+    wd = wheels_dir(img);
+    (ok, err) = download_wheels(specs, wd);
+    if not ok {
+        console.error(
+            f"Fat-jab vendoring failed while downloading wheels:\n  {err}",
+            hint=(
+                "A dep may lack a wheel for this platform. Build without --fat, "
+                "or pre-provide the wheels via PIP_FIND_LINKS."
+            )
+        );
+        return False;
+    }
+    write_vendor_manifest(img, specs, python_tag=python_tag());
+
+    wheels = sorted(wd.glob("*.whl"));
+    total = sum([w.stat().st_size for w in wheels]);
+    console.print(
+        f"  ✔ Vendored {len(wheels)} wheel(s) ({total:,} bytes); "
+        "materializes offline, no PyPI",
+        style="success"
+    );
+    return True;
+}
+
+
+def _bundle_jab(config: any, output: str, fat: bool = False) -> int {
     import shutil;
     import tempfile;
 
@@ -1813,6 +1939,9 @@ def _bundle_jab(config: any, output: str) -> int {
         console.print(f"\n  Sealing {name}", style="muted");
         img = _make_sealed_image(config, work, name, out_dir=Path(output));
         if img is None {
+            return 1;
+        }
+        if fat and not _vendor_jab_deps(config, img) {
             return 1;
         }
         payload = _tar_gz_dir(img);
@@ -1829,7 +1958,7 @@ def _bundle_jab(config: any, output: str) -> int {
     return 0;
 }
 
-def _bundle_binary(config: any, output: str) -> int {
+def _bundle_binary(config: any, output: str, fat: bool = False) -> int {
     import sys;
     import os;
     import shutil;
@@ -1870,6 +1999,10 @@ def _bundle_binary(config: any, output: str) -> int {
                 "(main.jac at the package root, or [project] entry-point in jac.toml).",
                 hint="Package-only projects have nothing to run as a binary."
             );
+            return 1;
+        }
+
+        if fat and not _vendor_jab_deps(config, img) {
             return 1;
         }
 
@@ -1974,7 +2107,7 @@ def _bundle_npm_runtime(output: str, framework: str = "") -> int {
     return 0;
 }
 
-impl bundle(output: str = "dist", target: str = "wheel") -> int {
+impl bundle(output: str = "dist", target: str = "wheel", fat: bool = False) -> int {
     import from jaclang.project.config { get_config }
 
     if target == "npm-runtime" {
@@ -1999,10 +2132,10 @@ impl bundle(output: str = "dist", target: str = "wheel") -> int {
         return _bundle_sealed(config, output);
     }
     if target == "jab" {
-        return _bundle_jab(config, output);
+        return _bundle_jab(config, output, fat=fat);
     }
     if target == "binary" {
-        return _bundle_binary(config, output);
+        return _bundle_binary(config, output, fat=fat);
     }
     if target not in ("wheel", "npm", "all") {
         console.error(

@@ -100,8 +100,6 @@ def:pub clear_shopping_list -> dict[str, bool] {
     return {"cleared": True};
 }
 
-to cl:
-
 import "./styles.css";
 
 """Single task row -- presentational; toggle and delete are passed in."""

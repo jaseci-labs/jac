@@ -24,7 +24,8 @@ def _to_str(value: any) -> str {
     return str(value);
 }
 
-glob _logger = logging.getLogger(__name__);
+glob _logger = logging.getLogger(__name__),
+     _CONSUME_ERROR_BACKOFF: float = 0.5;
 
 obj RedisEventStream(EventStreamBroker) {
     has config: dict[str, any] = {},
@@ -106,9 +107,11 @@ obj RedisEventStream(EventStreamBroker) {
         return start_from;
     }
 
-    def _ensure_group(topic: str, group: str, start_from: str = "latest") -> None {
+    def _ensure_group(
+        topic: str, group: str, start_from: str = "latest", force: bool = False
+    ) -> None {
         key = f"{topic}::{group}";
-        if key in self._ensured_groups {
+        if not force and key in self._ensured_groups {
             return;
         }
         try {
@@ -118,6 +121,8 @@ obj RedisEventStream(EventStreamBroker) {
         } except Exception as e {
             if "BUSYGROUP" not in str(e) {
                 _logger.warning(f"XGROUP CREATE failed for {topic}/{group}: {e}");
+                self._ensured_groups.discard(key);
+                return;
             }
         }
         self._ensured_groups.add(key);
@@ -160,6 +165,31 @@ obj RedisEventStream(EventStreamBroker) {
         }
     }
 
+    def _xreadgroup(topic: str, group: str, max_messages: int, block_ms: int) -> any {
+        return self._get_client().xreadgroup(
+            groupname=group,
+            consumername=self._consumer_name,
+            streams={topic: ">"},
+            count=max_messages,
+            block=block_ms
+        );
+    }
+
+    def _read_group(
+        topic: str, group: str, max_messages: int, block_ms: int, start_from: str
+    ) -> any {
+        try {
+            return self._xreadgroup(topic, group, max_messages, block_ms);
+        } except Exception as e {
+            if "NOGROUP" not in str(e) {
+                raise;
+            }
+        }
+        _logger.warning(f"Consumer group {group} missing for {topic}; recreating");
+        self._ensure_group(topic, group, start_from, force=True);
+        return self._xreadgroup(topic, group, max_messages, block_ms);
+    }
+
     def consume(
         topic: str,
         group: str | None = None,
@@ -171,15 +201,10 @@ obj RedisEventStream(EventStreamBroker) {
         self._ensure_group(topic, grp, start_from);
         block_ms = max(1, int(timeout_seconds * 1000));
         try {
-            result = self._get_client().xreadgroup(
-                groupname=grp,
-                consumername=self._consumer_name,
-                streams={topic: ">"},
-                count=max_messages,
-                block=block_ms
-            );
+            result = self._read_group(topic, grp, max_messages, block_ms, start_from);
         } except Exception as e {
             _logger.error(f"XREADGROUP failed for {topic}/{grp}: {e}");
+            wait_or_stop(self, _CONSUME_ERROR_BACKOFF);
             return [];
         }
         events: list[Event] = [];
@@ -278,7 +303,7 @@ obj RedisEventStream(EventStreamBroker) {
 
         broker = self;
         def _loop {
-            consumer_loop(broker, topic, grp, handler, retry_policy);
+            consumer_loop(broker, topic, grp, handler, retry_policy, start_from);
         }
 
         thread = Thread(

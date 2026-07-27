@@ -2894,6 +2894,9 @@ impl NativeListEmitter.emit_pop(
     b.branch(shift_bb);
     b.position_at_start(done_bb);
     b.store(new_len, len_ptr);
+    if is_ptr {
+        p._mark_owned(popped);
+    }
     return popped;
 }
 
@@ -3073,7 +3076,7 @@ impl NativeListEmitter.emit_sort(
     ];
     if _unknown_kw {
         p.emit(
-            E5090,
+            E5092,
             node_override=_key_node or _rev_node,
             kind="sort keyword argument",
             name=", ".join(_unknown_kw)
@@ -3091,7 +3094,7 @@ impl NativeListEmitter.emit_sort(
             or len(_key_val.args) != 1
         ) {
             p.emit(
-                E5090,
+                E5092,
                 node_override=_key_node,
                 kind="sort key",
                 name="key= (only a capture-free single-parameter lambda works)"
@@ -3319,6 +3322,13 @@ impl NativeDictEmitter.emit_get(
     result = b.phi(val_type, name="dget.result");
     result.add_incoming(val, found_bb);
     result.add_incoming(default_val, notfound_bb);
+    if isinstance(val_type, ir.PointerType) {
+        if p.rc_retain_fn is None {
+            p._emit_rc_helpers();
+        }
+        _res_cast = b.bitcast(result, ir.IntType(8).as_pointer(), name="dget.ret.cast");
+        b.call(p.rc_retain_fn, [_res_cast]);
+    }
     return result;
 }
 
@@ -5619,7 +5629,6 @@ impl NativeBuiltinEmitter.emit_format(
     i8p = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
     rc_alloc_fn = p.rc_alloc_fn;
-    buf_ptr = b.call(rc_alloc_fn, [ir.Constant(i64, 64)], name="fmt.buf");
     snprintf = p._get_or_declare_extern(
         "snprintf", ir.IntType(32), [i8p, i64, i8p], var_arg=True
     );
@@ -5637,7 +5646,22 @@ impl NativeBuiltinEmitter.emit_format(
     copy_len = b.add(spec_len, ir.Constant(i64, 1), name="fmt.copylen");
     b.call(memcpy_fn, [fmt_rest, spec_val, copy_len]);
 
-    b.call(snprintf, [buf_ptr, ir.Constant(i64, 64), fmt_buf, arg_val]);
+    if isinstance(arg_val.type, ir.IntType) and arg_val.type.width == 1 {
+        arg_val = b.zext(arg_val, i64, name="fmt.arg.zext");
+    } elif isinstance(arg_val.type, ir.IntType) and arg_val.type.width != 64 {
+        arg_val = b.sext(arg_val, i64, name="fmt.arg.sext");
+    }
+    need32 = b.call(
+        snprintf,
+        [ir.Constant(i8p, None), ir.Constant(i64, 0), fmt_buf, arg_val],
+        name="fmt.need"
+    );
+    need = b.sext(need32, i64, name="fmt.need64");
+    buf_size = b.add(need, ir.Constant(i64, 1), name="fmt.size");
+    buf_ptr = b.call(rc_alloc_fn, [buf_size], name="fmt.buf");
+    b.call(snprintf, [buf_ptr, buf_size, fmt_buf, arg_val]);
+    p._emit_set_type_tag(b, buf_ptr, "str");
+    p._emit_rc_release_simple(fmt_buf, op="fmt_tmp", loc="");
     return buf_ptr;
 }
 
@@ -5674,6 +5698,10 @@ impl NativeBuiltinEmitter.emit_str(
             if obj_s is not None {
                 return obj_s;
             }
+            cont_s = p._emit_container_repr(arg_val, ctx.type_key or None);
+            if cont_s is not None {
+                return cont_s;
+            }
             return b.bitcast(arg_val, i8p, name="str.identity");
         }
 
@@ -5686,6 +5714,13 @@ impl NativeBuiltinEmitter.emit_str(
 
     if isinstance(arg_val.type, ir.DoubleType) {
         return p._emit_float_repr(arg_val);
+    }
+
+    if isinstance(arg_val.type, ir.LiteralStructType) {
+        cont_s = p._emit_container_repr(arg_val, ctx.type_key or None);
+        if cont_s is not None {
+            return cont_s;
+        }
     }
     rc_alloc_fn = p.rc_alloc_fn;
     buf_ptr = b.call(rc_alloc_fn, [ir.Constant(ir.IntType(64), 32)], name="str.buf");
@@ -5772,6 +5807,12 @@ impl NativeBuiltinEmitter.emit_float(
     if isinstance(arg_val.type, ir.IntType) {
         return b.sitofp(arg_val, ir.DoubleType(), name="float.from.int");
     }
+    if isinstance(arg_val.type, ir.DoubleType) {
+        return arg_val;
+    }
+    if isinstance(arg_val.type, ir.FloatType) {
+        return b.fpext(arg_val, ir.DoubleType(), name="float.from.f32");
+    }
     return None;
 }
 
@@ -5810,7 +5851,8 @@ impl NativeBuiltinEmitter.emit_bool(
             return b.zext(p._emit_bytes_truthy(arg_val), i64, name="bool.byresult");
         }
     }
-    return None;
+
+    return b.zext(p._to_bool(arg_val), i64, name="bool.result");
 }
 
 impl NativeBuiltinEmitter.emit_list(
@@ -5987,6 +6029,12 @@ impl NativeBuiltinEmitter.emit_bytes(
     i8 = ir.IntType(8);
     i64 = ir.IntType(64);
     val = args[0];
+    if ("u8" in p.list_types and val.type == p.list_types["u8"].as_pointer()) {
+        _src = p._bytearray_src_of(val);
+        if _src is not None {
+            return p._bytes_from_raw(_src[0], _src[1]);
+        }
+    }
     for (lk, lhelpers) in p.list_helpers.items() {
         ltype = p.list_types.get(lk);
         if ltype is not None and val.type == ltype.as_pointer() {
@@ -6022,7 +6070,50 @@ impl NativeBuiltinEmitter.emit_bytes(
 impl NativeBuiltinEmitter.emit_bytearray(
     self, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return self.emit_bytes(ctx, args);
+    p = ctx.pass_ref;
+    b = get_builder(p);
+    i8 = ir.IntType(8);
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    p._ensure_bytearray_type();
+    fns = p._bytearray_runtime_fns();
+    buf = p._rc_call_with_ctx(
+        p.list_helpers["u8"]["new"], [], op="new", loc="", name="ba.new"
+    );
+    if not args {
+        return buf;
+    }
+    a0 = args[0];
+    if isinstance(a0.type, ir.IntType) {
+        n = p._coerce_type(a0, i64);
+        b.call(fns["reserve"], [buf, n], name="");
+        data_p = b.gep(
+            buf, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="ba.z.data.p"
+        );
+        data = b.load(data_p, name="ba.z.data");
+        b.call(fns["memset"], [data, ir.Constant(i32, 0), n], name="");
+        len_p = b.gep(
+            buf, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ba.z.len.p"
+        );
+        b.store(n, len_p);
+        return buf;
+    }
+    src = p._bytearray_src_of(a0);
+    if src is not None {
+        b.call(fns["extend_raw"], [buf, src[0], src[1]], name="");
+        return buf;
+    }
+
+    _bv = self.emit_bytes(ctx, [a0]);
+    if _bv is not None and p._is_bytes_value(_bv) {
+        _bsrc = p._bytearray_src_of(_bv);
+        if _bsrc is not None {
+            b.call(fns["extend_raw"], [buf, _bsrc[0], _bsrc[1]], name="");
+            p._emit_rc_release_simple(_bv, op="ba_ctor_list", loc="");
+            return buf;
+        }
+    }
+    return None;
 }
 
 impl NativeBuiltinEmitter.emit_complex(

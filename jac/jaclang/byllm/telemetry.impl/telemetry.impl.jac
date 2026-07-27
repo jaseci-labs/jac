@@ -1,5 +1,3 @@
-"""Agent-level telemetry callback implementations."""
-
 impl register_agent_callback(callback: Callable) -> None {
     if callback not in _agent_callbacks {
         _agent_callbacks.append(callback);
@@ -16,7 +14,6 @@ impl _emit_agent_telemetry(
 ) -> None {
     import types as _types_mod;
 
-    # --- Extract user_prompt from mt_run messages ---
     user_prompt = "";
     try {
         user_prompt = str(mt_run.messages[1].content[0].text)[:2000];
@@ -24,7 +21,6 @@ impl _emit_agent_telemetry(
         logger.debug(f"user_prompt extraction failed: {e}");
     }
 
-    # --- Extract caller_args from mt_run.mtir ---
     caller_args: dict = {};
     try {
         if mt_run.mtir and mt_run.mtir.args {
@@ -36,7 +32,6 @@ impl _emit_agent_telemetry(
         logger.debug(f"caller_args extraction failed: {e}");
     }
 
-    # --- Extract conversation history ---
     conv_history: list = [];
     try {
         conv_history = mt_run.get_msg_list();
@@ -44,7 +39,6 @@ impl _emit_agent_telemetry(
         logger.debug(f"conv_history extraction failed: {e}");
     }
 
-    # --- Extract agent response ---
     agent_response = "";
     if result is not None {
         if isinstance(result, _types_mod.GeneratorType) {
@@ -54,7 +48,6 @@ impl _emit_agent_telemetry(
         }
     }
 
-    # --- Build the telemetry record ---
     record = {
         "invocation_id": mt_run._invocation_id,
         "parent_invocation_id": mt_run?._parent_invocation_id,
@@ -69,7 +62,6 @@ impl _emit_agent_telemetry(
         "error": str(error)[:1000] if error else None
     };
 
-    # --- Emit to all registered callbacks ---
     for callback in _agent_callbacks {
         try {
             callback(record);

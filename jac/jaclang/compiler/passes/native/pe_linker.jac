@@ -17,7 +17,8 @@ obj CoffSymbol {
         value: int,
         sec_num: int,
         storage_class: int,
-        weak_tag: int = -1;
+        weak_tag: int = -1,
+        typ: int = 0;
 }
 
 obj PeLinker {

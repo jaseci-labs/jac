@@ -23,7 +23,6 @@ def k8s_available -> bool {
 
 
 def _ensure_config -> bool {
-    global _config_loaded,_config_ok;
     if _config_loaded {
         return _config_ok;
     }

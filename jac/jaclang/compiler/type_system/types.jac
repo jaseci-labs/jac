@@ -137,7 +137,8 @@ obj ClassType(TypeBase) {
             is_enum_class: bool = False,
             enum_value_type: (TypeBase | None) = None,
             enum_members: (dict[str, EnumMemberInfo] | None) = None,
-            _identity_key: (tuple[str, int, int, str] | None) = None;
+            _identity_key: (tuple[str, int, int, str] | None) = None,
+            _derived_special_types: (dict[str, ClassType] | None) = None;
 
         def postinit -> None;
         def canonical_key -> (tuple[str, int, int, str] | None);

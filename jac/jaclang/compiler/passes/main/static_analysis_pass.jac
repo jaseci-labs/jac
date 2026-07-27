@@ -25,6 +25,8 @@ obj StaticAnalysisPass(Transform[uni.Module, uni.Module]) {
         prog: any,
         cancel_token: any = None;
 
+    static has PROVIDES: tuple = ('static-checks', );
+
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;
     def _check_unused_symbols(scope: uni.UniScopeNode) -> None;
@@ -35,4 +37,5 @@ obj StaticAnalysisPass(Transform[uni.Module, uni.Module]) {
     def _check_unreachable_code(mod: uni.Module) -> None;
     def _check_semantic_patterns(mod: uni.Module) -> None;
     def _check_redundant_imports(mod: uni.Module) -> None;
+    def _check_client_imports(mod: uni.Module) -> None;
 }

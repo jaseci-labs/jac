@@ -361,7 +361,6 @@ def:pub cef_dispatch_get_exe_dir -> str {
 }
 
 def _init_exe_dir {
-    global g_exe_dir_buf,g_exe_path_buf;
     if g_exe_dir_buf != 0 {
         return;
     }
@@ -388,7 +387,7 @@ def:pub cef_platform_bootstrap {
     setenv("NO_AT_BRIDGE", "1", 0);
 
     fc_val: int = getenv("FONTCONFIG_FILE");
-    if fc_val == 0 && g_exe_dir_buf != 0 {
+    if fc_val == 0 and g_exe_dir_buf != 0 {
         fc_buf: int = calloc(1, 4096);
         strcpy(fc_buf, g_exe_dir_buf);
         strcat(fc_buf, "/minimal-fonts.conf");
@@ -418,7 +417,6 @@ def _on_before_close(self: int, browser: int) {
 }
 
 def _on_after_created(self: int, browser: int) {
-    global g_browser,g_browser_xid;
     g_browser = browser;
     b: cef_browser_t = browser;
     host: int = b.get_host(b);
@@ -444,7 +442,6 @@ def _get_render_process_handler(self: int) -> int {
 }
 
 def _on_context_initialized(self: int) {
-    global g_browser_pending;
     _log("context initialized");
     if g_browser_pending == 0 {
         return;
@@ -492,14 +489,13 @@ def _on_before_cmdline(self: int, process_type: int, command_line: int) {
     }
 
     ud_val: int = getenv("JAC_CEF_USER_DATA_DIR");
-    if ud_val != 0 && strlen(ud_val) > 0 {
+    if ud_val != 0 and strlen(ud_val) > 0 {
         cef_dispatch_cmdline_append_switch_value(command_line, "user-data-dir", ud_val);
     }
     _log("cmdline: done");
 }
 
 def _init_vtables {
-    global g_lsh,g_bph,g_rph,g_cli,g_dispatch_app,g_stub_app,g_vtables_ready;
     if g_vtables_ready != 0 {
         return;
     }
@@ -668,7 +664,6 @@ def:pub cef_dispatch_browser_settings_create -> int {
 def:pub cef_dispatch_set_pending_browser(
     url: str, title: str, width: int, height: int
 ) {
-    global g_pending_url,g_pending_title,g_pending_w,g_pending_h,g_browser_pending;
     g_pending_url = url;
     g_pending_title = title;
     if width > 0 {
@@ -685,7 +680,6 @@ def:pub cef_dispatch_set_pending_browser(
 }
 
 def:pub cef_dispatch_open_browser(url: str, title: str, width: int, height: int) {
-    global g_browser_pending;
     cef_dispatch_set_pending_browser(url, title, width, height);
     _init_vtables();
     wi: int = cef_dispatch_window_info_create(title, width, height);
@@ -697,7 +691,6 @@ def:pub cef_dispatch_open_browser(url: str, title: str, width: int, height: int)
 }
 
 def:pub cef_dispatch_execute_process -> i32 {
-    global g_cached_args;
     _assert_cef_abi();
     cef_platform_bootstrap();
     _init_vtables();
@@ -722,7 +715,6 @@ def:pub cef_dispatch_startup(cache_path: str, no_sandbox: int) -> i32 {
     _log("startup: initializing CEF");
     settings: int = cef_dispatch_settings_create(no_sandbox, cache_path);
 
-    global g_cached_args;
     if g_cached_args == 0 {
         g_cached_args = cef_dispatch_main_args_create();
     }
@@ -905,7 +897,7 @@ def:pub cef_dispatch_window_set_title(title: int) -> i32 {
 
     netname: int = XInternAtom(dpy, "_NET_WM_NAME", 0);
     utf8: int = XInternAtom(dpy, "UTF8_STRING", 0);
-    if netname != 0 && utf8 != 0 {
+    if netname != 0 and utf8 != 0 {
         XChangeProperty(dpy, top, netname, utf8, 8, 0, title, strlen(title));
     }
     XFlush(dpy);

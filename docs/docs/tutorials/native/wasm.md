@@ -55,17 +55,50 @@ Two things to know, both visible in that snippet:
 - **Jac `int` is 64-bit**, so integer parameters and returns cross the boundary as JavaScript `BigInt` -- call `add(2n, 3n)`, not `add(2, 3)`. `float` crosses as a plain `number`.
 - **Call `__jac_glob_init()` once after instantiation** to initialize module globals. If your module does I/O (e.g. `print`), supply the corresponding functions on the `env` import object; a pure-computation module needs nothing.
 
-## 4. The integrated path: `na` blocks in a web app
+## 4. The integrated path: `na import`
 
-Hand-loading wasm is the mechanics; in a real app you don't do any of it. In a [`web-static` project](../../quick-guide/project-kinds.md#in-browser-native-wasm), an `na` block in your app module is compiled to wasm and wired to your client code by the build:
+Hand-loading wasm is the mechanics; in a real app you don't do any of it.
+Client code imports a native module the same way it imports a server one --
+with a marked import:
 
-```bash
-jac create wasmapp --kind web-static
+```jac
+na import from .sum { add }
+
+cl {
+    async def show_sum {
+        print(await add(2, 3));
+    }
+}
 ```
 
-Put hot-path code in an `na` block and UI in `cl`; `jac start` (or `jac build --client web`) compiles `cl` → JavaScript and `na` → wasm into `.jac/client/dist/`, and serves them together.
+That one import does all the wiring. The client build compiles `sum.na.jac`
+to `/static/sum.wasm`, and `add` is bound to a generated stub that fetches
+and instantiates the module lazily on the first call -- which is why the
+call is `await`ed. On the server the import compiles to nothing: an
+`na import` never executes the native module under Python (a *plain* import
+of a native module is the server-side ctypes crossing instead).
 
-For a full worked example of the pattern -- a game loop running as wasm, rendered through a JavaScript shim -- see the raylib shooter in the repo ([`jac/examples/raylib_shooter/web`](https://github.com/jaseci-labs/jaseci/tree/main/jac/examples/raylib_shooter/web)): `main.jac` holds the `na` game and the `cl` page, and `raylib_shim.cl.jac` supplies the wasm module's imports as WebGL/DOM functions.
+If the native module declares its own FFI externs (say, raylib calls), the
+page must supply their JavaScript implementations before the first call:
+
+```jac
+import from "@jac/wasm_host" { set_na_env }
+
+na import from .arena { init }
+
+async def launch(shim: any, env_fns: dict) {
+    set_na_env("arena", shim, {"env": env_fns});
+    game = await init();
+}
+```
+
+A pure-computation module like `sum` needs no `set_na_env` at all.
+
+For a full worked example of the pattern -- a borrow-checked, zero-GC game
+loop running as wasm, rendered through a WebGL shim -- see the shooter on
+jaclang.org's own source (`game/arena.na.jac` and `game/webgl_host.jac`):
+`webgl_host.jac` reaches the game through exactly the `na import` +
+`set_na_env` pair above.
 
 ## Where to go next
 

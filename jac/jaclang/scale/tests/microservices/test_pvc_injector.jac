@@ -10,7 +10,14 @@ import from jaclang.scale.injector.bundle {
     sanitized_jac_toml,
     pack_jab
 }
-import from jaclang.scale.injector.pvc_injector { PvcInjector, build_bundle_pvc }
+import from jaclang.scale.injector.pvc_injector {
+    PvcInjector,
+    build_bundle_pvc,
+    build_loader_pod,
+    BUNDLE_MOUNT_PATH,
+    LOADER_UID,
+    LOADER_GID
+}
 
 
 glob _JAC_BIN: Path = Path(__file__).parents[4] / "zig-out" / "bin" / "jac";
@@ -148,6 +155,55 @@ test "the bundle pvc fails fast when RWX is requested without a storage class" {
         assert "bundle_storage_class" in str(e);
     }
     assert raised , "Expected ValueError for an RWX bundle PVC without a storage class";
+}
+
+
+test "the loader pod keeps fsGroup for storage that honors it (#7432)" {
+    pod = build_loader_pod("orders-bundle-loader", "orders-bundles", "busybox:1.36");
+    assert pod["kind"] == "Pod";
+    assert pod["metadata"]["name"] == "orders-bundle-loader";
+    spec = pod["spec"];
+    assert spec["securityContext"]["fsGroup"] == LOADER_GID;
+    assert spec["securityContext"]["runAsUser"] == LOADER_UID;
+    claims = [
+        v["persistentVolumeClaim"]["claimName"]
+        for v in spec["volumes"]
+        if "persistentVolumeClaim" in v
+    ];
+    assert claims == ["orders-bundles"];
+}
+
+
+test "the loader pod makes the bundle volume root writable without fsGroup (#7432)" {
+    # fsGroup alone is not enough: kubelet never applies it to hostPath or NFS
+    # volumes, and CSI drivers with the default fsGroupPolicy skip ReadWriteMany
+    # volumes -- exactly what the bundle PVC must be. On any such storage the
+    # non-root loader hits "mkdir: Permission denied" at the root-owned volume
+    # root. The pod must therefore hand the mount to the loader's uid/gid itself.
+    pod = build_loader_pod("orders-bundle-loader", "orders-bundles", "busybox:1.36");
+    inits = pod["spec"].get("initContainers", []);
+    assert len(inits) == 1 , (
+        "the loader pod needs a volume-permission init container: fsGroup is "
+        "not applied on hostPath/NFS or RWX CSI volumes (#7432)"
+    );
+    perms = inits[0];
+    assert perms["image"] == "busybox:1.36";
+    # It must run as root to chown a root-owned volume root, but stay hardened.
+    sc = perms["securityContext"];
+    assert sc["runAsUser"] == 0;
+    assert sc["runAsNonRoot"] == False;
+    assert sc["allowPrivilegeEscalation"] == False;
+    assert sc["readOnlyRootFilesystem"] == True;
+    assert sc["capabilities"]["drop"] == ["ALL"];
+    assert set(sc["capabilities"]["add"]) == {"CHOWN", "FOWNER", "DAC_OVERRIDE"};
+    # And it must actually chown/chmod the bundle mount to the loader identity.
+    script = perms["command"][-1];
+    assert f"{LOADER_UID}:{LOADER_GID}" in script;
+    assert BUNDLE_MOUNT_PATH in script;
+    assert "chown" in script;
+    assert "chmod" in script;
+    mounts = [m["mountPath"] for m in perms["volumeMounts"]];
+    assert mounts == [BUNDLE_MOUNT_PATH];
 }
 
 

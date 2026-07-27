@@ -1,4 +1,3 @@
-"""byLLM Package."""
 import from jaclang.byllm.llm { MockLLM, Model, ModelPool }
 import from jaclang.byllm.mtir { MTIR, MTRuntime }
 import from jaclang.jac0core.runtime { JacRuntime }
