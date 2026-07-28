@@ -303,6 +303,10 @@ impl HotReloader._refresh_routing(file_path: str) -> None {
         has_pages = jcc.rescan_pages();
         self.client_compiler._has_pages = has_pages;
         self.client_compiler.create_entry_file(self._entry_module_path());
+        import from jaclang.runtimelib.client.route_scanner {
+            describe_pages_without_routes,
+            describe_unmigrated_pages
+        }
         if not has_pages {
             if routes_file.exists() {
                 routes_file.unlink();
@@ -311,7 +315,26 @@ impl HotReloader._refresh_routing(file_path: str) -> None {
             if compiled_pages.is_dir() {
                 shutil.rmtree(compiled_pages);
             }
-            console.warning("Routing deactivated: pages/ no longer exists");
+            if pages_dir.is_dir() {
+                blank_lines = describe_pages_without_routes(pages_dir);
+                if blank_lines {
+                    self.record_error(file_path, '\n'.join(blank_lines));
+                } else {
+                    console.warning("Routing deactivated: pages/ produced no routes");
+                }
+            } else {
+                console.warning("Routing deactivated: pages/ no longer exists");
+            }
+        } else {
+            scanner = jcc._route_scanner;
+            if scanner is not None {
+                warn_lines = describe_unmigrated_pages(
+                    scanner.pages_dir, scanner.get_page_files()
+                );
+                if warn_lines {
+                    self.record_error(file_path, '\n'.join(warn_lines));
+                }
+            }
         }
     } except Exception as e {
         console.error(f"Routing refresh failed for {file_path}: {e}");
