@@ -116,7 +116,7 @@ test "backend exposes the server walker and not the client app" {
         assert rc == 0;
         main_py = _backend(src, "main.py").read_text();
         assert "from server import Greet" in main_py;
-        assert '@app.post("/walker/Greet")' in main_py;
+        assert '"/walker/Greet"' in main_py;
         assert "class GreetIn(BaseModel)" in main_py;
         # The .cl.jac `app` component must never become a backend endpoint.
         assert "/function/app" not in main_py;
@@ -134,7 +134,7 @@ test "backend runs walkers on the jaclang runtime via ExecutionManager" {
         main_py = _backend(src, "main.py").read_text();
         # Walkers run on the real runtime; responses use the {"data": ...} envelope.
         assert "from jaclang.runtimelib.server import UserManager, ExecutionManager" in main_py;
-        assert "_em.spawn_walker(_W_Greet" in main_py;
+        assert "_run_walker(_W_Greet" in main_py;
         assert '"data"' in main_py;
         # The compiled module keeps its real jaclang runtime imports.
         assert _has_jaclang_import(_backend(src, "server.py").read_text());
@@ -149,7 +149,7 @@ test "backend exposes login/register and gates secured walkers by :pub" {
         rc = _silent_eject(str(src));
         assert rc == 0;
         main_py = _backend(src, "main.py").read_text();
-        assert '@app.post("/user/register")' in main_py;
+        assert '@app.post("/user/register", status_code=201)' in main_py;
         assert '@app.post("/user/login")' in main_py;
         # :pub walker is an open endpoint (not auth-required); the bare walker is.
         assert "_username(authorization, False)" in main_py;
@@ -345,7 +345,34 @@ test "eject honors an explicit output directory" {
 }
 
 
-# ==================== errors ====================
+# ==================== native (.na.jac) modules ====================
+test "native modules are emitted as python so server imports resolve" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "naapp";
+        src.mkdir(parents=True, exist_ok=True);
+        (src / "jac.toml").write_text(
+            '[project]\nname = "naapp"\nentry-point = "main.jac"\n'
+        );
+        (src / "compute.na.jac").write_text(
+            'def double(n: int) -> int {\n    return n * 2;\n}\n'
+        );
+        (src / "main.jac").write_text(
+            'import from compute { double }\n\n' + 'def:pub twice(n: int) -> int {\n    return double(n);\n}\n'
+        );
+        assert _silent_eject(str(src)) == 0;
+        # A `.na.jac` module lowers to ordinary Python, so it must be written to
+        # the backend or every server module importing it dies at boot.
+        emitted = _backend(src, "compute.py");
+        assert emitted.exists();
+        assert "def double" in emitted.read_text();
+        # It is still not API surface: only the importing server module is.
+        main_py = _backend(src, "main.py").read_text();
+        assert "/function/twice" in main_py;
+        assert "/function/double" not in main_py;
+    }
+}
+
+
 test "eject errors when jac.toml is missing" {
     with TemporaryDirectory() as td {
         src = Path(td) / "myapp";
@@ -416,7 +443,7 @@ test "walker-only project ejects a backend-only app with no frontend" {
         assert rc == 0;
         # Backend is complete...
         assert _backend(src, "main.py").exists();
-        assert '@app.post("/walker/Ping")' in _backend(src, "main.py").read_text();
+        assert '"/walker/Ping"' in _backend(src, "main.py").read_text();
         # ...and no half-built frontend scaffold is left behind.
         assert not (src / "ejected" / "frontend").exists();
     }
@@ -639,7 +666,7 @@ test "script modules not imported by the entry module get no endpoints" {
         # The module is still emitted for standalone use (python tool.py).
         assert _backend(src, "tool.py").exists();
         # Reachable modules keep their endpoints.
-        assert '@app.post("/walker/Greet")' in main_py;
+        assert '"/walker/Greet"' in main_py;
     }
 }
 
@@ -661,9 +688,9 @@ test "modules transitively imported by the entry module keep endpoints" {
         rc = _silent_eject(str(src));
         assert rc == 0;
         main_py = _backend(src, "main.py").read_text();
-        assert '@app.post("/function/ping")' in main_py;
+        assert '"/function/ping"' in main_py;
         # util is reachable through api, so its functions stay exposed.
-        assert '@app.post("/function/double")' in main_py;
+        assert '"/function/double"' in main_py;
     }
 }
 
@@ -753,10 +780,45 @@ test "@restspec functions get their declared paths mounted" {
         rc = _silent_eject(str(src));
         assert rc == 0;
         main_py = _backend(src, "main.py").read_text();
-        assert "add_api_route" in main_py;
+        # `add_api_route` is unconditional boilerplate in _mount_endpoint, so
+        # asserting it proves nothing. The declared path is resolved at runtime
+        # off the spec, so it lives in the compiled module, not in main.py.
+        assert "/api/v1/hello" in _backend(src, "_jac_main.py").read_text();
+        assert "_mount_endpoint(_F_hello," in main_py;
         # The module jserver (HTTPMethod's home) must be vendored so the
         # compiled module imports cleanly without jac-scale installed.
         assert _backend(src, "jaclang/scale/jserver/jserver.py").exists();
+    }
+}
+
+
+test "a GET @restspec symbol binds its fields as query params, not a bare model" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "getapp";
+        src.mkdir(parents=True, exist_ok=True);
+        (src / "jac.toml").write_text(
+            '[project]\nname = "getapp"\nentry-point = "main.jac"\n'
+        );
+        (src / "main.jac").write_text(
+            'import from jaclang.runtimelib.builtin { restspec }\n' + 'import from jaclang.scale.jserver.jserver { HTTPMethod }\n\n' + '@restspec(method=HTTPMethod.GET, path="/search")\n' + 'def:pub search(query: str) -> dict {\n' + '    return {"q": query};\n' + '}\n'
+        );
+        rc = _silent_eject(str(src));
+        assert rc == 0;
+        main_py = _backend(src, "main.py").read_text();
+        # `jac start` classifies every field of a GET symbol as a query param.
+        # Calling the model with no arguments would 500 on `query` (required)
+        # and would discard caller input even where every field had a default.
+        assert "_query_route(handler, model, path)" in main_py;
+        assert "_bodyless" not in main_py;
+        assert "default = Query(...)" in main_py;
+        # A field named by a `{placeholder}` in the declared path binds as a
+        # path param; binding it as a query param makes FastAPI reject the
+        # route at import, taking down the whole app rather than one endpoint.
+        assert 're.findall(r"{([^}:]+)", path)' in main_py;
+        assert "default = _PathParam(...)" in main_py;
+        # The required field must stay required rather than gain a default to
+        # make the bare-model call survive.
+        assert "    query: str" in main_py;
     }
 }
 

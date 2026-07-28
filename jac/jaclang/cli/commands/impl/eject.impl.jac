@@ -145,6 +145,8 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
     remap: dict = {};
     walkers: list = [];
     functions: list = [];
+    mtir_entries: dict = {};
+    import from jaclang.jac0core.runtime { JacRuntime }
     for jac_file in jac_files {
         rel = Path(str(jac_file)).relative_to(src);
         try {
@@ -193,7 +195,8 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
         }
         is_client = is_client_module(rel.name);
         is_native = is_native_module(rel.name);
-        server = _is_meaningful_python(py_code) and (not is_client) and (not is_native);
+        emit = _is_meaningful_python(py_code) and not is_client;
+        server = emit and not is_native;
 
         if server {
             for item in ir.body {
@@ -217,12 +220,39 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
                 }
             }
         }
+        rt_prog = JacRuntime.program;
+        if (rt_prog is not None) and rt_prog.mtir_map {
+            mtir_prefix = stem + ".";
+            for key in list(rt_prog.mtir_map.keys()) {
+                if str(key).startswith(mtir_prefix) {
+                    mtir_entries[bmod + "." + str(key)[len(mtir_prefix):]] = (
+                        rt_prog.mtir_map[key]
+                    );
+                }
+            }
+        }
+        raw_src = "";
+        try {
+            raw_src = Path(str(jac_file)).read_text(encoding="utf-8");
+        } except Exception {
+            raw_src = "";
+        }
+        has_sv = False;
+        for src_line in raw_src.splitlines() {
+            sl = src_line.strip();
+            if sl.startswith("sv import ") or sl.startswith("sv {") or sl == "sv" {
+                has_sv = True;
+                break;
+            }
+        }
         compiled.append(
             {
                 "module": bmod,
                 "orig": ".".join(parent_parts + [stem]),
                 "py": py_code,
-                "server": server
+                "server": server,
+                "emit": emit,
+                "sv": has_sv
             }
         );
         console.print(f"  ✔ {rel}", style="success");
@@ -271,6 +301,67 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
         }
     }
 
+    reachable_set = reach["reachable"] if reach is not None else None;
+    blockers = _audit_capabilities(compiled, reachable_set);
+    if blockers {
+        allow_unsupported = bool(eject_cfg.get("allow_unsupported", False));
+        console.print("");
+        header_style = "warning" if allow_unsupported else "error";
+        console.print(
+            "Capability audit: this project uses runtime features that "
+            "`jac build --as source` cannot lower yet:",
+            style=header_style
+        );
+        for b in blockers {
+            console.print(
+                f"  ✗ {b['feature']} in module '{b['module']}': " + ", ".join(
+                    b["symbols"]
+                )
+            );
+        }
+        if not allow_unsupported {
+            console.error(
+                "Conversion refused: emitting these as plain HTTP endpoints "
+                "would silently drop their semantics (auth handshakes, HMAC "
+                "verification, schedules)."
+            );
+            console.print(
+                "  To convert anyway with these features OMITTED from the "
+                "output, set:\n      [eject]\n      allow_unsupported = true\n"
+                "  in jac.toml.",
+                style="muted"
+            );
+            return 1;
+        }
+        excluded_syms: set = set();
+        excluded_mods: set = set();
+        for b in blockers {
+            if b["kind"] in ("scale_imports", "sv") {
+                excluded_mods.add(str(b["module"]));
+            } else {
+                for s in b["symbols"] {
+                    excluded_syms.add((str(b["module"]), str(s)));
+                }
+            }
+        }
+        walkers = [
+            w
+            for w in walkers
+            if (str(w["module"]) not in excluded_mods)
+            and ((str(w["module"]), str(w["name"])) not in excluded_syms)
+        ];
+        functions = [
+            f
+            for f in functions
+            if (str(f["module"]) not in excluded_mods)
+            and ((str(f["module"]), str(f["name"])) not in excluded_syms)
+        ];
+        console.warning(
+            "allow_unsupported is set: the symbols above are OMITTED from the "
+            "converted API (never silently demoted to plain HTTP)."
+        );
+    }
+
     import from jaclang.cli.commands.eject_targets.backend { emit_backend }
     rc = emit_backend(
         backend_dir,
@@ -282,7 +373,8 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
         db_cfg,
         project_deps,
         len(env_files) > 0,
-        entry_bmod
+        entry_bmod,
+        mtir_map=mtir_entries
     );
     if rc != 0 {
         return rc;
@@ -1143,12 +1235,109 @@ def _emit_readme(out: Path, project_name: str, has_frontend: bool, env_files: li
         "## API",
         "",
         "- Walkers: `POST /walker/<name>`; functions: `POST /function/<name>`.",
+        "- `@restspec(path=...)` replaces the default path. Under "
+        "`method=GET` the symbol's fields bind as query parameters "
+        "(fields without a default are required, and a missing one is a 422).",
         "- Auth: `POST /user/register` and `POST /user/login`; `:pub` "
         "endpoints need no token.",
+        "- Streaming responses are Server-Sent Events where every frame is "
+        "JSON, so a string chunk arrives as `data: \"hello\"`, not "
+        "`data: hello`. The stream ends with an `event: end` frame.",
         "- OpenAPI docs at `/docs`; health check at `/__health`.",
         ""
     ];
     (out / "README.md").write_text("\n".join(lines), encoding="utf-8");
+}
+
+
+def _scan_module_features(py_code: str) -> dict {
+    found: dict = {"websocket": [], "webhook": [], "scale_imports": []};
+    pending_ws = False;
+    pending_hook = False;
+    for raw in py_code.splitlines() {
+        line = raw.strip();
+        if line.startswith("@restspec(") and ("protocol=" in line) {
+            if "WEBSOCKET" in line {
+                pending_ws = True;
+            } elif "WEBHOOK" in line {
+                pending_hook = True;
+            }
+            continue;
+        }
+        if line.startswith("@") or not line or line.startswith("#") {
+            continue;
+        }
+        if line.startswith("class ")
+        or line.startswith("def ")
+        or line.startswith("async def ") {
+            is_class = line.startswith("class ");
+            sym = line.split("(")[0].split(":")[0];
+            sym = sym.replace("class ", "").replace("async def ", "").replace(
+                "def ", ""
+            ).strip();
+            if pending_ws and not is_class {
+                found["websocket"].append(sym);
+            }
+            if pending_hook and not is_class {
+                found["webhook"].append(sym);
+            }
+        }
+        pending_ws = False;
+        pending_hook = False;
+        is_scale_import = (
+            line.startswith("from jaclang.scale")
+            or line == "import jaclang.scale"
+            or line.startswith("import jaclang.scale.")
+            or line.startswith("import jaclang.scale ")
+        );
+        supported = (
+            "jaclang.scale.jserver.jserver" in line
+            or line.startswith("from jaclang.scale.persistence.lib import")
+            or line.startswith("from jaclang.scale.events.broker import")
+            or line.startswith("from jaclang.scale.events.publisher import")
+            or line.startswith("from jaclang.scale.events.subscriber import")
+        );
+        if is_scale_import and not supported {
+            found["scale_imports"].append(line);
+        }
+    }
+    return found;
+}
+
+
+def _audit_capabilities(compiled: list, reachable: (set | None)) -> list {
+    labels: dict = {
+        "websocket": "WebSocket function endpoint (protocol=WEBSOCKET)",
+        "webhook": "Webhook function endpoint (protocol=WEBHOOK)",
+        "scale_imports": "jac-scale runtime import",
+        "sv": "Microservice split (sv import / sv block)"
+    };
+    blockers: list = [];
+    for unit in compiled {
+        if not unit["server"] {
+            continue;
+        }
+        if (reachable is not None) and (str(unit["orig"]) not in reachable) {
+            continue;
+        }
+        found = _scan_module_features(str(unit["py"]));
+        if unit.get("sv") {
+            found["sv"] = ["(module-level)"];
+        }
+        for (feature, symbols) in found.items() {
+            if symbols {
+                blockers.append(
+                    {
+                        "feature": str(labels[feature]),
+                        "kind": feature,
+                        "module": str(unit["module"]),
+                        "symbols": [str(s) for s in symbols]
+                    }
+                );
+            }
+        }
+    }
+    return blockers;
 }
 
 

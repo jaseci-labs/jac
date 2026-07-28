@@ -13,7 +13,8 @@ def emit_backend(
     db: dict,
     project_deps: (list | None) = None,
     has_env: bool = False,
-    entry_module: str = ""
+    entry_module: str = "",
+    mtir_map: (dict | None) = None
 ) -> int {
     backend_dir.mkdir(parents=True, exist_ok=True);
 
@@ -31,7 +32,7 @@ def emit_backend(
     emitted_codes: list = [];
     written = 0;
     for unit in compiled {
-        if not unit["server"] {
+        if not unit["emit"] {
             continue;
         }
         module = str(unit["module"]);
@@ -137,14 +138,19 @@ def emit_backend(
         style="success"
     );
 
-    uses_upload = False;
-    for f in functions_full {
-        for p in f["params"] {
-            if _is_upload_type(str(p["type"])) {
-                uses_upload = True;
-            }
-        }
+    needs_kv = _emit_scale_adapters(backend_dir, emitted_codes);
+
+    if mtir_map {
+        (backend_dir / "mtir_data.py").write_text(
+            _mtir_module_source(mtir_map), encoding="utf-8"
+        );
+        console.print(
+            f"  ✔ meaning-typed metadata ({len(mtir_map)} scopes -> mtir_data.py)",
+            style="success"
+        );
     }
+
+    uses_upload = _uses_upload(walkers_full, functions_full);
 
     detected_caps: set = set();
     if sql {
@@ -159,11 +165,235 @@ def emit_backend(
     if uses_upload {
         detected_caps.add("upload");
     }
+    if needs_kv {
+        detected_caps.add("data.redis");
+    }
     reqs: list[str] = [str(dep) for dep in (project_deps or [])];
     reqs.extend(_capability_requirements(detected_caps));
     _emit_requirements(backend_dir, reqs);
     return 0;
 }
+
+
+def _mtir_literal(val: object, indent: int, classes: set) -> str {
+    pad = "    " * indent;
+    if val is None {
+        return "None";
+    }
+    if isinstance(val, bool) {
+        return "True" if val else "False";
+    }
+    if isinstance(val, (str, int, float)) {
+        return repr(val);
+    }
+    if isinstance(val, `tuple) {
+        if not val {
+            return "()";
+        }
+        inner = ", ".join([_mtir_literal(x, indent, classes) for x in val]);
+        if len(val) == 1 {
+            return "(" + inner + ",)";
+        }
+        return "(" + inner + ")";
+    }
+    if isinstance(val, list) {
+        if not val {
+            return "[]";
+        }
+        items = [pad + "    " + _mtir_literal(x, indent + 1, classes) for x in val];
+        return "[\n" + ",\n".join(items) + "\n" + pad + "]";
+    }
+    cls = type(val).__name__;
+    fields = val?.__dict__;
+    if fields is None {
+        raise ValueError(f"eject: cannot lower MTIR value of type {cls} to source");
+    }
+    classes.add(cls);
+    parts = [];
+    for key in sorted(fields.keys()) {
+        parts.append(
+            pad + "    " + str(key) + "=" + _mtir_literal(
+                fields[key], indent + 1, classes
+            )
+        );
+    }
+    if not parts {
+        return cls + "()";
+    }
+    return cls + "(\n" + ",\n".join(parts) + "\n" + pad + ")";
+}
+
+
+def _mtir_module_source(mtir_map: dict) -> str {
+    classes: set = set();
+    entries = [];
+    for scope in sorted(mtir_map.keys()) {
+        entries.append(
+            "    " + repr(str(scope)) + ": " + _mtir_literal(
+                mtir_map[scope], 1, classes
+            )
+        );
+    }
+    header = [
+        '"""Meaning-typed metadata captured at build time.',
+        "",
+        "The compiler records the semstrings, parameter and return-type structure",
+        "behind every `by llm()` call. That pass does not exist in a converted app,",
+        "so the map is emitted here as plain source and hydrated at boot.",
+        '"""',
+        ""
+    ];
+    if classes {
+        header.append("from jaclang.jac0core.mtp import " + ", ".join(sorted(classes)));
+        header.append("");
+    }
+    body = "MTIR_DATA = {\n" + ",\n".join(entries) + "\n}\n";
+    return "\n".join(header) + "\n" + body;
+}
+
+
+def _emit_scale_adapters(backend_dir: Path, emitted_codes: list) -> bool {
+    needs_kv = False;
+    needs_events = False;
+    for code in emitted_codes {
+        for raw in str(code).splitlines() {
+            line = raw.strip();
+            if line.startswith("from jaclang.scale.persistence.lib import") {
+                needs_kv = True;
+            }
+            if line.startswith("from jaclang.scale.events.") {
+                needs_events = True;
+            }
+        }
+    }
+    if not needs_kv and not needs_events {
+        return False;
+    }
+    scale_dir = backend_dir / "jaclang" / "scale";
+    scale_dir.mkdir(parents=True, exist_ok=True);
+    (scale_dir / "__init__.py").write_text("", encoding="utf-8");
+    if needs_kv {
+        pdir = scale_dir / "persistence";
+        pdir.mkdir(parents=True, exist_ok=True);
+        (pdir / "__init__.py").write_text("", encoding="utf-8");
+        (pdir / "lib.py").write_text(_KV_ADAPTER, encoding="utf-8");
+        console.print("  ✔ kvstore adapter (redis-py)", style="success");
+    }
+    if needs_events {
+        edir = scale_dir / "events";
+        edir.mkdir(parents=True, exist_ok=True);
+        (edir / "__init__.py").write_text("", encoding="utf-8");
+        (edir / "broker.py").write_text(_EVENTS_BROKER, encoding="utf-8");
+        (edir / "subscriber.py").write_text(_EVENTS_SUBSCRIBER, encoding="utf-8");
+        (edir / "publisher.py").write_text(_EVENTS_PUBLISHER, encoding="utf-8");
+        console.print("  ✔ events adapter (in-process broker)", style="success");
+    }
+    return needs_kv;
+}
+
+
+glob _KV_ADAPTER: str = (
+         '"""Ejected adapter for jaclang.scale.persistence.lib: redis-py kvstore."""\n'
+         "import json\n"
+         "import os\n"
+         "\n"
+         "\n"
+         "class RedisKv:\n"
+         "    def __init__(self, client, db_name):\n"
+         "        self._r = client\n"
+         "        self._prefix = db_name\n"
+         "\n"
+         "    def _k(self, key, col_name):\n"
+         '        return self._prefix + ":" + col_name + ":" + key\n'
+         "\n"
+         '    def set(self, key, value, col_name="default"):\n'
+         "        self._r.set(self._k(key, col_name), json.dumps(value))\n"
+         "        return key\n"
+         "\n"
+         '    def get(self, key, col_name="default"):\n'
+         "        raw = self._r.get(self._k(key, col_name))\n"
+         "        return json.loads(raw) if raw is not None else None\n"
+         "\n"
+         '    def delete(self, key, col_name="default"):\n'
+         "        return int(self._r.delete(self._k(key, col_name)))\n"
+         "\n"
+         "\n"
+         'def kvstore(db_name="jac_db", db_type="redis", uri=None):\n'
+         '    if db_type != "redis":\n'
+         "        raise RuntimeError(\n"
+         '            "ejected kvstore supports db_type=\'redis\' only (got %r)" % db_type\n'
+         "        )\n"
+         '    url = uri or os.environ.get("REDIS_URL")\n'
+         "    if not url:\n"
+         '        raise RuntimeError("Redis URL not found in configuration")\n'
+         "    import redis\n"
+         "    return RedisKv(redis.Redis.from_url(url), db_name)\n"
+     ),
+     _EVENTS_BROKER: str = (
+         '"""Ejected adapter for jaclang.scale.events.broker."""\n'
+         "import time\n"
+         "import uuid\n"
+         "\n"
+         "\n"
+         "class Event:\n"
+         "    def __init__(self, event_type='', data=None, key=None, id=None, ts=None):\n"
+         "        self.event_type = event_type\n"
+         "        self.data = data if data is not None else {}\n"
+         "        self.key = key\n"
+         "        self.id = id or uuid.uuid4().hex\n"
+         "        self.ts = ts or time.time()\n"
+     ),
+     _EVENTS_SUBSCRIBER: str = (
+         '"""Ejected adapter for jaclang.scale.events.subscriber."""\n'
+         "_subscriptions = []\n"
+         "\n"
+         "\n"
+         "class _Subscription:\n"
+         "    def __init__(self, topic, handler, group=None, retry=None):\n"
+         "        self.topic = topic\n"
+         "        self.handler = handler\n"
+         "        self.group = group\n"
+         "        self.retry = retry\n"
+         "\n"
+         "\n"
+         "def subscribe(topic, group=None, retry=None):\n"
+         "    def _register(handler):\n"
+         "        _subscriptions.append(_Subscription(topic, handler, group, retry))\n"
+         "        return handler\n"
+         "    return _register\n"
+         "\n"
+         "\n"
+         "def get_subscriptions():\n"
+         "    return list(_subscriptions)\n"
+     ),
+     _EVENTS_PUBLISHER: str = (
+         '"""Ejected adapter for jaclang.scale.events.publisher: in-process\n'
+         'dispatch to @subscribe handlers (single-process parity with the\n'
+         'LocalEventStream default)."""\n'
+         "import logging\n"
+         "\n"
+         "from jaclang.scale.events.subscriber import get_subscriptions\n"
+         "\n"
+         "logger = logging.getLogger(__name__)\n"
+         "_broker = None\n"
+         "\n"
+         "\n"
+         "def set_broker(broker):\n"
+         "    global _broker\n"
+         "    _broker = broker\n"
+         "\n"
+         "\n"
+         "def publish(topic, event, key=None):\n"
+         "    delivered = False\n"
+         "    for sub in get_subscriptions():\n"
+         "        if sub.topic == topic:\n"
+         "            try:\n"
+         "                sub.handler(event)\n"
+         "                delivered = True\n"
+         "            except Exception:\n"
+         '                logger.exception("event handler for %r failed", topic)\n'
+         "    return delivered\n"
+     );
 
 
 def _capability_requirements(caps: set) -> list[str] {
@@ -396,6 +626,25 @@ def _is_upload_type(ptype: str) -> bool {
 }
 
 
+def _uses_upload(walkers: list, functions: list) -> bool {
+    for f in functions {
+        for p in f["params"] {
+            if _is_upload_type(str(p["type"])) {
+                return True;
+            }
+        }
+    }
+    for w in walkers {
+        for fld in w["fields"] {
+            if _is_upload_type(str(fld["type"])) {
+                return True;
+            }
+        }
+    }
+    return False;
+}
+
+
 glob _JSON_SAFE_TYPE_NAMES: set = {
          "str",
          "int",
@@ -481,15 +730,12 @@ def _emit_main_py(
     has_env: bool,
     entry_module: str
 ) {
-    uses_upload = False;
-    for f in functions {
-        for p in f["params"] {
-            if _is_upload_type(str(p["type"])) {
-                uses_upload = True;
-            }
-        }
-    }
-    fastapi_import = "from fastapi import FastAPI, Header, HTTPException";
+    uses_upload = _uses_upload(walkers, functions);
+    fastapi_import = (
+        "from fastapi import FastAPI, Header, HTTPException, "
+        "Path as _PathParam, Query, "
+        "Request, WebSocket, WebSocketDisconnect"
+    );
     if uses_upload {
         fastapi_import += ", File, Form, UploadFile";
     }
@@ -497,16 +743,24 @@ def _emit_main_py(
         f'"""Auto-generated FastAPI app for the ejected Jac project {project_name!r}:',
         'runs the compiled walkers on the jaclang runtime with jaclang-native auth',
         '(register/login via UserManager; :pub walkers open, others token-gated)."""',
+        'import datetime',
+        'import hashlib',
+        'import hmac',
         'import inspect',
         'import json',
         'import os',
+        'import re',
+        'import secrets',
+        'import sqlite3',
+        'import time',
+        'import traceback',
         'from typing import '
         'Any, Dict, Iterable, List, Literal, Mapping, '
         'Optional, Sequence, Set, Tuple, Union',
         '',
         fastapi_import,
         'from fastapi.middleware.cors import CORSMiddleware',
-        'from fastapi.responses import StreamingResponse',
+        'from fastapi.responses import JSONResponse, StreamingResponse',
         'from pydantic import BaseModel',
         '',
         '_BASE = os.path.dirname(os.path.abspath(__file__))'
@@ -533,7 +787,19 @@ def _emit_main_py(
 
     lines += [
         '',
-        'from jaclang.runtimelib.server import UserManager, ExecutionManager'
+        'from jaclang.runtimelib.server import UserManager, ExecutionManager',
+        'from jaclang.runtimelib.serializer import Serializer as _Serializer',
+        'from jaclang.runtimelib.scheduler import Scheduler as _Scheduler',
+        'from jaclang.jac0core.mtp import MTIR_OVERLAY as _MTIR_OVERLAY',
+        '',
+        '# Meaning-typed metadata: prompts/schemas for `by llm()` calls are',
+        '# synthesized from this compiler-captured map; without it the runtime',
+        '# falls back to bare introspection and prompts silently drift.',
+        'try:',
+        '    from mtir_data import MTIR_DATA as _MTIR_DATA',
+        'except ImportError:',
+        '    _MTIR_DATA = {}',
+        '_MTIR_OVERLAY.update(_MTIR_DATA)'
     ];
 
     if entry_module {
@@ -651,7 +917,7 @@ def _emit_main_py(
         '    return req.username, req.password',
         '',
         '',
-        '@app.post("/user/register")',
+        '@app.post("/user/register", status_code=201)',
         'def register(req: _RegisterReq) -> dict:',
         '    username, password = _creds_from_register(req)',
         '    if not username or not password:',
@@ -659,7 +925,10 @@ def _emit_main_py(
         '    res = _um.create_user(username, password)',
         '    if res.get("error"):',
         '        raise HTTPException(status_code=400, detail=res["error"])',
-        '    return {"data": res}',
+        '    return _envelope(',
+        '        {"user_id": res.get("root_id"), "message": "User registered successfully"},',
+        '        201,',
+        '    )',
         '',
         '',
         '@app.post("/user/login")',
@@ -668,7 +937,161 @@ def _emit_main_py(
         '    res = _um.authenticate(username, password) if username and password else None',
         '    if not res:',
         '        raise HTTPException(status_code=401, detail="Invalid credentials")',
-        '    return {"data": res}',
+        '    return _envelope({',
+        '        "user_id": res.get("root_id"),',
+        '        "root_id": res.get("root_id"),',
+        '        "role": "user",',
+        '        "token": res.get("token"),',
+        '    })',
+        '',
+        '',
+        '_APIKEY_DB = os.path.join(_BASE, ".jac", "data", "apikeys.db")',
+        '',
+        '',
+        'def _apikey_conn():',
+        '    os.makedirs(os.path.dirname(_APIKEY_DB), exist_ok=True)',
+        '    conn = sqlite3.connect(_APIKEY_DB)',
+        '    conn.execute(',
+        '        "CREATE TABLE IF NOT EXISTS api_keys ("',
+        '        "key_id TEXT PRIMARY KEY, api_key TEXT UNIQUE, user TEXT, "',
+        '        "name TEXT, signing_secret TEXT, created_at TEXT, expires_at TEXT)"',
+        '    )',
+        '    return conn',
+        '',
+        '',
+        'class _ApiKeyReq(BaseModel):',
+        '    name: str',
+        '    expiry_days: int | None = None',
+        '    allowed_walkers: str | None = None',
+        '',
+        '',
+        '@app.post("/api-key/create", status_code=201)',
+        'def create_api_key(req: _ApiKeyReq, authorization: str = Header(default=None)):',
+        '    user = _username(authorization, True)',
+        '    key_id = secrets.token_hex(16)',
+        '    api_key = secrets.token_urlsafe(32)',
+        '    signing_secret = secrets.token_hex(32)',
+        '    now = datetime.datetime.now(datetime.timezone.utc)',
+        '    expires = (',
+        '        now + datetime.timedelta(days=req.expiry_days) if req.expiry_days else None',
+        '    )',
+        '    conn = _apikey_conn()',
+        '    with conn:',
+        '        conn.execute(',
+        '            "INSERT INTO api_keys VALUES (?, ?, ?, ?, ?, ?, ?)",',
+        '            (',
+        '                key_id, api_key, user, req.name, signing_secret,',
+        '                now.isoformat(), expires.isoformat() if expires else None,',
+        '            ),',
+        '        )',
+        '    conn.close()',
+        '    return _envelope({',
+        '        "api_key": api_key,',
+        '        "api_key_id": key_id,',
+        '        "name": req.name,',
+        '        "created_at": now.isoformat(),',
+        '        "expires_at": expires.isoformat() if expires else None,',
+        '        "signing_secret": signing_secret,',
+        '    }, 201)',
+        '',
+        '',
+        'def _resolve_api_key(api_key):',
+        '    conn = _apikey_conn()',
+        '    row = conn.execute(',
+        '        "SELECT user, signing_secret, expires_at FROM api_keys WHERE api_key = ?",',
+        '        (api_key,),',
+        '    ).fetchone()',
+        '    conn.close()',
+        '    if not row:',
+        '        return None',
+        '    user, signing_secret, expires_at = row',
+        '    if expires_at:',
+        '        try:',
+        '            expiry = datetime.datetime.fromisoformat(expires_at)',
+        '            if expiry < datetime.datetime.now(datetime.timezone.utc):',
+        '                return None',
+        '        except ValueError:',
+        '            pass',
+        '    return {"user": user, "signing_secret": signing_secret}',
+        '',
+        '',
+        'def _mount_webhook(cls, name):',
+        '    """HMAC-verified webhook: X-API-Key resolves the caller, the',
+        '    signature covers b"{timestamp}." + raw_body (sha256 hexdigest),',
+        '    and stale timestamps outside 300s are rejected."""',
+        '',
+        '    async def _hook_handler(request: Request):',
+        '        api_key = request.headers.get("X-API-Key")',
+        '        if not api_key:',
+        '            return _error_envelope(',
+        '                "UNAUTHORIZED", "Missing X-API-Key header", status=401',
+        '            )',
+        '        key_doc = _resolve_api_key(api_key)',
+        '        if not key_doc:',
+        '            return _error_envelope(',
+        '                "UNAUTHORIZED", "Invalid or expired API key", status=401',
+        '            )',
+        '        raw_body = await request.body()',
+        '        signature = request.headers.get("X-Webhook-Signature")',
+        '        timestamp = request.headers.get("X-Webhook-Timestamp")',
+        '        if not signature or not timestamp:',
+        '            return _error_envelope(',
+        '                "UNAUTHORIZED", "Missing webhook signature headers", status=401',
+        '            )',
+        '        try:',
+        '            request_ts = int(timestamp)',
+        '        except ValueError:',
+        '            return _error_envelope(',
+        '                "UNAUTHORIZED", "Invalid webhook timestamp", status=401',
+        '            )',
+        '        if abs(int(time.time()) - request_ts) > 300:',
+        '            return _error_envelope(',
+        '                "UNAUTHORIZED",',
+        '                "Webhook timestamp outside allowed window",',
+        '                status=401,',
+        '            )',
+        '        signed = (str(request_ts) + ".").encode() + raw_body',
+        '        expected = hmac.new(',
+        '            key_doc["signing_secret"].encode(), signed, hashlib.sha256',
+        '        ).hexdigest()',
+        '        given = signature.split("=", 1)[-1].strip()',
+        '        if not hmac.compare_digest(given.lower(), expected.lower()):',
+        '            return _error_envelope(',
+        '                "UNAUTHORIZED", "Invalid webhook signature", status=401',
+        '            )',
+        '        try:',
+        '            fields = json.loads(raw_body.decode("utf-8") or "{}")',
+        '        except (ValueError, UnicodeDecodeError):',
+        '            fields = {}',
+        '        if not isinstance(fields, dict):',
+        '            fields = {}',
+        '        return await _run_walker(cls, fields, key_doc["user"])',
+        '',
+        '    app.add_api_route("/webhook/" + name, _hook_handler, methods=["POST"])',
+        '',
+        '',
+        'def _envelope(data, status=200):',
+        '    """Transport envelope byte-compatible with the `jac start` server."""',
+        '    return {',
+        '        "ok": True,',
+        '        "type": "response",',
+        '        "data": data,',
+        '        "error": None,',
+        '        "meta": {"extra": {"http_status": status}},',
+        '    }',
+        '',
+        '',
+        'def _error_envelope(code, message, details="", status=500):',
+        '    return JSONResponse(',
+        '        status_code=status,',
+        '        content={',
+        '            "ok": False,',
+        '            "type": "error",',
+        '            "data": None,',
+        '            "error": {"code": code, "message": message, "details": details},',
+        '            "meta": {"extra": {"http_status": status}},',
+        '        },',
+        '    )',
         '',
         '',
         'async def _sse(stream):',
@@ -679,39 +1102,264 @@ def _emit_main_py(
         '    else:',
         '        for chunk in stream:',
         '            yield _sse_line(chunk)',
+        '    yield b"event: end\\ndata: {}\\n\\n"',
         '',
         '',
         'def _sse_line(chunk):',
-        '    """Frame any chunk as a Server-Sent Event (`data: ...` per line)."""',
+        '    """Frame any chunk as a Server-Sent Event (`data: <json>` per line)."""',
         '    if isinstance(chunk, (bytes, bytearray)):',
         '        text = bytes(chunk).decode("utf-8", "replace")',
-        '    elif isinstance(chunk, str):',
-        '        text = chunk',
         '    else:',
         '        text = json.dumps(chunk)',
         '    framed = "".join("data: " + line + "\\n" for line in text.split("\\n"))',
         '    return (framed + "\\n").encode("utf-8")',
         '',
         '',
-        'def _respond(result):',
-        '    """A streaming walker returns a generator; stream it as SSE.',
-        '    Everything else is the normal JSON envelope."""',
+        'async def _run_walker(cls, fields, user):',
+        '    try:',
+        '        result = await _em.spawn_walker(cls, fields, user)',
+        '    except HTTPException:',
+        '        raise',
+        '    except Exception as exc:',
+        '        return _error_envelope("EXECUTION_ERROR", str(exc), traceback.format_exc())',
+        '    if isinstance(result, dict) and "error" in result and "result" not in result:',
+        '        return _error_envelope(',
+        '            "EXECUTION_ERROR",',
+        '            str(result.get("error") or ""),',
+        '            str(result.get("traceback") or ""),',
+        '        )',
         '    if inspect.isgenerator(result) or inspect.isasyncgen(result):',
         '        return StreamingResponse(_sse(result), media_type="text/event-stream")',
-        '    return {"data": result}',
+        '    spec = getattr(cls, "restspec", None)',
+        '    if (',
+        '        spec is not None',
+        '        and isinstance(result, dict)',
+        '        and isinstance(result.get("result"), dict)',
+        '    ):',
+        '        result["result"]["restspec"] = _Serializer.serialize(spec, api_mode=True)',
+        '    return _envelope(result)',
         '',
         '',
-        'def _respond_fn(result):',
-        '    """Function variant of _respond ({"ok": True, "data": ...} envelope)."""',
+        'async def _run_function(fn, fields, user):',
+        '    try:',
+        '        result = await _em.execute_function(fn, fields, user)',
+        '    except HTTPException:',
+        '        raise',
+        '    except Exception as exc:',
+        '        return _error_envelope("EXECUTION_ERROR", str(exc), traceback.format_exc())',
+        '    if isinstance(result, dict) and "error" in result and "result" not in result:',
+        '        return _error_envelope(',
+        '            "EXECUTION_ERROR",',
+        '            str(result.get("error") or ""),',
+        '            str(result.get("traceback") or ""),',
+        '        )',
         '    if inspect.isgenerator(result) or inspect.isasyncgen(result):',
         '        return StreamingResponse(_sse(result), media_type="text/event-stream")',
-        '    return {"ok": True, "data": result}'
+        '    return _envelope(result)',
+        '',
+        '',
+        '_scheduler = _Scheduler.instance()',
+        '',
+        '_ws_peers = {}',
+        '',
+        '',
+        'def _mount_ws(cls, name, required):',
+        '    """WebSocket walker: ?token= pre-accept auth, one result frame per',
+        '    JSON message; broadcast=True fans every frame out to all peers."""',
+        '    spec = getattr(cls, "restspec", None)',
+        '    broadcast = bool(getattr(spec, "broadcast", False))',
+        '    peers = _ws_peers.setdefault(name, set())',
+        '',
+        '    async def _ws_handler(websocket: WebSocket):',
+        '        token = websocket.query_params.get("token")',
+        '        username = _um.validate_token(token) if token else None',
+        '        if required and not username:',
+        '            await websocket.close(code=4401)',
+        '            return',
+        '        user = username or _GUEST',
+        '        await websocket.accept()',
+        '        peers.add(websocket)',
+        '        try:',
+        '            while True:',
+        '                try:',
+        '                    fields = await websocket.receive_json()',
+        '                except WebSocketDisconnect:',
+        '                    break',
+        '                except (ValueError, TypeError):',
+        '                    await websocket.send_json({',
+        '                        "ok": False,',
+        '                        "error": {',
+        '                            "code": "BAD_FRAME",',
+        '                            "message": "frames must be JSON objects",',
+        '                        },',
+        '                    })',
+        '                    continue',
+        '                fields = dict(fields) if isinstance(fields, dict) else {}',
+        '                fields.pop("token", None)',
+        '                try:',
+        '                    result = await _em.spawn_walker(cls, fields, user)',
+        '                    if (',
+        '                        spec is not None',
+        '                        and isinstance(result, dict)',
+        '                        and isinstance(result.get("result"), dict)',
+        '                    ):',
+        '                        result["result"]["restspec"] = _Serializer.serialize(',
+        '                            spec, api_mode=True',
+        '                        )',
+        '                    frame = {"ok": True, "data": result}',
+        '                except Exception as exc:',
+        '                    frame = {',
+        '                        "ok": False,',
+        '                        "error": {',
+        '                            "code": "EXECUTION_ERROR",',
+        '                            "message": str(exc),',
+        '                        },',
+        '                    }',
+        '                targets = list(peers) if broadcast else [websocket]',
+        '                for peer in targets:',
+        '                    try:',
+        '                        await peer.send_json(frame)',
+        '                    except Exception:',
+        '                        peers.discard(peer)',
+        '        except WebSocketDisconnect:',
+        '            pass',
+        '        finally:',
+        '            peers.discard(websocket)',
+        '',
+        '    app.add_api_websocket_route("/ws/" + name, _ws_handler)',
+        '',
+        '',
+        'def _query_route(handler, model, path):',
+        '    """Bind a body model\'s fields as individual query parameters, except',
+        '    those named by a `{placeholder}` in the route, which bind as path',
+        '    params. Mirrors how `jac start` classifies a GET symbol\'s fields',
+        '    (path before query). Instantiating the model bare would 500 on any',
+        '    required field and would drop caller input even when all fields',
+        '    had defaults."""',
+        '    in_path = set(re.findall(r"{([^}:]+)", path))',
+        '    params = []',
+        '    for (fname, finfo) in model.model_fields.items():',
+        '        ann = finfo.annotation if finfo.annotation is not None else str',
+        '        if fname in in_path:',
+        '            default = _PathParam(...)',
+        '        elif finfo.is_required():',
+        '            default = Query(...)',
+        '        else:',
+        '            default = Query(finfo.default)',
+        '        params.append(',
+        '            inspect.Parameter(',
+        '                fname,',
+        '                inspect.Parameter.KEYWORD_ONLY,',
+        '                default=default,',
+        '                annotation=ann,',
+        '            )',
+        '        )',
+        '    params.append(',
+        '        inspect.Parameter(',
+        '            "authorization",',
+        '            inspect.Parameter.KEYWORD_ONLY,',
+        '            default=Header(default=None),',
+        '            annotation=str,',
+        '        )',
+        '    )',
+        '',
+        '    async def _route(**kwargs):',
+        '        auth = kwargs.pop("authorization", None)',
+        '        return await handler(model(**kwargs), authorization=auth)',
+        '',
+        '    _route.__signature__ = inspect.Signature(params)',
+        '    _route.__name__ = getattr(handler, "__name__", "_route")',
+        '    return _route',
+        '',
+        '',
+        'def _mount_endpoint(obj, handler, model, default_paths, name="", required=False):',
+        '    """Mount at @restspec(path=...) when declared, REPLACING the default',
+        '    /walker|/function path (parity with `jac start`); else the defaults.',
+        '    @schedule symbols become scheduler jobs; protocol=WEBSOCKET walkers',
+        '    become /ws/ routes; neither gets an HTTP endpoint."""',
+        '    sched = getattr(obj, "schedule_spec", None)',
+        '    if sched is not None:',
+        '        job = getattr(obj, "__name__", str(obj))',
+        '        _scheduler.register(job, obj, sched, inspect.isclass(obj))',
+        '        return',
+        '    spec = getattr(obj, "restspec", None)',
+        '    raw_proto = getattr(spec, "protocol", None)',
+        '    proto = str(getattr(raw_proto, "value", raw_proto) or "").lower()',
+        '    if proto == "websocket" and inspect.isclass(obj):',
+        '        _mount_ws(obj, name or getattr(obj, "__name__", ""), required)',
+        '        return',
+        '    if proto == "webhook" and inspect.isclass(obj):',
+        '        _mount_webhook(obj, name or getattr(obj, "__name__", ""))',
+        '        return',
+        '    path = str(getattr(spec, "path", "") or "")',
+        '    if path:',
+        '        if not path.startswith("/"):',
+        '            path = "/" + path',
+        '        raw_method = getattr(spec, "method", None)',
+        '        method = str(getattr(raw_method, "value", raw_method) or "POST").upper()',
+        '        if method in ("GET", "HEAD") and model is not None:',
+        '            app.add_api_route(',
+        '                path, _query_route(handler, model, path), methods=[method]',
+        '            )',
+        '        else:',
+        '            app.add_api_route(path, handler, methods=[method])',
+        '        return',
+        '    for p in default_paths:',
+        '        app.add_api_route(p, handler, methods=["POST"])'
     ];
 
     for w in walkers {
         wn = str(w["name"]);
-        model = _model_class_name(wn, "In");
         required = "False" if w["pub"] else "True";
+        has_upload = False;
+        for fld in w["fields"] {
+            if _is_upload_type(str(fld["type"])) {
+                has_upload = True;
+            }
+        }
+        if has_upload {
+            sig: list[str] = [];
+            for fld in w["fields"] {
+                fname = str(fld["name"]);
+                if _is_upload_type(str(fld["type"])) {
+                    utype = "list[UploadFile]"
+                        if "list" in str(fld["type"]).lower()
+                        else "UploadFile";
+                    sig.append(fname + ": " + utype + " = File(...)");
+                } else {
+                    ftype = _safe_model_type(str(fld["type"]));
+                    default = _safe_model_default(str(fld["default"]))
+                        if fld["has_default"]
+                        else "...";
+                    sig.append(fname + ": " + ftype + " = Form(" + default + ")");
+                }
+            }
+            sig.append('node_id: str = ""');
+            sig.append("authorization: str = Header(default=None)");
+            kw = ", ".join(
+                [
+                    repr(str(fld["name"])) + ": " + str(fld["name"])
+                    for fld in w["fields"]
+                ]
+            );
+            lines.append("");
+            lines.append("");
+            lines.append("async def run_" + wn + "(" + ", ".join(sig) + "):");
+            lines.append("    user = _username(authorization, " + required + ")");
+            lines.append("    fields = {" + kw + "}");
+            lines.append("    if node_id:");
+            lines.append('        fields["_jac_spawn_node"] = node_id');
+            lines.append("    return await _run_walker(_W_" + wn + ", fields, user)");
+            lines.append("");
+            lines.append("");
+            lines.append(
+                "_mount_endpoint(_W_" + wn + ", run_" + wn + ", None, " + '["/walker/' + wn + '", "/walker/' + wn + '/{node_id}"], ' + repr(
+                    wn
+                ) + ", " + required + ")"
+            );
+            continue;
+        }
+        model = _model_class_name(wn, "In");
         lines.append("");
         lines.append("");
         lines.append("class " + model + "(BaseModel):");
@@ -734,8 +1382,6 @@ def _emit_main_py(
         }
         lines.append("");
         lines.append("");
-        lines.append('@app.post("/walker/' + wn + '")');
-        lines.append('@app.post("/walker/' + wn + '/{node_id}")');
         lines.append(
             "async def run_" + wn + "(body: " + model + ", node_id: str = \"\", authorization: str = Header(default=None)):"
         );
@@ -743,8 +1389,13 @@ def _emit_main_py(
         lines.append("    fields = dict(body.model_dump())");
         lines.append("    if node_id:");
         lines.append('        fields["_jac_spawn_node"] = node_id');
+        lines.append("    return await _run_walker(_W_" + wn + ", fields, user)");
+        lines.append("");
+        lines.append("");
         lines.append(
-            "    return _respond(await _em.spawn_walker(_W_" + wn + ", fields, user))"
+            "_mount_endpoint(_W_" + wn + ", run_" + wn + ", " + model + ", " + '["/walker/' + wn + '", "/walker/' + wn + '/{node_id}"], ' + repr(
+                wn
+            ) + ", " + required + ")"
         );
     }
 
@@ -780,12 +1431,14 @@ def _emit_main_py(
             );
             lines.append("");
             lines.append("");
-            lines.append('@app.post("/function/' + fn + '")');
             lines.append("async def call_" + fn + "(" + ", ".join(sig) + "):");
             lines.append("    user = _username(authorization, " + required + ")");
             lines.append("    fields = {" + kw + "}");
+            lines.append("    return await _run_function(_F_" + fn + ", fields, user)");
+            lines.append("");
+            lines.append("");
             lines.append(
-                "    return _respond_fn(await _em.execute_function(_F_" + fn + ", fields, user))"
+                "_mount_endpoint(_F_" + fn + ", call_" + fn + ", None, " + '["/function/' + fn + '"])'
             );
             continue;
         }
@@ -812,61 +1465,27 @@ def _emit_main_py(
         }
         lines.append("");
         lines.append("");
-        lines.append('@app.post("/function/' + fn + '")');
         lines.append(
             "async def call_" + fn + "(body: " + model + ", authorization: str = Header(default=None)):"
         );
         lines.append("    user = _username(authorization, " + required + ")");
         lines.append(
-            "    return _respond_fn(await _em.execute_function(_F_" + fn + ", dict(body.model_dump()), user))"
+            "    return await _run_function(_F_" + fn + ", dict(body.model_dump()), user)"
         );
-    }
-
-    if functions {
-        triple_parts: list = [];
-        for f in functions {
-            fn = str(f["name"]);
-            has_upload = False;
-            for p in f["params"] {
-                if _is_upload_type(str(p["type"])) {
-                    has_upload = True;
-                }
-            }
-            model_ref = "None" if has_upload else _model_class_name(fn, "FnIn");
-            triple_parts.append("(_F_" + fn + ", call_" + fn + ", " + model_ref + ")");
-        }
-        triples = ", ".join(triple_parts);
-        lines += [
-            '',
-            '',
-            '# Functions decorated with @restspec(path=...) are also mounted at',
-            '# their declared paths (parity with `jac start` custom REST routes).',
-            '# GET/HEAD routes carry no body: call the handler with the model',
-            "# defaults instead of FastAPI's required JSON body.",
-            'def _mount_restspec(fn, handler, model):',
-            '    spec = getattr(fn, "restspec", None)',
-            '    path = str(getattr(spec, "path", "") or "")',
-            '    if not path:',
-            '        return',
-            '    if not path.startswith("/"):',
-            '        path = "/" + path',
-            '    method = str(getattr(spec, "method", "") or "POST").upper()',
-            '    if method in ("GET", "HEAD") and model is not None:',
-            '        async def _bodyless(authorization: str = Header(default=None)):',
-            '            return await handler(model(), authorization=authorization)',
-            '        app.add_api_route(path, _bodyless, methods=[method])',
-            '    else:',
-            '        app.add_api_route(path, handler, methods=[method])',
-            '',
-            '',
-            'for _fn, _handler, _model in [' + triples + ']:',
-            '    _mount_restspec(_fn, _handler, _model)'
-        ];
+        lines.append("");
+        lines.append("");
+        lines.append(
+            "_mount_endpoint(_F_" + fn + ", call_" + fn + ", " + model + ", " + '["/function/' + fn + '"])'
+        );
     }
 
     walker_list_lit = "[" + ", ".join([repr(str(w["name"])) for w in walkers]) + "]";
     func_list_lit = "[" + ", ".join([repr(str(f["name"])) for f in functions]) + "]";
     lines += [
+        '',
+        '',
+        'if _scheduler.has_pending():',
+        '    _scheduler.start()',
         '',
         '',
         '@app.get("/__health")',
