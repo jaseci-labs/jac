@@ -30,7 +30,7 @@ def _make_fake_dist(dist_dir: Path) {
     index_html = '''<!DOCTYPE html>
 <html lang="en">
   <head>
-<meta charset=UTF-8 />
+<meta charset="UTF-8" />
             <link rel="stylesheet" href="./styles.css?hash=abcd1234"/>
   </head>
   <body>

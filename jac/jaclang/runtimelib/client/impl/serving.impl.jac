@@ -160,7 +160,14 @@ impl HeaderBuilder._build_generic_meta_tags -> list[str] {
     for (key, val) in self.meta_data.items() {
         if key.startswith("meta_") and val {
             name = key[5:].replace("_", "-");
-            lines.append(f'<meta name={name} content={html.escape(str(val))} />');
+            name_attr = f'name="{name}"';
+            content_attr = f'content="{html.escape(str(val))}"';
+            lines.append(f'<meta {name_attr} {content_attr} />');
+        } elif key.startswith("twitter_") and val {
+            suffix = key[8:].replace("_", ":");
+            name_attr = f'name="twitter:{suffix}"';
+            content_attr = f'content="{html.escape(str(val))}"';
+            lines.append(f'<meta {name_attr} {content_attr} />');
         }
     }
     return lines;
@@ -176,13 +183,17 @@ impl HeaderBuilder._build_link_tags -> list[str] {
     };
     for (key, rel) in special_links.items() {
         if val := self._get_value(key) {
-            lines.append(f'<link rel={rel} href={html.escape(str(val))} />');
+            rel_attr = f'rel="{rel}"';
+            href_attr = f'href="{html.escape(str(val))}"';
+            lines.append(f'<link {rel_attr} {href_attr} />');
         }
     }
     for (key, val) in self.meta_data.items() {
         if key.startswith("link_") and val {
             rel = key[5:].replace("_", "-");
-            lines.append(f'<link rel={rel} href={html.escape(str(val))} />');
+            rel_attr = f'rel="{rel}"';
+            href_attr = f'href="{html.escape(str(val))}"';
+            lines.append(f'<link {rel_attr} {href_attr} />');
         }
     }
     return lines;
@@ -192,10 +203,12 @@ impl HeaderBuilder._build_og_tags -> list[str] {
     lines: list = [];
     for (key, val) in self.meta_data.items() {
         if key.startswith("og_") and val {
-            property_name = key[3:].replace("_", ":");
-            lines.append(
-                f'<meta property=og:{property_name} content={html.escape(str(val))} />'
+            property_name = (
+                "site_name" if key == "og_site_name" else key[3:].replace("_", ":")
             );
+            prop_attr = f'property="og:{property_name}"';
+            content_attr = f'content="{html.escape(str(val))}"';
+            lines.append(f'<meta {prop_attr} {content_attr} />');
         }
     }
     return lines;
@@ -206,7 +219,9 @@ impl HeaderBuilder._build_meta_tags -> list[str] {
     for key in self.standard_tags {
         if val := self._get_value(key) {
             name = key.replace("_", "-");
-            lines.append(f'<meta name={name} content={html.escape(val)} />');
+            name_attr = f'name="{name}"';
+            content_attr = f'content="{html.escape(val)}"';
+            lines.append(f'<meta {name_attr} {content_attr} />');
         }
     }
     return lines;
@@ -215,10 +230,10 @@ impl HeaderBuilder._build_meta_tags -> list[str] {
 impl HeaderBuilder._build_special_tags -> list[str] {
     lines: list = [];
     if charset := self._get_value("charset") {
-        lines.append(f'<meta charset={html.escape(charset)} />');
+        lines.append(f'<meta charset="{html.escape(charset)}" />');
     }
     if viewport := self._get_value("viewport") {
-        lines.append(f'<meta name="viewport" content={html.escape(viewport)} />');
+        lines.append(f'<meta name="viewport" content="{html.escape(viewport)}" />');
     }
     title = self._get_value("title") or self.function_name;
     lines.append(f'<title>{html.escape(title)}</title>');
