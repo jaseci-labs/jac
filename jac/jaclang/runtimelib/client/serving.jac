@@ -31,9 +31,11 @@ obj HeaderBuilder {
 
     def build_head -> str;
     def _get_value(key: str) -> str;
+    def _og_property(suffix: str) -> str;
     def _build_special_tags -> list[str];
     def _build_meta_tags -> list[str];
     def _build_og_tags -> list[str];
+    def _build_twitter_tags -> list[str];
     def _build_link_tags -> list[str];
     def _build_generic_meta_tags -> list[str];
 }
