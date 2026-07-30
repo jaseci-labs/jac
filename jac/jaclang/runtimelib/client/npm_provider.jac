@@ -15,9 +15,10 @@ glob CORE_RUNTIME_DEPS: dict[str, str] = {
          "react-router-dom": "^6.22.0",
          "react-error-boundary": "^5.0.0"
      },
-     OPTIONAL_RUNTIME_DEPS: dict[str, str] = {
-         "@tanstack/react-form": "^1.33.0",
-         "zod": "^4.3.6"
+     FRAMEWORK_FORM_DEPS: dict[str, dict[str, str]] = {
+         "react": {"@tanstack/react-form": "^1.33.0", "zod": "^4.3.6"},
+         "preact": {"@tanstack/react-form": "^1.33.0", "zod": "^4.3.6"},
+         "solid": {"@tanstack/solid-form": "^1.33.0", "zod": "^4.3.6"}
      },
      CORE_DEV_DEPS: dict[str, str] = {
          "vite": "^6.4.1",
@@ -44,6 +45,19 @@ def resolve_client_target_name(config: JacConfig) -> str {
         return "react_native";
     }
     return normalized;
+}
+
+
+def resolve_client_framework_name(config: JacConfig) -> str {
+    client_config = config.get_plugin_config("client");
+    raw = str(client_config.get("framework", "") or "").strip().lower();
+    return raw or "react";
+}
+
+
+def form_deps_for_framework(framework: str = "") -> dict[str, str] {
+    key = str(framework or "react").strip().lower();
+    return dict(FRAMEWORK_FORM_DEPS.get(key, FRAMEWORK_FORM_DEPS["react"]));
 }
 
 
@@ -99,7 +113,9 @@ obj NpmProvider(EcosystemProvider) {
         config: JacConfig, include_dev: bool = False
     ) -> list[ResolvedDependency] {
         (deps, dev_deps) = manifest_plugin_deps(config, "npm");
-        is_client = "client" in config.plugins;
+        client_dir = config.get_client_dir();
+        is_client = "client" in config.plugins
+        or (client_dir is not None and (client_dir / "compiled").exists());
         resolved: list[ResolvedDependency] = [];
         for (pkg, version) in deps.items() {
             if is_client and pkg in LEGACY_META_PACKAGES {
@@ -132,7 +148,10 @@ obj NpmProvider(EcosystemProvider) {
             );
         }
         if is_client {
-            core_runtime = {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS};
+            core_runtime = {
+                ** CORE_RUNTIME_DEPS,
+                ** form_deps_for_framework(resolve_client_framework_name(config))
+            };
             for (pkg, version) in core_runtime.items() {
                 if pkg not in deps {
                     resolved.append(

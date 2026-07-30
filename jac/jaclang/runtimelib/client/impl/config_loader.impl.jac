@@ -7,7 +7,8 @@ import from jaclang.runtimelib.client.npm_provider {
     CORE_DEV_DEPS,
     CORE_RUNTIME_DEPS,
     LEGACY_META_PACKAGES,
-    OPTIONAL_RUNTIME_DEPS,
+    form_deps_for_framework,
+    resolve_client_framework_name,
     resolve_client_target_name,
     target_scoped_npm_deps
 }
@@ -34,7 +35,10 @@ def _migrate_legacy_meta_packages(
         jac_config.remove_dependency('jac-client-node', dev=False, dep_type='npm');
         del npm_deps['jac-client-node'];
 
-        all_runtime = {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS};
+        all_runtime = {
+            ** CORE_RUNTIME_DEPS,
+            ** form_deps_for_framework(resolve_client_framework_name(jac_config))
+        };
         for (name, version) in all_runtime.items() {
             if name not in npm_deps {
                 jac_config.add_dependency(name, version, dev=False, dep_type='npm');
@@ -132,12 +136,16 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
         if migrated {
             _clear_node_modules(self.get_jac_config().get_client_dir());
         }
-
-        npm_deps = _inject_missing(
-            npm_deps, {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS}
-        );
-        npm_dev_deps = _inject_missing(npm_dev_deps, CORE_DEV_DEPS);
     }
+
+    npm_deps = _inject_missing(
+        npm_deps,
+        {
+            ** CORE_RUNTIME_DEPS,
+            ** form_deps_for_framework(resolve_client_framework_name(jac_config))
+        }
+    );
+    npm_dev_deps = _inject_missing(npm_dev_deps, CORE_DEV_DEPS);
     merged_npm_deps = {** npm_deps, ** target_scoped_deps};
 
     user_config: dict[str, any] = {

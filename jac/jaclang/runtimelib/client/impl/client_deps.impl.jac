@@ -22,37 +22,31 @@ def _resolve_client_framework -> str {
 }
 
 def _default_client_deps(framework: str) -> tuple[dict[str, str], dict[str, str]] {
+    import from jaclang.runtimelib.client.npm_provider {
+        CORE_DEV_DEPS,
+        CORE_RUNTIME_DEPS,
+        form_deps_for_framework
+    }
     if framework == "solid" {
         runtime_deps: dict[str, str] = {
             'solid-js': '^1.9.13',
             '@solidjs/router': '^0.16.1',
-            '@tanstack/solid-form': '^1.33.0',
-            'zod': '^4.3.6'
+            ** form_deps_for_framework("solid")
         };
 
         dev_deps: dict[str, str] = {
-            'vite': '^6.4.1',
+            'vite': CORE_DEV_DEPS['vite'],
             'vite-plugin-solid': '^0.5.0',
-            'typescript': '^5.3.3'
+            'typescript': CORE_DEV_DEPS['typescript']
         };
         return (runtime_deps, dev_deps);
     }
 
     runtime_deps: dict[str, str] = {
-        'react': '^18.2.0',
-        'react-dom': '^18.2.0',
-        'react-router-dom': '^6.22.0',
-        'react-error-boundary': '^5.0.0',
-        "@tanstack/react-form": "^1.33.0",
-        "zod": "^4.3.6"
+        ** CORE_RUNTIME_DEPS,
+        ** form_deps_for_framework("react")
     };
-    dev_deps: dict[str, str] = {
-        'vite': '^6.4.1',
-        '@vitejs/plugin-react': '^4.2.1',
-        'typescript': '^5.3.3',
-        '@types/react': '^18.2.0',
-        '@types/react-dom': '^18.2.0'
-    };
+    dev_deps: dict[str, str] = dict(CORE_DEV_DEPS);
     return (runtime_deps, dev_deps);
 }
 
