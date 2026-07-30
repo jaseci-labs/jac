@@ -274,8 +274,11 @@ jobs:
           submodules: true
           fetch-depth: 0
 
-      # On PRs, scope format/check to the .jac files changed vs the merge-base;
-      # otherwise run the whole repo.
+      # On PRs, `jac check` is scoped to the .jac files changed vs the
+      # merge-base -- UNLESS the PR touches the toolchain (compiler or the
+      # jac0core bootstrap), which can change checker behavior for files the
+      # PR never touches; those PRs escalate to full-repo mode. The fmt check
+      # below is never scoped (see its comment).
       - name: Determine changed .jac files
         id: changes
         run: |
@@ -293,6 +296,12 @@ jobs:
             echo "any=true" >> "$GITHUB_OUTPUT"
           else
             echo "any=false" >> "$GITHUB_OUTPUT"
+          fi
+          if git diff --name-only "$BASE" HEAD | grep -qE '^jac/jaclang/(compiler|jac0core)/'; then
+            echo "toolchain=true" >> "$GITHUB_OUTPUT"
+            echo "Toolchain paths touched: format/check run full-repo."
+          else
+            echo "toolchain=false" >> "$GITHUB_OUTPUT"
           fi
           echo "Changed .jac files in this PR:"
           cat changed-jac.txt || true
@@ -326,29 +335,27 @@ jobs:
       - name: Warm up compiler cache
         run: jac --version
 
+      # The fmt check is NEVER scoped to the PR's changed files: formatting is
+      # a property of (file, formatter), and a PR can change the formatter --
+      # then its own files pass the scoped check while the merge leaves the
+      # rest of the repo unformatted and every subsequent push to main red
+      # (#7781 -> #7791). The full sweep costs ~90s on the warm binary; the
+      # only skip is PRs that touch no .jac files and no toolchain paths.
       - name: Run jac fmt (check formatting)
         id: fmt
         continue-on-error: true
         run: |
           set -euo pipefail
-          if [ "${{ steps.changes.outputs.mode }}" = "scoped" ]; then
-            if [ "${{ steps.changes.outputs.any }}" != "true" ]; then
-              echo "No .jac files changed in this PR; skipping format check."
-              exit 0
-            fi
-            FILES="$(grep -vE '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
-            if [ -z "$FILES" ]; then
-              echo "No formattable .jac files changed (all excluded); skipping."
-              exit 0
-            fi
-            printf '%s\n' "$FILES" | tr '\n' '\0' \
-              | xargs -0 --no-run-if-empty jac fmt --check --lintfix
-          else
-            # Sweep only git-tracked files: the build materializes generated
-            # trees in-place (e.g. jac/zig-pkg/ zig package fetches with their
-            # own sample .jac files), and a bare `find .` walks those too.
-            git ls-files -z '*.jac' | grep -zv -E '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$|_syntax_err\.jac$)' | xargs -0 --no-run-if-empty jac fmt --check --lintfix
+          if [ "${{ steps.changes.outputs.mode }}" = "scoped" ] \
+            && [ "${{ steps.changes.outputs.any }}" != "true" ] \
+            && [ "${{ steps.changes.outputs.toolchain }}" != "true" ]; then
+            echo "No .jac or toolchain files changed in this PR; skipping format check."
+            exit 0
           fi
+          # Sweep only git-tracked files: the build materializes generated
+          # trees in-place (e.g. jac/zig-pkg/ zig package fetches with their
+          # own sample .jac files), and a bare `find .` walks those too.
+          git ls-files -z '*.jac' | grep -zv -E '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$|_syntax_err\.jac$)' | xargs -0 --no-run-if-empty jac fmt --check --lintfix
 
       # When the format check fails on a same-repo PR, run the fixer on the PR
       # head branch and push the result, mirroring what pre-commit.ci does for
@@ -378,13 +385,11 @@ jobs:
             exit 0
           fi
           git checkout -B "$HEAD_REF" FETCH_HEAD
-          FILES="$(grep -vE '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
-          if [ -z "$FILES" ]; then
-            echo "No formattable .jac files to fix."
-            exit 0
-          fi
-          printf '%s\n' "$FILES" | tr '\n' '\0' \
-            | xargs -0 --no-run-if-empty jac fmt --lintfix || true
+          # Fix with the same repo-wide sweep the check ran: on a
+          # formatter-behavior PR the failures are in files the PR never
+          # touched, and the reformat belongs in that PR so the behavior
+          # change and the repo reformat land atomically.
+          git ls-files -z '*.jac' | grep -zv -E '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$|_syntax_err\.jac$)' | xargs -0 --no-run-if-empty jac fmt --lintfix || true
           if git diff --quiet; then
             echo "Fixer produced no changes on the head branch; nothing to push."
             exit 0
@@ -413,7 +418,10 @@ jobs:
         run: |
           set -euo pipefail
           IGNORE_ARGS="tests checker_*.jac *_err.jac $(grep -v '^#' .jacignore | grep -v '^[[:space:]]*$' | tr '\n' ' ')"
-          if [ "${{ steps.changes.outputs.mode }}" = "scoped" ]; then
+          # Toolchain PRs check the whole repo: a compiler/jac0core change can
+          # introduce errors in files the PR never touches.
+          if [ "${{ steps.changes.outputs.mode }}" = "scoped" ] \
+            && [ "${{ steps.changes.outputs.toolchain }}" != "true" ]; then
             if [ "${{ steps.changes.outputs.any }}" != "true" ]; then
               echo "No .jac files changed in this PR; skipping jac check."
               exit 0
