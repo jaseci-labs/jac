@@ -65,12 +65,17 @@ class JacScalePluginConfig {
                 "database": {
                     "type": "dict",
                     "default": {},
-                    "description": "Database connection configuration",
+                    "description": "Database configuration. Flat keys tune the runtime connection and the jac-scale-provisioned stores. Backends are declared as subtables: [scale.database.NAME] (NAME is your logical name, e.g. db, cache, graph) with `type` (\"postgres\" | \"redis\" | \"mongo\" | anything), `source` (\"managed\" = jac-scale provisions it in-cluster; \"external\" = you run it and jac-scale wires it; \"disabled\" = off, useful in profile overlays; defaults to external when `url` is set, else managed), `url` (external only: the connection string, normally via env interpolation like \"${DATABASE_URL}\" so the value comes from .env / CI env at deploy and lands in the app's k8s Secret, never in jac.toml), and `env` (external only: env var name injected into app pods; defaults per type: postgres -> DATABASE_URL, redis -> REDIS_URL, mongo -> MONGODB_URI, else TYPE_URL). Declared backends are the COMPLETE inventory: anything not listed does not exist (declare an external postgres and the default managed mongo/redis are gone). With no subtables at all, today's default applies: managed mongo + redis (tunable via `provision` = false for a compute-only deploy, or the legacy [scale.kubernetes] enabled flags). Managed types supported today: mongo, redis.",
                     "nested": {
                         "type": {
                             "type": "string",
                             "default": None,
                             "description": "Optional default database backend metadata (e.g. mongodb, redis, firestore)"
+                        },
+                        "provision": {
+                            "type": "bool",
+                            "default": True,
+                            "description": "Provision the default managed backends (MongoDB + Redis) in Kubernetes when no [scale.database.NAME] subtables are declared. Set false for a compute-only deploy. Ignored once backends are declared - the declaration is the complete inventory."
                         },
                         "mongodb_uri": {
                             "type": "string",
@@ -114,6 +119,11 @@ class JacScalePluginConfig {
                         }
                     }
                 },
+                "auth": {
+                    "type": "dict",
+                    "default": {},
+                    "description": "Auth wiring. `type` = 'managed' (default: jac-scale mounts /user/*, SSO and api-key endpoints with per-user root nodes) or 'custom' (endpoints not mounted; the app handles auth itself, e.g. Supabase/OIDC). With type='custom', optional `issuer`, `jwks_url` and `audience` are injected into app pods as JAC_AUTH_ISSUER / JAC_AUTH_JWKS_URL / JAC_AUTH_AUDIENCE; put API keys and other sensitive auth values in [scale.secrets] with ${ENV} syntax. Managed-auth tuning keys (token TTLs, password_hash_rounds, rate limits) also live here."
+                },
                 "kubernetes": {
                     "type": "dict",
                     "default": {},
@@ -137,12 +147,12 @@ class JacScalePluginConfig {
                         "mongodb_enabled": {
                             "type": "bool",
                             "default": True,
-                            "description": "Enable MongoDB deployment in Kubernetes"
+                            "description": "Enable MongoDB deployment in Kubernetes. Legacy switch: prefer declaring backends under [scale.database.NAME]; any declaration supersedes this flag."
                         },
                         "redis_enabled": {
                             "type": "bool",
                             "default": True,
-                            "description": "Enable Redis deployment in Kubernetes"
+                            "description": "Enable Redis deployment in Kubernetes. Legacy switch: prefer declaring backends under [scale.database.NAME]; any declaration supersedes this flag."
                         },
                         "autoscaler_engine": {
                             "type": "string",

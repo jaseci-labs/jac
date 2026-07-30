@@ -147,6 +147,10 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             }
         },
         'auth': {
+            'type': 'managed',
+            'issuer': '',
+            'jwks_url': '',
+            'audience': '',
             'reset_token_ttl_seconds': 1800,
             'verify_token_ttl_seconds': 86400,
             'reset_url_template': '',
@@ -247,6 +251,17 @@ impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, any
     k8s_config['prometheus_admin_password'] = monitoring['prometheus_admin_password'];
 
     k8s_config['admin_username'] = self.get_admin_config().get('username', 'admin');
+
+    backends = self.get_backends_config();
+    k8s_config['backends'] = backends;
+    managed_types = {
+        entry['type']
+        for entry in backends.values()
+        if entry['source'] == 'managed'
+    };
+    k8s_config['mongodb_enabled'] = 'mongo' in managed_types;
+    k8s_config['redis_enabled'] = 'redis' in managed_types;
+    k8s_config['external_auth'] = self.get_external_auth_config();
 
     system_deps = self.get_jac_config().get_plugin_deps("system");
     k8s_config['service_dependencies'] = [
@@ -607,6 +622,198 @@ impl normalize_microservices_config(ms_config: dict[str, any]) -> dict[str, any]
         'shared_volumes': list(ms_config.get('shared_volumes', [])),
         'logs': dict(ms_config.get('logs', {})),
         'tracing': dict(ms_config.get('tracing', {}))
+    };
+}
+
+impl JacScaleConfig.get_backends_config(self: JacScaleConfig) -> dict[str, any] {
+    config = self.load();
+    raw_scale = self.get_jac_config().get_plugin_config('scale') or {};
+    return normalize_backends_config(
+        dict(config.get('database', {}) or {}),
+        dict(raw_scale.get('kubernetes', {}) or {})
+    );
+}
+
+impl JacScaleConfig.get_external_auth_config(self: JacScaleConfig) -> dict[str, any] {
+    config = self.load();
+    return normalize_external_auth_config(dict(config.get('auth', {}) or {}));
+}
+
+impl _default_backend_env(backend_type: str) -> str {
+    import re;
+    defaults = {
+        'mongo': 'MONGODB_URI',
+        'redis': 'REDIS_URL',
+        'postgres': 'DATABASE_URL'
+    };
+    if backend_type in defaults {
+        return defaults[backend_type];
+    }
+    slug = re.sub(r'[^A-Za-z0-9]+', '_', backend_type).strip('_').upper();
+    return f"{slug or 'BACKEND'}_URL";
+}
+
+impl _backend_entry(name: str, spec: dict[str, any]) -> dict[str, any] {
+    aliases = {'mongodb': 'mongo', 'postgresql': 'postgres'};
+    allowed_keys = {'type', 'source', 'url', 'env'};
+    unknown = sorted(set(spec.keys()) - allowed_keys);
+    if unknown {
+        raise ValueError(
+            f"[scale.database.{name}] has unsupported key(s) "
+            f"{', '.join(unknown)}; allowed: {', '.join(sorted(allowed_keys))}."
+        );
+    }
+
+    backend_type = str(spec.get('type', '') or '').strip().lower();
+    if not backend_type {
+        raise ValueError(
+            f"[scale.database.{name}] needs 'type' "
+            f"(e.g. \"postgres\", \"redis\", \"mongo\")."
+        );
+    }
+    backend_type = aliases.get(backend_type, backend_type);
+
+    url = str(spec.get('url', '') or '').strip();
+    source = str(spec.get('source', '') or '').strip().lower();
+    if not source {
+        source = 'external' if url else 'managed';
+    }
+    if source not in ('managed', 'external', 'disabled') {
+        raise ValueError(
+            f"[scale.database.{name}].source must be 'managed' (jac-scale "
+            f"provisions it), 'external' (you run it, jac-scale wires 'url') "
+            f"or 'disabled', got {source!r}."
+        );
+    }
+
+    entry: dict[str, any] = {'type': backend_type, 'source': source};
+    if source == 'managed' {
+        if url {
+            raise ValueError(
+                f"[scale.database.{name}]: 'url' does not apply to a managed "
+                f"backend - jac-scale provisions it and injects the URL itself. "
+                f"Set source = \"external\" if you run this backend."
+            );
+        }
+        if backend_type not in ('mongo', 'redis') {
+            raise ValueError(
+                f"[scale.database.{name}]: managed '{backend_type}' is not "
+                f"supported yet (only mongo and redis); set "
+                f"source = \"external\" and provide its url."
+            );
+        }
+    } elif source == 'external' {
+        if not url {
+            raise ValueError(
+                f"[scale.database.{name}] with source = \"external\" needs "
+                f"'url'. Use env interpolation so credentials stay out of "
+                f"jac.toml, e.g. url = \"${{DATABASE_URL}}\" with the value in "
+                f".env or your CI environment."
+            );
+        }
+        import re;
+        unresolved = re.findall(r'\$\{([^}:]+)[^}]*\}', url);
+        if unresolved {
+            raise ValueError(
+                f"[scale.database.{name}].url did not resolve: environment "
+                f"variable(s) {', '.join(unresolved)} not set. Define them in "
+                f".env or the deploy environment."
+            );
+        }
+        entry['url'] = url;
+        entry['env'] = str(spec.get('env', '') or '').strip()
+            or _default_backend_env(backend_type);
+    }
+    return entry;
+}
+
+impl normalize_backends_config(
+    database_cfg: dict[str, any], raw_kubernetes_cfg: dict[str, any]
+) -> dict[str, any] {
+    backends: dict[str, any] = {};
+    for (raw_name, spec) in database_cfg.items() {
+        if not isinstance(spec, dict) {
+            continue;
+        }
+        entry = _backend_entry(str(raw_name), dict(spec));
+        if entry['source'] == 'disabled' {
+            continue;
+        }
+        backends[str(raw_name)] = entry;
+    }
+
+    if backends {
+        _guard_backend_conflicts(backends);
+        import logging;
+        for flag_name in ('mongodb_enabled', 'redis_enabled') {
+            if raw_kubernetes_cfg.get(flag_name) is not None {
+                logging.getLogger(__name__).warning(
+                    f"[scale.kubernetes].{flag_name} is ignored: [scale.database] "
+                    f"declares backends, and that declaration is the complete "
+                    f"inventory."
+                );
+            }
+        }
+        return backends;
+    }
+
+    provision_all = database_cfg.get('provision');
+    legacy_flags = {
+        'mongo': raw_kubernetes_cfg.get('mongodb_enabled'),
+        'redis': raw_kubernetes_cfg.get('redis_enabled')
+    };
+    for (backend_type, flag) in legacy_flags.items() {
+        provisioned = (flag is not False)
+            if provision_all is None
+            else bool(provision_all);
+        if provisioned {
+            backends[backend_type] = {'type': backend_type, 'source': 'managed'};
+        }
+    }
+    return backends;
+}
+
+impl _guard_backend_conflicts(backends: dict[str, any]) -> None {
+    managed_types: dict[str, str] = {};
+    env_names: dict[str, str] = {};
+    for (name, entry) in backends.items() {
+        if entry['source'] == 'managed' {
+            if entry['type'] in managed_types {
+                raise ValueError(
+                    f"[scale.database] declares two managed '{entry['type']}' "
+                    f"backends ('{managed_types[entry['type']]}' and '{name}'); "
+                    f"only one managed instance per type is supported."
+                );
+            }
+            managed_types[entry['type']] = name;
+        } else {
+            env = entry['env'];
+            if env in env_names {
+                raise ValueError(
+                    f"[scale.database] backends '{env_names[env]}' and '{name}' "
+                    f"both inject the env var '{env}'; set a distinct 'env' on "
+                    f"one of them."
+                );
+            }
+            env_names[env] = name;
+        }
+    }
+}
+
+impl normalize_external_auth_config(auth_cfg: dict[str, any]) -> dict[str, any] {
+    auth_type = str(auth_cfg.get('type', 'managed') or 'managed').strip().lower();
+    if auth_type not in ('managed', 'custom') {
+        raise ValueError(
+            f"[scale.auth].type must be 'managed' (jac-scale mounts its "
+            f"/user/* auth) or 'custom' (the app handles auth itself), "
+            f"got {auth_type!r}."
+        );
+    }
+    return {
+        'type': auth_type,
+        'issuer': str(auth_cfg.get('issuer', '') or '').strip(),
+        'jwks_url': str(auth_cfg.get('jwks_url', '') or '').strip(),
+        'audience': str(auth_cfg.get('audience', '') or '').strip()
     };
 }
 

@@ -583,7 +583,34 @@ impl JacAPIServerCore.enable_hmr(hot_reloader: any) -> None {
 impl JacAPIServerCore._register_endpoints -> None {
     self.register_health_endpoint();
     self.register_build_status_endpoint();
-    self.register_auth_endpoints();
+    auth_type: str = 'managed';
+    try {
+        auth_type = str(
+            get_scale_config().get_external_auth_config().get('type', 'managed')
+        );
+    } except Exception { }
+    if auth_type == 'managed' {
+        self.register_auth_endpoints();
+    } else {
+        logger.info(
+            "[scale.auth].type=custom: managed auth endpoints "
+            "(/user/*, SSO, api-keys) are not mounted."
+        );
+        auth_walkers: list[str] = [];
+        try {
+            auth_walkers = [
+                name
+                for name in self.introspector.get_walkers().keys()
+                if self.introspector.is_auth_required_for_walker(name)
+            ];
+        } except Exception { }
+        if auth_walkers {
+            logger.warning(
+                f"auth-required walkers cannot be served without managed auth "
+                f"and will respond 401: {', '.join(sorted(auth_walkers))}"
+            );
+        }
+    }
     self.register_page_endpoint();
     self.register_client_js_endpoint();
     self.register_static_file_endpoint();

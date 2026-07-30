@@ -30,6 +30,10 @@ import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
     resize_pvc_if_needed
 }
 import from jaclang.scale.deploy.target.kubernetes.cluster_provider { ClusterProvider }
+import from jaclang.scale.deploy.target.kubernetes.backend_env {
+    external_backend_secret_values,
+    custom_auth_env_entries
+}
 import from jaclang.scale.deploy.database.kubernetes_mongo { KubernetesMongoProvider }
 import from jaclang.scale.deploy.database.kubernetes_redis { KubernetesRedisProvider }
 import from jaclang.scale._optdeps.optional_deps { require_optional }
@@ -998,6 +1002,15 @@ obj KubernetesTarget(DeploymentTarget) {
             self.env_list.append({"name": "K8S_APP_NAME", "value": app_name});
             self.env_list.append({"name": "K8S_NAMESPACE", "value": namespace});
             details["load_env_variables"] = "Successful";
+
+            external_values = external_backend_secret_values(
+                dict(self.k8s_config.backends or {})
+            );
+            self.secrets = {** dict(self.secrets or {}), ** external_values};
+            self.env_list.extend(
+                custom_auth_env_entries(dict(self.k8s_config.external_auth or {}))
+            );
+            details["wire_external_backends"] = "Successful";
 
             secret_ref_name: str | None = None;
             if self.secrets {
