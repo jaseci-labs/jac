@@ -1,6 +1,3 @@
-"""Env wiring for external (bring-your-own) backends and custom auth."""
-
-
 def external_backend_secret_values(backends: dict[str, any]) -> dict[str, str] {
     values: dict[str, str] = {};
     for name in sorted(backends.keys()) {

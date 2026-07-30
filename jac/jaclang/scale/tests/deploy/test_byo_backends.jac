@@ -70,8 +70,7 @@ test "zero-config default still provisions managed mongo and redis" {
 
 test "a declared inventory replaces the defaults entirely" {
     cfg = _k8s_config_from_toml(
-        PROJECT_HEADER
-        + '[scale.database.graph]\ntype = "mongo"\nsource = "managed"\n'
+        PROJECT_HEADER + '[scale.database.graph]\ntype = "mongo"\nsource = "managed"\n'
     );
     assert cfg["mongodb_enabled"] is True;
     assert cfg["redis_enabled"] is False;
@@ -81,9 +80,7 @@ test "a declared inventory replaces the defaults entirely" {
 
 test "url implies source external; source disabled drops the backend" {
     cfg = _k8s_config_from_toml(
-        PROJECT_HEADER
-        + '[scale.database.db]\ntype = "postgres"\nurl = "postgres://h/app"\n\n'
-        + '[scale.database.graph]\ntype = "mongo"\nsource = "disabled"\n'
+        PROJECT_HEADER + '[scale.database.db]\ntype = "postgres"\nurl = "postgres://h/app"\n\n' + '[scale.database.graph]\ntype = "mongo"\nsource = "disabled"\n'
     );
     assert cfg["backends"]["db"]["source"] == "external";
     assert "graph" not in cfg["backends"];
@@ -115,9 +112,7 @@ test "urls resolve from the environment via interpolation" {
     os.environ["BYO_TEST_DB_URL"] = "postgres://resolved.host/app";
     try {
         cfg = _k8s_config_from_toml(
-            PROJECT_HEADER
-            + '[scale.database.db]\ntype = "postgres"\n'
-            + 'url = "${BYO_TEST_DB_URL}"\n'
+            PROJECT_HEADER + '[scale.database.db]\ntype = "postgres"\n' + 'url = "${BYO_TEST_DB_URL}"\n'
         );
         assert cfg["backends"]["db"]["url"] == "postgres://resolved.host/app";
     } finally {
@@ -131,9 +126,7 @@ test "an unresolved url env var fails instead of shipping the literal" {
     error = "";
     try {
         _k8s_config_from_toml(
-            PROJECT_HEADER
-            + '[scale.database.db]\ntype = "postgres"\n'
-            + 'url = "${BYO_TEST_MISSING_URL}"\n'
+            PROJECT_HEADER + '[scale.database.db]\ntype = "postgres"\n' + 'url = "${BYO_TEST_MISSING_URL}"\n'
         );
     } except ValueError as e {
         error = str(e);
@@ -224,8 +217,7 @@ test "the app secret reaches service pods as envFrom" {
         dry_run=True
     );
     secret_manifest = builder._build_user_secret_manifest();
-    assert secret_manifest["stringData"]["DATABASE_URL"]
-    == "postgres://app:pw@db.host:5432/app";
+    assert secret_manifest["stringData"]["DATABASE_URL"] == "postgres://app:pw@db.host:5432/app";
 
     with unittest.mock.patch(
         "jaclang.scale.injector.binary_injector.BinaryInjector"

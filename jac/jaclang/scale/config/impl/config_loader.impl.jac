@@ -722,7 +722,7 @@ impl _backend_entry(name: str, spec: dict[str, any]) -> dict[str, any] {
         }
         entry['url'] = url;
         entry['env'] = str(spec.get('env', '') or '').strip()
-            or _default_backend_env(backend_type);
+        or _default_backend_env(backend_type);
     }
     return entry;
 }
