@@ -1112,6 +1112,45 @@ test "lambda_param_inferred_from_expected_callable" {
     )}:\n" + "\n---\n".join(w.pretty_print() for w in w1051);
 }
 
+test "overload_rejection_help" {
+    # Each E1054 must name why the overload was rejected; the arity failure stays bare.
+    path = os.path.join(CHECKER_FIXTURES, "checker_overload_rejection_help.jac");
+    program = JacProgram();
+    program.compile(path, type_check=True);
+
+    helps = [
+        (e.help_text or "")
+        for e in program.errors_had
+        if e.code and e.code.code == "E1054"
+    ];
+    assert len(helps) == 7 , f"Expected 7 E1054s, got {len(helps)}";
+
+    def has(needle: str) -> bool {
+        return any(needle in h for h in helps);
+    }
+
+    assert has("returns 'dict'") and has("must return") , f"Missing return-type reason:\n{helps}";
+    assert has("takes 2 parameter(s)") , f"Missing arity reason:\n{helps}";
+
+    # An extra optional param is arity-compatible, so it must not be blamed on arity.
+    arity = [
+        h
+        for h in helps
+        if "parameter(s), but a callable taking" in h
+    ];
+    assert len(arity) == 1 , f"Expected exactly one arity reason, got {len(arity)}:\n{helps}";
+    assert has("The candidates expect:") and has("overload 2:") , f"Missing candidate list:\n{helps}";
+    assert has("Every overload expects 'SupportsIndex'") , f"Missing collapsed expectation:\n{helps}";
+    assert has("parameter 'iterable'") , f"Missing per-argument reason:\n{helps}";
+
+    bare = [
+        h
+        for h in helps
+        if "overload" not in h
+    ];
+    assert len(bare) == 1 , f"Expected exactly one bare E1054, got {len(bare)}:\n{helps}";
+}
+
 test "lambda_param_unresolved_requires_annotation" {
     path = os.path.join(CHECKER_FIXTURES, "checker_lambda_unresolved_param.jac");
     program = JacProgram();
