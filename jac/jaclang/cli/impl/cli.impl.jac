@@ -309,7 +309,6 @@ def _apply_profile(args_dict: dict) -> None {
 
 def _apply_config_defaults(config: object, args_dict: dict) {
     bridges: list = [
-        ("port", 8000, config.serve.port, "serve", "port"),
         ("cache", True, config.run.cache, "run", "cache"),
         ("main", True, config.run.main, "run", "main"),
         ("verbose", False, config.test.verbose, "test", "verbose"),
