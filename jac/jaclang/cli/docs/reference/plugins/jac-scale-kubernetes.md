@@ -519,7 +519,7 @@ url    = "${DATABASE_URL}"   # external only; ${ENV} resolved at load
 | `source` | Behavior |
 |----------|----------|
 | `managed` | jac-scale provisions it in-cluster (mongo/redis only). This is the default when nothing is declared. |
-| `external` | jac-scale provisions nothing and injects `url` into the app under the type's env var. The `url` reads from `${ENV}` at config load (never a literal in `jac.toml`) and ships through the app's Kubernetes Secret. |
+| `external` | jac-scale provisions nothing and injects `url` into the app under the type's env var. Use `${ENV}` interpolation so credentials come from `.env` / the CI environment rather than sitting in `jac.toml` (a plain literal is fine for non-secret URLs like in-cluster DNS); the value ships through the app's Kubernetes Secret. |
 | `disabled` | Off. Useful in a `jac.prod.toml` overlay to switch off a backend declared in the base (overlays cannot delete tables). |
 
 The app always reads the same env var (`DATABASE_URL`, `REDIS_URL`, `MONGODB_URI`, or `<TYPE>_URL`); only `source` changes between environments.
