@@ -7,7 +7,7 @@ fold into one dropdown that is open by default and streams in live. Everything
 else renders as a terminal-style row. Auto-scrolls to the newest entry.
 """
 
-import from react { useRef, useEffect }
+import from "react" { useRef, useEffect }
 import from ..server { UiEvent }
 
 def:pub ActivityFeed(events: list[UiEvent], status: str) -> JsxElement {
@@ -103,9 +103,8 @@ def:pub ActivityFeed(events: list[UiEvent], status: str) -> JsxElement {
                                         {"▾" if r["id"] not in collapsed else "▸"}
                                     </span>
                                     <span className="think-label">
-                                        {"thinking" + (
-                                            "…" if r["block"]["live"] else ""
-                                        )}
+                                        {"thinking"
+                                        + ("…" if r["block"]["live"] else "")}
                                     </span>
                                     {<span className="think-dot live"/>
                                         if r["block"]["live"]
@@ -138,7 +137,8 @@ def:pub ActivityFeed(events: list[UiEvent], status: str) -> JsxElement {
                                             {<span className="think-dot live"/>
                                                 if not r["row"]["done"]
                                                 else <span className="think-count">
-                                                    {str(len(r["row"]["result"])) + " chars"}
+                                                    {str(len(r["row"]["result"]))
+                                                    + " chars"}
                                                 </span>}
                                         </button>
                                         {<div className="tool-body">

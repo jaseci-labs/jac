@@ -10,7 +10,7 @@ listed pods.
 
 import from "lucide-react" { KeyRound, Lock }
 
-import from react { useEffect }
+import from "react" { useEffect }
 import from ....components.common.PageHeader { PageHeader, OpsUnavailableBanner }
 import from ....context.AuthContext { useAuth }
 import from ....services.opsService { getPodEnv }
@@ -124,7 +124,8 @@ def:pub PodEnvPage -> JsxElement {
                                 {en["name"]}
                             </td>
                             <td
-                                className={"py-1.5 pr-3 font-mono text-xs " + (
+                                className={"py-1.5 pr-3 font-mono text-xs "
+                                + (
                                     "text-muted" if en["shown"] else "text-faint italic"
                                 )}
                             >

@@ -144,9 +144,8 @@ impl EsastGenPass.exit_global_vars(nd: uni.GlobalVars) -> None {
                         if (
                             assignment.value
                             and (
-                                (
-                                    lit_val := self._literal_value(assignment.value)
-                                ) is not None
+                                (lit_val := self._literal_value(assignment.value))
+                                is not None
                             )
                         ) {
                             self.client_manifest.globals_values[sym_name] = lit_val;
@@ -2351,14 +2350,8 @@ impl EsastGenPass._is_collection_expr(expr_node: uni.UniNode) -> bool {
         }
         return False;
     }
-    return self._expr_type_name(expr_node) in {
-        "list",
-        "dict",
-        "set",
-        "tuple",
-        "frozenset",
-        "bytes"
-    };
+    return self._expr_type_name(expr_node)
+    in {"list", "dict", "set", "tuple", "frozenset", "bytes"};
 }
 
 impl EsastGenPass._build_jac_ref(
@@ -4224,7 +4217,12 @@ impl EsastGenPass._build_osp_setup_js -> str {
     }
     lines.append("const __ospDESC = {" + ", ".join(desc_parts) + "};");
     lines.append(
-        "const __ospRT = new OspRuntime({" + "tag_of: (h) => h.__tag, " + "is_a: (t, b) => __ospISA[t] ? __ospISA[t].has(b) : (t === b), " + "node_desc: (t) => __ospDESC[t], " + "on_complete: (s, ok) => { if (s.wlk) s.wlk.reports = s.reports; }" + "});"
+        "const __ospRT = new OspRuntime({"
+        + "tag_of: (h) => h.__tag, "
+        + "is_a: (t, b) => __ospISA[t] ? __ospISA[t].has(b) : (t === b), "
+        + "node_desc: (t) => __ospDESC[t], "
+        + "on_complete: (s, ok) => { if (s.wlk) s.wlk.reports = s.reports; }"
+        + "});"
     );
     return "\n".join(lines);
 }
@@ -5731,6 +5729,8 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
 }
 
 impl EsastGenPass.exit_module(nd: uni.Module) -> None {
+    import from jaclang.compiler.symbol_utils { report_client_bare_import_uses }
+    report_client_bare_import_uses(self, nd);
     if (self.scoped_styles is not None and self.scoped_styles.class_map) {
         import os;
         nd.gen.css = self.scoped_styles.scoped_css;

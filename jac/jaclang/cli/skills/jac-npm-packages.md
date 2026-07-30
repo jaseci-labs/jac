@@ -88,7 +88,7 @@ def:pub ParentForm() -> JsxElement {
 `has` = useState, `can with entry` = useEffect, `Ref[T]` field = useRef. For the rest, import directly:
 
 ```jac
-import from react { useCallback, useMemo, useContext, createContext }
+import from "react" { useCallback, useMemo, useContext, createContext }
 ```
 
 ```jac

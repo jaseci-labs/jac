@@ -105,6 +105,9 @@ declarations -- which were never placement markers to begin with.
 
 - `E5082` -- a plain client import references a symbol with no client-side
   presence (dead import).
+- `E5084` -- client code uses a symbol from a bare (Python-ecosystem) import;
+  the import stays server-placed, so the client bundle never binds the name.
+  Quote the module for npm packages: `import from "react" { useRef }`.
 - `W6005` -- a function-typed parameter at an RPC call site.
 - `W6006` -- a mutable glob would be dual-emitted (state fork).
 - `W6007` -- client code uses a server-placed function as a value.

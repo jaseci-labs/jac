@@ -47,6 +47,7 @@ obj DocIRGenPass(UniPass) {
     def _child_docs(nd: uni.UniNode) -> list[doc.DocType];
     def _assign_group_concat(nd: uni.UniNode) -> None;
     def _assign_space_group(nd: uni.UniNode) -> None;
+    def _assign_operator_chain(nd: uni.UniNode, operands: list, ops: list) -> None;
     def _assign_semi_stmt_doc_ir(nd: uni.UniNode) -> None;
     def _assign_compr_doc_ir(nd: uni.UniNode) -> None;
     def _assign_else_doc_ir(nd: uni.UniNode, body: Sequence[uni.UniNode]) -> None;

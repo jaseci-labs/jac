@@ -17,7 +17,7 @@ UX choices that distinguish this from raw Grafana:
 
 import from "lucide-react" { ScrollText, RefreshCw, AlertTriangle, X }
 
-import from react { useEffect }
+import from "react" { useEffect }
 import from ....components.common.Button { Button }
 import from ....components.common.Input { Input }
 import from ....components.common.Select { Select }
@@ -384,7 +384,8 @@ def:pub LogsPage -> JsxElement {
             {lines.map(
                 lambda (line: dict, idx: int) { <div
                     key={idx}
-                    className={"flex items-start gap-3 px-3 py-1.5 border-b border-line hover:bg-surface-2 cursor-pointer transition-colors " + (
+                    className={"flex items-start gap-3 px-3 py-1.5 border-b border-line hover:bg-surface-2 cursor-pointer transition-colors "
+                    + (
                         panelIdx == idx
                         and "bg-accent-weak border-l-2 border-l-accent"
                         or ""
@@ -395,9 +396,8 @@ def:pub LogsPage -> JsxElement {
                         {shortTime(line["ts"] or "")}
                     </span>
                     <span
-                        className={"text-xs font-bold whitespace-nowrap " + serviceColor(
-                            line["service"] or ""
-                        )}
+                        className={"text-xs font-bold whitespace-nowrap "
+                        + serviceColor(line["service"] or "")}
                     >
                         {line["service"] or "?"}
                     </span>
@@ -438,9 +438,8 @@ def:pub LogsPage -> JsxElement {
             >
                 <div className="flex items-center gap-2">
                     <span
-                        className={"text-sm font-bold " + serviceColor(
-                            panelLine["service"] or ""
-                        )}
+                        className={"text-sm font-bold "
+                        + serviceColor(panelLine["service"] or "")}
                     >
                         {panelLine["service"] or "?"}
                     </span>
@@ -542,9 +541,8 @@ def:pub LogsPage -> JsxElement {
                                     {shortTime(tl["ts"] or "")}
                                 </span>
                                 <span
-                                    className={"text-[10px] font-bold whitespace-nowrap " + serviceColor(
-                                        tl["service"] or ""
-                                    )}
+                                    className={"text-[10px] font-bold whitespace-nowrap "
+                                    + serviceColor(tl["service"] or "")}
                                 >
                                     {tl["service"] or "?"}
                                 </span>

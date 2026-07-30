@@ -14,7 +14,7 @@ observability/health is broken.
 
 import from "lucide-react" { Stethoscope, RefreshCw, Check, X, Minus, AlertTriangle }
 
-import from react { useEffect }
+import from "react" { useEffect }
 import from ....components.common.PageHeader { PageHeader }
 import from ....context.AuthContext { useAuth }
 import from ....services.opsService { getOpsHealth }
@@ -200,7 +200,8 @@ def:pub OpsPage -> JsxElement {
                         {[
                             <div
                                 key={step["name"]}
-                                className={"flex items-start gap-2 px-2 py-1.5 rounded " + (
+                                className={"flex items-start gap-2 px-2 py-1.5 rounded "
+                                + (
                                     "bg-danger-weak ring-1 ring-danger/40"
                                         if step["_firstFail"]
                                         else ""
@@ -210,7 +211,8 @@ def:pub OpsPage -> JsxElement {
                                 or <Minus className="w-3.5 h-3.5 text-faint shrink-0"/>}
                                 <div className="min-w-0">
                                     <div
-                                        className={"text-xs " + (
+                                        className={"text-xs "
+                                        + (
                                             "font-medium text-fg"
                                                 if step["_firstFail"]
                                                 else "text-muted"

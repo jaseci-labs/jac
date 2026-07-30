@@ -404,6 +404,12 @@ def is_server_anchored_module(module: (uni.Module | None)) -> bool {
         }
         resolved = imp.from_loc.resolve_relative_path();
         if not isinstance(resolved, str) or not resolved.endswith('.jac') {
+            import from jaclang.jac0core.modresolver { is_client_npm_import }
+            if is_client_npm_import(
+                imp.from_loc.dot_path_str, module.loc.mod_path or ''
+            ) {
+                continue;
+            }
             return True;
         }
     }

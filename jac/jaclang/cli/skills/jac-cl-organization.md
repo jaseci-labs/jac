@@ -142,7 +142,7 @@ In a real hook, replace the local `Item` declaration with `import from ..todos.s
 ⚠ **A custom hook does NOT share state between two consumers.** Every `useItems()` call creates its OWN `useState` instances - hooks share *logic*, not *state*. When components too far apart to prop-drill (current user, theme, cart) must see the same live values, use a context:
 
 ```jac
-import from react { createContext, useContext }
+import from "react" { createContext, useContext }
 
 glob AppCtx = createContext(None);
 

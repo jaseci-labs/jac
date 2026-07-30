@@ -644,9 +644,8 @@ test "client call to endpoint with function-typed param warns W6005" {
     prog.compile(os.path.join(FIXTURE_DIR, "infer_rpc_callable.jac"), no_cgen=False);
     warned = any('W6005' in w.pretty_print() for w in prog.warnings_had);
     assert warned , (
-        "RPC-bridged call passing a function must warn W6005; got: " + f"{[
-            w.pretty_print().split(chr(10))[0] for w in prog.warnings_had
-        ]}"
+        "RPC-bridged call passing a function must warn W6005; got: "
+        + f"{[w.pretty_print().split(chr(10))[0] for w in prog.warnings_had]}"
     );
 }
 
@@ -660,4 +659,84 @@ test "aot native mandate still fails loudly" {
         )
     );
     assert prog.errors_had , "forced-native modules must surface lowering errors";
+}
+
+"""A bare (Python-ecosystem) import whose symbols client code uses at value
+level was silently pruned from the client bundle: the PY requirement pinned
+the import server-side, the ES backend dropped it, and the page died with
+`ReferenceError: dedent is not defined` while `jac check` stayed green.
+E5084 must name the symbol and the module at compile time. (Bare npm names
+like `react` resolve through the client npm world and never fire this.)"""
+test "client value use of a bare python import is E5084" {
+    import from jaclang.jac0core.compile_options { CompileOptions }
+    prog = JacProgram();
+    prog.compile(
+        os.path.join(FIXTURE_DIR, "infer_import_bare_py_client.jac"),
+        options=CompileOptions(no_cgen=True, type_check=True)
+    );
+    bare_errs = [
+        e
+        for e in prog.errors_had
+        if e.code is not None and e.code.code == 'E5084'
+    ];
+    assert len(bare_errs) == 1 , (
+        f"expected exactly one E5084 for the client dedent pull, got "
+        f"{[str(e) for e in prog.errors_had]}"
+    );
+    assert 'dedent' in str(bare_errs[0]) , "E5084 must name the unbound symbol";
+    assert 'textwrap' in str(bare_errs[0]) , "E5084 must name the bare module";
+}
+
+test "annotation-only use of a bare python import stays silent" {
+    import from jaclang.jac0core.compile_options { CompileOptions }
+    prog = JacProgram();
+    prog.compile(
+        os.path.join(FIXTURE_DIR, "infer_import_bare_py_annotation.jac"),
+        options=CompileOptions(no_cgen=True, type_check=True)
+    );
+    bare_errs = [
+        e
+        for e in prog.errors_had
+        if e.code is not None and e.code.code == 'E5084'
+    ];
+    assert not bare_errs , (
+        f"annotations are erased in ES output and must not fire E5084, got "
+        f"{[str(e) for e in bare_errs]}"
+    );
+}
+
+test "server-side use of a bare python import stays silent" {
+    import from jaclang.jac0core.compile_options { CompileOptions }
+    prog = JacProgram();
+    prog.compile(
+        os.path.join(FIXTURE_DIR, "infer_import_bare_py_server_use.jac"),
+        options=CompileOptions(no_cgen=True, type_check=True)
+    );
+    bare_errs = [
+        e
+        for e in prog.errors_had
+        if e.code is not None and e.code.code == 'E5084'
+    ];
+    assert not bare_errs , (
+        f"server-placed python imports are normal and must not fire E5084, got "
+        f"{[str(e) for e in bare_errs]}"
+    );
+}
+
+test "unresolvable relative bare import stays silent" {
+    import from jaclang.jac0core.compile_options { CompileOptions }
+    prog = JacProgram();
+    prog.compile(
+        os.path.join(FIXTURE_DIR, "infer_import_bare_py_relative_template.jac"),
+        options=CompileOptions(no_cgen=True, type_check=True)
+    );
+    bare_errs = [
+        e
+        for e in prog.errors_had
+        if e.code is not None and e.code.code == 'E5084'
+    ];
+    assert not bare_errs , (
+        f"a relative bare import is never npm or installed python; template "
+        f"components must not fire E5084, got {[str(e) for e in bare_errs]}"
+    );
 }

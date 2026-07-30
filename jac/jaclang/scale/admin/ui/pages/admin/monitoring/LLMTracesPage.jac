@@ -1,6 +1,6 @@
 """LLM Traces page - Detailed trace view for LLM calls."""
 
-import from react { useEffect }
+import from "react" { useEffect }
 import from ....components.common.Button { Button }
 import from ....context.AuthContext { useAuth }
 import from ....services.llmService { getLLMTraces, getLLMTraceDetail }
@@ -190,12 +190,15 @@ def:pub LLMTracesPage -> JsxElement {
                                 <div className="text-fg">
                                     {formatTokens(selectedTrace["total_tokens"] or 0)}{(
                                         selectedTrace["aggregated_total_tokens"] or 0
-                                    ) > (selectedTrace["total_tokens"] or 0)
+                                    )
+                                    > (selectedTrace["total_tokens"] or 0)
                                     and <span className="text-faint text-xs ml-1">
-                                        {"(tree: " + formatTokens(
+                                        {"(tree: "
+                                        + formatTokens(
                                             selectedTrace["aggregated_total_tokens"]
                                             or 0
-                                        ) + ")"}
+                                        )
+                                        + ")"}
                                     </span>}
                                 </div>
                             </div>
@@ -204,11 +207,14 @@ def:pub LLMTracesPage -> JsxElement {
                                 <div className="text-yellow-400">
                                     {formatCost(selectedTrace["total_cost"] or 0)}{(
                                         selectedTrace["aggregated_total_cost"] or 0
-                                    ) > (selectedTrace["total_cost"] or 0)
+                                    )
+                                    > (selectedTrace["total_cost"] or 0)
                                     and <span className="text-faint text-xs ml-1">
-                                        {"(tree: " + formatCost(
+                                        {"(tree: "
+                                        + formatCost(
                                             selectedTrace["aggregated_total_cost"] or 0
-                                        ) + ")"}
+                                        )
+                                        + ")"}
                                     </span>}
                                 </div>
                             </div>
@@ -379,19 +385,23 @@ def:pub LLMTracesPage -> JsxElement {
                                             and <span
                                                 className="px-1.5 py-0.5 rounded bg-teal-500/20 text-teal-400 text-xs border border-teal-500/40"
                                             >
-                                                {"+" + String(child["child_count"]) + " nested"}
+                                                {"+"
+                                                + String(child["child_count"])
+                                                + " nested"}
                                             </span>}
                                         </div>
                                         <div
                                             className="flex items-center gap-4 text-xs text-muted"
                                         >
                                             <span>
-                                                {String(child["llm_call_count"] or 0) + " calls"}
+                                                {String(child["llm_call_count"] or 0)
+                                                + " calls"}
                                             </span>
                                             <span>
                                                 {formatTokens(
                                                     child["total_tokens"] or 0
-                                                ) + " tokens"}
+                                                )
+                                                + " tokens"}
                                             </span>
                                             <span className="text-yellow-400">
                                                 {formatCost(child["total_cost"] or 0)}
@@ -507,7 +517,8 @@ def:pub LLMTracesPage -> JsxElement {
                             {expandedIds.indexOf(item["trace"]["invocation_id"]) >= 0
                             and <span className="text-xs">▼</span>}{expandedIds.indexOf(
                                 item["trace"]["invocation_id"]
-                            ) < 0
+                            )
+                            < 0
                             and <span className="text-xs">▶</span>}
                         </button>}
                         {(item["trace"]["child_count"] or 0) == 0

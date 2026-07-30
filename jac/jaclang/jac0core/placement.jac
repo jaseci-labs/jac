@@ -227,9 +227,9 @@ def _element_reqs(stmt: uni.UniNode) -> list {
         } elif eco == 'py' {
             npm_dep = False;
             if isinstance(stmt, uni.Import) and stmt.from_loc is not None {
-                import from jaclang.jac0core.placement_pins { npm_dependency_names }
+                import from jaclang.jac0core.modresolver { is_client_npm_import }
                 mod_path = stmt.loc.mod_path or '';
-                npm_dep = stmt.from_loc.dot_path_str in npm_dependency_names(mod_path);
+                npm_dep = is_client_npm_import(stmt.from_loc.dot_path_str, mod_path);
             }
             if npm_dep {
                 reqs.append(['NPM', 'npm dependency']);
@@ -456,8 +456,7 @@ def module_anchor_reasons(module: uni.Module) -> list[str] {
             break;
         }
     }
-    import from jaclang.jac0core.placement_pins { npm_dependency_names }
-    npm_names = npm_dependency_names(mod_path);
+    import from jaclang.jac0core.modresolver { is_client_npm_import }
     for imp in module.get_all_sub_nodes(uni.Import) {
         if imp.has_clib_decls or imp.is_virtual_jac or imp.has_string_path {
             continue;
@@ -466,7 +465,7 @@ def module_anchor_reasons(module: uni.Module) -> list[str] {
             reasons.append('plain python import');
             break;
         }
-        if imp.from_loc.dot_path_str in npm_names {
+        if is_client_npm_import(imp.from_loc.dot_path_str, mod_path) {
             continue;
         }
         resolved = None;
@@ -609,9 +608,8 @@ def scan_native_blockers(
                 continue;
             }
             if clean
-            and resolve_native_module(clean, base_dir, allow_inferred=False)[
-                1
-            ] is not None {
+            and resolve_native_module(clean, base_dir, allow_inferred=False)[1]
+            is not None {
                 continue;
             }
             return (f"unresolved import '{clean}'", deps);

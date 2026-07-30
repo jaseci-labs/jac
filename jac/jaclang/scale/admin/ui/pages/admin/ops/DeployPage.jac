@@ -13,7 +13,7 @@ Off-cluster (or before the Ops Console RBAC is applied) it shows a single
 
 import from "lucide-react" { Boxes }
 
-import from react { useEffect }
+import from "react" { useEffect }
 import from ....components.common.PageHeader { PageHeader, OpsUnavailableBanner }
 import from ....context.AuthContext { useAuth }
 import from ....services.opsService { getDeployHealth }
@@ -135,7 +135,8 @@ def:pub DeployPage -> JsxElement {
                                     {d["name"]}
                                 </td>
                                 <td
-                                    className={"py-1.5 pr-3 " + (
+                                    className={"py-1.5 pr-3 "
+                                    + (
                                         "text-success"
                                             if (
                                                 d["ready"] == d["desired"]
@@ -197,7 +198,8 @@ def:pub DeployPage -> JsxElement {
                                     {String(p["ready"])}/{String(p["total"])}
                                 </td>
                                 <td
-                                    className={"py-1.5 pr-3 " + (
+                                    className={"py-1.5 pr-3 "
+                                    + (
                                         "text-danger font-medium"
                                             if p["restarts"] > 0
                                             else "text-muted"

@@ -8,7 +8,7 @@ the typed first-paint snapshot or as a raw stream dict; both expose
 `.changes` ([{phase, summary}]) and `.notes` ([str]).
 """
 
-import from react { useRef, useEffect }
+import from "react" { useRef, useEffect }
 
 def:pub LedgerPane(ledger: any) -> JsxElement {
     endRef: any = useRef(None);

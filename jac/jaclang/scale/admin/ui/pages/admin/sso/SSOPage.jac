@@ -1,6 +1,6 @@
 """SSO providers page."""
 
-import from react { useEffect }
+import from "react" { useEffect }
 import from ....components.common.Card { Card, CardHeader }
 import from ....components.tables.DataTable { DataTable, TableRow, TableCell }
 import from ....context.AuthContext { useAuth }
@@ -49,7 +49,8 @@ def:pub SSOPage -> JsxElement {
                     </TableCell>
                     <TableCell>
                         <span
-                            className={"text-xs " + (
+                            className={"text-xs "
+                            + (
                                 p["client_id_set"]
                                 and "text-emerald-400"
                                 or "text-faint"
@@ -60,7 +61,8 @@ def:pub SSOPage -> JsxElement {
                     </TableCell>
                     <TableCell>
                         <span
-                            className={"text-xs " + (
+                            className={"text-xs "
+                            + (
                                 p["client_secret_set"]
                                 and "text-emerald-400"
                                 or "text-faint"

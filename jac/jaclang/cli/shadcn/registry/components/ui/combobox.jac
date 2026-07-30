@@ -1,5 +1,5 @@
 import from "@base-ui/react" { Combobox as ComboboxPrimitive }
-import from react { useRef }
+import from "react" { useRef }
 import from ...lib.utils { cn }
 import from .button { Button }
 import from ".input_group" {

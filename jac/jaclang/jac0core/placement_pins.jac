@@ -156,3 +156,41 @@ def npm_dependency_names(source_path: str) -> set[str] {
     _npm_deps_cache[root_dir] = (mtime, names);
     return names;
 }
+
+glob _framework_cache: dict[str, tuple[float, str]] = {};
+
+
+def client_framework(source_path: str) -> str {
+    if not source_path {
+        return "react";
+    }
+    root_dir = find_jac_project_root(source_path);
+    if not root_dir {
+        return "react";
+    }
+    toml_path = os.path.join(root_dir, "jac.toml");
+    try {
+        mtime = os.path.getmtime(toml_path);
+    } except OSError {
+        return "react";
+    }
+    cached = _framework_cache.get(root_dir);
+    if cached is not None and cached[0] == mtime {
+        return cached[1];
+    }
+    import tomllib;
+    fw = "react";
+    try {
+        with open(toml_path, "rb") as f {
+            doc = tomllib.load(f);
+        }
+        client = doc.get("client", {});
+        if isinstance(client, dict) {
+            fw = str(client.get("framework", "react"));
+        }
+    } except Exception {
+        fw = "react";
+    }
+    _framework_cache[root_dir] = (mtime, fw);
+    return fw;
+}

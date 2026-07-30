@@ -88,7 +88,8 @@ def:pub RightSidebar(
                         >
                             <Avatar className="size-9 shrink-0">
                                 <AvatarImage
-                                    src={"https://i.pravatar.cc/150?u=fake@" + u.username}
+                                    src={"https://i.pravatar.cc/150?u=fake@"
+                                    + u.username}
                                     alt={u.username}
                                 />
                                 <AvatarFallback>
@@ -114,7 +115,8 @@ def:pub RightSidebar(
                                         <div className="flex items-center gap-3">
                                             <Avatar className="size-11">
                                                 <AvatarImage
-                                                    src={"https://i.pravatar.cc/150?u=fake@" + u.username}
+                                                    src={"https://i.pravatar.cc/150?u=fake@"
+                                                    + u.username}
                                                     alt={u.username}
                                                 />
                                                 <AvatarFallback>
@@ -136,7 +138,8 @@ def:pub RightSidebar(
                                                 <div
                                                     className="truncate text-xs text-muted-foreground"
                                                 >
-                                                    {"@" + (
+                                                    {"@"
+                                                    + (
                                                         u.username.split("@")[0]
                                                             if "@" in u.username
                                                             else u.username
@@ -152,7 +155,8 @@ def:pub RightSidebar(
                                     </HoverCardContent>
                                 </HoverCard>
                                 <div className="truncate text-xs text-muted-foreground">
-                                    {"@" + (
+                                    {"@"
+                                    + (
                                         u.username.split("@")[0]
                                             if "@" in u.username
                                             else u.username

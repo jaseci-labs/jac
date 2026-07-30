@@ -6,7 +6,7 @@ context-size spikes and cache (re)use visible as the agent works. Clicking a row
 opens its detail (full input, the diff vs the prior call, and the output).
 """
 
-import from react { useRef, useEffect }
+import from "react" { useRef, useEffect }
 import from ..server { UiEvent }
 
 """Compact a token count: 66711 -> "66k", 940 -> "940"."""
@@ -50,9 +50,8 @@ def:pub TokenStream(
                     {[
                         (
                             <div
-                                className={"tokrow clickable" + (
-                                    " sel" if e.id == selected else ""
-                                )}
+                                className={"tokrow clickable"
+                                + (" sel" if e.id == selected else "")}
                                 key={e.id}
                                 onClick={lambda { onSelect(e.id); }}
                             >
@@ -63,9 +62,8 @@ def:pub TokenStream(
                                     <div
                                         className="tokbar"
                                         style={{
-                                            "width": str(
-                                                int(e.tokens_in * 100 / maxIn)
-                                            ) + "%"
+                                            "width": str(int(e.tokens_in * 100 / maxIn))
+                                            + "%"
                                         }}
                                     />
                                     <span className="tok-in">

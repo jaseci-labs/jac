@@ -192,11 +192,13 @@ test "fstring comment not injected" {
     assert after_idx is not None , "'# Comment after' was lost";
     assert before_idx < fstring_idx , (
         "Comment before f-string was displaced after it "
-        f"(comment at line {before_idx + 1}, f-string at line {fstring_idx + 1}):\n" + formatted
+        f"(comment at line {before_idx + 1}, f-string at line {fstring_idx + 1}):\n"
+        + formatted
     );
     assert after_idx > fstring_idx , (
         "Comment after f-string was displaced before it "
-        f"(comment at line {after_idx + 1}, f-string at line {fstring_idx + 1}):\n" + formatted
+        f"(comment at line {after_idx + 1}, f-string at line {fstring_idx + 1}):\n"
+        + formatted
     );
 
     # Check 3: Idempotency
@@ -236,7 +238,8 @@ test "jsx hash text preserved" {
     );
     assert hash_idx < close_p_idx , (
         f"Hash text at line {hash_idx + 1} should be before </p> at "
-        f"line {close_p_idx + 1}:\n" + formatted
+        f"line {close_p_idx + 1}:\n"
+        + formatted
     );
 
     # Idempotency
@@ -299,7 +302,8 @@ test "native block comments stay in place" {
     for cl in comment_lines {
         assert na_start < cl < na_end , (
             f"Comment at line {cl + 1} is outside the obj block "
-            f"(obj: {na_start + 1}-{na_end + 1}):\n" + formatted
+            f"(obj: {na_start + 1}-{na_end + 1}):\n"
+            + formatted
         );
     }
 
@@ -321,7 +325,8 @@ test "comment placement idempotent on comment-dense blocks" {
     ).mod.main.gen.jac;
     assert out1 == out2 , (
         "comment placement is not idempotent -- comments duplicated or "
-        "misplaced across a re-format:\n" + out1
+        "misplaced across a re-format:\n"
+        + out1
     );
 }
 
@@ -415,9 +420,8 @@ test "jsx and lambda inline compact forms stay flat" {
     # A single-statement `if` inside a lambda body must stay flat.
     lambda_form = 'lambda (e: KeyboardEvent) { if e.key == "Enter" { add(); }}';
     assert lambda_form in formatted , (
-        "lambda-nested `if { stmt; }` was expanded to multiple lines:\n" + str(
-            formatted
-        )
+        "lambda-nested `if { stmt; }` was expanded to multiple lines:\n"
+        + str(formatted)
     );
 
     # Idempotency: formatting the formatted output must be a no-op.
@@ -526,15 +530,13 @@ test "return jsx stays on one line when it fits" {
     # A self-closing element that fits must collapse onto the `return` line.
     self_closing = 'return <AlertDialogPrimitive.Root data-slot="alert-dialog" {**props}/>;';
     assert self_closing in formatted , (
-        "self-closing JSX return was not collapsed onto the `return` line:\n" + str(
-            formatted
-        )
+        "self-closing JSX return was not collapsed onto the `return` line:\n"
+        + str(formatted)
     );
     # A small element with inline children must collapse too.
     assert "return <p>Hello</p>;" in formatted , (
-        "inline-child JSX return was not collapsed onto the `return` line:\n" + str(
-            formatted
-        )
+        "inline-child JSX return was not collapsed onto the `return` line:\n"
+        + str(formatted)
     );
 
     # Idempotency: formatting the formatted output must be a no-op.
@@ -631,9 +633,8 @@ test "if statement outside lambda still breaks" {
     );
 
     # Lambda `if` with else should NOT stay flat.
-    assert (
-        "lambda (e: int) { if e > 0 { x = 1; } else { x = 2; } }"
-    ) not in formatted , (
+    assert ("lambda (e: int) { if e > 0 { x = 1; } else { x = 2; } }")
+    not in formatted , (
         f"lambda `if`/`else` must fall back to hard-line layout:\n{formatted}"
     );
 }
@@ -689,7 +690,8 @@ test "jsx attributes and children group independently" {
         if bucket_b_open in ln {
             assert "An unexpected" not in ln , (
                 "bucket B: children were inlined on the opening-tag line "
-                "instead of breaking:\n" + str(formatted)
+                "instead of breaking:\n"
+                + str(formatted)
             );
         }
     }
@@ -708,7 +710,8 @@ test "jsx attributes and children group independently" {
         }
         assert not (ln.rstrip().endswith(">@{tweet.username}</div>")) , (
             "bucket C: children were inlined on the closing `>` of a "
-            "multi-line opening tag:\n" + str(formatted)
+            "multi-line opening tag:\n"
+            + str(formatted)
         );
     }
     # Positive assertion: bucket C children land on their own line.
@@ -904,7 +907,8 @@ test "jsx significant whitespace around inline elements is preserved" {
     short_fmt = prog.mod.main.gen.jac or "";
     flat_form = '<div id="hud">score <b>0</b> · <b>0</b> fps</div>';
     assert flat_form in short_fmt , (
-        "short space-separated mixed JSX must stay flat with spaces intact:\n" + short_fmt
+        "short space-separated mixed JSX must stay flat with spaces intact:\n"
+        + short_fmt
     );
     # Idempotency.
     prog_i = JacProgram.jac_str_formatter(source_str=short_fmt, file_path="<test>.jac");
@@ -933,7 +937,8 @@ test "jsx significant whitespace around inline elements is preserved" {
     # never silently dropped at the line breaks.
     assert '{" "}' in long_fmt , (
         "significant whitespace at text<->element boundaries was dropped "
-        "instead of preserved as a `{\" \"}` marker:\n" + long_fmt
+        "instead of preserved as a `{\" \"}` marker:\n"
+        + long_fmt
     );
     # The buggy pattern: a word line immediately followed by an element line
     # with no whitespace marker between them must NOT occur for these spaced
@@ -948,5 +953,161 @@ test "jsx significant whitespace around inline elements is preserved" {
     prog2_i = JacProgram.jac_str_formatter(source_str=long_fmt, file_path="<test>.jac");
     assert long_fmt == prog2_i.mod.main.gen.jac , (
         "long mixed-JSX formatting is not idempotent:\n" + long_fmt
+    );
+}
+
+"""Regression: BinaryExpr, CompareExpr, and MatchOr joined their operands
+with a plain non-breaking space (`_assign_space_group`), so the printer had
+no break opportunity and hand-wrapped chains collapsed onto one unbounded
+line (a 6-line string concat became a single 377-char line). Chains must
+break like bool chains already do: one operand per line, operator leading
+the continuation line."""
+test "long plus chain breaks one operand per line" {
+    source = (
+        'def cat(tail: str) -> str {\n'
+        '    return (\n'
+        '        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"\n'
+        '        + "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"\n'
+        '        + "cccccccccccccccccccccccccccccccccccccccccccc"\n'
+        '        + tail\n'
+        '    );\n'
+        '}\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    lines = formatted.splitlines();
+    long_lines = [
+        ln
+        for ln in lines
+        if len(ln) > 88
+    ];
+    assert not long_lines , (
+        f"plus chain must break within 88 cols, got:\n{formatted}"
+    );
+    # No two operands may share a line once broken.
+    assert not any(('"aaaa' in ln) and ('"bbbb' in ln) for ln in lines) , (
+        f"broken chain must place one operand per line, got:\n{formatted}"
+    );
+    # The operator leads each continuation line, matching bool-chain style.
+    assert any(ln.lstrip().startswith('+ "bbbb') for ln in lines) , (
+        f"continuation lines must lead with the operator, got:\n{formatted}"
+    );
+    # Idempotency.
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert formatted == prog2.mod.main.gen.jac , (
+        f"plus-chain wrapping is not idempotent:\n{formatted}"
+    );
+}
+
+test "short binary chains stay flat" {
+    source = 'with entry {\n    x = 1 + 2 + 3;\n    y = x < 10;\n}\n';
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    assert "x = 1 + 2 + 3;" in formatted , (
+        f"short chain must stay on one line, got:\n{formatted}"
+    );
+    assert "y = x < 10;" in formatted , (
+        f"short compare must stay on one line, got:\n{formatted}"
+    );
+}
+
+test "mixed precedence chain keeps tighter subexpression intact" {
+    source = (
+        'def mix(aaaaaaaaaaaaaaaaaaaaaaaaaaaa: int, bbbbbbbbbbbbbbbbbbbb: int,'
+        ' cccccccccccccccccccc: int, dddddddddddddddddddd: int) -> int {\n'
+        '    return (\n'
+        '        aaaaaaaaaaaaaaaaaaaaaaaaaaaa\n'
+        '        + bbbbbbbbbbbbbbbbbbbb * cccccccccccccccccccc\n'
+        '        + dddddddddddddddddddd\n'
+        '    );\n'
+        '}\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    lines = formatted.splitlines();
+    long_lines = [
+        ln
+        for ln in lines
+        if len(ln) > 88
+    ];
+    assert not long_lines , (
+        f"mixed chain must break within 88 cols, got:\n{formatted}"
+    );
+    # The `*` subexpression binds tighter: it must stay together on its line,
+    # never hoisted to a break point as if it were a `+` peer.
+    assert any("bbbbbbbbbbbbbbbbbbbb * cccccccccccccccccccc" in ln for ln in lines) , (
+        f"tighter-binding subexpression must stay intact on one line, "
+        f"got:\n{formatted}"
+    );
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert formatted == prog2.mod.main.gen.jac , (
+        f"mixed-chain wrapping is not idempotent:\n{formatted}"
+    );
+}
+
+test "long comparison chain breaks one operand per line" {
+    source = (
+        'def cmp(aaaaaaaaaaaaaaa: int, bbbbbbbbbbbbbbb: int,'
+        ' ccccccccccccccc: int, ddddddddddddddd: int) -> bool {\n'
+        '    return (\n'
+        '        aaaaaaaaaaaaaaa < bbbbbbbbbbbbbbb < ccccccccccccccc'
+        ' < ddddddddddddddd < aaaaaaaaaaaaaaa\n'
+        '    );\n'
+        '}\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    lines = formatted.splitlines();
+    long_lines = [
+        ln
+        for ln in lines
+        if len(ln) > 88
+    ];
+    assert not long_lines , (
+        f"comparison chain must break within 88 cols, got:\n{formatted}"
+    );
+    assert any(ln.lstrip().startswith("< ") for ln in lines) , (
+        f"continuation lines must lead with the operator, got:\n{formatted}"
+    );
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert formatted == prog2.mod.main.gen.jac , (
+        f"comparison-chain wrapping is not idempotent:\n{formatted}"
+    );
+}
+
+test "long match-or pattern breaks one alternative per line" {
+    source = (
+        'def pick(x: str) -> str {\n'
+        '    match x {\n'
+        '        case "aaaaaaaaaaaaaaaaaaaaaaaa" | "bbbbbbbbbbbbbbbbbbbbbbbb"'
+        ' | "cccccccccccccccccccccccc" | "dddddddddddddddddddddddd":\n'
+        '            return "hit";\n'
+        '        case _:\n'
+        '            return "miss";\n'
+        '    }\n'
+        '}\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    lines = formatted.splitlines();
+    long_lines = [
+        ln
+        for ln in lines
+        if len(ln) > 88
+    ];
+    assert not long_lines , (
+        f"match-or pattern must break within 88 cols, got:\n{formatted}"
+    );
+    assert not any(('"aaaa' in ln) and ('"bbbb' in ln) for ln in lines) , (
+        f"broken match-or must place one alternative per line, got:\n{formatted}"
+    );
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert formatted == prog2.mod.main.gen.jac , (
+        f"match-or wrapping is not idempotent:\n{formatted}"
     );
 }

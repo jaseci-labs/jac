@@ -529,6 +529,30 @@ def has_client_npm_package(spec: str, base_path: str) -> bool {
     return _find_npm_package(spec, base_path) is not None;
 }
 
+glob _FRAMEWORK_PACKAGES: dict[str, set[str]] = {
+         "react": {"react", "react-dom"},
+         "preact": {"preact"},
+         "solid": {"solid-js"}
+     };
+
+
+def is_client_npm_import(spec: str, source_path: str) -> bool {
+    if not spec {
+        return False;
+    }
+    import from jaclang.jac0core.placement_pins {
+        client_framework,
+        npm_dependency_names
+    }
+    if spec in npm_dependency_names(source_path) {
+        return True;
+    }
+    if spec in _FRAMEWORK_PACKAGES.get(client_framework(source_path), set()) {
+        return True;
+    }
+    return has_client_npm_package(spec, source_path);
+}
+
 def resolve_client_npm_package(spec: str, base_path: str) -> (str | None) {
     found = _find_npm_package(spec, base_path);
     if found is None {
@@ -673,7 +697,8 @@ def sibling_declaration_file(js_path: str) -> (str | None) {
     (stem, ext) = os.path.splitext(js_path);
     by_ext = {'.mjs': '.d.mts', '.cjs': '.d.cts', '.js': '.d.ts'};
     preferred = by_ext.get(ext);
-    suffixes = (preferred, ) + tuple(
+    suffixes = (preferred, )
+    + tuple(
         s
         for s in NPM_DTS_SUFFIXES
         if s != preferred

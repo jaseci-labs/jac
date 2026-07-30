@@ -1,6 +1,6 @@
 """LLM Metrics page - Aggregate LLM usage statistics dashboard."""
 
-import from react { useEffect }
+import from "react" { useEffect }
 import from ....components.common.Button { Button }
 import from ....context.AuthContext { useAuth }
 import from ....services.llmService { getLLMSummary }

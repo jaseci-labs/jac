@@ -506,7 +506,7 @@ In client components, `has` compiles to React's `useState`. Do NOT import or cal
 WRONG (React style):
 
 ```
-import from react { useState }
+import from "react" { useState }
 
 def:pub Counter() -> JsxElement {
     (count, setCount) = useState(0);
@@ -611,7 +611,7 @@ Jac has built-in syntax for React lifecycle effects. Prefer `can with entry` (mo
 NOT IDIOMATIC (manual useEffect -- valid but not preferred):
 
 ```jac
-import from react { useEffect }
+import from "react" { useEffect }
 
 def:pub DataLoader() -> JsxElement {
     has data: list = [];

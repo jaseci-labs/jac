@@ -1,4 +1,4 @@
-import from react { useMemo }
+import from "react" { useMemo }
 import from "class-variance-authority" { cva }
 import from ...lib.utils { cn }
 import from .label { Label }

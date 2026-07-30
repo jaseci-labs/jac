@@ -93,9 +93,8 @@ def run(n: int, reps: int) -> int {
     for r in range(reps) {
         p: own Expr = build_poly(n);
         dp: own Expr = d(&p);
-        total = (
-            total * 31 + eval_at(&dp, 5, 1000000007) + node_count(&dp)
-        ) % 1000000007;
+        total = (total * 31 + eval_at(&dp, 5, 1000000007) + node_count(&dp))
+        % 1000000007;
     }
     return total;
 }

@@ -16,7 +16,7 @@ UUID's 128 bits), so the two views cross-link directly.
 
 import from "lucide-react" { Workflow, AlertTriangle, X }
 
-import from react { useEffect }
+import from "react" { useEffect }
 import from ....components.common.PageHeader { PageHeader }
 import from ....context.AuthContext { useAuth }
 import from ....services.tracesService { getTraceServices, searchTraces, getTrace }
@@ -279,7 +279,8 @@ def:pub TracesPage -> JsxElement {
                 {[
                     <div
                         key={t["trace_id"]}
-                        className={"p-2 rounded border cursor-pointer " + (
+                        className={"p-2 rounded border cursor-pointer "
+                        + (
                             "border-accent-line bg-accent-weak"
                                 if (t["trace_id"] == selectedTraceId)
                                 else "border-line bg-surface hover:bg-surface-2"
@@ -327,9 +328,8 @@ def:pub TracesPage -> JsxElement {
                             <div
                                 className="w-1/3 truncate text-muted"
                                 style={{
-                                    "paddingLeft": String(
-                                        spanDepth(sp, byIdMap) * 12
-                                    ) + "px"
+                                    "paddingLeft": String(spanDepth(sp, byIdMap) * 12)
+                                    + "px"
                                 }}
                             >
                                 <span className="text-faint">{sp["service"]}</span>{" "}
@@ -337,9 +337,9 @@ def:pub TracesPage -> JsxElement {
                             </div>
                             <div className="flex-1 relative h-4 bg-surface rounded">
                                 <div
-                                    className={"absolute h-4 rounded " + (
-                                        serviceColorBar(sp["service"])
-                                    ) + (
+                                    className={"absolute h-4 rounded "
+                                    + (serviceColorBar(sp["service"]))
+                                    + (
                                         " ring-1 ring-danger"
                                             if (
                                                 sp["status"] == "STATUS_CODE_ERROR"

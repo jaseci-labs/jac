@@ -11,7 +11,7 @@ Reads GET /admin/ops/network and renders three sections, kubeconfig-free:
 
 import from "lucide-react" { Network }
 
-import from react { useEffect }
+import from "react" { useEffect }
 import from ....components.common.PageHeader { PageHeader, OpsUnavailableBanner }
 import from ....context.AuthContext { useAuth }
 import from ....services.opsService { getNetwork }

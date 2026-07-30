@@ -1,6 +1,6 @@
 """Global alert/toast notification context."""
 
-import from react { createContext, useContext }
+import from "react" { createContext, useContext }
 
 glob ALERT_DISMISS_MS = 3000;
 glob:pub AlertContext = createContext(None);

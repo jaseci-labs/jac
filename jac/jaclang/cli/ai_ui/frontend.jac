@@ -7,7 +7,7 @@ then one delta per bus emit. Reasoning and answer text stream in token by token
 updates at token granularity rather than on a poll timer.
 """
 
-import from react { useEffect, useRef }
+import from "react" { useEffect, useRef }
 import from .server { agent_send, agent_graph, agent_reset, agent_stop, agent_stream }
 import from .server {
     agent_settings,

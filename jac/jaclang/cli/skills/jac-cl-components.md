@@ -118,7 +118,7 @@ Multiple `can with entry` blocks in one component are fine and good for separati
 ⚠ **`entry` and `exit` compile to SEPARATE `useEffect` closures.** A handle created in `can with entry` (interval id, WebSocket, listener) is **invisible** in `can with exit` - the cleanup silently no-ops. For acquire-then-release pairs, use a single manual `useEffect` whose body returns the cleanup - and the outer lambda must NOT be annotated `-> None` (it returns a function):
 
 ```jac
-import from react { useEffect }
+import from "react" { useEffect }
 
 def fetch_data();
 

@@ -78,7 +78,7 @@ name = "@yourscope/greetui"     # scoped npm name (defaults to normalized projec
 entry = "greetui/index.jac"     # entry module (defaults to an index.* module)
 ```
 
-- Modules that use JSX or the reactive API automatically get `@jaseci/runtime` wired into `dependencies` (a normal, React-independent npm package). Modules that explicitly `import from react` get `react`/`react-dom` as `peerDependencies`.
+- Modules that use JSX or the reactive API automatically get `@jaseci/runtime` wired into `dependencies` (a normal, React-independent npm package). Modules that explicitly `import from "react"` get `react`/`react-dom` as `peerDependencies`.
 - **Server-boundary rejection**: a module that imports or calls server-placed code cannot run from a plain `npm install`, so the build fails with `'<file>' crosses a server boundary and cannot be published as a standalone npm package. npm packages must be pure client code`. Keep server-coupled code in your app, not the library.
 - `jac` builds the tarball only - upload with `npm publish dist/<name>-<version>.tgz --access public` (CI: `NODE_AUTH_TOKEN`).
 

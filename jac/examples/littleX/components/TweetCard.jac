@@ -192,9 +192,8 @@ def:pub TweetCard(
                         <div className="flex gap-2" key={c["created_at"]}>
                             <Avatar className="size-7 shrink-0">
                                 <AvatarImage
-                                    src={"https://i.pravatar.cc/150?u=fake@" + c[
-                                        "username"
-                                    ]}
+                                    src={"https://i.pravatar.cc/150?u=fake@"
+                                    + c["username"]}
                                     alt={c["username"]}
                                 />
                                 <AvatarFallback className="text-[0.6rem]">

@@ -59,7 +59,8 @@ def jcos(a: float) -> float {
     x8 = x4 * x4;
     x10 = x8 * x2;
     x12 = x8 * x4;
-    return 1.0 - x2 / 2.0 + x4 / 24.0 - x6 / 720.0 + x8 / 40320.0 - x10 / 3628800.0 + x12 / 479001600.0;
+    return 1.0 - x2 / 2.0 + x4 / 24.0 - x6 / 720.0 + x8 / 40320.0 - x10 / 3628800.0
+    + x12 / 479001600.0;
 }
 
 """sin(a) = cos(a - pi/2)."""
@@ -281,9 +282,8 @@ def shade(c: int, pct: int) -> int {
 
 """Fold one face color into the digest - the stand-in for `rlColor4ub`."""
 def mix_color(digest: int, r: int, g: int, b: int, pct: int) -> int {
-    return (
-        ((digest * 31 + shade(r, pct)) * 31 + shade(g, pct)) * 31 + shade(b, pct)
-    ) % DIGEST_MOD;
+    return (((digest * 31 + shade(r, pct)) * 31 + shade(g, pct)) * 31 + shade(b, pct))
+    % DIGEST_MOD;
 }
 
 """Fold the vertex stream `draw_box` emits: 6 shaded faces of 2 triangles,

@@ -28,7 +28,7 @@ import from "lucide-react" {
     Moon
 }
 
-import from react { useEffect }
+import from "react" { useEffect }
 import from ...components.common.Alert { Alert }
 import from ...context.AuthContext { useAuth }
 import from ...context.AlertContext { useAlert }
@@ -163,7 +163,8 @@ def:pub DashboardLayout -> JsxElement {
                                 <button
                                     key={item["id"]}
                                     onClick={makeHandler(item["id"])}
-                                    className={"w-full flex items-center gap-2.5 px-2.5 py-2 text-sm rounded-md transition-colors " + (
+                                    className={"w-full flex items-center gap-2.5 px-2.5 py-2 text-sm rounded-md transition-colors "
+                                    + (
                                         activeTab == item["id"]
                                         and "bg-accent-weak text-accent font-medium"
                                         or "text-muted hover:text-fg hover:bg-surface-2"

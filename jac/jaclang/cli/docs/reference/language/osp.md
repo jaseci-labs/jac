@@ -639,7 +639,7 @@ These keywords have special meaning in specific contexts:
 | `super` | Subclass method | Parent class reference | [Part II](functions-objects.md#3-inheritance) |
 | `init` | Object body | Constructor method name | [Part II](functions-objects.md#1-objects-classes) |
 | `postinit` | Object body | Post-constructor hook | [Variables and Scope](variables-and-scope.md#2-instance-variables-has) |
-| `props` | JSX context | Component props reference | [jac-client Reference](../plugins/jac-client.md#client-sections) |
+| `props` | JSX context | Component props reference | [jac-client Reference](../plugins/jac-client.md#client-placement) |
 
 **Usage examples:**
 

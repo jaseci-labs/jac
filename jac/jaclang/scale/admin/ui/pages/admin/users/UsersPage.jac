@@ -1,6 +1,6 @@
 """Users management page."""
 
-import from react { useEffect }
+import from "react" { useEffect }
 import from ....components.common.Button { Button }
 import from ....components.common.Card { Card, CardHeader, StatsCard }
 import from ....components.common.Badge { RoleBadge, StatusBadge }
