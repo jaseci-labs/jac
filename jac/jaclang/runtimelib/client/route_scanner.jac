@@ -4,18 +4,47 @@ import from pathlib { Path }
 glob _ROUTE_ROLE_SUFFIXES: list = ['.impl.', '.test.'],
      _JSX_ELEMENT_EXPORT_RE: str = (
          r'def(?::\w+)?\s+(\w+)\s*(?:\([^)]*\))?\s*->\s*JsxElement\b'
-     ),
-     _ROUTE_TYPE_RE: str = r'->\s*(?:JsxPage|JsxLayout)\b';
+     );
+
+def _unrouted_jsx_exports(pages_dir: Path, skip_paths: set[Path]) -> list[str] {
+    try {
+        entries = sorted(pages_dir.rglob('*.jac'));
+    } except OSError {
+        return [];
+    }
+    lines: list[str] = [];
+    for f in entries {
+        if any(suffix in f.name for suffix in _ROUTE_ROLE_SUFFIXES) {
+            continue;
+        }
+        if f.resolve() in skip_paths {
+            continue;
+        }
+        try {
+            source = f.read_text(encoding='utf-8');
+        } except OSError {
+            continue;
+        }
+        is_layout = f.stem == 'layout';
+        for hit in re.finditer(_JSX_ELEMENT_EXPORT_RE, source) {
+            kind = 'JsxLayout'
+                if (is_layout or 'layout' in hit.group(1).lower())
+                else 'JsxPage';
+            lines.append(
+                f"  {f}: '{hit.group(1)}' returns JsxElement and is not a route" + f" — return {kind} to route it, or leave it if it is a co-located component."
+            );
+        }
+    }
+    return lines;
+}
 
 def describe_pages_without_routes(pages_dir: Path) -> list[str] {
-    candidates: list[Path] = [];
     try {
-        for f in sorted(pages_dir.rglob('*.jac')) {
-            if any(suffix in f.name for suffix in _ROUTE_ROLE_SUFFIXES) {
-                continue;
-            }
-            candidates.append(f);
-        }
+        candidates = [
+            f
+            for f in sorted(pages_dir.rglob('*.jac'))
+            if not any(suffix in f.name for suffix in _ROUTE_ROLE_SUFFIXES)
+        ];
     } except OSError {
         return [];
     }
@@ -26,22 +55,20 @@ def describe_pages_without_routes(pages_dir: Path) -> list[str] {
         f"{pages_dir} contains {len(candidates)} module(s) but no recognized " + "routes — the app will mount without a router and render a blank page.",
         "A route is an export returning JsxPage (JsxLayout for layouts); " + "the export name and filename are free."
     ];
-    for f in candidates {
-        try {
-            source = f.read_text(encoding='utf-8');
-        } except OSError {
-            continue;
-        }
-        if re.search(_ROUTE_TYPE_RE, source) {
-            continue;
-        }
-        for hit in re.finditer(_JSX_ELEMENT_EXPORT_RE, source) {
-            kind = 'JsxLayout' if 'layout' in hit.group(1).lower() else 'JsxPage';
-            lines.append(
-                f"  {f}: '{hit.group(1)}' returns JsxElement — change the " + f"return type to {kind} to make it a route."
-            );
-        }
+    lines.extend(_unrouted_jsx_exports(pages_dir, set()));
+    return lines;
+}
+
+def describe_unmigrated_pages(pages_dir: Path, routed_files: list[Path]) -> list[str] {
+    skip_paths: set[Path] = set();
+    for rf in routed_files {
+        skip_paths.add(rf.resolve());
     }
+    lines = _unrouted_jsx_exports(pages_dir, skip_paths);
+    if not lines {
+        return [];
+    }
+    lines.insert(0, f"{pages_dir}: some modules are not registered as routes:");
     return lines;
 }
 
