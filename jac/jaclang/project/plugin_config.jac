@@ -1,8 +1,7 @@
 import from pathlib { Path }
 import from typing { Any }
 import from jaclang.project.config { JacConfig }
-
-def deep_merge(base: dict[str, any], override_dict: dict[str, any]) -> dict[str, any];
+import from jaclang.project.merge { deep_merge }
 
 obj PluginConfigBase {
     has project_dir: Path | None = None,

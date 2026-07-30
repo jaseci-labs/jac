@@ -2,6 +2,7 @@ import shutil;
 import os;
 import from jaclang.cli.console { console }
 import from pathlib { Path }
+import from jaclang.project.kinds { project_needs_client_stack }
 import from jaclang.project.plugin_config { deep_merge }
 import from jaclang.runtimelib.client.npm_provider {
     CORE_DEV_DEPS,
@@ -125,7 +126,7 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
     dev_section = npm_plugin_deps.get('dev', {});
     npm_dev_deps: dict = dict(dev_section) if isinstance(dev_section, dict) else {};
 
-    if 'client' in jac_config.plugins {
+    if project_needs_client_stack(jac_config) {
         (npm_deps, npm_dev_deps, migrated) = _migrate_legacy_meta_packages(
             jac_config, npm_deps, npm_dev_deps
         );

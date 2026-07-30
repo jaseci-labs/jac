@@ -1,22 +1,7 @@
 import from pathlib { Path }
 import from jaclang.project.config { JacConfig, find_project_root }
+import from jaclang.project.merge { deep_merge }
 import from jaclang.jac0core.runtime { JacRuntime }
-
-impl deep_merge(base: dict[str, any], override_dict: dict[str, any]) -> dict[str, any] {
-    result = base.copy();
-    for (key, value) in override_dict.items() {
-        if (
-            (key in result)
-            and isinstance(result[key], dict)
-            and isinstance(value, dict)
-        ) {
-            result[key] = deep_merge(result[key], value);
-        } else {
-            result[key] = value;
-        }
-    }
-    return result;
-}
 
 impl PluginConfigBase.postinit{
     full_target = JacRuntime.get_full_target_path();

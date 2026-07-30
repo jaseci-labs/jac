@@ -54,6 +54,13 @@ test "create --kind web-app" {
     _cleanup();
 }
 
+test "create web-app keeps template npm deps" {
+    proj = _scaffold("web-app");
+    toml = (proj / "jac.toml").read_text();
+    assert "jac-client-node" in toml , "web-app create must retain npm deps";
+    _cleanup();
+}
+
 test "create --kind web-static" {
     _assert_kind("web-static", "serve");
     _cleanup();
