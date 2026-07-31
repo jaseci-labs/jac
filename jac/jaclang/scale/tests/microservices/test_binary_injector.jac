@@ -22,11 +22,14 @@ import from jaclang.scale.injector.binary {
     cluster_node_archs,
     node_arch,
     download_release_binary,
-    stage_admin_dist
+    host_platform,
+    resolve_toolchain,
+    stage_admin_dist,
+    ResolvedToolchain,
+    TOOLCHAIN_SUBDIR
 }
 import from jaclang.runtimelib.utils { host_arch }
 import from jaclang.scale.injector.binary_injector { BinaryInjector }
-import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR }
 import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
     build_runtime_install_commands,
     runtime_container_env,
@@ -111,7 +114,8 @@ test "LOCAL channel ships the binary at JAC_SCALE_BINARY_PATH, no download" {
     saved = os.environ.get(BINARY_PATH_ENV);
     try {
         os.environ[BINARY_PATH_ENV] = tmp_path;
-        assert download_release_binary("local", node_arch()) == b"ELF-local-binary";
+        assert download_release_binary("local", f"linux-{node_arch()}")
+            == b"ELF-local-binary";
     } finally {
         os.environ.pop(BINARY_PATH_ENV, None);
         if saved is not None {
@@ -126,7 +130,7 @@ test "LOCAL channel without JAC_SCALE_BINARY_PATH is a loud error" {
     saved = os.environ.pop(BINARY_PATH_ENV, None);
     caught = False;
     try {
-        download_release_binary("local", node_arch());
+        download_release_binary("local", f"linux-{node_arch()}");
     } except RuntimeError {
         caught = True;
     } finally {
@@ -135,6 +139,84 @@ test "LOCAL channel without JAC_SCALE_BINARY_PATH is a loud error" {
         }
     }
     assert caught;
+}
+
+
+test "host_platform names the driver like a release asset (os-arch)" {
+    hp = host_platform();
+    assert hp in (f"linux-{host_arch()}", f"macos-{host_arch()}") , hp;
+}
+
+
+test "local toolchain: exec_path IS the local binary; ship reads its bytes" {
+    with tempfile.NamedTemporaryFile(suffix="-jac", delete=False) as tmp {
+        tmp.write(b"ELF-local-binary");
+        tmp_path = tmp.name;
+    }
+    saved = os.environ.get(BINARY_PATH_ENV);
+    try {
+        os.environ[BINARY_PATH_ENV] = tmp_path;
+        tc = resolve_toolchain(Channel.LOCAL.value);
+        # The seal execs the operator's own binary in place: no copy, no cache.
+        assert str(tc.exec_path()) == tmp_path;
+        assert tc.ship_bytes(node_arch()) == b"ELF-local-binary";
+        assert tc.ship_platform == f"linux-{node_arch()}";
+    } finally {
+        os.environ.pop(BINARY_PATH_ENV, None);
+        if saved is not None {
+            os.environ[BINARY_PATH_ENV] = saved;
+        }
+        os.unlink(tmp_path);
+    }
+}
+
+
+test "local toolchain without JAC_SCALE_BINARY_PATH is a loud error" {
+    saved = os.environ.pop(BINARY_PATH_ENV, None);
+    caught = False;
+    try {
+        resolve_toolchain(Channel.LOCAL.value);
+    } except RuntimeError {
+        caught = True;
+    } finally {
+        if saved is not None {
+            os.environ[BINARY_PATH_ENV] = saved;
+        }
+    }
+    assert caught;
+}
+
+
+test "stable resolve pins the latest release version exactly once" {
+    payload = json.dumps({"tag_name": "v9.9.9"}).encode();
+    saved = binary_mod._http_get_bytes;
+    binary_mod._http_get_bytes = functools.partial(_payload_response, payload);
+    try {
+        tc = resolve_toolchain(Channel.STABLE.value);
+        # Both the seal (exec) and ship binaries resolve from this single pin,
+        # so a release landing mid-deploy can never skew them apart.
+        assert tc.version == "9.9.9";
+        assert resolve_toolchain(Channel.STABLE.value, "1.2.3").version == "1.2.3";
+    } finally {
+        binary_mod._http_get_bytes = saved;
+    }
+}
+
+
+test "experimental resolves to the dev toolchain (pods run the PR image)" {
+    assert resolve_toolchain(Channel.EXPERIMENTAL.value).channel == "dev";
+    assert resolve_toolchain(Channel.DEV.value).version == "";
+}
+
+
+test "the binary cache is keyed by version when known, channel otherwise" {
+    assert binary_mod._binary_cache_path("stable", "linux-x86_64", "1.2.3").name
+        == "jac-1.2.3-linux-x86_64";
+    assert binary_mod._binary_cache_path("dev", "macos-aarch64").name
+        == "jac-dev-macos-aarch64";
+    assert binary_mod._admin_dist_cache_path("stable", "1.2.3").name
+        == "jac-1.2.3-admin-dist.tar.gz";
+    assert binary_mod._admin_dist_cache_path("dev").name == "jac-dev-admin-dist.tar.gz";
 }
 
 

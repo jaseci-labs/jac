@@ -3,6 +3,7 @@ import tarfile;
 import tempfile;
 import json;
 import from pathlib { Path }
+import from jaclang.scale.injector.binary { ResolvedToolchain }
 import from jaclang.scale.injector.bundle {
     content_address,
     fat_bundle_enabled,
@@ -19,14 +20,14 @@ def _app(toml: str) -> str {
 }
 
 
-def _pod_binary -> bytes | None {
-    # The checkout's own binary stands in for the downloaded pod binary, same
+def _pod_binary -> ResolvedToolchain | None {
+    # The checkout's own binary stands in for the downloaded toolchain, same
     # as test_app_precompile; skip when the toolchain has not been built.
     jac_bin = Path(__file__).parents[4] / "zig-out" / "bin" / "jac";
     if not jac_bin.is_file() {
         return None;
     }
-    return jac_bin.read_bytes();
+    return ResolvedToolchain(channel="local", local_path=str(jac_bin));
 }
 
 

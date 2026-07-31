@@ -12,9 +12,23 @@ import from jaclang.runtimelib.jab_vendor {
 }
 
 
+def _pip_platform_tags(jac_platform: str) -> list[str] {
+    if not jac_platform.startswith("linux-") {
+        return [];
+    }
+    arch = jac_platform.split("-", 1)[1];
+    return [
+        f"manylinux_2_28_{arch}",
+        f"manylinux_2_17_{arch}",
+        f"manylinux2014_{arch}"
+    ];
+}
+
+
 obj WheelVendor {
     has config: JacConfig,
-        app_dir: Path;
+        app_dir: Path,
+        target_platform: str = "";
 
     def resolve_specs -> list[str] {
         plan = resolve_plan(self.config, include_dev=False);
@@ -43,33 +57,55 @@ obj WheelVendor {
     def run {
         specs = self.resolve_specs();
         if specs {
-            (ok, err) = download_wheels(specs, wheels_dir(self.app_dir));
+            (ok, err) = download_wheels(
+                specs,
+                wheels_dir(self.app_dir),
+                platform_tags=_pip_platform_tags(self.target_platform)
+            );
             if not ok {
                 console.error(f"Wheel download failed:\n{err}");
                 sys.exit(1);
             }
         }
-        write_vendor_manifest(self.app_dir, specs, python_tag=python_tag());
+        write_vendor_manifest(
+            self.app_dir,
+            specs,
+            python_tag=python_tag(),
+            platform_tag=self.target_platform
+        );
         wd = wheels_dir(self.app_dir);
         count = len(list(wd.glob("*.whl"))) if wd.is_dir() else 0;
-        console.print(f"  Vendored {count} wheel(s) for {len(specs)} spec(s).");
+        target = self.target_platform or "the vendoring host";
+        console.print(
+            f"  Vendored {count} wheel(s) for {len(specs)} spec(s) ({target})."
+        );
     }
 }
 
 
 def main {
-    args = sys.argv[1:];
-    if not args {
-        console.error("usage: jac run vendor_wheels.jac <app_dir>");
+    plat = "";
+    rest: list[str] = [];
+    for a in sys.argv[1:] {
+        if a.startswith("--platform=") {
+            plat = a.split("=", 1)[1];
+        } else {
+            rest.append(a);
+        }
+    }
+    if not rest {
+        console.error(
+            "usage: jac run vendor_wheels.jac <app_dir> [--platform=<os-arch>]"
+        );
         sys.exit(2);
     }
-    app_dir = Path(args[0]).resolve();
+    app_dir = Path(rest[0]).resolve();
     config = get_config_for_path(app_dir);
     if config is None {
         console.error(f"No jac.toml under {app_dir}; nothing to vendor.");
         sys.exit(1);
     } else {
-        WheelVendor(config=config, app_dir=app_dir).run();
+        WheelVendor(config=config, app_dir=app_dir, target_platform=plat).run();
     }
 }
 

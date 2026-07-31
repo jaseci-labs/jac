@@ -1,20 +1,36 @@
 import io;
 import os;
+import sys;
 import json;
 import hashlib;
 import logging;
 import shutil;
 import tarfile;
+import tempfile;
 import from pathlib { Path }
 import from urllib.request { urlopen }
 import from urllib.error { HTTPError }
-import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR }
 import from jaclang.runtimelib.utils { release_arch, host_arch }
 
 glob logger = logging.getLogger(__name__);
 
 glob BINARY_ARCNAME: str = "bin/jac",
+     TOOLCHAIN_SUBDIR: str = ".jactoolchain",
      _HTTP_TIMEOUT: int = 60;
+
+
+def host_platform -> str {
+    if sys.platform == "darwin" {
+        return f"macos-{host_arch()}";
+    }
+    if sys.platform.startswith("linux") {
+        return f"linux-{host_arch()}";
+    }
+    raise RuntimeError(
+        f"No jac release binary exists for this driver platform ({sys.platform}); "
+        f"jac-scale deploys can only be driven from linux or macos hosts."
+    );
+}
 
 
 def _node_architecture(k8s_node: object) -> str {
@@ -281,9 +297,17 @@ def reset_deploy_version_cache {
 }
 
 
-def download_release_binary(channel: str, arch: str, version: str = "") -> bytes {
+def _latest_release_version -> str {
+    api = f"https://api.github.com/repos/{GH_REPO}/releases/latest";
+    meta = json.loads(_http_get_bytes(api).decode("utf-8"));
+    tag = str(meta.get("tag_name", ""));
+    return tag[1:] if tag.startswith("v") else "";
+}
+
+
+def download_release_binary(channel: str, platform: str, version: str = "") -> bytes {
     repo = GH_REPO;
-    suffix = f"-linux-{arch}";
+    suffix = f"-{platform}";
     binary_url = "";
     checksum_url = "";
 
@@ -332,17 +356,21 @@ def download_release_binary(channel: str, arch: str, version: str = "") -> bytes
             }
             raise;
         }
+        if not version {
+            tag = str(meta.get("tag_name", ""));
+            version = tag[1:] if tag.startswith("v") else "";
+        }
         (binary_url, checksum_url) = _pick_stable_assets(meta, suffix);
         if not binary_url {
             tag = str(meta.get("tag_name", version or "latest"));
             raise RuntimeError(
-                f"No `jac-*{suffix}` asset on the {repo} release ({tag}). The node "
-                f"arch may be unpublished; set JAC_NODE_ARCH or check "
+                f"No `jac-*{suffix}` asset on the {repo} release ({tag}). The "
+                f"platform may be unpublished; set JAC_NODE_ARCH or check "
                 f"https://github.com/{repo}/releases."
             );
         }
         if version {
-            logger.info(f"Shipping the pinned pod runtime jac {version}.");
+            logger.info(f"Using the pinned jac {version} for {platform}.");
         }
     }
 
@@ -350,18 +378,95 @@ def download_release_binary(channel: str, arch: str, version: str = "") -> bytes
         return _fetch_verified_asset(
             binary_url,
             checksum_url,
-            _binary_cache_path(channel, arch),
-            f"{channel} jac binary"
+            _binary_cache_path(channel, platform, version),
+            f"{channel} jac binary ({platform})"
         );
     } except HTTPError as e {
         if e.code == 404 {
             raise RuntimeError(
-                f"No `jac-*{suffix}` binary published for this arch on the "
-                f"{channel} release; set JAC_NODE_ARCH or check "
-                f"https://github.com/{repo}/releases."
+                f"No `jac-*{suffix}` binary published on the {channel} release; "
+                f"set JAC_NODE_ARCH or check https://github.com/{repo}/releases."
             );
         }
         raise;
+    }
+}
+
+
+obj ResolvedToolchain {
+    has channel: str,
+        version: str = "",
+        local_path: str = "",
+        ship_platform: str = "",
+        _exec: (Path | None) = None;
+
+    def ship_bytes(arch: str) -> bytes {
+        self.ship_platform = f"linux-{arch}";
+        if self.channel == "local" {
+            return Path(self.local_path).read_bytes();
+        }
+        return download_release_binary(self.channel, self.ship_platform, self.version);
+    }
+
+    def exec_path -> Path {
+        if self._exec is not None {
+            return self._exec;
+        }
+        if self.channel == "local" {
+            self._exec = Path(self.local_path);
+            return self._exec;
+        }
+        platform = host_platform();
+        payload = download_release_binary(self.channel, platform, self.version);
+        self._exec = _materialize_exec(
+            payload, _binary_cache_path(self.channel, platform, self.version)
+        );
+        return self._exec;
+    }
+}
+
+
+def resolve_toolchain(channel: str, version: str = "") -> ResolvedToolchain {
+    import from jaclang.scale.config.dev_config { BINARY_PATH_ENV, Channel }
+    if channel == Channel.LOCAL.value {
+        local = os.environ.get(BINARY_PATH_ENV, "");
+        if not local or not Path(local).is_file() {
+            raise RuntimeError(
+                f"channel 'local' requires {BINARY_PATH_ENV} to point at an "
+                f"existing jac binary; got {local!r}."
+            );
+        }
+        return ResolvedToolchain(channel="local", local_path=local);
+    }
+    if channel == Channel.EXPERIMENTAL.value {
+        channel = Channel.DEV.value;
+    }
+    if channel == Channel.STABLE.value and not version {
+        version = _latest_release_version();
+    }
+    return ResolvedToolchain(channel=channel, version=version);
+}
+
+
+def _materialize_exec(payload: bytes, cache_file: Path) -> Path {
+    try {
+        if not (cache_file.is_file() and cache_file.read_bytes() == payload) {
+            cache_file.parent.mkdir(parents=True, exist_ok=True);
+            tmp = cache_file.with_suffix(f".{os.getpid()}.tmp");
+            tmp.write_bytes(payload);
+            tmp.rename(cache_file);
+        }
+        cache_file.chmod(0o755);
+        return cache_file;
+    } except OSError as e {
+        tmp_bin = Path(tempfile.mkdtemp(prefix="jac-toolchain-")) / "jac";
+        tmp_bin.write_bytes(payload);
+        tmp_bin.chmod(0o755);
+        logger.warning(
+            f"Toolchain cache at {cache_file} is not writable ({e}); using a "
+            f"temporary copy at {tmp_bin}."
+        );
+        return tmp_bin;
     }
 }
 
@@ -498,13 +603,15 @@ def _scale_cache_root -> Path {
 }
 
 
-def _binary_cache_path(channel: str, arch: str) -> Path {
-    return _scale_cache_root() / f"jac-{channel}-linux-{arch}";
+def _binary_cache_path(channel: str, platform: str, version: str = "") -> Path {
+    key = f"jac-{version}-{platform}" if version else f"jac-{channel}-{platform}";
+    return _scale_cache_root() / key;
 }
 
 
-def _admin_dist_cache_path(channel: str) -> Path {
-    return _scale_cache_root() / f"jac-{channel}-admin-dist.tar.gz";
+def _admin_dist_cache_path(channel: str, version: str = "") -> Path {
+    key = f"jac-{version}" if version else f"jac-{channel}";
+    return _scale_cache_root() / f"{key}-admin-dist.tar.gz";
 }
 
 
@@ -588,7 +695,7 @@ def download_admin_dist(channel: str, version: str = "") -> bytes | None {
         return _fetch_verified_asset(
             dist_url,
             checksum_url,
-            _admin_dist_cache_path(channel),
+            _admin_dist_cache_path(channel, version),
             f"{channel} admin console"
         );
     } except Exception as e {

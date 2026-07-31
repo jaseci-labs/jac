@@ -59,6 +59,14 @@ fn die(comptime msg: []const u8) noreturn {
     std.process.exit(70); // EX_SOFTWARE
 }
 
+fn dieBringup(e: anyerror) noreturn {
+    std.debug.print(
+        "jac (launcher): runtime bring-up failed: {s}\n",
+        .{@errorName(e)},
+    );
+    std.process.exit(70); // EX_SOFTWARE
+}
+
 pub fn main(init: std.process.Init) !void {
     const io = init.io;
     const env = init.environ_map;
@@ -138,7 +146,7 @@ pub fn main(init: std.process.Init) !void {
         @intCast(std.c.getuid()),
         @intCast(std.c.getpid()),
         &rt_buf,
-    ) catch die("runtime bring-up failed (payload not materialized?)");
+    ) catch |e| dieBringup(e);
 
     std.process.exit(boot(&emb, exe_z, init));
 }
@@ -320,7 +328,7 @@ fn runNinja(init: std.process.Init, exe_path: []const u8, exe_z: [*:0]const u8, 
         @intCast(std.c.getuid()),
         @intCast(std.c.getpid()),
         &rt_buf,
-    ) catch die("runtime bring-up failed (payload not materialized?)");
+    ) catch |e| dieBringup(e);
 
     // Environment for the editor + its children. JAC_BIN is what init.lua uses
     // to spawn `jac lsp` -- the same binary, so editor+parser+LSP stay one file.

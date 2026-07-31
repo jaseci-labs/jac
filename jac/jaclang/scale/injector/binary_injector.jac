@@ -1,10 +1,10 @@
 import logging;
 import from jaclang.scale.injector.pvc_injector { PvcInjector, bundle_pvc_path }
 import from jaclang.scale.injector.binary {
-    download_release_binary,
     node_arch,
     pack_binary_bytes,
     resolve_deploy_version,
+    resolve_toolchain,
     stage_admin_dist,
     toolchain_object_key
 }
@@ -18,15 +18,14 @@ glob logger = logging.getLogger(__name__),
 obj BinaryInjector(PvcInjector) {
     has channel: Channel = Channel.STABLE,
         _toolchain_object_key: str = "",
-        _toolchain_bytes: bytes = b"",
-        _pod_binary_bytes: bytes = b"";
+        _toolchain_bytes: bytes = b"";
 
     def prepare(app_name: str, namespace: str, project_dir: str) {
         version = resolve_deploy_version(project_dir, self.channel.value);
         stage_admin_dist(project_dir, self.channel.value, version);
 
-        payload = download_release_binary(self.channel.value, node_arch(), version);
-        self._pod_binary_bytes = payload;
+        self._toolchain = resolve_toolchain(self.channel.value, version);
+        payload = self._toolchain.ship_bytes(node_arch());
         super.prepare(app_name, namespace, project_dir);
         raw = pack_binary_bytes(payload);
         self._toolchain_object_key = toolchain_object_key(
@@ -55,12 +54,15 @@ def select_injector(
     namespace: str,
     project_dir: str,
     provisioned_database: str = "",
-    dry_run: bool = False
+    dry_run: bool = False,
+    channel_override: str = ""
 ) -> tuple[PvcInjector, str] {
     import from jaclang.cli.console { console }
     import from jaclang.scale.config.dev_config { resolve_dev_channel }
 
-    channel = resolve_dev_channel(project_dir);
+    channel = Channel(channel_override)
+        if channel_override
+        else resolve_dev_channel(project_dir);
     blurbs = {
         Channel.LOCAL: "shipping the local jac binary",
         Channel.DEV: "downloading the rolling `dev` (main HEAD) jac binary",

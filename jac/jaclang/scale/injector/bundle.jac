@@ -1,7 +1,9 @@
 import io;
 import os;
+import errno;
 import gzip;
 import hashlib;
+import json;
 import logging;
 import shutil;
 import subprocess;
@@ -9,13 +11,13 @@ import tarfile;
 import tempfile;
 import tomllib;
 import from pathlib { Path }
+import from jaclang.scale.injector.binary { ResolvedToolchain, host_platform }
 
 glob logger = logging.getLogger(__name__);
 
 glob APP_VOLUME_NAME: str = "jac-app",
      APP_MOUNT_PATH: str = "/app",
-     JAC_HOME: str = "/app/.jachome",
-     TOOLCHAIN_SUBDIR: str = ".jactoolchain";
+     JAC_HOME: str = "/app/.jachome";
 
 glob _EXCLUDE_DIRS: set[str] = {
          ".jac",
@@ -186,7 +188,68 @@ def open_det_tar(buf: io.BytesIO) -> tuple[tarfile.TarFile, any] {
 }
 
 
-def _precompile_app(base: Path, pod_binary: bytes) -> Path {
+def _write_run_shim(dir_: Path, module: str) -> Path {
+    shim = dir_ / ("__" + module.split(".")[-1] + "_shim.jac");
+    shim.write_text(
+        "import from " + module + " { main }\n\nwith entry { main(); }\n",
+        encoding="utf-8"
+    );
+    return shim;
+}
+
+
+def _run_toolchain_script(
+    toolchain: ResolvedToolchain,
+    workdir: Path,
+    module: str,
+    args: list[str],
+    timeout: int,
+    what: str
+) -> any {
+    import time;
+    exec_bin = toolchain.exec_path();
+    shim = _write_run_shim(workdir, module);
+    try {
+        for attempt in range(3) {
+            try {
+                result = subprocess.run(
+                    [str(exec_bin), "run", str(shim)] + args,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout
+                );
+            } except OSError as e {
+                if e?.errno == errno.ENOEXEC {
+                    raise RuntimeError(
+                        f"The driver host ({host_platform()}) cannot execute "
+                        f"the jac binary at {exec_bin} for the {what}. Point "
+                        f"JAC_SCALE_BINARY_PATH at a binary built for this "
+                        f"host; the pod binary is downloaded separately for "
+                        f"the cluster's arch."
+                    );
+                }
+                raise;
+            }
+
+            transient = result.returncode != 0
+                and "runtime bring-up failed" in (result.stderr or "");
+            if not transient or attempt == 2 {
+                return result;
+            }
+            logger.warning(
+                f"jac launcher bring-up transiently failed during the {what} "
+                f"(attempt {attempt + 1}); retrying: "
+                f"{(result.stderr or '').strip()[-200:]}"
+            );
+            time.sleep(0.5 * (attempt + 1));
+        }
+    } finally {
+        shim.unlink(missing_ok=True);
+    }
+}
+
+
+def _precompile_app(base: Path, toolchain: ResolvedToolchain) -> Path {
     stage_root = Path(tempfile.mkdtemp(prefix="jac-app-precompile-"));
     stage = stage_root / "app";
     try {
@@ -203,20 +266,15 @@ def _precompile_app(base: Path, pod_binary: bytes) -> Path {
         if not marker.exists() {
             marker.write_text("");
         }
-        jac_path = stage_root / ".pod-jac";
-        jac_path.write_bytes(pod_binary);
-        jac_path.chmod(0o755);
-        script = Path(str(__file__)).parent.parent.parent
-            / "utils"
-            / "precompile_bytecode.jac";
 
-        result = subprocess.run(
-            [str(jac_path), "run", str(script), str(stage_root), "--seal"],
-            capture_output=True,
-            text=True,
-            timeout=600
+        result = _run_toolchain_script(
+            toolchain,
+            stage_root,
+            "jaclang.utils.precompile_bytecode",
+            [str(stage_root), "--seal"],
+            600,
+            "app seal"
         );
-        jac_path.unlink();
         if (
             result.returncode != 0
             or not (stage / "_precompiled" / "MANIFEST.json").is_file()
@@ -260,29 +318,44 @@ def fat_bundle_enabled(project_dir: str) -> bool {
 }
 
 
-def _vendor_stage(stage: Path, sanitized_toml: (str | None), pod_binary: bytes) {
+def _vendor_stage(
+    stage: Path, sanitized_toml: (str | None), toolchain: ResolvedToolchain
+) {
     if sanitized_toml is not None {
         (stage / "jac.toml").write_text(sanitized_toml, encoding="utf-8");
     }
-    jac_path = stage.parent / ".pod-jac";
-    jac_path.write_bytes(pod_binary);
-    jac_path.chmod(0o755);
-    script = Path(str(__file__)).parent.parent / "utils" / "vendor_wheels.jac";
-    try {
-        result = subprocess.run(
-            [str(jac_path), "run", str(script), str(stage)],
-            capture_output=True,
-            text=True,
-            timeout=900
-        );
-    } finally {
-        jac_path.unlink(missing_ok=True);
+    cross = toolchain.ship_platform != ""
+        and toolchain.channel != "local"
+        and toolchain.ship_platform != host_platform();
+    args = [str(stage)];
+    if cross {
+        args.append(f"--platform={toolchain.ship_platform}");
     }
-    if (result.returncode != 0 or not (stage / "_vendor" / "VENDOR.json").is_file()) {
+    result = _run_toolchain_script(
+        toolchain,
+        stage.parent,
+        "jaclang.scale.utils.vendor_wheels",
+        args,
+        900,
+        "fat-bundle vendoring"
+    );
+    manifest = stage / "_vendor" / "VENDOR.json";
+    if result.returncode != 0 or not manifest.is_file() {
         raise RuntimeError(
             f"Fat bundle vendoring failed, so the deploy cannot ship offline "
             f"deps: {(result.stderr or result.stdout).strip()[-300:]}"
         );
+    }
+    if cross {
+        stamped = str(json.loads(manifest.read_text()).get("platform_tag", ""));
+        if stamped != toolchain.ship_platform {
+            raise RuntimeError(
+                f"The {toolchain.version or toolchain.channel} jac vendorer "
+                f"resolved wheels for {stamped or 'the driver host'} instead of "
+                f"the pod platform {toolchain.ship_platform}; that jac version "
+                f"cannot cross-vendor from this host."
+            );
+        }
     }
 
     for line in f"{result.stdout}\n{result.stderr}".splitlines() {
@@ -293,21 +366,24 @@ def _vendor_stage(stage: Path, sanitized_toml: (str | None), pod_binary: bytes) 
 }
 
 
-def pack_jab(project_dir: str, provisioned_database: str, pod_binary: bytes) -> bytes {
-    if not pod_binary {
+def pack_jab(
+    project_dir: str, provisioned_database: str, toolchain: (ResolvedToolchain | None)
+) -> bytes {
+    if toolchain is None {
         raise ValueError(
-            "pack_jab requires the pod binary to seal the app image; none given."
+            "pack_jab requires a resolved toolchain to seal the app image; "
+            "none given."
         );
     }
     base = Path(project_dir).resolve();
-    staged = _precompile_app(base, pod_binary);
+    staged = _precompile_app(base, toolchain);
 
     try {
         sanitized = sanitized_jac_toml(base, provisioned_database);
         (fat, fat_explicit) = fat_bundle_setting(project_dir);
         if fat {
             try {
-                _vendor_stage(staged, sanitized, pod_binary);
+                _vendor_stage(staged, sanitized, toolchain);
             } except Exception as exc {
                 if fat_explicit {
                     raise;

@@ -26,7 +26,7 @@ test "an unchanged release is served from the local cache, not re-downloaded" {
     os.environ["JAC_SCALE_CACHE_DIR"] = cache_dir;
     binmod._http_get_bytes = _fake_http;
     try {
-        assert binmod.download_release_binary("dev", "x86_64") == _payload;
+        assert binmod.download_release_binary("dev", "linux-x86_64") == _payload;
         assert len(
             [
                 c
@@ -35,7 +35,7 @@ test "an unchanged release is served from the local cache, not re-downloaded" {
             ]
         )
             == 1;
-        assert binmod.download_release_binary("dev", "x86_64") == _payload;
+        assert binmod.download_release_binary("dev", "linux-x86_64") == _payload;
         # Round two fetched only the tiny checksum; the binary came from cache.
         assert len(
             [

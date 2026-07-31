@@ -1,9 +1,5 @@
-import from jaclang.scale.injector.bundle {
-    JAC_HOME,
-    APP_VOLUME_NAME,
-    APP_MOUNT_PATH,
-    TOOLCHAIN_SUBDIR
-}
+import from jaclang.scale.injector.binary { TOOLCHAIN_SUBDIR }
+import from jaclang.scale.injector.bundle { JAC_HOME, APP_VOLUME_NAME, APP_MOUNT_PATH }
 import from jaclang.scale.injector.pvc_injector {
     BUNDLE_VOLUME_NAME,
     BUNDLE_MOUNT_PATH

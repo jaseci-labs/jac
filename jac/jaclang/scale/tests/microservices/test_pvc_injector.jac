@@ -5,6 +5,7 @@ import tempfile;
 import tomllib;
 import from pathlib { Path }
 import from unittest.mock { patch }
+import from jaclang.scale.injector.binary { ResolvedToolchain }
 import from jaclang.scale.injector.bundle {
     bake_database_intent,
     sanitized_jac_toml,
@@ -64,7 +65,9 @@ test "secrets are stripped and secret-bearing files excluded from the sealed .ja
                     + "# s3 access creds\n[scale.secrets]\napi_key = \"shhhh\"\n"
             );
         }
-        raw = pack_jab(project, "", _JAC_BIN.read_bytes());
+        raw = pack_jab(
+            project, "", ResolvedToolchain(channel="local", local_path=str(_JAC_BIN))
+        );
         names: list[str] = [];
         toml_text = "";
         with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar {

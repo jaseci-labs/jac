@@ -160,7 +160,7 @@ test "--dry-run reads no cluster state, downloads nothing, and builds nothing" {
         ), unittest.mock.patch(
             "jaclang.scale.injector.binary_injector.node_arch"
         ) as mock_cluster, unittest.mock.patch(
-            "jaclang.scale.injector.binary_injector.download_release_binary"
+            "jaclang.scale.injector.binary_injector.resolve_toolchain"
         ) as mock_download, unittest.mock.patch(
             "jaclang.scale.injector.binary_injector.stage_admin_dist"
         ) as mock_console, unittest.mock.patch(
@@ -185,7 +185,7 @@ test "selecting an injector for a dry run neither downloads nor probes the clust
         with unittest.mock.patch(
             "jaclang.scale.injector.binary_injector.node_arch"
         ) as mock_arch, unittest.mock.patch(
-            "jaclang.scale.injector.binary_injector.download_release_binary"
+            "jaclang.scale.injector.binary_injector.resolve_toolchain"
         ) as mock_download, unittest.mock.patch(
             "jaclang.scale.injector.binary_injector.stage_admin_dist"
         ) as mock_stage {

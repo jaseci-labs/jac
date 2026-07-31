@@ -3,6 +3,7 @@ import os;
 import tarfile;
 import tempfile;
 import from pathlib { Path }
+import from jaclang.scale.injector.binary { ResolvedToolchain }
 import from jaclang.scale.injector.bundle { pack_jab }
 
 
@@ -22,10 +23,15 @@ def _names(raw: bytes) -> list[str] {
 }
 
 
-test "pack_jab without a pod binary is a hard error (a .jab requires a seal)" {
+def _local_toolchain(binary_path: str) -> ResolvedToolchain {
+    return ResolvedToolchain(channel="local", local_path=binary_path);
+}
+
+
+test "pack_jab without a toolchain is a hard error (a .jab requires a seal)" {
     caught = False;
     try {
-        pack_jab(_mini_app(), "", b"");
+        pack_jab(_mini_app(), "", None);
     } except ValueError {
         caught = True;
     }
@@ -33,26 +39,33 @@ test "pack_jab without a pod binary is a hard error (a .jab requires a seal)" {
 }
 
 
-test "an unrunnable pod binary fails the seal instead of shipping unsealed" {
+test "an unrunnable toolchain binary fails the seal instead of shipping unsealed" {
+    with tempfile.NamedTemporaryFile(suffix="-jac", delete=False) as tmp {
+        tmp.write(b"not-an-elf");
+        bogus = tmp.name;
+    }
+    os.chmod(bogus, 0o755);
     caught = False;
     try {
-        pack_jab(_mini_app(), "", b"not-an-elf");
+        pack_jab(_mini_app(), "", _local_toolchain(bogus));
     } except Exception {
         caught = True;
+    } finally {
+        os.unlink(bogus);
     }
     assert caught;
 }
 
 
-test "a real pod binary seals the app into a .jab (source + _precompiled + manifest)" {
-    # The checkout's own binary stands in for the downloaded pod binary; the
-    # mechanism (stage -> precompile_bytecode.jac --seal -> pack _precompiled/**)
-    # is identical for release binaries.
+test "a real toolchain binary seals the app into a .jab (source + _precompiled + manifest)" {
+    # The checkout's own binary stands in for the downloaded toolchain binary;
+    # the mechanism (stage -> shim-import its own sealer --seal -> pack
+    # _precompiled/**) is identical for release binaries.
     jac_bin = Path(__file__).parents[4] / "zig-out" / "bin" / "jac";
     if not jac_bin.is_file() {
         return;
     }
-    names = _names(pack_jab(_mini_app(), "", jac_bin.read_bytes()));
+    names = _names(pack_jab(_mini_app(), "", _local_toolchain(str(jac_bin))));
     assert "svc.jac" in names;
     # The sealed manifest sits at the tar root, which is what makes this a .jab.
     assert "_precompiled/MANIFEST.json" in names;
@@ -62,4 +75,6 @@ test "a real pod binary seals the app into a .jab (source + _precompiled + manif
         if n.startswith("_precompiled/")
     ];
     assert any([n.endswith("svc.jir") for n in pre]) , pre;
+    # The seal shim never leaks into the packed bundle.
+    assert not any(["_shim.jac" in n for n in names]) , names;
 }

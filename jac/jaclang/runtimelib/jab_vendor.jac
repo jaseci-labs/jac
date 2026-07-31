@@ -45,22 +45,25 @@ def _pip(args: list[str]) -> tuple[int, str] {
 
 
 def download_wheels(
-    specs: list[str], dest: Path, platform_tag: str = "", python_version: str = ""
+    specs: list[str],
+    dest: Path,
+    platform_tags: (list[str] | None) = None,
+    python_version: str = ""
 ) -> tuple[bool, str] {
     if not specs {
         return (True, "");
     }
     dest.mkdir(parents=True, exist_ok=True);
     args = ["download", "--only-binary=:all:", "--dest", str(dest)];
-    if platform_tag {
-        args = args + ["--platform", platform_tag];
+    for tag in (platform_tags or []) {
+        args = args + ["--platform", tag];
     }
     if python_version {
         args = args + ["--python-version", python_version];
     }
     (rc, out) = _pip(args + specs);
     if rc != 0 {
-        if platform_tag or python_version {
+        if platform_tags or python_version {
             return (False, out);
         }
         return _build_wheels_native(specs, dest, out);

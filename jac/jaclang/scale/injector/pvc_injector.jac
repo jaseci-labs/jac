@@ -1,6 +1,7 @@
 import os;
 import logging;
 import from jaclang.scale.injector.injector { Injector }
+import from jaclang.scale.injector.binary { ResolvedToolchain }
 import from jaclang.scale.injector.bundle {
     pack_jab,
     content_address,
@@ -178,7 +179,8 @@ obj PvcInjector(Injector) {
         loader_image: str = "busybox:1.36",
         provisioned_database: str = "",
         _object_key: str = "",
-        _bundle_bytes: bytes = b"";
+        _bundle_bytes: bytes = b"",
+        _toolchain: (ResolvedToolchain | None) = None;
 
     def _seed_artifacts -> list[tuple[str, bytes]] {
         return [(self._object_key, self._bundle_bytes)];
@@ -189,11 +191,7 @@ obj PvcInjector(Injector) {
     }
 
     def prepare(app_name: str, namespace: str, project_dir: str) {
-        raw = pack_jab(
-            project_dir,
-            self.provisioned_database,
-            getattr(self, "_pod_binary_bytes", b"")
-        );
+        raw = pack_jab(project_dir, self.provisioned_database, self._toolchain);
         digest = content_address(raw);
         self._object_key = bundle_object_key(app_name, digest);
         self._bundle_bytes = raw;
