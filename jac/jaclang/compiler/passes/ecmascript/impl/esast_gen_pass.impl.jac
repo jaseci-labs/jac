@@ -1978,17 +1978,10 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
         nd.gen.es_ast = result_expr;
         return;
     }
-    if not props {
-        host_ctor = self._try_lower_js_host_constructor_call(
-            nd, callee_expr, call_args
-        );
-        if host_ctor is not None {
-            if use_kwargs_temp and spread_arg is not None {
-                host_ctor = self._wrap_with_kwargs_temp(host_ctor, spread_arg, nd);
-            }
-            nd.gen.es_ast = host_ctor;
-            return;
-        }
+    host_ctor = self._try_lower_js_host_constructor_call(nd, callee_expr, args);
+    if host_ctor is not None {
+        nd.gen.es_ast = host_ctor;
+        return;
     }
     if _call_kind == "instantiation" and isinstance(callee, es.Expression) {
         result_expr: es.Expression = self.sync_loc(

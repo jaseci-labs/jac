@@ -450,8 +450,6 @@ glob JS_HOST_CONSTRUCTORS: frozenset[str] = frozenset(
          {
              "Array",
              "ArrayBuffer",
-             "BigInt",
-             "Boolean",
              "CustomEvent",
              "DataView",
              "Date",
@@ -461,8 +459,6 @@ glob JS_HOST_CONSTRUCTORS: frozenset[str] = frozenset(
              "Headers",
              "Int32Array",
              "Map",
-             "Number",
-             "Object",
              "PopStateEvent",
              "Promise",
              "Proxy",
@@ -472,7 +468,6 @@ glob JS_HOST_CONSTRUCTORS: frozenset[str] = frozenset(
              "RegExp",
              "Response",
              "Set",
-             "String",
              "TextDecoder",
              "TextEncoder",
              "TypeError",
@@ -492,6 +487,10 @@ def is_js_host_constructor_call(nd: uni.FuncCall) -> bool {
         return False;
     }
     if nd.target.sym_name == "new" {
+        return False;
+    }
+
+    if nd.target.sym is not None and _is_user_symbol(nd.target.sym) {
         return False;
     }
 
