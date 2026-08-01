@@ -4,6 +4,7 @@ import threading;
 import weakref;
 import from typing { cast }
 import from uuid { UUID, uuid4 }
+import from jaclang.jac0core.constant { Constants as Con }
 import from jaclang.scale._optdeps.redis { redis_module as redis }
 import from jaclang.runtimelib.memory { VolatileMemory }
 
@@ -92,6 +93,17 @@ def consume_stale(l1_id: str, id: UUID) -> bool {
 }
 
 
+def evict_process_cached_system_root(anchor_id: str) -> None {
+    if anchor_id != Con.SUPER_ROOT_UUID {
+        return;
+    }
+    try {
+        import from jaclang.scale.memory.memory_hierarchy { _process_cache }
+        _process_cache.pop("system_root", None);
+    } except Exception { }
+}
+
+
 def _handle_message(data: (bytes | str)) {
     try {
         text = data.decode("utf-8") if isinstance(data, (bytes, bytearray)) else data;
@@ -99,6 +111,7 @@ def _handle_message(data: (bytes | str)) {
         anchor_id = cast(str, payload.get("a") or "");
         origin = cast((str | None), payload.get("o"));
         if anchor_id {
+            evict_process_cached_system_root(anchor_id);
             evict_local_l1(anchor_id, origin);
         }
     } except Exception as e {

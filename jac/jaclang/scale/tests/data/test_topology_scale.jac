@@ -303,9 +303,11 @@ test "topology-only change is detected by _compute_hash dirty gate" {
 # reloads the graph from SQLite with zero in-memory carry-over — a true
 # persistence round-trip across a "restart". `build` and `deep` each auto-commit
 # on exit; `check` reads the reloaded index. A deep edge (p0 -> deep) updates the
-# root's topology index without touching the root's own edges/archetype, which
-# is exactly the topology-only change the SQLite dirty gate must catch.
+# system root's topology index without touching the user root's own
+# edges/archetype, which is exactly the topology-only change the SQLite dirty
+# gate must catch.
 glob TOPO_REGRESS_SCRIPT: str = "import os;\n"
+     "import from jaclang.jac0core.runtime { JacRuntime }\n"
      "\n"
      "node Person { has name: str = \"\"; }\n"
      "edge Knows {}\n"
@@ -318,15 +320,25 @@ glob TOPO_REGRESS_SCRIPT: str = "import os;\n"
      "    } elif phase == \"deep\" {\n"
      "        p0 = [r ->: Knows :-> [?:Person]][0];\n"
      "        p0 +>: Knows :+> Person(name=\"deep\");\n"
-     "        print(\"DEEP_NODES=\" + str(len(r.__jac__.get_topology_index().node_table)));\n"
+     "        gti_root = JacRuntime.get_context().system_root;\n"
+     "        print(\"DEEP_NODES=\" + str(len(gti_root.get_topology_index().node_table)));\n"
      "    } elif phase == \"check\" {\n"
-     "        print(\"CHECK_NODES=\" + str(len(r.__jac__.get_topology_index().node_table)));\n"
+     "        gti_root = JacRuntime.get_context().system_root;\n"
+     "        print(\"CHECK_NODES=\" + str(len(gti_root.get_topology_index().node_table)));\n"
      "    }\n"
      "}\n";
 
 """Run one phase of the regression script in a fresh `jac run` subprocess."""
 def _topo_run_phase(workdir: str, phase: str) -> str {
     env = dict(os.environ);
+    jac_src = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "..", "..")
+    );
+    env["PYTHONPATH"] = (
+        jac_src
+            if not env.get("PYTHONPATH")
+            else jac_src + os.pathsep + env["PYTHONPATH"]
+    );
     env["JAC_TOPOLOGY_INDEX"] = "1";
     env["PHASE"] = phase;
     result = subprocess.run(
@@ -337,7 +349,7 @@ def _topo_run_phase(workdir: str, phase: str) -> str {
         text=True,
         timeout=600
     );
-    return result.stdout;
+    return result.stdout + result.stderr;
 }
 
 """Pull an integer marker (e.g. `DEEP_NODES=3`) out of captured stdout."""

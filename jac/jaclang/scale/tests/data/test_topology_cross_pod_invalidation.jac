@@ -1,10 +1,9 @@
-"""Multi-pod coherency: topology index (GTI) invalidation on edge-list-delta (#7334).
+"""Multi-pod coherency: system-root topology index (GTI) invalidation.
 
-`commit` excludes EDGE_LIST_DELTA intents from L2 put/broadcast (storm avoidance).
-That is safe for edge lists (reconstructable from the edge anchors) but not for a
-root's topology index: an opaque blob that only changes via EDGE_LIST_DELTA and
-can't be reconstructed, so other pods kept serving a stale GTI. The fix invalidates
-+ broadcasts such deltas when the anchor carries a topology index.
+GTI is runtime-maintained metadata stored on the system root. User-root edge
+list deltas are reconstructable from edge anchors, but the system-root GTI blob
+must still be persisted, cached fresh in Redis L2, and broadcast so other pods
+evict stale L1 system-root anchors before resolving traversals.
 
 Real Mongo + Redis via testcontainers. A custom `Root()` gives each test a real
 per-user root (fresh UUID, persistent), avoiding the anonymous root (id 0) that
@@ -24,6 +23,7 @@ import from testcontainers.community.redis { RedisContainer }
 
 import from jaclang.jac0core.runtime { JacRuntime }
 import from jaclang.jac0core.archetype { NodeAnchor, Root }
+import from jaclang.jac0core.constant { Constants as Con }
 import from jaclang.runtimelib.context { ExecutionContext }
 import from jaclang.runtimelib.serializer { Serializer }
 import from jaclang.project.config { JacConfig, set_config }
@@ -90,6 +90,7 @@ def _reset_dbs {
     if "redis_client" in _shared {
         _shared["redis_client"].flushall();
     }
+    _process_cache.pop("system_root", None);
     _process_cache.pop("redis_client", None);
     _process_cache.pop("redis_available", None);
 }
@@ -109,9 +110,9 @@ def _make_pod -> ScaleTieredMemory {
 }
 
 
-"""Topology-index length of the root cached in Redis L2; -1 if not cached."""
-def _l2_index_len(mem: ScaleTieredMemory, root_id: UUID) -> int {
-    raw = cast(RedisBackend, mem.l2).redis_client.get(f"anchor:{root_id}");
+"""Topology-index length of an anchor cached in Redis L2; -1 if not cached."""
+def _l2_index_len(mem: ScaleTieredMemory, anchor_id: UUID) -> int {
+    raw = cast(RedisBackend, mem.l2).redis_client.get(f"anchor:{anchor_id}");
     if not raw {
         return -1;
     }
@@ -123,11 +124,26 @@ def _l2_index_len(mem: ScaleTieredMemory, root_id: UUID) -> int {
 }
 
 
+def _bind_system_root(ctx: ExecutionContext, mem: ScaleTieredMemory) -> NodeAnchor {
+    system_id = UUID(Con.SUPER_ROOT_UUID);
+    system_anchor = mem.get(system_id);
+    if not isinstance(system_anchor, NodeAnchor) {
+        system_anchor = ctx.system_root;
+        system_anchor.id = system_id;
+        system_anchor.persistent = True;
+        mem.__mem__[system_id] = system_anchor;
+    }
+    ctx.system_root = system_anchor;
+    return system_anchor;
+}
+
+
 """Builder pod: persist a root with `n` _XPodTypeA children; return its id."""
 def _seed_root(n: int) -> UUID {
     memB = _make_pod();
     ctxB = ExecutionContext();
     ctxB.mem = memB;
+    _bind_system_root(ctxB, memB);
     JacRuntime.set_context(ctxB);
     user_root = Root();
     root_anchor = user_root.__jac__;
@@ -151,7 +167,7 @@ def _topology_cfg {
 }
 
 
-test "edge-list-delta on a root invalidates the topology index in Redis L2 + broadcasts" {
+test "edge-list-delta refreshes the system-root GTI in Redis L2 + broadcasts" {
     _reset_dbs();
     orig_base = JacRuntime.get_base_path_dir();
     _topology_cfg();
@@ -159,17 +175,19 @@ test "edge-list-delta on a root invalidates the topology index in Redis L2 + bro
         # --- Builder: root -> 100 _XPodTypeA, committed ---
         root_id = _seed_root(100);
 
-        # --- Pod A: warm read promotes the root into Redis L2 (100-edge GTI) ---
+        # --- Pod A: warm read promotes the system root into Redis L2 (100-edge GTI) ---
         memA = _make_pod();
         ctxA = ExecutionContext();
         ctxA.mem = memA;
+        _bind_system_root(ctxA, memA);
         JacRuntime.set_context(ctxA);
         rA_anchor = ctxA.mem.get(root_id);
         assert rA_anchor is not None , "root must load from L3";
         leadsA = [rA_anchor.archetype-->][?:_XPodTypeA];
         assert len(leadsA) == 100 , f"warm query expected 100, got {len(leadsA)}";
-        assert _l2_index_len(memA, root_id) == 100 , (
-            "root must be cached in Redis L2 with a 100-edge index after warm read"
+        system_id = UUID(Con.SUPER_ROOT_UUID);
+        assert _l2_index_len(memA, system_id) == 100 , (
+            "system root must be cached in Redis L2 with a 100-edge index after warm read"
         );
         ctxA.close();
 
@@ -185,6 +203,7 @@ test "edge-list-delta on a root invalidates the topology index in Redis L2 + bro
         memB2 = _make_pod();
         ctxB2 = ExecutionContext();
         ctxB2.mem = memB2;
+        _bind_system_root(ctxB2, memB2);
         JacRuntime.set_context(ctxB2);
         rB2_anchor = ctxB2.mem.get(root_id);
         assert rB2_anchor is not None;
@@ -202,34 +221,37 @@ test "edge-list-delta on a root invalidates the topology index in Redis L2 + bro
             assert len(doc['data']['edges']) == 101 , (
                 f"Mongo L3 must have 101 edges; got {len(doc['data']['edges'])}"
             );
-            restored = Serializer.deserialize(doc['data']);
+            system_doc = _shared["mongo_client"][_DB_NAME]["_anchors"].find_one(
+                {'_id': str(system_id)}
+            );
+            assert system_doc is not None , "system root must be persisted in Mongo";
+            restored = Serializer.deserialize(system_doc['data']);
             assert len(cast(NodeAnchor, restored).get_topology_index()) == 101 , (
-                "Mongo L3 topology index must be fresh (101)"
+                "Mongo L3 system-root topology index must be fresh (101)"
             );
 
-            # THE FIX (L2 coherency): the root's Redis L2 entry must be
-            # invalidated so other pods reload the fresh index. Was 100 before.
-            assert _l2_index_len(memB2, root_id) == -1 , (
-                "root's Redis L2 entry must be INVALIDATED on an edge-list-delta "
-                "that carries a topology index; got index len "
-                f"{_l2_index_len(memB2, root_id)} (a stale GTI other pods keep serving)"
+            # THE FIX (L2 coherency): the system-root Redis L2 entry must carry
+            # the fresh GTI so other pods can reload it.
+            assert _l2_index_len(memB2, system_id) == 101 , (
+                "system root's Redis L2 entry must be fresh after the topology "
+                f"metadata update; got index len {_l2_index_len(memB2, system_id)}"
             );
 
-            # THE FIX (cross-pod signal): an invalidation for the root must be
-            # broadcast so other pods evict their L1 copies.
-            saw_root = False;
+            # THE FIX (cross-pod signal): an invalidation for the system root
+            # must be broadcast so other pods evict their L1 copies.
+            saw_system_root = False;
             for _ in range(50) {
                 msg = pubsub.get_message(timeout=0.1);
                 if msg is not None and msg.get("type") == "message" {
                     payload = json.loads(msg.get("data"));
-                    if payload.get("a") == str(root_id) {
-                        saw_root = True;
+                    if payload.get("a") == str(system_id) {
+                        saw_system_root = True;
                         break;
                     }
                 }
             }
-            assert saw_root , (
-                "an invalidation message for the root must be published on "
+            assert saw_system_root , (
+                "an invalidation message for the system root must be published on "
                 f"'{DEFAULT_INVALIDATION_CHANNEL}' so other pods evict their L1"
             );
         } finally {
@@ -255,10 +277,11 @@ test "a second pod sees the fresh GTI after a cross-pod edge add (end-to-end)" {
         (_, redis_url) = _get_redis();
         ensure_listener(_process_cache, redis_url, DEFAULT_INVALIDATION_CHANNEL);
 
-        # --- Pod A: warm read, KEPT ALIVE so its L1 holds the (soon stale) root ---
+        # --- Pod A: warm read, kept alive so its L1 holds the soon-stale system root ---
         memA = _make_pod();
         ctxA = ExecutionContext();
         ctxA.mem = memA;
+        _bind_system_root(ctxA, memA);
         JacRuntime.set_context(ctxA);
         rA_anchor = ctxA.mem.get(root_id);
         assert rA_anchor is not None;
@@ -268,14 +291,15 @@ test "a second pod sees the fresh GTI after a cross-pod edge add (end-to-end)" {
         memB2 = _make_pod();
         ctxB2 = ExecutionContext();
         ctxB2.mem = memB2;
+        _bind_system_root(ctxB2, memB2);
         JacRuntime.set_context(ctxB2);
         rB2_anchor = ctxB2.mem.get(root_id);
         assert rB2_anchor is not None;
         rB2_anchor.archetype ++> _XPodTypeA(idx=100);
         ctxB2.mem.commit();
 
-        # --- Pod A re-queries: the listener should evict its stale L1, forcing a
-        # reload of the fresh index from L3. Bounded poll for pub/sub delivery. ---
+        # --- Pod A re-queries: the listener should evict stale system-root L1,
+        # forcing a reload of the fresh index from L3. Bounded poll for pub/sub. ---
         JacRuntime.set_context(ctxA);
         seen = -1;
         for _ in range(50) {

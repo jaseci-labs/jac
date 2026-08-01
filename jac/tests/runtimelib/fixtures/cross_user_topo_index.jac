@@ -1,16 +1,15 @@
-"""Server fixture exposing walkers that exercise cross-root graph queries.
+"""Server fixture exposing walkers that exercise cross-user graph queries.
 
-These walkers cooperate to build a two-root graph and run queries that
-the topology-index optimizer needs to handle correctly:
+These walkers cooperate to build a two-user graph and run queries that
+the system-root topology-index optimizer needs to handle correctly:
 
-  * `query_follow_chain` runs a 2-hop forward chain that crosses from
-    the calling user's own edges into another user's owned subgraph.
+  * `query_follow_chain` runs a 2-hop forward chain from the caller's
+    profile into another user's graph.
   * `query_channel_members` runs a 1-hop reverse query whose incoming
-    edges are owned by *other* users.
+    edges were created by other users.
 
 The fixture is exercised end-to-end via `JacTestClient`, which keeps a
-single long-lived runtime context across requests -- the regime where
-the topology-index optimizer historically returned wrong answers.
+single long-lived runtime context across requests.
 """
 
 node Profile {
@@ -31,8 +30,8 @@ edge Member {}
 
 
 walker:priv setup_profile_only {
-    has username: str = "";
-    has reports: list = [];
+    has username: str = "",
+        reports: list = [];
 
     can run with Root entry {
         existing = [-->[?:Profile]];
@@ -54,8 +53,8 @@ walker:priv setup_profile_only {
 }
 
 walker:priv post_tweet {
-    has content: str = "";
-    has reports: list = [];
+    has content: str = "",
+        reports: list = [];
 
     can run with Root entry {
         visit [-->[?:Profile]];
@@ -63,15 +62,15 @@ walker:priv post_tweet {
 
     can make with Profile entry {
         tweet = Tweet(content=self.content);
-        here +>: Post() :+> tweet;
+        here +>:Post():+> tweet;
         grant(tweet, level=ConnectPerm);
         report jid(tweet);
     }
 }
 
 walker:priv create_channel {
-    has name: str = "";
-    has reports: list = [];
+    has name: str = "",
+        reports: list = [];
 
     can run with Root entry {
         visit [-->[?:Profile]];
@@ -79,38 +78,38 @@ walker:priv create_channel {
 
     can make with Profile entry {
         chan = Channel(name=self.name);
-        here +>: Member() :+> chan;
+        here +>:Member():+> chan;
         grant(chan, level=ConnectPerm);
         report jid(chan);
     }
 }
 
 walker:priv follow_target {
-    has target_id: str = "";
-    has reports: list = [];
+    has target_id: str = "",
+        reports: list = [];
 
     can run with Root entry {
         visit [-->[?:Profile]];
     }
 
     can act with Profile entry {
-        target_profile = & (self.target_id);
-        here +>: Follow() :+> target_profile;
+        target_profile = &(self.target_id);
+        here +>:Follow():+> target_profile;
         report "ok";
     }
 }
 
 walker:priv join_channel {
-    has channel_id: str = "";
-    has reports: list = [];
+    has channel_id: str = "",
+        reports: list = [];
 
     can run with Root entry {
         visit [-->[?:Profile]];
     }
 
     can act with Profile entry {
-        chan = & (self.channel_id);
-        here +>: Member() :+> chan;
+        chan = &(self.channel_id);
+        here +>:Member():+> chan;
         report "ok";
     }
 }
@@ -132,11 +131,11 @@ walker:priv query_follow_chain {
 }
 
 walker:priv query_channel_members {
-    has channel_id: str = "";
-    has reports: list = [];
+    has channel_id: str = "",
+        reports: list = [];
 
     can run with Root entry {
-        chan = & (self.channel_id);
+        chan = &(self.channel_id);
         members = [chan<-:Member:<-[?:Profile]];
         report len(members);
     }

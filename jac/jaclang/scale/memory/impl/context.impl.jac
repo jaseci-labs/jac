@@ -17,7 +17,9 @@ impl JScaleExecutionContext.init(self: JScaleExecutionContext) -> None {
     self.read_versions = {};
     self.custom: any = MISSING;
     cached_root = _process_cache.get('system_root');
-    if cached_root is not None {
+    if (
+        isinstance(cached_root, NodeAnchor) and cached_root.topology_index_data is None
+    ) {
         self.mem.__mem__[cached_root.id] = cached_root;
     }
     system_root_anchor: (Anchor | None) = self.mem.get(UUID(Con.SUPER_ROOT_UUID));
@@ -26,7 +28,11 @@ impl JScaleExecutionContext.init(self: JScaleExecutionContext) -> None {
         system_root_anchor.id = UUID(Con.SUPER_ROOT_UUID);
         self.mem.put(system_root_anchor);
     }
-    _process_cache['system_root'] = system_root_anchor;
+    if system_root_anchor.topology_index_data is None {
+        _process_cache['system_root'] = system_root_anchor;
+    } else {
+        _process_cache.pop('system_root', None);
+    }
     self.system_root = system_root_anchor;
 
     self.user_root = self.system_root;

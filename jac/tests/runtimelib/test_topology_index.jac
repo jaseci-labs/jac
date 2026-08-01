@@ -22,17 +22,6 @@ test "encode decode round trip" {
     assert len(decoded.adj_list) == 2;
 }
 
-test "cross root preserved through encoding" {
-    idx = TopologyIndex();
-    foreign_root = uuid4();
-    n1 = uuid4();
-    idx.add_node(uuid4(), "Root");
-    idx.add_node(n1, "NodeA", owner_root=foreign_root);
-
-    decoded = TopologyIndex.decode(idx.encode());
-    assert decoded.node_table[1][2] == foreign_root;
-}
-
 test "large graph under 1MB" {
     idx = TopologyIndex();
     node_ids = [uuid4() for _ in range(10000)];
@@ -160,19 +149,6 @@ test "multi hop selective" {
         == set(b_ids);
 }
 
-test "cross root ids" {
-    idx = TopologyIndex();
-    foreign = uuid4();
-    n1 = uuid4();
-    n2 = uuid4();
-    idx.add_node(uuid4(), "Root");
-    idx.add_node(n1, "A");
-    idx.add_node(n2, "B", owner_root=foreign);
-    cross = idx.get_cross_root_ids({n1, n2});
-    assert cross[foreign] == {n2};
-    assert n1 not in cross.get(foreign, set());
-}
-
 # ── MRO fan-out ──────────────────────────────────────────────────────
 test "subtype query returns instances of all descendants" {
     idx = TopologyIndex();
@@ -235,14 +211,14 @@ test "multi-edge between same pair preserves edge-type isolation" {
     assert idx.resolve_chain({a}, [(None, "B", 2)]) == set();
 }
 
-# ── v1 → v2 migration ────────────────────────────────────────────────
-test "v1 blob migrates to v2 on decode and warms up MRO via mutation" {
+# ── Legacy decode ────────────────────────────────────────────────────
+test "v1 blob decodes without legacy owner roots and warms up MRO via mutation" {
     # Construct a v1 blob by hand: 3 types, 2 nodes, 1 edge.
     import struct;
 
     root_id = uuid4();
     child_id = uuid4();
-    self_root = UUID(int=0);
+    legacy_owner = UUID(int=0);
 
     blob = bytearray();
     # Header (v1): version=1, num_types=3, num_nodes=2, num_edges=1
@@ -252,21 +228,22 @@ test "v1 blob migrates to v2 on decode and warms up MRO via mutation" {
         blob.append(len(name));
         blob.extend(name);
     }
-    # NodeTable: (uuid, type_id, owner_root)
+    # NodeTable: v1/v2 had an extra legacy root UUID; current GTI drops it.
     blob.extend(root_id.bytes);
     blob.extend(struct.pack("<H", 0));
-    blob.extend(self_root.bytes);
+    blob.extend(legacy_owner.bytes);
     blob.extend(child_id.bytes);
     blob.extend(struct.pack("<H", 1));
-    blob.extend(self_root.bytes);
+    blob.extend(legacy_owner.bytes);
     # AdjList: (src_lid, edge_type_id, tgt_lid)
     blob.extend(struct.pack("<HHH", 0, 2, 1));
 
     idx = TopologyIndex.decode(bytes(blob));
 
-    # All persisted data made it across.
+    # All usable persisted data made it across.
     assert len(idx.adj_list) == 1;
     assert len(idx.node_table) == 2;
+    assert len(idx.node_table[0]) == 2;
     assert idx.type_table == ["Root", "NodeA", "EdgeX"];
     # Migration installed stub MRO chains: each type is its own ancestor.
     assert idx.type_mro_ids == [[0], [1], [2]];
@@ -284,10 +261,41 @@ test "v1 blob migrates to v2 on decode and warms up MRO via mutation" {
     assert idx.resolve_chain({root_id}, [(None, "BaseContent", 2)]) == {new_child};
     assert idx.resolve_chain({root_id}, [(None, "PostNode", 2)]) == {new_child};
 
-    # Re-encoding the migrated index produces a v2 blob that round-trips.
+    # Re-encoding the migrated index produces a current blob that round-trips.
     re_decoded = TopologyIndex.decode(idx.encode());
     assert re_decoded.resolve_chain({root_id}, [(None, "BaseContent", 2)])
         == {new_child};
+}
+
+test "v2 blob decodes without legacy owner roots" {
+    import struct;
+
+    root_id = uuid4();
+    child_id = uuid4();
+    legacy_owner = uuid4();
+
+    blob = bytearray();
+    blob.extend(struct.pack("<BHHi", 2, 3, 2, 1));
+    for (tid, name) in enumerate([b"Root", b"NodeA", b"EdgeX"]) {
+        blob.append(len(name));
+        blob.extend(name);
+        blob.append(1);
+        blob.extend(struct.pack("<H", tid));
+    }
+    blob.extend(root_id.bytes);
+    blob.extend(struct.pack("<H", 0));
+    blob.extend(legacy_owner.bytes);
+    blob.extend(child_id.bytes);
+    blob.extend(struct.pack("<H", 1));
+    blob.extend(legacy_owner.bytes);
+    blob.extend(struct.pack("<HHH", 0, 2, 1));
+
+    idx = TopologyIndex.decode(bytes(blob));
+
+    assert len(idx.node_table) == 2;
+    assert idx.node_table[0] == (root_id, 0);
+    assert idx.node_table[1] == (child_id, 1);
+    assert idx.resolve_chain({root_id}, [("EdgeX", "NodeA", 2)]) == {child_id};
 }
 
 # ── Compact-encoding fidelity ────────────────────────────────────────
@@ -302,7 +310,7 @@ test "encoded size beats naive bound" {
     for i in range(5000) {
         idx.add_edge(node_ids[i % 1000], node_ids[(i * 7 + 3) % 1000], "Edge");
     }
-    # 1000 nodes × 34B = 34000; 5000 edges × 6B = 30000; type table tiny.
+    # 1000 nodes x 18B = 18000; 5000 edges x 6B = 30000; type table tiny.
     # Generous ceiling: 80KB.
     assert len(idx.encode()) < 80000;
 }

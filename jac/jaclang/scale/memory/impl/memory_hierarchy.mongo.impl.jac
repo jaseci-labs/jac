@@ -132,17 +132,18 @@ def _mongo_persist_repairs(
 
 def _mongo_quarantine(
     backend: MongoBackend,
-    id_str: str,
-    anchor_type: (str | None),
-    arch_module: (str | None),
-    arch_type: (str | None),
-    fingerprint: (str | None),
-    data: any,
+    doc: dict[(str, Any)],
     error: str,
-    from_format_version: (int | None) = None,
     l2: (any | None) = None,
     reason_code: str = 'DESER_ERROR'
 ) {
+    id_str = str(doc.get('_id', ''));
+    anchor_type = doc.get('type');
+    arch_module = doc.get('arch_module');
+    arch_type = doc.get('arch_type');
+    fingerprint = doc.get('fingerprint');
+    data = doc.get('data');
+    from_format_version = doc.get('format_version');
     try {
         q_col = _mongo_q_collection(backend);
         now_ts = datetime.now(timezone.utc).isoformat();
@@ -296,7 +297,6 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
     arch_type = db_obj.get('arch_type');
     fingerprint = db_obj.get('fingerprint');
     data = db_obj.get('data');
-    fmt_version = db_obj.get('format_version');
 
     if arch_module and arch_type and fingerprint {
         cls = Serializer._get_class(arch_module, arch_type);
@@ -319,14 +319,8 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
         );
         _mongo_quarantine(
             self,
-            str(_id),
-            anchor_type,
-            arch_module,
-            arch_type,
-            fingerprint,
-            data,
+            db_obj,
             f"deserialize error: {type(e).__name__}: {e}",
-            from_format_version=fmt_version,
             l2=self._l2_ref,
             reason_code='DESER_ERROR'
         );
@@ -361,19 +355,7 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
                 f"{arch_module}.{arch_type} (anchor {id}). Moving to quarantine."
             );
         }
-        _mongo_quarantine(
-            self,
-            str(_id),
-            anchor_type,
-            arch_module,
-            arch_type,
-            fingerprint,
-            data,
-            reason,
-            from_format_version=fmt_version,
-            l2=self._l2_ref,
-            reason_code=code
-        );
+        _mongo_quarantine(self, db_obj, reason, l2=self._l2_ref, reason_code=code);
         return None;
     }
     _mongo_persist_repairs(self, str(_id), cast(Anchor, anchor), fingerprint);
@@ -407,13 +389,28 @@ impl MongoBackend.put_partial(anchor: Anchor, field_names: set[str]) -> None {
     }
     _id = to_uuid(anchor.id);
     try {
-        partial_data = Serializer.serialize_fields(anchor, field_names);
-        if not partial_data {
+        import from base64 { b64encode }
+        arch_field_names = set(field_names);
+        arch_field_names.discard('topology_index_data');
+        partial_data = Serializer.serialize_fields(anchor, arch_field_names);
+        carries_topology = (
+            'topology_index_data' in field_names
+            and isinstance(anchor, NodeAnchor)
+            and isinstance(anchor.archetype, Root)
+        );
+        if not partial_data and not carries_topology {
             return;
         }
         update: dict[str, object] = {
             f"data.archetype.{k}": v for (k, v) in partial_data.items()
         };
+        if carries_topology {
+            update['data.topology_index_data'] = (
+                b64encode(anchor.topology_index_data).decode('ascii')
+                    if anchor.topology_index_data is not None
+                    else None
+            );
+        }
         update['updated_at'] = datetime.now(timezone.utc).isoformat();
         self.collection.update_one({'_id': str(_id)}, {'$set': update});
         anchor.hash = Serializer._compute_hash(anchor);
@@ -874,7 +871,6 @@ impl MongoBackend._load_anchor(raw: dict[(str, Any)]) -> (Anchor | None) {
     arch_module = raw.get('arch_module');
     arch_type = raw.get('arch_type');
     fingerprint = raw.get('fingerprint');
-    fmt_version = raw.get('format_version');
     data = raw['data'];
     try {
         anchor = Serializer.deserialize(data);
@@ -886,14 +882,8 @@ impl MongoBackend._load_anchor(raw: dict[(str, Any)]) -> (Anchor | None) {
         );
         _mongo_quarantine(
             self,
-            doc_id,
-            anchor_type,
-            arch_module,
-            arch_type,
-            fingerprint,
-            data,
+            raw,
             f"deserialize error: {type(e).__name__}: {e}",
-            from_format_version=fmt_version,
             l2=self._l2_ref,
             reason_code='DESER_ERROR'
         );
@@ -912,14 +902,8 @@ impl MongoBackend._load_anchor(raw: dict[(str, Any)]) -> (Anchor | None) {
         );
         _mongo_quarantine(
             self,
-            doc_id,
-            anchor_type,
-            arch_module,
-            arch_type,
-            fingerprint,
-            data,
+            raw,
             f"load failed for class {arch_module}.{arch_type}",
-            from_format_version=fmt_version,
             l2=self._l2_ref,
             reason_code=code
         );

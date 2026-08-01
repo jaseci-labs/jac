@@ -34,6 +34,31 @@ impl _get_root_anchor(anchor: any) -> any {
     return None;
 }
 
+impl _get_index_anchor -> any {
+    try {
+        import from jaclang { JacRuntimeInterface as Jac }
+        import from uuid { UUID }
+        import from jaclang.jac0core.archetype { NodeAnchor }
+        import from jaclang.jac0core.constant { Constants as Con }
+        ctx = Jac.get_context();
+        system_root_id = UUID(Con.SUPER_ROOT_UUID);
+        active_root = ctx.mem.get(system_root_id);
+        if isinstance(active_root, NodeAnchor) {
+            ctx.system_root = active_root;
+            return active_root;
+        }
+        if isinstance(ctx.system_root, NodeAnchor) {
+            ctx.system_root.id = system_root_id;
+            ctx.system_root.persistent = True;
+            ctx.mem.put(ctx.system_root);
+            return ctx.system_root;
+        }
+    } except Exception {
+        return None;
+    }
+    return None;
+}
+
 impl _type_name(`obj: object) -> str {
     return `type(`obj).__name__;
 }
@@ -68,20 +93,10 @@ impl _index_edge_into(root_anchor: any, source: any, target: any, `edge: any) ->
         _get_type_mro(root_anchor.archetype)
     );
     idx.add_node(
-        source.id,
-        _type_name(source.archetype),
-        _get_type_mro(source.archetype),
-        None if source.root == root_anchor.id else source.root
+        source.id, _type_name(source.archetype), _get_type_mro(source.archetype)
     );
-    target_owner = None;
-    if target.root and target.root != root_anchor.id {
-        target_owner = target.root;
-    }
     idx.add_node(
-        target.id,
-        _type_name(target.archetype),
-        _get_type_mro(target.archetype),
-        target_owner
+        target.id, _type_name(target.archetype), _get_type_mro(target.archetype)
     );
     idx.add_edge(source.id, target.id, _type_name(`edge.archetype));
     if `edge.is_undirected {
@@ -112,17 +127,11 @@ impl on_edge_created(source: any, target: any, `edge: any) -> None {
     if not source.persistent {
         return;
     }
-    source_root = _get_root_anchor(source);
-    if source_root is None {
+    index_anchor = _get_index_anchor();
+    if index_anchor is None {
         return;
     }
-    _index_edge_into(source_root, source, target, `edge);
-    if target.root and target.root != source_root.id {
-        target_root = _get_root_anchor(target);
-        if target_root is not None {
-            _index_edge_into(target_root, source, target, `edge);
-        }
-    }
+    _index_edge_into(index_anchor, source, target, `edge);
 }
 
 impl on_edge_destroyed(source: any, target: any, `edge: any) -> None {
@@ -132,68 +141,62 @@ impl on_edge_destroyed(source: any, target: any, `edge: any) -> None {
     if not source.persistent {
         return;
     }
-    source_root = _get_root_anchor(source);
-    if source_root is None {
+    index_anchor = _get_index_anchor();
+    if index_anchor is None {
         return;
     }
-    _unindex_edge_from(source_root, source, target, `edge);
-    if target.root and target.root != source_root.id {
-        target_root = _get_root_anchor(target);
-        if target_root is not None {
-            _unindex_edge_from(target_root, source, target, `edge);
-        }
-    }
+    _unindex_edge_from(index_anchor, source, target, `edge);
 }
 
 impl on_node_saved(node_anchor: any) -> None {
     if not _is_enabled() {
         return;
     }
-    if not node_anchor.persistent or node_anchor.root is None {
+    if not node_anchor.persistent {
         return;
     }
-    root_anchor = _get_root_anchor(node_anchor);
-    if root_anchor is None {
+    index_anchor = _get_index_anchor();
+    if index_anchor is None {
         return;
     }
 
-    if root_anchor.id == node_anchor.id {
+    if index_anchor.id == node_anchor.id {
         return;
     }
     import from jaclang.runtimelib.topology_index { TopologyIndex }
-    idx = root_anchor.get_topology_index();
+    idx = index_anchor.get_topology_index();
     if not isinstance(idx, TopologyIndex) {
         idx = TopologyIndex();
     }
     idx.add_node(
-        root_anchor.id,
-        _type_name(root_anchor.archetype),
-        _get_type_mro(root_anchor.archetype)
+        index_anchor.id,
+        _type_name(index_anchor.archetype),
+        _get_type_mro(index_anchor.archetype)
     );
     idx.add_node(
         node_anchor.id,
         _type_name(node_anchor.archetype),
         _get_type_mro(node_anchor.archetype)
     );
-    root_anchor.set_topology_index(idx);
+    index_anchor.set_topology_index(idx);
 }
 
 impl on_node_destroyed(node_anchor: any) -> None {
     if not _is_enabled() {
         return;
     }
-    if not node_anchor.persistent or node_anchor.root is None {
+    if not node_anchor.persistent {
         return;
     }
-    root_anchor = _get_root_anchor(node_anchor);
-    if root_anchor is None {
+    index_anchor = _get_index_anchor();
+    if index_anchor is None or index_anchor.id == node_anchor.id {
         return;
     }
     import from jaclang.runtimelib.topology_index { TopologyIndex }
-    idx = root_anchor.get_topology_index();
+    idx = index_anchor.get_topology_index();
     if not isinstance(idx, TopologyIndex) {
         return;
     }
     idx.remove_node(node_anchor.id);
-    root_anchor.set_topology_index(idx);
+    index_anchor.set_topology_index(idx);
 }

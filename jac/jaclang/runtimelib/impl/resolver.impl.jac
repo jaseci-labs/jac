@@ -118,6 +118,25 @@ def _get_usable_index(root_anchor: (NodeAnchor | None)) -> (TopologyIndex | None
 }
 
 
+def _get_system_root_anchor(mem: Memory) -> (NodeAnchor | None) {
+    try {
+        import from jaclang.jac0core.constant { Constants as Con }
+        `root = mem.get(UUID(Con.SUPER_ROOT_UUID));
+        if isinstance(`root, NodeAnchor) {
+            return `root;
+        }
+    } except Exception {
+        ;
+    }
+    try {
+        import from jaclang { JacRuntimeInterface as Jac }
+        return Jac.get_context().system_root;
+    } except Exception {
+        return None;
+    }
+}
+
+
 def _resolve_prefix(
     mem: Memory,
     ids: set[UUID],
@@ -147,11 +166,7 @@ impl resolve_hop(
     );
     in_count = len(current_ids);
     if not has_pred and idx is not None {
-        import from jaclang.runtimelib.topology_index { SELF_ROOT }
-        if all(
-            (lid := idx.node_to_lid.get(uid)) is not None
-                and idx.node_table[lid][2] == SELF_ROOT for uid in current_ids
-        ) {
+        if all(idx.node_to_lid.get(uid) is not None for uid in current_ids) {
             if slc is not None {
                 ordered = idx.resolve_chain_ordered(
                     current_ids, hop.edge_type, hop.node_type, hop.direction, slc
@@ -168,10 +183,8 @@ impl resolve_hop(
             }
             triple = (hop.edge_type, hop.node_type, hop.direction);
             narrowed = idx.resolve_chain(current_ids, [triple]);
-            if narrowed is not None {
-                _trace_hop('index:set', hop_idx, in_count, len(narrowed), hop);
-                return narrowed;
-            }
+            _trace_hop('index:set', hop_idx, in_count, len(narrowed), hop);
+            return narrowed;
         }
     }
 
@@ -220,7 +233,7 @@ impl resolve_path_anchors(
 
     root_anchor = _path_root_anchor(mem, path);
 
-    idx = _get_usable_index(root_anchor);
+    idx = _get_usable_index(_get_system_root_anchor(mem));
     current: set[UUID] = {cast(UUID, nd.__jac__.id) for nd in path.origin};
     if len(chain) > 1 {
         current = _resolve_prefix(mem, current, chain[:-1], idx);

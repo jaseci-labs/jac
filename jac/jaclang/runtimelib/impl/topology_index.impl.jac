@@ -46,20 +46,18 @@ impl TopologyIndex._ensure_type(
 }
 
 impl TopologyIndex.add_node(
-    node_id: UUID,
-    type_name: str,
-    mro_chain: (list[str] | None) = None,
-    owner_root: (UUID | None) = None
+    node_id: UUID, type_name: str, mro_chain: (list[str] | None) = None
 ) -> int {
     if node_id in self.node_to_lid {
+        lid = self.node_to_lid[node_id];
         if mro_chain {
             self._ensure_type(type_name, mro_chain);
         }
-        return self.node_to_lid[node_id];
+        return lid;
     }
     tid = self._ensure_type(type_name, mro_chain);
     lid = len(self.node_table);
-    self.node_table.append((node_id, tid, owner_root or SELF_ROOT));
+    self.node_table.append((node_id, tid));
     self.node_to_lid[node_id] = lid;
     return lid;
 }
@@ -94,8 +92,8 @@ impl TopologyIndex.add_edge(
     etid = self._ensure_type(edge_type_name);
     self.adj_list.append((src_lid, etid, tgt_lid));
 
-    (_, src_type_id, _) = self.node_table[src_lid];
-    (_, tgt_type_id, _) = self.node_table[tgt_lid];
+    (_, src_type_id) = self.node_table[src_lid];
+    (_, tgt_type_id) = self.node_table[tgt_lid];
     src_ancestors = self.type_mro_ids[src_type_id] or [src_type_id];
     tgt_ancestors = self.type_mro_ids[tgt_type_id] or [tgt_type_id];
 
@@ -219,10 +217,8 @@ impl TopologyIndex.remove_edge(
 }
 
 impl TopologyIndex.resolve_chain(
-    origin_ids: set[UUID],
-    chain: list[tuple[(str | None), (str | None), int]],
-    bail_on_intermediate_foreign: bool = False
-) -> (set[UUID] | None) {
+    origin_ids: set[UUID], chain: list[tuple[(str | None), (str | None), int]]
+) -> set[UUID] {
     current_lids: set[int] = set();
     for uid in origin_ids {
         lid = self.node_to_lid.get(uid);
@@ -233,8 +229,7 @@ impl TopologyIndex.resolve_chain(
     if not current_lids {
         return set();
     }
-    last_idx = len(chain) - 1;
-    for (hop_idx, (edge_type, node_type, direction)) in enumerate(chain) {
+    for (edge_type, node_type, direction) in chain {
         etid = self.type_to_id.get(edge_type) if edge_type else None;
         ntid = self.type_to_id.get(node_type) if node_type else None;
         if edge_type and etid is None {
@@ -299,13 +294,6 @@ impl TopologyIndex.resolve_chain(
         current_lids = next_lids;
         if not current_lids {
             return set();
-        }
-        if bail_on_intermediate_foreign and hop_idx < last_idx {
-            for lid in current_lids {
-                if self.node_table[lid][2] != SELF_ROOT {
-                    return None;
-                }
-            }
         }
     }
     return {self.node_table[lid][0] for lid in current_lids};
@@ -419,21 +407,6 @@ impl TopologyIndex.resolve_chain_ordered(
     return ordered[slc];
 }
 
-impl TopologyIndex.get_cross_root_ids(node_ids: set[UUID]) -> dict[UUID, set[UUID]] {
-    result: dict[UUID, set[UUID]] = {};
-    for uid in node_ids {
-        lid = self.node_to_lid.get(uid);
-        if lid is None {
-            continue;
-        }
-        owner = self.node_table[lid][2];
-        if owner != SELF_ROOT {
-            result.setdefault(owner, set()).add(uid);
-        }
-    }
-    return result;
-}
-
 impl TopologyIndex.encode -> bytes {
     num_types = len(self.type_table);
     num_nodes = len(self.node_table);
@@ -452,10 +425,9 @@ impl TopologyIndex.encode -> bytes {
             parts.append(struct.pack("<H", anc_id));
         }
     }
-    for (node_id, type_id, owner_root) in self.node_table {
+    for (node_id, type_id) in self.node_table {
         parts.append(node_id.bytes);
         parts.append(struct.pack("<H", type_id));
-        parts.append(owner_root.bytes);
     }
     for (src, etid, tgt) in self.adj_list {
         parts.append(struct.pack("<HHH", src, etid, tgt));
@@ -467,61 +439,40 @@ impl TopologyIndex.encode -> bytes {
     return bytes(buf);
 }
 
-def _migrate_v1_to_v2(data: bytes) -> bytes {
-    if len(data) < 9 or data[0] != 1 {
-        return data;
-    }
-    (_, num_types, num_nodes, num_edges) = struct.unpack_from("<BHHi", data, 0);
-    out = bytearray();
-    out.extend(struct.pack("<BHHi", TOPO_VERSION, num_types, num_nodes, num_edges));
-    offset = struct.calcsize("<BHHi");
-    for tid in range(num_types) {
-        (name_len, ) = struct.unpack_from("<B", data, offset);
-        offset += 1;
-        out.append(name_len);
-        out.extend(data[offset:offset + name_len]);
-        offset += name_len;
-
-        out.append(1);
-        out.extend(struct.pack("<H", tid));
-    }
-    out.extend(data[offset:]);
-    return bytes(out);
-}
-
 impl TopologyIndex.decode(data: bytes) -> TopologyIndex {
     idx = TopologyIndex();
     if not data {
         return idx;
-    }
-    if data[0] == 1 {
-        data = _migrate_v1_to_v2(data);
     }
     offset = 0;
     (version, num_types, num_nodes, num_edges) = struct.unpack_from(
         "<BHHi", data, offset
     );
     offset += struct.calcsize("<BHHi");
-    if version != TOPO_VERSION {
+    if version not in (1, 2, TOPO_VERSION) {
         return idx;
     }
 
-    for _ in range(num_types) {
+    for tid in range(num_types) {
         (name_len, ) = struct.unpack_from("<B", data, offset);
         offset += 1;
         name = data[offset:offset + name_len].decode("utf-8");
         offset += name_len;
         idx.type_table.append(name);
         idx.type_to_id[name] = len(idx.type_table) - 1;
-        (mro_len, ) = struct.unpack_from("<B", data, offset);
-        offset += 1;
-        chain: list[int] = [];
-        for _ in range(mro_len) {
-            (anc, ) = struct.unpack_from("<H", data, offset);
-            offset += 2;
-            chain.append(anc);
+        if version == 1 {
+            idx.type_mro_ids.append([tid]);
+        } else {
+            (mro_len, ) = struct.unpack_from("<B", data, offset);
+            offset += 1;
+            chain: list[int] = [];
+            for _ in range(mro_len) {
+                (anc, ) = struct.unpack_from("<H", data, offset);
+                offset += 2;
+                chain.append(anc);
+            }
+            idx.type_mro_ids.append(chain);
         }
-        idx.type_mro_ids.append(chain);
     }
 
     for i in range(num_nodes) {
@@ -529,9 +480,10 @@ impl TopologyIndex.decode(data: bytes) -> TopologyIndex {
         offset += 16;
         (type_id, ) = struct.unpack_from("<H", data, offset);
         offset += 2;
-        owner_root = UUID(bytes=data[offset:offset + 16]);
-        offset += 16;
-        idx.node_table.append((node_id, type_id, owner_root));
+        if version in (1, 2) {
+            offset += 16;
+        }
+        idx.node_table.append((node_id, type_id));
         idx.node_to_lid[node_id] = i;
     }
 
@@ -542,8 +494,8 @@ impl TopologyIndex.decode(data: bytes) -> TopologyIndex {
         tgt: int = int(unpacked[2]);
         offset += 6;
         idx.adj_list.append((src, etid, tgt));
-        (_, src_t, _) = idx.node_table[src];
-        (_, tgt_t, _) = idx.node_table[tgt];
+        (_, src_t) = idx.node_table[src];
+        (_, tgt_t) = idx.node_table[tgt];
         src_ancestors = idx.type_mro_ids[src_t] or [src_t];
         tgt_ancestors = idx.type_mro_ids[tgt_t] or [tgt_t];
         for anc in tgt_ancestors {

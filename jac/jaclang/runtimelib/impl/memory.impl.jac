@@ -24,6 +24,22 @@ import from jaclang.runtimelib.typecache { get_field_types }
 glob logger = logging.getLogger(__name__),
      SQLITE_DB_FORMAT_VERSION: int = 1;
 
+def _is_system_root_topology_anchor(anchor: Anchor) -> bool {
+    if not (
+        isinstance(anchor, NodeAnchor)
+        and isinstance(anchor.archetype, Root)
+        and anchor.topology_index_data is not None
+    ) {
+        return False;
+    }
+    try {
+        import from jaclang.jac0core.constant { Constants as Con }
+        return anchor.id == UUID(Con.SUPER_ROOT_UUID);
+    } except Exception {
+        return False;
+    }
+}
+
 impl Memory.aget(id: UUID) -> (Anchor | None) {
     return await asyncio.to_thread(self.get, id);
 }
@@ -1810,6 +1826,10 @@ impl TieredMemory._collect_into(changes: ChangeSet) -> None {
             ) {
                 continue;
             }
+            if _is_system_root_topology_anchor(anchor) {
+                changes.record_create(anchor);
+                continue;
+            }
             if Jac.check_write_access(anchor, op_hint="field_write") {
                 changes.record_create(anchor);
             }
@@ -1846,6 +1866,10 @@ impl TieredMemory._collect_into(changes: ChangeSet) -> None {
             changes.record_update(
                 anchor, set(get_field_types(type(anchor.archetype)).keys())
             );
+        }
+        if _is_system_root_topology_anchor(anchor) {
+            changes.record_update(anchor, {"topology_index_data"});
+            recorded = True;
         }
         if not recorded {
             if Jac.check_write_access(anchor, op_hint="field_write") {

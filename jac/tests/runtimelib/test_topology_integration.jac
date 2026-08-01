@@ -27,6 +27,10 @@ node _MultiHopLeaf {
     has idx: int = 0;
 }
 
+node _SystemRootGtiNode {
+    has idx: int = 0;
+}
+
 test "topology index config from toml" {
     import from jaclang.project.config { JacConfig }
     toml_str = "[project]\nname = \"test\"\n\n[run]\ntopology_index = false\n";
@@ -123,6 +127,40 @@ test "topology index survives anchor serialization" {
     decoded = restored.get_topology_index();
     assert len(decoded.adj_list) == 1;
     assert len(decoded.node_table) == 2;
+}
+
+test "topology index is stored on system root for user root graphs" {
+    import from jaclang.jac0core.archetype { Root }
+    tmpdir = mkdtemp();
+    orig_base = JacRuntime.get_base_path_dir();
+    try {
+        cfg = JacConfig();
+        cfg.run.topology_index = True;
+        set_config(cfg);
+        JacRuntime.set_base_path(tmpdir);
+
+        ctx = ExecutionContext();
+        JacRuntime.set_context(ctx);
+
+        user_root = Root();
+        JacRuntime.save(user_root);
+        ctx.set_user_root(user_root.__jac__.id.hex);
+
+        root ++> _SystemRootGtiNode(idx=1);
+
+        system_idx = ctx.system_root.get_topology_index();
+        user_idx = user_root.__jac__.get_topology_index();
+
+        assert len(system_idx) == 1 , "system root must carry the topology edge";
+        assert len(user_idx) == 0 , "user root must not carry its own GTI blob";
+        assert len([root-->[?:_SystemRootGtiNode]]) == 1;
+
+        ctx.close();
+    } finally {
+        JacRuntime.set_base_path(orig_base);
+        set_config(JacConfig());
+        shutil.rmtree(tmpdir, ignore_errors=True);
+    }
 }
 
 test "concurrent edge adds merged in sqlite sync" {

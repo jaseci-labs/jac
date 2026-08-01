@@ -5,6 +5,8 @@ These complement `test_topology_e2e.jac` (which guards execute_path-level
 parity) by exercising the resolver's per-hop entry points directly and by
 locking down the bail boundary that future PRs will widen."""
 
+import shutil;
+import from tempfile { mkdtemp }
 import from jaclang.jac0core.runtime { JacRuntime }
 import from jaclang.runtimelib.context { ExecutionContext }
 import from jaclang.project.config { JacConfig, set_config }
@@ -33,15 +35,31 @@ edge Hop2 {}
 edge Hop3 {}
 
 
+def _setup_context -> tuple[ExecutionContext, str, str] {
+    cfg = JacConfig();
+    cfg.run.topology_index = True;
+    set_config(cfg);
+    tmpdir = mkdtemp();
+    orig_base = JacRuntime.get_base_path_dir();
+    JacRuntime.set_base_path(tmpdir);
+    ctx = ExecutionContext();
+    JacRuntime.set_context(ctx);
+    return (ctx, tmpdir, orig_base);
+}
+
+def _teardown_context(ctx: ExecutionContext, tmpdir: str, orig_base: str) {
+    ctx.close();
+    JacRuntime.set_base_path(orig_base);
+    shutil.rmtree(tmpdir, ignore_errors=True);
+    set_config(JacConfig());
+}
+
+
 test "3-hop type-filtered chain resolves via the per-hop fold" {
     # A purely type-filtered 3-hop chain must walk all three hops on the
     # index and return the leaf set correctly. This is the happy-path the
     # per-hop fold replaces today's `plan_chain` set-narrowing branch with.
-    cfg = JacConfig();
-    cfg.run.topology_index = True;
-    set_config(cfg);
-    ctx = ExecutionContext();
-    JacRuntime.set_context(ctx);
+    (ctx, tmpdir, orig_base) = _setup_context();
     try {
         r = root;
         # root -> R1Hop -> R2Hop -> R3Hop  (5 leaves)
@@ -56,8 +74,7 @@ test "3-hop type-filtered chain resolves via the per-hop fold" {
         assert len(leaves) == 5 , f"expected 5 leaves, got {len(leaves)}";
         assert sorted([n.val for n in leaves]) == [0, 100, 200, 300, 400];
     } finally {
-        ctx.close();
-        set_config(JacConfig());
+        _teardown_context(ctx, tmpdir, orig_base);
     }
 }
 
@@ -67,11 +84,7 @@ test "single-hop slice on last hop applies ordered+sliced result" {
     # last hop receives a non-None `slc` and `resolve_chain_ordered` is the
     # only path that produces it. Pins down the use_ordered branch in
     # resolve_path_anchors.
-    cfg = JacConfig();
-    cfg.run.topology_index = True;
-    set_config(cfg);
-    ctx = ExecutionContext();
-    JacRuntime.set_context(ctx);
+    (ctx, tmpdir, orig_base) = _setup_context();
     try {
         r = root;
         for i in range(20) {
@@ -82,8 +95,7 @@ test "single-hop slice on last hop applies ordered+sliced result" {
         # Canonical edge-insertion order means the first 5 are vals 0..4.
         assert sorted([n.val for n in sliced]) == [0, 1, 2, 3, 4];
     } finally {
-        ctx.close();
-        set_config(JacConfig());
+        _teardown_context(ctx, tmpdir, orig_base);
     }
 }
 
@@ -92,11 +104,7 @@ test "predicate on non-final hop resolves via per-hop walk fallback" {
     # The core promise of the per-hop fold: an awkward hop (predicate filter
     # that the index can't apply) falls back to `_hop_via_walk` locally,
     # while the *other* hops still use the index. No global bail.
-    cfg = JacConfig();
-    cfg.run.topology_index = True;
-    set_config(cfg);
-    ctx = ExecutionContext();
-    JacRuntime.set_context(ctx);
+    (ctx, tmpdir, orig_base) = _setup_context();
     try {
         r = root;
         for i in range(10) {
@@ -125,7 +133,6 @@ test "predicate on non-final hop resolves via per-hop walk fallback" {
         leaves = [r->:Hop1:->[?:R1Hop, val>5]->:Hop2:->[?:R2Hop]];
         assert sorted([n.val for n in leaves]) == [60, 70, 80, 90];
     } finally {
-        ctx.close();
-        set_config(JacConfig());
+        _teardown_context(ctx, tmpdir, orig_base);
     }
 }

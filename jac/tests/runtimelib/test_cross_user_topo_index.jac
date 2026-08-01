@@ -1,17 +1,15 @@
-"""Cross-root graph query tests for the topology-index optimizer.
+"""Cross-user graph query tests for the topology-index optimizer.
 
-The topology index lives on each root anchor and indexes the edges that
-root *originated*. When a query crosses into another user's owned
-subgraph, the index used to silently miss those edges -- the global
-edge walk (with `JAC_TOPOLOGY_INDEX=0`) returns the right answer, but
-the index path returned an empty / undercounted set.
+The topology index lives on the system root and indexes graph topology
+across user roots. These tests keep the optimizer honest for queries
+whose origin and reachable nodes belong to different users.
 
 These tests pin down both failure shapes against a real
 `JacTestClient` (long-lived runtime context, the regime where the
 optimizer actually runs):
 
-  * a 2-hop forward chain that crosses into another user's edges, and
-  * a 1-hop reverse query whose incoming edges are owned by other users.
+  * a 2-hop forward chain that reaches another user's edges, and
+  * a 1-hop reverse query whose incoming edges were created by other users.
 """
 
 import os;
@@ -21,7 +19,7 @@ import jaclang;
 import from jaclang.runtimelib.testing { JacTestClient }
 
 glob FIXTURE = os.path.join(
-         JAC_ROOT, "tests", "runtimelib", "fixtures", "cross_root_topo_index.jac"
+         JAC_ROOT, "tests", "runtimelib", "fixtures", "cross_user_topo_index.jac"
      );
 
 """Force the topology-index optimizer on for the duration of `fn`."""
@@ -49,7 +47,7 @@ def first_report(response: any) -> any {
     return None;
 }
 
-test "cross-root forward chain returns followed user's tweets" {
+test "cross-user forward chain returns followed user's tweets" {
     def _body {
         client = JacTestClient.from_file(FIXTURE, base_path=mkdtemp());
         try {
@@ -78,7 +76,7 @@ test "cross-root forward chain returns followed user's tweets" {
     with_topo_index(_body);
 }
 
-test "cross-root reverse query counts members across roots" {
+test "cross-user reverse query counts members across users" {
     def _body {
         client = JacTestClient.from_file(FIXTURE, base_path=mkdtemp());
         try {

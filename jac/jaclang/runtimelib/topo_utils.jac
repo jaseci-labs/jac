@@ -2,6 +2,8 @@ def _is_enabled -> bool;
 
 def _get_root_anchor(anchor: any) -> any;
 
+def _get_index_anchor -> any;
+
 def _type_name(`obj: object) -> str;
 
 def _get_type_mro(`obj: object) -> list[str];
