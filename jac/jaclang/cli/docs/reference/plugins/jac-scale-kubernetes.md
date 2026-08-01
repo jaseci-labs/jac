@@ -502,6 +502,47 @@ mongodb_storage_size = "10Gi"
 
 ---
 
+### Backing Services (`[scale.database]`)
+
+By default a deploy provisions an in-cluster MongoDB and Redis. An app that brings its own state (a managed Postgres, an external Redis, Supabase) can declare exactly what it needs instead, so nothing unused is provisioned.
+
+Each backing service is a `[scale.database.<name>]` table (the name is yours):
+
+```toml
+[scale.database.db]
+type   = "postgres"          # postgres | redis | mongo | any label
+source = "external"          # managed | external | disabled
+url    = "${DATABASE_URL}"   # external only; ${ENV} resolved at load
+# env  = "DATABASE_URL"      # optional; default per type
+```
+
+| `source` | Behavior |
+|----------|----------|
+| `managed` | jac-scale provisions it in-cluster (mongo/redis only). This is the default when nothing is declared. |
+| `external` | jac-scale provisions nothing and injects `url` into the app under the type's env var. Use `${ENV}` interpolation so credentials come from `.env` / the CI environment rather than sitting in `jac.toml` (a plain literal is fine for non-secret URLs like in-cluster DNS); the value ships through the app's Kubernetes Secret. |
+| `disabled` | Off. Useful in a `jac.prod.toml` overlay to switch off a backend declared in the base (overlays cannot delete tables). |
+
+The app always reads the same env var (`DATABASE_URL`, `REDIS_URL`, `MONGODB_URI`, or `<TYPE>_URL`); only `source` changes between environments.
+
+**Inventory rule:** once you declare any `[scale.database.<name>]`, that list is the complete inventory. Anything not listed is not provisioned - declaring an external Postgres removes the default managed mongo/redis, no `disabled` lines needed. With zero declarations, behavior is unchanged (managed mongo + redis), and the legacy `mongodb_enabled` / `redis_enabled` flags still work (a declared inventory takes precedence and the flags are then ignored with a warning).
+
+**Custom auth:** apps that authenticate themselves (e.g. Supabase, any OIDC) set `[scale.auth].type = "custom"` to leave the built-in `/user/*`, SSO, and api-key endpoints unmounted. The declared `issuer` / `jwks_url` / `audience` reach pods as `JAC_AUTH_*` env; sensitive values go in `[scale.secrets]` with `${ENV}`.
+
+```toml
+[scale.database.cache]
+type   = "redis"
+source = "external"
+url    = "${REDIS_URL}"
+
+[scale.auth]
+type   = "custom"
+issuer = "https://<ref>.supabase.co/auth/v1"
+```
+
+> In-cluster `source = "managed"` provisioning is currently mongo/redis only; a managed Postgres+pgvector backend is a planned follow-up. Bring one via `source = "external"` in the meantime.
+
+---
+
 ### Container Images
 
 Controls the base images used for the application pod and init containers. Override these when you need a specific Python version or when operating in air-gapped environments.

@@ -3,6 +3,10 @@ import from jaclang.scale._optdeps.kubernetes { client }
 import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
     ensure_namespace_exists
 }
+import from jaclang.scale.deploy.target.kubernetes.backend_env {
+    external_backend_secret_values,
+    custom_auth_env_entries
+}
 
 
 obj MicroserviceDatabaseProvisioner {
@@ -22,11 +26,29 @@ obj MicroserviceDatabaseProvisioner {
         cfg = self.k8s_target.k8s_config;
         mongo_on = cfg.mongodb_enabled;
         redis_on = cfg.redis_enabled;
+        backends = dict(getattr(cfg, 'backends', {}) or {});
+        external_auth = dict(getattr(cfg, 'external_auth', {}) or {});
+
+        external_values = external_backend_secret_values(backends);
+        if external_values {
+            self.k8s_target.secrets = {
+                ** dict(self.k8s_target.secrets or {}),
+                ** external_values
+            };
+            if self.logger {
+                self.logger.info(
+                    f"External backend env wired via the app secret: "
+                    f"{', '.join(sorted(external_values.keys()))}",
+                    {"app_name": app_name}
+                );
+            }
+        }
+        ctx.env_list = custom_auth_env_entries(external_auth);
+
         if not (mongo_on or redis_on) {
             if self.logger {
                 self.logger.info(
-                    "Database provisioning skipped (mongodb_enabled=false, "
-                    "redis_enabled=false)",
+                    "Database provisioning skipped (no managed backends declared)",
                     {"app_name": app_name}
                 );
             }
@@ -48,7 +70,7 @@ obj MicroserviceDatabaseProvisioner {
         }
         self.k8s_target._deploy_databases(app_name, namespace, apps_v1, core_v1);
 
-        ctx.env_list = list(self.k8s_target.env_list);
+        ctx.env_list = list(self.k8s_target.env_list) + ctx.env_list;
         ctx.init_containers = self.k8s_target._get_database_init_containers(app_name);
 
         if self.logger {

@@ -26,9 +26,23 @@ class JacScaleConfig(PluginConfigBase) {
     def get_emailer_config(self: JacScaleConfig) -> dict[str, any];
     def get_auth_config(self: JacScaleConfig) -> dict[str, any];
     def get_microservices_config(self: JacScaleConfig) -> dict[str, any];
+    def get_backends_config(self: JacScaleConfig) -> dict[str, any];
+    def get_external_auth_config(self: JacScaleConfig) -> dict[str, any];
 }
 
 def normalize_microservices_config(ms_config: dict[str, any]) -> dict[str, any];
+
+def normalize_backends_config(
+    database_cfg: dict[str, any], raw_kubernetes_cfg: dict[str, any]
+) -> dict[str, any];
+
+def normalize_external_auth_config(auth_cfg: dict[str, any]) -> dict[str, any];
+
+def _backend_entry(name: str, spec: dict[str, any]) -> dict[str, any];
+
+def _guard_backend_conflicts(backends: dict[str, any]) -> None;
+
+def _default_backend_env(backend_type: str) -> str;
 
 glob _scale_config_instance: JacScaleConfig | None = None;
 
